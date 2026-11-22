@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
-from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
+from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,7 +23,6 @@ from app.models.memory_models import MemoryEntry
 from app.services.conversation.composition import build_runtime_ports
 from app.services.conversation.runtime import install_runtime_ports
 from tests.e2e._harness.background import drain_background_runs
-from tests.e2e._harness.task_index import task_search_index
 
 FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
 RESET_MODULE = "app.services.checkpoint_thread_reset"
@@ -38,19 +37,6 @@ class LiveGraphs:
 
     def pushed_of(self, kind: str) -> list[dict[str, Any]]:
         return [event for event in self.pushed if event.get("type") == kind]
-
-
-@contextmanager
-def offline_todo_seams() -> Iterator[None]:
-    """Double a todo's ChromaDB embeddings and VFS projection, and serve the task index in-process."""
-    with (
-        task_search_index(),
-        patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock),
-    ):
-        yield
 
 
 @asynccontextmanager

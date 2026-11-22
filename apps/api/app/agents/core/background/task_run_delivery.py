@@ -15,24 +15,24 @@ from pydantic import BaseModel, ConfigDict
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.agents.prompts.comms_prompts import task_delivery_note
 from app.constants.log_tags import LogTag
+from app.constants.task_notes import (
+    CANVAS_KEY_DETAILS_SECTION,
+    CANVAS_STANDING_RULES_SECTION,
+    DELIVERY_KEY_DETAILS_MAX_CHARS,
+    STANDING_RULES_MAX_CHARS,
+)
 from app.constants.tasks import (
     FINISH_TASK_RUN_JOB,
     FINISH_TASK_RUN_JOB_PREFIX,
+    FINISH_TASK_RUN_RETRY_DELAY,
     RECENT_RUNS_READ,
     RUN_SUMMARY_CHARS,
     TaskRunDeliveryOutcome,
     TaskRunStatus,
     TaskRunTrigger,
     WhenKind,
-)
-from app.constants.todos import (
-    CANVAS_KEY_DETAILS_SECTION,
-    CANVAS_STANDING_RULES_SECTION,
-    DELIVERY_KEY_DETAILS_MAX_CHARS,
-    STANDING_RULES_MAX_CHARS,
-    TODO_RUN_FINISH_RETRY_DELAY,
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.task_runs import task_run_repository
@@ -122,7 +122,7 @@ async def write_up_note(run: TaskRun) -> str:
     async for attempt in TRANSIENT_MONGO_RETRY.copy():
         with attempt:
             task = await task_repository.get_any(run.task_id)
-    return tracked_todo_delivery_note(
+    return task_delivery_note(
         run.title,
         _notes_section(task, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
         _notes_section(task, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
@@ -186,7 +186,7 @@ async def hand_unfinished_run_to_job(undone: FinishedTaskRun) -> None:
             FINISH_TASK_RUN_JOB,
             undone,
             _job_id=f"{FINISH_TASK_RUN_JOB_PREFIX}{undone.run_id}:{step}",
-            _defer_by=TODO_RUN_FINISH_RETRY_DELAY,
+            _defer_by=FINISH_TASK_RUN_RETRY_DELAY,
         )
     except RedisError as e:
         report_unfinished_run(undone, f"{type(e).__name__}: {e}")

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_day_window, get_user_id
 from app.decorators import tiered_rate_limit
-from app.models.todo_models import TodoDayWindow
+from app.models.task_day_window_models import TaskDayWindow
 from app.models.trigger_gate_models import GateEdit
 from app.schemas.tasks import (
     ChecklistItemCreateRequest,
@@ -38,7 +38,7 @@ TASK_WRITES = "task_operations"
 async def get_task_counts(
     response: Response,
     user_id: Annotated[str, Depends(get_user_id)],
-    window: Annotated[TodoDayWindow, Depends(get_user_day_window)],
+    window: Annotated[TaskDayWindow, Depends(get_user_day_window)],
 ) -> TaskCountsResponse:
     """Count the user's open tasks due today, this week and overdue, and their done ones."""
     response.headers["Cache-Control"] = "private, max-age=10"
@@ -52,7 +52,7 @@ async def get_task_counts(
 async def list_tasks(
     params: Annotated[TaskListParams, Depends()],
     user_id: Annotated[str, Depends(get_user_id)],
-    window: Annotated[TodoDayWindow, Depends(get_user_day_window)],
+    window: Annotated[TaskDayWindow, Depends(get_user_day_window)],
 ) -> TaskListResponse:
     """List the user's tasks, newest first, narrowed by the query."""
     log.set(

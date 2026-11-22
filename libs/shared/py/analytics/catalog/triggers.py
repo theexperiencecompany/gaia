@@ -9,7 +9,7 @@ __all__ = ["TriggerGateDecided", "TriggerGateEdited"]
 
 
 class TriggerGateDecided(ServerEvent):
-    """A trigger gate decided what a fired event does to its workflow or tracked todo.
+    """A trigger gate decided what a fired event does to its workflow or GAIA task.
 
     outcome is what the run did and reason is why, so a shadow gate (enforced
     false) reports reason jev_skip with outcome run. Inside the user's quiet hours
@@ -21,7 +21,7 @@ class TriggerGateDecided(ServerEvent):
     # One per gated event: a busy inbox fires a Gmail gate a few hundred times a day.
     budget_per_user_day: ClassVar[int] = 500
 
-    owner_type: Literal["workflow", "todo", "task"]
+    owner_type: Literal["workflow", "task"]
     trigger_name: Identifier
     gate_kind: Literal["authored", "system"]
     author: Literal["gaia", "user"] | None = None
@@ -43,11 +43,11 @@ class TriggerGateDecided(ServerEvent):
 
 
 class TriggerGateEdited(ServerEvent):
-    """A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo."""
+    """A user added, rewrote, turned on or off, or removed the gate on a workflow or GAIA task."""
 
     event: ClassVar[str] = "trigger:gate_edited"
     budget_per_user_day: ClassVar[int] = 20
 
-    owner_type: Literal["workflow", "todo", "task"]
+    owner_type: Literal["workflow", "task"]
     action: Literal["added", "edited", "disabled", "enabled", "removed"]
     gate_kind: Literal["authored", "system"]

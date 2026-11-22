@@ -10,9 +10,6 @@ rewritten (the user's intent is ambiguous); the user fixes it and resumes.
 It also backfills stop_after on live recurring reminders that predate the
 default lifetime, so legacy rows end the way new ones do.
 
-Invalid tracked-todo recurrences are reported only: a todo paused for its schedule
-would have no path back once the user fixed it.
-
 Run from the api directory (or /app inside the container):
 
     python scripts/pause_invalid_recurring_schedules.py            # dry run, prints counts
@@ -35,8 +32,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from bson import ObjectId
 
 from app.constants.reminders import REMINDER_DEFAULT_LIFETIME
-from app.constants.tasks import REPEAT_SHORTCUTS
-from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.workflows import workflow_repository
@@ -69,7 +64,6 @@ class CleanupPlan:
     reminders_to_pause: list[InvalidSchedule] = field(default_factory=list)
     workflows_to_pause: list[InvalidSchedule] = field(default_factory=list)
     stop_after_backfill: dict[str, datetime] = field(default_factory=dict)
-    invalid_todos: list[InvalidSchedule] = field(default_factory=list)
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -108,18 +102,8 @@ def plan_workflow(doc: dict[str, Any], plan: CleanupPlan) -> None:
         plan.workflows_to_pause.append(invalid)
 
 
-def plan_todo(doc: dict[str, Any], plan: CleanupPlan) -> None:
-    """Report one tracked todo whose recurrence is neither a shortcut nor an acceptable schedule."""
-    recurrence = doc["recurrence"]
-    if recurrence in REPEAT_SHORTCUTS:
-        return
-    invalid = _invalid(doc, recurrence)
-    if invalid:
-        plan.invalid_todos.append(invalid)
-
-
 async def build_plan(now: datetime) -> CleanupPlan:
-    """Scan reminders, workflows and todos without writing anything."""
+    """Scan reminders and workflows without writing anything."""
     plan = CleanupPlan()
     reminders = get_async_collection("reminders").find(
         {"repeat": {"$nin": [None, ""]}, "status": {"$in": LIVE_REMINDER_STATUSES}}
@@ -134,12 +118,6 @@ async def build_plan(now: datetime) -> CleanupPlan:
     )
     async for doc in workflows:
         plan_workflow(doc, plan)
-    # Only a tracked todo's recurrence schedules runs; a plain todo's is display-only (an RRULE).
-    todos = get_async_collection("todos").find(
-        {"recurrence": {"$nin": [None, ""]}, "labels": GAIA_TRACKED_LABEL}
-    )
-    async for doc in todos:
-        plan_todo(doc, plan)
     return plan
 
 
@@ -167,11 +145,9 @@ def _render(plan: CleanupPlan, *, applied: bool) -> None:
     print(f"reminders to pause (invalid schedule):  {len(plan.reminders_to_pause)}")
     print(f"workflows to pause (invalid schedule):  {len(plan.workflows_to_pause)}")
     print(f"recurring reminders given stop_after:   {len(plan.stop_after_backfill)}")
-    print(f"tracked todos with invalid recurrence:  {len(plan.invalid_todos)} (report only)")
     for kind, rows in (
         ("reminder", plan.reminders_to_pause),
         ("workflow", plan.workflows_to_pause),
-        ("todo", plan.invalid_todos),
     ):
         for row in rows:
             print(f"  {kind:<9}{row.id:<28}{row.reason:<20}{row.expression!r}")

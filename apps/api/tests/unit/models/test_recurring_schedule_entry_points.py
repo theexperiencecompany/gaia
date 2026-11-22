@@ -11,7 +11,6 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.reminder_models import (
     CreateReminderRequest,
     CreateReminderToolRequest,
@@ -20,7 +19,6 @@ from app.models.reminder_models import (
     UpdateReminderRequest,
 )
 from app.models.scheduler_models import ScheduleConfig
-from app.models.todo_models import TodoModel, TodoUpdate, TodoUpdateRequest
 from app.models.workflow_models import CreateWorkflowRequest, UpdateWorkflowRequest
 
 pytestmark = pytest.mark.unit
@@ -35,17 +33,21 @@ def _workflow_trigger(cron: str) -> dict[str, Any]:
 
 
 ENTRY_POINTS: dict[str, Callable[[str], BaseModel]] = {
-    "POST /reminders": lambda cron: CreateReminderRequest(
-        agent="static", repeat=cron, payload=_PAYLOAD
+    "POST /reminders": lambda cron: CreateReminderRequest.model_validate(
+        {"agent": "static", "repeat": cron, "payload": _PAYLOAD}
     ),
-    "create_reminder_tool": lambda cron: CreateReminderToolRequest(repeat=cron, payload=_PAYLOAD),
-    "PUT /reminders": lambda cron: UpdateReminderRequest(repeat=cron),
-    "update_reminder_tool": lambda cron: ReminderUpdate(repeat=cron),
-    "scheduler": lambda cron: ScheduleConfig(repeat=cron),
-    "POST /workflows": lambda cron: CreateWorkflowRequest(
-        title="Digest", prompt="Summarize", trigger_config=_workflow_trigger(cron)
+    "create_reminder_tool": lambda cron: CreateReminderToolRequest.model_validate(
+        {"repeat": cron, "payload": _PAYLOAD}
     ),
-    "PUT /workflows": lambda cron: UpdateWorkflowRequest(trigger_config=_workflow_trigger(cron)),
+    "PUT /reminders": lambda cron: UpdateReminderRequest.model_validate({"repeat": cron}),
+    "update_reminder_tool": lambda cron: ReminderUpdate.model_validate({"repeat": cron}),
+    "scheduler": lambda cron: ScheduleConfig.model_validate({"repeat": cron}),
+    "POST /workflows": lambda cron: CreateWorkflowRequest.model_validate(
+        {"title": "Digest", "prompt": "Summarize", "trigger_config": _workflow_trigger(cron)}
+    ),
+    "PUT /workflows": lambda cron: UpdateWorkflowRequest.model_validate(
+        {"trigger_config": _workflow_trigger(cron)}
+    ),
 }
 
 
@@ -72,27 +74,6 @@ def test_hourly_and_slower_schedules_are_accepted(entry_point: str, cron: str) -
 
 
 def test_a_one_shot_reminder_a_minute_out_is_still_accepted() -> None:
-    request = CreateReminderToolRequest(delay_seconds=60, payload=_PAYLOAD)
+    request = CreateReminderToolRequest.model_validate({"delay_seconds": 60, "payload": _PAYLOAD})
 
     assert request.to_create_reminder_request().repeat is None
-
-
-@pytest.mark.parametrize("cron", ["* * * * *", "0 6 30 * * *"])
-def test_a_new_tracked_todo_holds_its_recurrence_to_the_rule(cron: str) -> None:
-    with pytest.raises(ValidationError):
-        TodoModel(title="Check inbox", labels=[GAIA_TRACKED_LABEL], recurrence=cron)
-
-
-@pytest.mark.parametrize("shortcut", ["daily", "weekly", "every_4h", "every_1h"])
-def test_tracked_todo_recurrence_shortcuts_stay_valid(shortcut: str) -> None:
-    todo = TodoModel(title="Check inbox", labels=[GAIA_TRACKED_LABEL], recurrence=shortcut)
-    assert todo.recurrence == shortcut
-
-
-@pytest.mark.parametrize("model", [TodoModel, TodoUpdateRequest, TodoUpdate])
-def test_a_plain_todos_display_rrule_is_kept_verbatim(model: type[BaseModel]) -> None:
-    rrule = "FREQ=WEEKLY;BYDAY=MO"
-    fields: dict[str, Any] = {"recurrence": rrule}
-    if model is TodoModel:
-        fields["title"] = "Water plants"
-    assert model.model_validate(fields).recurrence == rrule

@@ -123,6 +123,7 @@ ignore_decorators = [
 ]
 ignore_names = [
   "model_config",   # Pydantic v2 config attribute (set on every model)
+  "model_post_init", # Pydantic v2 hook run after every model is built
   "Config",         # Pydantic v1-style inner config class (framework-reserved name)
   "dispatch",       # Starlette BaseHTTPMiddleware.dispatch override
   "__getattr__",    # module-level dunder called by Python's import machinery
@@ -453,26 +454,18 @@ unfixable = [
 # in this stack must skip them by base class and by with_structured_output target:
 # _ModerationResult (services/integrations/profanity.py) and _CandidateContext /
 # _ProfileCandidate (services/onboarding/social_profile_service.py).
-"apps/api/app/agents/tools/todo_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity (same as tracked_todo_tools.py below)
-"apps/api/app/agents/tools/executor_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity: call_executor's brief (task, acceptance criteria, desired outcome, time horizon, defaults, approval, bound todo) is what the model fills in, and nesting it would hide each field from the schema (same as todo_tool.py and tracked_todo_tools.py)
+"apps/api/app/agents/tools/executor_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity: call_executor's brief (task, acceptance criteria, desired outcome, time horizon, defaults, approval, bound task) is what the model fills in, and nesting it would hide each field from the schema (same as task_tools.py)
 "apps/api/app/agents/middleware/subagent.py" = ["PLR0913"]  # spawn_subagent's @tool args are the model-facing tool schema (task, context, background, integration_ids) plus the injected call id, state and config, not reducible complexity (same as executor_tool.py)
-"apps/api/app/agents/tools/task_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity (same as tracked_todo_tools.py)
-"apps/api/app/agents/tools/tracked_todo_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity; PLR0911/0912 stay enforced (update_tracked_todo was refactored to satisfy them)
+"apps/api/app/agents/tools/task_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity
 "apps/api/app/db/repositories/base.py" = ["PLR0913"]  # _apply_raw_update is the one raw-Mongo seam every repository routes through; its seven knobs (filter, update, scope, extra_filter, return_document, array_filters, upsert) are the operator surface, used at 76 call sites. The paid-only gate only adds a cache eviction on a write miss here.
-"apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
 "apps/api/app/agents/tools/integrations/calendar_tool.py" = ["PLR0912", "PLR0915"]  # register_calendar_custom_tools is a registration factory whose PLR0915 statement count is just its ~10 nested @custom_tool bodies (inherent to the pattern). The individual tool bodies (CUSTOM_GET_DAY_SUMMARY / CUSTOM_CREATE_EVENT) are branch-heavy Google-payload builders; extracting their loops adds indirection the mutation gate can't test (debug-log calls, tz-sensitive ids). The loop-dispatch fix only touches _run_sync, so this predates it.
 "apps/api/app/services/outbound_delivery.py" = ["PLR0913"]  # publish_outbound_file predates this change; the reminder/proactive-delivery feature only adds channel-targeted delivery to publish_outbound_message here
-"apps/api/app/services/todos/todo_service.py" = ["PLR0913"]  # get_all_todos predates this change; the triggers feature only adds subscription teardown-on-delete here
-"apps/api/app/services/tracked_todo_service.py" = ["PLR0913"]  # the flagged function predates this change; the triggers feature adds subscription teardown to this file
 "apps/api/app/services/triggers/handlers/calendar.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/github.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/google_sheets.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/notion.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/slack.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
-"apps/api/app/services/triggers/subscription_service.py" = ["PLR0913"]  # register_subscription's parameters are the subscription fields a caller must supply; grouping them into an object would hide the required inputs
 "apps/api/app/services/workflow/service.py" = ["PLR0912", "PLR0915"]  # the flagged function predates this change; the triggers feature only renames the owner-ref parameter here
-"apps/api/tests/e2e/test_todo_trigger_dispatch_e2e.py" = ["PLR0913"]  # _seed_watch is a test helper whose keyword arguments mirror the subscription fields under test
-"apps/api/tests/unit/services/test_todo_service.py" = ["PLR0913"]  # test parameterization, not production complexity
 "apps/api/tests/unit/services/test_trigger_service.py" = ["PLR0913"]  # test parameterization, not production complexity
 "apps/api/tests/integration/real/test_device_bridge_e2e.py" = ["PLR0915"]  # the golden-path e2e test is one linear 8-step journey; splitting its statements into helpers hides the flow it exists to prove
 # A002: chromadb's EmbeddingFunction protocol calls
@@ -494,17 +487,15 @@ unfixable = [
 # fields), so the arg count is the interface here, not avoidable complexity. An
 # inline `# noqa: PLR0913` can't express this: PLR0913 sits in the global ignore
 # so the main ruff lane treats such a noqa as unused (RUF100). PLR0911/0912 are
-# reducible and stay enforced (update_tracked_todo was refactored to satisfy them).
+# reducible and stay enforced.
 "apps/api/app/agents/tools/reminder_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
-"apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/patches/composio_langchain_patch.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/composio/composio_service.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/composio/proxy_client.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/trigger_search.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/utils/workflow_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
-"apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 # ARG001: Composio's Modifier.apply() always calls before/after/schema hooks
 # positionally as modifier(tool, toolkit, data) — every @register_*_hook function
 # must keep that exact 3-arg shape regardless of whether a given hook branches on
@@ -737,7 +728,8 @@ module = [
   "app.db.repositories.*",
   "app.models.notes_models",
   "app.models.browser_models",
-  "app.models.todo_models",
+  "app.models.task_day_window_models",
+  "app.models.run_wake_models",
   "app.models.mail_models",
   "app.models.workflow_execution_models",
   "app.models.playbook_models",
@@ -842,7 +834,6 @@ exclude = [
   # app/templates/docstrings/, so the source has none for interrogate to see.
   # Basename form on purpose: scripts/ci/changes.sh only honours segment or
   # basename patterns when it scopes a PR scan.
-  "**/todo_tool.py",
   "**/webpage_tool.py",
   "**/memory_tools.py",
   "**/tests",

@@ -28,7 +28,6 @@ from app.core import websocket_broadcast_listener as listener
 from app.core.websocket_manager import (
     WebSocketBroadcastError,
     WebSocketManager,
-    get_websocket_manager,
     websocket_manager,
 )
 from app.db.redis import redis_cache
@@ -69,10 +68,6 @@ class TestWebSocketManagerSingleton:
         mgr2 = WebSocketManager()
         # Same instance, connections dict preserved
         assert "test" in mgr2.connections
-
-    def test_get_websocket_manager_returns_singleton(self) -> None:
-        mgr = get_websocket_manager()
-        assert isinstance(mgr, WebSocketManager)
 
 
 # ---------------------------------------------------------------------------

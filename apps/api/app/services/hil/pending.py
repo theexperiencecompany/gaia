@@ -61,16 +61,6 @@ async def pending_approvals(conversation_id: str, user_id: str) -> list[PendingA
     ]
 
 
-async def pending_approvals_by_owner(
-    owner_run_type: str, owner_ids: list[str]
-) -> dict[str, ApprovalLedgerDocument]:
-    """Return each background owner's oldest approval its conversation's log still has pending."""
-    rows = await approval_ledger_repository.list_by_owners(
-        owner_run_type, owner_ids, created_since=_asked_since()
-    )
-    return await _oldest_waiting(rows, [row.owner_id for row in rows])
-
-
 async def pending_approvals_by_task(task_ids: list[str]) -> dict[str, ApprovalLedgerDocument]:
     """Return each GAIA task's oldest approval its chat's log still has pending."""
     rows = await approval_ledger_repository.list_by_tasks(task_ids, created_since=_asked_since())

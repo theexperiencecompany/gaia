@@ -2,8 +2,7 @@
 
 from datetime import UTC, datetime
 
-from app.constants.tasks import Assignee
-from app.constants.todos import ACTIVE_TRACKED_SUMMARY_LIMIT
+from app.constants.tasks import ACTIVE_TASKS_SUMMARY_LIMIT, Assignee
 from app.db.repositories.tasks import task_repository
 from app.models.task_models import DateWhen, RepeatWhen, TaskDocument
 from app.services.tasks.open_state import describe_open_state
@@ -57,7 +56,7 @@ def _line(task: TaskDocument, now: datetime, active_task_id: str | None, open_ch
 async def open_tasks_summary(user_id: str, *, active_task_id: str | None) -> str:
     """List GAIA's open top-level tasks with their next step and open subtask counts."""
     tasks = await task_repository.list_open_gaia(
-        user_id, limit=ACTIVE_TRACKED_SUMMARY_LIMIT, top_level=True
+        user_id, limit=ACTIVE_TASKS_SUMMARY_LIMIT, top_level=True
     )
     await _pinned_first(tasks, user_id, active_task_id)
     if not tasks:

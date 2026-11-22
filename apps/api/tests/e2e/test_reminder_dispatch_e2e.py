@@ -190,7 +190,7 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
             rearm.assert_not_awaited()
             stack.enter_context(
                 patch(
-                    "app.services.tracked_todo_service.tracked_todo_service.resume_paused_for",
+                    "app.services.workflow.subscription_pause.resume_tasks_paused_for",
                     new_callable=AsyncMock,
                 )
             )

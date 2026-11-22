@@ -1,7 +1,7 @@
 """How the executor decides about tasks, and what a GAIA task's run is told."""
 
-from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG
-from app.constants.todos import WakeReason
+from app.constants.agents import TASK_REARM_TAG, TASK_WAKES_AGAIN_TAG
+from app.constants.tasks import WakeReason
 
 # Where the user's feedback on a task is kept: the executor's prompt and the tasks manual both carry it.
 TASK_FEEDBACK_RULES = """THE USER'S FEEDBACK ON A TASK ("Apply the user's feedback to this task: ...") is kept in
@@ -172,7 +172,7 @@ TASK_ID_LINE = "This task's id: {task_id}."
 # Added to a scheduled run's brief when the task does not repeat: the check that woke
 # this run is spent, so the run must close the task or give it a new next step.
 TASK_REARM_BRIEF = (
-    f"{TODO_REARM_TAG}\n"
+    f"{TASK_REARM_TAG}\n"
     "WHY YOU WOKE: {why}\n"
     "This run used up the check that woke it. Check the notes' Done when against their "
     "Evidence, then end the run one of these ways: done or no longer worth doing, so "
@@ -183,7 +183,7 @@ TASK_REARM_BRIEF = (
 )
 
 TASK_WAKES_AGAIN_BRIEF = (
-    f"{TODO_WAKES_AGAIN_TAG}\n"
+    f"{TASK_WAKES_AGAIN_TAG}\n"
     "This task wakes you again on its own (its repeat, or the app event that woke this run), "
     "so it needs no new check. Do this run's part once, then end it: complete_task when "
     "Done when is met, otherwise finish_task with outcome schedule."

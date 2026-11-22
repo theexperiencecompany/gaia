@@ -466,20 +466,6 @@ class CreateWorkflowRequest(BaseModel):
         return self
 
 
-class CreateWorkflowFromTodoRequest(BaseModel):
-    """Request model for the todo → workflow migration helper.
-
-    ``todo_id``/``todo_title`` are optional at the schema level on purpose: the
-    endpoint rejects a payload missing either with a 400, and declaring them
-    required here would turn that into FastAPI's 422 — a change to the contract
-    the web client already codes against, not a typing fix.
-    """
-
-    todo_id: str | None = None
-    todo_title: str | None = None
-    todo_description: str | None = None
-
-
 class UpdateWorkflowRequest(BaseModel):
     """Request model for updating an existing workflow."""
 

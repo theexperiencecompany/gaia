@@ -11,31 +11,28 @@ repeating task armed for its next occurrence. Every run writes one task_runs rec
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.agents.core.background.task_run_delivery import report_form_of
-from app.agents.core.background.todo_run import (
+from app.agents.core.background.task_run import (
     ExecutorBusyError,
-    TodoRunCancelledError,
-    TodoRunRequest,
-    run_todo_on_executor,
+    TaskRunCancelledError,
+    TaskRunRequest,
+    run_task_on_executor,
 )
+from app.agents.core.background.task_run_delivery import report_form_of
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.tasks import (
     EXECUTOR_BUSY_RECHECK,
     GAIA_TASK_RUN_FEATURE_KEY,
-    PAYWALL_FEATURE_GAIA_TASK,
-    TaskFlag,
-    TaskLogEvent,
-    TaskRunStatus,
-    TaskRunTrigger,
-)
-from app.constants.todos import (
     MAX_HOLD_CHECKS,
     MAX_RETRY_ATTEMPTS,
     OPEN_STATE_REPAIR_CHECK,
     PAUSED_RUN_RECHECK,
+    PAYWALL_FEATURE_GAIA_TASK,
     RETRY_BACKOFF,
-    TodoWakeKind,
+    TaskFlag,
+    TaskLogEvent,
+    TaskRunStatus,
+    TaskRunTrigger,
     WaitingOn,
 )
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -50,10 +47,9 @@ from app.models.notification.notification_models import (
     NotificationType,
     notification_id,
 )
+from app.models.run_wake_models import TodoRunWake, TodoWakeKind
 from app.models.scheduler_models import DeactivationReason
-from app.models.task_models import RepeatWhen, TaskDocument, TaskUpdate, Waiting
-from app.models.todo_models import ExternalRefSource
-from app.models.todo_wake_models import TodoRunWake
+from app.models.task_models import ExternalRefSource, RepeatWhen, TaskDocument, TaskUpdate, Waiting
 from app.models.trigger_subscription_models import SubscriptionAction
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
@@ -183,11 +179,11 @@ async def _resume_claimed(
         await open_run(task, task_run, conversation_id)
 
     try:
-        await run_todo_on_executor(
-            TodoRunRequest(
+        await run_task_on_executor(
+            TaskRunRequest(
                 user=user,
-                todo_run=task_run,
-                task=approval_ticket(row, decision),
+                run=task_run,
+                brief=approval_ticket(row, decision),
                 conversation_id=conversation_id,
                 fresh_thread=False,
                 on_started=opened,
@@ -195,7 +191,7 @@ async def _resume_claimed(
         )
     except ExecutorBusyError:
         return None, None
-    except TodoRunCancelledError:
+    except TaskRunCancelledError:
         await close_run(
             task, task_run, TaskRunStatus.CANCELLED, "approval resume stopped by the user"
         )
@@ -317,11 +313,11 @@ async def _run_claimed(
         await open_run(task, task_run, conversation_id)
 
     try:
-        await run_todo_on_executor(
-            TodoRunRequest(
+        await run_task_on_executor(
+            TaskRunRequest(
                 user=user,
-                todo_run=task_run,
-                task=brief,
+                run=task_run,
+                brief=brief,
                 conversation_id=conversation_id,
                 fresh_thread=True,
                 on_started=opened,
@@ -334,7 +330,7 @@ async def _run_claimed(
         )
         await _come_round_at(task, datetime.now(UTC) + EXECUTOR_BUSY_RECHECK)
         return None, f"skipped:{task.id} (its chat is busy)"
-    except TodoRunCancelledError:
+    except TaskRunCancelledError:
         await close_run(task, task_run, TaskRunStatus.CANCELLED, "stopped by the user")
         await _settle(task)
         return TaskRunStatus.CANCELLED, f"cancelled:{task.id}"

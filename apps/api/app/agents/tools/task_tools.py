@@ -15,12 +15,14 @@ from pymongo.errors import DuplicateKeyError
 from app.agents.tools.trigger_catalog import parse_conditions, parse_match, render_catalog
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.tasks import Assignee, TaskFlag, WhenKind
-from app.constants.todos import (
+from app.constants.tasks import (
     NEXT_CHECK_DURATION,
     NEXT_CHECK_DURATION_UNITS,
+    Assignee,
     NoReplyPlan,
+    TaskFlag,
     WaitingOn,
+    WhenKind,
 )
 from app.constants.trigger_gates import GateAuthor
 from app.db.repositories.tasks import task_repository
@@ -28,21 +30,29 @@ from app.decorators import with_doc
 from app.models.agent_models import get_user_id, read_agent_configurable
 from app.models.task_models import (
     DateWhen,
+    ExternalRef,
     NoWhen,
+    Priority,
     RepeatWhen,
     TaskDocument,
     TaskUpdate,
     Waiting,
+    default_notify_on_run,
 )
-from app.models.todo_models import ExternalRef, Priority, default_notify_on_run
 from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import ConditionMatch, SubscriptionAction
 from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
 from app.services.canvas_markdown import canvas_problems, with_missing_sections
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks import task_service
+from app.services.tasks.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.tasks.completion import complete_task as close_task
-from app.services.tasks.errors import RepeatRuleError, SubtaskParentError, TaskNotFoundError
+from app.services.tasks.errors import (
+    OpenStateError,
+    RepeatRuleError,
+    SubtaskParentError,
+    TaskNotFoundError,
+)
 from app.services.tasks.gaia_tasks import (
     create_gaia_task,
     reopen_for_its_ref,
@@ -55,12 +65,10 @@ from app.services.tasks.open_state import (
     describe_open_state,
     waiting_after,
 )
+from app.services.tasks.subscription_config import DEFAULT_COOLDOWN_SECONDS, SubscriptionError
 from app.services.tasks.subscriptions import SubscriptionRequest, subscribe, unsubscribe
 from app.services.tasks.thread_watch import watch_thread
 from app.services.tasks.todo_rounds import first_repeat
-from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
-from app.services.todos.errors import OpenStateError
-from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS, SubscriptionError
 from app.services.triggers.subscription_validation import validate_scope
 from app.services.user_service import get_profile_timezone
 from app.templates.docstrings.task_tool_docs import (
@@ -202,7 +210,7 @@ def _move_fields(
         return {"parent_id": parent_id}
     return {
         "parent_id": parent_id,
-        "notify": default_notify_on_run(parent_todo_id=parent_id, external_ref=task.external_ref),
+        "notify": default_notify_on_run(parent_id=parent_id, external_ref=task.external_ref),
     }
 
 
@@ -459,7 +467,7 @@ async def create_task(
                     when=when,
                     parent_id=parent_id,
                     notify=(
-                        default_notify_on_run(parent_todo_id=parent_id, external_ref=None)
+                        default_notify_on_run(parent_id=parent_id, external_ref=None)
                         if notify is None
                         else notify
                     ),
@@ -468,7 +476,7 @@ async def create_task(
             return f"To-do created (id {created.id}): {created.title}."
         thread = await _new_thread_ref(user_id, gmail_thread_id, gmail_account)
         if notify is None:
-            notify = default_notify_on_run(parent_todo_id=parent_id, external_ref=thread)
+            notify = default_notify_on_run(parent_id=parent_id, external_ref=thread)
         # A thread's task reads and drafts in Gmail on every run.
         thread_app = [GMAIL_INTEGRATION_ID] if thread is not None else []
         needed = list(dict.fromkeys([*(needs_integrations or []), *thread_app]))

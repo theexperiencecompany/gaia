@@ -14,27 +14,32 @@ from app.agents.prompts.inbox_desk_prompts import (
     INBOX_DESK_DESCRIPTION,
     INBOX_DESK_OBSERVATIONS_FILE,
 )
-from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.tasks import INBOX_DESK_SYSTEM_KEY, Assignee, TaskLogEvent
-from app.constants.todos import (
-    CANVAS_OBSERVATIONS_SECTION,
+from app.constants.inbox_desk import (
     INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.task_notes import CANVAS_OBSERVATIONS_SECTION
+from app.constants.tasks import INBOX_DESK_SYSTEM_KEY, Assignee, TaskLogEvent
 from app.db.repositories.tasks import task_repository
 from app.decorators.entitlements import is_paid
-from app.models.task_models import RepeatWhen, TaskDocument, TaskUpdate
-from app.models.todo_models import ExternalRef, ExternalRefSource
+from app.models.task_models import (
+    ExternalRef,
+    ExternalRefSource,
+    RepeatWhen,
+    TaskDocument,
+    TaskUpdate,
+)
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import remove_section
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks.arming import arm_task
 from app.services.tasks.gaia_tasks import create_gaia_task
 from app.services.tasks.notes import starting_canvas
+from app.services.tasks.observations import with_carried_lines
 from app.services.tasks.run_records import record_event
 from app.services.tasks.todo_rounds import first_repeat
-from app.services.todo_observations import with_carried_lines
 from app.services.user_service import get_profile_timezone
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job

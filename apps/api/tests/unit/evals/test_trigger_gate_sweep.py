@@ -140,7 +140,13 @@ async def _regrade(cases: Mapping[str, Case]) -> list[_Pass]:
                             seams.wrote.return_value = wrote
                             verdicts[case_id, mode] = await decide_gate(
                                 _GATES[kind],
-                                GatedJob(GateOwner.TODO, case_id, USER_ID, DESK_AUTOMATION),
+                                GatedJob(
+                                    GateOwner.TASK,
+                                    case_id,
+                                    USER_ID,
+                                    DESK_AUTOMATION,
+                                    task_id=case_id,
+                                ),
                                 trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
                                 payload=cases[case_id].setup["message"],
                             )

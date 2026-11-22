@@ -69,7 +69,7 @@ from tests.unit.services.conversation.log_helpers import (
     settled,
     started,
     stop,
-    todo_woke,
+    task_woke,
     user,
 )
 
@@ -81,7 +81,7 @@ _ALL_ENTRIES: list[Entry] = [
     stop("s", 0),
     barge("b", "r"),
     fired("f"),
-    todo_woke("t"),
+    task_woke("t"),
     notice("n"),
     started("w", "t1", 1),
     asked("a", "t1", "ap"),

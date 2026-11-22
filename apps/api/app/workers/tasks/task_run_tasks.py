@@ -22,18 +22,16 @@ from app.agents.core.background.task_run_delivery import (
     report_unfinished_run,
 )
 from app.constants.tasks import (
+    FINISH_TASK_RUN_MAX_TRIES,
+    FINISH_TASK_RUN_RETRY_DELAY,
+    LOCK_DEFER_BACKOFF,
+    MAX_RETRY_ATTEMPTS,
     RECOVER_TASKS_BATCH,
     RECOVER_TASKS_JITTER_SECONDS,
     RESUME_TASK_JOB,
     STALE_RUN_AFTER,
     Assignee,
     TaskLogEvent,
-)
-from app.constants.todos import (
-    LOCK_DEFER_BACKOFF,
-    MAX_RETRY_ATTEMPTS,
-    TODO_RUN_FINISH_MAX_TRIES,
-    TODO_RUN_FINISH_RETRY_DELAY,
 )
 from app.db.repositories.tasks import task_repository
 from app.models.trigger_subscription_models import TriggerOrigin
@@ -168,7 +166,7 @@ async def finish_task_run(ctx: ArqJobContext, undone: FinishedTaskRun) -> str:
         await hand_unfinished_run_to_job(left)
         return f"sent:{undone.task_id} (record handed on)"
     job_try = ctx["job_try"]
-    if job_try < TODO_RUN_FINISH_MAX_TRIES:
-        raise Retry(defer=TODO_RUN_FINISH_RETRY_DELAY * 2 ** (job_try - 1))
+    if job_try < FINISH_TASK_RUN_MAX_TRIES:
+        raise Retry(defer=FINISH_TASK_RUN_RETRY_DELAY * 2 ** (job_try - 1))
     report_unfinished_run(left, f"still failing after {job_try} tries")
     return f"failed:{undone.task_id} (gave up)"

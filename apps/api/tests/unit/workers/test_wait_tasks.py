@@ -1,4 +1,4 @@
-"""The worker job that picks a chat, todo or workflow back up once the user did what GAIA asked."""
+"""The worker job that picks a chat, GAIA task or workflow back up once the user did what GAIA asked."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import time_machine
 
 from app.constants.agents import AgentTag
 from app.constants.log_tags import LogTag
-from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
+from app.constants.tasks import RUN_TASK_JOB
 from app.constants.waits import (
     RESUME_WAITER_MAX_TRIES,
     WAIT_MET_CONTEXT_KEY,
@@ -127,14 +127,15 @@ class TestResumeWaiter:
             ),
         )
 
-    async def test_a_todo_gets_a_run_woken_by_the_wait_not_a_scheduled_one(
+    async def test_a_task_gets_a_run_woken_by_the_wait_not_a_scheduled_one(
         self, seams: Seams
     ) -> None:
-        seams.claim.return_value = _wait(WaiterKind.TODO, "todo-1")
+        seams.claim.return_value = _wait(WaiterKind.TASK, "task_1")
         await resume_waiter(CTX, USER, "w1")
 
-        pool, task, todo_id, origin = seams.enqueue.await_args.args
-        assert (pool, task, todo_id) == (seams.pool, EXECUTE_TRACKED_TODO_TASK, "todo-1")
+        pool, job, task_id, stamp = seams.enqueue.await_args.args
+        assert (pool, job, task_id, stamp) == (seams.pool, RUN_TASK_JOB, "task_1", None)
+        (origin,) = seams.enqueue.await_args.kwargs["events"]
         assert isinstance(origin, TriggerOrigin)
         assert origin.trigger_name == WAIT_MET_TRIGGER
         assert str(origin.payload["message"]).startswith("The user just connected Gmail.")

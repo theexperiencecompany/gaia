@@ -8,8 +8,8 @@ from pydantic import Field
 from app.models.conversation_frame_models import RetractFrame, StateFrame
 from app.models.conversation_log_models import ApprovalRequested, UserMessage
 from app.models.message_models import SelectedWorkflowData
+from app.models.run_wake_models import TodoRunWake
 from app.models.stream_events import ApprovalRequestEntry
-from app.models.todo_wake_models import TodoRunWake
 from shared.py import conversation_wire as wire
 from shared.py.conversation_wire import (
     ConversationUpdatedFrame,
@@ -80,7 +80,7 @@ class WorkflowFiredItem(ScreenItemBase):
 
 
 class TodoWokeItem(ScreenItemBase):
-    """What woke a tracked todo's run; its write-up is its own item."""
+    """What woke a background task run; its write-up is its own item."""
 
     kind: Literal[ScreenItemKind.TODO_WOKE] = ScreenItemKind.TODO_WOKE
     wake: TodoRunWake

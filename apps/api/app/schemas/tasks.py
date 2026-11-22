@@ -8,23 +8,21 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.tasks import Assignee, TaskFlag, TaskRunKind, TaskRunState, TaskRunStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.task_day_window_models import TaskDayWindow
 from app.models.task_models import (
     DateWhen,
+    ExternalRef,
     NoWhen,
+    PendingApprovalRef,
+    Priority,
     RepeatWhen,
+    SubTask,
     TaskDocument,
     TaskQuery,
     Waiting,
     When,
 )
 from app.models.task_run_models import TaskRunDocument
-from app.models.todo_models import (
-    ExternalRef,
-    PendingApprovalRef,
-    Priority,
-    SubTask,
-    TodoDayWindow,
-)
 from app.models.trigger_subscription_models import TriggerSubscriptionView
 from app.schemas.common import ResponseModel
 
@@ -78,7 +76,7 @@ class TaskListParams(BaseModel):
     page: int = Field(default=1, ge=1, le=MAX_PAGE_NUMBER)
     per_page: int = Field(default=50, ge=1, le=100)
 
-    def to_query(self, window: TodoDayWindow) -> TaskQuery:
+    def to_query(self, window: TaskDayWindow) -> TaskQuery:
         return TaskQuery(
             **self.model_dump(exclude={"flag"}),
             flags=[self.flag] if self.flag is not None else [],

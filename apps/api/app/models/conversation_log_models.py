@@ -10,7 +10,7 @@ from app.constants.tasks import TaskRunTrigger
 from app.models.chat_models import ReactionBy
 from app.models.hil_models import ApprovalDescription
 from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
-from app.models.todo_wake_models import TodoRunWake
+from app.models.run_wake_models import TodoRunWake
 from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from shared.py.analytics.catalog.attribution import Attribution
@@ -167,7 +167,7 @@ class WorkflowFired(_Entry):
 
 
 class TodoReportForm(StrEnum):
-    """What a tracked todo's run owes the user: a write-up, or its report as the todo's guidance formed it."""
+    """What a background run owes the user: a write-up, or its report as the task's guidance formed it."""
 
     WRITE_UP = "write_up"
     # The reply only decides whether the report goes; the report goes as written.
@@ -175,7 +175,7 @@ class TodoReportForm(StrEnum):
 
 
 class TodoRun(BaseModel):
-    """One run of a tracked todo: the todo, the run, what woke it and the report it owes."""
+    """One run of a tracked todo, as a chat moved over from todos logged it; nothing writes one now."""
 
     model_config = WIRE_CONFIG
 
@@ -208,7 +208,7 @@ class TaskRun(BaseModel):
 
 
 class TodoWoke(_Entry):
-    """A tracked todo's or GAIA task's run woke; the work it starts answers it, and so does the reply that reports it."""
+    """A GAIA task's run woke (or, in a chat moved over from todos, a tracked todo's); the work it starts answers it, and so does the reply that reports it."""
 
     kind: Literal[EntryKind.TODO_WOKE] = EntryKind.TODO_WOKE
     run: TodoRun | TaskRun

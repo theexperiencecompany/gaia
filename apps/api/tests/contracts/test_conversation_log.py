@@ -49,7 +49,7 @@ from tests.unit.services.conversation.log_helpers import (
     settled,
     started,
     stop,
-    todo_woke,
+    task_woke,
     user,
 )
 from tests.unit.services.conversation.runtime_doubles import (
@@ -398,7 +398,7 @@ _BUILDERS: dict[str, Callable[[str, int, int], Entry]] = {
     "stop": lambda entry_id, n, cause: stop(entry_id, cause),
     "barge": lambda entry_id, n, cause: barge(entry_id, f"r{n % 3}"),
     "fired": lambda entry_id, n, cause: fired(entry_id),
-    "todo": lambda entry_id, n, cause: todo_woke(entry_id),
+    "todo": lambda entry_id, n, cause: task_woke(entry_id),
     "notice": lambda entry_id, n, cause: notice(entry_id),
     "start": lambda entry_id, n, cause: started(entry_id, f"t{n % 3}", max(cause, 1)),
     "ask": lambda entry_id, n, cause: asked(entry_id, f"t{n % 3}", f"ap{n % 3}"),
@@ -472,7 +472,7 @@ def _every_kind() -> list[Entry]:
         settled("s", ["u1"], 3),
         finished("f", "t1"),
         fired("wf"),
-        todo_woke("tw"),
+        task_woke("tw"),
         notice("n"),
         IntegrationNeeded(id="in", integration_id="gmail", integration_name="Gmail"),
         IntegrationConnected(
@@ -508,7 +508,7 @@ def _chat() -> list[Entry]:
         finished("f", "t1"),
         notice("n"),
         fired("wf"),
-        todo_woke("tw"),
+        task_woke("tw"),
         UserMessage(id="u2", text="thanks", surface=ConversationSource.WEB, reply_to="u1"),
     ]
 

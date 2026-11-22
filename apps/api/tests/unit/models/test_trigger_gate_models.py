@@ -7,7 +7,6 @@ from pydantic import ValidationError
 import pytest
 
 from app.constants.trigger_gates import GateAuthor, GateKind, SystemGatePreset
-from app.models.todo_models import TodoDocument, TodoResponse
 from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
@@ -92,7 +91,7 @@ class TestStoredGates:
 
     @pytest.mark.regression
     def test_a_gate_stored_with_its_skips_and_no_count_loads_counting_them(self) -> None:
-        """Regression: a gate written before skipped_count failed to load, and so did its todo."""
+        """Regression: a gate written before skipped_count failed to load, and so did its task."""
         skips = [
             {"event": f"Shop · Sale {n}", "at": datetime(2026, 11, 6, n, tzinfo=UTC)}
             for n in range(3)
@@ -120,7 +119,7 @@ class TestWhereAGateMayLive:
         "action",
         [SubscriptionAction.NOTIFY, SubscriptionAction.COMPLETE, SubscriptionAction.UNBLOCK],
     )
-    def test_only_a_subscription_that_runs_the_todo_takes_a_gate(
+    def test_only_a_subscription_that_runs_the_task_takes_a_gate(
         self, action: SubscriptionAction
     ) -> None:
         with pytest.raises(ValidationError, match="a gate needs action execute"):
@@ -165,31 +164,6 @@ class TestTheGateTheUserReads:
             )
 
         assert wire["gate"]["enforced"] is False
-
-    def test_a_tracked_todo_shows_each_watchs_gate(self) -> None:
-        doc = TodoDocument(
-            id="t1",
-            user_id="u1",
-            title="Inbox desk",
-            created_at=datetime(2026, 11, 5, tzinfo=UTC),
-            updated_at=datetime(2026, 11, 5, tzinfo=UTC),
-            trigger_subscriptions=[_subscription(gate=DESK), _subscription()],
-        )
-
-        wire = TodoResponse.from_document(doc).model_dump(mode="json")
-
-        assert [w["gate"] for w in wire["trigger_subscriptions"]] == [
-            {
-                "kind": "system",
-                "recent_skips": [],
-                "skipped_count": 0,
-                "preset": "inbox_desk",
-                "enabled": True,
-                "display_condition": "a real person or a real obligation is waiting on you",
-                "enforced": True,
-            },
-            None,
-        ]
 
     @pytest.mark.parametrize("gate", [AUTHORED, DESK], ids=["authored", "system"])
     def test_a_gate_read_through_the_view_is_written_back_without_its_display_fields(

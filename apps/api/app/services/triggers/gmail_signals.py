@@ -11,8 +11,8 @@ from email.utils import parseaddr
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.constants.inbox_desk import INBOX_DESK_AUTOMATED_SENDERS
 from app.constants.log_tags import LogTag
-from app.constants.todos import INBOX_DESK_AUTOMATED_SENDERS
 from app.constants.trigger_gates import TRIGGER_GATE_FIELD_MAX_CHARS
 from app.models.composio_schemas.gmail import GmailHeader, GmailMessageView
 from app.services.composio.custom_tools.gmail_constants import GMAIL_SENT_LABEL

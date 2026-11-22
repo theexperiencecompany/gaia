@@ -24,13 +24,12 @@ __all__ = [
 
 
 #: user_created: saved from the editor or a confirmed chat draft; chat_agent: the agent created
-#: it straight from a chat request; todo_converted: the user turned a todo into a workflow;
-#: todo_requested: the user pressed Generate Workflow on a todo.
-WorkflowCreatedOrigin = Literal["user_created", "chat_agent", "todo_converted", "todo_requested"]
+#: it straight from a chat request.
+WorkflowCreatedOrigin = Literal["user_created", "chat_agent"]
 
 
 class WorkflowCreated(ServerEvent):
-    """A workflow was created, by the user or generated for a todo; origin says which."""
+    """A workflow was created, by the user or by the agent; origin says which."""
 
     event: ClassVar[str] = "workflow:created"
     previous_names: ClassVar[tuple[str, ...]] = ("workflows:created",)

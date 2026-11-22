@@ -52,7 +52,6 @@ from app.override.langgraph_bigtool.hooks import HookType
 from app.services.conversation.composition import build_runtime_ports
 from app.services.conversation.runtime import install_runtime_ports
 from tests.conftest import FAKE_USER
-from tests.e2e._harness import live_stack
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import StreamingScriptedModel, streaming_model
 from tests.e2e._harness.step_stack import (
@@ -63,6 +62,7 @@ from tests.e2e._harness.step_stack import (
     OpenStack,
     Stack,
 )
+from tests.e2e._harness.task_index import task_search_index
 from tests.helpers import BindableToolsFakeModel, pg_advisory_lock
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
@@ -101,8 +101,6 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     real_infra_files = {
         "test_hil_barrier_e2e.py",
         "test_hil_spawn_e2e.py",
-        "test_todo_trigger_dispatch_e2e.py",
-        "test_tracked_todo_chat_e2e.py",
         "test_workflow_fire_handoff_e2e.py",
     }
     dir_root = Path(__file__).resolve().parent
@@ -281,25 +279,25 @@ async def owner(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[AuthenticatedUs
 
 @pytest.fixture
 async def conversation_indexes(mongo_db: AsyncIOMotorDatabase) -> None:
-    """Create the one-chat-per-todo index startup ships, from its shipped spec, on this test database.
+    """Create the one-chat-per-task index startup ships, from its shipped spec, on this test database.
 
     Dropped first: the test database outlives a run, and an index left by an older
     spec would otherwise stand in for the one under test.
     """
     collection = mongo_db["conversations"]
     for spec in await collection.list_indexes().to_list(None):
-        if list(spec["key"].items()) == indexes.CONVERSATION_TODO_BINDING_KEYS:
+        if list(spec["key"].items()) == indexes.CONVERSATION_TASK_BINDING_KEYS:
             await collection.drop_index(spec["name"])
     await collection.create_index(
-        indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
+        indexes.CONVERSATION_TASK_BINDING_KEYS, **indexes.CONVERSATION_TASK_BINDING_OPTIONS
     )
     for keys, options in indexes.CONVERSATION_ENTRY_INDEXES:
         await mongo_db[CONVERSATION_ENTRIES_COLLECTION].create_index(keys, **options)
 
 
 @pytest.fixture
-def offline_todo_seams() -> Iterator[None]:
-    with live_stack.offline_todo_seams():
+def offline_task_index() -> Iterator[None]:
+    with task_search_index():
         yield
 
 
@@ -310,7 +308,7 @@ def open_stack(
     real_tool_registry: Any,
     owner: AuthenticatedUser,
     conversation_indexes: None,
-    offline_todo_seams: None,
+    offline_task_index: None,
 ) -> OpenStack:
     """Open both real graphs on the real checkpointer, each tier's model scripted by the test."""
 

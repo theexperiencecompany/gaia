@@ -58,6 +58,18 @@ class SubtaskParentError(AppError):
         super().__init__(message=message, status_code=HTTPStatus.CONFLICT, code="invalid_parent")
 
 
+class OpenStateError(AppError):
+    """Raised (400) when a write would leave an open GAIA task without a valid next step."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(
+            message=" ".join(problems),
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="open_state_invalid",
+        )
+        self.problems = problems
+
+
 class SubscriptionNotFoundError(AppError):
     """Raised (404) when the task has no app-event subscription with the id."""
 

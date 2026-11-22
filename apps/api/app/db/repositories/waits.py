@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.waits import RESUME_WAITER_LEASE, WAIT_TTL_SECONDS, WaitCondition
+from app.constants.waits import RESUME_WAITER_LEASE, WAIT_TTL_SECONDS, WaitCondition, WaiterKind
 from app.db.repositories.base import UserScopedRepository
 from app.models.wait_models import WaitDocument, WaitKey, WaitUpdate
 
@@ -39,12 +39,17 @@ class WaitsRepository(UserScopedRepository[WaitDocument, WaitUpdate]):
     async def find_met(
         self, user_id: str, condition: WaitCondition, subject_id: str
     ) -> list[WaitDocument]:
-        """Return the live waits on the subject without taking them; claim() hands each one out."""
+        """Return the live waits on the subject without taking them; claim() hands each one out.
+
+        A wait kept for a waiter this build no longer resumes (a todo the migration moved to a
+        task, which waits under its own twin) is never handed out; its TTL drops it.
+        """
         return await self._find(
             {
                 "user_id": user_id,
                 "condition": condition.value,
                 "subject_id": subject_id,
+                "waiter": {"$in": [kind.value for kind in WaiterKind]},
                 "created_at": {"$gte": _oldest_live()},
             }
         )

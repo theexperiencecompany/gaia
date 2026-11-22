@@ -26,7 +26,7 @@ from app.agents.core.background import executor_runner
 from app.agents.core.background.executor_runner import _ExecutorResult
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
-from app.agents.prompts import todo_prompts
+from app.agents.prompts import task_prompts
 from app.agents.tools import manual_tool
 from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
 from app.constants.general import EXECUTOR_INTEGRATION_ID
@@ -551,7 +551,7 @@ class TestARecurringTodoRunIsNotSentBack:
     )
 
     async def test_its_schedule_outcome_ends_the_run_on_the_first_finish(self):
-        brief = f"Execute the scheduled task: call mom\n\n{todo_prompts.TODO_WAKES_AGAIN_BRIEF}"
+        brief = f"Execute the scheduled task: call mom\n\n{task_prompts.TASK_WAKES_AGAIN_BRIEF}"
         async with executor_graph(self.SCRIPT) as graph:
             run = await run_graph(graph, brief)
 

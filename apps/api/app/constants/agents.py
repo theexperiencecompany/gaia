@@ -175,25 +175,25 @@ OUTCOME_SCHEDULE_ARGS = ("next_check", "repeat")
 OUTCOME_SUBSCRIBE_TOOLS = frozenset({"subscribe_task"})
 OUTCOME_COMPLETE_TOOLS = frozenset({"complete_task"})
 
-#: Opens a scheduled tracked todo run's brief: the run spent the check that woke
-#: it and must close the todo or set a new one. outcome_review reads it off the
+#: Opens a scheduled GAIA task run's brief: the run spent the check that woke
+#: it and must close the task or set a new one. outcome_review reads it off the
 #: task turn, so the brief and the check cannot drift apart on a string.
-TODO_REARM_TAG = "<todo_rearm>"
-#: Opens the brief of a run whose todo wakes GAIA again on its own (its recurrence,
+TASK_REARM_TAG = "<task_rearm>"
+#: Opens the brief of a run whose task wakes GAIA again on its own (its repeat,
 #: or the watch that fired it): that wake backs a schedule outcome without a new check.
-TODO_WAKES_AGAIN_TAG = "<todo_wakes_again>"
+TASK_WAKES_AGAIN_TAG = "<task_wakes_again>"
 
 
 #: What the executor brief tells the run each horizon demands before it may finish.
 TIME_HORIZON_BRIEF: dict[TimeHorizon, str] = {
     TimeHorizon.ONE_SHOT: "one_shot: finish it in this run.",
     TimeHorizon.DEADLINE: (
-        "deadline: unless it is fully done in this run, leave a tracked todo scheduled "
+        "deadline: unless it is fully done in this run, leave a GAIA task scheduled "
         "to wake you before the date."
     ),
     TimeHorizon.ONGOING: (
-        "ongoing: it needs attention after this run. Leave a tracked todo with a schedule, "
-        "recurrence or trigger watch before you finish."
+        "ongoing: it needs attention after this run. Leave a GAIA task with a schedule, "
+        "repeat or app-event subscription before you finish."
     ),
 }
 

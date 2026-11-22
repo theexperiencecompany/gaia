@@ -1,6 +1,6 @@
 """What a waiter is told once the user did what GAIA asked: what is done, and how to pick back up.
 
-Read by the agent model (a chat's executor, a tracked todo run, a workflow run), never shown
+Read by the agent model (a chat's executor, a GAIA task run, a workflow run), never shown
 to the user as-is.
 """
 
@@ -15,6 +15,9 @@ WAIT_MET_SENTENCES = MappingProxyType(
         WaitCondition.INTEGRATION_CONNECTED: "The user just connected {name}.",
         WaitCondition.WORKFLOW_TRIGGER_CONFIGURED: (
             'The user just finished setting up the trigger of the workflow "{name}".'
+        ),
+        WaitCondition.TASK_TRIGGER_CONFIGURED: (
+            'The user just finished setting up the trigger of the task "{name}".'
         ),
     }
 )
@@ -32,7 +35,7 @@ WAIT_MET_ENTRY = (
     "without announcing what they did at length."
 )
 
-#: Why a tracked todo woke when the user did what it was waiting on; the note at the top says what.
+#: Why a GAIA task woke when the user did what it was waiting on; the note at the top says what.
 WAIT_MET_WAKE_REASON: Final = (
-    "The user did what this todo was waiting on, as the note at the top says."
+    "The user did what this task was waiting on, as the note at the top says."
 )

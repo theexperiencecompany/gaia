@@ -375,11 +375,9 @@ ignore_imports = [
   "app.utils.notes_utils -> langchain_core",
   "app.utils.research_utils -> langchain_core",
   "app.utils.workflow_utils -> langchain_core",
-  # Their whole job is a langchain value: stream_utils reshapes AIMessage,
-  # todo_vector_utils builds Document. The type IS the input, so there is no
-  # shared piece to move down into a leaf.
+  # Its whole job is a langchain value: stream_utils reshapes AIMessage. The
+  # type IS the input, so there is no shared piece to move down into a leaf.
   "app.utils.stream_utils -> langchain_core",
-  "app.utils.todo_vector_utils -> langchain_core",
   "app.utils.workflow_utils -> langgraph",
   "app.utils.integration_checker -> langgraph",
   "app.utils.integration_checker -> app.models.agent_models",
@@ -401,7 +399,5 @@ ignore_imports = [
   "app.utils.profile_card -> app.agents.llm.client",
   "app.utils.research_utils -> app.agents.llm.client",
   "app.utils.notes_utils -> app.db.chroma.chromadb",
-  "app.utils.todo_vector_utils -> app.db.chroma.chromadb",
   "app.utils.agent_utils -> app.models.stream_events",
-  "app.utils.canvas_vector_utils -> app.db.chroma.chromadb",
 ]

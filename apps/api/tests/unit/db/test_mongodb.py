@@ -371,8 +371,6 @@ class TestGetAsyncCollection:
 _INDEX_CREATORS = [
     "create_user_indexes",
     "create_conversation_indexes",
-    "create_todo_indexes",
-    "create_project_indexes",
     "create_note_indexes",
     "create_file_indexes",
     "create_calendar_indexes",
@@ -404,6 +402,10 @@ _INDEX_CREATORS = [
     "create_tool_output_shapes_indexes",
     "create_email_verdict_indexes",
     "create_wait_indexes",
+    "create_task_indexes",
+    "create_task_run_indexes",
+    "create_task_template_indexes",
+    "create_task_playbook_indexes",
 ]
 
 
@@ -461,19 +463,17 @@ def _collections_by_name(mock_get_collection: MagicMock) -> dict[str, MagicMock]
 
 class TestCreateConversationIndexes:
     @patch("app.db.mongodb.indexes.get_async_collection")
-    async def test_a_tracked_todo_has_at_most_one_chat(
-        self, mock_get_collection: MagicMock
-    ) -> None:
+    async def test_a_gaia_task_has_at_most_one_chat(self, mock_get_collection: MagicMock) -> None:
         """A run and an "Open chat" tap at once both create; the unique binding makes one of them lose."""
         collections = _collections_by_name(mock_get_collection)
 
         await create_conversation_indexes()
 
         collections["conversations"].create_index.assert_any_await(
-            [("user_id", 1), ("todo_id", 1)],
+            [("user_id", 1), ("task_id", 1)],
             unique=True,
-            name="user_todo_conversation_unique",
-            partialFilterExpression={"todo_id": {"$type": "string"}},
+            name="user_task_conversation_unique",
+            partialFilterExpression={"task_id": {"$type": "string"}},
         )
 
     @patch("app.db.mongodb.indexes.get_async_collection")
@@ -819,26 +819,6 @@ class TestIndividualIndexCreators:
 
             with pytest.raises(RuntimeError, match="timeout"):
                 await create_user_indexes()
-
-    async def test_create_todo_indexes_includes_text_index(self) -> None:
-        """create_todo_indexes should include a text search index."""
-        mock_collection = AsyncMock()
-
-        with (
-            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
-            patch("app.db.mongodb.indexes.log"),
-        ):
-            from app.db.mongodb.indexes import create_todo_indexes
-
-            await create_todo_indexes()
-
-            # Check that at least one call includes "text" index type
-            text_calls = [
-                c
-                for c in mock_collection.create_index.call_args_list
-                if any(isinstance(arg, list) and any(t == "text" for _, t in arg) for arg in c.args)
-            ]
-            assert len(text_calls) >= 1
 
     async def test_create_processed_webhook_indexes_has_ttl(self) -> None:
         """create_processed_webhook_indexes should include a TTL index."""

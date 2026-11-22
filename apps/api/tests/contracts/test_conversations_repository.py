@@ -15,7 +15,6 @@ from pydantic import ValidationError
 import pytest
 
 from app.db.mongodb import indexes
-from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
@@ -231,12 +230,12 @@ class TestInPlaceWritesUnderACachePolicy:
     def cached_repo(self, raw_collection) -> _CachedConversationRepository:
         return _CachedConversationRepository()
 
-    async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
-        doc = _doc(todo_id="todo-1")
+    async def test_deleting_a_tasks_chats_evicts_the_cached_chat(self, cached_repo):
+        doc = _doc(task_id="task_1")
         await cached_repo.create(doc)
         assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
 
-        await cached_repo.delete_for_todos(doc.user_id, ["todo-1"])
+        await cached_repo.delete_for_tasks(doc.user_id, ["task_1"])
 
         assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is None
 
@@ -314,29 +313,29 @@ class TestMessages:
         assert await repo.find_owner_of_message(doc.user_id, "no-such") is None
 
 
-class TestTrackedTodoChats:
-    """A tracked todo's chat: one per todo, reached only from it, never listed anywhere."""
+class TestTaskChats:
+    """A GAIA task's chat: one per task, reached only from it, never listed anywhere."""
 
     @pytest.fixture(autouse=True)
     async def _shipped_index(self, raw_collection) -> None:
         await raw_collection.create_index(
-            indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
+            indexes.CONVERSATION_TASK_BINDING_KEYS, **indexes.CONVERSATION_TASK_BINDING_OPTIONS
         )
 
-    async def test_a_todos_chat_is_never_listed_starred_counted_or_searched(self, repo):
+    async def test_a_tasks_chat_is_never_listed_starred_counted_or_searched(self, repo):
         user = _uid()
         chat = _doc(user_id=user, source=ConversationSource.WEB, description="normal")
-        todo_chat = _doc(user_id=user, todo_id="todo-1", description="Watch the deploy")
+        task_chat = _doc(user_id=user, task_id="task_1", description="Watch the deploy")
         # Starring or an approval card must not pull it into the sidebar either.
-        starred_todo_chat = _doc(user_id=user, todo_id="todo-2", starred=True)
-        approval_todo_chat = _doc(
+        starred_task_chat = _doc(user_id=user, task_id="task_2", starred=True)
+        approval_task_chat = _doc(
             user_id=user,
-            todo_id="todo-3",
+            task_id="task_3",
             source=ConversationSource.BACKGROUND,
         )
-        for doc in (chat, todo_chat, starred_todo_chat, approval_todo_chat):
+        for doc in (chat, task_chat, starred_task_chat, approval_task_chat):
             await repo.create(doc)
-        await _say(todo_chat, _asked("go"), _replied("the deploy is green"))
+        await _say(task_chat, _asked("go"), _replied("the deploy is green"))
 
         active = await repo.list_active_summaries(user, skip=0, limit=10)
         assert [s.conversation_id for s in active] == [chat.conversation_id]
@@ -344,62 +343,39 @@ class TestTrackedTodoChats:
         assert await repo.list_starred_summaries(user) == []
         assert await repo.search(user, pattern="deploy") == ConversationSearchResults()
 
-    async def test_a_second_chat_for_the_same_todo_loses_the_create(self, repo):
+    async def test_a_second_chat_for_the_same_task_loses_the_create(self, repo):
         user = _uid()
-        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is True
-        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is False
-        # Unbound chats and another user's chat for that todo id never collide.
+        assert await repo.try_create(_doc(user_id=user, task_id="task_1")) is True
+        assert await repo.try_create(_doc(user_id=user, task_id="task_1")) is False
+        # Unbound chats and another user's chat for that task id never collide.
         assert await repo.try_create(_doc(user_id=user)) is True
         assert await repo.try_create(_doc(user_id=user)) is True
-        assert await repo.try_create(_doc(user_id=_uid(), todo_id="todo-1")) is True
+        assert await repo.try_create(_doc(user_id=_uid(), task_id="task_1")) is True
 
-    async def test_a_lookup_by_todo_is_served_by_the_binding_index(self, raw_collection):
-        query = {"user_id": "u1", **conversations_module._todo_binding("todo-1")}
+    async def test_a_lookup_by_task_is_served_by_the_binding_index(self, raw_collection):
+        query = {"user_id": "u1", "task_id": {"$eq": "task_1", "$type": "string"}}
 
         plan = (await raw_collection.find(query).explain())["queryPlanner"]["winningPlan"]
 
-        assert indexes.CONVERSATION_TODO_BINDING_OPTIONS["name"] in str(plan)
+        assert indexes.CONVERSATION_TASK_BINDING_OPTIONS["name"] in str(plan)
 
-    async def test_deleting_todos_deletes_only_their_chats(self, repo):
+    async def test_deleting_tasks_deletes_only_their_chats(self, repo):
         user = _uid()
-        first = _doc(user_id=user, todo_id="todo-1")
-        second = _doc(user_id=user, todo_id="todo-2")
-        kept = _doc(user_id=user, todo_id="todo-3")
+        first = _doc(user_id=user, task_id="task_1")
+        second = _doc(user_id=user, task_id="task_2")
+        kept = _doc(user_id=user, task_id="task_3")
         chat = _doc(user_id=user)
-        foreign = _doc(user_id=_uid(), todo_id="todo-1")
+        foreign = _doc(user_id=_uid(), task_id="task_1")
         for doc in (first, second, kept, chat, foreign):
             await repo.create(doc)
 
-        deleted = await repo.delete_for_todos(user, ["todo-1", "todo-2"])
+        deleted = await repo.delete_for_tasks(user, ["task_1", "task_2"])
 
         assert sorted(deleted) == sorted([first.conversation_id, second.conversation_id])
         assert await repo.exists(kept.conversation_id, user_id=user)
         assert await repo.exists(chat.conversation_id, user_id=user)
         assert await repo.exists(foreign.conversation_id, user_id=foreign.user_id)
-        assert await repo.delete_for_todos(user, ["todo-9"]) == []
-
-    async def test_retitling_todos_retitles_only_their_chats_and_marks_them_for_sync(self, repo):
-        user = _uid()
-        bound = _doc(user_id=user, todo_id="todo-1", description="Watch staging")
-        other = _doc(user_id=user, todo_id="todo-2", description="Watch canary")
-        chat = _doc(user_id=user, description="Watch staging")
-        foreign = _doc(user_id=_uid(), todo_id="todo-1", description="Watch staging")
-        for doc in (bound, other, chat, foreign):
-            await repo.create(doc)
-        before = await repo.get(bound.conversation_id, user_id=user)
-
-        await repo.retitle_todo_chats(user, ["todo-1"], "Watch production")
-
-        retitled = await repo.get(bound.conversation_id, user_id=user)
-        assert retitled is not None and before is not None
-        assert retitled.description == "Watch production"
-        # A client syncs a chat by updatedAt, so the new title must move it.
-        assert retitled.updatedAt is not None and retitled.updatedAt != before.updatedAt
-        for untouched in (other, chat):
-            kept = await repo.get(untouched.conversation_id, user_id=user)
-            assert kept is not None and kept.description == untouched.description
-        kept_foreign = await repo.get(foreign.conversation_id, user_id=foreign.user_id)
-        assert kept_foreign is not None and kept_foreign.description == "Watch staging"
+        assert await repo.delete_for_tasks(user, ["task_9"]) == []
 
 
 class TestWorkflowAndOnboarding:
@@ -575,9 +551,9 @@ class TestActivitySignal:
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(doc.user_id, cutoff) is False
 
-    async def test_a_tracked_todos_chat_does_not_count(self, repo):
-        """Regression: every run of a tracked todo saves its report in the todo's chat, so a user whose todos ran never went dormant."""
-        doc = _doc(todo_id="todo-1")
+    async def test_a_tasks_chat_does_not_count(self, repo):
+        """Regression: every run of a GAIA task saves its report in the task's chat, so a user whose tasks ran never went dormant."""
+        doc = _doc(task_id="task_1")
         await repo.create(doc)
         await _say(doc, _asked("go"), _replied("the deploy is green"))
 

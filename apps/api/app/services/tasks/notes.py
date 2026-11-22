@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 
-from app.constants.todos import (
+from app.constants.task_notes import (
     CANVAS_DONE_WHEN_SECTION,
     CANVAS_EVIDENCE_SECTION,
     CANVAS_STANDING_RULES_SECTION,

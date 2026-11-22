@@ -10,8 +10,8 @@ from app.constants.tasks import TASK_SEARCH_EXCERPT_CHARS, Assignee
 from app.db.repositories.tasks import task_repository
 from app.decorators import with_doc
 from app.models.agent_models import get_user_id
+from app.models.task_day_window_models import TaskDayWindow
 from app.models.task_models import DateWhen, RepeatWhen, TaskDocument, TaskQuery
-from app.models.todo_models import TodoDayWindow
 from app.services.canvas_markdown import written_lines
 from app.services.tasks import search_index, task_service
 from app.services.tasks.errors import TaskNotFoundError
@@ -26,7 +26,7 @@ TaskView = Literal["open", "today", "upcoming", "overdue", "done"]
 LIST_TASKS_LIMIT = 50
 
 
-def _query(view: TaskView, window: TodoDayWindow, **narrowing: object) -> TaskQuery:
+def _query(view: TaskView, window: TaskDayWindow, **narrowing: object) -> TaskQuery:
     """The list read behind a view, on the user's own day."""
     by_view: dict[TaskView, dict[str, object]] = {
         "open": {"completed": False},
@@ -101,7 +101,7 @@ async def list_tasks(
     user_id = get_user_id(config)
     zone = await get_profile_timezone(user_id)
     now = datetime.now(UTC)
-    window = TodoDayWindow.for_timezone(zone, now)
+    window = TaskDayWindow.for_timezone(zone, now)
     page = await task_service.list_tasks(
         user_id, _query(view, window, q=query, assignee=assignee, parent_id=parent_id)
     )

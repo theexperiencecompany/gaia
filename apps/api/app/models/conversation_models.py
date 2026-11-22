@@ -48,10 +48,8 @@ class ConversationDocument(UserScopedDocument, ConversationModel):
     starred: bool | None = None
     # Derived on read from the log's state (never stored): live work awaits the user's approval.
     awaiting_approval: bool = Field(default=False, exclude=True)
-    # The tracked todo whose chat this is: its runs execute here. Such a chat is
-    # reached only from its todo, never listed (see _listed). Set once at creation.
-    todo_id: str | None = None
-    #: The GAIA task whose chat this is, on the same terms as todo_id.
+    # The GAIA task whose chat this is: its runs execute here. Such a chat is
+    # reached only from its task, never listed (see _listed). Set once at creation.
     task_id: str | None = None
     # Conversation-level artifact registry: one entry per agent-written file, deduped by path.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
@@ -60,12 +58,8 @@ class ConversationDocument(UserScopedDocument, ConversationModel):
 
     @property
     def listed(self) -> bool:
-        """Whether the conversation list shows it: a bot chat lives on its platform, a todo's or task's chat on it."""
-        return (
-            self.todo_id is None
-            and self.task_id is None
-            and self.source not in BOT_CONVERSATION_SOURCES
-        )
+        """Whether the conversation list shows it: a bot chat lives on its platform, a task's chat on it."""
+        return self.task_id is None and self.source not in BOT_CONVERSATION_SOURCES
 
 
 class ConversationUpdate(BaseModel):
@@ -362,11 +356,10 @@ class ConversationSyncRow(ConversationEntriesPage):
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     # Live work in the conversation awaits the user's approval: the sidebar's dot.
     awaiting_approval: bool = False
-    todo_id: str | None = None
     # The GAIA task this chat belongs to; clients keep such a chat out of their lists too.
     task_id: str | None = None
     source: ConversationSource | None = None
-    # False for a chat the conversation list never shows (a todo's, a bot's): absent there is not deleted.
+    # False for a chat the conversation list never shows (a task's, a bot's): absent there is not deleted.
     listed: bool
 
 
@@ -375,7 +368,7 @@ class BatchSyncResponse(ResponseModel):
 
     conversations: list[ConversationSyncRow] = Field(default_factory=list)
     # Requested ids the user has no conversation for: a client drops them, as it
-    # cannot learn of a deleted chat that is never listed (a tracked todo's).
+    # cannot learn of a deleted chat that is never listed (a task's).
     missing: list[str] = Field(default_factory=list)
 
 

@@ -40,8 +40,8 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
 from app.agents.core.background import (
     executor_runner,
-    todo_run,
-    todo_run_delivery,
+    task_run,
+    task_run_delivery,
 )
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
@@ -55,8 +55,8 @@ from app.agents.core.background.executor_runner import (
     wake_executor_for_inbox,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind
-from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
-from app.agents.core.background.todo_run_delivery import report_form_of
+from app.agents.core.background.task_run import TaskRunRequest, run_task_on_executor
+from app.agents.core.background.task_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
@@ -74,7 +74,7 @@ from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
-from app.constants.todos import TodoWakeKind
+from app.constants.tasks import Assignee, TaskRunStatus, TaskRunTrigger
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
 from app.db.redis import redis_cache
@@ -109,7 +109,7 @@ from app.models.conversation_log_models import (
     ReplySettled,
     StepClaim,
     StopRequested,
-    TodoRun,
+    TaskRun,
     TodoWoke,
     UserMessage,
     WorkFinished,
@@ -134,9 +134,9 @@ from app.models.notification.notification_models import (
     NotificationStatus,
 )
 from app.models.playbook_models import PlaybookDocument, ToolStep
+from app.models.run_wake_models import TodoRunWake, TodoWakeKind
 from app.models.stream_events import ApprovalRequestEntry
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
-from app.models.todo_wake_models import TodoRunWake
+from app.models.task_models import ExternalRef, ExternalRefSource, TaskDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import WorkCancelled
 from app.models.workflow_execution_models import RecordedCall
@@ -2111,18 +2111,17 @@ async def test_a_stop_cancels_the_work_an_approval_started_after_its_turn(
     assert len(await rig.of(Reply)) == 1
 
 
-# ---- tracked todo runs on the step ----
+# ---- GAIA task runs on the step ----
 
 
-def _todo_doc(user_id: str, *, as_written: bool = False) -> TodoDocument:
+def _task_doc(user_id: str, *, as_written: bool = False) -> TaskDocument:
     ref = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread_1") if as_written else None
-    return TodoDocument.model_validate(
-        {
-            "id": "todo_acme",
-            "user_id": user_id,
-            "title": "Watch the Acme thread",
-            "external_ref": ref,
-        }
+    return TaskDocument(
+        id="task_acme000000",
+        user_id=user_id,
+        title="Watch the Acme thread",
+        assignee=Assignee.GAIA,
+        external_ref=ref,
     )
 
 
@@ -2145,11 +2144,11 @@ def _fake_executor(
 
 
 @dataclass
-class _TodoDelivery:
-    """The todo store and the chat-app send a finished todo run reaches, recorded."""
+class _TaskDelivery:
+    """The chat-app send a finished task run reaches, and the run record it closes, recorded."""
 
     sent: AsyncMock
-    finished: AsyncMock
+    closed: AsyncMock
 
 
 def _sent_on_telegram(request: NotificationRequest, channel: ChatChannel) -> Notified:
@@ -2166,61 +2165,65 @@ def _sent_on_telegram(request: NotificationRequest, channel: ChatChannel) -> Not
 
 
 @asynccontextmanager
-async def _todo_rig(
+async def _task_rig(
     rig_for: RigFactory,
     model: GatedModel,
-    todo: TodoDocument,
+    task: TaskDocument,
     executor: Callable[..., Awaitable[None]],
-) -> AsyncIterator[tuple[Rig, _TodoDelivery]]:
+) -> AsyncIterator[tuple[Rig, _TaskDelivery]]:
     rig = await rig_for(model, build_turn=build_comms_turn)
-    repo = MagicMock()
-    repo.get_by_id = AsyncMock(return_value=todo.model_copy(update={"user_id": rig.user_id}))
+    tasks = MagicMock()
+    tasks.get_any = AsyncMock(return_value=task.model_copy(update={"user_id": rig.user_id}))
+    runs = MagicMock()
+    runs.get = AsyncMock(return_value=MagicMock(status=TaskRunStatus.RUNNING))
+    runs.latest_finished = AsyncMock(return_value=[])
+    runs.complete = AsyncMock()
     channel = ChatChannel(
         source=ConversationSource.TELEGRAM, platform_user_id="tg_1", basis="recent_activity"
     )
-    delivery = _TodoDelivery(
+    delivery = _TaskDelivery(
         sent=AsyncMock(side_effect=lambda request: _sent_on_telegram(request, channel)),
-        finished=AsyncMock(),
+        closed=runs.complete,
     )
     with (
-        patch.object(todo_run, "run_executor_background", executor),
-        patch.object(todo_run_delivery, "todo_repository", repo),
+        patch.object(task_run, "run_executor_background", executor),
+        patch.object(task_run_delivery, "task_repository", tasks),
+        patch.object(task_run_delivery, "task_run_repository", runs),
         patch.object(notification_service, "notify", delivery.sent),
-        patch.object(todo_run_delivery, "record_run_finished", delivery.finished),
     ):
         yield rig, delivery
 
 
-def _todo_request(rig: Rig, todo: TodoDocument) -> TodoRunRequest:
-    return TodoRunRequest(
+def _task_request(rig: Rig, task: TaskDocument) -> TaskRunRequest:
+    return TaskRunRequest(
         user=AuthenticatedUser(user_id=rig.user_id),
-        todo_run=TodoRun(
-            todo_id=todo.id,
+        run=TaskRun(
+            task_id=task.id,
             run_id="run_acme",
-            title=todo.title,
-            trigger_type=TriggerType.TODO_TRIGGER,
+            title=task.title,
+            trigger_type=TaskRunTrigger.APP_EVENT,
             runs_once=False,
             wake=TodoRunWake(
                 kind=TodoWakeKind.TRIGGER, trigger_names=["gmail"], approval_summary=None
             ),
-            report_form=report_form_of(todo),
+            report_form=report_form_of(task),
             attribution=worker_context(Trigger.INTEGRATION_TRIGGER).attribution,
         ),
-        task="Check the Acme thread for a reply",
+        brief="Check the Acme thread for a reply",
         conversation_id=rig.conversation_id,
         fresh_thread=False,
     )
 
 
 @pytest.mark.service
-async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_what_is_sent(
+async def test_a_task_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_what_is_sent(
     rig_for: RigFactory,
 ) -> None:
     model = gated("Acme accepted the quote and asked for the invoice")
-    todo = _todo_doc("owner")
+    task = _task_doc("owner")
     executor = _fake_executor("Acme replied at 10:02: quote accepted, invoice requested")
-    async with _todo_rig(rig_for, model, todo, executor) as (rig, delivery):
-        await run_todo_on_executor(_todo_request(rig, todo))
+    async with _task_rig(rig_for, model, task, executor) as (rig, delivery):
+        await run_task_on_executor(_task_request(rig, task))
         await rig.settle()
     [woke] = await rig.of(TodoWoke)
     [started] = await rig.of(WorkStarted)
@@ -2232,27 +2235,27 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     assert [answers for _o, answers in await rig.answered()] == [
         (f"work:{started.task_id}:finished", woke.id)
     ]
-    assert any("tracked todo" in text for text in humans(model.prompts[0]))
+    assert any("GAIA task" in text for text in humans(model.prompts[0]))
     delivery.sent.assert_awaited_once()
     assert (
         delivery.sent.await_args.args[0].message
         == "Acme accepted the quote and asked for the invoice"
     )
-    assert delivery.finished.await_args.args[2] == "run_acme"
-    assert "result sent on telegram" in delivery.finished.await_args.args[3]
-    # The todo's chat is reached from the todo: its write-up leaves no unread dot.
+    assert delivery.closed.await_args.args[0] == "run_acme"
+    assert delivery.closed.await_args.args[1].delivery == "result sent on telegram"
+    # The task's chat is reached from the task: its write-up leaves no unread dot.
     assert await _unread(rig) is False
 
 
 @pytest.mark.service
-async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sends_nothing(
+async def test_a_task_run_that_found_nothing_for_the_user_settles_silent_and_sends_nothing(
     rig_for: RigFactory,
 ) -> None:
     model = gated()
-    todo = _todo_doc("owner", as_written=True)
+    task = _task_doc("owner", as_written=True)
     executor = _fake_executor("No new mail on the thread", nothing_for_user=True)
-    async with _todo_rig(rig_for, model, todo, executor) as (rig, delivery):
-        await run_todo_on_executor(_todo_request(rig, todo))
+    async with _task_rig(rig_for, model, task, executor) as (rig, delivery):
+        await run_task_on_executor(_task_request(rig, task))
         await rig.settle()
     [woke] = await rig.of(TodoWoke)
     assert model.prompts == []
@@ -2261,7 +2264,9 @@ async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sen
     ]
     assert [(r.text, r.tool_data) for r in await rig.of(Reply)] == [("", ())]
     delivery.sent.assert_not_awaited()
-    assert "the run found nothing for the user" in delivery.finished.await_args.args[3]
+    assert "the run found nothing for the user" in (
+        delivery.closed.await_args.args[1].delivery or ""
+    )
 
 
 @pytest.mark.service
@@ -3065,13 +3070,13 @@ async def test_every_post_turn_run_carries_the_identity_the_approval_gate_needs(
 
 
 @pytest.mark.service
-async def test_a_todo_run_carries_the_identity_the_approval_gate_needs(
+async def test_a_task_run_carries_the_identity_the_approval_gate_needs(
     rig_for: RigFactory,
 ) -> None:
     runs = _Runs()
-    todo = _todo_doc("owner")
-    async with _todo_rig(rig_for, gated("ok"), todo, runs.run) as (rig, _delivery):
-        await run_todo_on_executor(_todo_request(rig, todo))
+    task = _task_doc("owner")
+    async with _task_rig(rig_for, gated("ok"), task, runs.run) as (rig, _delivery):
+        await run_task_on_executor(_task_request(rig, task))
     [configurable] = runs.configurables
     context = await _executor_gate_context(configurable)
     assert context is not None

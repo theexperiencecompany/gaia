@@ -71,7 +71,7 @@ from tests.unit.services.conversation.log_helpers import (
     finished,
     logged,
     notice,
-    todo_woke,
+    task_woke,
     user,
 )
 
@@ -904,7 +904,7 @@ def test_a_hand_over_chain_that_loops_ends_at_the_task_it_came_back_to() -> None
 
 
 def test_a_woken_todo_and_a_notice_show_as_their_own_items() -> None:
-    woke = todo_woke("tw1")
+    woke = task_woke("tw1")
     said = Notice(id="n1", text="first\n\nsecond", origin="reminder")
     [woken, noticed] = project_screen(
         CONVERSATION_ID, [logged(1, woke), logged(2, said)], TEST_FILE_LINKS

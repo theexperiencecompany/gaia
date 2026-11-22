@@ -46,8 +46,6 @@ from app.db.mongodb.indexes import (
     CONVERSATION_ENTRY_INDEXES,
     CONVERSATION_SWEEP_KEYS,
     CONVERSATION_SWEEP_OPTIONS,
-    TODO_OPEN_EXTERNAL_REF_KEYS,
-    TODO_OPEN_EXTERNAL_REF_OPTIONS,
 )
 from app.db.redis import delete_cache, redis_cache
 from app.db.repositories.conversations import conversation_repository
@@ -326,17 +324,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture
 async def user_id(mongo_db, real_redis: Redis) -> AsyncIterator[str]:
-    """Seed a todo owner as a real users row, as require_owner demands, and remove its rows after."""
-    await mongo_db["todos"].create_index(
-        TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
-    )
+    """Seed an owner as a real users row, as require_owner demands, and remove its rows after."""
     owner = ObjectId()
     await mongo_db["users"].insert_one(
         {"_id": owner, "email": f"{owner}@gaia.local", "name": "Real Infra", "timezone": "UTC"}
     )
     yield str(owner)
-    await mongo_db["todos"].delete_many({"user_id": str(owner)})
-    await mongo_db["projects"].delete_many({"user_id": str(owner)})
+    await mongo_db["tasks"].delete_many({"user_id": str(owner)})
     await mongo_db["users"].delete_many({"_id": owner})
     await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, str(owner)))
 

@@ -11,10 +11,10 @@ from app.agents.core.outcome_review import (
     OutcomeReview,
     review_outcome,
     review_run,
-    todo_left_asleep,
+    task_left_asleep,
 )
-from app.agents.prompts import todo_prompts
-from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
+from app.agents.prompts import task_prompts
+from app.agents.prompts.task_prompts import TASK_REARM_BRIEF
 from app.agents.tools.finish_task_tool import finish_task
 from app.constants.agents import OutcomeState
 from app.constants.general import FINISH_TASK_NAME
@@ -43,8 +43,8 @@ def _finish(outcome: str | None) -> list[AnyMessage]:
     return _call(FINISH_TASK_NAME, args, "finish")
 
 
-#: The problem a run that spent its todo's check without setting another is fed back.
-LEFT_ASLEEP = "the todo was left open with no next check, so nothing will look at it again"
+#: The problem a run that spent its task's check without setting another is fed back.
+LEFT_ASLEEP = "the task was left open with no next check, so nothing will look at it again"
 
 
 def _task() -> HumanMessage:
@@ -53,20 +53,20 @@ def _task() -> HumanMessage:
 
 class TestReviewOutcome:
     def test_no_declared_outcome_is_never_verified(self) -> None:
-        review = review_outcome([_task(), *_call("create_todo", {}, "c1"), *_finish(None)])
+        review = review_outcome([_task(), *_call("create_task", {}, "c1"), *_finish(None)])
 
         assert review.declared is None
         assert not review.verified
 
     def test_done_backed_by_a_successful_call_is_verified(self) -> None:
-        review = review_outcome([_task(), *_call("create_todo", {}, "c1"), *_finish("done")])
+        review = review_outcome([_task(), *_call("create_task", {}, "c1"), *_finish("done")])
 
         assert review.declared is OutcomeState.DONE
         assert review.verified
 
     def test_done_with_only_a_failed_call_is_not_verified(self) -> None:
         review = review_outcome(
-            [_task(), *_call("create_todo", {}, "c1", error=True), *_finish("done")]
+            [_task(), *_call("create_task", {}, "c1", error=True), *_finish("done")]
         )
 
         assert review == OutcomeReview(
@@ -88,7 +88,7 @@ class TestReviewOutcome:
 
         assert review == OutcomeReview(
             OutcomeState.SCHEDULE,
-            "schedule was declared but no tracked todo was scheduled to wake GAIA",
+            "schedule was declared but no GAIA task was scheduled to wake GAIA",
         )
 
     def test_a_reminder_backs_done_for_a_plain_remind_me(self) -> None:
@@ -98,7 +98,7 @@ class TestReviewOutcome:
 
         assert review.verified
 
-    def test_schedule_backed_by_a_scheduled_tracked_todo_is_verified(self) -> None:
+    def test_schedule_backed_by_a_scheduled_gaia_task_is_verified(self) -> None:
         review = review_outcome(
             [
                 _task(),
@@ -109,8 +109,8 @@ class TestReviewOutcome:
 
         assert review.verified
 
-    def test_a_tracked_todo_with_only_a_due_date_does_not_back_schedule(self) -> None:
-        """Seen live: a due_date-only tracked todo for 'make sure I don't forget' never wakes."""
+    def test_a_gaia_task_with_only_a_due_date_does_not_back_schedule(self) -> None:
+        """Seen live: a due_date-only GAIA task for 'make sure I don't forget' never wakes."""
         review = review_outcome(
             [
                 _task(),
@@ -192,7 +192,7 @@ class TestTheRunSaysItFoundNothingForTheUser:
         assert review_outcome([_task(), *_finish("ask")]).nothing_for_user is False
 
     def test_a_run_that_never_finished_declares_nothing(self) -> None:
-        review = review_outcome([_task(), *_call("read", {"path": "canvas.md"}, "c1")])
+        review = review_outcome([_task(), *_call("read", {"path": "notes.md"}, "c1")])
 
         assert review == OutcomeReview(None, None, nothing_for_user=False)
 
@@ -228,17 +228,17 @@ class TestReviewRun:
         assert not review_run(thread).verified
 
 
-class TestATodoIsNeverLeftAsleep:
-    """Seen in real use: tracked todos run once with no next check stayed open forever.
+class TestATaskIsNeverLeftAsleep:
+    """Seen in real use: GAIA tasks run once with no next check stayed open forever.
 
     Creating one without a next step is refused in code, so only a run that spent its
-    scheduled check can leave a todo asleep.
+    scheduled check can leave a task asleep.
     """
 
-    BRIEFED = HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}")
+    BRIEFED = HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TASK_REARM_BRIEF}")
 
-    def test_a_run_that_only_reads_must_close_or_rearm_the_todo(self) -> None:
-        asleep = [self.BRIEFED, *_call("read", {"path": "canvas.md"}, "c1"), *_finish("ask")]
+    def test_a_run_that_only_reads_must_close_or_rearm_the_task(self) -> None:
+        asleep = [self.BRIEFED, *_call("read", {"path": "notes.md"}, "c1"), *_finish("ask")]
 
         assert review_outcome(asleep) == OutcomeReview(OutcomeState.ASK, LEFT_ASLEEP)
 
@@ -256,7 +256,7 @@ class TestATodoIsNeverLeftAsleep:
         name, args = ending
         delegation = [self.BRIEFED, *_call(name, args, "c1"), *_finish("ask")]
 
-        assert todo_left_asleep(delegation) is None
+        assert task_left_asleep(delegation) is None
 
     @pytest.mark.parametrize(
         "not_a_next_check",
@@ -269,11 +269,11 @@ class TestATodoIsNeverLeftAsleep:
     def test_a_watch_or_an_unrelated_edit_is_not_a_next_check(
         self, not_a_next_check: tuple[str, dict[str, Any]]
     ) -> None:
-        """The watch wakes the todo early, but the backup check this run spent is still owed."""
+        """The watch wakes the task early, but the backup check this run spent is still owed."""
         name, args = not_a_next_check
         delegation = [self.BRIEFED, *_call(name, args, "c1"), *_finish("ask")]
 
-        assert todo_left_asleep(delegation) is not None
+        assert task_left_asleep(delegation) is not None
 
     def test_a_failed_next_check_does_not_count(self) -> None:
         delegation = [
@@ -282,37 +282,37 @@ class TestATodoIsNeverLeftAsleep:
             *_finish("ask"),
         ]
 
-        assert todo_left_asleep(delegation) is not None
+        assert task_left_asleep(delegation) is not None
 
     def test_a_delegation_that_does_not_open_with_its_task_is_never_flagged(self) -> None:
-        assert todo_left_asleep([*_call("read", {"path": "canvas.md"}, "c1")]) is None
-        assert todo_left_asleep([]) is None
+        assert task_left_asleep([*_call("read", {"path": "notes.md"}, "c1")]) is None
+        assert task_left_asleep([]) is None
 
     def test_an_unbriefed_run_is_never_flagged(self) -> None:
-        """Creating a todo with no next step is refused by the tool itself, not judged here."""
-        assert todo_left_asleep([_task(), *_call("create_todo", {}, "c1")]) is None
-        assert todo_left_asleep([_task(), *_call("create_task", {"title": "t"}, "c1")]) is None
+        """Creating a task with no next step is refused by the tool itself, not judged here."""
+        assert task_left_asleep([_task(), *_call("create_task", {}, "c1")]) is None
+        assert task_left_asleep([_task(), *_call("create_task", {"title": "t"}, "c1")]) is None
 
-    def test_a_plain_text_ending_that_strands_a_todo_still_reports_why(self) -> None:
-        review = review_outcome([self.BRIEFED, *_call("read", {"path": "canvas.md"}, "c1")])
+    def test_a_plain_text_ending_that_strands_a_task_still_reports_why(self) -> None:
+        review = review_outcome([self.BRIEFED, *_call("read", {"path": "notes.md"}, "c1")])
 
         assert review == OutcomeReview(None, LEFT_ASLEEP)
 
 
 def _wakes_again_task() -> HumanMessage:
     return HumanMessage(
-        content=f"Execute the scheduled task: call mom\n\n{todo_prompts.TODO_WAKES_AGAIN_BRIEF}"
+        content=f"Execute the scheduled task: call mom\n\n{task_prompts.TASK_WAKES_AGAIN_BRIEF}"
     )
 
 
-class TestARunOfATodoThatWakesAgain:
-    """Seen live: an hourly 'keep after me' todo's own run sent the same reminder twice.
+class TestARunOfATaskThatWakesAgain:
+    """Seen live: an hourly 'keep after me' task's own run sent the same reminder twice.
 
     Its recurrence already wakes GAIA, so schedule was rejected as unbacked, the
     completion nudge sent the run back, and it reminded the user again.
     """
 
-    def test_schedule_is_backed_by_the_wake_the_todo_already_has(self) -> None:
+    def test_schedule_is_backed_by_the_wake_the_task_already_has(self) -> None:
         review = review_outcome(
             [
                 _wakes_again_task(),
@@ -326,7 +326,7 @@ class TestARunOfATodoThatWakesAgain:
     def test_done_still_needs_a_work_call(self) -> None:
         assert not review_outcome([_wakes_again_task(), *_finish("done")]).verified
 
-    def test_an_unbriefed_run_still_needs_a_tracked_todo_for_schedule(self) -> None:
+    def test_an_unbriefed_run_still_needs_a_gaia_task_for_schedule(self) -> None:
         review = review_outcome(
             [
                 _task(),

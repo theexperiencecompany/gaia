@@ -6,7 +6,7 @@ from uuid import uuid4
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.constants import CONF
 
-from app.agents.core.background import task_run_delivery, todo_run_delivery
+from app.agents.core.background import task_run_delivery
 from app.agents.core.messages import MessageScope, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
@@ -25,8 +25,6 @@ from app.models.agent_models import agent_user_context
 from app.models.conversation_log_models import (
     Batch,
     StepClaim,
-    TaskRun,
-    TodoRun,
     UserMessage,
     WorkFinished,
     WorkflowFired,
@@ -36,8 +34,8 @@ from app.services.conversation.comms_input import work_cards_note
 from app.services.conversation.comms_runner import CommsTurn, step_turn_ref
 from app.services.conversation.mongo_log_base import not_found
 from app.services.conversation.reply_analytics import UNPROMPTED, spoken_context
+from app.services.conversation.run_wake import task_runs_reported
 from app.services.conversation.runtime import runtime_ports
-from app.services.conversation.todo_wake import todo_runs_reported
 from app.services.conversation.workspace import schedule_last_active_touch
 from app.services.delivery.chat_channel import proactive_surface, resolve_proactive_target
 from app.services.delivery.presence import presence_before
@@ -142,28 +140,25 @@ async def _delivery_note(
 ) -> list[AnyMessage]:
     """Tell a reply that reports finished work how to deliver it.
 
-    A todo's run is written up by its note, a workflow's result is told it is all the user gets, and work
+    A task's run is written up by its note, a workflow's result is told it is all the user gets, and work
     read in the app is told which of its cards are already on the screen.
     """
     finished = [logged.entry for logged in batch.waking if isinstance(logged.entry, WorkFinished)]
     if not finished:
         return []
-    reported = await todo_runs_reported(
+    reported = await task_runs_reported(
         runtime_ports().log, claim.conversation_id, claim.user_id, batch
     )
     if reported:
-        return [HumanMessage(content=await _write_up_note(run)) for _work, run in reported]
+        return [
+            HumanMessage(content=await task_run_delivery.write_up_note(run))
+            for _work, run in reported
+        ]
     if await conversation_repository.is_workflow_execution(claim.conversation_id):
         return [HumanMessage(content=PLATFORM_DELIVERY_NOTE)]
     if source in BOT_CONVERSATION_SOURCES or source is ConversationSource.VOICE:
         return []
     return [HumanMessage(content=note) for work in finished if (note := work_cards_note(work))]
-
-
-async def _write_up_note(run: TodoRun | TaskRun) -> str:
-    if isinstance(run, TaskRun):
-        return await task_run_delivery.write_up_note(run)
-    return await todo_run_delivery.write_up_note(run)
 
 
 def _workflow_run(batch: Batch) -> WorkflowRun | None:

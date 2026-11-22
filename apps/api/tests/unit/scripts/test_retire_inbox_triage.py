@@ -17,12 +17,12 @@ def _workflow(workflow_id: str, user_id: str) -> MagicMock:
 def _seams(*workflows: MagicMock, desk_open: bool = True) -> dict[str, MagicMock]:
     workflow_repo = MagicMock()
     workflow_repo.find_live_system_workflows = AsyncMock(return_value=list(workflows))
-    todo_repo = MagicMock()
-    desk = MagicMock(completed=False) if desk_open else None
-    todo_repo.find_latest_by_external_ref = AsyncMock(return_value=desk)
+    task_repo = MagicMock()
+    desk = MagicMock(completed=False, active=True) if desk_open else None
+    task_repo.find_system_task = AsyncMock(return_value=desk)
     return {
         "workflow_repository": workflow_repo,
-        "todo_repository": todo_repo,
+        "task_repository": task_repo,
         "provision_inbox_desk": AsyncMock(),
         "WorkflowService.deactivate_workflow": AsyncMock(),
     }
@@ -98,7 +98,7 @@ async def test_an_owner_who_stopped_their_desk_keeps_the_row_they_kept() -> None
     """A stopped desk says no to the new briefing; the kept row stays live."""
     stopped = MagicMock(completed=True)
     seams = _seams(_workflow("wf-1", "u-1"))
-    seams["todo_repository"].find_latest_by_external_ref = AsyncMock(return_value=stopped)
+    seams["task_repository"].find_system_task = AsyncMock(return_value=stopped)
 
     result = await _run(seams, dry_run=False)
 

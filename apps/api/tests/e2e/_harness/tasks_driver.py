@@ -2,8 +2,7 @@
 
 Journeys speak only through this driver and tasks_views, so the same journey files run
 whichever system holds a task. A task's id starts task_; a repeating task is still a
-workflow (wf_) until it moves. A legacy todo id only reaches the old /todos API, which the
-legacy builder's test drives to hold its shapes to what that API writes.
+workflow (wf_) until it moves; a todo the migration moved keeps its ObjectId as its task id.
 """
 
 from __future__ import annotations
@@ -41,15 +40,11 @@ from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.constants.chat import ConversationSource
+from app.constants.inbox_desk import INBOX_DESK_TITLE, PROVISION_INBOX_DESK_TASK
 from app.constants.notifications import APPROVAL_PUSH_TITLE
 from app.constants.tasks import BLOCKING_FLAGS, TaskLogEvent, TaskRunTrigger
-from app.constants.todos import (
-    FAILED_LABEL,
-    GAIA_TRACKED_LABEL,
-    INBOX_DESK_TITLE,
-    PROVISION_INBOX_DESK_TASK,
-)
 from app.constants.triggers import DISPATCH_TO_SUBSCRIBERS_JOB
+from app.constants.waits import RESUME_WAITER_TASK
 from app.db.redis import redis_cache
 from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage, WorkFinished
 from app.models.conversation_send_models import SendMessageRequest
@@ -78,6 +73,7 @@ from tests.e2e._harness.graph_run import ToolCall, call
 from tests.e2e._harness.step_stack import replayed
 from tests.e2e._harness.tasks_views import (
     Asks,
+    AsksToConnect,
     Breaks,
     ChatLine,
     Counts,
@@ -111,7 +107,6 @@ from tests.integration_account_factories import provider_account_id
 TASKS = "/api/v1/tasks"
 #: Every tool GAIA works on tasks with.
 TASK_TOOLS = (*task_tools.tools, *task_list_tools.tools, *task_edit_tools.tools)
-TODOS = "/api/v1/todos"
 WORKFLOWS = "/api/v1/workflows"
 WEBHOOK = "/api/v1/webhook/composio"
 WEBHOOK_MODULE = "app.api.v1.endpoints.webhook_composio"
@@ -185,12 +180,10 @@ _JOBS: Mapping[str, Callable[..., Awaitable[object]]] = {
 _RUN_JOBS = (
     "run_task",
     "resume_task",
-    "execute_tracked_todo",
-    "resume_tracked_todo",
     "execute_workflow_by_id",
 )
 #: The jobs that continue a GAIA task's run once its approval is decided.
-_RESUME_JOBS = ("resume_task", "resume_tracked_todo")
+_RESUME_JOBS = ("resume_task",)
 USER_SETTINGS = "/api/v1/user"
 
 
@@ -246,25 +239,6 @@ def _task_view(body: dict[str, Any]) -> TaskView:
     )
 
 
-def _todo_view(body: dict[str, Any]) -> TaskView:
-    """Read a /todos response (a GAIA one-off not yet moved) as the user sees the task."""
-    return TaskView(
-        id=body["id"],
-        title=body["title"],
-        done=body["completed"],
-        due=datetime.fromisoformat(body["due_date"]) if body.get("due_date") else None,
-        subtasks=tuple(
-            Subtask(id=s["id"], title=s["title"], done=s["completed"]) for s in body["subtasks"]
-        ),
-        by_gaia=GAIA_TRACKED_LABEL in body["labels"],
-        failed=FAILED_LABEL in body["labels"],
-        parent_id=body.get("parent_todo_id"),
-        open_children=body.get("sub_todo_count", 0),
-        pending_approval=body.get("pending_approval") is not None,
-        next_run=datetime.fromisoformat(body["scheduled_at"]) if body.get("scheduled_at") else None,
-    )
-
-
 def _repeating_view(body: dict[str, Any]) -> RepeatingTaskView:
     workflow = body["workflow"]
     next_run = workflow["trigger_config"].get("next_run")
@@ -307,16 +281,29 @@ def _is_workflow(task_id: str) -> bool:
     return task_id.startswith("wf_")
 
 
-def _is_task(task_id: str) -> bool:
-    return task_id.startswith("task_")
+def _reaching_a_tool(
+    run: NeedsApproval | AsksToConnect, *, one_off: bool
+) -> tuple[list[Any], list[str]]:
+    """Script a run that finds a tool, calls it and stops there; and the write-up its chat gets now.
 
-
-def _base(task_id: str) -> str:
-    return TASKS if _is_task(task_id) else TODOS
-
-
-def _view(task_id: str, body: dict[str, Any]) -> TaskView:
-    return _task_view(body) if _is_task(task_id) else _todo_view(body)
+    A run parked on an approval is written up once the approval is decided, with what it starts.
+    """
+    match run:
+        case NeedsApproval(asking):
+            tool, args, said, written_up = GATED_ACTION, GATED_ACTION_ARGS, asking, []
+        case AsksToConnect(app, report):
+            tool, args, said, written_up = (
+                "connect_integration",
+                {"integration_ids": [app]},
+                report,
+                [report],
+            )
+    turns = [
+        call("retrieve_tools", {"exact_tool_names": [tool]}, call_id="tc_find"),
+        call(tool, args, call_id="tc_reach"),
+        *([said, said] if one_off else [said]),
+    ]
+    return turns, written_up
 
 
 class TasksDriver:
@@ -398,10 +385,8 @@ class TasksDriver:
         payload: dict[str, Any] = {}
         if title is not None:
             payload["title"] = title
-        if due is not None and _is_task(task_id):
+        if due is not None:
             payload["when"] = {"kind": "date", "at": due.isoformat()}
-        elif due is not None:
-            payload["due_date"] = due.isoformat()
         return await self._put(task_id, payload)
 
     async def complete(self, task_id: str) -> TaskView:
@@ -411,16 +396,15 @@ class TasksDriver:
         return await self._put(task_id, {"completed": False})
 
     async def _put(self, task_id: str, payload: dict[str, Any]) -> TaskView:
-        path = f"{_base(task_id)}/{task_id}"
-        return _view(task_id, _ok(await self._client.put(path, json=payload)))
+        return _task_view(_ok(await self._client.put(f"{TASKS}/{task_id}", json=payload)))
 
     async def delete(self, task_id: str) -> None:
-        response = await self._client.delete(f"{_base(task_id)}/{task_id}")
+        response = await self._client.delete(f"{TASKS}/{task_id}")
         assert response.status_code == 204, response.text
 
     async def add_subtask(self, task_id: str, title: str) -> TaskView:
-        path = f"{_base(task_id)}/{task_id}/subtasks"
-        return _view(task_id, _ok(await self._client.post(path, json={"title": title})))
+        path = f"{TASKS}/{task_id}/subtasks"
+        return _task_view(_ok(await self._client.post(path, json={"title": title})))
 
     async def rename_subtask(self, task_id: str, subtask_id: str, title: str) -> TaskView:
         path = f"{TASKS}/{task_id}/subtasks/{subtask_id}"
@@ -702,19 +686,10 @@ class TasksDriver:
                     ]
                 )
                 tell(report)
-            case NeedsApproval(asking):
-                self._executor.then(
-                    [
-                        call(
-                            "retrieve_tools",
-                            {"exact_tool_names": [GATED_ACTION]},
-                            call_id="tc_find",
-                        ),
-                        call(GATED_ACTION, GATED_ACTION_ARGS, call_id="tc_gated"),
-                        *([asking, asking] if one_off else [asking]),
-                    ]
-                )
-                # A parked run is written up once its approval is decided, with what the decision starts.
+            case NeedsApproval() | AsksToConnect():
+                turns, written_up = _reaching_a_tool(run, one_off=one_off)
+                self._executor.then(turns)
+                self._comms.then(written_up)
             case OpensReplyTask(thread_id, title, report):
                 self._executor.then(
                     [
@@ -744,7 +719,7 @@ class TasksDriver:
 
     async def answer(self, task_id: str, reply: str, then: GaiaRun) -> None:
         """Reply in the task's chat, GAIA picking the task up from the reply."""
-        conversation_id = _ok(await self._client.post(f"{_base(task_id)}/{task_id}/conversation"))[
+        conversation_id = _ok(await self._client.post(f"{TASKS}/{task_id}/conversation"))[
             "conversation_id"
         ]
         self._comms.then(
@@ -930,6 +905,13 @@ class TasksDriver:
         for job in await self._pool.queued_jobs():
             if job.function == PROVISION_INBOX_DESK_TASK:
                 await self._run(job)
+
+    async def pick_up_waiters(self) -> None:
+        """Run the jobs that pick back up whoever waited on what the user just did; there must be one."""
+        waiters = [j for j in await self._pool.queued_jobs() if j.function == RESUME_WAITER_TASK]
+        assert waiters, "nothing waited on what the user just did"
+        for job in waiters:
+            await self._run(job)
 
     async def gmail_connects_as_the_plan_starts(self) -> None:
         """Connect Gmail while the plan's checkout lands, the worker taking up both set-ups together."""
@@ -1138,37 +1120,31 @@ class TasksDriver:
             )
         )
 
+    async def let_gaia_act_without_asking(self) -> None:
+        """Set the user's approval settings to let GAIA run every action without asking."""
+        _ok(await self._client.put(HIL_PREFERENCES, json={"mode": "always_allow"}))
+
     async def approve(self, task_id: str, report: str) -> None:
         """Approve the action the task waits on; GAIA takes it and reports."""
-        if _is_task(task_id):
-            self._executor.then([call("execute", _REDEEM, call_id="tc_redeem"), report])
-        else:
-            self._executor.then(
-                [call("execute", _REDEEM, call_id="tc_redeem"), report, report, report]
-            )
-        await self._decide(task_id, {"decision": "approve"}, report, runs=2)
+        self._executor.then([call("execute", _REDEEM, call_id="tc_redeem"), report])
+        await self._decide(task_id, {"decision": "approve"}, report)
 
     async def deny(self, task_id: str, report: str) -> None:
         """Deny the action the task waits on; GAIA skips it and reports."""
-        self._executor.then([report] if _is_task(task_id) else [report, report])
-        await self._decide(task_id, {"decision": "deny", "feedback": "not now"}, report, runs=1)
+        self._executor.then([report])
+        await self._decide(task_id, {"decision": "deny", "feedback": "not now"}, report)
 
     async def approval_asked(self, task_id: str) -> bool:
         """Whether the user was last told GAIA needs their approval for the task's action."""
         delivered = await self.delivered()
         return bool(delivered) and delivered[-1].title == APPROVAL_PUSH_TITLE
 
-    async def _decide(
-        self, task_id: str, verdict: dict[str, str], report: str, *, runs: int
-    ) -> None:
-        task = _ok(await self._client.get(f"{_base(task_id)}/{task_id}"))
+    async def _decide(self, task_id: str, verdict: dict[str, str], report: str) -> None:
+        task = _ok(await self._client.get(f"{TASKS}/{task_id}"))
         pending = task["pending_approval"]
         assert pending is not None, "the task waits on no approval"
-        if _is_task(task_id):
-            # One write-up narrates the parked run and what the decision started.
-            self._comms.then([report])
-        elif task["notify_on_run"]:
-            self._comms.then([report] * runs)
+        # One write-up narrates the parked run and what the decision started.
+        self._comms.then([report])
         _ok(
             await self._client.post(
                 f"/api/v1/approvals/{pending['approval_id']}/decision", json=verdict
@@ -1195,10 +1171,10 @@ class TasksDriver:
     # What the user sees.
 
     async def get(self, task_id: str) -> TaskView | None:
-        response = await self._client.get(f"{_base(task_id)}/{task_id}")
+        response = await self._client.get(f"{TASKS}/{task_id}")
         if response.status_code == 404:
             return None
-        return _view(task_id, _ok(response))
+        return _task_view(_ok(response))
 
     async def open_list(self) -> list[TaskView]:
         """Return the open tasks list, in the order the list API returns it."""
@@ -1267,9 +1243,9 @@ class TasksDriver:
                 workflow_id=task_id, user_id=self._user_id, workflow_title=workflow
             )
         else:
-            conversation_id = _ok(
-                await self._client.post(f"{_base(task_id)}/{task_id}/conversation")
-            )["conversation_id"]
+            conversation_id = _ok(await self._client.post(f"{TASKS}/{task_id}/conversation"))[
+                "conversation_id"
+            ]
         return _chat_lines(await replayed(conversation_id, self._user_id))
 
     async def approved_actions_taken(self, task_id: str) -> int:

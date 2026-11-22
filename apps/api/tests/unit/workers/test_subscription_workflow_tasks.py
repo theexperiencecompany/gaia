@@ -22,7 +22,6 @@ from app.workers.tasks.subscription_workflow_tasks import (
 _MOD = "app.workers.tasks.subscription_workflow_tasks"
 _EVENTS = "app.services.payments.subscription_events"
 _REMINDERS = "app.services.reminder_service"
-_TODOS = "app.services.tracked_todo_service"
 
 USER_ID = "507f1f77bcf86cd799439011"
 
@@ -168,7 +167,10 @@ class TestAPaywallResumeThatFailsIsRetriedByTheSameTask:
         with (
             patch(f"{_REMINDERS}.reminder_repository.find_paused_for_reason", find),
             patch(f"{_REMINDERS}.reminder_repository.update_for_user", update),
-            patch(f"{_TODOS}.todo_repository.find_paused_for_reason", AsyncMock(return_value=[])),
+            patch(
+                "app.services.workflow.subscription_pause.resume_tasks_paused_for",
+                AsyncMock(return_value=0),
+            ),
             patch(f"{_EVENTS}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{_EVENTS}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
         ):

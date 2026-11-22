@@ -19,7 +19,7 @@ import pytest
 
 from app.api.v1.endpoints.onboarding import get_onboarding_personalization
 from app.constants.log_tags import LogTag
-from app.constants.todos import ONBOARDING_TODO_LIMIT
+from app.constants.tasks import ONBOARDING_TASK_LIMIT
 from app.models.onboarding_models import ConfirmedSocialProfile, OnboardingResetCounts
 from app.models.payment_models import PlanType
 from app.models.user_models import (
@@ -71,7 +71,7 @@ _RECORD_STEP = "app.api.v1.endpoints.onboarding.record_onboarding_step"
 _COMPOSIO_SERVICE = "app.api.v1.endpoints.onboarding.get_composio_service"
 _REDIS_POOL_MANAGER = "app.utils.redis_utils.RedisPoolManager"
 _WF_FIND_BY_IDS = "app.api.v1.endpoints.onboarding.workflow_repository.find_by_ids"
-_TODO_LIST = "app.api.v1.endpoints.onboarding.todo_repository.list_onboarding_todos"
+_TASK_LIST = "app.api.v1.endpoints.onboarding.task_repository.list_onboarding"
 
 
 def _make_onboarding_request(**overrides) -> dict:
@@ -854,14 +854,12 @@ class TestGetPersonalizationPins:
             ),
             SimpleNamespace(id="wf-1", title="First workflow", description="d1", steps=[]),
         ]
-        todos = [
-            SimpleNamespace(id="t-1", title="Todo one", description="Do it", source_email=None)
-        ]
+        todos = [SimpleNamespace(id="t-1", title="Todo one", body="Do it", source_email=None)]
         with (
             patch("app.api.v1.endpoints.onboarding.log") as log,
             patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc) as get_user,
             patch(_WF_FIND_BY_IDS, new_callable=AsyncMock, return_value=wf_docs) as find_wf,
-            patch(_TODO_LIST, new_callable=AsyncMock, return_value=todos) as list_todos,
+            patch(_TASK_LIST, new_callable=AsyncMock, return_value=todos) as list_todos,
         ):
             response = await client.get(PERSONALIZATION_URL)
 
@@ -911,7 +909,7 @@ class TestGetPersonalizationPins:
         }
         get_user.assert_awaited_once_with(uid)
         find_wf.assert_awaited_once_with(["wf-2", "wf-1"])
-        list_todos.assert_awaited_once_with(uid, limit=ONBOARDING_TODO_LIMIT)
+        list_todos.assert_awaited_once_with(uid, limit=ONBOARDING_TASK_LIMIT)
         log.set.assert_called_once_with(
             user={"id": uid},
             onboarding={"operation": "get_personalization"},

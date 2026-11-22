@@ -20,7 +20,7 @@ from typing import Final, Literal, NamedTuple, get_args
 
 from app.agents.prompts.task_prompts import TASK_FEEDBACK_RULES
 from app.config.settings import settings
-from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
+from app.constants.tasks import PING_WITH_FOLLOW_THROUGH_RULE
 
 # Topic docs: one self-contained file per concern, faithfully merged from
 # the prior GUIDE.md + gaia-* skill content.

@@ -14,6 +14,8 @@ class WaitCondition(StrEnum):
     INTEGRATION_CONNECTED = "integration_connected"
     #: subject: the workflow id, or the draft id of a workflow not created yet.
     WORKFLOW_TRIGGER_CONFIGURED = "workflow_trigger_configured"
+    #: subject: the task id; a workflow trigger wait the migration moved onto its task.
+    TASK_TRIGGER_CONFIGURED = "task_trigger_configured"
 
 
 class WaiterKind(StrEnum):
@@ -21,8 +23,8 @@ class WaiterKind(StrEnum):
 
     #: waiter id: the conversation id.
     CHAT = "chat"
-    #: waiter id: the tracked todo id.
-    TODO = "todo"
+    #: waiter id: the GAIA task id; a met wait wakes a run of the task.
+    TASK = "task"
     #: waiter id: the workflow id.
     WORKFLOW = "workflow"
 
@@ -37,7 +39,7 @@ RESUME_WAITER_MAX_TRIES: Final = 5
 RESUME_WAITER_LEASE: Final = timedelta(hours=1)
 #: First retry delay of a failed resume; each later try doubles it.
 RESUME_WAITER_RETRY_DELAY: Final = timedelta(seconds=30)
-#: The synthetic trigger name a woken tracked todo run sees as its origin.
+#: The synthetic trigger name a GAIA task run a met wait woke sees as its origin.
 WAIT_MET_TRIGGER: Final = "gaia_wait_met"
 #: The workflow run context key carrying why the run was started.
 WAIT_MET_CONTEXT_KEY: Final = "wait_met"

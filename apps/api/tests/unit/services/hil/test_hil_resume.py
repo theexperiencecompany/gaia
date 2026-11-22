@@ -14,11 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.constants.todos import TodoActivityEvent
+from app.constants.tasks import TaskLogEvent
 from app.models.conversation_log_models import ApprovalDecided
 from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
 from app.services.hil.resume import (
-    _resume_todo,
     _resume_workflow,
     record_owner_deny,
     resume_owner_after_approval,
@@ -65,11 +64,6 @@ _YES = _yes()
 
 
 class TestResumeAfterApproval:
-    async def test_todo_resume_logs_and_reenqueues(self) -> None:
-        with patch(f"{MODULE}._resume_todo", new=AsyncMock()) as resume:
-            await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-1"), _YES)
-        resume.assert_awaited_once()
-
     async def test_an_unknown_owner_type_raises(self) -> None:
         with pytest.raises(
             UnknownResumeOwnerError, match=r"^approval ap_bg1 names unknown owner 'cron'$"
@@ -85,32 +79,6 @@ class TestResumeAfterApproval:
                 await resume_owner_after_approval(
                     _row(owner_run_type="workflow", owner_id="wf-1"), _YES
                 )
-
-
-class TestResumeTodo:
-    async def test_resume_enqueues_into_the_parked_conversation(self) -> None:
-        pool = MagicMock()
-        enqueued: dict[str, Any] = {}
-
-        async def _fake_enqueue(pool_arg: Any, fn: str, *args: Any, **kwargs: Any) -> None:
-            enqueued.update(fn=fn, args=args)
-
-        with (
-            patch(
-                "app.utils.redis_utils.RedisPoolManager.get_pool",
-                new=AsyncMock(return_value=pool),
-            ),
-            patch(
-                f"{MODULE}.enqueue_worker_job",
-                new=_fake_enqueue,
-            ),
-            patch(f"{MODULE}.record_activity", new=AsyncMock()),
-        ):
-            await _resume_todo(_row(owner_run_type="todo", owner_id="todo-9"))
-        # The parked conversation — never a fresh session. A fresh uuid would
-        # orphan the parked run's thread, checkpoint, and partial results.
-        assert enqueued["fn"] == "resume_tracked_todo"
-        assert enqueued["args"] == ("todo-9", "conv-bg", "ap_bg1", "Send briefing")
 
 
 class TestResumeWorkflow:
@@ -157,26 +125,6 @@ class TestResumeWorkflow:
 
 
 class TestResumedEvent:
-    async def test_todo_resume_emits_event_with_user_id(self) -> None:
-        pool = MagicMock()
-        with (
-            patch(
-                "app.utils.redis_utils.RedisPoolManager.get_pool",
-                new=AsyncMock(return_value=pool),
-            ),
-            patch(
-                f"{MODULE}.enqueue_worker_job",
-                new=AsyncMock(),
-            ),
-            patch(f"{MODULE}.record_activity", new=AsyncMock()),
-            patch("app.services.hil.resume.capture") as capture,
-        ):
-            await _resume_todo(_row(owner_run_type="todo", owner_id="todo-9"))
-
-        capture.assert_called_once_with(
-            UserId(USER_ID), HilResumed(approval_id="ap_bg1", owner_run_type="todo")
-        )
-
     async def test_workflow_resume_emits_event_with_user_id(self) -> None:
         async def _fake_queue(workflow_id: str, user_id: str, context: Any) -> bool:
             return True
@@ -204,7 +152,6 @@ class ResumeSeams:
     enqueue: AsyncMock
     brief: AsyncMock
     queue_workflow: AsyncMock
-    append_activity: AsyncMock
 
 
 @pytest.fixture
@@ -224,7 +171,6 @@ def seams() -> Iterator[ResumeSeams]:
         patch(
             f"{MODULE}.WorkflowQueueService.queue_workflow_execution", new=AsyncMock()
         ) as queue_workflow,
-        patch(f"{MODULE}.record_activity", new=AsyncMock(return_value=True)) as activity,
         patch(f"{MODULE}.capture"),
     ):
         yield ResumeSeams(
@@ -233,39 +179,10 @@ def seams() -> Iterator[ResumeSeams]:
             enqueue=enqueue,
             brief=brief,
             queue_workflow=queue_workflow,
-            append_activity=activity,
         )
 
 
 class TestResumeRouting:
-    async def test_a_todo_owner_is_reenqueued_into_its_parked_conversation(
-        self, seams: ResumeSeams
-    ) -> None:
-        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"), _YES)
-
-        seams.enqueue.assert_awaited_once_with(
-            seams.pool, "resume_tracked_todo", "todo-9", "conv-bg", "ap_bg1", "Send briefing"
-        )
-        seams.queue_workflow.assert_not_awaited()
-
-    async def test_a_todo_grant_is_logged_on_that_todo_at_the_decision(
-        self, seams: ResumeSeams
-    ) -> None:
-        """Logged here, at the hand-off, not by the resume job, which a busy chat defers and reruns."""
-        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"), _YES)
-
-        seams.append_activity.assert_awaited_once_with(
-            "todo-9",
-            USER_ID,
-            TodoActivityEvent.APPROVAL_GRANTED,
-            "ap_bg1: Send briefing; continuing the run in its own thread",
-        )
-
-    async def test_a_workflow_grant_logs_nothing_on_a_todo(self, seams: ResumeSeams) -> None:
-        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"), _YES)
-
-        seams.append_activity.assert_not_awaited()
-
     async def test_a_workflow_owner_is_requeued_with_its_receipt_and_last_brief(
         self, seams: ResumeSeams
     ) -> None:
@@ -302,33 +219,33 @@ class TestResumeRouting:
     async def test_a_failed_enqueue_raises(self, seams: ResumeSeams) -> None:
         seams.enqueue.side_effect = RuntimeError("redis down")
 
-        with pytest.raises(RuntimeError, match="redis down"):
+        with (
+            patch(f"{MODULE}.task_repository.get", new=AsyncMock(return_value=MagicMock())),
+            patch(f"{MODULE}.record_event", new=AsyncMock()),
+            pytest.raises(RuntimeError, match="redis down"),
+        ):
+            await resume_owner_after_approval(_row(owner_task_id="task_9"), _YES)
+
+    async def test_an_approval_a_tracked_todo_parked_is_refused_loudly(self) -> None:
+        with pytest.raises(
+            UnknownResumeOwnerError, match=r"^approval ap_bg1 names unknown owner 'todo'$"
+        ):
             await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"), _YES)
 
 
 class TestDenyTrace:
-    @pytest.mark.parametrize(
-        ("feedback", "detail"),
-        [
-            ("too pricey", "ap_bg1 ('too pricey'): skipped Send briefing"),
-            (None, "ap_bg1: skipped Send briefing"),
-        ],
-        ids=["with-words", "bare"],
-    )
-    async def test_a_todo_deny_is_logged_on_that_todo(
-        self, seams: ResumeSeams, feedback: str | None, detail: str
-    ) -> None:
-        await record_owner_deny(_row(owner_run_type="todo", owner_id="todo-3"), feedback)
+    async def test_a_task_deny_is_logged_on_that_task(self) -> None:
+        task = MagicMock()
+        with (
+            patch(f"{MODULE}.task_repository.get", new=AsyncMock(return_value=task)) as get,
+            patch(f"{MODULE}.record_event", new=AsyncMock()) as record,
+        ):
+            await record_owner_deny(_row(owner_task_id="task_3"), "too pricey")
 
-        seams.append_activity.assert_awaited_once_with(
-            "todo-3", USER_ID, TodoActivityEvent.APPROVAL_DENIED, detail
+        get.assert_awaited_once_with("task_3", user_id=USER_ID)
+        record.assert_awaited_once_with(
+            task, TaskLogEvent.APPROVAL_DENIED, "ap_bg1 ('too pricey'): skipped Send briefing"
         )
-
-    async def test_workflow_and_live_denies_record_nothing(self, seams: ResumeSeams) -> None:
-        await record_owner_deny(_row(owner_run_type="workflow", owner_id="wf-1"), None)
-        await record_owner_deny(_row(), None)
-
-        seams.append_activity.assert_not_awaited()
 
 
 def _warned(log: MagicMock) -> dict[str, dict[str, object]]:

@@ -66,6 +66,8 @@ _MOD = "app.services.triggers.trigger_gate"
 _GATES = "app.models.trigger_gate_models"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 OWNER_ID = "wf_gate_owner01"
+#: The task a TASK-owned gate job's subscription is on.
+TASK_ID = "task_gate0wner"
 GMAIL = "gmail_new_message"
 BILLING = "the email is from a customer about billing"
 AUTHORED = AuthoredGate(condition=BILLING, author=GateAuthor.GAIA)
@@ -168,6 +170,7 @@ async def _skip(
             id=OWNER_ID,
             user_id=USER_ID,
             automation="Billing replies: Draft a reply to every billing email from a customer",
+            task_id=TASK_ID if owner is GateOwner.TASK else None,
             tracked_threads=tracked_threads,
         ),
         trigger_name=trigger_name,
@@ -240,14 +243,17 @@ class TestTheSkipLine:
                 event="Acme Billing · Invoice 4021 is past due", at=AFTERNOON, certainty=0.95
             ),
         )
-        seams.watch_skips.assert_not_awaited()
+        seams.task_skips.assert_not_awaited()
 
-    async def test_a_skip_is_kept_on_the_todo_watchs_gate(self, seams: SimpleNamespace) -> None:
+    async def test_a_skip_is_kept_on_the_task_subscriptions_gate(
+        self, seams: SimpleNamespace
+    ) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.95)))
 
-        await _skip(owner=GateOwner.TODO)
+        await _skip(owner=GateOwner.TASK)
 
-        seams.watch_skips.assert_awaited_once_with(
+        seams.task_skips.assert_awaited_once_with(
+            TASK_ID,
             user_id=USER_ID,
             subscription_id=OWNER_ID,
             skip=GateSkipRecord(
@@ -773,10 +779,10 @@ class TestRecording:
         self, seams: SimpleNamespace
     ) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
-        labels = {"owner": "todo", "outcome": "skip", "reason": "jev_skip"}
+        labels = {"owner": "task", "outcome": "skip", "reason": "jev_skip"}
         before = REGISTRY.get_sample_value("trigger_gate_decision_total", labels) or 0.0
 
-        await _skip(owner=GateOwner.TODO)
+        await _skip(owner=GateOwner.TASK)
 
         assert REGISTRY.get_sample_value("trigger_gate_decision_total", labels) == before + 1
 
@@ -784,10 +790,10 @@ class TestRecording:
     async def test_the_analytics_event_describes_the_decision(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99)))
 
-        await _skip(owner=GateOwner.TODO)
+        await _skip(owner=GateOwner.TASK)
 
         assert _decided(seams).model_dump() == {
-            "owner_type": "todo",
+            "owner_type": "task",
             "trigger_name": GMAIL,
             "gate_kind": "authored",
             "author": "gaia",
@@ -806,7 +812,7 @@ class TestRecording:
         seams.jev.mock(return_value=httpx.Response(200, json=body))
 
         async with captured_wide_event() as event:
-            await _skip(owner=GateOwner.TODO)
+            await _skip(owner=GateOwner.TASK)
 
         decided = event["trigger_gate"][OWNER_ID]
         assert (decided["choice"], decided["confidence"]) == ("needed", 0.7)
@@ -820,11 +826,11 @@ class TestRecording:
         seams.jev.mock(return_value=httpx.Response(200, json=body))
 
         async with captured_wide_event() as event:
-            await _skip(owner=GateOwner.TODO)
+            await _skip(owner=GateOwner.TASK)
 
         assert event["trigger_gate"] == {
             OWNER_ID: {
-                "owner": "todo",
+                "owner": "task",
                 "kind": "authored",
                 "outcome": "skip",
                 "reason": "jev_skip",
@@ -1325,11 +1331,12 @@ class TestTheDeskGateReadsTheEmailVerdict:
     ) -> None:
         seams.jev.mock(return_value=_verdict(bucket, asks_user=0.25))
 
-        skip = await _skip(DESK, owner=GateOwner.TODO)
+        skip = await _skip(DESK, owner=GateOwner.TASK)
 
         line = f"{reason} · Acme Billing · Invoice 4021 is past due"
         assert skip == GateSkip(event=line, certainty=0.75)
-        seams.watch_skips.assert_awaited_once_with(
+        seams.task_skips.assert_awaited_once_with(
+            TASK_ID,
             user_id=USER_ID,
             subscription_id=OWNER_ID,
             skip=GateSkipRecord(event=line, at=AFTERNOON, certainty=0.75),

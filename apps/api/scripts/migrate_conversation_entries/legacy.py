@@ -22,7 +22,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-from app.models.todo_wake_models import TodoRunWake
+from app.models.run_wake_models import TodoRunWake
 from scripts.approval_vocabulary import current_card_data
 from shared.py.conversation_wire import ImageData, ReplyToMessageData, ToolDataEntry
 

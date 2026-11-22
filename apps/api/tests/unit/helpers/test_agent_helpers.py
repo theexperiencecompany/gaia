@@ -347,7 +347,7 @@ class TestBuildAgentConfig:
             "tool_category": "parent-category",
             "subagent_id": "parent-subagent",
             "vfs_session_id": "parent-vfs",
-            "active_todo_id": "parent-todo",
+            "active_task_id": "parent-task",
             "execution_mode": "background",
             "conversation_source": "telegram",
         }
@@ -382,7 +382,7 @@ class TestBuildAgentConfig:
                         "tool_category": "parent-category",
                         "subagent_id": "parent-subagent",
                         "vfs_session_id": "parent-vfs",
-                        "active_todo_id": "parent-todo",
+                        "active_task_id": "parent-task",
                         "execution_mode": "background",
                         "conversation_source": "telegram",
                     },
@@ -392,7 +392,7 @@ class TestBuildAgentConfig:
                 turn=AgentTurn(
                     selected_tool="child-tool",
                     tool_category="child-category",
-                    active_todo_id="child-todo",
+                    active_task_id="child-task",
                     execution_mode="interactive",
                     source="web",
                 ),
@@ -403,7 +403,7 @@ class TestBuildAgentConfig:
         assert configurable["tool_category"] == "child-category"
         assert configurable["subagent_id"] == "child-subagent"
         assert configurable["vfs_session_id"] == "child-vfs"
-        assert configurable["active_todo_id"] == "child-todo"
+        assert configurable["active_task_id"] == "child-task"
         assert configurable["execution_mode"] == "interactive"
         assert configurable["conversation_source"] == "web"
 
@@ -752,7 +752,7 @@ class TestBackgroundAuthorization:
                 turns,
                 execution_mode="interactive",
                 workflow_title="Morning briefing",
-                todo_title="Brief me",
+                task_title="Brief me",
             )
             is turns
         )
@@ -793,12 +793,12 @@ class TestBackgroundAuthorization:
         assert "workflow_steps" not in params
         assert "workflow_prompt" not in params
 
-    def test_todo_title_is_added_unless_the_prompt_covers_it(self) -> None:
+    def test_task_title_is_added_unless_the_prompt_covers_it(self) -> None:
         assert background_authorization(
-            ["check calendar and brief me"], execution_mode="background", todo_title="Brief me"
-        ) == ["check calendar and brief me", "Tracked todo: Brief me"]
+            ["check calendar and brief me"], execution_mode="background", task_title="Brief me"
+        ) == ["check calendar and brief me", "GAIA task: Brief me"]
         assert background_authorization(
-            ["Brief me on today"], execution_mode="background", todo_title="Brief me"
+            ["Brief me on today"], execution_mode="background", task_title="Brief me"
         ) == ["Brief me on today"]
 
     def test_a_run_with_no_schedule_text_is_unchanged(self) -> None:

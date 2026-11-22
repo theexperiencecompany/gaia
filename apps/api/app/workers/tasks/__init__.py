@@ -20,7 +20,6 @@ from .workflow_tasks import (
     execute_workflow_as_chat,
     execute_workflow_by_id,
     generate_workflow_steps,
-    process_workflow_generation_task,
     regenerate_workflow_steps,
 )
 
@@ -31,7 +30,6 @@ __all__ = [
     "cleanup_expired_reminders",
     "check_inactive_users",
     "run_nurture_sequence_task",
-    "process_workflow_generation_task",
     "execute_workflow_by_id",
     "generate_workflow_steps",
     "regenerate_workflow_steps",

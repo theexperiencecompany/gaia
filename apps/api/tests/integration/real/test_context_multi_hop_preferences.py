@@ -18,7 +18,8 @@ from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
 from app.constants.general import SPAWN_AGENT_NAME
-from app.db.repositories.todos import todo_repository
+from app.constants.tasks import Assignee
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.users import user_repository
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -27,7 +28,7 @@ from app.helpers.agent_helpers import (
     build_agent_config,
 )
 from app.models.agent_models import AgentUserContext, agent_configurable
-from app.models.todo_models import TodoDocument
+from app.models.task_models import TaskDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.utils.user_preferences_utils import onboarding_preferences
 
@@ -86,9 +87,11 @@ class TestPreferencesSurviveTheRealMultiHopChain:
         )
 
         # Hop 3 — spawned subagent. Mirrors spawn_subagent. Also
-        # where the run gets bound to a real todo, seeded below.
-        todo = await todo_repository.create(
-            TodoDocument(user_id=real_user.id, title="Draft the quarterly update")
+        # where the run gets bound to a real GAIA task, seeded below.
+        task = await task_repository.create(
+            TaskDocument(
+                user_id=real_user.id, title="Draft the quarterly update", assignee=Assignee.GAIA
+            )
         )
         subagent_config = await build_agent_config(
             identity=AgentIdentity(
@@ -101,7 +104,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
                 subagent_id=SPAWN_AGENT_NAME,
             ),
             turn=AgentTurn(
-                active_todo_id=todo.id,
+                active_task_id=task.id,
             ),
         )
 
@@ -109,7 +112,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
         assert configurable["user_preferences"] == {"profession": "architect"}
         assert configurable["writing_style"] == {"summary": "warm and concise"}
 
-        # The active-todo banner is a fresh MongoDB read at assembly time, not
+        # The active-task banner is a fresh MongoDB read at assembly time, not
         # carried through the chain above.
         ctx = SectionContext.from_configurable(
             AgentTier.SPAWN, configurable, SectionScope(user_id=real_user.id)

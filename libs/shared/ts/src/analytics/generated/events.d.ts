@@ -96,9 +96,6 @@ export type ServerEventName =
   | "payment:succeeded"
   | "paywall:blocked"
   | "profile:updated"
-  | "projects:created"
-  | "projects:deleted"
-  | "projects:updated"
   | "rate_limit:hit"
   | "reminder:completed"
   | "reminder:created"
@@ -137,18 +134,6 @@ export type ServerEventName =
   | "task:subscribed"
   | "task:toggled"
   | "task:updated"
-  | "todos:chat_opened"
-  | "todos:created"
-  | "todos:deleted"
-  | "todos:inbox_desk_provisioned"
-  | "todos:open_state_repaired"
-  | "todos:ref_reopened"
-  | "todos:run_result_delivered"
-  | "todos:subscription_failed"
-  | "todos:subscription_registered"
-  | "todos:toggled"
-  | "todos:trigger_fired"
-  | "todos:updated"
   | "tool:execute_failed"
   | "tool:used"
   | "trigger:gate_decided"
@@ -216,7 +201,6 @@ export type WebEventName =
   | "subscription:plan_viewed"
   | "task:view_changed"
   | "thanks:page_viewed"
-  | "todos:view_changed"
   | "ui:sidebar_collapsed"
   | "ui:sidebar_expanded"
   | "use_cases:clicked"
@@ -773,7 +757,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "approval_id": string;
-    "owner_run_type": "todo" | "workflow" | "task";
+    "owner_run_type": "workflow" | "task";
   };
   "hil:revoked": {
     "actor": "user" | "agent";
@@ -1155,21 +1139,6 @@ export interface EventProperties {
     "changed_field_count": number;
     "has_picture_upload"?: boolean;
   };
-  "projects:created": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "projects:deleted": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "projects:updated": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
   "rate_limit:hit": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1501,118 +1470,6 @@ export interface EventProperties {
     "view_kind": "open" | "today" | "upcoming" | "overdue" | "done";
   };
   "thanks:page_viewed": Record<string, never>;
-  "todos:chat_opened": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "todo_id": string;
-  };
-  "todos:created": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "priority": string;
-    "has_due_date": boolean;
-    "has_description": boolean;
-    "labels_count": number;
-    "subtasks_count": number;
-    "has_project": boolean;
-    "is_sub_todo": boolean;
-  };
-  "todos:deleted": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "todo_id"?: string;
-    "count"?: number;
-  };
-  "todos:inbox_desk_provisioned": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "todos:open_state_repaired": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "todo_id": string;
-    "waiting_on"?: string;
-  };
-  "todos:ref_reopened": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "todo_id": string;
-    "ref_source": string;
-  };
-  "todos:run_result_delivered": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "outcome": string;
-    "delivered": boolean;
-    "trigger_type": string;
-    "recurring": boolean;
-    "platform"?: string;
-    "destination"?: "chat_app" | "in_app";
-    "destination_basis"?: "recent_activity" | "priority" | "active_in_app" | "no_chat_app";
-  };
-  "todos:subscription_failed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "trigger_name": string;
-    "reason": "unknown_trigger" | "todo_not_found" | "invalid_conditions" | "invalid_config" | "invalid_subscription" | "registration_failed" | "no_trigger_instance";
-  };
-  "todos:subscription_registered": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "trigger_name": string;
-    "action": string;
-    "resolution": string;
-    "condition_count": number;
-    "repaired": boolean;
-    "cooldown_seconds": number;
-  };
-  "todos:toggled": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "todo_id"?: string;
-    "completed"?: boolean;
-    "priority"?: string;
-    "has_due_date"?: boolean;
-    "is_subtask"?: boolean;
-    "bulk_count"?: number;
-    "count"?: number;
-  };
-  "todos:trigger_fired": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "trigger_name": string;
-    "action": string;
-    "resolution": string;
-    "condition_count": number;
-    "coalesced": boolean;
-  };
-  "todos:updated": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "todo_id"?: string;
-    "changed_field_count"?: number;
-    "changed_fields"?: (string)[];
-    "priority"?: string;
-    "has_due_date"?: boolean;
-    "has_subtasks"?: boolean;
-    "bulk_count"?: number;
-    "is_subtask"?: boolean;
-  };
-  "todos:view_changed": {
-    "view_kind": "inbox" | "today" | "upcoming" | "completed" | "priority_high" | "priority_medium" | "priority_low" | "label" | "project";
-  };
   "tool:execute_failed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1634,7 +1491,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "owner_type": "workflow" | "todo" | "task";
+    "owner_type": "workflow" | "task";
     "trigger_name": string;
     "gate_kind": "authored" | "system";
     "author"?: "gaia" | "user";
@@ -1648,7 +1505,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "owner_type": "workflow" | "todo" | "task";
+    "owner_type": "workflow" | "task";
     "action": "added" | "edited" | "disabled" | "enabled" | "removed";
     "gate_kind": "authored" | "system";
   };
@@ -1747,7 +1604,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "origin": "user_created" | "chat_agent" | "todo_converted" | "todo_requested";
+    "origin": "user_created" | "chat_agent";
     "workflow_id"?: string;
     "trigger_type"?: string;
     "steps_count"?: number;

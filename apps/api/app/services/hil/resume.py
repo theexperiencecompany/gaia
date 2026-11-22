@@ -5,8 +5,8 @@ live run to wake, so an approval RE-ENQUEUES the owning work carrying the ticket
 (that resume is the one continuation), and a denial leaves a trace where the
 owner actually looks:
 
-- GAIA tasks and tracked todos: log the grant on the owner's log and re-enqueue
-  it in its parked chat, which redeems the ticket; a denial is recorded on the
+- GAIA tasks: log the grant on the task's log and re-enqueue it in its
+  parked chat, which redeems the ticket; a denial is recorded on the
   same log, which its next run reads.
 - Workflows: re-queue with the ticket in the trigger context, so the run
   redeems it and continues with the trace in its conversation.
@@ -17,7 +17,6 @@ cannot be enqueued raises, and the decision's hand-off is retried by the sweeper
 
 from app.constants.log_tags import LogTag
 from app.constants.tasks import RESUME_TASK_JOB, TaskLogEvent
-from app.constants.todos import TodoActivityEvent
 from app.db.repositories.tasks import task_repository
 from app.models.conversation_log_models import ApprovalDecided
 from app.models.hil_models import ApprovalLedgerDocument
@@ -25,7 +24,6 @@ from app.services.analytics_service import capture
 from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
 from app.services.hil.ticket import approval_ticket
 from app.services.tasks.run_records import record_event
-from app.services.todo_activity import record_activity
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.redis_utils import RedisPoolManager
@@ -43,8 +41,6 @@ async def resume_owner_after_approval(
         await _resume_task(row, row.owner_task_id)
         return
     match row.owner_run_type:
-        case "todo":
-            await _resume_todo(row)
         case "workflow":
             await _resume_workflow(row, decision)
         case _:
@@ -61,15 +57,6 @@ async def record_owner_deny(row: ApprovalLedgerDocument, feedback: str | None) -
                 TaskLogEvent.APPROVAL_DENIED,
                 f"{row.approval_id}{what}: skipped {row.summary}",
             )
-        return
-    if row.owner_run_type != "todo" or not row.owner_id:
-        return
-    await record_activity(
-        row.owner_id,
-        row.user_id,
-        TodoActivityEvent.APPROVAL_DENIED,
-        f"{row.approval_id}{what}: skipped {row.summary}",
-    )
 
 
 async def _resume_task(row: ApprovalLedgerDocument, task_id: str) -> None:
@@ -91,31 +78,6 @@ async def _resume_task(row: ApprovalLedgerDocument, task_id: str) -> None:
         row.summary,
     )
     capture(UserId(row.user_id), HilResumed(approval_id=row.approval_id, owner_run_type="task"))
-
-
-async def _resume_todo(row: ApprovalLedgerDocument) -> None:
-    """Resume in the PARKED conversation so the receipt joins the run's own thread.
-
-    The lock/defer machinery stays the arbiter of concurrency, exactly like a
-    scheduled fire. The grant is logged here, at the hand-off, because
-    the resume job itself may be deferred and run again.
-    """
-    await record_activity(
-        row.owner_id,
-        row.user_id,
-        TodoActivityEvent.APPROVAL_GRANTED,
-        f"{row.approval_id}: {row.summary}; continuing the run in its own thread",
-    )
-    pool = await RedisPoolManager.get_pool()
-    await enqueue_worker_job(
-        pool,
-        "resume_tracked_todo",
-        row.owner_id,
-        row.conversation_id,
-        row.approval_id,
-        row.summary,
-    )
-    capture(UserId(row.user_id), HilResumed(approval_id=row.approval_id, owner_run_type="todo"))
 
 
 async def _resume_workflow(row: ApprovalLedgerDocument, decision: ApprovalDecided) -> None:

@@ -8,7 +8,6 @@ Handles Composio trigger reference counting to prevent premature deletion.
 from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.repositories.tasks import task_repository
-from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.trigger_config import WorkflowTriggerResponse
 from app.models.workflow_models import TriggerConfig
@@ -56,13 +55,12 @@ class TriggerService:
         trigger_ids: list[str],
         excluding_workflow_id: str | None = None,
         *,
-        excluding_todo_id: str | None = None,
         excluding_task_id: str | None = None,
     ) -> list[str]:
         """Filter trigger IDs to those safe to delete from Composio.
 
         Composio upserts identical configs onto one trigger instance, so a
-        workflow, a tracked todo and a task can share an id: safe to delete only
+        workflow and a task can share an id: safe to delete only
         when NO consumer still references it. The owner being deleted
         is excluded from its own side of the count.
         """
@@ -73,9 +71,6 @@ class TriggerService:
                 count = await workflow_repository.count_trigger_references(
                     trigger_id, excluding_workflow_id=excluding_workflow_id
                 )
-                count += await todo_repository.count_trigger_references(
-                    trigger_id, excluding_todo_id=excluding_todo_id
-                )
                 count += await task_repository.count_trigger_references(
                     trigger_id, excluding_task_id=excluding_task_id
                 )
@@ -84,7 +79,7 @@ class TriggerService:
                     safe_to_delete.append(trigger_id)
                 else:
                     log.debug(
-                        f"{LogTag.WORKFLOW} Trigger still referenced by another workflow or todo, skipping deletion",
+                        f"{LogTag.WORKFLOW} Trigger still referenced by another workflow or task, skipping deletion",
                         trigger_id=trigger_id,
                         count=count,
                     )
@@ -108,7 +103,7 @@ class TriggerService:
         trigger_config: TriggerConfig,
         raise_on_failure: bool = False,
     ) -> list[str]:
-        """Register triggers for an owner (a workflow or a tracked todo).
+        """Register triggers for an owner (a workflow or a task).
 
         Returns the registered Composio trigger IDs (may be empty on success, e.g.
         account-level Gmail has no per-workflow IDs). With raise_on_failure,
@@ -154,13 +149,12 @@ class TriggerService:
         trigger_ids: list[str],
         workflow_id: str | None = None,
         *,
-        todo_id: str | None = None,
         task_id: str | None = None,
     ) -> bool:
         """Unregister triggers using the appropriate handler.
 
-        Only deletes a trigger from Composio when no workflow, tracked todo or
-        task still references it (owners with identical configs share a trigger
+        Only deletes a trigger from Composio when no workflow or task still
+        references it (owners with identical configs share a trigger
         ID). Pass the owner being torn down so it is not counted as a reference
         to itself.
         """
@@ -182,13 +176,12 @@ class TriggerService:
             safe_to_delete = await TriggerService.get_triggers_safe_to_delete(
                 trigger_ids,
                 excluding_workflow_id=workflow_id,
-                excluding_todo_id=todo_id,
                 excluding_task_id=task_id,
             )
 
             if not safe_to_delete:
                 log.info(
-                    f"{LogTag.WORKFLOW} No triggers safe to delete - all trigger(s) are still referenced by another workflow or todo",
+                    f"{LogTag.WORKFLOW} No triggers safe to delete - all trigger(s) are still referenced by another workflow or task",
                     trigger_ids_count=len(trigger_ids),
                 )
                 return True

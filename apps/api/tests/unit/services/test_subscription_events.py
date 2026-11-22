@@ -360,7 +360,7 @@ class TestActivationCreatesTheRow:
         await _apply(SubscriptionEventKind.ACTIVATED)
 
         mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
-        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.tasks.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
 
     async def test_a_new_subscriber_has_the_inbox_desk_queued(
         self,
@@ -483,14 +483,14 @@ class TestTransitionsDriveTheSideEffects:
     ) -> None:
         await _apply(SubscriptionEventKind.ON_HOLD)
         mock_paywall_resume.reminders.assert_not_awaited()
-        mock_paywall_resume.todos.assert_not_awaited()
+        mock_paywall_resume.tasks.assert_not_awaited()
 
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(status="on_hold", last_event_at=None)
         )
         await _apply(SubscriptionEventKind.RENEWED)
         mock_paywall_resume.reminders.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
-        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.tasks.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
 
     async def test_a_recovery_queues_the_inbox_desk(
         self,
@@ -704,7 +704,7 @@ class TestSideEffectsNeverFailTheEvent:
         ):
             await resume_paywall_pauses_safely(FAKE_USER_ID)
 
-        mock_paywall_resume.todos.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
+        mock_paywall_resume.tasks.assert_awaited_once_with(FAKE_USER_ID, "subscription_lapsed")
         mock_log.error.assert_called_once_with(
             "[PAYMENT] Failed to resume paywall-paused automation",
             error="paywall-paused automation did not all resume (1 sub-exception)",

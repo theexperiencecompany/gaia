@@ -40,14 +40,14 @@ from app.services.tasks.arming import arm_task
 from app.services.tasks.errors import SubscriptionNotFoundError
 from app.services.tasks.event_window import release_events_kept_while_paused
 from app.services.tasks.run_records import record_event
-from app.services.tasks.todo_rounds import first_repeat
-from app.services.triggers import get_handler_by_name
-from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
-from app.services.triggers.subscription_service import (
+from app.services.tasks.subscription_config import (
     AccountScope,
     SubscriptionError,
     build_trigger_config,
 )
+from app.services.tasks.todo_rounds import first_repeat
+from app.services.triggers import get_handler_by_name
+from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.triggers.subscription_validation import ValidationOutcome, validate_conditions
 from app.services.user_service import get_profile_timezone
 from app.services.workflow.trigger_service import TriggerService

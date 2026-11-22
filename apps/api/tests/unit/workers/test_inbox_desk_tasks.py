@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, patch
 from arq import Retry
 import pytest
 
+from app.constants.inbox_desk import INBOX_DESK_PROVISION_RETRY_DELAY
 from app.constants.log_tags import LogTag
-from app.constants.todos import INBOX_DESK_PROVISION_RETRY_DELAY
 from app.workers.tasks.inbox_desk_tasks import provision_inbox_desk_task
 from tests.helpers import captured_wide_event
 
@@ -61,7 +61,7 @@ class TestProvisionInboxDeskTask:
 
         assert event["warnings"] == [
             {
-                "msg": f"{LogTag.TODO} Inbox desk provisioning failed; retrying",
+                "msg": f"{LogTag.TASK} Inbox desk provisioning failed; retrying",
                 "user_id": USER_ID,
                 "error": "down",
                 "error_type": "ConnectionError",

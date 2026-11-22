@@ -181,8 +181,6 @@ class WorkflowService:
         request: CreateWorkflowRequest,
         user_id: str,
         user_timezone: str | None = None,
-        is_todo_workflow: bool = False,
-        source_todo_id: str | None = None,
     ) -> Workflow:
         """Create a new workflow with automatic timezone population.
 
@@ -263,8 +261,6 @@ class WorkflowService:
                 activated=False,  # Start in pending state
                 notify_on_completion=request.notify_on_completion,
                 user_id=user_id,
-                is_todo_workflow=is_todo_workflow,
-                source_todo_id=source_todo_id,
                 is_system_workflow=request.is_system_workflow,
                 source_integration=request.source_integration,
                 system_workflow_key=request.system_workflow_key,

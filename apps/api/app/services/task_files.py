@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 import json
 
+from app.constants.task_notes import CANVAS_SECTIONS, OBSERVATIONS_MAX_CHARS
 from app.constants.tasks import Assignee
-from app.constants.todos import CANVAS_SECTIONS, OBSERVATIONS_MAX_CHARS
 from app.db.repositories.tasks import task_repository
 from app.models.task_models import TaskDocument, TaskUpdate
 from app.services.canvas_markdown import canvas_problems, with_missing_sections

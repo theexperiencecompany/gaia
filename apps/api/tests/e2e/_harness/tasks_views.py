@@ -157,6 +157,14 @@ class NeedsApproval:
 
 
 @dataclass(frozen=True)
+class AsksToConnect:
+    """GAIA needs an app the user has not connected, asks them to connect it, and stops there."""
+
+    app: str
+    report: str
+
+
+@dataclass(frozen=True)
 class OpensSubtasks:
     """GAIA splits the work into sub-tasks and waits for them."""
 
@@ -197,6 +205,7 @@ GaiaRun = (
     | Breaks
     | OpensSubtasks
     | NeedsApproval
+    | AsksToConnect
     | OpensReplyTask
     | SavesPlaybook
     | ReplaysPlaybook

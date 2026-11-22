@@ -31,31 +31,37 @@ from app.agents.prompts.task_prompts import (
     TASK_WAKES_AGAIN_BRIEF,
     WAKE_REASON_TEXT,
 )
+from app.agents.prompts.wait_prompts import WAIT_MET_WAKE_REASON
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.tasks import RECENT_RUNS_READ, Assignee, WhenKind
-from app.constants.todos import (
+from app.constants.task_notes import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_CURRENT_STATE_SECTION,
     CANVAS_LEARNINGS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
+    STANDING_RULES_MAX_CHARS,
+)
+from app.constants.tasks import (
     MAX_HOLD_CHECK_AHEAD,
     MAX_HOLD_CHECKS,
-    REFERENCED_TODOS_PROMPT_LIMIT,
-    STANDING_RULES_MAX_CHARS,
-    SUB_TODO_STATE_EXCERPT_CHARS,
-    SUB_TODOS_PROMPT_LIMIT,
+    RECENT_RUNS_READ,
+    REFERENCED_TASKS_PROMPT_LIMIT,
+    SUBTASK_STATE_EXCERPT_CHARS,
+    SUBTASKS_PROMPT_LIMIT,
+    Assignee,
+    WhenKind,
 )
+from app.constants.waits import WAIT_MET_TRIGGER
 from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
 from app.models.quiet_hours_models import QuietHours
-from app.models.task_models import RepeatWhen, TaskDocument
-from app.models.todo_models import ExternalRefSource
+from app.models.task_models import ExternalRefSource, RepeatWhen, TaskDocument
 from app.models.trigger_subscription_models import TriggerOrigin
+from app.models.wait_models import WaitMetPayload
 from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.integrations.integration_accounts import get_account_record
 from app.services.task_files import TaskFileName, file_path
+from app.services.tasks.observations import bounded_observations
 from app.services.tasks.open_state import no_reply_plan_words, wake_reason
-from app.services.todo_observations import bounded_observations
 from app.services.triggers.event_prompt import event_opening
 from app.utils.general_utils import clip_text
 from app.utils.timezone import Timezone
@@ -169,11 +175,11 @@ async def _subtask_states(task: TaskDocument) -> str:
         return ""  # one level deep: a subtask has no subtasks to read
     # One past the limit tells a full page from a cut one.
     children = await task_repository.list_open_gaia(
-        task.user_id, limit=SUB_TODOS_PROMPT_LIMIT + 1, parent_id=task.id
+        task.user_id, limit=SUBTASKS_PROMPT_LIMIT + 1, parent_id=task.id
     )
-    blocks = [_subtask_block(child) for child in children[:SUB_TODOS_PROMPT_LIMIT]]
-    if len(children) > SUB_TODOS_PROMPT_LIMIT:
-        blocks.append(SUBTASKS_CUT_NOTE.format(limit=SUB_TODOS_PROMPT_LIMIT, task_id=task.id))
+    blocks = [_subtask_block(child) for child in children[:SUBTASKS_PROMPT_LIMIT]]
+    if len(children) > SUBTASKS_PROMPT_LIMIT:
+        blocks.append(SUBTASKS_CUT_NOTE.format(limit=SUBTASKS_PROMPT_LIMIT, task_id=task.id))
     return _labelled(SUBTASKS_LABEL, blocks, "\n")
 
 
@@ -184,13 +190,13 @@ def _subtask_block(child: TaskDocument) -> str:
     state = section_body(child.notes, CANVAS_CURRENT_STATE_SECTION)
     return (
         f'- "{child.title}"{flags} (ID: {child.id})\n'
-        f"  Current State: {clip_text(state or '(empty)', SUB_TODO_STATE_EXCERPT_CHARS)}"
+        f"  Current State: {clip_text(state or '(empty)', SUBTASK_STATE_EXCERPT_CHARS)}"
     )
 
 
 async def _reference_learnings(task: TaskDocument) -> str:
     """Gather Learnings from the first referenced tasks the user owns."""
-    wanted = task.references[:REFERENCED_TODOS_PROMPT_LIMIT]
+    wanted = task.references[:REFERENCED_TASKS_PROMPT_LIMIT]
     if not wanted:
         return ""
     owned = {ref.id: ref for ref in await task_repository.find_by_ids(task.user_id, wanted)}
@@ -256,9 +262,36 @@ def build_event_brief(
     local_now: datetime,
     quiet_hours: QuietHours,
 ) -> str:
-    """Assemble the brief of a run its app events woke; its subscriptions wake it again."""
-    opening = event_opening(task.title, task.external_ref, events, local_now, quiet_hours)
-    return _brief(task, context, opening, TASK_WAKES_AGAIN_BRIEF)
+    """Assemble the brief of a run its app events, or a wait the user met, woke.
+
+    App events share one untrusted fence; a met wait is GAIA's own note on what the user
+    did, so it is guidance outside it. A run only a met wait woke spends its check like a
+    scheduled one, unless the task's repeat or subscriptions wake it again.
+    """
+    notes = [
+        WaitMetPayload.model_validate(event.payload).message
+        for event in events
+        if event.trigger_name == WAIT_MET_TRIGGER
+    ]
+    app_events = [event for event in events if event.trigger_name != WAIT_MET_TRIGGER]
+    opening = [
+        *notes,
+        *(
+            event_opening(task.title, task.external_ref, app_events, local_now, quiet_hours)
+            if app_events
+            else [f"The task: {task.title}"]
+        ),
+    ]
+    wakes_again = bool(app_events or task.subscriptions) or task.when.kind is WhenKind.REPEAT
+    closing = (
+        TASK_WAKES_AGAIN_BRIEF if wakes_again else TASK_REARM_BRIEF.format(why=WAIT_MET_WAKE_REASON)
+    )
+    return _brief(task, context, opening, closing)
+
+
+def woken_by_a_met_wait(events: Sequence[TriggerOrigin]) -> bool:
+    """Whether only waits the user met, and no app event, woke the run."""
+    return all(event.trigger_name == WAIT_MET_TRIGGER for event in events)
 
 
 def _brief(task: TaskDocument, context: RunContext, opening: list[str], closing: str) -> str:

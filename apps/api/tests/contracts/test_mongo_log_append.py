@@ -35,7 +35,7 @@ from tests.unit.services.conversation.log_helpers import (
     settled,
     started,
     stop,
-    todo_woke,
+    task_woke,
     user,
 )
 from tests.unit.services.conversation.runtime_doubles import FakeClock
@@ -354,7 +354,7 @@ async def test_a_notice_marks_the_conversation_unread(
     ("asked", "unread"),
     [
         pytest.param(user("m1"), False, id="the-users-message"),
-        pytest.param(todo_woke("t1"), False, id="a-todos-wake"),
+        pytest.param(task_woke("t1"), False, id="a-todos-wake"),
         pytest.param(notice("m1"), True, id="news-the-user-did-not-ask-for"),
     ],
 )

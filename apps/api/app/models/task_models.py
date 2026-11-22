@@ -5,7 +5,8 @@ a task round is its `when`; the app events it listens to are its `subscriptions`
 GAIA task may carry beside any `when` (a dated thread task is also woken by the reply).
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Annotated, Literal, Self
 import uuid
 
@@ -15,9 +16,11 @@ from app.constants.tasks import (
     TASK_ID_HEX_CHARS,
     TASK_ID_PREFIX,
     Assignee,
+    NoReplyPlan,
     TaskFlag,
     TaskRunState,
     ThresholdDirection,
+    WaitingOn,
     WatchEnd,
     WatchReading,
     WatchSourceRung,
@@ -25,16 +28,77 @@ from app.constants.tasks import (
     WatchTemplate,
     WhenKind,
 )
-from app.constants.todos import NoReplyPlan, WaitingOn
 from app.models.document_models import UserScopedDocument
 from app.models.scheduler_models import DeactivationReason
-from app.models.todo_models import ExternalRef, Priority, SubTask, TodoDayWindow
+from app.models.task_day_window_models import TaskDayWindow
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.models.workflow_models import PlaybookDiscard
+from app.schemas.common import ResponseModel
 
 
 def new_task_id() -> str:
     return f"{TASK_ID_PREFIX}{uuid.uuid4().hex[:TASK_ID_HEX_CHARS]}"
+
+
+class Priority(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    NONE = "none"
+
+
+class ExternalRefSource(StrEnum):
+    """The kind of outside object a task is about."""
+
+    GMAIL_THREAD = "gmail_thread"
+    # A mailbox the Inbox desk triages, keyed by its integration id.
+    INBOX_DESK = "inbox_desk"
+
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether this kind's run guidance sets its final report's form, so it reaches the user as written."""
+        return self in (ExternalRefSource.INBOX_DESK, ExternalRefSource.GMAIL_THREAD)
+
+    @property
+    def speaks_under_parent(self) -> bool:
+        """Whether a subtask of this kind still tells the user itself: a thread's news cannot wait for its parent."""
+        return self is ExternalRefSource.GMAIL_THREAD
+
+
+class ExternalRef(BaseModel):
+    """The outside object a task is about; at most one open task per user holds a given ref."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source: ExternalRefSource
+    id: str = Field(min_length=1)
+    # The connected account the object lives in: a Gmail thread id means nothing outside its mailbox.
+    account: str | None = None
+
+
+def default_notify_on_run(*, parent_id: str | None, external_ref: ExternalRef | None) -> bool:
+    """Say whether a task's runs reach the user when nobody chose: a subtask reports to its parent unless its kind speaks."""
+    return parent_id is None or (
+        external_ref is not None and external_ref.source.speaks_under_parent
+    )
+
+
+class SubTask(ResponseModel):
+    model_config = ConfigDict(
+        from_attributes=True, json_schema_serialization_defaults_required=True
+    )
+
+    id: str = Field(default="", description="Unique identifier for the subtask")
+    title: str = Field(..., description="Title of the subtask")
+    completed: bool = Field(default=False, description="Whether the subtask is completed")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class PendingApprovalRef(BaseModel):
+    """A live approval parked against this task: the UI's jump link to the chat holding the card."""
+
+    approval_id: str = Field(..., description="Ledger approval id (ap_*)")
+    conversation_id: str = Field(..., description="Conversation holding the card")
 
 
 # When.
@@ -484,6 +548,6 @@ class TaskQuery(BaseModel):
     due_before: datetime | None = None
     flags: list[TaskFlag] = Field(default_factory=list)
     #: The user's day; the overdue filter reads its start.
-    day_window: TodoDayWindow | None = None
+    day_window: TaskDayWindow | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=50, ge=1, le=100)

@@ -15,8 +15,7 @@ from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.tasks import RUN_TASK_JOB, TaskLogEvent
 from app.constants.trigger_gates import GateOwner
 from app.db.repositories.tasks import task_repository
-from app.models.task_models import TaskDocument
-from app.models.todo_models import ExternalRefSource
+from app.models.task_models import ExternalRefSource, TaskDocument
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,

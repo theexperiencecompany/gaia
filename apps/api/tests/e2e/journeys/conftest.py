@@ -23,7 +23,8 @@ from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.app_events import WEBHOOK_SECRET, BotOutbox, composio_double
-from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
+from tests.e2e._harness.live_stack import live_graphs
+from tests.e2e._harness.task_index import task_search_index
 from tests.e2e._harness.tasks_driver import TasksDriver
 from tests.e2e._harness.turn_queue import TurnQueue
 from tests.helpers import worker_redis_url
@@ -32,8 +33,6 @@ from tests.real_services import mark_real_services
 OWNED_COLLECTIONS = (
     "tasks",
     "task_runs",
-    "todos",
-    "projects",
     "workflows",
     "workflow_executions",
     "playbooks",
@@ -97,10 +96,10 @@ async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
     # The test database outlives a run: an index from an older spec would stand in for this one.
     conversations = mongo_db["conversations"]
     for spec in await conversations.list_indexes().to_list(None):
-        if list(spec["key"].items()) == indexes.CONVERSATION_TODO_BINDING_KEYS:
+        if list(spec["key"].items()) == indexes.CONVERSATION_TASK_BINDING_KEYS:
             await conversations.drop_index(spec["name"])
     await conversations.create_index(
-        indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
+        indexes.CONVERSATION_TASK_BINDING_KEYS, **indexes.CONVERSATION_TASK_BINDING_OPTIONS
     )
     for keys, options in indexes.CONVERSATION_ENTRY_INDEXES:
         await mongo_db[CONVERSATION_ENTRIES_COLLECTION].create_index(keys, **options)
@@ -153,7 +152,7 @@ async def tasks(
     real_limiter = TieredRateLimiter.check_and_increment.__get__(tiered_limiter)
     composio, outbox = composio_double(), BotOutbox(FAKE_USER.user_id)
     with ExitStack() as seams:
-        seams.enter_context(offline_todo_seams())
+        seams.enter_context(task_search_index())
         seams.enter_context(patch.object(tiered_limiter, "check_and_increment", real_limiter))
         seams.enter_context(patch.object(settings, "COMPOSIO_WEBHOOK_SECRET", WEBHOOK_SECRET))
         seams.enter_context(

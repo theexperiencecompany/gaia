@@ -14,12 +14,12 @@ from app.agents.prompts.inbox_desk_prompts import (
 from app.agents.templates.mail_templates import message_view_needs_body
 from app.agents.tools.coding.query_json_tool import query_json
 from app.agents.tools.finish_task_tool import finish_task
-from app.constants import agents as agent_constants, todos as todo_constants
+from app.constants import agents as agent_constants, inbox_desk, task_notes
 from app.constants.desk_buckets import DeskBucket
 from app.constants.email import DEFAULT_SUMMARY_FIELDS
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.inbox_desk import INBOX_DESK_TITLE
 from app.constants.tasks import BLOCKING_FLAGS, Assignee, TaskFlag
-from app.constants.todos import INBOX_DESK_TITLE
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.task_models import TaskDocument
 
@@ -118,19 +118,19 @@ def test_the_window_is_a_day_first_then_unix_seconds_never_a_clock_time() -> Non
 def test_the_query_filters_automated_senders_and_rules_may_change_the_filter() -> None:
     step = "\n".join(_step(FETCH_STEP))
 
-    assert todo_constants.INBOX_DESK_MAIL_FILTER in step
+    assert inbox_desk.INBOX_DESK_MAIL_FILTER in step
     assert "Standing rules may widen or narrow" in step
 
 
 @pytest.mark.regression
 def test_the_fetch_reads_every_tab_but_promotions_and_social() -> None:
     """Regression: a Primary-only fetch never read the work threads that land in Forums."""
-    mail_filter = todo_constants.INBOX_DESK_MAIL_FILTER
+    mail_filter = inbox_desk.INBOX_DESK_MAIL_FILTER
 
     assert mail_filter.startswith("in:inbox -category:promotions -category:social ")
     assert "category:personal" not in mail_filter
     assert "category:primary" not in mail_filter
-    for sender in todo_constants.INBOX_DESK_AUTOMATED_SENDERS:
+    for sender in inbox_desk.INBOX_DESK_AUTOMATED_SENDERS:
         assert f"-from:{sender}" in mail_filter
 
 
@@ -145,7 +145,7 @@ def test_a_document_nobody_awaits_an_answer_on_is_fyi_not_to_reply() -> None:
 
 @pytest.mark.regression
 def test_the_run_leaves_its_log_to_gaia() -> None:
-    """Regression: a live desk logged what its subagents did, as delegating todos are told to."""
+    """Regression: a live desk logged what its subagents did, as delegating tasks are told to."""
     assert (
         "GAIA records this run and your report in your log itself: write nothing about it "
         "anywhere else, not even what your subagents did"
@@ -168,7 +168,7 @@ def test_the_fetched_thread_beats_the_canvas_on_whether_a_draft_still_exists() -
     """Regression: a run reported a draft the user had deleted in Gmail, trusting its canvas."""
     guidance = _thread_guidance()
 
-    assert "The thread as fetched is the truth and canvas.md only your notes" in guidance
+    assert "The thread as fetched is the truth and notes.md only your notes" in guidance
     assert 'a message whose labels include "DRAFT"' in guidance
     assert "labels" in DEFAULT_SUMMARY_FIELDS
 
@@ -264,23 +264,23 @@ def test_each_item_that_needs_the_user_carries_a_short_summary() -> None:
 
     assert (
         "then, unless a Standing rule turns them off, a summary line under it indented two "
-        f"spaces, at most {todo_constants.INBOX_DESK_SUMMARY_MAX_WORDS} words: what they want "
+        f"spaces, at most {inbox_desk.INBOX_DESK_SUMMARY_MAX_WORDS} words: what they want "
         "and the fact that decides it"
     ) in needs_you
 
 
 def test_each_yes_the_desk_needs_is_asked_once_and_never_again() -> None:
     briefing = "\n".join(_step(BRIEFING_STEP))
-    asked = todo_constants.INBOX_DESK_ASKED_ONCE
+    asked = inbox_desk.INBOX_DESK_ASKED_ONCE
 
-    for ask in todo_constants.InboxDeskAsk:
+    for ask in inbox_desk.InboxDeskAsk:
         assert f"{ask}: when" in briefing
     assert (
         f'Ask one only while no Standing rule settles it and Current State\'s "{asked}:" line '
         "does not name it, then add its name and today's date to that line"
     ) in briefing
     assert "Never ask it again." in briefing
-    assert f'edit your canvas.md only for step 6 and the "{asked}:" line' in (
+    assert f'edit your notes.md only for step 6 and the "{asked}:" line' in (
         INBOX_DESK_RUN_GUIDANCE
     )
 
@@ -306,7 +306,7 @@ def test_a_gmail_change_is_suggested_only_once_a_pattern_has_earned_it() -> None
     assert "Only what labeling and archiving can do; never a Gmail filter." in suggested
     assert (
         "Suggest at most one entry: high confidence, held "
-        f"{todo_constants.INBOX_DESK_SUGGEST_AFTER_DAYS} days or more, no suggested date yet; "
+        f"{inbox_desk.INBOX_DESK_SUGGEST_AFTER_DAYS} days or more, no suggested date yet; "
         "set its suggested date to today."
     ) in "\n".join(_step(OBSERVATIONS_STEP))
 
@@ -414,8 +414,7 @@ def test_a_deadline_from_mail_is_a_reminder_line() -> None:
 
 def test_each_item_is_one_short_line_in_one_shape() -> None:
     assert (
-        f'one "- " line per item of at most {todo_constants.INBOX_DESK_BRIEFING_ITEM_MAX_WORDS} '
-        "words"
+        f'one "- " line per item of at most {inbox_desk.INBOX_DESK_BRIEFING_ITEM_MAX_WORDS} words'
     ) in _step(BRIEFING_STEP)[0]
     assert '"<who> · <what> · <when> · <status>"' in _briefing_line("Needs you")
     assert "in the same form" in _briefing_line("Waiting on others")
@@ -434,13 +433,13 @@ def test_the_summary_says_what_the_draft_says() -> None:
 
 def test_the_long_sections_are_capped() -> None:
     assert (
-        f'at most {todo_constants.INBOX_DESK_NEEDS_YOU_MAX_ITEMS} items, then "+<n> more"'
+        f'at most {inbox_desk.INBOX_DESK_NEEDS_YOU_MAX_ITEMS} items, then "+<n> more"'
     ) in _briefing_line("Needs you")
     assert "that are overdue or changed" in _briefing_line("Waiting on others")
     assert (
         "grouped by kind, each line its count and a few words on what it was, like "
         '"3 product updates · Linear, Vercel pricing, Notion AI", at most '
-        f"{todo_constants.INBOX_DESK_FYI_MAX_LINES} lines"
+        f"{inbox_desk.INBOX_DESK_FYI_MAX_LINES} lines"
     ) in _briefing_line("FYI")
 
 
@@ -506,7 +505,7 @@ def test_the_briefing_lists_only_what_this_run_or_a_subtask_holds() -> None:
 def test_a_desk_run_never_writes_a_standing_rule_of_its_own() -> None:
     """Regression: a run added "do not track GitHub notifications" to Standing rules unasked."""
     assert (
-        "Standing rules are the user's own instructions, never yours, in canvas.md or a task "
+        "Standing rules are the user's own instructions, never yours, in notes.md or a task "
         "you open: what you notice goes to observations.md."
     ) in INBOX_DESK_RUN_GUIDANCE
 
@@ -657,7 +656,7 @@ def test_a_watched_thread_tells_the_user_only_what_cannot_wait_for_the_briefing(
 
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
     assert (
-        "canvas.md's Standing rules (the user's instructions) beat the conclusions in "
+        "notes.md's Standing rules (the user's instructions) beat the conclusions in "
         "observations.md (patterns you learned), and both beat every default below"
     ) in "\n".join(_step(1))
 
@@ -668,24 +667,24 @@ def test_the_seeded_observations_have_their_sections_and_one_block_format() -> N
         r"<!-- one block per pattern, under its section:\n(.+?)\n-->", seed, re.DOTALL
     )
     keys = [
-        todo_constants.OBSERVATION_CONCLUSION,
-        todo_constants.OBSERVATION_CONFIDENCE,
-        todo_constants.OBSERVATION_FIRST_SEEN,
-        todo_constants.OBSERVATION_LAST_SEEN,
-        todo_constants.OBSERVATION_DAILY_COUNTS,
-        todo_constants.OBSERVATION_EARLIER,
-        todo_constants.OBSERVATION_SUGGESTED,
+        task_notes.OBSERVATION_CONCLUSION,
+        task_notes.OBSERVATION_CONFIDENCE,
+        task_notes.OBSERVATION_FIRST_SEEN,
+        task_notes.OBSERVATION_LAST_SEEN,
+        task_notes.OBSERVATION_DAILY_COUNTS,
+        task_notes.OBSERVATION_EARLIER,
+        task_notes.OBSERVATION_SUGGESTED,
     ]
 
     assert re.findall(r"^## (.+)$", seed, re.MULTILINE) == [
-        todo_constants.OBSERVATIONS_SENDERS_SECTION,
-        todo_constants.OBSERVATIONS_RECURRING_SECTION,
-        todo_constants.OBSERVATIONS_PEOPLE_SECTION,
+        task_notes.OBSERVATIONS_SENDERS_SECTION,
+        task_notes.OBSERVATIONS_RECURRING_SECTION,
+        task_notes.OBSERVATIONS_PEOPLE_SECTION,
     ]
     assert block is not None
     assert re.findall(r"^- ([a-z ]+):", block.group(1), re.MULTILINE) == keys
-    assert f"the {todo_constants.OBSERVATION_DAILY_COUNT_DAYS} most recent days" in block.group(1)
-    assert len(seed) < todo_constants.OBSERVATIONS_PROMPT_MAX_CHARS
+    assert f"the {task_notes.OBSERVATION_DAILY_COUNT_DAYS} most recent days" in block.group(1)
+    assert len(seed) < task_notes.OBSERVATIONS_PROMPT_MAX_CHARS
 
 
 def test_observations_keep_their_evidence_and_revise_conclusions_only_on_it() -> None:
@@ -699,11 +698,11 @@ def test_observations_keep_their_evidence_and_revise_conclusions_only_on_it() ->
     assert "(a later run the same day adds to it)" in step
     assert (
         "an address gets its entry the first day it reaches "
-        f"{todo_constants.OBSERVATION_MIN_MESSAGES}, never for a one-off"
+        f"{task_notes.OBSERVATION_MIN_MESSAGES}, never for a one-off"
     ) in step
     assert "Change a conclusion only when the evidence has moved for several days" in step
-    assert f"keep the {todo_constants.OBSERVATION_DAILY_COUNT_DAYS} most recent days" in step
-    assert f"under {todo_constants.OBSERVATIONS_MAX_CHARS} characters" in step
+    assert f"keep the {task_notes.OBSERVATION_DAILY_COUNT_DAYS} most recent days" in step
+    assert f"under {task_notes.OBSERVATIONS_MAX_CHARS} characters" in step
 
 
 def test_a_new_or_changed_conclusion_is_announced_once_in_the_briefing() -> None:
@@ -726,7 +725,7 @@ def test_observations_steer_the_triage_never_the_fetch() -> None:
 
 def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     assert _mail_step("b").startswith('Sweep "<window>" once, for counts only')
-    assert _mail_step("a").startswith(f'Fetch "<window> {todo_constants.INBOX_DESK_MAIL_FILTER}"')
+    assert _mail_step("a").startswith(f'Fetch "<window> {inbox_desk.INBOX_DESK_MAIL_FILTER}"')
     assert "Filtered: what the sweeps counted that no section above lists" in (
         "\n".join(_step(BRIEFING_STEP))
     )
@@ -796,7 +795,7 @@ def test_feedback_not_to_reply_is_an_outcome_applied_to_each_thread_it_covers() 
 
 def test_action_mail_from_automated_senders_is_fetched_too() -> None:
     """Regression: Cloudflare's payment-failed notices come from noreply@ and were never read."""
-    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+    action_filter = inbox_desk.INBOX_DESK_ACTION_MAIL_FILTER
 
     assert f'"<window> {action_filter}"' in _mail_step("a")
     assert action_filter.startswith("in:inbox ")
@@ -833,16 +832,16 @@ def test_a_routine_sign_in_notice_is_never_action_needed() -> None:
 
 
 def test_the_action_fetch_leaves_out_routine_sign_in_subjects() -> None:
-    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+    action_filter = inbox_desk.INBOX_DESK_ACTION_MAIL_FILTER
 
-    for term in todo_constants.INBOX_DESK_ROUTINE_SIGN_IN_TERMS:
+    for term in inbox_desk.INBOX_DESK_ROUTINE_SIGN_IN_TERMS:
         assert f"-subject:{term}" in action_filter
     assert '"' not in action_filter and "{" not in action_filter
 
 
 def test_a_security_problem_is_fetched_even_when_its_subject_reads_like_a_sign_in() -> None:
     """Review: "new sign-in blocked" or "your account is locked" never reached the desk."""
-    action_filter = todo_constants.INBOX_DESK_ACTION_MAIL_FILTER
+    action_filter = inbox_desk.INBOX_DESK_ACTION_MAIL_FILTER
     routine, problems = action_filter.removeprefix("in:inbox (").split(" OR (", 1)
 
     assert routine.startswith("(") and "-subject:(new sign-in)" in routine

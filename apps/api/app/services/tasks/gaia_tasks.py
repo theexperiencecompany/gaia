@@ -15,12 +15,11 @@ from app.models.task_models import TaskDocument, TaskUpdate
 from app.services.analytics_service import capture
 from app.services.tasks.arming import arm_task
 from app.services.tasks.completion import complete_task
-from app.services.tasks.errors import SubtaskParentError
+from app.services.tasks.errors import OpenStateError, SubtaskParentError
 from app.services.tasks.family import require_subtask_parent
 from app.services.tasks.open_state import open_state_problems
 from app.services.tasks.run_records import log_line, record_event
 from app.services.tasks.search_index import index_task
-from app.services.todos.errors import OpenStateError
 from app.utils.auth_utils import require_owner
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.tasks import TaskCreated, TaskToggled

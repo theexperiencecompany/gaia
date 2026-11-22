@@ -105,10 +105,11 @@ async def _generated_workflow(db: AsyncIOMotorDatabase[dict[str, Any]], title: s
             steps=[WorkflowStep(title="Find options", category="search", description="Look it up")],
         ),
         USER,
-        is_todo_workflow=True,
-        source_todo_id=todo_id,
     )
     assert workflow.id is not None
+    await db["workflows"].update_one(
+        {"_id": workflow.id}, {"$set": {"is_todo_workflow": True, "source_todo_id": todo_id}}
+    )
     await db["todos"].update_one({"_id": ObjectId(todo_id)}, {"$set": {"workflow_id": workflow.id}})
     return workflow.id
 
@@ -129,13 +130,7 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
 
     legacy = LegacyTodos(db, USER)
     dentist = await legacy.tracked_todo("Find a dentist near the office")
-    await wait_for_user(
-        AgentConfigurableView(execution_mode="background", active_todo_id=dentist),
-        USER,
-        WaitCondition.INTEGRATION_CONNECTED,
-        "notion",
-        "Notion",
-    )
+    await legacy.waits_for_user_to_connect(dentist, "notion", "Notion")
     asked = await legacy.tracked_todo("Book the Lisbon flight")
     await legacy.asked(asked, QUESTION, NoReply.HOLD.value)
     parent = await legacy.tracked_todo("Move flats on the 14th")

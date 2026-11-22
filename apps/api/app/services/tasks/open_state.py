@@ -8,16 +8,17 @@ run that ends without one.
 
 from datetime import datetime, timedelta
 
-from app.constants.tasks import Assignee, WhenKind
-from app.constants.todos import (
+from app.constants.tasks import (
     MAX_HOLD_CHECK_AHEAD,
     MAX_HOLD_CHECKS,
     MAX_NEXT_CHECK_AHEAD,
     MAX_QUESTION_EXPIRY,
     MAX_REASKS,
+    Assignee,
     NoReplyPlan,
     WaitingOn,
     WakeReason,
+    WhenKind,
 )
 from app.models.task_models import TaskDocument, TaskUpdate, Waiting, WaitingQuestion
 

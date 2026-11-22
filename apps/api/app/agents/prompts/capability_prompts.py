@@ -14,7 +14,7 @@ rendered prompt.
 from collections import Counter
 
 from app.config.oauth_config import all_integrations, get_integration_by_id
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.inbox_desk import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType

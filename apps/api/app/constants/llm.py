@@ -183,7 +183,7 @@ RECURSION_HWM_FRACTION = 0.80
 RECURSION_WRAPUP_REMAINING_FRACTION = 0.2
 RECURSION_WRAPUP_MIN_STEPS = 6
 
-# Nudges the executor on unconfirmed work (a pending tracked todo, or no real
+# Nudges the executor on unconfirmed work (a pending GAIA task, or no real
 # tool ran). Scoped to the CURRENT delegation — counting the executor thread
 # instead let each delegation inherit the previous one's nudges.
 MAX_COMPLETION_NUDGES = 1
@@ -199,8 +199,8 @@ COMPLETION_NUDGE_MESSAGE = (
     "that more results are coming ('hang tight', 'still digging'): either do the "
     "work now with tools, or state plainly what you got and what failed. Then "
     "finish with finish_task: your complete final result and its outcome, backed "
-    "by this run's tool calls (done: the work ran; schedule: a tracked todo "
-    "with a schedule or recurrence was set; subscribe: the trigger watch was set). "
+    "by this run's tool calls (done: the work ran; schedule: a GAIA task "
+    "with a next check or repeat was set; subscribe: the app-event subscription was set). "
     "Anything else is ask or blocked.]"
 )
 # A plain-text stop that PROMISES future work is never valid: the run is over the

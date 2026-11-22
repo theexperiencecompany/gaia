@@ -19,9 +19,7 @@ from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
 import pytest
 
-from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingPhase, UserDocument
-from app.utils.errors import AppError
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
@@ -33,7 +31,6 @@ from app.workers.tasks.reminder_tasks import (
 from app.workers.tasks.user_tasks import check_inactive_users
 from app.workers.tasks.workflow_tasks import (
     execute_workflow_by_id,
-    process_workflow_generation_task,
 )
 from tests.helpers import users_get
 from tests.unit.services.conversation.log_helpers import EMPTY
@@ -702,118 +699,3 @@ class TestOnboardingTask:
 
             mock_service.assert_awaited_once_with(FAKE_USER_ID)
             assert result == f"Gmail personalization completed for user {FAKE_USER_ID}"
-
-
-# ---------------------------------------------------------------------------
-# TEST 9: Workflow generation task
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestWorkflowGenerationTask:
-    """Verify workflow generation creates workflow and links to todo."""
-
-    async def test_generation_success_links_workflow_to_todo(self):
-        """Successful generation should create a workflow, update the todo, and broadcast."""
-
-        mock_workflow = MagicMock()
-        mock_workflow.id = "wf-gen-1"
-        mock_workflow.steps = [MagicMock(), MagicMock(), MagicMock()]
-        mock_workflow.model_dump = MagicMock(return_value={"id": "wf-gen-1"})
-
-        linked_todo = TodoDocument.model_validate(
-            {
-                "id": "aaaaaaaaaaaaaaaaaaaaaaaa",
-                "user_id": FAKE_USER_ID,
-                "title": "Write report",
-                "workflow_id": "wf-gen-1",
-            }
-        )
-        mock_link_workflow = AsyncMock(return_value=linked_todo)
-
-        mock_ws_manager = AsyncMock()
-        mock_ws_manager.broadcast_to_user = AsyncMock()
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.todo_repository.link_workflow", mock_link_workflow
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws_manager,
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService",
-            ) as mock_queue_svc,
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=mock_workflow)
-            mock_queue_svc.clear_workflow_generating_flag = AsyncMock()
-
-            result = await process_workflow_generation_task(
-                ARQ_CTX,
-                todo_id="aaaaaaaaaaaaaaaaaaaaaaaa",
-                user_id=FAKE_USER_ID,
-                title="Write report",
-                description="Quarterly report",
-            )
-
-            # Verify workflow was created
-            mock_wf_svc.create_workflow.assert_awaited_once()
-
-            # Verify the todo was linked through the repository's one guarded writer,
-            # scoped to the owner.
-            mock_link_workflow.assert_awaited_once_with(
-                "aaaaaaaaaaaaaaaaaaaaaaaa", user_id=FAKE_USER_ID, workflow_id="wf-gen-1"
-            )
-
-            # Verify WebSocket broadcast
-            mock_ws_manager.broadcast_to_user.assert_awaited_once()
-            ws_data = mock_ws_manager.broadcast_to_user.call_args[0][1]
-            assert ws_data["type"] == "workflow.generated"
-            assert ws_data["todo_id"] == "aaaaaaaaaaaaaaaaaaaaaaaa"
-
-            # Verify generating flag cleared
-            mock_queue_svc.clear_workflow_generating_flag.assert_awaited_once_with(
-                "aaaaaaaaaaaaaaaaaaaaaaaa"
-            )
-
-            assert "Successfully" in result
-
-    async def test_generation_failure_clears_flag_and_broadcasts_error(self):
-        """When workflow generation fails, clear the flag and broadcast failure."""
-
-        mock_ws_manager = AsyncMock()
-        mock_ws_manager.broadcast_to_user = AsyncMock()
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws_manager,
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService",
-            ) as mock_queue_svc,
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=None)
-            mock_queue_svc.clear_workflow_generating_flag = AsyncMock()
-
-            with pytest.raises(AppError, match="No workflow created"):
-                await process_workflow_generation_task(
-                    ARQ_CTX,
-                    todo_id="bbbbbbbbbbbbbbbbbbbbbbbb",
-                    user_id=FAKE_USER_ID,
-                    title="Fail task",
-                )
-
-            # Verify flag cleared even on failure
-            mock_queue_svc.clear_workflow_generating_flag.assert_awaited_once_with(
-                "bbbbbbbbbbbbbbbbbbbbbbbb"
-            )
-
-            # Verify failure WebSocket broadcast
-            mock_ws_manager.broadcast_to_user.assert_awaited_once()
-            ws_data = mock_ws_manager.broadcast_to_user.call_args[0][1]
-            assert ws_data["type"] == "workflow.generation_failed"
-            assert ws_data["todo_id"] == "bbbbbbbbbbbbbbbbbbbbbbbb"

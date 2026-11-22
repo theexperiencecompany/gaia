@@ -20,7 +20,6 @@ from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
-    CreateWorkflowFromTodoRequest,
     CreateWorkflowRequest,
     GenerateWorkflowPromptRequest,
     GenerateWorkflowPromptResponse,
@@ -28,8 +27,6 @@ from app.models.workflow_models import (
     PublishWorkflowResponse,
     RegenerateStepsRequest,
     ResetWorkflowResponse,
-    TriggerConfig,
-    TriggerType,
     UpdateWorkflowRequest,
     WorkflowCreator,
     WorkflowExecutionRequest,
@@ -489,70 +486,6 @@ async def regenerate_workflow_steps(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to regenerate workflow steps",
-        ) from e
-
-
-@router.post("/workflows/from-todo", response_model=WorkflowResponse)
-@tiered_rate_limit("workflow_operations")
-async def create_workflow_from_todo(
-    request: CreateWorkflowFromTodoRequest,
-    user: AuthenticatedUser = Depends(get_current_user),
-    user_timezone: str = Depends(get_user_timezone_from_preferences),
-) -> WorkflowResponse:
-    """Create a workflow from a todo item with automatic timezone detection."""
-    log.set(
-        user={"id": user.user_id},
-        workflow=WorkflowContext(operation="create"),
-    )
-
-    try:
-        todo_title = request.todo_title
-        todo_description = request.todo_description
-
-        if not request.todo_id or not todo_title:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="todo_id and todo_title are required",
-            )
-
-        # Create workflow using modern workflow system
-        workflow_request = CreateWorkflowRequest(
-            title=f"Todo: {todo_title}",
-            description=f"Workflow for todo: {todo_title}",
-            prompt=todo_description or f"Complete todo: {todo_title}",
-            trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
-            generate_immediately=True,  # Generate steps immediately for todos
-        )
-
-        workflow = await WorkflowService.create_workflow(
-            workflow_request, user.user_id, user_timezone=user_timezone
-        )
-
-        log.set(
-            workflow=WorkflowContext(
-                id=str(workflow.id),
-                title=workflow.title,
-                steps_count=len(workflow.steps) if workflow.steps else None,
-            ),
-            outcome="success",
-        )
-        capture(UserId(user.user_id), WorkflowCreated(origin="todo_converted"))
-        return WorkflowResponse(
-            workflow=as_read_view(workflow), message="Workflow created from todo successfully"
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.WORKFLOW} Error creating workflow from todo",
-            user_id=user.user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create workflow from todo",
         ) from e
 
 

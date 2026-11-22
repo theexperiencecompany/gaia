@@ -251,31 +251,6 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         )
         return row if amended else None
 
-    async def list_by_owners(
-        self, owner_run_type: str, owner_ids: list[str], *, created_since: datetime
-    ) -> list[ApprovalLedgerDocument]:
-        """Rows background owners registered since created_since, oldest first.
-
-        Batch read for list views (one query per page, not per row). Whether one still
-        waits is the conversation log's to say, not the row's.
-        """
-        if not owner_run_type or not owner_ids:
-            return []
-        cursor = (
-            self._raw_collection()
-            .find(
-                {
-                    "owner_run_type": owner_run_type,
-                    "owner_id": {"$in": owner_ids},
-                    "created_at": {"$gte": created_since},
-                }
-            )
-            .sort("created_at", 1)
-        )
-        return [
-            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
-        ]
-
     async def list_by_tasks(
         self, task_ids: list[str], *, created_since: datetime
     ) -> list[ApprovalLedgerDocument]:

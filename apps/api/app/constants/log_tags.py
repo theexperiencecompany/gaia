@@ -45,7 +45,7 @@ class LogTag:
     CHAT: Final[str] = "[CHAT]"
     WORKFLOW: Final[str] = "[WORKFLOW]"  # services/workflow, system_workflows, utils
     ONBOARDING: Final[str] = "[ONBOARDING]"  # services/onboarding
-    TODO: Final[str] = "[TODO]"  # services/todos
+    TASK: Final[str] = "[TASK]"  # services/tasks
     PAYMENT: Final[str] = "[PAYMENT]"  # services/payments
     NOTIFICATION: Final[str] = "[NOTIFICATION]"  # utils/notification
     DESKTOP: Final[str] = "[DESKTOP]"  # services/desktop

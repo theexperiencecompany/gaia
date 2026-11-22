@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 from pydantic import ValidationError
 import pytest
 
-from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
+from app.agents.prompts.task_prompts import TASK_REARM_BRIEF
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECISION_NUDGE_MESSAGE
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
@@ -500,10 +500,10 @@ class TestCompletionNudgeWiring:
         assert result["messages"][-1].content == "Finished."
 
     @pytest.mark.asyncio
-    async def test_a_plain_text_stop_that_strands_a_tracked_todo_is_nudged_once(self):
-        """A scheduled run spends the check that woke it; stopping without closing or re-checking is the forever-open todo."""
+    async def test_a_plain_text_stop_that_strands_a_gaia_task_is_nudged_once(self):
+        """A scheduled run spends the check that woke it; stopping without closing or re-checking is the forever-open task."""
         thread = [
-            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}"),
+            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TASK_REARM_BRIEF}"),
             AIMessage(content="", tool_calls=[{"name": "read", "args": {}, "id": "c1"}]),
             ToolMessage(content="canvas", tool_call_id="c1", name="read"),
         ]
@@ -523,7 +523,7 @@ class TestCompletionNudgeWiring:
     @pytest.mark.asyncio
     async def test_a_scheduled_run_that_sets_its_next_check_is_not_nudged(self):
         thread = [
-            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}"),
+            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TASK_REARM_BRIEF}"),
             AIMessage(
                 content="",
                 tool_calls=[

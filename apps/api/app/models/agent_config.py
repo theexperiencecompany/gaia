@@ -153,7 +153,6 @@ class AgentConfigurable(TypedDict, total=False):
     #: provider holding the warm prompt cache (see build_agent_config).
     session_id: str | None
     stream_id: str | None
-    active_todo_id: str | None
     #: The GAIA task a background run is working; its approvals park on it.
     active_task_id: str | None
     execution_mode: ExecutionMode
@@ -242,7 +241,6 @@ class AgentConfigurableView(BaseModel):
     subagent_id: str | None = None
     vfs_session_id: str | None = None
     stream_id: str | None = None
-    active_todo_id: str | None = None
     active_task_id: str | None = None
     execution_mode: ExecutionMode | None = None
     conversation_source: str | None = None

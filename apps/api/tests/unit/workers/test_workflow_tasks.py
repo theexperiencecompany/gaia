@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
-from bson import ObjectId
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import (
@@ -55,7 +54,6 @@ from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.validators import WorkflowValidator
 from app.utils import auth_utils
-from app.utils.errors import AppError
 from app.utils.notification.orchestrator import Notified
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from app.workers.tasks.workflow_tasks import (
@@ -64,13 +62,11 @@ from app.workers.tasks.workflow_tasks import (
     execute_workflow_as_chat,
     execute_workflow_by_id,
     generate_workflow_steps,
-    process_workflow_generation_task,
     regenerate_workflow_steps,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.workflows import (
-    WorkflowCreated,
     WorkflowExecuted,
     WorkflowResultDelivered,
 )
@@ -111,8 +107,6 @@ def _make_workflow(
     user_id: str = USER_ID,
     title: str = "Daily Standup",
     steps: list | None = None,
-    is_todo_workflow: bool = False,
-    source_todo_id: str | None = None,
 ):
     wf = MagicMock()
     wf.id = workflow_id or str(uuid4())
@@ -121,8 +115,6 @@ def _make_workflow(
     wf.description = "A test workflow"
     wf.prompt = "Run the standup"
     wf.steps = steps or [WorkflowStep(id="s1", title="Step 1", description="Do it")]
-    wf.is_todo_workflow = is_todo_workflow
-    wf.source_todo_id = source_todo_id
     wf.gate = None
     wf.model_dump = MagicMock(return_value={"id": wf.id, "title": wf.title})
     return wf
@@ -711,178 +703,6 @@ class TestAWorkflowWhoseOwnerIsNotAUser:
 # ---------------------------------------------------------------------------
 
 
-class TestProcessWorkflowGenerationTask:
-    """Tests for process_workflow_generation_task."""
-
-    @pytest.fixture
-    def ctx(self) -> dict:
-        return {}
-
-    async def test_successful_generation_returns_success_message(self, ctx, _no_real_analytics):
-        # Must be a valid 24-char hex ObjectId string because production code
-        # calls ObjectId(todo_id) before the mocked update_one is invoked.
-        todo_id = "507f1f77bcf86cd799439011"
-        user_id = USER_ID
-        workflow = _make_workflow(user_id=user_id)
-
-        mock_todo_result = MagicMock()
-        mock_todo_result.modified_count = 1
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
-
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            result = await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", "Get milk and eggs"
-            )
-
-        assert "Successfully generated standalone workflow" in result
-        assert workflow.id in result
-        assert todo_id in result
-        mock_repo.link_workflow.assert_awaited_once_with(
-            todo_id, user_id=user_id, workflow_id=workflow.id
-        )
-
-        _no_real_analytics.assert_called_once()
-        assert _no_real_analytics.call_args.args == (
-            UserId(user_id),
-            WorkflowCreated(
-                origin="todo_requested",
-                workflow_id=workflow.id,
-                steps_count=len(workflow.steps),
-                is_todo_workflow=True,
-            ),
-        )
-
-    async def test_workflow_creation_returns_none_raises(self, ctx):
-        todo_id = str(uuid4())
-        user_id = USER_ID
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=None)
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            with pytest.raises(AppError, match="Workflow generation failed"):
-                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
-
-    async def test_todo_not_updated_raises(self, ctx):
-        # Must be a valid 24-char hex ObjectId string because production code
-        # calls ObjectId(todo_id) before the mocked update_one is invoked.
-        todo_id = "507f1f77bcf86cd799439012"
-        user_id = USER_ID
-        workflow = _make_workflow(user_id=user_id)
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_wf_svc.delete_workflow = AsyncMock(return_value=True)
-            mock_repo.link_workflow = AsyncMock(return_value=None)
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            with pytest.raises(AppError, match="not found or not updated") as refused:
-                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
-
-        assert refused.value.why == "the todo was deleted, or is tracked and never links a workflow"
-        # A refused link (deleted or tracked todo) must not leave an orphan "Todo:" workflow.
-        mock_wf_svc.delete_workflow.assert_awaited_once_with(workflow.id, user_id)
-
-    async def test_websocket_failure_event_sent_on_exception(self, ctx):
-        todo_id = str(ObjectId())
-        user_id = USER_ID
-
-        mock_ws = AsyncMock()
-        mock_ws.broadcast_to_user = AsyncMock()
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(side_effect=RuntimeError("DB error"))
-
-            with pytest.raises(RuntimeError):
-                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
-
-        mock_ws.broadcast_to_user.assert_awaited()
-        call_args = mock_ws.broadcast_to_user.call_args
-        payload = call_args[0][1]
-        assert payload["type"] == "workflow.generation_failed"
-        assert payload["todo_id"] == todo_id
-
-    async def test_empty_description_uses_no_details_section(self, ctx):
-        """When description is empty the prompt template omits the details section."""
-        # Must be a valid 24-char hex ObjectId string because production code
-        # calls ObjectId(todo_id) before the mocked update_one is invoked.
-        todo_id = "507f1f77bcf86cd799439013"
-        user_id = USER_ID
-        workflow = _make_workflow(user_id=user_id)
-        mock_todo_result = MagicMock()
-        mock_todo_result.modified_count = 1
-
-        captured_requests = []
-
-        async def capture_create(request, uid, **kwargs):
-            captured_requests.append(request)
-            return workflow
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(side_effect=capture_create)
-            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            await process_workflow_generation_task(ctx, todo_id, user_id, "Buy groceries")
-
-        assert len(captured_requests) == 1
-        # The **Details:** section should be absent when the (default) description is empty
-        assert "**Details:**" not in captured_requests[0].prompt
-
-
 # ---------------------------------------------------------------------------
 # regenerate_workflow_steps
 # ---------------------------------------------------------------------------
@@ -941,7 +761,7 @@ class TestGenerateWorkflowSteps:
     async def test_successful_generation_returns_success(self, ctx):
         workflow_id = str(uuid4())
         user_id = USER_ID
-        workflow = _make_workflow(workflow_id=workflow_id, is_todo_workflow=False)
+        workflow = _make_workflow(workflow_id=workflow_id)
 
         with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc._generate_workflow_steps = AsyncMock()
@@ -951,62 +771,6 @@ class TestGenerateWorkflowSteps:
 
         assert "Successfully generated steps" in result
         assert workflow_id in result
-
-    async def test_todo_workflow_sends_websocket_event(self, ctx):
-        workflow_id = str(uuid4())
-        user_id = USER_ID
-        todo_id = str(uuid4())
-        workflow = _make_workflow(
-            workflow_id=workflow_id,
-            is_todo_workflow=True,
-            source_todo_id=todo_id,
-        )
-
-        mock_ws = AsyncMock()
-        mock_ws.broadcast_to_user = AsyncMock()
-
-        with (
-            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-        ):
-            mock_wf_svc._generate_workflow_steps = AsyncMock()
-            mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
-
-            await generate_workflow_steps(ctx, workflow_id, user_id)
-
-        mock_ws.broadcast_to_user.assert_awaited_once()
-        payload = mock_ws.broadcast_to_user.call_args[0][1]
-        assert payload["type"] == "workflow.generated"
-        assert payload["todo_id"] == todo_id
-
-    async def test_non_todo_workflow_does_not_send_websocket(self, ctx):
-        workflow_id = str(uuid4())
-        user_id = USER_ID
-        workflow = _make_workflow(
-            workflow_id=workflow_id,
-            is_todo_workflow=False,
-            source_todo_id=None,
-        )
-
-        mock_ws = AsyncMock()
-        mock_ws.broadcast_to_user = AsyncMock()
-
-        with (
-            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-        ):
-            mock_wf_svc._generate_workflow_steps = AsyncMock()
-            mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
-
-            await generate_workflow_steps(ctx, workflow_id, user_id)
-
-        mock_ws.broadcast_to_user.assert_not_awaited()
 
     async def test_exception_propagates(self, ctx):
         workflow_id = str(uuid4())
@@ -1666,204 +1430,6 @@ class TestExecuteWorkflowByIdNotifications:
 # ---------------------------------------------------------------------------
 
 
-class TestProcessWorkflowGenerationTaskAdditional:
-    """Additional edge-case tests for process_workflow_generation_task."""
-
-    @pytest.fixture
-    def ctx(self) -> dict:
-        return {}
-
-    async def test_workflow_created_with_no_steps_raises_app_error(self, ctx):
-        """If workflow is created but has zero steps, an AppError is raised."""
-        todo_id = str(ObjectId())
-        user_id = USER_ID
-        workflow = _make_workflow(user_id=user_id)
-        # Override steps to empty list directly (the helper uses `or` which
-        # would replace [] with a default step)
-        workflow.steps = []
-        workflow.error_message = "LLM returned empty plan"
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            with pytest.raises(AppError, match="has no steps"):
-                await process_workflow_generation_task(ctx, todo_id, user_id, "Empty Workflow")
-
-    async def test_workflow_created_no_steps_error_message_none(self, ctx):
-        """If workflow has no steps and error_message is None, 'unknown error' is used."""
-        todo_id = str(ObjectId())
-        user_id = USER_ID
-        workflow = _make_workflow(user_id=user_id)
-        workflow.steps = []
-        workflow.error_message = None
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            with pytest.raises(AppError, match="unknown error"):
-                await process_workflow_generation_task(ctx, todo_id, user_id, "No Steps")
-
-    async def test_websocket_broadcast_failure_on_success_does_not_raise(self, ctx):
-        """When the websocket broadcast fails during the success path, the function still returns success."""
-        todo_id = "507f1f77bcf86cd799439014"
-        user_id = USER_ID
-        workflow = _make_workflow(user_id=user_id)
-
-        mock_todo_result = MagicMock()
-        mock_todo_result.modified_count = 1
-
-        mock_ws = MagicMock()
-        mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("WebSocket error"))
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
-
-            result = await process_workflow_generation_task(ctx, todo_id, user_id, "Test Todo")
-
-        assert "Successfully generated" in result
-
-    async def test_clear_flag_failure_on_exception_does_not_mask_error(self, ctx):
-        """When clear_workflow_generating_flag fails during exception handling, the original exception is still raised."""
-        todo_id = str(ObjectId())
-        user_id = USER_ID
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(side_effect=RuntimeError("Redis down")),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(side_effect=ValueError("Original error"))
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            with pytest.raises(ValueError, match="Original error"):
-                await process_workflow_generation_task(ctx, todo_id, user_id, "Failing Todo")
-
-    async def test_websocket_failure_event_broadcast_fails_gracefully(self, ctx):
-        """When the failure websocket broadcast itself fails, the original exception is still raised."""
-        todo_id = str(ObjectId())
-        user_id = USER_ID
-
-        mock_ws = MagicMock()
-        mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("WS broadcast error"))
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(side_effect=RuntimeError("DB error"))
-
-            with pytest.raises(RuntimeError, match="DB error"):
-                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
-
-    async def test_description_with_content_includes_details_section(self, ctx):
-        """When description is provided, the prompt contains a **Details:** section."""
-        todo_id = "507f1f77bcf86cd799439015"
-        user_id = USER_ID
-        workflow = _make_workflow(user_id=user_id)
-
-        mock_todo_result = MagicMock()
-        mock_todo_result.modified_count = 1
-
-        captured_requests = []
-
-        async def capture_create(request, uid, **kwargs):
-            captured_requests.append(request)
-            return workflow
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(side_effect=capture_create)
-            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            await process_workflow_generation_task(
-                ctx,
-                todo_id,
-                user_id,
-                "Buy groceries",
-                description="Milk, eggs, bread",
-            )
-
-        assert len(captured_requests) == 1
-        assert "**Details:** Milk, eggs, bread" in captured_requests[0].prompt
-
-    async def test_workflow_with_no_id_raises(self, ctx):
-        """If workflow.id is falsy after creation, it raises AppError."""
-        todo_id = str(ObjectId())
-        user_id = USER_ID
-        workflow = MagicMock()
-        workflow.id = None
-
-        with (
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
-                AsyncMock(),
-            ),
-        ):
-            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_ws = AsyncMock()
-            mock_ws.broadcast_to_user = AsyncMock()
-            mock_ws_mgr.return_value = mock_ws
-
-            with pytest.raises(AppError, match="Workflow generation failed"):
-                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
-
-
 # ---------------------------------------------------------------------------
 # generate_workflow_steps — additional coverage
 # ---------------------------------------------------------------------------
@@ -1875,85 +1441,6 @@ class TestGenerateWorkflowStepsAdditional:
     @pytest.fixture
     def ctx(self) -> dict:
         return {}
-
-    async def test_get_workflow_returns_none_no_websocket_sent(self, ctx):
-        """When get_workflow returns None, no websocket event is sent."""
-        workflow_id = str(uuid4())
-        user_id = USER_ID
-
-        mock_ws = AsyncMock()
-        mock_ws.broadcast_to_user = AsyncMock()
-
-        with (
-            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-        ):
-            mock_wf_svc._generate_workflow_steps = AsyncMock()
-            mock_wf_svc.get_workflow = AsyncMock(return_value=None)
-
-            result = await generate_workflow_steps(ctx, workflow_id, user_id)
-
-        assert "Successfully generated steps" in result
-        mock_ws.broadcast_to_user.assert_not_awaited()
-
-    async def test_todo_workflow_without_source_todo_id_no_websocket(self, ctx):
-        """A todo workflow with source_todo_id=None does not trigger websocket."""
-        workflow_id = str(uuid4())
-        user_id = USER_ID
-        workflow = _make_workflow(
-            workflow_id=workflow_id,
-            is_todo_workflow=True,
-            source_todo_id=None,
-        )
-
-        mock_ws = AsyncMock()
-        mock_ws.broadcast_to_user = AsyncMock()
-
-        with (
-            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-        ):
-            mock_wf_svc._generate_workflow_steps = AsyncMock()
-            mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
-
-            result = await generate_workflow_steps(ctx, workflow_id, user_id)
-
-        assert "Successfully generated steps" in result
-        mock_ws.broadcast_to_user.assert_not_awaited()
-
-    async def test_websocket_failure_on_todo_workflow_does_not_raise(self, ctx):
-        """When the WebSocket broadcast fails for a todo workflow, the function still returns success."""
-        workflow_id = str(uuid4())
-        user_id = USER_ID
-        todo_id = str(uuid4())
-        workflow = _make_workflow(
-            workflow_id=workflow_id,
-            is_todo_workflow=True,
-            source_todo_id=todo_id,
-        )
-
-        mock_ws = AsyncMock()
-        mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("WS error"))
-
-        with (
-            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.get_websocket_manager",
-                return_value=mock_ws,
-            ),
-        ):
-            mock_wf_svc._generate_workflow_steps = AsyncMock()
-            mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
-
-            result = await generate_workflow_steps(ctx, workflow_id, user_id)
-
-        assert "Successfully generated steps" in result
 
 
 # ---------------------------------------------------------------------------

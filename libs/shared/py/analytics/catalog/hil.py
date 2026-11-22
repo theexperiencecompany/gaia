@@ -72,10 +72,10 @@ class HilRevoked(ServerEvent):
 
 
 class HilResumed(ServerEvent):
-    """A parked todo, workflow or GAIA task run was re-queued after its approval was granted."""
+    """A parked workflow or GAIA task run was re-queued after its approval was granted."""
 
     event: ClassVar[str] = "hil:resumed"
     budget_per_user_day: ClassVar[int] = 50
 
     approval_id: Identifier
-    owner_run_type: Literal["todo", "workflow", "task"]
+    owner_run_type: Literal["workflow", "task"]

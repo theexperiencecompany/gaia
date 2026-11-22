@@ -12,31 +12,28 @@ backoff ladder, then a one-off task is marked failed.
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from app.agents.core.background.todo_run import (
+from app.agents.core.background.task_run import (
     ExecutorBusyError,
-    TodoRunCancelledError,
-    TodoRunRequest,
-    run_todo_on_executor,
+    TaskRunCancelledError,
+    TaskRunRequest,
+    run_task_on_executor,
 )
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.tasks import (
     EXECUTOR_BUSY_RECHECK,
     GAIA_TASK_RUN_FEATURE_KEY,
+    MAX_RETRY_ATTEMPTS,
+    RETRY_BACKOFF,
     RUN_TASK_JOB,
     TaskLogEvent,
     TaskRunStatus,
     TaskRunTrigger,
 )
-from app.constants.todos import (
-    MAX_RETRY_ATTEMPTS,
-    RETRY_BACKOFF,
-    TodoWakeKind,
-)
 from app.db.repositories.tasks import task_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import is_paid
+from app.models.run_wake_models import TodoRunWake, TodoWakeKind
 from app.models.task_models import RepeatWhen, TaskDocument, TaskUpdate
-from app.models.todo_wake_models import TodoRunWake
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import get_or_create_task_conversation
@@ -62,7 +59,11 @@ from app.services.tasks.gaia_run import (
     task_run_of,
 )
 from app.services.tasks.inbox_desk import is_inbox_desk, with_desk_notes
-from app.services.tasks.run_brief import build_event_brief, collect_run_context
+from app.services.tasks.run_brief import (
+    build_event_brief,
+    collect_run_context,
+    woken_by_a_met_wait,
+)
 from app.services.tasks.run_records import close_run, open_run, record_event, record_skipped_run
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
 from app.services.user_service import get_quiet_hours
@@ -225,7 +226,7 @@ async def _run_claimed(
     conversation_id = await get_or_create_task_conversation(task.user_id, task.id, task.title)
     task_run = task_run_of(
         task,
-        TaskRunTrigger.APP_EVENT,
+        TaskRunTrigger.WAIT_MET if woken_by_a_met_wait(events) else TaskRunTrigger.APP_EVENT,
         TodoRunWake(
             kind=TodoWakeKind.TRIGGER,
             trigger_names=sorted({event.trigger_name for event in events}),
@@ -237,11 +238,11 @@ async def _run_claimed(
         await open_run(task, task_run, conversation_id)
 
     try:
-        await run_todo_on_executor(
-            TodoRunRequest(
+        await run_task_on_executor(
+            TaskRunRequest(
                 user=user,
-                todo_run=task_run,
-                task=brief,
+                run=task_run,
+                brief=brief,
                 conversation_id=conversation_id,
                 fresh_thread=True,
                 on_started=opened,
@@ -254,7 +255,7 @@ async def _run_claimed(
         )
         await _run_later(task, events, datetime.now(UTC) + EXECUTOR_BUSY_RECHECK)
         return None, f"skipped:{task.id} (its chat is busy)"
-    except TodoRunCancelledError:
+    except TaskRunCancelledError:
         await close_run(task, task_run, TaskRunStatus.CANCELLED, "stopped by the user")
         return TaskRunStatus.CANCELLED, f"cancelled:{task.id}"
     except Exception as exc:  # every failure is retried on the ladder, then marked failed

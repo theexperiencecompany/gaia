@@ -14,8 +14,7 @@ from datetime import UTC, datetime
 
 from redis.exceptions import RedisError
 
-from app.constants.tasks import RUN_TASK_JOB
-from app.constants.todos import PAUSED_TRIGGER_HOLD_TTL
+from app.constants.tasks import PAUSED_TRIGGER_HOLD_TTL, RUN_TASK_JOB
 from app.db.redis import redis_cache
 from app.models.task_models import TaskDocument
 from app.models.trigger_subscription_models import (

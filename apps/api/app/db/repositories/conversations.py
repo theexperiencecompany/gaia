@@ -177,7 +177,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             {
                 "user_id": user_id,
                 "is_onboarding_demo": {"$ne": True},
-                # A tracked todo's or task's chat is its runs' log, not a chat the user had.
+                # A task's chat is its runs' log, not a chat the user had.
                 **_UNBOUND,
             }
         )
@@ -198,7 +198,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     # own updatedAt bumps would let a user's automation vouch for
                     # them as "active" forever, defeating the dormancy sweep.
                     "is_system_generated": {"$ne": True},
-                    # Same for a tracked todo's or task's chat, bumped by every run's report.
+                    # Same for a task's chat, bumped by every run's report.
                     **_UNBOUND,
                     "$or": [
                         {"updatedAt": {"$gte": since}},
@@ -427,16 +427,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
         return list(await asyncio.gather(*(self._with_page(head) for head in heads)))
 
-    async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
-        """Return the id of the chat bound to a tracked todo, or None before its first open or run."""
-        row = await self._find_one_projected(
-            {"user_id": user_id, **_todo_binding(todo_id)},
-            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
-            {"_id": 0, "conversation_id": 1},  # pragma: no mutate
-            _ConversationIdRow,
-        )
-        return None if row is None else row.conversation_id
-
     async def get_task_id(self, conversation_id: str, *, user_id: str) -> str | None:
         """Return the GAIA task this conversation belongs to, or None for any other chat."""
         row = await self._find_one_projected(
@@ -490,8 +480,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def try_create(self, doc: ConversationDocument) -> bool:
         """Insert the conversation; False when a unique index already holds its key.
 
-        The partial unique index on (user_id, todo_id) admits one chat per tracked
-        todo, so the loser of a creation race learns it here instead of duplicating it.
+        The partial unique index on (user_id, task_id) admits one chat per task,
+        so the loser of a creation race learns it here instead of duplicating it.
         """
         try:
             await self.create(doc)
@@ -522,19 +512,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def delete(self, doc_id: str, *, user_id: str) -> bool:
         """Delete the conversation and every one of its entries."""
         return bool(await self._delete_conversations({"conversation_id": doc_id}, user_id))
-
-    async def delete_for_todos(self, user_id: str, todo_ids: Sequence[str]) -> list[str]:
-        """Delete the chats bound to these todos, returning their ids for checkpoint cleanup."""
-        return await self._delete_conversations(_todo_chats(user_id, todo_ids), user_id)
-
-    async def retitle_todo_chats(
-        self, user_id: str, todo_ids: Sequence[str], description: str
-    ) -> None:
-        """Give the chats bound to these todos their todo's new title."""
-        for conversation_id in await self._distinct(
-            "conversation_id", _todo_chats(user_id, todo_ids)
-        ):
-            await self._set_fields(conversation_id, user_id, {"description": description})
 
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
@@ -577,8 +554,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         pattern is treated as a literal — the caller passes an escaped query.
         """
         regex = {"$regex": pattern, "$options": "i"}
-        # A tracked todo's or task's chat is reached from it, never from search.
-        bound_chat = {"$or": [{"todo_id": {"$type": "string"}}, {"task_id": {"$type": "string"}}]}
+        # A task's chat is reached from it, never from search.
+        bound_chat = {"task_id": {"$type": "string"}}
         texts = {"text": regex, "kind": {"$in": sorted(TEXT_KINDS)}}
         found = await self._find_entries(user_id, texts, excluding=bound_chat)
         described = await self._aggregate(
@@ -609,7 +586,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return await self._delete_conversations({}, user_id)
 
     async def delete_all_chats_for_user(self, user_id: str) -> list[str]:
-        """Delete the user's chats, keeping each tracked todo's, which goes only with its todo."""
+        """Delete the user's chats, keeping each task's, which goes only with its task."""
         return await self._delete_conversations(_UNBOUND, user_id)
 
     async def delete_onboarding_demos(self, user_id: str) -> int:
@@ -935,8 +912,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     def _listed(self) -> dict[str, object]:
-        # Bot conversations live on their platform and a tracked todo's or task's chat
-        # on it: none is listed.
+        # Bot conversations live on their platform and a task's chat on it: none is listed.
         return {"source": {"$nin": _BOT_SOURCE_VALUES}, **_UNBOUND}
 
     def _active_filter(self, user_id: str) -> dict[str, object]:
@@ -982,8 +958,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 conversation_repository = ConversationRepository()
 
-#: A chat bound to no tracked todo and no task; null matches a missing field too.
-_UNBOUND: dict[str, object] = {"todo_id": None, "task_id": None}
+#: A chat bound to no task; null matches a missing field too.
+_UNBOUND: dict[str, object] = {"task_id": None}
 
 
 async def _read_beside(
@@ -1037,15 +1013,6 @@ def _staged_as(entry: StoredEntry) -> dict[str, object]:
     if entry.revision is None:
         return at_seq
     return {"$and": [at_seq, {"$eq": [f"$$staged.v.{REVISION_FIELD}", entry.revision]}]}
-
-
-def _todo_binding(todo_id: str) -> dict[str, object]:
-    # $type keeps the query inside the binding index's partial filter; a bare equality is not, and scans.
-    return {"todo_id": {"$eq": todo_id, "$type": "string"}}
-
-
-def _todo_chats(user_id: str, todo_ids: Sequence[str]) -> dict[str, object]:
-    return {"user_id": user_id, "todo_id": {"$in": list(todo_ids), "$type": "string"}}
 
 
 def union_with_outboxes(

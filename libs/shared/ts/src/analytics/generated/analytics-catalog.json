@@ -3644,14 +3644,14 @@
       "class": "HilResumed",
       "owner": "server",
       "domain": "hil",
-      "description": "A parked todo, workflow or GAIA task run was re-queued after its approval was granted.",
+      "description": "A parked workflow or GAIA task run was re-queued after its approval was granted.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A parked todo, workflow or GAIA task run was re-queued after its approval was granted.",
+        "description": "A parked workflow or GAIA task run was re-queued after its approval was granted.",
         "properties": {
           "approval_id": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
@@ -3660,7 +3660,6 @@
           },
           "owner_run_type": {
             "enum": [
-              "todo",
               "workflow",
               "task"
             ],
@@ -5967,60 +5966,6 @@
       }
     },
     {
-      "event": "projects:created",
-      "class": "ProjectsCreated",
-      "owner": "server",
-      "domain": "projects",
-      "description": "A user created a todo project.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user created a todo project.",
-        "properties": {},
-        "title": "ProjectsCreated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "projects:deleted",
-      "class": "ProjectsDeleted",
-      "owner": "server",
-      "domain": "projects",
-      "description": "A user deleted a todo project.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user deleted a todo project.",
-        "properties": {},
-        "title": "ProjectsDeleted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "projects:updated",
-      "class": "ProjectsUpdated",
-      "owner": "server",
-      "domain": "projects",
-      "description": "A user updated a todo project.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user updated a todo project.",
-        "properties": {},
-        "title": "ProjectsUpdated",
-        "type": "object"
-      }
-    },
-    {
       "event": "rate_limit:hit",
       "class": "RateLimitHit",
       "owner": "server",
@@ -7994,722 +7939,6 @@
       }
     },
     {
-      "event": "todos:chat_opened",
-      "class": "TodosChatOpened",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A user opened a tracked todo's chat from the todo.",
-      "previous_names": [],
-      "budget_per_user_day": 100,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user opened a tracked todo's chat from the todo.",
-        "properties": {
-          "todo_id": {
-            "pattern": "^[0-9a-fA-F]{24}$",
-            "title": "Todo Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "todo_id"
-        ],
-        "title": "TodosChatOpened",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:created",
-      "class": "TodosCreated",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A user created a todo.",
-      "previous_names": [],
-      "budget_per_user_day": 200,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user created a todo.",
-        "properties": {
-          "priority": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Priority",
-            "type": "string"
-          },
-          "has_due_date": {
-            "title": "Has Due Date",
-            "type": "boolean"
-          },
-          "has_description": {
-            "title": "Has Description",
-            "type": "boolean"
-          },
-          "labels_count": {
-            "title": "Labels Count",
-            "type": "integer"
-          },
-          "subtasks_count": {
-            "title": "Subtasks Count",
-            "type": "integer"
-          },
-          "has_project": {
-            "title": "Has Project",
-            "type": "boolean"
-          },
-          "is_sub_todo": {
-            "title": "Is Sub Todo",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "priority",
-          "has_due_date",
-          "has_description",
-          "labels_count",
-          "subtasks_count",
-          "has_project",
-          "is_sub_todo"
-        ],
-        "title": "TodosCreated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:deleted",
-      "class": "TodosDeleted",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A user deleted one todo or several.",
-      "previous_names": [],
-      "budget_per_user_day": 10,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user deleted one todo or several.",
-        "properties": {
-          "todo_id": {
-            "anyOf": [
-              {
-                "pattern": "^[0-9a-fA-F]{24}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Todo Id"
-          },
-          "count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Count"
-          }
-        },
-        "title": "TodosDeleted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:inbox_desk_provisioned",
-      "class": "TodosInboxDeskProvisioned",
-      "owner": "server",
-      "domain": "todos",
-      "description": "The user's Inbox desk tracked todo exists and its first morning run is armed.",
-      "previous_names": [],
-      "budget_per_user_day": 2,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "The user's Inbox desk tracked todo exists and its first morning run is armed.",
-        "properties": {},
-        "title": "TodosInboxDeskProvisioned",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:open_state_repaired",
-      "class": "TodosOpenStateRepaired",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
-      "previous_names": [],
-      "budget_per_user_day": 20,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
-        "properties": {
-          "todo_id": {
-            "pattern": "^[0-9a-fA-F]{24}$",
-            "title": "Todo Id",
-            "type": "string"
-          },
-          "waiting_on": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Waiting On"
-          }
-        },
-        "required": [
-          "todo_id"
-        ],
-        "title": "TodosOpenStateRepaired",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:ref_reopened",
-      "class": "TodosRefReopened",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A create for an outside object reopened the completed tracked todo it already had.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A create for an outside object reopened the completed tracked todo it already had.",
-        "properties": {
-          "todo_id": {
-            "pattern": "^[0-9a-fA-F]{24}$",
-            "title": "Todo Id",
-            "type": "string"
-          },
-          "ref_source": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Ref Source",
-            "type": "string"
-          }
-        },
-        "required": [
-          "todo_id",
-          "ref_source"
-        ],
-        "title": "TodosRefReopened",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:run_result_delivered",
-      "class": "TodosRunResultDelivered",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
-        "properties": {
-          "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Outcome",
-            "type": "string"
-          },
-          "delivered": {
-            "title": "Delivered",
-            "type": "boolean"
-          },
-          "trigger_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Trigger Type",
-            "type": "string"
-          },
-          "recurring": {
-            "title": "Recurring",
-            "type": "boolean"
-          },
-          "platform": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Platform"
-          },
-          "destination": {
-            "anyOf": [
-              {
-                "enum": [
-                  "chat_app",
-                  "in_app"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination"
-          },
-          "destination_basis": {
-            "anyOf": [
-              {
-                "enum": [
-                  "recent_activity",
-                  "priority",
-                  "active_in_app",
-                  "no_chat_app"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination Basis"
-          }
-        },
-        "required": [
-          "outcome",
-          "delivered",
-          "trigger_type",
-          "recurring"
-        ],
-        "title": "TodosRunResultDelivered",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:subscription_failed",
-      "class": "TodosSubscriptionFailed",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A trigger subscription could not be registered on a tracked todo.",
-      "previous_names": [],
-      "budget_per_user_day": 10,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A trigger subscription could not be registered on a tracked todo.",
-        "properties": {
-          "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Trigger Name",
-            "type": "string"
-          },
-          "reason": {
-            "enum": [
-              "unknown_trigger",
-              "todo_not_found",
-              "invalid_conditions",
-              "invalid_config",
-              "invalid_subscription",
-              "registration_failed",
-              "no_trigger_instance"
-            ],
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "trigger_name",
-          "reason"
-        ],
-        "title": "TodosSubscriptionFailed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:subscription_registered",
-      "class": "TodosSubscriptionRegistered",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A trigger subscription was stored on a tracked todo.",
-      "previous_names": [],
-      "budget_per_user_day": 10,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A trigger subscription was stored on a tracked todo.",
-        "properties": {
-          "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Trigger Name",
-            "type": "string"
-          },
-          "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Action",
-            "type": "string"
-          },
-          "resolution": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Resolution",
-            "type": "string"
-          },
-          "condition_count": {
-            "title": "Condition Count",
-            "type": "integer"
-          },
-          "repaired": {
-            "title": "Repaired",
-            "type": "boolean"
-          },
-          "cooldown_seconds": {
-            "title": "Cooldown Seconds",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "trigger_name",
-          "action",
-          "resolution",
-          "condition_count",
-          "repaired",
-          "cooldown_seconds"
-        ],
-        "title": "TodosSubscriptionRegistered",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:toggled",
-      "class": "TodosToggled",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A todo or subtask was completed or un-completed; one event for both directions.",
-      "previous_names": [],
-      "budget_per_user_day": 500,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A todo or subtask was completed or un-completed; one event for both directions.",
-        "properties": {
-          "todo_id": {
-            "anyOf": [
-              {
-                "pattern": "^[0-9a-fA-F]{24}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Todo Id"
-          },
-          "completed": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Completed"
-          },
-          "priority": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Priority"
-          },
-          "has_due_date": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Has Due Date"
-          },
-          "is_subtask": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Is Subtask"
-          },
-          "bulk_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Bulk Count"
-          },
-          "count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Count"
-          }
-        },
-        "title": "TodosToggled",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:trigger_fired",
-      "class": "TodosTriggerFired",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A subscribed trigger passed its conditions and cooldown and ran its action.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A subscribed trigger passed its conditions and cooldown and ran its action.",
-        "properties": {
-          "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Trigger Name",
-            "type": "string"
-          },
-          "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Action",
-            "type": "string"
-          },
-          "resolution": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Resolution",
-            "type": "string"
-          },
-          "condition_count": {
-            "title": "Condition Count",
-            "type": "integer"
-          },
-          "coalesced": {
-            "title": "Coalesced",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "trigger_name",
-          "action",
-          "resolution",
-          "condition_count",
-          "coalesced"
-        ],
-        "title": "TodosTriggerFired",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:updated",
-      "class": "TodosUpdated",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A user edited a todo, a subtask, or a bulk selection of todos.",
-      "previous_names": [],
-      "budget_per_user_day": 20,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user edited a todo, a subtask, or a bulk selection of todos.",
-        "properties": {
-          "todo_id": {
-            "anyOf": [
-              {
-                "pattern": "^[0-9a-fA-F]{24}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Todo Id"
-          },
-          "changed_field_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Changed Field Count"
-          },
-          "changed_fields": {
-            "anyOf": [
-              {
-                "items": {
-                  "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Changed Fields"
-          },
-          "priority": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Priority"
-          },
-          "has_due_date": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Has Due Date"
-          },
-          "has_subtasks": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Has Subtasks"
-          },
-          "bulk_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Bulk Count"
-          },
-          "is_subtask": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Is Subtask"
-          }
-        },
-        "title": "TodosUpdated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "todos:view_changed",
-      "class": "TodosViewChanged",
-      "owner": "web",
-      "domain": "todos",
-      "description": "A user switched todo views in the sidebar; pure client navigation.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user switched todo views in the sidebar; pure client navigation.",
-        "properties": {
-          "view_kind": {
-            "enum": [
-              "inbox",
-              "today",
-              "upcoming",
-              "completed",
-              "priority_high",
-              "priority_medium",
-              "priority_low",
-              "label",
-              "project"
-            ],
-            "title": "View Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "view_kind"
-        ],
-        "title": "TodosViewChanged",
-        "type": "object"
-      }
-    },
-    {
       "event": "tool:execute_failed",
       "class": "ToolExecuteFailed",
       "owner": "server",
@@ -8827,19 +8056,18 @@
       "class": "TriggerGateDecided",
       "owner": "server",
       "domain": "trigger",
-      "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\n    outcome is what the run did and reason is why, so a shadow gate (enforced\n    false) reports reason jev_skip with outcome run. Inside the user's quiet hours\n    an event is held for the morning or let through now; urgent_choice names why\n    a let-through one could not wait.",
+      "description": "A trigger gate decided what a fired event does to its workflow or GAIA task.\n\n    outcome is what the run did and reason is why, so a shadow gate (enforced\n    false) reports reason jev_skip with outcome run. Inside the user's quiet hours\n    an event is held for the morning or let through now; urgent_choice names why\n    a let-through one could not wait.",
       "previous_names": [],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run. Inside the user's quiet hours\nan event is held for the morning or let through now; urgent_choice names why\na let-through one could not wait.",
+        "description": "A trigger gate decided what a fired event does to its workflow or GAIA task.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run. Inside the user's quiet hours\nan event is held for the morning or let through now; urgent_choice names why\na let-through one could not wait.",
         "properties": {
           "owner_type": {
             "enum": [
               "workflow",
-              "todo",
               "task"
             ],
             "title": "Owner Type",
@@ -8951,19 +8179,18 @@
       "class": "TriggerGateEdited",
       "owner": "server",
       "domain": "trigger",
-      "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+      "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or GAIA task.",
       "previous_names": [],
       "budget_per_user_day": 20,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+        "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or GAIA task.",
         "properties": {
           "owner_type": {
             "enum": [
               "workflow",
-              "todo",
               "task"
             ],
             "title": "Owner Type",
@@ -9655,7 +8882,7 @@
       "class": "WorkflowCreated",
       "owner": "server",
       "domain": "workflow",
-      "description": "A workflow was created, by the user or generated for a todo; origin says which.",
+      "description": "A workflow was created, by the user or by the agent; origin says which.",
       "previous_names": [
         "workflows:created"
       ],
@@ -9664,14 +8891,12 @@
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A workflow was created, by the user or generated for a todo; origin says which.",
+        "description": "A workflow was created, by the user or by the agent; origin says which.",
         "properties": {
           "origin": {
             "enum": [
               "user_created",
-              "chat_agent",
-              "todo_converted",
-              "todo_requested"
+              "chat_agent"
             ],
             "title": "Origin",
             "type": "string"

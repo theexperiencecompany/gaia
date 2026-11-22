@@ -16,22 +16,17 @@ from bson import ObjectId
 import httpx
 import pytest
 
-from app.agents.core.background.todo_run_delivery import FinishedTodoRun, finish_todo_run
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.conversation import CONVERSATION_LIST_CHANGED_EVENT
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.db.repositories.todos import todo_repository
-from app.models.conversation_log_models import TodoReportForm
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus
-from app.models.todo_models import TodoDocument
-from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundMessageEnvelope
 from app.services.conversation.bot_wake import BotWakingFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
-from app.services.conversation_service import get_or_create_todo_conversation
+from app.services.conversation_service import get_or_create_task_conversation
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.utils import GatedApproval, GatedCall
 from app.services.integrations.integration_expiry import AccountExpired, announce_account_expiry
@@ -39,7 +34,6 @@ from app.services.platform_link_service import PlatformLinkService
 from app.services.workflow.notifications import notify_workflow_result
 from app.tasks.reminder_tasks import _execute_static_reminder
 from app.utils.artifact_utils import FILE_LINKS
-from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
     RecordingEffects,
@@ -155,7 +149,6 @@ async def _users(mongo_db, real_redis, conversations_collection):
     await mongo_db["notifications"].create_index("id", unique=True)
     await mongo_db["bot_sessions"].delete_many({})
     await mongo_db["bot_sessions"].create_index("session_key", unique=True)
-    await mongo_db["todos"].delete_many({"user_id": {"$in": [str(o) for o in oids]}})
     await mongo_db["users"].insert_many(
         [{"_id": oid, "email": f"notify-{oid}@gaia.local", "platform_links": {}} for oid in oids]
     )
@@ -240,52 +233,15 @@ async def test_a_workflow_result_is_delivered_once_on_the_users_channel(
     assert len(delivered.socket_events) == 1
 
 
-@pytest.mark.parametrize(
-    ("oid", "bot_messages"), [(LINKED_OID, 1), (UNLINKED_OID, 0)], ids=["chat-app", "app-only"]
-)
-async def test_a_todo_run_result_is_delivered_once_on_the_users_channel(
-    mongo_db, delivered: Delivered, oid: ObjectId, bot_messages: int
-) -> None:
-    todo = await todo_repository.create(
-        TodoDocument(user_id=str(oid), title="Watch flight prices", notify_on_run=True)
-    )
-    finished = FinishedTodoRun(
-        run_id="run-1",
-        todo_id=todo.id or "",
-        user_id=str(oid),
-        conversation_id="todo-conv-1",
-        trigger_type=TriggerType.SCHEDULE,
-        report_form=TodoReportForm.WRITE_UP,
-        result_text="Fares dropped 12%.",
-        write_up="Fares to Lisbon dropped 12%.",
-        reply=ReplyOutcome.ANSWERED,
-    )
-    # A crash after the send and before the finish entry: the durable job runs it again.
-    await finish_todo_run(finished)
-    await mongo_db["todos"].update_one(
-        {"_id": ObjectId(todo.id)}, {"$set": {"activity_content": ""}}
-    )
-    await finish_todo_run(finished)
-
-    (stored,) = await _notifications(mongo_db, str(oid))
-    assert stored["status"] == "delivered"
-    assert [n["text"] for n in await _notices(mongo_db)] == [
-        "Fares to Lisbon dropped 12%."
-    ] * bot_messages
-    assert [w["destination_id"] for w in delivered.bot_messages] == [
-        TELEGRAM_USER_ID
-    ] * bot_messages
-
-
 def _approval(user_id: str, conversation_id: str) -> GatedApproval:
     return GatedApproval(
         approval_id="approval-1",
         stream_id="stream-1",
         user_id=user_id,
         conversation_id=conversation_id,
-        tool_call=GatedCall(name="create_todo", id="call-1", args={"title": "Renew passport"}),
-        summary="Add “Renew passport” to your todos",
-        question="Want me to add “Renew passport” to your todos?",
+        tool_call=GatedCall(name="create_task", id="call-1", args={"title": "Renew passport"}),
+        summary="Add “Renew passport” to your tasks",
+        question="Want me to add “Renew passport” to your tasks?",
         integration_name=None,
     )
 
@@ -314,19 +270,21 @@ async def test_an_approval_in_a_chat_app_conversation_pushes_once_and_leaves_the
 @pytest.mark.parametrize(
     ("oid", "bot_messages"), [(LINKED_OID, 1), (UNLINKED_OID, 0)], ids=["chat-app", "app-only"]
 )
-async def test_an_approval_asked_in_a_todos_chat_reaches_the_chat_app_once_with_a_link_to_it(
+async def test_an_approval_asked_in_a_tasks_chat_reaches_the_chat_app_once_with_a_link_to_it(
     mongo_db, conversations_collection, delivered: Delivered, oid: ObjectId, bot_messages: int
 ) -> None:
-    """Regression for bug 30: no bot follows a todo's own chat, so its approvals never reached Telegram."""
-    todo_chat = await get_or_create_todo_conversation(str(oid), "todo-1", "Renew passport")
+    """Regression for bug 30: no bot follows a task's own chat, so its approvals never reached Telegram."""
+    task_chat = await get_or_create_task_conversation(
+        str(oid), "task_000000000001", "Renew passport"
+    )
 
     # A replayed gate announces the same approval again.
     for _ in range(2):
-        await notify_approval_pending(_approval(str(oid), todo_chat))
+        await notify_approval_pending(_approval(str(oid), task_chat))
 
     assert [n["text"] for n in await _notices(mongo_db)] == [
-        "**Want me to add “Renew passport” to your todos?**\n\n"
-        f"[Approve or decline it in GAIA]({FILE_LINKS.conversation_page(todo_chat)})"
+        "**Want me to add “Renew passport” to your tasks?**\n\n"
+        f"[Approve or decline it in GAIA]({FILE_LINKS.conversation_page(task_chat)})"
     ] * bot_messages
     assert [w["destination_id"] for w in delivered.bot_messages] == [
         TELEGRAM_USER_ID

@@ -20,6 +20,7 @@ from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -389,9 +390,13 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
     async def _disconnect(_user_id: str, integration_id: str) -> None:
         externals.disconnected.append(integration_id)
 
-    todo_repo = AsyncMock()
-    todo_repo.delete_onboarding_todos.side_effect = lambda _uid: externals.todos_purged
-    todo_repo.list_onboarding_todos.return_value = []
+    task_repo = AsyncMock()
+    # The personalization screen reads a page of them; the reset reads them all, to delete.
+    task_repo.list_onboarding.side_effect = lambda _uid, *, limit: (
+        []
+        if limit is not None
+        else [SimpleNamespace(id=f"t{i}") for i in range(externals.todos_purged)]
+    )
 
     conversation_repo = AsyncMock()
 
@@ -418,8 +423,11 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         patch("app.api.v1.endpoints.onboarding.user_repository", users),
         patch("app.services.oauth.oauth_service.user_repository", users),
         patch("app.utils.profile_card.user_repository", users),
-        patch(f"{SVC}.onboarding_service.todo_repository", todo_repo),
-        patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
+        patch(f"{SVC}.onboarding_service.task_repository", task_repo),
+        patch(
+            f"{SVC}.onboarding_service.delete_tasks", AsyncMock(side_effect=lambda _uid, ids: ids)
+        ),
+        patch("app.api.v1.endpoints.onboarding.task_repository", task_repo),
         patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
         patch(f"{SVC}.onboarding_service.conversation_repository", conversation_repo),
         patch("app.utils.seeding_utils.accept", side_effect=_log_notice),

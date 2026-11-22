@@ -18,10 +18,6 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
 from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_OPENING
-from app.agents.prompts.workflow_prompts import (
-    TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
-    TODO_WORKFLOW_PROMPT_TEMPLATE,
-)
 from app.agents.tools.run_record import read_run_record, seed_run_record
 from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
@@ -41,10 +37,8 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.waits import WAIT_MET_CONTEXT_KEY
-from app.core.websocket_manager import get_websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
-from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import enforce_cost_budget
@@ -76,10 +70,8 @@ from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursHold, Qui
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
-    CreateWorkflowRequest,
     IntegrationRef,
     PlaybookDiscard,
-    TriggerConfig,
     TriggerType,
     Workflow,
     WorkflowUpdate,
@@ -141,14 +133,13 @@ from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
-from app.utils.errors import create_error
 from app.utils.integration_links import integration_connect_path
 from app.utils.occurrence import parse_occurrence_stamp
 from app.utils.timezone import Timezone, format_local_time
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Trigger
-from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
     analytics_context,
@@ -198,183 +189,6 @@ class _RateLimitDetail(BaseModel):
     reset_time: str = ""
     current_plan: str | None = None
     plan_required: str | None = None
-
-
-async def process_workflow_generation_task(
-    ctx: Mapping[str, object],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
-    todo_id: str,
-    user_id: str,
-    title: str,
-    description: str = "",
-) -> str:
-    """Generate a workflow for a todo, then broadcast a WebSocket event on completion."""
-    log.set(todo_id=todo_id, user_id=user_id, user={"id": user_id})
-    try:
-        # Build short card description plus detailed execution prompt
-        workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
-        workflow_prompt = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
-            title=title,
-            details_section=f"**Details:** {description}" if description else "",
-        )
-        # Create standalone workflow with todo workflow flag
-        workflow_request = CreateWorkflowRequest(
-            title=f"Todo: {title}",
-            description=workflow_description,
-            prompt=workflow_prompt,
-            trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
-            generate_immediately=True,
-        )
-
-        workflow = await WorkflowService.create_workflow(
-            workflow_request,
-            user_id,
-            is_todo_workflow=True,
-            source_todo_id=todo_id,
-        )
-
-        if workflow and workflow.id:
-            # Verify workflow actually has steps before linking
-            if not workflow.steps or len(workflow.steps) == 0:
-                reason = workflow.error_message or "unknown error"
-                raise create_error(
-                    message=f"Workflow {workflow.id} created but has no steps — {reason}",
-                    why="workflow generation completed without producing any steps",
-                    fix="retry workflow generation for this todo",
-                    workflow_id=workflow.id,
-                    todo_id=todo_id,
-                )
-
-            linked = await todo_repository.link_workflow(
-                todo_id, user_id=user_id, workflow_id=workflow.id
-            )
-
-            if linked is not None:
-                log.info(
-                    f"{LogTag.WORKER} Successfully generated and linked standalone workflow",
-                    workflow_id=workflow.id,
-                    todo_id=todo_id,
-                    steps_count=len(workflow.steps),
-                )
-                log.set(
-                    workflow=WorkflowContext(
-                        id=workflow.id,
-                        steps_count=len(workflow.steps),
-                        trigger_type=TriggerType.MANUAL.value,
-                    )
-                )
-
-                capture(
-                    UserId(user_id),
-                    WorkflowCreated(
-                        origin="todo_requested",
-                        workflow_id=workflow.id,
-                        steps_count=len(workflow.steps),
-                        is_todo_workflow=True,
-                    ),
-                )
-
-                try:
-                    websocket_manager = get_websocket_manager()
-                    await websocket_manager.broadcast_to_user(
-                        user_id,
-                        {
-                            "type": "workflow.generated",
-                            "todo_id": todo_id,
-                            "workflow": workflow.model_dump(mode="json"),
-                        },
-                    )
-                    log.set(websocket_broadcast_success=True)
-                except Exception as ws_error:
-                    log.set(websocket_broadcast_success=False)
-                    log.warning(
-                        f"{LogTag.WORKER} Failed to send WebSocket event",
-                        error_type=type(ws_error).__name__,
-                        error=str(ws_error),
-                        workflow_id=workflow.id,
-                        todo_id=todo_id,
-                    )
-
-                # Clear the generating flag
-                # Deferred import: function-local re-bind in this success path; the workflow stack is already loaded by module-top service imports
-                from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-                    WorkflowQueueService,
-                )
-
-                try:
-                    await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
-                except Exception as cleanup_error:
-                    # Cleanup must not mask the original failure re-raised below.
-                    log.warning(
-                        f"{LogTag.WORKER} Failed to clear workflow generating flag",
-                        todo_id=todo_id,
-                        error=str(cleanup_error),
-                        error_type=type(cleanup_error).__name__,
-                    )
-
-                return (
-                    f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
-                )
-            # Refused: nothing may be left holding a workflow no todo points at.
-            await WorkflowService.delete_workflow(workflow.id, user_id)
-            raise create_error(
-                message=f"Todo {todo_id} not found or not updated",
-                why="the todo was deleted, or is tracked and never links a workflow",
-                fix="verify the todo still exists before regenerating its workflow",
-                todo_id=todo_id,
-            )
-
-        # Mark workflow generation as failed
-        log.error(
-            f"{LogTag.WORKER} Failed to generate workflow for todo: no workflow created",
-            todo_id=todo_id,
-            user_id=user_id,
-        )
-        raise create_error(
-            message="Workflow generation failed: No workflow created",
-            why="WorkflowService.create_workflow returned no workflow",
-            fix="check workflow generation logs for the underlying failure",
-            todo_id=todo_id,
-        )
-
-    except Exception as e:
-        # Clear the generating flag on failure too
-        try:
-            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- heavy workflow queue loads only when this task runs
-                WorkflowQueueService,
-            )
-
-            await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
-        except Exception as cleanup_error:
-            # Cleanup must not mask the original failure re-raised below.
-            log.warning(
-                f"{LogTag.WORKER} Failed to clear workflow generating flag",
-                todo_id=todo_id,
-                error_type=type(cleanup_error).__name__,
-            )
-
-        # Broadcast failure WebSocket event so frontend can handle it
-        try:
-            websocket_manager = get_websocket_manager()
-            await websocket_manager.broadcast_to_user(
-                user_id,
-                {
-                    "type": "workflow.generation_failed",
-                    "todo_id": todo_id,
-                    "error": str(e),
-                },
-            )
-            log.set(websocket_broadcast_success=True)
-        except Exception as ws_error:
-            log.set(websocket_broadcast_success=False)
-            log.warning(
-                f"{LogTag.WORKER} Failed to send failure WebSocket event",
-                error_type=type(ws_error).__name__,
-                error=str(ws_error),
-                todo_id=todo_id,
-                user_id=user_id,
-            )
-
-        raise
 
 
 async def _completed_onboarding(user_id: str) -> bool:
@@ -1939,7 +1753,7 @@ async def regenerate_workflow_steps(
 
 
 async def generate_workflow_steps(ctx: Mapping[str, object], workflow_id: str, user_id: str) -> str:  # noqa: ARG001 -- contract
-    """Generate workflow steps, broadcasting a WebSocket event on completion for todo workflows."""
+    """Generate a workflow's steps."""
     log.set(workflow_id=workflow_id, user_id=user_id)
     # Import here to avoid circular imports
     from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- cycle
@@ -1957,29 +1771,6 @@ async def generate_workflow_steps(ctx: Mapping[str, object], workflow_id: str, u
                 steps_count=len(updated_workflow.steps),
             )
         )
-
-    # If this is a todo workflow, send WebSocket event
-    if updated_workflow and updated_workflow.is_todo_workflow and updated_workflow.source_todo_id:
-        try:
-            websocket_manager = get_websocket_manager()
-            await websocket_manager.broadcast_to_user(
-                user_id,
-                {
-                    "type": "workflow.generated",
-                    "todo_id": updated_workflow.source_todo_id,
-                    "workflow": updated_workflow.model_dump(mode="json"),
-                },
-            )
-            log.set(websocket_broadcast_success=True)
-        except Exception as ws_error:
-            log.set(websocket_broadcast_success=False)
-            log.warning(
-                f"{LogTag.WORKER} Failed to send WebSocket event",
-                error_type=type(ws_error).__name__,
-                error=str(ws_error),
-                workflow_id=workflow_id,
-                user_id=user_id,
-            )
 
     log.info(f"{LogTag.WORKER} Successfully generated workflow steps", workflow_id=workflow_id)
     return f"Successfully generated steps for workflow {workflow_id}"

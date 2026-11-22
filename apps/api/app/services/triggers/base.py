@@ -213,7 +213,7 @@ class TriggerHandler(ABC):
         """Register triggers for whatever owns them.
 
         Args:
-            owner_id: The workflow or tracked-todo that owns this registration.
+            owner_id: The workflow or task that owns this registration.
                 Handlers use it for logging only — Composio keys on the config.
         """
 
@@ -396,7 +396,7 @@ class TriggerHandler(ABC):
         )
 
         _log_event_timing(data, now_utc)
-        # Derived once, so workflows, todo conditions and gates all read the same signals.
+        # Derived once, so workflows, task conditions and gates all read the same signals.
         data.update(self.event_signals(event_type, data))
 
         # Find matching workflows using handler's find_workflows method
@@ -405,7 +405,7 @@ class TriggerHandler(ABC):
         log.set_ns("trigger", matched_count=len(workflows))
 
         # Handed off BEFORE the no-workflow return below: an event that matches no
-        # workflow can still be the reply a todo or a task has been waiting for.
+        # workflow can still be the reply a task has been waiting for.
         subscribers_queued = await self._queue_subscriber_dispatch(
             event_type, trigger_id, user_id, data
         )
@@ -421,7 +421,7 @@ class TriggerHandler(ABC):
             )
             return TriggerEventResult(status="success", message="No matching workflows")
 
-        # Tracked-todo signal context is identical for a given user, so compute it once
+        # The tasks signal context is identical for a given user, so compute it once
         # per user_id and reuse — avoids repeated Mongo + VFS reads across workflows.
         queued_count = 0
         signal_context_by_user: dict[str, str] = {}
@@ -443,9 +443,9 @@ class TriggerHandler(ABC):
     async def _queue_subscriber_dispatch(
         self, event_type: str, trigger_id: str | None, user_id: str | None, data: dict[str, object]
     ) -> bool:
-        """Hand the todo and task fan-out to its worker task. Returns whether it was queued.
+        """Hand the task fan-out to its worker task. Returns whether it was queued.
 
-        Enqueue rather than call: dispatch needs the todo and task stacks, which
+        Enqueue rather than call: dispatch needs the task stack, which
         import the trigger stack back (to register and release subscriptions), and a
         task name (a string) never forms that cycle. A failure here must not cost
         the workflow dispatch below it: the consumers are independent.
@@ -543,9 +543,9 @@ class TriggerHandler(ABC):
                         error=str(e),
                     )
                     signal_context_by_user[workflow.user_id] = ""
-            todos_context = signal_context_by_user[workflow.user_id]
-            if todos_context:
-                context["tracked_todos_context"] = todos_context
+            tasks_context = signal_context_by_user[workflow.user_id]
+            if tasks_context:
+                context["tracked_todos_context"] = tasks_context
 
             # A poll-based trigger fires once per item Composio found, so its events
             # are batched into one run. Triggers with no declared interval stay

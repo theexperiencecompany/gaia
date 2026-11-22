@@ -40,7 +40,6 @@ class GateOwner(StrEnum):
     """What a gate stands in front of."""
 
     WORKFLOW = "workflow"
-    TODO = "todo"
     TASK = "task"
 
 
@@ -117,7 +116,7 @@ TRIGGER_GATE_CONDITION_MAX_CHARS: Final = 300
 GATE_RECENT_SKIPS_KEPT: Final = 5
 # Each event field, the snippet included, is clipped to this before JEV reads it.
 TRIGGER_GATE_FIELD_MAX_CHARS: Final = 300
-# An owner's title and description as JEV reads them; a long todo note costs tokens on every event.
+# An owner's title and description as JEV reads them; a long task note costs tokens on every event.
 TRIGGER_GATE_AUTOMATION_MAX_CHARS: Final = 600
 TRIGGER_GATE_QUESTION_KEY: Final = "gate"
 # How a skip names its event, clipped so one line stays one line.

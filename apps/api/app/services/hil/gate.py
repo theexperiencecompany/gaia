@@ -320,11 +320,8 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     owner_task_id = configurable.get("active_task_id") if background else None
     if background:
         workflow_id = configurable.get("workflow_id") or ""
-        todo_id = configurable.get("active_todo_id") or ""
         if workflow_id:
             owner_run_type, owner_id = "workflow", workflow_id
-        elif todo_id:
-            owner_run_type, owner_id = "todo", todo_id
     return GateContext(
         stream_id,
         user_id,

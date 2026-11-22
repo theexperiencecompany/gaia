@@ -5,6 +5,8 @@ from enum import StrEnum
 import re
 from typing import Final
 
+from app.constants.chat import MAX_MESSAGE_LENGTH
+
 #: A new task's id: this prefix and 12 hex characters. Migrated tasks keep their own id.
 TASK_ID_PREFIX: Final = "task_"
 TASK_ID_HEX_CHARS: Final = 12
@@ -198,6 +200,23 @@ EXECUTOR_BUSY_RECHECK: Final = timedelta(minutes=1)
 #: The durable job that finishes a run's delivery when the task store failed it in-process.
 FINISH_TASK_RUN_JOB: Final = "finish_task_run"
 FINISH_TASK_RUN_JOB_PREFIX: Final = "task-run-finish:"
+# 1+2+4+8+16 minutes across six tries: a Mongo outage that long is an incident.
+FINISH_TASK_RUN_RETRY_DELAY: Final[timedelta] = timedelta(minutes=1)
+FINISH_TASK_RUN_MAX_TRIES: Final[int] = 6
+#: How many times a failed GAIA task run is retried, and how long each retry waits.
+MAX_RETRY_ATTEMPTS: Final[int] = 3
+RETRY_BACKOFF: Final[list[timedelta]] = [timedelta(hours=1), timedelta(hours=4)]
+# An approval resume that lands mid-run waits for the run instead of vanishing. Bounded,
+# because a task stuck mid-run must eventually give up loudly rather than re-enqueue forever.
+LOCK_DEFER_BACKOFF: Final[list[timedelta]] = [
+    timedelta(minutes=1),
+    timedelta(minutes=3),
+    timedelta(minutes=10),
+]
+#: How long a one-time run that came due on a paused account waits before it checks again.
+PAUSED_RUN_RECHECK: Final[timedelta] = timedelta(days=1)
+#: How long a task paused for its subscription keeps the app events that reached it.
+PAUSED_TRIGGER_HOLD_TTL: Final[timedelta] = timedelta(days=30)
 #: How much of a run's final report its run record keeps as the summary.
 RUN_SUMMARY_CHARS: Final = 500
 #: How many earlier runs a run's prompt and its delivery note read.
@@ -218,6 +237,9 @@ class TaskRunTrigger(StrEnum):
     SUBTASK = "subtask"
     MANUAL = "manual"
 
+
+#: Days after today that count as "upcoming" in the sidebar, the Upcoming view and the agent.
+TASK_UPCOMING_DAYS: Final[int] = 7
 
 #: How many of the tasks onboarding set up the personalization screen shows.
 ONBOARDING_TASK_LIMIT: Final[int] = 3
@@ -281,3 +303,80 @@ TASK_SEARCH_LIMIT: Final = 10
 TASK_SEARCH_EXCERPT_CHARS: Final = 400
 #: Tasks read or written per index call when reindexing or checking coverage.
 TASK_INDEX_BATCH: Final = 200
+
+
+# A GAIA task's open state: what a non-repeating task waits for until its next check.
+
+
+class WaitingOn(StrEnum):
+    """What an open, non-repeating GAIA task is waiting for until its next check."""
+
+    TIME = "time"
+    EVENT = "event"
+    USER = "user"
+    SUB_TODOS = "sub_todos"
+    UNPLANNED = "unplanned"
+
+
+class NoReplyPlan(StrEnum):
+    """What a task waiting on the user does when its question expires unanswered."""
+
+    ASK_AGAIN = "ask_again"
+    PROCEED = "proceed"
+    HOLD = "hold"
+
+
+#: A next check given as a duration from now ("30m", "4h", "3d", "1w").
+NEXT_CHECK_DURATION: Final[re.Pattern[str]] = re.compile(r"(\d+)\s*([mhdw])")
+NEXT_CHECK_DURATION_UNITS: Final[dict[str, timedelta]] = {
+    "m": timedelta(minutes=1),
+    "h": timedelta(hours=1),
+    "d": timedelta(days=1),
+    "w": timedelta(weeks=1),
+}
+
+
+class WakeReason(StrEnum):
+    """Why a scheduled run of a non-repeating GAIA task woke, read off its open state."""
+
+    SCHEDULED_CHECK = "scheduled_check"
+    BACKUP_CHECK = "backup_check"
+    SUB_TODO_CHECK = "sub_todo_check"
+    PLAN_IT = "plan_it"
+    REASK_DUE = "reask_due"
+    DEFAULT_DUE = "default_due"
+    HOLD_CHECK = "hold_check"
+    HOLD_LAST_CHECK = "hold_last_check"
+    QUESTION_EXPIRED = "question_expired"
+
+
+# How far out a next check may be set, so a task can't be silenced with a far date.
+# A task may live for months; it looks again at least this often.
+MAX_NEXT_CHECK_AHEAD: Final[timedelta] = timedelta(days=14)
+MAX_QUESTION_EXPIRY: Final[timedelta] = timedelta(days=7)
+# Once a question is on hold (nothing can move without the answer), checks slow down.
+MAX_HOLD_CHECK_AHEAD: Final[timedelta] = timedelta(days=31)
+# One re-ask per task, ever; three hold checks with no answer and the task closes.
+MAX_REASKS: Final[int] = 1
+MAX_HOLD_CHECKS: Final[int] = 3
+#: When a run ends with no next step even after being sent back, code sets one this far out.
+OPEN_STATE_REPAIR_CHECK: Final[timedelta] = timedelta(days=1)
+#: How soon a parent waiting on its subtasks runs after one of them completes.
+SUBTASK_PARENT_WAKE_DELAY: Final[timedelta] = timedelta(seconds=30)
+
+# What a run's prompt reads beyond its own task.
+#: Most of a triggered run's event data inlined in its prompt; the run can fetch the source.
+TRIGGER_EVENTS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH // 5
+#: How many referenced tasks a run reads Learnings from.
+REFERENCED_TASKS_PROMPT_LIMIT: Final[int] = 5
+#: Top-level GAIA tasks in every agent's active-tasks block; subtasks fold into a count.
+ACTIVE_TASKS_SUMMARY_LIMIT: Final[int] = 15
+#: Open subtasks a parent's run reads, and how much of each one's Current State.
+SUBTASKS_PROMPT_LIMIT: Final[int] = 50
+SUBTASK_STATE_EXCERPT_CHARS: Final[int] = 300
+
+#: Where a ping meets follow-through: one rule, read by comms, the executor and the manual.
+PING_WITH_FOLLOW_THROUGH_RULE: Final[str] = (
+    "A ping that GAIA must also see through is ONE GAIA task whose first run gives the "
+    "ping: never a reminder beside it, and never the reminder alone."
+)

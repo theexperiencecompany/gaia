@@ -9,9 +9,12 @@ import uuid
 from app.constants.tasks import Assignee
 from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
+from app.models.task_day_window_models import TaskDayWindow
 from app.models.task_models import (
     NoWhen,
+    PendingApprovalRef,
     RepeatWhen,
+    SubTask,
     TaskCounts,
     TaskDocument,
     TaskPage,
@@ -20,7 +23,6 @@ from app.models.task_models import (
     When,
 )
 from app.models.task_run_models import TaskRunDocument
-from app.models.todo_models import PendingApprovalRef, SubTask, TodoDayWindow
 from app.schemas.tasks import TaskCreateRequest, TaskResponse, TaskUpdateRequest
 from app.services.analytics_service import capture
 from app.services.conversation_service import (
@@ -153,7 +155,7 @@ async def list_tasks(user_id: str, query: TaskQuery) -> TaskPage:
     return await task_repository.list_page(user_id=user_id, query=query)
 
 
-async def task_counts(user_id: str, window: TodoDayWindow) -> TaskCounts:
+async def task_counts(user_id: str, window: TaskDayWindow) -> TaskCounts:
     return await task_repository.compute_counts(user_id=user_id, window=window)
 
 

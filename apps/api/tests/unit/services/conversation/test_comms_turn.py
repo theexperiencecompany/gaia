@@ -26,7 +26,7 @@ from app.utils.errors import ConversationNotFoundError
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext
 from tests.factories import make_authenticated_user
-from tests.unit.services.conversation.log_helpers import at, finished, fired, logged, todo_run
+from tests.unit.services.conversation.log_helpers import at, finished, fired, logged, task_run
 from tests.unit.services.conversation.runtime_doubles import CONVERSATION, USER
 
 MODULE = "app.services.conversation.comms_turn"
@@ -86,8 +86,10 @@ def seams() -> Iterator[Seams]:
         patch(f"{MODULE}.conversation_repository") as conversations,
         patch(f"{MODULE}.build_turn_context", AsyncMock(return_value=context)) as turn_context,
         patch(f"{MODULE}.build_agent_config", AsyncMock()) as agent_config,
-        patch(f"{MODULE}.todo_runs_reported", AsyncMock(return_value=[])) as reported,
-        patch(f"{MODULE}.write_up_note", AsyncMock(return_value="write it up")) as write_up,
+        patch(f"{MODULE}.task_runs_reported", AsyncMock(return_value=[])) as reported,
+        patch(
+            f"{MODULE}.task_run_delivery.write_up_note", AsyncMock(return_value="write it up")
+        ) as write_up,
         patch(f"{MODULE}.runtime_ports", return_value=SimpleNamespace(log=log)),
         patch(
             f"{MODULE}.resolve_proactive_target",
@@ -117,7 +119,7 @@ def seams() -> Iterator[Seams]:
 async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from(
     seams: Seams,
 ) -> None:
-    seams.conversations.get_task_id.return_value = "todo_9"
+    seams.conversations.get_task_id.return_value = "task_9"
     first = _said("u1", ConversationSource.WEB, selected_tool="gmail_send", tool_category="mail")
     last = _said("u2", ConversationSource.TELEGRAM)
     batch = _batch(1, [first, last])
@@ -134,7 +136,7 @@ async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from
     assert (scope.conversation_id, scope.source, scope.active_task_id) == (
         CONVERSATION,
         "telegram",
-        "todo_9",
+        "task_9",
     )
     seams.owner.assert_awaited_once_with(USER)
     assert (scope.execution_mode, scope.presence, scope.opens_thread) == (
@@ -151,7 +153,7 @@ async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from
     agent_turn = kwargs["turn"]
     assert (agent_turn.selected_tool, agent_turn.tool_category) == ("gmail_send", "mail")
     assert (agent_turn.active_task_id, agent_turn.execution_mode, agent_turn.source) == (
-        "todo_9",
+        "task_9",
         "interactive",
         "telegram",
     )
@@ -185,7 +187,7 @@ async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from
         "memory_user_id": USER,
         "conversation_id": CONVERSATION,
         "integration_usernames": {},
-        "active_task_id": "todo_9",
+        "active_task_id": "task_9",
     }
     seams.reported.assert_not_awaited()
 
@@ -252,14 +254,14 @@ TELEGRAM_TARGET = ChatChannel(
 )
 
 
-@pytest.mark.parametrize("kind", ["todo", "workflow"])
+@pytest.mark.parametrize("kind", ["task", "workflow"])
 async def test_a_background_result_for_a_telegram_user_is_written_with_the_telegram_prompt(
     seams: Seams, kind: str
 ) -> None:
     seams.target.return_value = TELEGRAM_TARGET
     work = finished("w6", "t1")
-    if kind == "todo":
-        seams.reported.return_value = [(work, todo_run())]
+    if kind == "task":
+        seams.reported.return_value = [(work, task_run())]
         batch = _batch(6, [work])
     else:
         batch = _batch(3, [fired("f1")])
@@ -341,9 +343,9 @@ async def test_a_workflows_finished_work_is_written_for_a_plain_text_platform(
     assert turn.closing == [HumanMessage(content=PLATFORM_DELIVERY_NOTE), seams.context.clock]
 
 
-async def test_a_todos_finished_run_is_written_up_by_its_note(seams: Seams) -> None:
+async def test_a_tasks_finished_run_is_written_up_by_its_note(seams: Seams) -> None:
     work = finished("w6", "t1")
-    run = todo_run()
+    run = task_run()
     seams.reported.return_value = [(work, run)]
 
     turn = await build_comms_turn(CLAIM, _batch(6, [work]))

@@ -41,22 +41,22 @@ class TestWaitForUser:
                 WaiterKind.CHAT,
                 "conv-1",
             ),
-            # The user talking about a todo in chat is still the chat waiting.
+            # The user talking about a task in chat is still the chat waiting.
             (
                 AgentConfigurableView(
-                    conversation_id="conv-1", active_todo_id="todo-1", execution_mode="interactive"
+                    conversation_id="conv-1", active_task_id="task_1", execution_mode="interactive"
                 ),
                 WaiterKind.CHAT,
                 "conv-1",
             ),
             (
                 AgentConfigurableView(
-                    conversation_id="todo-conv",
-                    active_todo_id="todo-1",
+                    conversation_id="task-conv",
+                    active_task_id="task_1",
                     execution_mode="background",
                 ),
-                WaiterKind.TODO,
-                "todo-1",
+                WaiterKind.TASK,
+                "task_1",
             ),
             (
                 AgentConfigurableView(
@@ -66,7 +66,7 @@ class TestWaitForUser:
                 "wf-1",
             ),
         ],
-        ids=["chat", "chat-about-a-todo", "todo-run", "workflow-run"],
+        ids=["chat", "chat-about-a-task", "task-run", "workflow-run"],
     )
     async def test_the_run_keeps_the_waiter_it_speaks_for(
         self, run: AgentConfigurableView, waiter: WaiterKind, waiter_id: str
@@ -105,7 +105,7 @@ class TestWaitForUser:
 
 class TestReportWaitMet:
     async def test_each_waiter_gets_its_own_resume_job_naming_its_wait(self) -> None:
-        waits = [_wait(WaiterKind.CHAT, "conv-1", "w1"), _wait(WaiterKind.TODO, "todo-1", "w2")]
+        waits = [_wait(WaiterKind.CHAT, "conv-1", "w1"), _wait(WaiterKind.TASK, "task_1", "w2")]
         pool = MagicMock()
         with (
             patch(f"{MODULE}.wait_repository.find_met", AsyncMock(return_value=waits)) as find,

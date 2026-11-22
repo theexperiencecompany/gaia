@@ -14,6 +14,7 @@ from typing import Any, Final
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import ValidationError
 from scripts.tasks_migration.legacy import (
     GAIA_TRACKED_LABEL,
     LABEL_FLAGS,
@@ -35,8 +36,9 @@ from scripts.tasks_migration.transform import owed_nudge
 
 from app.constants.tasks import INBOX_DESK_SYSTEM_KEY, TASK_ID_PATTERN, TaskRunKind
 from app.models.playbook_models import PlaybookBody
-from app.models.todo_models import SubTask
+from app.models.task_models import SubTask
 from app.models.trigger_subscription_models import TriggerSubscription
+from app.models.wait_models import WaitDocument
 from app.services.tasks.body_hash import task_body_hash
 
 Document = dict[str, Any]
@@ -677,8 +679,14 @@ def _check_approvals_and_waits(check: _Checker, data: _Data) -> None:
         if twin not in keys:
             check.fail("waits", str(wait["_id"]), "twin", f"a wait kept as {twin}")
     for wait in data.waits:
+        if wait["waiter"] != TASK_WAITER and wait["condition"] != TASK_TRIGGER_CONDITION:
+            continue
         if wait["waiter"] == TASK_WAITER and wait["waiter_id"] not in data.tasks:
             check.fail("waits", str(wait["_id"]), "waiter_id", "a task this wait wakes")
+        try:
+            WaitDocument.model_validate({**wait, "id": str(wait["_id"])})
+        except ValidationError as unreadable:
+            check.fail("waits", str(wait["_id"]), "shape", f"a wait the app reads: {unreadable}")
 
 
 async def check_parity(

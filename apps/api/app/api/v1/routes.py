@@ -53,7 +53,6 @@ from app.api.v1.endpoints import (
     skills,
     support,
     tasks,
-    todos,
     tools,
     triggers,
     usage,
@@ -112,7 +111,6 @@ router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
 router.include_router(webhook_composio.router, tags=["Composio Webhook"])
 router.include_router(tasks.router, tags=["Tasks"])
-router.include_router(todos.router, tags=["Todos"])
 router.include_router(workflows.router, tags=["Workflows"])
 router.include_router(triggers.router, tags=["Triggers"])
 router.include_router(reminders.router, tags=["Reminders"])

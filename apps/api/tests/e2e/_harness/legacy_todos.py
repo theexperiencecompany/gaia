@@ -193,6 +193,23 @@ class LegacyTodos:
         await self._db["todos"].insert_one(row)
         return str(todo_id)
 
+    async def waits_for_user_to_connect(
+        self, todo_id: str, integration_id: str, integration_name: str
+    ) -> None:
+        """Write the wait a todo's run kept when it asked the user to connect an app."""
+        await self._db["waits"].insert_one(
+            {
+                "user_id": self._user_id,
+                "condition": "integration_connected",
+                "subject_id": integration_id,
+                "waiter": "todo",
+                "waiter_id": todo_id,
+                "subject_name": integration_name,
+                "stream_id": None,
+                "created_at": datetime.now(UTC),
+            }
+        )
+
     async def asked(self, todo_id: str, question: str, if_no_reply: str) -> None:
         """Write a run that asked the user question and waits on them, holding as if_no_reply says."""
         run = await self._ran(todo_id)

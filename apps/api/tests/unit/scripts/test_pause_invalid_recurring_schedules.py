@@ -9,7 +9,6 @@ from scripts.pause_invalid_recurring_schedules import (
     CleanupPlan,
     apply_plan,
     plan_reminder,
-    plan_todo,
     plan_workflow,
 )
 
@@ -84,14 +83,6 @@ def test_an_invalid_workflow_cron_is_paused_once() -> None:
     plan_workflow({**doc, "deactivated_reason": "invalid_schedule"}, plan)
 
     assert [w.id for w in plan.workflows_to_pause] == ["wf_1"]
-
-
-def test_todo_shortcuts_are_never_reported() -> None:
-    plan = CleanupPlan()
-    plan_todo({"_id": "t1", "user_id": "u1", "recurrence": "every_1h"}, plan)
-    plan_todo({"_id": "t2", "user_id": "u1", "recurrence": "*/10 * * * *"}, plan)
-
-    assert [t.id for t in plan.invalid_todos] == ["t2"]
 
 
 async def test_apply_pauses_through_the_repositories_with_the_invalid_schedule_reason() -> None:

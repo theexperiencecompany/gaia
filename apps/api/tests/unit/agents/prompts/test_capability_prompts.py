@@ -17,7 +17,7 @@ from app.agents.prompts.capability_prompts import (
 )
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.inbox_desk import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,

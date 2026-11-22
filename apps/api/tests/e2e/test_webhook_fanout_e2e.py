@@ -58,7 +58,7 @@ def _event(**overrides: Any) -> ComposioWebhookEvent:
         "user_id": USER_ID,
     }
     data.update(overrides)
-    return ComposioWebhookEvent(**data)
+    return ComposioWebhookEvent.model_validate(data)
 
 
 class TestEveryShippedHandlerIsReachable:
@@ -154,21 +154,31 @@ class TestExpireConnection:
             was_primary=True,
             integration_expired=True,
         )
-        expire = AsyncMock(side_effect=lambda *a, **k: (order.append("expire"), expired)[1])
-        pause = AsyncMock(side_effect=lambda *a: (order.append("pause"), ["Standup"])[1])
-        pause_watches = AsyncMock(side_effect=lambda *a, **k: order.append("pause_watches"))
+
+        async def expire_first(*_args: object, **_kwargs: object) -> AccountExpired:
+            order.append("expire")
+            return expired
+
+        async def pause_workflows(*_args: object) -> list[str]:
+            order.append("pause")
+            return ["Standup"]
+
+        async def pause_tasks_after(*_args: object, **_kwargs: object) -> int:
+            order.append("pause_tasks")
+            return 0
+
+        expire = AsyncMock(side_effect=expire_first)
+        pause = AsyncMock(side_effect=pause_workflows)
+        pause_tasks = AsyncMock(side_effect=pause_tasks_after)
         with (
             patch(f"{MODULE}.expire_account", expire),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
-            patch(f"{MODULE}.pause_watches_for_expired_account", pause_watches),
+            patch(f"{MODULE}.pause_for_lost_account", pause_tasks),
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _expire_connection(USER_ID, "googlecalendar", "revoked", "ca-1")
 
-        assert order == ["expire", "pause", "pause_watches"]
-        pause_watches.assert_awaited_once_with(
-            USER_ID, "googlecalendar", "ca-1", integration_expired=True
-        )
+        assert order == ["expire", "pause", "pause_tasks"]
         announce.assert_awaited_once_with(
             USER_ID, "googlecalendar", expired, ["Standup"], "revoked"
         )

@@ -123,12 +123,12 @@ class TestGateEditAction:
     def test_a_change_sends_one_event_for_the_owner(self) -> None:
         with patch("app.services.triggers.gate_edits.capture") as capture:
             report_gate_edit(
-                USER_ID, GateOwner.TODO, DESK, DESK.model_copy(update={"enabled": False})
+                USER_ID, GateOwner.TASK, DESK, DESK.model_copy(update={"enabled": False})
             )
 
         capture.assert_called_once_with(
             UserId(USER_ID),
-            TriggerGateEdited(owner_type="todo", action="disabled", gate_kind="system"),
+            TriggerGateEdited(owner_type="task", action="disabled", gate_kind="system"),
         )
 
     @pytest.mark.parametrize(
@@ -144,11 +144,11 @@ class TestGateEditAction:
         gate_kind: Literal["authored", "system"],
     ) -> None:
         with patch("app.services.triggers.gate_edits.capture") as capture:
-            report_gate_edit(USER_ID, GateOwner.TODO, before, after)
+            report_gate_edit(USER_ID, GateOwner.TASK, before, after)
 
         capture.assert_called_once_with(
             UserId(USER_ID),
-            TriggerGateEdited(owner_type="todo", action=action, gate_kind=gate_kind),
+            TriggerGateEdited(owner_type="task", action=action, gate_kind=gate_kind),
         )
 
     def test_a_write_that_changed_nothing_sends_none(self) -> None:

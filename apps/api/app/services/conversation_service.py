@@ -284,33 +284,6 @@ async def _cleanup_conversation_storage(user_id: str, conversation_id: str) -> N
     await _cleanup_checkpoint_threads(conversation_id)
 
 
-async def get_or_create_todo_conversation(user_id: str, todo_id: str, title: str) -> str:
-    """Return the id of a tracked todo's chat, creating it on first use.
-
-    The chat is where the todo's runs execute and what its "Open chat" shows; it
-    is never listed (see the repository's _listed). A racing second create loses
-    on the unique (user_id, todo_id) index and reads the winner's chat instead.
-    """
-    if existing := await conversation_repository.find_todo_conversation_id(user_id, todo_id):
-        return existing
-    document = ConversationDocument(
-        user_id=user_id,
-        conversation_id=str(uuid4()),
-        description=title,
-        todo_id=todo_id,
-        source=ConversationSource.BACKGROUND,
-        createdAt=datetime.now(UTC).isoformat(),
-    )
-    if await conversation_repository.try_create(document):
-        return document.conversation_id
-    winner = await conversation_repository.find_todo_conversation_id(user_id, todo_id)
-    if winner is None:
-        raise RuntimeError(
-            f"the chat of todo {todo_id} was claimed by a concurrent create but cannot be read"
-        )
-    return winner
-
-
 async def get_or_create_task_conversation(user_id: str, task_id: str, title: str) -> str:
     """Return the id of a GAIA task's one chat, creating it on first use.
 
@@ -339,12 +312,6 @@ async def get_or_create_task_conversation(user_id: str, task_id: str, title: str
 async def delete_task_conversations(user_id: str, task_ids: list[str]) -> None:
     """Delete the chats of deleted tasks, with the storage each one left behind."""
     for conversation_id in await conversation_repository.delete_for_tasks(user_id, task_ids):
-        await _cleanup_conversation_storage(user_id, conversation_id)
-
-
-async def delete_todo_conversations(user_id: str, todo_ids: list[str]) -> None:
-    """Delete the chats of deleted tracked todos, with the storage each one left behind."""
-    for conversation_id in await conversation_repository.delete_for_todos(user_id, todo_ids):
         await _cleanup_conversation_storage(user_id, conversation_id)
 
 
@@ -518,7 +485,6 @@ async def batch_sync_conversations(
                 cursor=screen.cursor,
                 artifacts=document.artifacts,
                 awaiting_approval=document.awaiting_approval,
-                todo_id=document.todo_id,
                 task_id=document.task_id,
                 source=document.source,
                 listed=document.listed,

@@ -19,7 +19,6 @@ import pytest
 
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.prompts.workflow_prompts import (
-    TODO_WORKFLOW_PROMPT_TEMPLATE,
     WORKFLOW_INSTRUCTIONS_CONTRACT,
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
 )
@@ -91,17 +90,3 @@ class TestWorkedExamplesMatchTheContract:
                 assert not tell.search(prompt), (
                     f"example prompt restates its trigger ({tell.pattern!r}): {prompt[:120]!r}"
                 )
-
-
-@pytest.mark.unit
-class TestTodoWorkflowPrompt:
-    def test_it_carries_the_task_and_not_how_the_workflow_was_made(self) -> None:
-        """The rendered template is the stored prompt, so config narration becomes the executor's goal."""
-        rendered = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
-            title="Book the venue for the offsite",
-            details_section="**Details:** capacity 40, budget 2k",
-        )
-        assert "Book the venue for the offsite" in rendered
-        assert "capacity 40, budget 2k" in rendered
-        for config_text in ("automatically generated", "Run Workflow", "todo-driven"):
-            assert config_text not in rendered, f"prompt narrates its own config: {config_text!r}"

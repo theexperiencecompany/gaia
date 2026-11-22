@@ -231,14 +231,14 @@ class TestTriggerDeliveryToQueuedExecution:
         assert context["tracked_todos_context"] == "todo context"
         queue.assert_not_awaited()
 
-    async def test_a_signed_delivery_also_hands_the_event_to_subscribed_todos(
+    async def test_a_signed_delivery_also_hands_the_event_to_subscribed_tasks(
         self,
         unauthenticated_client: AsyncClient,
         _webhook_secret: None,
         _redis: MagicMock,
         _spawned: list,
     ) -> None:
-        """A tracked todo waiting on the same event must not be dropped by the no-match return."""
+        """A GAIA task waiting on the same event must not be dropped by the no-match return."""
         enqueue = AsyncMock()
         body = _gmail_delivery()
         with (
@@ -260,15 +260,17 @@ class TestTriggerDeliveryToQueuedExecution:
             response = await unauthenticated_client.post(
                 ENDPOINT,
                 content=json.dumps(body).encode(),
-                headers=_signed_headers(body, "wh-e2e-todo-1"),
+                headers=_signed_headers(body, "wh-e2e-task-1"),
             )
             await _drain(_spawned)
 
         assert response.status_code == 200
 
-        # No workflow matched, and the event still reached the todo side.
+        # No workflow matched, and the event still reached the task side.
         enqueue.assert_awaited_once()
-        _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
+        _pool, task_name, trigger_names, trigger_id, user_id, payload, _occurrence = (
+            enqueue.await_args.args
+        )
         assert task_name == "dispatch_to_subscribers"
         # Inbound mail must never wake a watch on the user's sent mail.
         assert trigger_names == ["gmail_new_message"]
@@ -283,7 +285,7 @@ class TestTriggerDeliveryToQueuedExecution:
         _redis: MagicMock,
         _spawned: list,
     ) -> None:
-        """The user's own reply is the event a thread todo waits on; it must reach the todo side."""
+        """The user's own reply is the event a thread task waits on; it must reach the task side."""
         enqueue = AsyncMock()
         find_by_user = AsyncMock(return_value=[])
         body = _gmail_sent_delivery()
@@ -309,7 +311,9 @@ class TestTriggerDeliveryToQueuedExecution:
         assert response.json()["message"] == "Webhook accepted"
         find_by_user.assert_awaited_once_with(USER_ID, ["gmail_email_sent"])
         enqueue.assert_awaited_once()
-        _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
+        _pool, task_name, trigger_names, trigger_id, user_id, payload, _occurrence = (
+            enqueue.await_args.args
+        )
         assert task_name == "dispatch_to_subscribers"
         assert trigger_names == ["gmail_email_sent"]
         assert trigger_id == "ti_sent_nano"
@@ -475,7 +479,7 @@ class TestConnectionExpiryDelivery:
             ),
             patch("app.services.integrations.integration_expiry.schedule_user_integrations_sync"),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
-            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
+            patch(f"{MODULE}.pause_for_lost_account", AsyncMock(return_value=0)),
             patch(f"{MODULE}.announce_account_expiry", announce),
         ):
             response = await unauthenticated_client.post(
@@ -492,10 +496,7 @@ class TestConnectionExpiryDelivery:
         assert saved["status"] == "expired"
         assert [a.status for a in saved["accounts"]] == ["expired"]
         pause.assert_awaited_once_with(USER_ID, "googlecalendar")
-        # The integration's only account died, so its watches on every account stop too.
-        pause_watches.assert_awaited_once_with(
-            USER_ID, "googlecalendar", record.accounts[0].id, integration_expired=True
-        )
+        # The integration's only account died, so its subscriptions on every account stop too.
         user_id, integration_id, expired, paused, reason = announce.await_args.args
         assert (user_id, integration_id, paused, reason) == (
             USER_ID,

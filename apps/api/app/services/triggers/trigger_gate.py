@@ -40,7 +40,6 @@ from app.constants.trigger_gates import (
     GateReason,
 )
 from app.db.repositories.tasks import task_repository
-from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.jev_models import JevChoiceAnswer, JevDecisionsResponse
 from app.models.trigger_gate_models import (
@@ -123,7 +122,7 @@ _OUTCOMES: Final[Mapping[type[GateVerdict], GateOutcome]] = {
 
 @dataclass(frozen=True, slots=True)
 class GatedJob:
-    """The job a gate stands in front of: a workflow, or one todo or task subscription, and what it does."""
+    """The job a gate stands in front of: a workflow, or one task subscription, and what it does."""
 
     owner: GateOwner
     id: str
@@ -536,15 +535,11 @@ async def _remember_skip(job: GatedJob, skip: GateSkip) -> None:
     try:
         if job.owner is GateOwner.WORKFLOW:
             await workflow_repository.remember_gate_skip(job.id, job.user_id, record)
-        elif job.owner is GateOwner.TASK:
+        else:
             if job.task_id is None:
                 raise ValueError(f"task gate job {job.id} names no task")
             await task_repository.remember_gate_skip(
                 job.task_id, user_id=job.user_id, subscription_id=job.id, skip=record
-            )
-        else:
-            await todo_repository.remember_subscription_gate_skip(
-                user_id=job.user_id, subscription_id=job.id, skip=record
             )
     except Exception as e:
         # Re-raising would reach decide_gate's crash path and run the job the gate just skipped.

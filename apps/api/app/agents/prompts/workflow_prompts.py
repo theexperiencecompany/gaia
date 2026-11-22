@@ -23,19 +23,6 @@ of when the run happens does not.
 # WORKFLOW GENERATION PROMPTS (existing)
 # =============================================================================
 
-# Execution prompt for a workflow generated from a todo. Everything the executor
-# needs is the task itself: how the workflow got created and when the user runs
-# it are config, and this string is read as the run's goal.
-TODO_WORKFLOW_PROMPT_TEMPLATE = """Complete this task for the user, using external tools for
-every concrete action it needs:
-
-**Task:** {title}
-{details_section}
-"""
-
-# Short display description for todo workflows
-TODO_WORKFLOW_DESCRIPTION_TEMPLATE = "Automated workflow to complete: {title}"
-
 WORKFLOW_GENERATION_SYSTEM_PROMPT = """Create a practical workflow plan for this goal using ONLY the available tools listed below.
 
 ## HOW WORKFLOWS WORK (User's Perspective):

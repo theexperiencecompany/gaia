@@ -19,8 +19,8 @@ from app.constants.agents import (
     OUTCOME_SCHEDULE_ARGS,
     OUTCOME_SUBSCRIBE_TOOLS,
     OUTCOME_TASK_TOOLS,
-    TODO_REARM_TAG,
-    TODO_WAKES_AGAIN_TAG,
+    TASK_REARM_TAG,
+    TASK_WAKES_AGAIN_TAG,
     OutcomeState,
 )
 from app.constants.general import FINISH_TASK_NAME
@@ -69,8 +69,8 @@ def _wakes_later(call: ToolCall) -> bool:
     return False
 
 
-def _keeps_a_todo_awake(call: ToolCall) -> bool:
-    """Return whether this call closes a todo or gives it its next check."""
+def _keeps_a_task_awake(call: ToolCall) -> bool:
+    """Return whether this call closes a task or gives it its next check."""
     return _effective_call(call)[0] in OUTCOME_COMPLETE_TOOLS or _wakes_later(call)
 
 
@@ -81,16 +81,16 @@ def _briefed_with(delegation: Sequence[AnyMessage], tag: str) -> bool:
     return any(line.strip() == tag for line in extract_text_content(task.content).splitlines())
 
 
-def todo_left_asleep(delegation: Sequence[AnyMessage]) -> str | None:
-    """Name how this run left its tracked todo with no next step, if it did.
+def task_left_asleep(delegation: Sequence[AnyMessage]) -> str | None:
+    """Name how this run left its GAIA task with no next step, if it did.
 
     A run briefed with the re-arm tag spent the check that woke it, so it must
-    close the todo or set a new one. Creating a todo without one is refused in code.
+    close the task or set a new one. Creating a task without one is refused in code.
     """
-    if _briefed_with(delegation, TODO_REARM_TAG) and not any(
-        _keeps_a_todo_awake(c) for c in _successful_calls(delegation)
+    if _briefed_with(delegation, TASK_REARM_TAG) and not any(
+        _keeps_a_task_awake(c) for c in _successful_calls(delegation)
     ):
-        return "the todo was left open with no next check, so nothing will look at it again"
+        return "the task was left open with no next check, so nothing will look at it again"
     return None
 
 
@@ -158,7 +158,7 @@ def review_outcome(delegation: Sequence[AnyMessage]) -> OutcomeReview:
 
 def _unbacked(declared: OutcomeState | None, delegation: Sequence[AnyMessage]) -> str | None:
     """Name why this delegation's successful calls do not back the declared outcome, if they do not."""
-    asleep = todo_left_asleep(delegation)
+    asleep = task_left_asleep(delegation)
     if declared is None or asleep:
         return asleep
     calls = _successful_calls(delegation)
@@ -166,10 +166,10 @@ def _unbacked(declared: OutcomeState | None, delegation: Sequence[AnyMessage]) -
         return "done was declared but no work call succeeded"
     if (
         declared is OutcomeState.SCHEDULE
-        and not _briefed_with(delegation, TODO_WAKES_AGAIN_TAG)
+        and not _briefed_with(delegation, TASK_WAKES_AGAIN_TAG)
         and not any(_wakes_later(c) for c in calls)
     ):
-        return "schedule was declared but no tracked todo was scheduled to wake GAIA"
+        return "schedule was declared but no GAIA task was scheduled to wake GAIA"
     if declared is OutcomeState.SUBSCRIBE and not any(
         _effective_call(c)[0] in OUTCOME_SUBSCRIBE_TOOLS for c in calls
     ):
@@ -182,9 +182,9 @@ def outcome_unbacked(state: State) -> bool:
     return not review_outcome(current_delegation(state)).verified
 
 
-def leaves_a_todo_asleep(state: State) -> bool:
-    """Return whether the running delegation would leave a tracked todo with nothing to wake it."""
-    return todo_left_asleep(current_delegation(state)) is not None
+def leaves_a_task_asleep(state: State) -> bool:
+    """Return whether the running delegation would leave a GAIA task with nothing to wake it."""
+    return task_left_asleep(current_delegation(state)) is not None
 
 
 def review_run(messages: Sequence[AnyMessage]) -> OutcomeReview:

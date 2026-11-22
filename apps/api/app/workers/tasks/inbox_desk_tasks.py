@@ -6,8 +6,8 @@ before the desk shipped get theirs from scripts/provision_inbox_desks.py.
 
 from arq import Retry
 
+from app.constants.inbox_desk import INBOX_DESK_PROVISION_RETRY_DELAY
 from app.constants.log_tags import LogTag
-from app.constants.todos import INBOX_DESK_PROVISION_RETRY_DELAY
 from app.services.tasks.inbox_desk import provision_inbox_desk
 from app.workers.task_envelope import RETRY_BACKOFF_BASE, ArqJobContext
 from shared.py.wide_events import log
@@ -23,7 +23,7 @@ async def provision_inbox_desk_task(ctx: ArqJobContext, user_id: str) -> str:
         # Retry re-raises rather than swallows; max_tries bounds the chain.
         defer = INBOX_DESK_PROVISION_RETRY_DELAY * RETRY_BACKOFF_BASE ** (job_try - 1)
         log.warning(
-            f"{LogTag.TODO} Inbox desk provisioning failed; retrying",
+            f"{LogTag.TASK} Inbox desk provisioning failed; retrying",
             user_id=user_id,
             error=str(e),
             error_type=type(e).__name__,

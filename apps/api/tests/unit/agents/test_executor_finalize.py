@@ -1087,12 +1087,12 @@ class TestARunsEndIsLoggedAsItEnded:
         assert note != outcome_delivery_note(None, None)
 
     @pytest.mark.parametrize(
-        ("todo", "execution"), [("todo-1", None), (None, "ex-1"), ("todo-1", "ex-1")]
+        ("task", "execution"), [("task_1", None), (None, "ex-1"), ("task_1", "ex-1")]
     )
-    async def test_a_todo_or_workflow_run_is_not_continued_by_a_decision(
-        self, todo: str | None, execution: str | None
+    async def test_a_task_or_workflow_run_is_not_continued_by_a_decision(
+        self, task: str | None, execution: str | None
     ) -> None:
-        run = replace(_run(RunKind.LIVE), active_todo_id=todo, workflow_execution_id=execution)
+        run = replace(_run(RunKind.LIVE), active_task_id=task, workflow_execution_id=execution)
         outcome = er.TerminalOutcome(result_text="r", result_type="final", was_cancelled=False)
 
         logged = await self._log(run, outcome)

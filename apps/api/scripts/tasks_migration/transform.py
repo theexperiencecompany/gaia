@@ -33,12 +33,13 @@ from app.constants.tasks import (
     TaskRunState,
     TaskRunStatus,
     TemplateOrigin,
+    WaitingOn,
 )
-from app.constants.todos import WaitingOn
 from app.models.playbook_models import TaskPlaybookDocument
 from app.models.task_models import (
     DateWhen,
     EventWhen,
+    ExternalRefSource,
     NoWhen,
     RepeatWhen,
     TaskDocument,
@@ -54,7 +55,6 @@ from app.models.task_template_models import (
     TemplateRepeatWhen,
     TemplateWhen,
 )
-from app.models.todo_models import ExternalRefSource
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionResolution,

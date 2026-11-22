@@ -45,7 +45,7 @@ from tests.unit.services.conversation.log_helpers import (
     settled,
     started,
     stop,
-    todo_woke,
+    task_woke,
     user,
 )
 
@@ -81,7 +81,7 @@ def _work(task_id: str, cause_through: int, *approvals: str) -> LiveWork:
         stop("s"),
         barge("b", "r1"),
         fired("f"),
-        todo_woke("t"),
+        task_woke("t"),
         notice("n"),
         decided("d", "ap"),
         finished("w", "t9"),
@@ -276,8 +276,8 @@ def test_a_stop_covering_a_fire_lets_the_next_fire_in() -> None:
     assert _accept(state, 3, fired("f2", "ex_2")).state.unsettled_waking == (3,)
 
 
-@pytest.mark.parametrize("entry", [todo_woke("t"), notice("n")])
-def test_todo_woke_and_notice_move_only_the_head(entry: Entry) -> None:
+@pytest.mark.parametrize("entry", [task_woke("t"), notice("n")])
+def test_a_task_wake_and_a_notice_move_only_the_head(entry: Entry) -> None:
     state, _ = fold([user("u1"), started("w", "t1", 1)])
     result = _accept(state, 3, entry)
     assert result.state == state.model_copy(update={"head": 3})
@@ -718,7 +718,7 @@ def test_workflow_fire_between_two_user_messages_settles_in_order() -> None:
 
 
 def test_wake_up_entry_in_the_middle_of_work_changes_nothing_until_the_work_finishes() -> None:
-    log: list[Entry] = [user("u1"), started("w", "t1", 1), *replied("r", ["u1"], 1), todo_woke("t")]
+    log: list[Entry] = [user("u1"), started("w", "t1", 1), *replied("r", ["u1"], 1), task_woke("t")]
     during, effects = fold(log)
     assert (during.work, during.unsettled_waking) == ((_work("t1", 1),), ())
     assert len(effects) == 2

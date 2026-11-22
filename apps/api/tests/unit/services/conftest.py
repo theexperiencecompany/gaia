@@ -247,20 +247,20 @@ def mock_activation_workflow_reactivation():
 
 @pytest.fixture
 def mock_paywall_resume():
-    """Patch both resumes of paywall-paused automation (reminders, tracked todos); opted into like mock_activation_workflow_reactivation."""
+    """Patch both resumes of paywall-paused automation (reminders, GAIA tasks); opted into like mock_activation_workflow_reactivation."""
     with (
         patch(
             "app.services.reminder_service.reminder_scheduler.resume_paused_for",
             new_callable=AsyncMock,
         ) as reminders,
         patch(
-            "app.services.tracked_todo_service.tracked_todo_service.resume_paused_for",
+            "app.services.workflow.subscription_pause.resume_tasks_paused_for",
             new_callable=AsyncMock,
-        ) as todos,
+        ) as tasks,
     ):
         reminders.return_value = 0
-        todos.return_value = 0
-        yield SimpleNamespace(reminders=reminders, todos=todos)
+        tasks.return_value = 0
+        yield SimpleNamespace(reminders=reminders, tasks=tasks)
 
 
 @pytest.fixture

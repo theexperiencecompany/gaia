@@ -23,9 +23,9 @@ from app.models.conversation_log_models import ApprovalRequested
 from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
 from app.models.user_models import AuthenticatedUser
 from tests.e2e._harness.background import drain_background_runs
+from tests.e2e._harness.gated_run import ask_before, gated_run
 from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.step_stack import OpenStack, entries_of, replayed
-from tests.e2e.test_tracked_todo_chat_e2e import ask_before, gated_run
 
 pytestmark = pytest.mark.e2e
 

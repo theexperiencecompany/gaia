@@ -17,11 +17,10 @@ from typing import Any, Final
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.constants.tasks import TaskFlag
-from app.constants.todos import NoReplyPlan, WaitingOn
+from app.constants.tasks import NoReplyPlan, TaskFlag, WaitingOn
 from app.models.playbook_models import PlaybookRunStatus, PlaybookStep
 from app.models.scheduler_models import DeactivationReason
-from app.models.todo_models import ExternalRef, Priority, SubTask
+from app.models.task_models import ExternalRef, Priority, SubTask
 from app.models.trigger_gate_models import TriggerGate
 from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionStatus
 from app.models.workflow_execution_models import RecordedCall

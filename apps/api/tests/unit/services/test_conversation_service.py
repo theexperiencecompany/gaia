@@ -42,11 +42,11 @@ from app.services.conversation_service import (
     create_system_conversation,
     delete_all_conversations,
     delete_conversation,
-    delete_todo_conversations,
+    delete_task_conversations,
     get_conversation,
     get_conversations,
     get_entries_before,
-    get_or_create_todo_conversation,
+    get_or_create_task_conversation,
     get_starred_messages,
     mark_conversation_as_read,
     mark_conversation_as_unread,
@@ -575,7 +575,7 @@ class TestBatchSyncConversations:
         [
             ({}, True),
             ({"source": "web"}, True),
-            ({"todo_id": "todo-1"}, False),
+            ({"task_id": "task_1"}, False),
             ({"source": "telegram"}, False),
         ],
     )
@@ -607,29 +607,29 @@ class TestBatchSyncConversations:
         mock_repo.owned_ids.assert_awaited_once_with(USER_ID, ["conv_kept", "conv_gone"])
 
 
-class TestTrackedTodoChat:
+class TestTaskChat:
     async def test_an_existing_chat_is_returned_without_creating_one(self, mock_repo):
-        mock_repo.find_todo_conversation_id.return_value = "conv-existing"
+        mock_repo.find_task_conversation_id.return_value = "conv-existing"
 
-        conversation_id = await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
+        conversation_id = await get_or_create_task_conversation(USER_ID, "task_1", "Watch")
 
         assert conversation_id == "conv-existing"
-        mock_repo.find_todo_conversation_id.assert_awaited_once_with(USER_ID, "todo-1")
+        mock_repo.find_task_conversation_id.assert_awaited_once_with(USER_ID, "task_1")
         mock_repo.try_create.assert_not_awaited()
 
-    async def test_the_first_use_creates_an_unlisted_chat_bound_to_the_todo(self, mock_repo):
-        mock_repo.find_todo_conversation_id.return_value = None
+    async def test_the_first_use_creates_an_unlisted_chat_bound_to_the_task(self, mock_repo):
+        mock_repo.find_task_conversation_id.return_value = None
         mock_repo.try_create.return_value = True
 
-        conversation_id = await get_or_create_todo_conversation(
-            USER_ID, "todo-1", "Watch the deploy"
+        conversation_id = await get_or_create_task_conversation(
+            USER_ID, "task_1", "Watch the deploy"
         )
 
         (created,) = mock_repo.try_create.await_args.args
         assert conversation_id == created.conversation_id
-        assert (created.user_id, created.todo_id, created.description) == (
+        assert (created.user_id, created.task_id, created.description) == (
             USER_ID,
-            "todo-1",
+            "task_1",
             "Watch the deploy",
         )
         # Never a chat the user has to read: no unread dot, no system section.
@@ -640,26 +640,26 @@ class TestTrackedTodoChat:
         assert datetime.fromisoformat(created.createdAt).utcoffset() == timedelta(0)
 
     async def test_the_loser_of_a_creation_race_gets_the_winners_chat(self, mock_repo):
-        mock_repo.find_todo_conversation_id.side_effect = [None, "conv-winner"]
+        mock_repo.find_task_conversation_id.side_effect = [None, "conv-winner"]
         mock_repo.try_create.return_value = False
 
-        conversation_id = await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
+        conversation_id = await get_or_create_task_conversation(USER_ID, "task_1", "Watch")
 
         assert conversation_id == "conv-winner"
-        assert [c.args for c in mock_repo.find_todo_conversation_id.await_args_list] == [
-            (USER_ID, "todo-1"),
-            (USER_ID, "todo-1"),
+        assert [c.args for c in mock_repo.find_task_conversation_id.await_args_list] == [
+            (USER_ID, "task_1"),
+            (USER_ID, "task_1"),
         ]
 
     async def test_a_race_whose_winner_cannot_be_read_fails_loudly(self, mock_repo):
-        mock_repo.find_todo_conversation_id.return_value = None
+        mock_repo.find_task_conversation_id.return_value = None
         mock_repo.try_create.return_value = False
 
-        with pytest.raises(RuntimeError, match="todo-1"):
-            await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
+        with pytest.raises(RuntimeError, match="task_1"):
+            await get_or_create_task_conversation(USER_ID, "task_1", "Watch")
 
-    async def test_deleting_todos_cleans_up_after_each_of_their_chats(self, mock_repo):
-        mock_repo.delete_for_todos.return_value = ["conv-1", "conv-2"]
+    async def test_deleting_tasks_cleans_up_after_each_of_their_chats(self, mock_repo):
+        mock_repo.delete_for_tasks.return_value = ["conv-1", "conv-2"]
         cleanup = AsyncMock()
         sessions = AsyncMock()
         with (
@@ -667,9 +667,9 @@ class TestTrackedTodoChat:
             patch.object(conversation_service, "delete_session_dir", new=sessions),
             patch("app.services.conversation_service.capture") as mock_capture,
         ):
-            await delete_todo_conversations(USER_ID, ["todo-1", "todo-2"])
+            await delete_task_conversations(USER_ID, ["task_1", "task_2"])
 
-        mock_repo.delete_for_todos.assert_awaited_once_with(USER_ID, ["todo-1", "todo-2"])
+        mock_repo.delete_for_tasks.assert_awaited_once_with(USER_ID, ["task_1", "task_2"])
         assert [c.args for c in cleanup.await_args_list] == [("conv-1",), ("conv-2",)]
         assert [c.args for c in sessions.await_args_list] == [
             (USER_ID, "conv-1"),

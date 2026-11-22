@@ -28,9 +28,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from tests.e2e._harness.background import drain_background_runs
-from tests.e2e._harness.graph_run import call
-from tests.e2e._harness.step_stack import OpenStack, entries_of, replayed
-from tests.e2e.test_tracked_todo_chat_e2e import (
+from tests.e2e._harness.gated_run import (
     DRAWN,
     SKIPPED,
     WAITING,
@@ -38,6 +36,8 @@ from tests.e2e.test_tracked_todo_chat_e2e import (
     gated_run,
     redeem,
 )
+from tests.e2e._harness.graph_run import call
+from tests.e2e._harness.step_stack import OpenStack, entries_of, replayed
 
 pytestmark = pytest.mark.e2e
 

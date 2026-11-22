@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from app.constants.chat import ConversationSource
-from app.constants.todos import TodoWakeKind
+from app.constants.tasks import TaskRunTrigger
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -20,8 +20,8 @@ from app.models.conversation_log_models import (
     ReplySettled,
     StopBy,
     StopRequested,
+    TaskRun,
     TodoReportForm,
-    TodoRun,
     TodoWoke,
     UserMessage,
     WorkFinished,
@@ -32,8 +32,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.hil_models import ApprovalDescription, ApprovalDetail
 from app.models.message_models import SelectedWorkflowData
-from app.models.todo_wake_models import TodoRunWake
-from app.models.workflow_models import TriggerType
+from app.models.run_wake_models import TodoRunWake, TodoWakeKind
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.conversation.reducer import reduce
 from shared.py.analytics.catalog.attribution import Trigger
@@ -92,12 +91,12 @@ def fired(entry_id: str, execution_id: str = "ex_1") -> WorkflowFired:
     return WorkflowFired(id=entry_id, run=workflow_run(execution_id))
 
 
-def todo_run(report_form: TodoReportForm = TodoReportForm.WRITE_UP) -> TodoRun:
-    return TodoRun(
-        todo_id="todo_1",
+def task_run(report_form: TodoReportForm = TodoReportForm.WRITE_UP) -> TaskRun:
+    return TaskRun(
+        task_id="task_1",
         run_id="run_1",
         title="Watch the Acme thread",
-        trigger_type=TriggerType.SCHEDULED_TODO,
+        trigger_type=TaskRunTrigger.SCHEDULE,
         runs_once=False,
         wake=TodoRunWake(kind=TodoWakeKind.SCHEDULE, trigger_names=[], approval_summary=None),
         report_form=report_form,
@@ -105,8 +104,8 @@ def todo_run(report_form: TodoReportForm = TodoReportForm.WRITE_UP) -> TodoRun:
     )
 
 
-def todo_woke(entry_id: str) -> TodoWoke:
-    return TodoWoke(id=entry_id, run=todo_run())
+def task_woke(entry_id: str) -> TodoWoke:
+    return TodoWoke(id=entry_id, run=task_run())
 
 
 def notice(entry_id: str) -> Notice:

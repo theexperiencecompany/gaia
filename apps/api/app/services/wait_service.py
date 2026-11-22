@@ -2,7 +2,7 @@
 
 An ask site calls wait_for_user with the run that asked; the site where the thing gets done
 calls report_wait_met. Each wait becomes one resume_waiter job (wait_tasks), which claims it and
-picks the waiter back up however its kind resumes: a chat, a tracked todo or a workflow.
+picks the waiter back up however its kind resumes: a chat, a GAIA task or a workflow.
 """
 
 from app.constants.log_tags import LogTag
@@ -16,10 +16,10 @@ from shared.py.wide_events import log
 
 
 def _waiter(run: AgentConfigurableView) -> tuple[WaiterKind, str] | None:
-    """Who the run speaks for: the user's chat, or the todo or workflow a background run executes."""
+    """Who the run speaks for: the user's chat, or the GAIA task or workflow a background run executes."""
     if run.execution_mode == "background":
-        if run.active_todo_id:
-            return WaiterKind.TODO, run.active_todo_id
+        if run.active_task_id:
+            return WaiterKind.TASK, run.active_task_id
         if run.workflow_id:
             return WaiterKind.WORKFLOW, run.workflow_id
         return None

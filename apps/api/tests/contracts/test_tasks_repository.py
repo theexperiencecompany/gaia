@@ -11,8 +11,15 @@ from app.constants.tasks import Assignee, TaskRunState
 from app.db.mongodb.indexes import TASK_OPEN_EXTERNAL_REF_KEYS, TASK_OPEN_EXTERNAL_REF_OPTIONS
 from app.db.repositories.tasks import TasksRepository
 from app.models.scheduler_models import DeactivationReason
-from app.models.task_models import EventWhen, NoWhen, RepeatWhen, TaskDocument, TaskQuery
-from app.models.todo_models import ExternalRef, ExternalRefSource
+from app.models.task_models import (
+    EventWhen,
+    ExternalRef,
+    ExternalRefSource,
+    NoWhen,
+    RepeatWhen,
+    TaskDocument,
+    TaskQuery,
+)
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionResolution,

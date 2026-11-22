@@ -14,14 +14,14 @@ from app.constants.delivery_alerts import (
     REFRESH_DELIVERY_INCIDENT_TASK,
 )
 from app.constants.email import SIGNUP_EMAIL_TASK
+from app.constants.inbox_desk import PROVISION_INBOX_DESK_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
-from app.constants.tasks import FINISH_TASK_RUN_JOB, RESUME_TASK_JOB, RUN_TASK_JOB
-from app.constants.todos import (
-    EXECUTE_TRACKED_TODO_TASK,
-    PROVISION_INBOX_DESK_TASK,
-    TODO_RUN_FINISH_MAX_TRIES,
-    TODO_RUN_FINISH_TASK,
+from app.constants.tasks import (
+    FINISH_TASK_RUN_JOB,
+    FINISH_TASK_RUN_MAX_TRIES,
+    RESUME_TASK_JOB,
+    RUN_TASK_JOB,
 )
 from app.constants.triggers import DISPATCH_TO_SUBSCRIBERS_JOB
 from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
@@ -42,7 +42,6 @@ from app.workers.tasks import (
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
     process_reminder,
-    process_workflow_generation_task,
     promote_usage_badges,
     prune_checkpoint_versions,
     prune_inactive_sessions,
@@ -66,7 +65,6 @@ from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.inbox_desk_tasks import (
     provision_inbox_desk_task,
 )
-from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
@@ -75,12 +73,6 @@ from app.workers.tasks.task_run_tasks import (
     recover_tasks,
     resume_task,
     run_task,
-)
-from app.workers.tasks.tracked_todo_tasks import (
-    execute_tracked_todo,
-    finish_tracked_todo_run,
-    resume_tracked_todo,
-    safety_net_check_orphaned_todos,
 )
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_to_subscribers
 from app.workers.tasks.wait_tasks import resume_waiter
@@ -102,7 +94,6 @@ _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_step_conversations = arq_task(sweep_step_conversations)
 _check_inactive_users = arq_task(check_inactive_users)
-_process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
 _generate_workflow_steps = arq_task(generate_workflow_steps)
@@ -123,8 +114,6 @@ _refresh_lab_sandboxes = arq_task(refresh_lab_sandboxes)
 _prune_inactive_sessions = arq_task(prune_inactive_sessions)
 _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
-_execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
-# Named from the constant its per-occurrence job ids are built from.
 _run_task = func(arq_task(run_task), name=RUN_TASK_JOB)
 _recover_tasks = arq_task(recover_tasks)
 _resume_task = func(arq_task(resume_task), name=RESUME_TASK_JOB)
@@ -132,10 +121,7 @@ _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION
 _resume_waiter = func(
     arq_task(resume_waiter), name=RESUME_WAITER_TASK, max_tries=RESUME_WAITER_MAX_TRIES
 )
-_resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_to_subscribers = func(arq_task(dispatch_to_subscribers), name=DISPATCH_TO_SUBSCRIBERS_JOB)
-_safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
-_maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
 _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
@@ -152,14 +138,8 @@ _deliver_signup_emails = func(
 )
 _sweep_undelivered_signup_emails = arq_task(sweep_undelivered_signup_emails)
 _warm_device_servers = arq_task(warm_device_servers)
-# Named from the constant delivery enqueues by; finish_tracked_todo_run bounds its own tries.
-_finish_tracked_todo_run = func(
-    arq_task(finish_tracked_todo_run),
-    name=TODO_RUN_FINISH_TASK,
-    max_tries=TODO_RUN_FINISH_MAX_TRIES,
-)
 _finish_task_run = func(
-    arq_task(finish_task_run), name=FINISH_TASK_RUN_JOB, max_tries=TODO_RUN_FINISH_MAX_TRIES
+    arq_task(finish_task_run), name=FINISH_TASK_RUN_JOB, max_tries=FINISH_TASK_RUN_MAX_TRIES
 )
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
@@ -186,7 +166,6 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _cleanup_expired_reminders,
     _check_inactive_users,
     _run_nurture_sequence_task,
-    _process_workflow_generation_task,
     _execute_workflow_by_id,
     _regenerate_workflow_steps,
     _generate_workflow_steps,
@@ -200,9 +179,6 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _run_task,
     _resume_task,
     _finish_task_run,
-    _execute_tracked_todo,
-    _resume_tracked_todo,
-    _finish_tracked_todo_run,
     _dispatch_to_subscribers,
     _backfill_active_users,
     _backfill_user_memories,
@@ -284,15 +260,8 @@ WorkerSettings.cron_jobs = [
         minute=30,
         second=0,
     ),
-    cron(cast(WorkerCoroutine, _safety_net_check_orphaned_todos), minute={0, 30}, second=0),
     # Every 5 minutes: a task whose job was lost comes round at most this late.
     cron(cast(WorkerCoroutine, _recover_tasks), minute=set(range(0, 60, 5)), second=0),
-    cron(
-        cast(WorkerCoroutine, _maintenance_sweep_tracked_todos),
-        hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22},
-        minute=15,
-        second=0,
-    ),
     # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
     # (Redis eviction/flush). Idempotent via the deterministic _job_id.
     cron(cast(WorkerCoroutine, _rescan_pending_scheduled_tasks), minute={0, 30}, second=0),

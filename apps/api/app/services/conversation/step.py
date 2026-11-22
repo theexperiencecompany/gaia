@@ -36,6 +36,7 @@ from app.services.conversation.ports import (
     RuntimePorts,
     Unsettled,
 )
+from app.services.conversation.run_wake import nothing_to_report
 from app.services.conversation.step_attempt import Attempt, empty_reply, waking_entry
 from app.services.conversation.step_endings import cut_spoken_over
 from app.services.conversation.step_run import run_attempt
@@ -45,7 +46,6 @@ from app.services.conversation.step_writes import (
     conclude,
     set_comms,
 )
-from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group
 from app.utils.hot_path import first_text_gate
 from app.utils.liveness import keep_proving

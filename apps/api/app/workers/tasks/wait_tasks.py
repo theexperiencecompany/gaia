@@ -1,6 +1,6 @@
 """Pick a waiter back up once the user did what GAIA asked, from the job report_wait_met queued.
 
-Each WaiterKind resumes its own way: a chat's executor is handed the news, a tracked todo
+Each WaiterKind resumes its own way: a chat's executor is handed the news, a GAIA task
 gets a run, a workflow gets a run. Every one is told the same thing: what was done, how
 long ago it was asked, and to stay read-only until the user confirms anything else.
 """
@@ -16,7 +16,7 @@ from app.agents.prompts.wait_prompts import WAIT_MET_ENTRY, WAIT_MET_SENTENCES
 from app.agents.tools.run_record import unblock_integration
 from app.constants.agents import AgentTag
 from app.constants.log_tags import LogTag
-from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
+from app.constants.tasks import RUN_TASK_JOB
 from app.constants.waits import (
     RESUME_WAITER_MAX_TRIES,
     RESUME_WAITER_RETRY_DELAY,
@@ -49,15 +49,15 @@ async def _resume_chat(wait: WaitDocument, user: AuthenticatedUser, entry: str) 
     await deliver_to_executor(wait.waiter_id, user, entry, tag=AgentTag.WAIT_MET)
 
 
-async def _resume_todo(wait: WaitDocument, _user: AuthenticatedUser, entry: str) -> None:
-    # A trigger origin, not a plain run: a wake landing mid-run is held for the drain, not dropped.
+async def _resume_task(wait: WaitDocument, _user: AuthenticatedUser, entry: str) -> None:
+    # An event, not a scheduled run: a wake landing mid-run is held for the drain, not dropped.
     origin = TriggerOrigin(
         subscription_id=wait.id,
         trigger_name=WAIT_MET_TRIGGER,
         payload=WaitMetPayload(message=entry).model_dump(),
     )
     pool = await RedisPoolManager.get_pool()
-    await enqueue_worker_job(pool, EXECUTE_TRACKED_TODO_TASK, wait.waiter_id, origin)
+    await enqueue_worker_job(pool, RUN_TASK_JOB, wait.waiter_id, None, events=[origin])
 
 
 async def _resume_workflow(wait: WaitDocument, user: AuthenticatedUser, entry: str) -> None:
@@ -73,7 +73,7 @@ _RESUMERS: MappingProxyType[
 ] = MappingProxyType(
     {
         WaiterKind.CHAT: _resume_chat,
-        WaiterKind.TODO: _resume_todo,
+        WaiterKind.TASK: _resume_task,
         WaiterKind.WORKFLOW: _resume_workflow,
     }
 )

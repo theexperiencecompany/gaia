@@ -18,21 +18,17 @@ from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.scheduler_models import DeactivationReason
+from app.models.task_day_window_models import DueRange, TaskDayWindow
 from app.models.task_models import (
+    ExternalRef,
     OpenSubtaskCount,
+    SubTask,
     TaskCounts,
     TaskDocument,
     TaskPage,
     TaskQuery,
     TaskUpdate,
     When,
-)
-from app.models.todo_models import (
-    DueRange,
-    ExternalRef,
-    ExternalRefSource,
-    SubTask,
-    TodoDayWindow,
 )
 from app.models.trigger_gate_models import GateSkipRecord, TriggerGate
 from app.models.trigger_subscription_models import (
@@ -184,7 +180,7 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         return TaskPage(items=items, total=total)
 
     @cached_query(TaskCounts)
-    async def compute_counts(self, *, user_id: str, window: TodoDayWindow) -> TaskCounts:
+    async def compute_counts(self, *, user_id: str, window: TaskDayWindow) -> TaskCounts:
         """Count the sidebar buckets on the user's own day: due today, upcoming, overdue, and done."""
         open_dated = {"completed": False, "when.kind": WhenKind.DATE.value}
         facets = await self._aggregate(
@@ -301,18 +297,6 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
             }
         )
 
-    async def find_gaia_by_short_id(self, user_id: str, *, short_id: str) -> list[TaskDocument]:
-        """Return the user's GAIA tasks whose id ends with short_id, the folder suffix of their notes."""
-        if _SHORT_ID.fullmatch(short_id) is None:
-            return []
-        return await self._find(
-            {
-                "user_id": user_id,
-                "assignee": Assignee.GAIA.value,
-                "_id": {"$regex": f"{short_id}$"},
-            }
-        )
-
     async def find_open_by_external_ref(
         self, user_id: str, ref: ExternalRef
     ) -> TaskDocument | None:
@@ -327,14 +311,6 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         """Return the user's newest task about ref, open or done; uncached."""
         return await self._find_one(
             {"user_id": user_id, **_external_ref_filter(ref)}, sort=[("created_at", -1)]
-        )
-
-    async def list_open_by_external_ref_source_all_users(
-        self, source: ExternalRefSource, *, limit: int
-    ) -> list[TaskDocument]:
-        """Every user's open tasks about one kind of outside object, for one-off repairs."""
-        return await self._find(
-            {"completed": False, "external_ref.source": source.value}, limit=limit
         )
 
     async def find_system_task(self, user_id: str, system_key: str) -> TaskDocument | None:
@@ -381,15 +357,6 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         return await self._distinct(
             "user_id", {"assignee": Assignee.GAIA.value, "active": True, "completed": False}
         )
-
-    async def list_open_gaia_all_users(
-        self, *, limit: int, after_id: str | None = None
-    ) -> list[TaskDocument]:
-        """Return a page of every user's open GAIA tasks in id order: the maintenance sweep's scan."""
-        filt: dict[str, object] = {"assignee": Assignee.GAIA.value, "completed": False}
-        if after_id is not None:
-            filt["_id"] = {"$gt": after_id}
-        return await self._find(filt, sort=[("_id", 1)], limit=limit)
 
     async def find_due_all_users(
         self, *, now: datetime, max_retries: int, limit: int
@@ -509,16 +476,6 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         return await self._apply_raw_update(
             self._scoped(task_id, user_id),
             {"$pull": {"status_flags": {"$in": [flag.value for flag in flags]}}},
-            scope=user_id,
-        )
-
-    async def add_references(
-        self, task_id: str, *, user_id: str, references: list[str]
-    ) -> TaskDocument | None:
-        """Link earlier tasks whose learnings this one reads."""
-        return await self._apply_raw_update(
-            self._scoped(task_id, user_id),
-            {"$addToSet": {"references": {"$each": references}}},
             scope=user_id,
         )
 

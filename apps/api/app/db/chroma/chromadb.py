@@ -8,7 +8,7 @@ from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 
 from app.config.settings import settings
-from app.constants.chroma import CHROMA_CANVAS_COLLECTION, CHROMA_NOTES_COLLECTION
+from app.constants.chroma import CHROMA_NOTES_COLLECTION
 from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -163,7 +163,6 @@ async def init_chromadb_client() -> AsyncClientAPI:
     for collection_name in (
         CHROMA_NOTES_COLLECTION,
         CHROMA_DOCUMENTS_COLLECTION,
-        CHROMA_CANVAS_COLLECTION,
     ):
         await client.get_or_create_collection(
             name=collection_name, metadata={"hnsw:space": "cosine"}

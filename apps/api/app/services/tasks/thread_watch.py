@@ -1,16 +1,15 @@
 """A GAIA task about an email thread: it runs when the thread gets mail either way."""
 
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
-from app.models.task_models import TaskDocument
-from app.models.todo_models import ExternalRef
+from app.models.task_models import ExternalRef, TaskDocument
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
     SubscriptionAction,
     SubscriptionCondition,
 )
+from app.services.tasks.subscription_config import DEFAULT_COOLDOWN_SECONDS
 from app.services.tasks.subscriptions import SubscriptionRequest, subscribe
-from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS
 
 #: New mail on the thread, and the user's own replies on it.
 THREAD_TRIGGERS = (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME)

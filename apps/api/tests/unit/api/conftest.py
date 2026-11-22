@@ -14,21 +14,3 @@ async def _bypass_integration_check():
         return_value=True,
     ):
         yield
-
-
-@pytest.fixture
-def todo_response_reads():
-    """Answer a todo response's side reads with nothing; yields the open sub-todo count read."""
-    with (
-        patch(
-            "app.services.todos.todo_service.todo_repository.count_open_sub_todos",
-            new_callable=AsyncMock,
-            return_value={},
-        ) as count_open_sub_todos,
-        patch(
-            "app.services.todos.todo_service.pending_approvals_by_owner",
-            new_callable=AsyncMock,
-            return_value={},
-        ),
-    ):
-        yield count_open_sub_todos

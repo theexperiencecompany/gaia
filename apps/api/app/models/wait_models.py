@@ -45,6 +45,6 @@ class WaitUpdate(BaseModel):
 
 
 class WaitMetPayload(BaseModel):
-    """The trigger payload a todo waiter is woken with: GAIA's note on what the user did."""
+    """The event payload a waiting GAIA task is woken with: GAIA's note on what the user did."""
 
     message: str

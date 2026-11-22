@@ -134,8 +134,3 @@ class WebSocketManager:
 
 # Create a singleton instance of WebSocketManager
 websocket_manager = WebSocketManager()
-
-
-def get_websocket_manager() -> WebSocketManager:
-    """Get the singleton instance of WebSocketManager."""
-    return websocket_manager

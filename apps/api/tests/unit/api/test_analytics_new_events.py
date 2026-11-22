@@ -23,7 +23,6 @@ from app.models.integration_models import Integration
 from app.models.memory_models import MemoryDocument
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
-from app.models.todo_models import TodoDocument
 from app.models.user_instructions_models import (
     GLOBAL_INSTRUCTIONS_SCOPE,
     InstructionsEditor,
@@ -66,14 +65,7 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingWritingStyleSaved,
 )
 from shared.py.analytics.catalog.settings import InstructionsUpdated
-from shared.py.analytics.catalog.todos import (
-    ProjectsCreated,
-    ProjectsDeleted,
-    ProjectsUpdated,
-    TodosUpdated,
-)
 from shared.py.analytics.catalog.workflows import (
-    WorkflowCreated,
     WorkflowDeactivated,
     WorkflowDeleted,
     WorkflowStepsRegenerated,
@@ -199,19 +191,6 @@ class TestWorkflowNewEvents:
         mock_capture.assert_called_once_with(
             UserId(UID), WorkflowStepsRegenerated(force_different_tools=False, steps_count=0)
         )
-
-    async def test_from_todo_captures_created(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{_WF_SERVICE}.create_workflow", new_callable=AsyncMock) as mock_svc,
-            patch(_WF_CAPTURE) as mock_capture,
-        ):
-            mock_svc.return_value = _make_workflow(title="Todo: Buy groceries")
-            resp = await client.post(
-                f"{WF}/from-todo",
-                json={"todo_id": "todo_123", "todo_title": "Buy groceries"},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), WorkflowCreated(origin="todo_converted"))
 
 
 # ---------------------------------------------------------------------------
@@ -819,163 +798,6 @@ class TestMcpConnectionTested:
         mock_capture.assert_called_once_with(
             UserId(UID), McpConnectionTested(status="requires_oauth")
         )
-
-
-# ---------------------------------------------------------------------------
-# Todos: bulk-move, projects, subtasks
-# ---------------------------------------------------------------------------
-
-TODOS = "app.api.v1.endpoints.todos"
-_TODOS_CAPTURE = f"{TODOS}.capture"
-
-
-class TestTodoNewEvents:
-    async def test_bulk_move_captures_moved_not_requested(self, client: AsyncClient) -> None:
-        from app.models.todo_models import BulkMoveRequest, BulkOperationResponse
-
-        with (
-            patch(f"{TODOS}.TodoService.bulk_move_todos", new_callable=AsyncMock) as m,
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            m.return_value = BulkOperationResponse(success=["t1"], total=1, message="ok")
-            resp = await client.post(
-                "/api/v1/todos/bulk/move", json={"todo_ids": ["t1", "t2"], "project_id": "p1"}
-            )
-        assert resp.status_code == 200
-        m.assert_awaited_once_with(BulkMoveRequest(todo_ids=["t1", "t2"], project_id="p1"), UID)
-        mock_capture.assert_called_once_with(UserId(UID), TodosUpdated(bulk_count=1))
-
-    async def test_bulk_move_value_error_maps_to_400(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                f"{TODOS}.TodoService.bulk_move_todos",
-                new_callable=AsyncMock,
-                side_effect=ValueError("no such project"),
-            ),
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/todos/bulk/move", json={"todo_ids": ["t1"], "project_id": "p1"}
-            )
-        assert resp.status_code == 400
-        assert resp.json()["message"] == "no such project"
-        mock_capture.assert_not_called()
-
-    async def test_project_create_captures(self, client: AsyncClient) -> None:
-        from app.models.todo_models import ProjectCreate, ProjectResponse
-
-        with (
-            patch(f"{TODOS}.ProjectService.create_project", new_callable=AsyncMock) as m,
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            m.return_value = ProjectResponse(
-                id="p1",
-                user_id=UID,
-                name="Work",
-                created_at=datetime(2025, 1, 1, tzinfo=UTC),
-                updated_at=datetime(2025, 1, 1, tzinfo=UTC),
-            )
-            resp = await client.post("/api/v1/projects", json={"name": "Work"})
-        assert resp.status_code == 201
-        assert resp.json()["id"] == "p1"
-        m.assert_awaited_once_with(ProjectCreate(name="Work"), UID)
-        mock_capture.assert_called_once_with(UserId(UID), ProjectsCreated())
-
-    async def test_project_update_captures(self, client: AsyncClient) -> None:
-        from app.models.todo_models import ProjectResponse, UpdateProjectRequest
-
-        with (
-            patch(f"{TODOS}.ProjectService.update_project", new_callable=AsyncMock) as m,
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            m.return_value = ProjectResponse(
-                id="p1",
-                user_id=UID,
-                name="Renamed",
-                created_at=datetime(2025, 1, 1, tzinfo=UTC),
-                updated_at=datetime(2025, 1, 1, tzinfo=UTC),
-            )
-            resp = await client.put("/api/v1/projects/p1", json={"name": "Renamed"})
-        assert resp.status_code == 200
-        m.assert_awaited_once_with("p1", UpdateProjectRequest(name="Renamed"), UID)
-        mock_capture.assert_called_once_with(UserId(UID), ProjectsUpdated())
-
-    async def test_project_update_validation_error_maps_status(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                f"{TODOS}.ProjectService.update_project",
-                new_callable=AsyncMock,
-                side_effect=ValueError("Cannot update the default Inbox project"),
-            ),
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            resp = await client.put("/api/v1/projects/p1", json={"name": "x"})
-        assert resp.status_code == 400
-        assert resp.json()["message"] == "Cannot update the default Inbox project"
-        mock_capture.assert_not_called()
-
-    async def test_project_update_missing_maps_to_404(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                f"{TODOS}.ProjectService.update_project",
-                new_callable=AsyncMock,
-                side_effect=ValueError("Project not found"),
-            ),
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            resp = await client.put("/api/v1/projects/p1", json={"name": "x"})
-        assert resp.status_code == 404
-        assert resp.json()["message"] == "Project not found"
-        mock_capture.assert_not_called()
-
-    async def test_project_delete_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{TODOS}.ProjectService.delete_project", new_callable=AsyncMock) as m,
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            resp = await client.delete("/api/v1/projects/p1")
-        assert resp.status_code == 204
-        m.assert_awaited_once_with("p1", UID)
-        mock_capture.assert_called_once_with(UserId(UID), ProjectsDeleted())
-
-    async def test_project_delete_missing_maps_to_404(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                f"{TODOS}.ProjectService.delete_project",
-                new_callable=AsyncMock,
-                side_effect=ValueError("Project not found"),
-            ),
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            resp = await client.delete("/api/v1/projects/p1")
-        assert resp.status_code == 404
-        assert resp.json()["message"] == "Project not found"
-        mock_capture.assert_not_called()
-
-    def _doc(self, **overrides: object) -> TodoDocument:
-        from app.models.todo_models import SubTask, TodoDocument
-
-        base: dict = {
-            "id": "todo-1",
-            "user_id": UID,
-            "title": "Test",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "subtasks": [SubTask(id="sub-1", title="Milk", completed=False)],
-        }
-        base.update(overrides)
-        return TodoDocument(**base)
-
-    @pytest.mark.usefixtures("todo_response_reads")
-    async def test_subtask_add_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{TODOS}.todo_repository.add_subtask", new_callable=AsyncMock) as m,
-            patch(_TODOS_CAPTURE) as mock_capture,
-        ):
-            m.return_value = self._doc()
-            resp = await client.post("/api/v1/todos/todo-1/subtasks", json={"title": "Milk"})
-        assert resp.status_code == 201
-        mock_capture.assert_called_once_with(UserId(UID), TodosUpdated(is_subtask=True))
 
 
 # ---------------------------------------------------------------------------

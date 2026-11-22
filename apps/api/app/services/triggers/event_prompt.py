@@ -14,9 +14,9 @@ from app.agents.prompts.task_prompts import (
     SANDBOX_RUN_EVENT_GUIDANCE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
-from app.constants.todos import TRIGGER_EVENTS_PROMPT_MAX_CHARS
+from app.constants.tasks import TRIGGER_EVENTS_PROMPT_MAX_CHARS
 from app.models.quiet_hours_models import QuietHours
-from app.models.todo_models import ExternalRef, ExternalRefSource
+from app.models.task_models import ExternalRef, ExternalRefSource
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER
 from app.services.hil.utils import untrusted_fence

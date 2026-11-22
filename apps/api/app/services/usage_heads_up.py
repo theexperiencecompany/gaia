@@ -34,7 +34,7 @@ async def notify_monthly_heads_up_once(user_id: str) -> None:
                 content=NotificationContent(
                     title="Most of this month's usage allowance is used",
                     body=(
-                        "When it runs out, chat, workflows and tracked todos pause "
+                        "When it runs out, chat, workflows and GAIA's tasks pause "
                         f"until {reset}, when it resets."
                     ),
                 ),

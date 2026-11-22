@@ -11,7 +11,7 @@ from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.reactions import THANKS_REACTION_EMOJI
-from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
+from app.constants.tasks import PING_WITH_FOLLOW_THROUGH_RULE
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # The one prompt line allowed to contain the literal tells the prompt bans. A
@@ -444,7 +444,7 @@ LARGE OUTPUT HANDLING: large tool outputs may be compacted to a workspace file w
 
 WORKFLOWS
 - Use these directly (no activation needed): create_workflow to build one; edit_workflow to change one (list_workflows or get_workflow first for the id); pause_workflow / resume_workflow; list_workflows to browse.
-- After creating a workflow that PERFORMS actions (sends, creates, updates, posts to external systems), create a GAIA task linking it to GAIA's memory. A workflow that only reads and reports (a summary or digest, nothing else) gets NO tracked todo; one that also writes on the user's behalf (saves drafts, files mail, creates records) gets one even when it ends in a summary.
+- After creating a workflow that PERFORMS actions (sends, creates, updates, posts to external systems), create a GAIA task linking it to GAIA's memory. A workflow that only reads and reports (a summary or digest, nothing else) gets NO GAIA task; one that also writes on the user's behalf (saves drafts, files mail, creates records) gets one even when it ends in a summary.
 
 CODING WORKSPACE
 - You have a real, durable Linux workspace for this conversation. `bash` is a real POSIX shell for ACTUAL local computation (scripts, packages, files you ALREADY have). It is NOT your HTTP client: never curl or scrape a source a tool or integration covers. `read`/`write`/`edit` are thin wrappers over it for file I/O.
@@ -505,8 +505,8 @@ OUTPUT CONTRACT
   outcomes, links, and error reasons verbatim. Do not apply tone; comms
   handles that.
 - Always carry the relevant IDs through (emailId, draftId, eventId, issueId,
-  todo id, etc.), labeled by type, since comms and later turns need them to act.
-  Internal GAIA ids (todo id, task id, notification id, approval id,
+  task id, etc.), labeled by type, since comms and later turns need them to act.
+  Internal GAIA ids (task id, notification id, approval id,
   subscription id, execution/stream id)
   are comms-internal wiring: comms needs them to act, the user never does.
   Label them internal in your result so comms keeps them out of user-visible
@@ -541,14 +541,14 @@ PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
 )
 
 
-#: A todo that repeats or watches events reports on its own; most runs find nothing new.
+#: A task that repeats or watches events reports on its own; most runs find nothing new.
 _RUNS_ON_ITS_OWN = (
     "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
-    "and its full record is already kept in the todo. "
+    "and its full record is already kept in the task. "
 )
-#: A todo that runs once exists to answer what the user asked when it was set up.
+#: A task that runs once exists to answer what the user asked when it was set up.
 _ONE_RUN_ANSWERS = (
-    "This todo runs once, to answer what the user asked when they set it up, so its "
+    "This task runs once, to answer what the user asked when they set it up, so its "
     "result is that answer and they are waiting for it: always send it, even when the "
     "answer is no or nothing to worry about. "
 )
@@ -556,7 +556,7 @@ _WHEN_TO_MESSAGE = (
     "Message the user when the report shows something new they need to know or act on, "
     "a decision or blocker only they can settle that they have not already been asked "
     "about, a result they asked to hear every time (always send that one), or the nudge "
-    "or reminder this todo exists to give, even when it repeats the last one. Anything "
+    "or reminder this task exists to give, even when it repeats the last one. Anything "
     "else is not worth a message: a routine check, a no-op, nothing new, a question they "
     "already have, open items you already raised that are still open (a reply they owe, an "
     "approval they have not given), a run that only kept notes. A report that says only that "
@@ -574,12 +574,12 @@ _RUN_CANNOT_MESSAGE = (
 
 def _run_record(run_history: Sequence[str]) -> str:
     if not run_history:
-        return "Nothing from this todo has reached them yet. "
+        return "Nothing from this task has reached them yet. "
     lines = "\n".join(run_history)
-    return f"GAIA's own record of what this todo's last runs did with their message:\n{lines}\n"
+    return f"GAIA's own record of what this task's last runs did with their message:\n{lines}\n"
 
 
-#: A reaction is not a delivery for a todo run: it is dropped and nothing is sent.
+#: A reaction is not a delivery for a task run: it is dropped and nothing is sent.
 _NO_REACTION = "There is no message of theirs to react to, so never answer with a reaction. "
 _HOW_TO_WRITE = (
     "lead with what changed or what they must decide, give the concrete details they need, keep it "
@@ -588,19 +588,19 @@ _HOW_TO_WRITE = (
 )
 
 
-def tracked_todo_delivery_note(
-    todo_title: str,
+def task_delivery_note(
+    task_title: str,
     standing_rules: str | None,
     key_details: str | None,
     *,
     runs_once: bool,
     run_history: Sequence[str],
 ) -> str:
-    """Build the delivery instructions for a tracked todo's own background run.
+    """Build the delivery instructions for a GAIA task's own background run.
 
-    A one-time todo's result is the answer the user awaits and is always sent; a
-    repeating or watching todo's result is sent only when it is worth a message.
-    The todo's own rules come last and bind: a desk briefing with content was silenced
+    A one-time task's result is the answer the user awaits and is always sent; a
+    repeating or watching task's result is sent only when it is worth a message.
+    The task's own rules come last and bind: a desk briefing with content was silenced
     as routine while its rule said deliver every one.
     """
     when_to_send = (
@@ -609,9 +609,9 @@ def tracked_todo_delivery_note(
         else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_NO_REACTION}When you do write, "
     )
     rules = (
-        "Its Standing rules, the user's own instructions for this todo. They bind this "
+        "Its Standing rules, the user's own instructions for this task. They bind this "
         f"decision above every default here and in your instructions, the {STAY_SILENT_TOOL_NAME} rule "
-        "included: when one asks to hear this todo's results, a report with content is "
+        "included: when one asks to hear this task's results, a report with content is "
         "sent whole, as a long-form deliverable: its headings and line items as written, "
         "in its order, with at most one line of your own before it, never retold as prose "
         f"and never shortened. {STAY_SILENT_TOOL_NAME} is only for a report with nothing in it.\n"
@@ -623,7 +623,7 @@ def tracked_todo_delivery_note(
         rules += f"Its Key Details, which can also hold a request of theirs:\n{key_details}\n"
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
-        f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
+        f'This is the result of a background run of the user\'s GAIA task "{task_title}". '
         f"{_RUN_CANNOT_MESSAGE}{_run_record(run_history)}{when_to_send}{_HOW_TO_WRITE}{rules}",
     )
 

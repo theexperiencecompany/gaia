@@ -57,7 +57,7 @@ def destination_phrase(target: ProactiveTarget) -> str:
 
 
 #: The messages GAIA sends with nobody asking, as one subject.
-_OWN_MESSAGES = "Messages you send on your own (reminders, tracked todo updates, workflow results)"
+_OWN_MESSAGES = "Messages you send on your own (reminders, task updates, workflow results)"
 
 
 def own_messages_phrase(target: ProactiveTarget) -> str:
@@ -85,7 +85,7 @@ def own_messages_phrase(target: ProactiveTarget) -> str:
         )
     linked = "" if unreachable else " (no chat app linked)"
     return (
-        f"{unreachable}Reminders land back in the chat they were set in; tracked todo "
+        f"{unreachable}Reminders land back in the chat they were set in; task "
         f"updates and workflow results only show in the GAIA app{linked}."
     )
 

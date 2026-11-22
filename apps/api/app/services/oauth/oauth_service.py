@@ -34,10 +34,7 @@ from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.tasks.inbox_desk import queue_inbox_desk_provision
 from app.services.tasks.subscriptions import resume_for_connected_account
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
-from app.services.workflow.integration_pause import (
-    resume_watches_for_connected_account,
-    resume_workflows_for_reconnected_integration,
-)
+from app.services.workflow.integration_pause import resume_workflows_for_reconnected_integration
 from app.services.workspace_sync import schedule_user_provision
 from app.utils.email_utils import derive_name_from_email
 from app.utils.redis_utils import RedisPoolManager
@@ -340,13 +337,7 @@ async def handle_oauth_connection(
 
     if integration_config.associated_triggers:
         _setup_account_triggers(user_id, integration_config, connected, background_tasks)
-        # Any account coming back revives the todo watches and tasks its death paused.
-        background_tasks.add_task(
-            resume_watches_for_connected_account,
-            user_id,
-            integration_config.id,
-            connected.account.id,
-        )
+        # Any account coming back revives the tasks its death paused.
         background_tasks.add_task(
             resume_for_connected_account,
             user_id,

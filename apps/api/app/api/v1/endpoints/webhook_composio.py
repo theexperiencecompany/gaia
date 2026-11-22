@@ -38,10 +38,7 @@ from app.services.integrations.integration_expiry import announce_account_expiry
 from app.services.tasks.subscriptions import pause_for_lost_account
 from app.services.triggers import get_handler_by_event
 from app.services.triggers.base import TriggerHandler
-from app.services.workflow.integration_pause import (
-    pause_watches_for_expired_account,
-    pause_workflows_for_expired_integration,
-)
+from app.services.workflow.integration_pause import pause_workflows_for_expired_integration
 from app.utils.webhook_utils import verify_composio_webhook_signature
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -102,18 +99,12 @@ async def _expire_connection(
             )
             if expired is None:
                 return
-            # Workflows run as the primary, so they stop with it; a todo watch or a task
-            # subscription stops with the account it watches.
+            # Workflows run as the primary, so they stop with it; a task subscription stops
+            # with the account it watches.
             paused = (
                 await pause_workflows_for_expired_integration(user_id, integration_id)
                 if expired.stops_workflows
                 else []
-            )
-            await pause_watches_for_expired_account(
-                user_id,
-                integration_id,
-                expired.account.id,
-                integration_expired=expired.integration_expired,
             )
             await pause_for_lost_account(
                 user_id,

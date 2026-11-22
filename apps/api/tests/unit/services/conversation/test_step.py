@@ -35,7 +35,7 @@ from app.services.conversation.ports import (
 from app.utils.liveness import keep_proving
 from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import asked, fired, todo_run, user
+from tests.unit.services.conversation.log_helpers import asked, fired, task_run, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     STEP_LIMIT_SECONDS,
@@ -214,9 +214,9 @@ async def test_a_buttonless_message_with_no_approval_waiting_is_run_not_read_as_
     assert rt.runner.calls == [Started(batch=(1,), context=())]
 
 
-async def test_a_todo_run_that_found_nothing_settles_silently_without_a_run() -> None:
+async def test_a_task_run_that_found_nothing_settles_silently_without_a_run() -> None:
     rt = Runtime()
-    woke = TodoWoke(id="tw", run=todo_run(TodoReportForm.AS_WRITTEN))
+    woke = TodoWoke(id="tw", run=task_run(TodoReportForm.AS_WRITTEN))
     work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("tw",))
     # The executor runs the todo itself; only its result wakes the step.
     await send(rt, woke, work)

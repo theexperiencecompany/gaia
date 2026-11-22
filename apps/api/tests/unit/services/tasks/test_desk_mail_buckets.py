@@ -19,8 +19,7 @@ from app.constants.trigger_gates import (
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.composio_schemas.gmail import GmailMessageView
-from app.models.task_models import TaskDocument
-from app.models.todo_models import ExternalRef, ExternalRefSource
+from app.models.task_models import ExternalRef, ExternalRefSource, TaskDocument
 from app.models.trigger_gate_models import SystemGate
 from app.services.tasks.desk_mail_buckets import desk_bucketed_views
 from app.services.triggers.trigger_gate import (
@@ -230,7 +229,7 @@ async def test_the_sweep_reads_the_verdict_the_desk_gate_asked_for_on_arrival(
     with time_machine.travel(arrived_at, tick=False):
         on_arrival = await decide_gate(
             SystemGate(preset=SystemGatePreset.INBOX_DESK),
-            GatedJob(GateOwner.TODO, "watch-1", USER_ID, "Inbox desk"),
+            GatedJob(GateOwner.TASK, "watch-1", USER_ID, "Inbox desk", task_id="desk-1"),
             trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
             payload=arrival,
         )
@@ -269,7 +268,7 @@ async def test_a_reply_on_a_thread_the_user_wrote_in_is_bucketed_reply_whatever_
     with time_machine.travel(arrived_at, tick=False):
         on_arrival = await decide_gate(
             SystemGate(preset=SystemGatePreset.INBOX_DESK),
-            GatedJob(GateOwner.TODO, "watch-1", USER_ID, "Inbox desk"),
+            GatedJob(GateOwner.TASK, "watch-1", USER_ID, "Inbox desk", task_id="desk-1"),
             trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
             payload=_REPLY_IN_THREAD,
         )

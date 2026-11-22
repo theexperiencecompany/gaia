@@ -79,7 +79,6 @@ class _TurnScope:
     tool_category: str | None
     subagent_id: str | None
     vfs_session_id: str | None
-    active_todo_id: str | None
     active_task_id: str | None
     conversation_source: str | None
     user_messages: list[str] | None
@@ -97,7 +96,7 @@ def _inherit_from_parent_configurable(
 ) -> _TurnScope:
     """Merge current with optional inheritance from a parent agent's configurable.
 
-    Fallback fields (tool/subagent/vfs/todo/mode/source/presence): child wins, parent
+    Fallback fields (tool/subagent/vfs/task/mode/source/presence): child wins, parent
     fills blanks. stream_id always comes from parent. The model is NOT merged
     here — a child inherits its parent's lane whole (see build_agent_config).
     """
@@ -130,7 +129,6 @@ def _inherit_from_parent_configurable(
         tool_category=current.tool_category or parent.tool_category,
         subagent_id=current.subagent_id or parent.subagent_id,
         vfs_session_id=current.vfs_session_id or parent.vfs_session_id,
-        active_todo_id=current.active_todo_id or parent.active_todo_id,
         active_task_id=current.active_task_id or parent.active_task_id,
         conversation_source=current.conversation_source or parent.conversation_source,
         execution_mode=current.execution_mode or parent.execution_mode,
@@ -145,11 +143,11 @@ def background_authorization(
     execution_mode: str,
     workflow_title: str = "",
     workflow_description: str = "",
-    todo_title: str = "",
+    task_title: str = "",
 ) -> list[str]:
     """Append a background run's schedule text as standing authorization.
 
-    A scheduled workflow/todo is a standing directive, so its human-written
+    A scheduled workflow or GAIA task is a standing directive, so its human-written
     display fields (title, description ONLY) authorize like a live turn's words —
     the judge grounds calls against them verbatim. Step lists and execution
     prompts may be LLM-generated and never authorize; interactive runs pass through.
@@ -165,9 +163,9 @@ def background_authorization(
             + (f": {title}" if title else "")
             + (f". {description}" if description else "")
         )
-    label = todo_title.strip()
+    label = task_title.strip()
     if label and not any(label in turn for turn in turns):
-        extra.append(f"Tracked todo: {label}")
+        extra.append(f"GAIA task: {label}")
     if not extra:
         return turns
     return turns + [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in extra]
@@ -240,9 +238,6 @@ class AgentTurn:
 
     tool_category: str | None = None
     """The category comms already resolved, letting the executor skip discovery."""
-
-    active_todo_id: str | None = None
-    """The tracked todo this turn is working, when there is one."""
 
     active_task_id: str | None = None
     """The GAIA task a background run is working, when there is one."""
@@ -361,7 +356,6 @@ async def build_agent_config(
     (
         selected_tool,
         tool_category,
-        active_todo_id,
         execution_mode,
         source,
         user_messages,
@@ -372,7 +366,6 @@ async def build_agent_config(
     ) = (
         turn.selected_tool,
         turn.tool_category,
-        turn.active_todo_id,
         turn.execution_mode,
         turn.source,
         turn.user_messages,
@@ -417,7 +410,6 @@ async def build_agent_config(
         tool_category=tool_category,
         subagent_id=subagent_id,
         vfs_session_id=vfs_session_id,
-        active_todo_id=active_todo_id,
         active_task_id=turn.active_task_id,
         conversation_source=source,
         user_messages=user_messages,
@@ -498,7 +490,6 @@ async def build_agent_config(
         "subagent_id": resolved.subagent_id,
         "vfs_session_id": resolved.vfs_session_id,
         "stream_id": resolved.stream_id,
-        "active_todo_id": resolved.active_todo_id,
         "active_task_id": resolved.active_task_id,
         "execution_mode": resolved.execution_mode or "interactive",
         "conversation_source": resolved_source,

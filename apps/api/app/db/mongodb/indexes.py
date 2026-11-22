@@ -99,8 +99,6 @@ async def create_all_indexes() -> None:
         index_tasks = [
             create_user_indexes(),
             create_conversation_indexes(),
-            create_todo_indexes(),
-            create_project_indexes(),
             create_note_indexes(),
             create_file_indexes(),
             create_calendar_indexes(),
@@ -147,8 +145,6 @@ async def create_all_indexes() -> None:
         collection_names = [
             "users",
             "conversations",
-            "todos",
-            "projects",
             "notes",
             "files",
             "calendar",
@@ -275,9 +271,6 @@ async def create_user_indexes() -> None:
         raise
 
 
-# One chat per tracked todo: the atomic backstop that makes a racing second create
-# (a run and an "Open chat" tap at once) fail, so the loser reads the winner's chat.
-# Only chats bound to a todo are in the filter. Shared with the contract suite.
 CONVERSATION_ID_UNIQUE_KEYS: IndexKeys = [("conversation_id", 1)]
 CONVERSATION_ID_UNIQUE_OPTIONS: IndexOptions = {"unique": True, "name": "conversation_id_unique"}
 # The boot check: a head whose embedded messages array no pass marked, or the old build wrote since.
@@ -289,13 +282,9 @@ UNMIGRATED_HEAD_OPTIONS: IndexOptions = {
 # The boot check: a head with no source this build knows (SOURCELESS_HEADS reads its bounds).
 CONVERSATION_SOURCE_KEYS: IndexKeys = [("source", 1)]
 CONVERSATION_SOURCE_OPTIONS: IndexOptions = {"name": "conversation_source"}
-CONVERSATION_TODO_BINDING_KEYS: IndexKeys = [("user_id", 1), ("todo_id", 1)]
-CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
-    "unique": True,
-    "name": "user_todo_conversation_unique",
-    "partialFilterExpression": {"todo_id": {"$type": "string"}},
-}
-# One chat per GAIA task, the same backstop keyed on the task.
+# One chat per GAIA task: the atomic backstop that makes a racing second create
+# (a run and an "Open chat" tap at once) fail, so the loser reads the winner's chat.
+# Only chats bound to a task are in the filter. Shared with the contract suite.
 CONVERSATION_TASK_BINDING_KEYS: IndexKeys = [("user_id", 1), ("task_id", 1)]
 CONVERSATION_TASK_BINDING_OPTIONS: IndexOptions = {
     "unique": True,
@@ -385,9 +374,6 @@ async def create_conversation_indexes() -> None:
             # createdAt is an ISO string and can't be range-queried efficiently.
             conversations_collection.create_index([("updatedAt", -1)]),
             conversations_collection.create_index(
-                CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
-            ),
-            conversations_collection.create_index(
                 CONVERSATION_TASK_BINDING_KEYS, **CONVERSATION_TASK_BINDING_OPTIONS
             ),
             conversations_collection.create_index(
@@ -402,131 +388,6 @@ async def create_conversation_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating conversation indexes",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise
-
-
-# One open todo per user per outside object (a Gmail thread): the atomic backstop that
-# makes a racing second create fail. Completing a todo drops it out of the filter, so the
-# object can be tracked again. Shared with the contract suite, which builds this exact spec.
-TODO_OPEN_EXTERNAL_REF_KEYS: IndexKeys = [
-    ("user_id", 1),
-    ("external_ref.source", 1),
-    ("external_ref.id", 1),
-]
-TODO_OPEN_EXTERNAL_REF_OPTIONS: IndexOptions = {
-    "unique": True,
-    "name": "user_open_external_ref_unique",
-    "partialFilterExpression": {"external_ref.id": {"$type": "string"}, "completed": False},
-}
-
-
-async def create_todo_indexes() -> None:
-    """Create indexes for todos collection."""
-    todos_collection = get_async_collection("todos")
-    try:
-        # Create all todo indexes concurrently
-        await asyncio.gather(
-            # Primary compound index for user todos with sorting
-            todos_collection.create_index([("user_id", 1), ("created_at", -1)]),
-            # Project-based queries
-            todos_collection.create_index([("user_id", 1), ("project_id", 1)]),
-            # Enhanced compound indexes for complex filtering
-            todos_collection.create_index([("user_id", 1), ("completed", 1), ("created_at", -1)]),
-            todos_collection.create_index([("user_id", 1), ("priority", 1), ("created_at", -1)]),
-            todos_collection.create_index([("user_id", 1), ("due_date", 1)]),
-            # For overdue queries (critical for performance) - sparse for due_date
-            todos_collection.create_index(
-                [("user_id", 1), ("due_date", 1), ("completed", 1)], sparse=True
-            ),
-            # For project + completion status queries
-            todos_collection.create_index([("user_id", 1), ("project_id", 1), ("completed", 1)]),
-            # For label-based filtering (sparse since not all todos have labels)
-            todos_collection.create_index([("user_id", 1), ("labels", 1)], sparse=True),
-            # Text search index for title and description
-            todos_collection.create_index([("title", "text"), ("description", "text")]),
-            # For subtask operations (sparse since not all todos have subtasks)
-            todos_collection.create_index([("user_id", 1), ("subtasks.id", 1)], sparse=True),
-            # For workflow_id lookups (sparse — most todos won't have workflow_id)
-            todos_collection.create_index(
-                [("user_id", 1), ("workflow_id", 1)], sparse=True, name="user_workflow"
-            ),
-            # For date range + created_at sort queries
-            todos_collection.create_index(
-                [("user_id", 1), ("due_date", 1), ("created_at", -1)],
-                sparse=True,
-                name="user_due_created",
-            ),
-            # For completed + due_date queries (overdue/today filters)
-            todos_collection.create_index(
-                [("user_id", 1), ("completed", 1), ("due_date", 1)],
-                name="user_completed_due",
-            ),
-            # For project + due_date queries
-            todos_collection.create_index(
-                [("user_id", 1), ("project_id", 1), ("due_date", 1)],
-                name="user_project_due",
-            ),
-            # For tracked-todo cron sweeps: ESR ordering, equality (labels, completed) then
-            # range (scheduled_at, gaia_retry_count).
-            todos_collection.create_index(
-                [
-                    ("labels", 1),
-                    ("completed", 1),
-                    ("scheduled_at", 1),
-                    ("gaia_retry_count", 1),
-                ],
-                name="tracked_sweep",
-            ),
-            # Per-resource triggers are found by Composio instance id (cross-user); account-level
-            # triggers (Gmail) carry no instance id and are found by user + trigger name instead.
-            todos_collection.create_index(
-                "trigger_subscriptions.composio_trigger_ids",
-                name="subscription_trigger_ids",
-                sparse=True,
-            ),
-            todos_collection.create_index(
-                [("user_id", 1), ("trigger_subscriptions.trigger_name", 1)],
-                name="user_subscription_trigger_name",
-                sparse=True,
-            ),
-            todos_collection.create_index(
-                TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
-            ),
-            # A parent's sub-todos: listing, open counts, and completion/deletion cascades.
-            todos_collection.create_index(
-                [("user_id", 1), ("parent_todo_id", 1), ("completed", 1)],
-                name="user_parent_todo",
-                partialFilterExpression={"parent_todo_id": {"$type": "string"}},
-            ),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating todo indexes", error=str(e), error_type=type(e).__name__
-        )
-        raise
-
-
-async def create_project_indexes() -> None:
-    """Create indexes for projects collection."""
-    projects_collection = get_async_collection("projects")
-    try:
-        # Create all project indexes concurrently
-        await asyncio.gather(
-            # Primary compound index for user projects
-            projects_collection.create_index([("user_id", 1), ("created_at", -1)]),
-            # For default project lookup
-            projects_collection.create_index([("user_id", 1), ("is_default", 1)]),
-            # For project name searches
-            projects_collection.create_index([("user_id", 1), ("name", 1)]),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating project indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

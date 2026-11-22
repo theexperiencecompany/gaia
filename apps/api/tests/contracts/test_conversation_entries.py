@@ -327,7 +327,7 @@ async def test_deleting_conversations_deletes_their_entries(
     await seeded("u1", is_onboarding_demo=True)
     await seeded("u2")
     await seeded("u3")
-    await seeded("u3", todo_id="todo-1")
+    await seeded("u3", task_id="task_1")
     assert await entries_collection.count_documents({}) == 5
 
     assert await repo.delete(one, user_id="u1")
@@ -337,7 +337,7 @@ async def test_deleting_conversations_deletes_their_entries(
     assert await entries_collection.count_documents({"user_id": "u2"}) == 0
     await repo.delete_all_chats_for_user("u3")
     assert await entries_collection.count_documents({"user_id": "u3"}) == 1
-    await repo.delete_for_todos("u3", ["todo-1"])
+    await repo.delete_for_tasks("u3", ["task_1"])
     assert await entries_collection.count_documents({}) == 0
 
 
@@ -425,11 +425,11 @@ async def test_a_bounded_cross_conversation_read_takes_at_most_its_limit_from_th
     assert len(await repo._find_entries(uid, {"text": {"$in": ["a", "b"]}}, limit=1)) == 1
 
 
-async def test_search_skips_a_todos_chat(repo: ConversationRepository, held: HeldFlushes) -> None:
+async def test_search_skips_a_tasks_chat(repo: ConversationRepository, held: HeldFlushes) -> None:
     uid = f"u-{uuid.uuid4().hex}"
-    todo_chat = await _chat(repo, uid, todo_id="todo-1", description="needle todo")
+    task_chat = await _chat(repo, uid, task_id="task_1", description="needle task")
     described = await _chat(repo, uid, description="needle notes")
-    await _append(todo_chat, uid, [_message("t1", "needle")])
+    await _append(task_chat, uid, [_message("t1", "needle")])
     held.drop_all()
     found = await repo.search(uid, pattern="needle")
     assert found.messages == []
@@ -444,14 +444,14 @@ async def test_search_skips_a_todos_chat(repo: ConversationRepository, held: Hel
     assert await repo.has_sent_message(uid) is True
 
 
-async def test_search_skips_a_todos_chat_once_its_entries_are_flushed(
+async def test_search_skips_a_tasks_chat_once_its_entries_are_flushed(
     repo: ConversationRepository, held: HeldFlushes
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
-    todo_chat = await _chat(repo, uid, todo_id="todo-1")
-    await _append(todo_chat, uid, [_message("t1", "needle")])
+    task_chat = await _chat(repo, uid, task_id="task_1")
+    await _append(task_chat, uid, [_message("t1", "needle")])
     await held.run_all()
-    await repo.flush_outbox(todo_chat, user_id=uid)
+    await repo.flush_outbox(task_chat, user_id=uid)
 
     found = await repo.search(uid, pattern="needle")
     assert found.messages == []

@@ -31,7 +31,7 @@ from tests.unit.services.conversation.log_helpers import (
     settled,
     started,
     stop,
-    todo_woke,
+    task_woke,
     user,
 )
 
@@ -45,7 +45,7 @@ def _next_entry(data: st.DataObject, state: ConversationState, seq: int) -> Entr
         st.booleans().map(lambda voice: user(entry_id, voice=voice)),
         (st.none() | st.integers(0, seq - 1)).map(lambda covers: stop(entry_id, covers)),
         st.just(barge(entry_id, "r1")),
-        st.just(todo_woke(entry_id)),
+        st.just(task_woke(entry_id)),
         st.just(notice(entry_id)),
         st.sampled_from([*pending, "ap_gone"]).map(lambda approval: decided(entry_id, approval)),
         st.tuples(

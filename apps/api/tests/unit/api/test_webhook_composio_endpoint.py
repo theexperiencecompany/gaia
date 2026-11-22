@@ -341,7 +341,6 @@ class TestTheBackgroundExpiry:
                 f"{MODULE}.pause_workflows_for_expired_integration",
                 AsyncMock(return_value=["Morning digest"]),
             ) as pause,
-            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
             patch(f"{MODULE}.pause_for_lost_account", AsyncMock()) as pause_tasks,
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
@@ -351,9 +350,6 @@ class TestTheBackgroundExpiry:
             "user-1", "gmail", "ca_1", trigger="webhook", reason="refresh_token_revoked"
         )
         pause.assert_awaited_once_with("user-1", "gmail")
-        pause_watches.assert_awaited_once_with(
-            "user-1", "gmail", "acct_1", integration_expired=False
-        )
         pause_tasks.assert_awaited_once_with("user-1", "gmail", "acct_1", integration_expired=False)
         announce.assert_awaited_once_with(
             "user-1", "gmail", expired, ["Morning digest"], "refresh_token_revoked"
@@ -365,16 +361,12 @@ class TestTheBackgroundExpiry:
         with (
             patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
-            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
             patch(f"{MODULE}.pause_for_lost_account", AsyncMock()) as pause_tasks,
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_1")
 
         pause.assert_not_awaited()
-        pause_watches.assert_awaited_once_with(
-            "user-1", "gmail", "acct_1", integration_expired=False
-        )
         pause_tasks.assert_awaited_once_with("user-1", "gmail", "acct_1", integration_expired=False)
         announce.assert_awaited_once_with("user-1", "gmail", expired, [], "revoked")
 
@@ -382,14 +374,12 @@ class TestTheBackgroundExpiry:
         with (
             patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
-            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
             patch(f"{MODULE}.pause_for_lost_account", AsyncMock()) as pause_tasks,
             patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_gone")
 
         pause.assert_not_awaited()
-        pause_watches.assert_not_awaited()
         pause_tasks.assert_not_awaited()
         announce.assert_not_awaited()
 

@@ -70,13 +70,13 @@ class TestWaitsRepository:
         self, repo: WaitsRepository
     ) -> None:
         before = datetime.now(UTC)
-        await _keep(repo, _key(waiter=WaiterKind.TODO, waiter_id="todo-1"))
+        await _keep(repo, _key(waiter=WaiterKind.TASK, waiter_id="task_1"))
 
         [taken] = await _take_all(repo)
 
         assert (taken.waiter, taken.waiter_id, taken.stream_id, taken.subject_name) == (
-            WaiterKind.TODO,
-            "todo-1",
+            WaiterKind.TASK,
+            "task_1",
             "stream-1",
             "Gmail",
         )
@@ -100,7 +100,7 @@ class TestWaitsRepository:
         self, repo: WaitsRepository
     ) -> None:
         await _keep(repo, _key(waiter=WaiterKind.CHAT, waiter_id="conv-1"))
-        await _keep(repo, _key(waiter=WaiterKind.TODO, waiter_id="todo-1"))
+        await _keep(repo, _key(waiter=WaiterKind.TASK, waiter_id="task_1"))
         await _keep(repo, _key(waiter=WaiterKind.WORKFLOW, waiter_id="wf-1"))
 
         found = await repo.find_met(USER, CONNECTED, "gmail")
@@ -108,10 +108,24 @@ class TestWaitsRepository:
         first = [await repo.claim(w.id, user_id=USER, job_id="job-a") for w in found]
         second = [await repo.claim(w.id, user_id=USER, job_id="job-b") for w in found]
 
-        assert sorted(w.waiter_id for w in found) == ["conv-1", "todo-1", "wf-1"]
+        assert sorted(w.waiter_id for w in found) == ["conv-1", "task_1", "wf-1"]
         assert sorted(w.id for w in found_again) == sorted(w.id for w in found)
         assert all(w is not None for w in first)
         assert second == [None, None, None]
+
+    async def test_a_wait_a_todo_kept_before_the_move_is_never_handed_out(
+        self, repo: WaitsRepository, raw_collection: WaitsCollection
+    ) -> None:
+        """The migration keeps a todo's wait and adds a task twin; only the twin may resume."""
+        await _keep(repo, _key(waiter=WaiterKind.TASK, waiter_id="task_1"))
+        legacy = {**_key(waiter=WaiterKind.TASK, waiter_id="todo-1").model_dump(), "waiter": "todo"}
+        await raw_collection.insert_one(
+            {**legacy, "subject_name": "Gmail", "stream_id": None, "created_at": datetime.now(UTC)}
+        )
+
+        found = await repo.find_met(USER, CONNECTED, "gmail")
+
+        assert [(w.waiter, w.waiter_id) for w in found] == [(WaiterKind.TASK, "task_1")]
 
     async def test_an_expired_wait_the_ttl_sweep_has_not_removed_is_neither_found_nor_claimed(
         self, repo: WaitsRepository, raw_collection: WaitsCollection

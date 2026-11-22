@@ -8,8 +8,7 @@ to its GAIA parent's log, and a parent waiting on its subtasks is woken shortly 
 
 from datetime import UTC, datetime
 
-from app.constants.tasks import Assignee, TaskLogEvent
-from app.constants.todos import SUB_TODO_PARENT_WAKE_DELAY, WaitingOn
+from app.constants.tasks import SUBTASK_PARENT_WAKE_DELAY, Assignee, TaskLogEvent, WaitingOn
 from app.db.repositories.tasks import task_repository
 from app.models.task_models import TaskDocument, TaskUpdate
 from app.services.analytics_service import capture
@@ -65,7 +64,7 @@ async def _report_to_parent(child: TaskDocument, summary: str) -> None:
     )
     if parent.waiting is None or parent.waiting.on is not WaitingOn.SUB_TODOS:
         return
-    wake_at = datetime.now(UTC) + SUB_TODO_PARENT_WAKE_DELAY
+    wake_at = datetime.now(UTC) + SUBTASK_PARENT_WAKE_DELAY
     if parent.next_check_at is not None and parent.next_check_at <= wake_at:
         return
     woken = await task_repository.update_if_next_check_at(
