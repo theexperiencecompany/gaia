@@ -40,7 +40,15 @@ def new_task_id() -> str:
 # When.
 
 
-class NoWhen(BaseModel):
+class _WhenVariant(BaseModel):
+    """A When variant whose kind always counts as set, so exclude_unset dumps keep the discriminator."""
+
+    def model_post_init(self, _context: object, /) -> None:
+        # Every partial $set and TaskDocument.updated_by dump with exclude_unset.
+        self.__pydantic_fields_set__.add("kind")
+
+
+class NoWhen(_WhenVariant):
     """Nothing brings the task round: an undated to-do, or GAIA work it runs when asked."""
 
     model_config = ConfigDict(frozen=True)
@@ -48,7 +56,7 @@ class NoWhen(BaseModel):
     kind: Literal[WhenKind.NONE] = WhenKind.NONE
 
 
-class DateWhen(BaseModel):
+class DateWhen(_WhenVariant):
     """Due at one moment: a to-do's due date, or the date a one-off GAIA task is due by."""
 
     model_config = ConfigDict(frozen=True)
@@ -59,7 +67,7 @@ class DateWhen(BaseModel):
     timezone: str | None = None
 
 
-class RepeatWhen(BaseModel):
+class RepeatWhen(_WhenVariant):
     """Comes round on a schedule: a 5-field cron, or a shortcut (daily, weekly, every_4h, every_1h).
 
     The rule is checked where it is written, not here, so a stored schedule that breaks
@@ -76,7 +84,7 @@ class RepeatWhen(BaseModel):
     next_run: datetime | None = None
 
 
-class EventWhen(BaseModel):
+class EventWhen(_WhenVariant):
     """Comes round only on the app events in the task's subscriptions."""
 
     model_config = ConfigDict(frozen=True)
@@ -227,7 +235,7 @@ class Watch(BaseModel):
         return self
 
 
-class WatchWhen(BaseModel):
+class WatchWhen(_WhenVariant):
     """Comes round when a watched value changes the way the user asked."""
 
     kind: Literal[WhenKind.WATCH] = WhenKind.WATCH
