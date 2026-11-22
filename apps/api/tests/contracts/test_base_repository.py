@@ -18,15 +18,10 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
 from app.constants.cache import REPO_ENTITY_TTL, REPO_QUERY_TTL
-from app.db.repositories.base import (
-    MongoDocument,
-    MongoRepository,
-    UserScopedDocument,
-    UserScopedRepository,
-    cached_query,
-)
+from app.db.repositories.base import MongoRepository, UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
+from app.models.document_models import MongoDocument, UserScopedDocument
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 

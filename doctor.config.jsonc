@@ -14,10 +14,10 @@
   "ignore": {
     // Agent-skill bundles: SKILL.md files and the example templates they ship,
     // installed here and read by agents — never imported, built or shipped by
-    // this repo. The two trees are copies of one set, and the templates that
-    // triggered this (motion/templates/*.tsx) are byte-identical across both,
-    // so a finding here is a finding in an upstream file and "fixing" it turns
-    // the next skill update into a merge conflict. Same call the other
+    // this repo. .claude/skills is a symlink to .agents/skills, listed too for
+    // walkers that follow it. A finding in the templates that triggered this
+    // (motion/templates/*.tsx) is a finding in an upstream file, and "fixing"
+    // it turns the next skill update into a merge conflict. Same call the other
     // scanners already make for these paths: [tool.ruff] extend-exclude and
     // [tool.bandit] exclude_dirs in pyproject.toml, and biome.json, which
     // excludes .claude and .agents outright.
@@ -57,6 +57,13 @@
       // fanning them out would deliver "here is how to start" before "hi".
       {
         "files": ["libs/shared/ts/src/bots/link-codes.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // A bot's browser progress is a thread the user reads top to bottom:
+      // each card (session, step, handoff, result) is sent after the previous
+      // one lands, so a step never arrives before the session that opened it.
+      {
+        "files": ["libs/shared/ts/src/bots/conversation/browser-progress.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
       // Tunnel.run() is a reconnection supervisor loop: each iteration awaits

@@ -1,53 +1,137 @@
 import { describe, expect, it } from "vitest";
-import { approvalOutcomeLabel, isSettled } from "./approvals";
-import type { ApprovalRequestData } from "./approvals.types";
+import { approvalLabel, approvalOutcomeLabel, isSettled } from "./approvals";
+import type {
+  ApprovalEnd,
+  ApprovalLabels,
+  ApprovalRequestData,
+} from "./approvals.types";
 
 const base: ApprovalRequestData = {
   approval_id: "ap_1",
   tool_call_id: "call-1",
   gated_tool_name: "send_email",
   integration_name: "gmail",
-  summary: "Send email",
+  description: {
+    action: "Send email",
+    headline: "Send email",
+    confirm: "send it",
+    details: [],
+  },
   args_preview: {},
-  status: "pending",
+  status: "waiting",
+  outcome: null,
   feedback: null,
-  timeout_seconds: 300,
 };
 
-describe("ledger-extended approval shapes", () => {
-  it("revoked is settled with a withdraw label", () => {
-    expect(isSettled("revoked")).toBe(true);
-    expect(approvalOutcomeLabel({ ...base, status: "revoked" })).toBe(
-      "Agent withdrew this",
-    );
+const card = (
+  end: Partial<ApprovalEnd>,
+  rest: Partial<ApprovalRequestData> = {},
+) => ({
+  ...base,
+  ...end,
+  ...rest,
+});
+
+describe("approvalOutcomeLabel reads every ending from the card's own facts", () => {
+  it.each<[string, Partial<ApprovalEnd>, string]>([
+    [
+      "approved by the user",
+      { status: "approved", decider: "user" },
+      "You approved this",
+    ],
+    [
+      "approved by auto mode",
+      { status: "approved", decider: "auto" },
+      "Matched what you asked for",
+    ],
+    ["denied", { status: "denied", decider: "user" }, "You declined this"],
+    ["expired", { status: "expired" }, "Expired without a response"],
+    [
+      "cancelled by a Stop",
+      { status: "cancelled" },
+      "Cancelled before you decided",
+    ],
+    ["withdrawn", { status: "withdrawn" }, "Agent withdrew this"],
+    [
+      "approved, then ran",
+      { status: "approved", decider: "user", action: "executed" },
+      "The approved action ran",
+    ],
+    [
+      "approved, then failed",
+      { status: "approved", decider: "user", action: "failed" },
+      "Approved, but it didn't go through",
+    ],
+    [
+      "approved, outcome unknown",
+      { status: "approved", action: "unknown" },
+      "Outcome unknown",
+    ],
+  ])("%s", (_name, end, line) => {
+    expect(approvalOutcomeLabel(card(end))).toBe(line);
   });
 
-  it("ledger-only fields ride optional without breaking the base shape", () => {
-    const card: ApprovalRequestData = {
-      ...base,
-      rationale: "user asked for cleanup",
-      age_seconds: 172800,
-      ledger_version: 4,
-    };
-    expect(card.ledger_version).toBe(4);
+  it("auto mode's own reason and the user's denial words win over the defaults", () => {
+    expect(
+      approvalOutcomeLabel(
+        card(
+          { status: "approved", decider: "auto" },
+          { auto_reason: "you asked" },
+        ),
+      ),
+    ).toBe("you asked");
+    expect(
+      approvalOutcomeLabel(
+        card({ status: "denied" }, { feedback: "wrong person" }),
+      ),
+    ).toBe("wrong person");
   });
 
-  it("decision payloads carry the rendered row version", () => {
-    const payload = { decision: "approve" as const, v: 4 };
-    expect(payload.v).toBe(4);
+  it("a yes with a change names the change", () => {
+    expect(
+      approvalOutcomeLabel(
+        card({ status: "approved_with_change" }, { feedback: "cc Sam" }),
+      ),
+    ).toBe("You approved this with a change: cc Sam");
+  });
+
+  it("an action that failed after auto mode approved it still says it failed", () => {
+    expect(
+      approvalOutcomeLabel(
+        card({ status: "approved", decider: "auto", action: "failed" }),
+      ),
+    ).toBe("Approved, but it didn't go through");
   });
 });
 
-describe("formatApprovalAge", () => {
-  it("renders compact age strings", async () => {
-    const { formatApprovalAge } = await import("./approvals");
-    expect(formatApprovalAge(30)).toBe("asked just now");
-    expect(formatApprovalAge(3600)).toBe("asked 1h ago");
-    expect(formatApprovalAge(172800)).toBe("asked 2d ago");
+describe("approvalLabel picks one client's words by the same rule", () => {
+  const words: ApprovalLabels<string> = {
+    pending: "P",
+    autoApproved: "AUTO",
+    status: {
+      approved: "A",
+      approved_with_change: "AC",
+      denied: "D",
+      expired: "E",
+      cancelled: "C",
+      withdrawn: "W",
+    },
+    action: { executing: "X1", executed: "X2", failed: "X3", unknown: "X4" },
+  };
+
+  it("pending while waiting, and the action only counts once approved", () => {
+    expect(approvalLabel({ status: "waiting" }, words)).toBe("P");
+    expect(approvalLabel({ status: "approved", action: "failed" }, words)).toBe(
+      "X3",
+    );
+    expect(approvalLabel({ status: "denied", decider: "auto" }, words)).toBe(
+      "D",
+    );
+    expect(approvalLabel({ status: "approved_with_change" }, words)).toBe("AC");
   });
 
-  it("re-confirm threshold is one day", async () => {
-    const { RECONFIRM_AGE_SECONDS } = await import("./approvals");
-    expect(RECONFIRM_AGE_SECONDS).toBe(86400);
+  it("a card is settled exactly when it no longer waits", () => {
+    expect(isSettled({ status: "waiting" })).toBe(false);
+    expect(isSettled({ status: "withdrawn" })).toBe(true);
   });
 });

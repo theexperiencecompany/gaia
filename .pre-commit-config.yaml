@@ -167,6 +167,13 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: skills-symlink
+        name: .claude/skills stays a symlink to .agents/skills
+        entry: mise exec -- node scripts/ci/checks.mjs skills-symlink
+        language: system
+        pass_filenames: false
+        files: ^\.(claude|agents)/
   - repo: local
     hooks:
       - id: react-doctor

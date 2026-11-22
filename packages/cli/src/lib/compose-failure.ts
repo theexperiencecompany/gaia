@@ -227,6 +227,18 @@ const unhealthy: Matcher = (text) => {
   };
 };
 
+const oneShotFailed: Matcher = (text) => {
+  const service = /service "([\w-]+)" didn't complete successfully/.exec(
+    text,
+  )?.[1];
+  if (!service) return null;
+  return {
+    cause: `GAIA's ${serviceName(service)} didn't finish.`,
+    next: "Try: gaia doctor",
+    service,
+  };
+};
+
 /** The last line that reads like an error, for failures nothing above names. */
 function lastErrorLine(lines: readonly string[]): string {
   const errorLine = [...lines]
@@ -247,6 +259,7 @@ export function explainComposeFailure(
     imageMissing,
     portTaken,
     unhealthy,
+    oneShotFailed,
     networkFailure,
   ]) {
     const failure = matcher(text, ctx);

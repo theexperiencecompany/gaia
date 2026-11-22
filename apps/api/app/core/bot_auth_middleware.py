@@ -19,13 +19,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from app.config.settings import settings
+from app.constants.auth import BOT_API_KEY_HEADER
 from app.constants.cache import TEN_MINUTES_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_token_service import verify_bot_session_token
 from app.services.turn_timings import TurnStep, turn_step
-from app.utils.auth_utils import resolve_bot_user
+from app.utils.auth_utils import bot_user_cache_key, resolve_bot_user
 from app.utils.log_identifiers import hash_platform_user_id
 from shared.py.wide_events import log
 
@@ -108,7 +109,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         route, the JWT identifies the user. Gating it on JWT failure left
         successful fast-path requests with bot_api_key_valid unset, causing 401s.
         """
-        api_key = request.headers.get("X-Bot-API-Key")
+        api_key = request.headers.get(BOT_API_KEY_HEADER)
         platform = request.headers.get("X-Bot-Platform")
         platform_user_id = request.headers.get("X-Bot-Platform-User-Id")
 
@@ -157,7 +158,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         self, platform: str, platform_user_id: str
     ) -> AuthenticatedUser | None:
         """Authenticate via platform ID lookup with caching."""
-        cache_key = f"bot_user:{platform}:{platform_user_id}"
+        cache_key = bot_user_cache_key(platform, platform_user_id)
         cached_user_info = await get_cache(cache_key, model=AuthenticatedUser)
 
         if cached_user_info is not None and cached_user_info.user_id:
@@ -182,7 +183,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             if not user_id or not platform or not platform_user_id:
                 return None
 
-            cache_key = f"bot_user:{platform}:{platform_user_id}"
+            cache_key = bot_user_cache_key(platform, platform_user_id)
             cached_user_info = await get_cache(cache_key, model=AuthenticatedUser)
 
             if cached_user_info is not None and cached_user_info.user_id == user_id:

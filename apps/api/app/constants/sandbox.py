@@ -75,9 +75,6 @@ LOCAL_SANDBOX_CONTAINER_PREFIX = "gaia-sandbox-"
 # only its own user's subpaths of it. The compose file pins this exact name.
 SELFHOST_WORKSPACE_VOLUME = "gaia-selfhost_workspace"
 
-# The volume every local sandbox mounted whole before per-user isolation; only
-# the one-shot legacy migration still reads it.
-LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
 
 # Label recording the layout and image a sandbox was created with; an older one is replaced.
 # v2: resource limits, dropped capabilities, isolated network.

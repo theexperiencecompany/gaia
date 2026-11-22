@@ -2,55 +2,51 @@
  * Delivery-failure reporting through the real GaiaClient, with only the axios
  * transport faked: what a lost reply sends to the API, and what it must not.
  */
-import { Readable } from "node:stream";
-import {
-  GaiaClient,
-  handleStreamingChat,
-  STREAMING_DEFAULTS,
-} from "@gaia/shared/bots";
+import { GaiaClient } from "@gaia/shared/bots";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDeliveryFailureReporter,
   describeErrorForAlert,
 } from "../../../../libs/shared/ts/src/bots/delivery-failures";
+import { HarnessAdapter } from "../../harness/src/adapter";
+import { resolveEmulation } from "../../harness/src/emulation";
+import { TranscriptRecorder } from "../../harness/src/transcript";
+import { injectGaia } from "./helpers/inject-gaia";
 
 const REPORT_PATH = "/api/v1/bot/delivery-failures";
+const MESSAGES_PATH = "/api/v1/bot/messages";
 
-function frames(...payloads: object[]): string {
-  return payloads.map((p) => `data: ${JSON.stringify(p)}\n\n`).join("");
+/** An axios-shaped refusal, as the transport throws it. */
+function httpError(status: number, data: object = {}): Error {
+  return Object.assign(new Error(`Request failed with status code ${status}`), {
+    response: { status, data },
+  });
 }
 
-/** A real GaiaClient: chat streams replay sseBody, every other POST resolves. */
-function gaiaWith(sseBody: string) {
-  const post = vi.fn(async (url: string) =>
-    url === REPORT_PATH
-      ? { data: { status: "queued" } }
-      : { data: Readable.from([sseBody]) },
-  );
+/** A real GaiaClient whose transport refuses every post with refusal; reports and link tokens resolve. */
+function gaiaRefusingPosts(refusal: Error) {
+  const post = vi.fn(async (url: string) => {
+    if (url === REPORT_PATH) return { data: { status: "queued" } };
+    if (url === MESSAGES_PATH) throw refusal;
+    return { data: { token: "tok", auth_url: "https://gaia.test/link" } };
+  });
+  const get = vi.fn(async () => ({
+    data: { authenticated: false, platform: "telegram" },
+  }));
   const gaia = new GaiaClient("http://gaia.test", "bot-key", "http://web.test");
-  (gaia as unknown as { client: unknown }).client = { post };
+  (gaia as unknown as { client: unknown }).client = { post, get };
   return { gaia, post };
 }
 
-async function runFailedTurn(gaia: GaiaClient): Promise<string[]> {
-  const errors: string[] = [];
-  await handleStreamingChat(
-    gaia,
-    {
-      message: "summarise my inbox",
-      platform: "telegram",
-      platformUserId: "5550001",
-      channelId: "5550001",
-    },
-    async () => undefined,
-    async () => async () => undefined,
-    async () => undefined,
-    async (formattedError) => {
-      errors.push(formattedError);
-    },
-    STREAMING_DEFAULTS.telegram,
-  );
-  return errors;
+/** Posts one message through the real post path of a telegram-emulating harness. */
+async function postRefusedMessage(
+  gaia: GaiaClient,
+): Promise<TranscriptRecorder> {
+  const recorder = new TranscriptRecorder("telegram");
+  const adapter = new HarnessAdapter(resolveEmulation("telegram"), recorder);
+  injectGaia(adapter, gaia, createDeliveryFailureReporter(gaia, "telegram"));
+  await adapter.simulateMessage("5550001", "summarise my inbox");
+  return recorder;
 }
 
 function reportsSent(post: ReturnType<typeof vi.fn>) {
@@ -61,19 +57,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("a chat turn that fails", () => {
+describe("a message the API refuses", () => {
   it("reports a lost reply to the API, authenticated as the platform's bot", async () => {
-    const { gaia, post } = gaiaWith(frames({ error: "executor crashed" }));
+    const { gaia, post } = gaiaRefusingPosts(httpError(500));
 
-    const errors = await runFailedTurn(gaia);
+    const recorder = await postRefusedMessage(gaia);
 
-    expect(errors).toHaveLength(1);
+    expect(recorder.getEvents().filter((e) => e.type === "send")).toHaveLength(
+      1,
+    );
     await vi.waitFor(() => expect(reportsSent(post)).toHaveLength(1));
     const [[, body, config]] = reportsSent(post);
     expect(body).toEqual({
       kind: "reply_failed",
-      reason: "unknown",
-      error_message: "chat: executor crashed",
+      reason: "server_error",
+      error_message: "chat: HTTP 500: API error: 500",
       destination_id: "5550001",
       platform: "telegram",
       occurred_at: expect.any(String),
@@ -84,12 +82,20 @@ describe("a chat turn that fails", () => {
     });
   });
 
-  it("does not alert on a plan refusal: the user got the upgrade prompt", async () => {
-    const { gaia, post } = gaiaWith(frames({ error: "plan_required" }));
+  it("does not alert on an account that is not linked: the user got the link prompt", async () => {
+    const { gaia, post } = gaiaRefusingPosts(
+      httpError(401, { code: "NOT_AUTHENTICATED" }),
+    );
 
-    await runFailedTurn(gaia);
+    const recorder = await postRefusedMessage(gaia);
     await new Promise((resolve) => setTimeout(resolve, 10));
 
+    const sent = recorder.getEvents().filter((e) => e.type === "send");
+    expect(sent).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("https://gaia.test/link"),
+      }),
+    ]);
     expect(reportsSent(post)).toHaveLength(0);
   });
 });

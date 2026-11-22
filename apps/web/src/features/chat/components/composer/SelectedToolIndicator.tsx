@@ -3,15 +3,14 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {
   toolName: string | null;
   toolCategory?: string | null;
-  iconUrl?: string | null;
   onRemove?: () => void;
+  isSlashCommandDropdownOpen?: boolean;
 }
 
 const TOOL_SUFFIX_REGEX = / tool$/i;
@@ -29,17 +28,16 @@ const formatToolName = (toolName: string): string => {
 const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   toolName,
   toolCategory,
-  iconUrl,
   onRemove,
+  isSlashCommandDropdownOpen = false,
 }) => {
-  const { isSlashCommandDropdownOpen } = useComposerUI();
   const { integrations } = useIntegrations();
 
   // Custom integrations aren't in the static icon config, so their logo lives on
   // the integration's iconUrl. Resolve it from the category (integration id) so
   // both the composer and the persisted user bubble render the same icon.
   const resolvedIconUrl =
-    iconUrl ?? integrations.find((i) => i.id === toolCategory)?.iconUrl ?? null;
+    integrations.find((i) => i.id === toolCategory)?.iconUrl ?? null;
 
   const onRemoveRef = useRef(onRemove);
   const isSlashCommandOpenRef = useRef(isSlashCommandDropdownOpen);
@@ -53,8 +51,12 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
     if (!toolName) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle escape if slash command dropdown is NOT open
-      if (e.key === "Escape" && !isSlashCommandOpenRef.current) {
+      // defaultPrevented: the dropdown's own Escape closed it on this keypress
+      if (
+        e.key === "Escape" &&
+        !e.defaultPrevented &&
+        !isSlashCommandOpenRef.current
+      ) {
         e.preventDefault();
         onRemoveRef.current?.();
       }
@@ -79,13 +81,12 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
           className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-zinc-700 px-2 py-1 pl-1"
         >
           <div>
-            {getToolCategoryIcon(
-              toolCategory || "general",
-              {
-                size: 17,
-              },
-              resolvedIconUrl,
-            )}
+            <IntegrationIcon
+              integrationId={toolCategory || "general"}
+              iconUrl={resolvedIconUrl}
+              size={17}
+              showBackground
+            />
           </div>
           <span className="text-sm font-light text-zinc-200">
             {formatToolName(toolName)}

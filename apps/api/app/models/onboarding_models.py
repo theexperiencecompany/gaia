@@ -1,4 +1,4 @@
-from typing import ClassVar, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -71,9 +71,8 @@ class EmailSummary(BaseModel):
 class TriageEmailSummary(BaseModel):
     """The fields of an important email that actually reach the client.
 
-    Deliberately not :class:`EmailSummary`: both the persisted triage subdoc and
-    the ``triage_ready`` WebSocket payload drop ``snippet``, and the frontend
-    types exactly these three.
+    Deliberately not :class:`EmailSummary`: the persisted triage subdoc drops
+    ``snippet``, and the frontend types exactly these three.
 
     Defaulted for the same reason as :class:`PersistedTriageSummary` — these
     entries are read back out of a persisted subdoc, and the write path always
@@ -232,51 +231,6 @@ class ProfileCardDesign(BaseModel):
     house: House
     overlay_color: str
     overlay_opacity: int
-
-
-# ------------------------------------------------------ websocket stage payloads
-
-
-class StagePayload(BaseModel):
-    """Base for the ``payload`` of an ``onboarding_stage`` WebSocket event."""
-
-    # Whether a None field is dropped from the wire payload or sent as explicit
-    # null. Both are load-bearing: a missing source_email means "no email", but
-    # a null style_summary means "style learning ran and came back empty".
-    omit_none_on_wire: ClassVar[bool] = False
-
-    def to_wire(self) -> dict[str, object]:
-        """The payload as it goes onto the WebSocket frame."""
-        return self.model_dump(mode="json", exclude_none=self.omit_none_on_wire)
-
-
-class StatusTextPayload(StagePayload):
-    """Progress ping for a stage that is still running."""
-
-    status_text: str
-
-
-class WritingStyleReadyPayload(StagePayload):
-    """Payload of the ``writing_style_ready`` stage event."""
-
-    style_summary: str | None
-    example: WritingStyleExampleBlocks | None
-
-
-class SocialProfilesReadyPayload(StagePayload):
-    """Payload of the ``social_profiles_ready`` stage event."""
-
-    profiles: list[SocialProfile]
-
-
-class TriageReadyPayload(StagePayload):
-    """Payload of the ``triage_ready`` stage event."""
-
-    total_scanned: int
-    total_unread: int
-    summary: str | None
-    patterns: list[str]
-    important_emails: list[TriageEmailSummary]
 
 
 # ----------------------------------------------------------- endpoint responses

@@ -19,8 +19,9 @@ from pydantic import BaseModel
 from pymongo.errors import AutoReconnect, BulkWriteError, DuplicateKeyError
 import pytest
 
-from app.db.repositories.base import MongoDocument, _BaseRepository
+from app.db.repositories.base import _BaseRepository
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
+from app.models.document_models import MongoDocument
 from app.utils.errors import RepositoryMisconfiguredError
 
 _BASE = "app.db.repositories.base"
@@ -353,3 +354,26 @@ def test_a_public_sync_method_and_a_private_coroutine_are_left_unwrapped() -> No
 
     assert repo_class.__dict__["label"] is label
     assert repo_class.__dict__["_helper"] is _helper
+
+
+async def test_a_repository_that_skips_the_read_back_returns_the_insert_under_its_new_id() -> None:
+    collection = MagicMock()
+    collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id="doc-1"))
+    collection.find_one = AsyncMock()
+    repo = _concrete(reads_back_inserts=False)()
+    with patch("app.db.repositories.base.get_async_collection", return_value=collection):
+        created = await repo.create(_Doc(name="x"))
+
+    assert (created.id, created.name) == ("doc-1", "x")
+    collection.find_one.assert_not_awaited()
+
+
+def test_a_sibling_collection_resolves_by_its_own_name_through_the_patched_binding() -> None:
+    sibling = MagicMock()
+    with patch(
+        "app.db.repositories.base.get_async_collection", return_value=sibling
+    ) as get_collection:
+        handle = _concrete()()._sibling_collection("things_log")
+
+    assert handle is sibling
+    get_collection.assert_called_once_with("things_log")

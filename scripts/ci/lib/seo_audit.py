@@ -75,8 +75,15 @@ def fetch(url: str, method: str = "GET", host: str | None = None) -> Response:
                 return Response(exc.code, {k.lower(): v for k, v in exc.headers.items()}, "")
             server_errors += 1
             time.sleep(2 ** (server_errors - 1))
-        # HTTPException: a body cut short (IncompleteRead) or a dropped connection (RemoteDisconnected).
-        except (urllib.error.URLError, TimeoutError, http.client.HTTPException) as exc:
+        # HTTPException: a body cut short (IncompleteRead) or a dropped connection
+        # (RemoteDisconnected). ConnectionError: an RST during the read itself,
+        # which urllib never wraps in URLError.
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            http.client.HTTPException,
+            ConnectionError,
+        ) as exc:
             if transport_errors == TRANSPORT_RETRIES:
                 return Response(0, {}, f"transport error: {exc}")
             transport_errors += 1

@@ -1,9 +1,9 @@
 """Resume driver (app/services/hil/resume.py): background owners wake on verdicts.
 
-Live runs resume through the executor inbox; background runs have no live run,
-so approvals re-enqueue the owner and denials leave a trace where the owner
-looks. Everything is best-effort and claim-guarded — a resume failure must
-never fail the tap.
+Live runs get the ticket through the executor inbox; background runs have no live
+run, so approvals re-enqueue the owner carrying the ticket and denials leave a
+trace where the owner looks. A resume that cannot be queued raises,
+so the decision's hand-off is retried.
 """
 
 from collections.abc import Iterator
@@ -15,16 +15,18 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
-from app.models.hil_models import LedgerState
-from app.services.hil import resume as resume_module
+from app.models.conversation_log_models import ApprovalDecided
+from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
 from app.services.hil.resume import (
     _resume_todo,
     _resume_workflow,
     record_owner_deny,
     resume_owner_after_approval,
 )
+from app.services.hil.ticket import approval_ticket
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilResumed
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
 MODULE = "app.services.hil.resume"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -37,55 +39,51 @@ def _row(**overrides: Any) -> MagicMock:
     row.user_id = USER_ID
     row.tool_name = "GMAIL_SEND_EMAIL"
     row.summary = "Send briefing"
-    row.state = LedgerState.APPROVED
+    row.outcome = ApprovalOutcome.APPROVED
+    row.action = None
+    row.feedback = None
     row.owner_run_type = ""
     row.owner_id = ""
+    row.created_at = None
     for key, value in overrides.items():
         setattr(row, key, value)
     return row
 
 
+def _yes(feedback: str | None = None) -> ApprovalDecided:
+    return ApprovalDecided(
+        id="approval:ap_bg1:decided",
+        approval_id="ap_bg1",
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
+        feedback=feedback,
+    )
+
+
+_YES = _yes()
+
+
 class TestResumeAfterApproval:
-    async def test_no_owner_is_a_no_op(self) -> None:
-        with patch(f"{MODULE}.approval_ledger_repository") as repo:
-            await resume_owner_after_approval(_row())
-        repo.claim_resume.assert_not_called()
-
-    async def test_lost_claim_means_another_tap_already_resumed(self) -> None:
-        with (
-            patch(f"{MODULE}.approval_ledger_repository") as repo,
-            patch(f"{MODULE}._resume_todo", new=AsyncMock()) as resume,
-        ):
-            repo.claim_resume = AsyncMock(return_value=False)
-            await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-1"))
-        resume.assert_not_awaited()
-
     async def test_todo_resume_logs_and_reenqueues(self) -> None:
-        with (
-            patch.object(resume_module, "approval_ledger_repository") as repo,
-            patch(f"{MODULE}._resume_todo", new=AsyncMock()) as resume,
-        ):
-            repo.claim_resume = AsyncMock(return_value=True)
-            await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-1"))
+        with patch(f"{MODULE}._resume_todo", new=AsyncMock()) as resume:
+            await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-1"), _YES)
         resume.assert_awaited_once()
 
-    async def test_unknown_owner_type_claims_but_runs_nothing(self) -> None:
-        with patch(f"{MODULE}.approval_ledger_repository") as repo:
-            repo.claim_resume = AsyncMock(return_value=True)
-            with patch(f"{MODULE}.log"):
-                await resume_owner_after_approval(_row(owner_run_type="cron", owner_id="x"))
-        repo.claim_resume.assert_awaited_once()
-
-    async def test_resume_failure_never_raises(self) -> None:
-        with (
-            patch(f"{MODULE}.approval_ledger_repository") as repo,
-            patch(
-                f"{MODULE}._resume_workflow",
-                new=AsyncMock(side_effect=RuntimeError("redis down")),
-            ),
+    async def test_an_unknown_owner_type_raises(self) -> None:
+        with pytest.raises(
+            UnknownResumeOwnerError, match=r"^approval ap_bg1 names unknown owner 'cron'$"
         ):
-            repo.claim_resume = AsyncMock(return_value=True)
-            await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-1"))
+            await resume_owner_after_approval(_row(owner_run_type="cron", owner_id="x"), _YES)
+
+    async def test_a_resume_failure_raises_to_the_tap(self) -> None:
+        with patch(
+            f"{MODULE}._resume_workflow",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            with pytest.raises(RuntimeError, match="redis down"):
+                await resume_owner_after_approval(
+                    _row(owner_run_type="workflow", owner_id="wf-1"), _YES
+                )
 
 
 class TestResumeTodo:
@@ -115,7 +113,7 @@ class TestResumeTodo:
 
 
 class TestResumeWorkflow:
-    async def test_requeued_with_receipt_context(self) -> None:
+    async def test_requeued_with_the_ticket_to_redeem(self) -> None:
         queued: dict[str, Any] = {}
 
         async def _fake_queue(workflow_id: str, user_id: str, context: Any) -> bool:
@@ -126,10 +124,35 @@ class TestResumeWorkflow:
             "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
             new=_fake_queue,
         ):
-            await _resume_workflow(_row(owner_run_type="workflow", owner_id="wf-7"))
+            await _resume_workflow(_row(owner_run_type="workflow", owner_id="wf-7"), _YES)
         assert queued["workflow_id"] == "wf-7"
         assert queued["context"]["resume_from_approval"] == "ap_bg1"
-        assert queued["context"]["approval_result"] == "granted"
+        assert queued["context"]["approval_ticket"] == (
+            "APPROVAL_READY ap_bg1: the user approved Send briefing (unknown age). "
+            'Run it now with execute(tool_name="approve", data={"id": "ap_bg1"}) and continue '
+            "with its result. If it is no longer needed, say so instead of running it."
+        )
+
+    def test_a_yes_with_a_change_hands_the_redo_its_amendment_id(self) -> None:
+        ticket = approval_ticket(_row(), _yes("send it to Sam too"))
+
+        assert "Do not run the stored call" in ticket
+        assert 'execute(tool_name="GMAIL_SEND_EMAIL", ' in ticket
+        assert 'amends="ap_bg1")' in ticket
+
+    async def test_a_workflow_the_queue_refused_raises(self) -> None:
+        with (
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(f"{MODULE}.get_last_run_brief", new=AsyncMock(return_value="")),
+            pytest.raises(
+                ResumeNotQueuedError,
+                match=r"^the workflow resume for approval ap_bg1 was not queued$",
+            ),
+        ):
+            await _resume_workflow(_row(owner_run_type="workflow", owner_id="wf-7"), _YES)
 
 
 class TestResumedEvent:
@@ -164,7 +187,7 @@ class TestResumedEvent:
             ),
             patch("app.services.hil.resume.capture") as capture,
         ):
-            await _resume_workflow(_row(owner_run_type="workflow", owner_id="wf-7"))
+            await _resume_workflow(_row(owner_run_type="workflow", owner_id="wf-7"), _YES)
 
         capture.assert_called_once_with(
             UserId(USER_ID), HilResumed(approval_id="ap_bg1", owner_run_type="workflow")
@@ -175,7 +198,6 @@ class TestResumedEvent:
 class ResumeSeams:
     """The resume driver's seams, each answering only for the parked row's own ids."""
 
-    claim: AsyncMock
     log: MagicMock
     pool: MagicMock
     enqueue: AsyncMock
@@ -188,16 +210,12 @@ class ResumeSeams:
 def seams() -> Iterator[ResumeSeams]:
     pool = MagicMock()
 
-    async def _claim(approval_id: str) -> bool:
-        return approval_id == "ap_bg1"
-
     async def _brief(workflow_id: str, user_id: str) -> str:
         return (
             "last run drafted the briefing" if (workflow_id, user_id) == ("wf-7", USER_ID) else ""
         )
 
     with (
-        patch(f"{MODULE}.approval_ledger_repository") as repo,
         patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}.RedisPoolManager.get_pool", new=AsyncMock(return_value=pool)),
         patch(f"{MODULE}.enqueue_worker_job", new=AsyncMock()) as enqueue,
@@ -208,9 +226,7 @@ def seams() -> Iterator[ResumeSeams]:
         patch(f"{MODULE}.record_activity", new=AsyncMock(return_value=True)) as activity,
         patch(f"{MODULE}.capture"),
     ):
-        repo.claim_resume = AsyncMock(side_effect=_claim)
         yield ResumeSeams(
-            claim=repo.claim_resume,
             log=log,
             pool=pool,
             enqueue=enqueue,
@@ -221,22 +237,11 @@ def seams() -> Iterator[ResumeSeams]:
 
 
 class TestResumeRouting:
-    @pytest.mark.parametrize(
-        "owner", [{"owner_run_type": "todo"}, {"owner_id": "todo-1"}], ids=["no-id", "no-type"]
-    )
-    async def test_half_an_owner_resumes_nothing(
-        self, seams: ResumeSeams, owner: dict[str, str]
-    ) -> None:
-        await resume_owner_after_approval(_row(**owner))
-
-        seams.claim.assert_not_awaited()
-
     async def test_a_todo_owner_is_reenqueued_into_its_parked_conversation(
         self, seams: ResumeSeams
     ) -> None:
-        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
+        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"), _YES)
 
-        seams.claim.assert_awaited_once_with("ap_bg1")
         seams.enqueue.assert_awaited_once_with(
             seams.pool, "resume_tracked_todo", "todo-9", "conv-bg", "ap_bg1", "Send briefing"
         )
@@ -245,8 +250,8 @@ class TestResumeRouting:
     async def test_a_todo_grant_is_logged_on_that_todo_at_the_decision(
         self, seams: ResumeSeams
     ) -> None:
-        """Logged here, under the resume claim, not by the resume job, which a busy chat defers and reruns."""
-        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
+        """Logged here, at the hand-off, not by the resume job, which a busy chat defers and reruns."""
+        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"), _YES)
 
         seams.append_activity.assert_awaited_once_with(
             "todo-9",
@@ -256,14 +261,14 @@ class TestResumeRouting:
         )
 
     async def test_a_workflow_grant_logs_nothing_on_a_todo(self, seams: ResumeSeams) -> None:
-        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"))
+        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"), _YES)
 
         seams.append_activity.assert_not_awaited()
 
     async def test_a_workflow_owner_is_requeued_with_its_receipt_and_last_brief(
         self, seams: ResumeSeams
     ) -> None:
-        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"))
+        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"), _YES)
 
         seams.queue_workflow.assert_awaited_once_with(
             "wf-7",
@@ -271,7 +276,7 @@ class TestResumeRouting:
             {
                 "resume_from_approval": "ap_bg1",
                 "approval_summary": "Send briefing",
-                "approval_result": "granted",
+                "approval_ticket": approval_ticket(_row(owner_run_type="workflow"), _YES),
                 "prior_run_brief": "last run drafted the briefing",
             },
         )
@@ -282,7 +287,7 @@ class TestResumeRouting:
     ) -> None:
         seams.brief.side_effect = RuntimeError("mongo down")
 
-        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"))
+        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"), _YES)
 
         assert seams.queue_workflow.await_args.args[2]["prior_run_brief"] == ""
         assert _warned(seams.log) == {
@@ -293,44 +298,11 @@ class TestResumeRouting:
             }
         }
 
-    async def test_a_failed_claim_is_reported_and_resumes_nothing(self, seams: ResumeSeams) -> None:
-        seams.claim.side_effect = ConnectionError("mongo down")
-
-        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
-
-        seams.enqueue.assert_not_awaited()
-        assert _warned(seams.log) == {
-            f"{LogTag.HIL} resume claim failed; skipping resume": {
-                "approval_id": "ap_bg1",
-                "error": "mongo down",
-                "error_type": "ConnectionError",
-            }
-        }
-
-    async def test_an_unknown_owner_is_reported(self, seams: ResumeSeams) -> None:
-        await resume_owner_after_approval(_row(owner_run_type="cron", owner_id="x"))
-
-        assert _warned(seams.log) == {
-            f"{LogTag.HIL} unknown resume owner; skipping": {
-                "approval_id": "ap_bg1",
-                "owner_run_type": "cron",
-            }
-        }
-
-    async def test_a_failed_resume_is_reported_with_its_owner(self, seams: ResumeSeams) -> None:
+    async def test_a_failed_enqueue_raises(self, seams: ResumeSeams) -> None:
         seams.enqueue.side_effect = RuntimeError("redis down")
 
-        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
-
-        assert _warned(seams.log) == {
-            f"{LogTag.HIL} owner resume failed; the approval itself stands": {
-                "approval_id": "ap_bg1",
-                "owner_run_type": "todo",
-                "owner_id": "todo-9",
-                "error": "redis down",
-                "error_type": "RuntimeError",
-            }
-        }
+        with pytest.raises(RuntimeError, match="redis down"):
+            await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"), _YES)
 
 
 class TestDenyTrace:

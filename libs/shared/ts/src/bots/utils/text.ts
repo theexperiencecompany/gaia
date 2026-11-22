@@ -273,16 +273,12 @@ function findTableRanges(
 }
 
 /**
- * Picks the best cut index ≤ ``limit`` for a chunk of ``text``: paragraph (`\n\n`), then sentence
- * enders, then word boundary, then a hard cut at ``limit`` as a last resort. Skips boundaries
- * that would split a markdown link or a GFM table block.
- *
- * The 50%-of-limit floor avoids tiny fragments — a hard cut is accepted over emitting a
- * 200-char chunk on a 4000-char limit if no decent boundary exists in the second half.
+ * Picks the best cut index in ``[floor, limit]`` for a chunk of ``text``: paragraph (`\n\n`), then
+ * sentence enders, then word boundary, then a hard cut at ``limit`` as a last resort. Skips
+ * boundaries that would split a markdown link or a GFM table block.
  */
-function pickCutBoundary(text: string, limit: number): number {
+function pickCutBoundary(text: string, limit: number, floor: number): number {
   const window = text.slice(0, limit);
-  const floor = limit * 0.5;
   // Cuts are always ≤ limit, so only tables whose header starts within the
   // window can contain one — bound the scan there.
   const tableRanges = findTableRanges(text, limit);
@@ -362,8 +358,9 @@ function balanceSingleAsterisks(
 function splitAtBoundary(
   remaining: string,
   rawLimit: number,
+  floor: number,
 ): [string, string] {
-  const cutAt = pickCutBoundary(remaining, rawLimit);
+  const cutAt = pickCutBoundary(remaining, rawLimit, floor);
   let chunk = remaining.slice(0, cutAt);
   let next = remaining.slice(cutAt);
 
@@ -388,6 +385,13 @@ function splitAtBoundary(
   return [chunk, next];
 }
 
+/**
+ * A cut lands in the second half of a chunk at the earliest: a hard cut is accepted over
+ * emitting a 200-char chunk on a 4000-char limit when no decent boundary exists past it.
+ */
+const MIN_CUT_SHARE = 0.5;
+/** Room for the code-fence balancing markers ("\n```" + "```\n") a cut inside a fence adds. */
+const FENCE_HEADROOM = 8;
 /** Smallest raw cut we will shrink to when a rendered chunk overflows. */
 const MIN_RENDER_RAW_LIMIT = 256;
 /** Cap on shrink retries per chunk (proportional shrink converges in ~1-2). */
@@ -411,9 +415,6 @@ export function chunkResponse(
   const measure = (s: string): number => (render ? render(s).length : s.length);
   if (measure(text) <= limit) return [text];
 
-  // Reserve space for code-fence balancing markers ("\n```" + "```\n") so a
-  // chunk that closes/reopens a fence still fits inside the platform limit.
-  const FENCE_HEADROOM = 8;
   const cutLimit = limit - FENCE_HEADROOM;
 
   const chunks: string[] = [];
@@ -424,7 +425,11 @@ export function chunkResponse(
   // keeps even an empty string over the limit.
   while (remaining.length > 0 && measure(remaining) > limit) {
     let rawLimit = cutLimit;
-    let [chunk, next] = splitAtBoundary(remaining, rawLimit);
+    let [chunk, next] = splitAtBoundary(
+      remaining,
+      rawLimit,
+      rawLimit * MIN_CUT_SHARE,
+    );
 
     // Render-aware: if the rendered chunk overflows, shrink the raw cut proportionally and
     // re-split until it fits, or until the floor — a single oversized atom (e.g. one giant
@@ -440,7 +445,11 @@ export function chunkResponse(
       const renderedLen = measure(chunk) || 1;
       const scaled = Math.floor((rawLimit * limit) / renderedLen);
       rawLimit = Math.max(MIN_RENDER_RAW_LIMIT, Math.min(rawLimit - 1, scaled));
-      [chunk, next] = splitAtBoundary(remaining, rawLimit);
+      [chunk, next] = splitAtBoundary(
+        remaining,
+        rawLimit,
+        rawLimit * MIN_CUT_SHARE,
+      );
     }
 
     chunks.push(chunk);
@@ -449,4 +458,33 @@ export function chunkResponse(
 
   if (remaining.length > 0) chunks.push(remaining);
   return chunks.filter((c) => c.length > 0);
+}
+
+/**
+ * Cuts the first platform-sized message off text that has outgrown one, never before ``minCut``.
+ *
+ * A live bubble already shows its first ``minCut`` characters, so a cut before them would take
+ * visible text back off the screen; the cut is the best boundary between there and the limit.
+ */
+export function splitOverflow(
+  text: string,
+  platform: PlatformName,
+  render: (chunk: string) => string,
+  minCut: number,
+): [string, string] {
+  const limit = PLATFORM_LIMITS[platform];
+  let rawLimit = Math.max(minCut, limit - FENCE_HEADROOM);
+  let [chunk, next] = splitAtBoundary(text, rawLimit, minCut);
+  for (
+    let i = 0;
+    rawLimit > minCut &&
+    render(chunk).length > limit &&
+    i < MAX_RENDER_SHRINK_ITERS;
+    i += 1
+  ) {
+    const scaled = Math.floor((rawLimit * limit) / (render(chunk).length || 1));
+    rawLimit = Math.max(minCut, Math.min(rawLimit - 1, scaled));
+    [chunk, next] = splitAtBoundary(text, rawLimit, minCut);
+  }
+  return [chunk, next];
 }

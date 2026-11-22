@@ -1,13 +1,11 @@
 "use client";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
-import React, { type FC, useState } from "react";
+import { DISPLAY_STATE } from "@shared/conversation";
+import React, { memo, useState } from "react";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { useConversationDisplay } from "@/features/chat/live/useLiveChat";
 import { usePathname } from "@/i18n/navigation";
-import {
-  useIsConversationAwaitingApproval,
-  useIsConversationStreaming,
-} from "@/stores/streamStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -25,7 +23,9 @@ interface ChatTabProps {
   hasPendingApproval?: boolean;
 }
 
-export const ChatTab: FC<ChatTabProps> = ({
+// Memoized: the sidebar lists every conversation, and a send reorders the list,
+// which re-rendered every row and its dropdown before the turn could paint.
+export const ChatTab = memo(function ChatTab({
   name,
   id,
   starred,
@@ -33,18 +33,15 @@ export const ChatTab: FC<ChatTabProps> = ({
   systemPurpose,
   isUnread = false,
   hasPendingApproval = false,
-}) => {
+}: ChatTabProps) {
   const pathname = usePathname();
   const [buttonHovered, setButtonHovered] = useState(false);
 
-  // Per-conversation: multiple conversations can stream concurrently.
-  const isStreaming = useIsConversationStreaming(id);
-  const isAwaitingApproval = useIsConversationAwaitingApproval(id);
-  // A turn paused on an approval has left the streaming phase (SSE closed), so
-  // the dot keys off both; hasPendingApproval covers reloads and background
-  // runs where no stream state exists.
-  const showApprovalDot = isAwaitingApproval || hasPendingApproval;
-  const isBusy = isStreaming || showApprovalDot;
+  // Live for a conversation open on this device; hasPendingApproval covers the rest.
+  const display = useConversationDisplay(id);
+  const showApprovalDot =
+    display === DISPLAY_STATE.AWAITING_APPROVAL || hasPendingApproval;
+  const isBusy = display !== DISPLAY_STATE.IDLE || showApprovalDot;
 
   // Derive current conversation ID from pathname during render
   const pathParts = pathname.split("/");
@@ -128,4 +125,4 @@ export const ChatTab: FC<ChatTabProps> = ({
       </div>
     </div>
   );
-};
+});

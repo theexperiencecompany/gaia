@@ -91,7 +91,7 @@ async def hil_approvals_collection(mongo_db):
 
 @pytest.fixture
 async def real_redis(redis_url: str, monkeypatch):
-    """Real Redis connection, patched into the app's redis_cache singleton so StreamManager uses real Redis.
+    """Real Redis connection, patched into the app's redis_cache singleton so app code uses real Redis.
 
     Each xdist worker uses its own Redis DB so parallel tests don't wipe each other's keys during flushdb() teardown.
     """

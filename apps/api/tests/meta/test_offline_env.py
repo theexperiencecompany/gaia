@@ -23,7 +23,6 @@ _FORCED_ENV = {
     "POSTHOG_PROJECT_TOKEN": "",
     "POSTHOG_HOST": "",
     "ENABLE_CODE_MODE": "false",
-    "ENABLE_HIL_LEDGER": "true",
 }
 
 

@@ -1,6 +1,5 @@
 """Service to learn and save user writing style."""
 
-from collections.abc import Awaitable, Callable
 import time
 
 from app.agents.llm.client import ainvoke_structured, metered_config
@@ -28,13 +27,10 @@ _MAX_SAMPLES = 30
 async def learn_writing_style(
     user_id: str,
     profession: str = "",
-    on_status: Callable[[str], Awaitable[None]] | None = None,
 ) -> WritingStyleProfile | None:
     """Fetch the user's recent sent emails and analyze writing style."""
     t0 = time.monotonic()
     try:
-        if on_status is not None:
-            await on_status("Reading your sent folder")
         result = await search_messages(
             user_id=user_id,
             query=SENT_EMAIL_QUERY,
@@ -46,9 +42,6 @@ async def learn_writing_style(
         # fails and the boundary stays parsed.
         sent_emails = result.messages
         sent_count = len(sent_emails)
-
-        if on_status is not None:
-            await on_status(f"Found {sent_count} sent email{'s' if sent_count != 1 else ''}")
 
         if sent_count < _MIN_SENT_EMAILS:
             log.info(
@@ -97,8 +90,6 @@ async def learn_writing_style(
             profession=profession or "professional",
             email_samples=email_samples_text,
         )
-        if on_status is not None:
-            await on_status("Analyzing tone and phrasing")
         t_llm = time.monotonic()
         result_data: WritingStyleOutput = await ainvoke_structured(
             WritingStyleOutput,

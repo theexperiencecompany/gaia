@@ -6,6 +6,8 @@ import {
   type GoogleCalendarEvent,
 } from "@/types/features/calendarTypes";
 
+import { calendarKeys } from "../api/queryKeys";
+
 /**
  * React Query hook for fetching upcoming calendar events with 5-minute caching
  */
@@ -21,7 +23,7 @@ export const useUpcomingEventsQuery = (
   const endDate = endDateObj.toISOString().slice(0, 10);
 
   return useQuery({
-    queryKey: ["upcoming-events", maxResults, startDate, endDate],
+    queryKey: [...calendarKeys.upcoming, maxResults, startDate, endDate],
     queryFn: async (): Promise<GoogleCalendarEvent[]> => {
       const response = await api.get("/api/v1/calendar/events", {
         query: {

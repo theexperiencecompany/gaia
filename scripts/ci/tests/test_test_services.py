@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import subprocess
+
+import pytest
 
 CI = Path(__file__).parent.parent
 SCRIPT = CI / "test-services.sh"
@@ -220,10 +223,25 @@ def test_prepare_clears_the_other_four_namespaces(tmp_path: Path) -> None:
     assert proc.returncode == 0
     log = docker_log(tmp_path)
     assert "flushdb" in log  # Redis stripe
-    assert "gaia_test_r4_" in log  # Mongo worker databases
+    assert "dropDatabase" in log  # Mongo lane databases
     assert "delete_vhost r4" in log  # RabbitMQ, before add_vhost
     assert "add_vhost r4" in log
     assert (tmp_path / "curl.log").read_text().count("collections") >= 1  # Chroma
+
+
+@pytest.mark.parametrize("command", [("prepare", "4"), ("reset", "4")])
+def test_the_lane_drops_the_apps_database_and_its_workers_and_no_other_lanes(
+    tmp_path: Path, command: tuple[str, str]
+) -> None:
+    # The app's bare gaia_test_r4 survived every reset, so a legacy head an old job left in it
+    # made the next job's live-server fuzz refuse to boot.
+    proc = run(tmp_path, *command, RUNNER_NAME="gaia-home-1")
+    assert proc.returncode == 0
+    found = re.search(r"\.filter\(n => /(.+?)/\.test\(n\)\)", docker_log(tmp_path))
+    assert found is not None
+    lane = re.compile(found.group(1))
+    names = ["gaia_test_r4", "gaia_test_r4_gw0", "gaia_test_r40", "gaia_test_r41_gw0", "GAIA"]
+    assert [name for name in names if lane.search(name)] == ["gaia_test_r4", "gaia_test_r4_gw0"]
 
 
 def test_prepare_fails_when_chroma_cannot_list_its_collections(tmp_path: Path) -> None:

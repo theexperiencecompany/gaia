@@ -20,12 +20,13 @@ import pytest
 from app.agents.context.live_work import describe_browser_tasks
 from app.agents.context.slots import MEMORY_RECALL_MARKER
 from app.agents.core.graph_builder.build_graph import comms_tools
-from app.agents.core.messages import MessageScope, construct_langchain_messages
+from app.agents.core.messages import MessageScope
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.llm.dev_lane import build_custom_chat_model, custom_endpoint
 from app.agents.tools.executor_tool import handoff_message
 from app.config.settings import settings
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.chat import ConversationSource
 from app.constants.llm import (
     COMMS_MODEL_NAME,
     COMMS_REASONING_EFFORT,
@@ -37,6 +38,7 @@ from app.constants.llm import (
 )
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.chat_task import ChatBrowserTasks, PausedStep
+from tests._harness.context_chain import comms_turn_messages
 from tests.browser_factories import make_browser_job_state
 
 # One loop for the module: the custom lane's client is cached, and its pool is bound to the first loop.
@@ -131,7 +133,9 @@ def _frame(paused: bool) -> SystemMessage:
 
 async def _request(case: Case, provider: str) -> list[AnyMessage]:
     """Assemble the request the way the comms graph does: the turn carries the frame ahead of the user's words."""
-    built = await construct_langchain_messages(query=case.message, scope=MessageScope(source="web"))
+    built = await comms_turn_messages(
+        query=case.message, scope=MessageScope(source=ConversationSource.WEB)
+    )
     at = next(i for i, message in enumerate(built) if isinstance(message, HumanMessage))
     turn = [*built[:at], _frame(case.paused), *built[at:]]
     state: Any = {"messages": [*_started_turn(), *turn]}

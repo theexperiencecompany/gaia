@@ -5,9 +5,14 @@ SUMMARIZATION_KEEP_TOKENS = 8000  # Keep ~8K tokens after summarization
 # Share of the summary model's input window the summary prompt may fill, measured
 # on the XML it is actually sent as; the rest covers the estimate's error.
 SUMMARY_INPUT_BUDGET_FRACTION = 0.80
-# Comms runs on OpenAI, which bills a request past 272K input tokens at 2x input
-# and 1.5x output; a fraction of the 1M window (600K) would cross that first.
-COMMS_SUMMARIZATION_TRIGGER_TOKENS = 200_000
+# Comms' whole request, prompt slots (~34K in a real chat) included: every comms call
+# reads it, so once a turn settles past this its oldest turns fold into the rolling
+# summary in the background (130K → ~50K).
+COMMS_SUMMARIZATION_TRIGGER_TOKENS = 64_000
+# The fold runs inside a turn only past this: turns came faster than background folds landed.
+COMMS_SUMMARIZATION_CEILING_TOKENS = 2 * COMMS_SUMMARIZATION_TRIGGER_TOKENS
+# Recent turns comms keeps word for word after a fold; open requests stay on top of it.
+COMMS_SUMMARIZATION_KEEP_TOKENS = 12_000
 
 # Aggressive compaction sheds stale tool observations earlier so per-step
 # input tokens stay low and implicit prompt caching keeps hitting on long
