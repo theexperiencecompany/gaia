@@ -58,14 +58,10 @@ export async function handleWorkflowExecute(
   gaia: GaiaClient,
   workflowId: string,
   ctx: CommandContext,
-  inputs?: Record<string, unknown>,
 ): Promise<string> {
   try {
-    const response = await gaia.executeWorkflow(
-      { workflow_id: workflowId, inputs },
-      ctx,
-    );
-    return `✅ BotWorkflow execution started!\nExecution ID: ${response.execution_id}\nStatus: ${response.status}`;
+    const response = await gaia.executeWorkflow(workflowId, ctx);
+    return `✅ Workflow execution started!\nExecution ID: ${response.execution_id}`;
   } catch (error: unknown) {
     return reportCommandFailure("execute_workflow", error, ctx);
   }
@@ -118,10 +114,7 @@ export async function handleConversationList(
 ): Promise<string> {
   try {
     const response = await gaia.listConversations(ctx, { page, limit: 5 });
-    return formatConversationList(
-      response.conversations,
-      gaia.getFrontendUrl(),
-    );
+    return formatConversationList(response.conversations);
   } catch (error: unknown) {
     return reportCommandFailure("list_conversations", error, ctx);
   }
@@ -140,18 +133,23 @@ export async function handleWorkflowGet(
   }
 }
 
+/** Creates a workflow the user runs on demand; the instructions become its prompt. */
 export async function handleWorkflowCreate(
   gaia: GaiaClient,
-  name: string,
+  title: string,
+  instructions: string,
   ctx: CommandContext,
-  description?: string,
 ): Promise<string> {
   try {
     const workflow = await gaia.createWorkflow(
-      { name, description: description || "" },
+      {
+        title,
+        prompt: instructions,
+        trigger_config: { type: "manual", enabled: true },
+      },
       ctx,
     );
-    return `✅ BotWorkflow created!\n\n${formatWorkflow(workflow)}`;
+    return `✅ Workflow created!\n\n${formatWorkflow(workflow)}`;
   } catch (error: unknown) {
     return reportCommandFailure("create_workflow", error, ctx);
   }
@@ -204,7 +202,7 @@ export async function handleWorkflowDelete(
 ): Promise<string> {
   try {
     await gaia.deleteWorkflow(workflowId, ctx);
-    return "✅ BotWorkflow deleted successfully";
+    return "✅ Workflow deleted successfully";
   } catch (error: unknown) {
     return reportCommandFailure("delete_workflow", error, ctx);
   }

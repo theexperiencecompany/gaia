@@ -28,7 +28,7 @@ class TestAnActionThatNeedsApproval:
 
         waiting = await tasks.get(task_id)
         assert waiting is not None and (waiting.pending_approval, waiting.done) == (True, False)
-        assert ASKING in (await tasks.delivered())[-1].body
+        assert await tasks.approval_asked(task_id)
         assert await tasks.approved_actions_taken(task_id) == 0
 
     async def test_approving_takes_the_action(self, tasks: TasksDriver) -> None:

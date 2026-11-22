@@ -18,7 +18,13 @@ from app.models.task_models import (
     When,
 )
 from app.models.task_run_models import TaskRunDocument
-from app.models.todo_models import ExternalRef, PendingApprovalRef, Priority, SubTask
+from app.models.todo_models import (
+    ExternalRef,
+    PendingApprovalRef,
+    Priority,
+    SubTask,
+    TodoDayWindow,
+)
 from app.models.trigger_subscription_models import TriggerSubscriptionView
 from app.schemas.common import ResponseModel
 
@@ -72,10 +78,11 @@ class TaskListParams(BaseModel):
     page: int = Field(default=1, ge=1, le=MAX_PAGE_NUMBER)
     per_page: int = Field(default=50, ge=1, le=100)
 
-    def to_query(self) -> TaskQuery:
+    def to_query(self, window: TodoDayWindow) -> TaskQuery:
         return TaskQuery(
             **self.model_dump(exclude={"flag"}),
             flags=[self.flag] if self.flag is not None else [],
+            day_window=window,
         )
 
 

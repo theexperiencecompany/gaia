@@ -9,10 +9,10 @@ the agent reads and writes.
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.agents.core.background.session import TaskRun
 from app.constants.tasks import TaskLogEvent, TaskRunStatus, TaskRunTrigger
 from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
+from app.models.conversation_log_models import TaskRun
 from app.models.task_models import TaskDocument
 from app.models.task_run_models import TaskRunDocument, TaskRunUpdate
 

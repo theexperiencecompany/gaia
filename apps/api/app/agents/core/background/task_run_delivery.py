@@ -1,28 +1,21 @@
 """Terminal delivery for a GAIA task's own background run.
 
-The run executes in its task's chat, which result_delivery has already given the
-executor's report. What reaches the user is decided here: comms decides whether it is
-worth a message at all, and their chat app (or the app) gets it only if so. The run's
-record is closed with what came of it either way. A step the task store fails is
-finished by a durable job keyed by the run, never by running the task again.
+The run's work is logged in its task's chat, and the reply the conversation step
+writes for that work is its write-up, guided by write_up_note. What reaches the
+user is decided here from that reply: a silent or failed one sends nothing, a
+report its task's guidance forms goes as written, and any other goes as the reply
+wrote it. The run's record is closed with what came of it either way. A step the
+task store fails is finished by a durable job keyed by the run, never by running
+the task again.
 """
 
-import asyncio
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from app.agents.core.background.comms_narrator import (
-    narrate_executor_result,
-    record_executor_report,
-)
-from app.agents.core.background.session import ExecutorRun, TaskRun
-from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
-from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
-from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.tasks import (
     FINISH_TASK_RUN_JOB,
@@ -31,6 +24,7 @@ from app.constants.tasks import (
     RUN_SUMMARY_CHARS,
     TaskRunDeliveryOutcome,
     TaskRunStatus,
+    TaskRunTrigger,
     WhenKind,
 )
 from app.constants.todos import (
@@ -44,21 +38,19 @@ from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
 from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import TaskRun, TodoReportForm
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    NotificationStatus,
+    notification_id,
 )
 from app.models.task_models import TaskDocument
 from app.models.task_run_models import TaskRunUpdate
-from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
-from app.services.delivery.chat_channel import (
-    ProactiveTarget,
-    proactive_destination,
-    resolve_proactive_target,
-)
+from app.services.delivery.chat_channel import ProactiveTarget, proactive_destination
 from app.services.notification_service import notification_service
 from app.services.tasks.todo_rounds import task_redirect_action
 from app.utils.message_breaks import split_message_bubbles
@@ -66,13 +58,15 @@ from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.tasks import TaskRunResultDelivered
+from shared.py.conversation_wire import ReplyOutcome
 from shared.py.wide_events import log
 
 _NOT_SENT_NOTES: dict[TaskRunDeliveryOutcome, str] = {
     TaskRunDeliveryOutcome.UNDELIVERED: "result not sent: no linked chat app accepted it",
     TaskRunDeliveryOutcome.NOTIFY_OFF: "result not sent: delivery is off for this task",
+    TaskRunDeliveryOutcome.NOTHING_TO_REPORT: "result not sent: the run found nothing for the user",
     TaskRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
-    TaskRunDeliveryOutcome.INVALID_DIRECTIVE: "result not sent: the write-up was a reaction",
+    TaskRunDeliveryOutcome.SILENCED: "kept quiet: the write-up found it not worth a message",
 }
 
 
@@ -90,9 +84,9 @@ def _not_sent(outcome: TaskRunDeliveryOutcome) -> _Resolution:
 
 
 class FinishedTaskRun(BaseModel):
-    """A finished GAIA task run's result, as much as delivering it needs once the run is gone.
+    """A finished GAIA task run's report and write-up, as much as delivering them needs.
 
-    It is the durable job's payload, so it carries ids rather than the live run.
+    It is the durable job's payload, so it carries what the run's reply settled to, not the reply.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -101,51 +95,53 @@ class FinishedTaskRun(BaseModel):
     task_id: str
     user_id: str
     conversation_id: str
-    trigger_type: str
-    runs_once: bool
+    trigger_type: TaskRunTrigger
+    report_form: TodoReportForm
+    #: The run's own report: what an as-written task sends, and the record's summary.
     result_text: str
+    #: The reply that reported the run, and how it settled.
+    write_up: str
+    reply: ReplyOutcome
+    #: The run's own finish_task declaration: result_text is its record, not a message.
+    nothing_for_user: bool = False
     #: Set once the message step is done; only closing the run record is left then.
     delivery: str | None = None
 
 
-async def deliver_task_run_result(
-    run: ExecutorRun, task_run: TaskRun, result_text: str, result_type: str
-) -> None:
-    """Decide, deliver and record what a finished GAIA task run tells the user.
+def report_form_of(task: TaskDocument) -> TodoReportForm:
+    """Return the report a run of the task owes: as written when its kind's guidance forms it, else a write-up."""
+    owns_form = task.external_ref is not None and task.external_ref.source.owns_report_form
+    return TodoReportForm.AS_WRITTEN if owns_form else TodoReportForm.WRITE_UP
 
-    An error result delivers nothing: the engine awaiting the run retries it and closes
-    the record itself. What the task store leaves undone goes to a durable job.
+
+async def write_up_note(run: TaskRun) -> str:
+    """Return how the reply that reports a run of the task writes it up: when to send, and in what form.
+
+    Read when the reply is written, so the task's rules and its runs so far are current.
     """
-    log.set_ns("task_delivery", task_id=task_run.task_id, result_type=result_type)
-    if result_type == "error":
-        # Not narrated, but the chat shows it, so the chat's next turn must know it.
-        await record_executor_report(run.conversation_id, result_text, result_type)
-        return
-    finished = FinishedTaskRun(
-        run_id=task_run.run_id,
-        task_id=task_run.task_id,
-        user_id=run.user.user_id,
-        conversation_id=run.conversation_id,
-        trigger_type=task_run.trigger_type,
-        runs_once=task_run.runs_once,
-        result_text=result_text,
+    async for attempt in TRANSIENT_MONGO_RETRY.copy():
+        with attempt:
+            task = await task_repository.get_any(run.task_id)
+    return tracked_todo_delivery_note(
+        run.title,
+        _notes_section(task, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
+        _notes_section(task, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+        runs_once=run.runs_once,
+        run_history=await _run_history(task) if task else [],
     )
-    if (undone := await complete_delivery(finished, run.user)) is not None:
-        await hand_unfinished_run_to_job(undone)
 
 
-async def complete_delivery(
-    finished: FinishedTaskRun, user: AuthenticatedUser
-) -> FinishedTaskRun | None:
+async def deliver_task_run(finished: FinishedTaskRun) -> FinishedTaskRun | None:
     """Send the run's message once, then close its record; return what is left undone.
 
     The message goes first because the record says what became of it. None when nothing
     is left, including for a run an earlier attempt already finished.
     """
+    log.set_ns("task_delivery", task_id=finished.task_id, reply=finished.reply.value)
     delivery = finished.delivery
     try:
         if delivery is None:
-            if (delivery := await _send_once(finished, user)) is None:
+            if (delivery := await _send_once(finished)) is None:
                 return None
             finished = finished.model_copy(update={"delivery": delivery})
         await task_run_repository.complete(
@@ -196,7 +192,7 @@ async def hand_unfinished_run_to_job(undone: FinishedTaskRun) -> None:
         report_unfinished_run(undone, f"{type(e).__name__}: {e}")
 
 
-async def _send_once(finished: FinishedTaskRun, user: AuthenticatedUser) -> str | None:
+async def _send_once(finished: FinishedTaskRun) -> str | None:
     """Decide on and send the run's message; return the note its record keeps.
 
     None when there is nothing to record: the task is gone, or this run already finished.
@@ -213,12 +209,8 @@ async def _send_once(finished: FinishedTaskRun, user: AuthenticatedUser) -> str 
     if record is None or record.status is not TaskRunStatus.RUNNING:
         return None
 
-    # Read now, not when the run started: the run itself may have turned it off.
-    if task.notify:
-        resolution = await _narrate_and_send(finished, user, task)
-    else:
-        await record_executor_report(finished.conversation_id, finished.result_text, "result")
-        resolution = _not_sent(TaskRunDeliveryOutcome.NOTIFY_OFF)
+    held_back = _held_back(finished, task)
+    resolution = await _send(finished, task) if held_back is None else _not_sent(held_back)
     log.set_ns("task_delivery", outcome=resolution.outcome.value)
     capture(
         UserId(task.user_id),
@@ -227,7 +219,7 @@ async def _send_once(finished: FinishedTaskRun, user: AuthenticatedUser) -> str 
             outcome=resolution.outcome.value,
             delivered=resolution.outcome is TaskRunDeliveryOutcome.DELIVERED,
             platform=resolution.platform.value if resolution.platform else None,
-            trigger_type=finished.trigger_type,
+            trigger_type=finished.trigger_type.value,
             repeats=task.when.kind is WhenKind.REPEAT,
             **proactive_destination(resolution.target),
         ),
@@ -235,8 +227,25 @@ async def _send_once(finished: FinishedTaskRun, user: AuthenticatedUser) -> str 
     return resolution.note
 
 
-def _notes_section(task: TaskDocument, heading: str, max_chars: int) -> str | None:
-    """Return one section of GAIA's notes, bounded, or None when it is missing or empty."""
+def _held_back(finished: FinishedTaskRun, task: TaskDocument) -> TaskRunDeliveryOutcome | None:
+    """Name why a run's result goes nowhere, or None when it is sent."""
+    # Read now, not when the run started: the run itself may have turned it off.
+    if not task.notify:
+        return TaskRunDeliveryOutcome.NOTIFY_OFF
+    # Only a kind whose run guidance defines the declaration may silence itself with it.
+    if finished.nothing_for_user and finished.report_form is TodoReportForm.AS_WRITTEN:
+        return TaskRunDeliveryOutcome.NOTHING_TO_REPORT
+    if finished.reply is ReplyOutcome.FAILED:
+        return TaskRunDeliveryOutcome.NARRATION_FAILED
+    if finished.reply is not ReplyOutcome.ANSWERED:
+        return TaskRunDeliveryOutcome.SILENCED
+    return None
+
+
+def _notes_section(task: TaskDocument | None, heading: str, max_chars: int) -> str | None:
+    """Return one section of GAIA's notes, bounded, or None when it, or the task, is missing or empty."""
+    if task is None:
+        return None
     body = section_body(task.notes, heading)
     return body[:max_chars] if body else None
 
@@ -251,103 +260,32 @@ async def _run_history(task: TaskDocument) -> list[str]:
     ]
 
 
-async def _send_in_app(task: TaskDocument, text: str) -> _Resolution:
-    """Deliver a result as an in-app notification: the fallback, or the target for an in-app user."""
-    try:
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=task.user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                content=NotificationContent(
-                    title=task.title,
-                    body="\n\n".join(split_message_bubbles(text)),
-                    actions=[task_redirect_action(task.id)],
-                ),
-                metadata={"task_id": task.id},
-            )
-        )
-    except Exception as e:  # the record says it was not sent; nothing else depends on it
-        log.error(
-            f"{LogTag.AGENT} task run result could not be sent in the app",
-            task_id=task.id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return _not_sent(TaskRunDeliveryOutcome.UNDELIVERED)
-    return _Resolution(TaskRunDeliveryOutcome.DELIVERED, "result sent as an in-app notification")
+async def _send(finished: FinishedTaskRun, task: TaskDocument) -> _Resolution:
+    """Send the write-up, or the report itself when the task's guidance forms it, through the one notify pipeline.
 
-
-async def _lookup_target(task: TaskDocument) -> ProactiveTarget | None:
-    """Resolve where the result goes; None (logged) when the lookup fails, so it falls back in-app."""
-    try:
-        return await resolve_proactive_target(task.user_id)
-    except Exception as e:  # falls back to in-app, said in the log
-        log.error(
-            f"{LogTag.AGENT} task run target lookup failed, falling back to in-app",
-            task_id=task.id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
-
-
-async def _narrate_and_send(
-    finished: FinishedTaskRun, user: AuthenticatedUser, task: TaskDocument
-) -> _Resolution:
-    """Have comms write the result up (or decline to), then send it to the user.
-
-    A report whose form its task's guidance sets is sent as written: comms decides only whether.
+    Keyed by the run, so the durable job that retries a finish sends nothing twice.
     """
-    history = await _run_history(task)
-    text, target = await asyncio.gather(
-        narrate_executor_result(
-            finished.result_text,
-            "result",
-            finished.conversation_id,
-            user,
-            preamble=tracked_todo_delivery_note(
-                task.title,
-                _notes_section(task, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
-                _notes_section(task, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
-                runs_once=finished.runs_once,
-                run_history=history,
-            ),
-        ),
-        _lookup_target(task),
-    )
-    if not text:
-        log.error(f"{LogTag.AGENT} task run result narration failed", task_id=task.id)
-        return _not_sent(TaskRunDeliveryOutcome.NARRATION_FAILED)
-
-    directive = interpret_comms_output(text)
-    if directive.kind is CommsDirectiveKind.SILENCE:
-        log.set_ns("task_delivery", silence_reason=directive.payload)
-        return _Resolution(TaskRunDeliveryOutcome.SILENCED, f"kept quiet: {directive.payload}")
-    if directive.kind is CommsDirectiveKind.REACT:
-        # There is no user message to react to; a lone emoji would arrive as noise.
-        log.error(
-            f"{LogTag.AGENT} task run result narrated as a reaction; not sent",
-            task_id=task.id,
-            emoji=directive.payload,
-        )
-        return _not_sent(TaskRunDeliveryOutcome.INVALID_DIRECTIVE)
-
-    # comms' retelling dropped the headings a report-form owner's guidance requires.
-    owns_form = task.external_ref is not None and task.external_ref.source.owns_report_form
-    message = finished.result_text if owns_form else directive.payload
-    platform = (
-        await deliver_result_to_platforms(
-            user=user,
+    # A retelling drops the headings an as-written task's guidance requires.
+    as_written = finished.report_form is TodoReportForm.AS_WRITTEN
+    message = finished.result_text if as_written else finished.write_up
+    notified = await notification_service.notify(
+        NotificationRequest(
+            id=notification_id(task.user_id, "task_run", finished.run_id),
             user_id=task.user_id,
-            notification_text=message,
-            origin=f'GAIA task "{task.title}" (id {task.id})',
-            target=target,
+            source=NotificationSourceEnum.BACKGROUND_JOB,
+            content=NotificationContent(
+                title=task.title,
+                body="\n\n".join(split_message_bubbles(message)),
+                actions=[task_redirect_action(task.id)],
+            ),
+            metadata={"task_id": task.id},
+            message=message,
         )
-        if target is not None
-        else None
     )
-    if platform is None:
-        return (await _send_in_app(task, message))._replace(target=target)
-    return _Resolution(
-        TaskRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform, target
+    if notified.record.status is not NotificationStatus.DELIVERED:
+        return _not_sent(TaskRunDeliveryOutcome.UNDELIVERED)._replace(target=notified.target)
+    platform = notified.chat_app
+    note = (
+        f"result sent on {platform.value}" if platform else "result sent as an in-app notification"
     )
+    return _Resolution(TaskRunDeliveryOutcome.DELIVERED, note, platform, notified.target)

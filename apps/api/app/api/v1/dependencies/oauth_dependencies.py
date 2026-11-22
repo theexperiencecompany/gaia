@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from fastapi.exceptions import WebSocketException
@@ -8,6 +9,7 @@ from app.constants.auth import DEV_USER_MISSING_HINT, WOS_SESSION_COOKIE
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
+from app.models.todo_models import TodoDayWindow
 from app.models.user_models import AuthenticatedUser, UserUpdate
 from app.utils.auth_utils import (
     authenticate_workos_session,
@@ -280,3 +282,10 @@ async def get_user_timezone_from_preferences(
         )
         log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="UTC")
         return "UTC"
+
+
+def get_user_day_window(
+    timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
+) -> TodoDayWindow:
+    """Return the caller's day on their home timezone: what today, upcoming and overdue read."""
+    return TodoDayWindow.for_timezone(Timezone.parse(timezone), datetime.now(UTC))

@@ -5,7 +5,7 @@
 import type { TaskListResponse } from "@gaia/shared/api/generated";
 import { type CommandContext, GaiaClient } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
-import { makeTask } from "../helpers/task-factory";
+import { serverTask } from "../helpers/api-fixtures";
 
 const ctx: CommandContext = {
   platform: "telegram",
@@ -15,7 +15,7 @@ const ctx: CommandContext = {
 };
 
 function gaiaWithTransport() {
-  const task = makeTask();
+  const task = serverTask();
   const list: TaskListResponse = {
     tasks: [task],
     total: 1,

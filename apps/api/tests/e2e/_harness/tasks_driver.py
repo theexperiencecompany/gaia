@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 import json
@@ -33,6 +33,8 @@ from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
+from app.constants.chat import ConversationSource
+from app.constants.notifications import APPROVAL_PUSH_TITLE
 from app.constants.todos import (
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
@@ -40,12 +42,12 @@ from app.constants.todos import (
     PROVISION_INBOX_DESK_TASK,
     TodoActivityEvent,
 )
-from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.models.message_models import MessageRequestWithHistory
+from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage, WorkFinished
+from app.models.conversation_send_models import SendMessageRequest
 from app.models.oauth_models import OAuthIntegration
 from app.models.payment_models import PlanType
-from app.services.chat import stream as chat_stream
+from app.services.conversation.send import submit_message
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.platform_link_service import PlatformLinkService
 from app.services.workflow.conversation_service import get_or_create_workflow_conversation
@@ -53,10 +55,12 @@ from app.services.workflow.playbook.record import CALL_ID_SEPARATOR
 from app.utils.auth_utils import require_owner
 from app.worker import TASK_FUNCTIONS
 from app.workers.tasks.workflow_tasks import REPLAY_SUMMARY
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import spawn_logged_task
 from tests.e2e._harness.app_events import BotOutbox, gate_judge, signed_webhook_headers
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
+from tests.e2e._harness.step_stack import replayed
 from tests.e2e._harness.tasks_views import (
     Asks,
     Breaks,
@@ -80,8 +84,11 @@ from tests.e2e._harness.tasks_views import (
     TaskRefusedError,
     TaskView,
 )
-from tests.e2e._harness.transcript import Transcript
-from tests.e2e._harness.turn_queue import APPROVAL_ID_FROM_PROMPT, TurnQueue
+from tests.e2e._harness.turn_queue import (
+    APPROVAL_ID_FROM_PROMPT,
+    MESSAGE_FROM_PROMPT,
+    TurnQueue,
+)
 from tests.integration_account_factories import provider_account_id
 
 TASKS = "/api/v1/tasks"
@@ -104,6 +111,8 @@ RUN_LIMIT_FEATURE = "trigger_workflow_executions"
 #: How long after the first a duplicate delivery of the same job arrives.
 DUPLICATE_DELIVERY_DELAY = timedelta(minutes=5)
 NOTIFICATIONS = "/api/v1/notifications"
+#: What the chat of a run that broke is told.
+RUN_BROKE = "That could not be finished this time."
 #: When a one-off GAIA task first looks at its work, as a user handing it over leaves it.
 FIRST_LOOK = "1h"
 HIL_PREFERENCES = "/api/v1/approvals/preferences"
@@ -446,23 +455,25 @@ class TasksDriver:
         """Fail unless GAIA was asked for exactly the turns the journey scripted."""
         for model in (self._executor, self._comms):
             assert not model.unscripted, f"GAIA took a turn nothing scripted: {model.unscripted}"
-        assert self._executor.pending == 0, "GAIA was scripted for more work than it was asked for"
-        assert self._comms.pending == 0, "a scripted reply or delivery was never asked for"
+        assert self._executor.pending == 0, (
+            f"GAIA was scripted for more work than it was asked for: {self._executor.queued}"
+        )
+        assert self._comms.pending == 0, (
+            f"a scripted reply or delivery was never asked for: {self._comms.queued}"
+        )
         assert not self._unscripted_narrations, (
             f"unscripted write-up: {self._unscripted_narrations}"
         )
         assert not self._narrations, "a replay was scripted, but the run never replayed"
 
     async def _queue_task_run(self, task_id: str, run: GaiaRun) -> None:
-        """Queue GAIA's turns for one run of a GAIA task, and comms' write-up when it is delivered."""
+        """Queue GAIA's turns for one run of a GAIA task, and the write-up its chat gets either way."""
         task = _ok(await self._client.get(f"{TASKS}/{task_id}"))
-        delivered = task["notify"]
         # A one-off run that neither closes nor re-arms its task is nudged once to.
         one_off = task["when"]["kind"] != "repeat" and not task["subscriptions"]
 
         def tell(text: str) -> None:
-            if delivered:
-                self._comms.then([text])
+            self._comms.then([text])
 
         match run:
             case Finishes(report):
@@ -530,9 +541,10 @@ class TasksDriver:
                         *([asking, asking] if one_off else [asking]),
                     ]
                 )
-                tell(asking)
+                # A parked run is written up once its approval is decided, with what the decision starts.
             case Breaks():
-                pass
+                # The chat is told the run could not finish; the engine retries it.
+                tell(RUN_BROKE)
             case _:
                 raise NotImplementedError(f"a GAIA task cannot be scripted to {run} yet")
 
@@ -645,26 +657,23 @@ class TasksDriver:
         conversation_id = _ok(await self._client.post(f"{_base(task_id)}/{task_id}/conversation"))[
             "conversation_id"
         ]
-        self._comms.then([call("call_executor", {"task": reply}, call_id="tc_answer"), ON_IT])
+        self._comms.then(
+            [
+                call(
+                    "call_executor",
+                    {"task": reply, "for_messages": [MESSAGE_FROM_PROMPT]},
+                    call_id="tc_answer",
+                ),
+                ON_IT,
+            ]
+        )
         await self._queue_tracked(task_id, then)
-        stream_id = str(uuid4())
-        await stream_manager.start_stream(
-            stream_id=stream_id, conversation_id=conversation_id, user_id=self._user_id
+        await submit_message(
+            conversation_id,
+            await require_owner(self._user_id),
+            SendMessageRequest(message_id=str(uuid4()), text=reply),
+            ConversationSource.WEB,
         )
-        await chat_stream.run_chat_stream_background(
-            stream_id=stream_id,
-            body=MessageRequestWithHistory(
-                message=reply,
-                messages=[{"role": "user", "content": reply}],
-                conversation_id=conversation_id,
-            ),
-            user=await require_owner(self._user_id),
-            conversation_id=conversation_id,
-        )
-        transcript = Transcript.from_sse(
-            "".join([chunk async for chunk in stream_manager.subscribe_stream(stream_id)])
-        )
-        assert transcript.is_done, "the reply's chat turn never finished"
         await drain_background_runs()
         self._all_turns_taken()
 
@@ -889,7 +898,14 @@ class TasksDriver:
         if not _is_workflow(task_id):
             await self._queue_tracked(task_id, run)
             return
-        hand_off = [call("call_executor", {"task": f"run {task_id}"}, call_id="tc_run"), ON_IT]
+        hand_off = [
+            call(
+                "call_executor",
+                {"task": f"run {task_id}", "for_messages": []},
+                call_id="tc_run",
+            ),
+            ON_IT,
+        ]
         match run:
             case Reports(report):
                 self._comms.then(hand_off)
@@ -942,13 +958,23 @@ class TasksDriver:
 
     async def approve(self, task_id: str, report: str) -> None:
         """Approve the action the task waits on; GAIA takes it and reports."""
-        self._executor.then([call("execute", _REDEEM, call_id="tc_redeem"), report, report, report])
+        if _is_task(task_id):
+            self._executor.then([call("execute", _REDEEM, call_id="tc_redeem"), report])
+        else:
+            self._executor.then(
+                [call("execute", _REDEEM, call_id="tc_redeem"), report, report, report]
+            )
         await self._decide(task_id, {"decision": "approve"}, report, runs=2)
 
     async def deny(self, task_id: str, report: str) -> None:
         """Deny the action the task waits on; GAIA skips it and reports."""
-        self._executor.then([report, report])
+        self._executor.then([report] if _is_task(task_id) else [report, report])
         await self._decide(task_id, {"decision": "deny", "feedback": "not now"}, report, runs=1)
+
+    async def approval_asked(self, task_id: str) -> bool:
+        """Whether the user was last told GAIA needs their approval for the task's action."""
+        delivered = await self.delivered()
+        return bool(delivered) and delivered[-1].title == APPROVAL_PUSH_TITLE
 
     async def _decide(
         self, task_id: str, verdict: dict[str, str], report: str, *, runs: int
@@ -956,7 +982,10 @@ class TasksDriver:
         task = _ok(await self._client.get(f"{_base(task_id)}/{task_id}"))
         pending = task["pending_approval"]
         assert pending is not None, "the task waits on no approval"
-        if task["notify" if _is_task(task_id) else "notify_on_run"]:
+        if _is_task(task_id):
+            # One write-up narrates the parked run and what the decision started.
+            self._comms.then([report])
+        elif task["notify_on_run"]:
             self._comms.then([report] * runs)
         _ok(
             await self._client.post(
@@ -1066,25 +1095,7 @@ class TasksDriver:
             conversation_id = _ok(
                 await self._client.post(f"{_base(task_id)}/{task_id}/conversation")
             )["conversation_id"]
-        synced = _ok(
-            await self._client.post(
-                "/api/v1/conversations/batch-sync",
-                json={"conversations": [{"conversation_id": conversation_id}]},
-            )
-        )
-        (row,) = synced["conversations"]
-        return [
-            ChatLine(
-                by_user=m["type"] == "user",
-                text=m["response"],
-                cards=tuple(
-                    str((entry.get("data") or {}).get("tool_name", entry.get("tool_name")))
-                    for entry in m.get("tool_data") or []
-                ),
-            )
-            for m in row["messages"]
-            if m["response"] or m.get("tool_data")
-        ]
+        return _chat_lines(await replayed(conversation_id, self._user_id))
 
     async def approved_actions_taken(self, task_id: str) -> int:
         """Count the approved actions the task's chat shows GAIA took, one card each."""
@@ -1108,3 +1119,44 @@ class TasksDriver:
     async def _list(self, **params: str) -> list[TaskView]:
         body = _ok(await self._client.get(TODOS, params={"mode": "text", **params}))
         return [_todo_view(item) for item in body["data"]]
+
+
+def _card_names(cards: Sequence[ToolDataEntry]) -> tuple[str, ...]:
+    return tuple(
+        str((card.get("data") or {}).get("tool_name", card["tool_name"])) for card in cards
+    )
+
+
+def _chat_lines(shown: Sequence[Entry]) -> list[ChatLine]:
+    """Read the chat as the user sees it: their messages, and GAIA's replies and notices with their cards.
+
+    A reply's bubble names the work it narrates; work no reply narrates is reported by the notice after it.
+    """
+    work_cards = {
+        entry.task_id: entry.tool_data for entry in shown if isinstance(entry, WorkFinished)
+    }
+    narrated = {task for entry in shown if isinstance(entry, Reply) for task in entry.narrates}
+    unreported: list[ToolDataEntry] = []
+    lines: list[ChatLine] = []
+    for entry in shown:
+        if isinstance(entry, UserMessage) and entry.text:
+            lines.append(ChatLine(by_user=True, text=entry.text))
+        elif isinstance(entry, WorkFinished) and entry.task_id not in narrated:
+            unreported.extend(entry.tool_data)
+        elif isinstance(entry, Notice) and (entry.text or entry.tool_data or unreported):
+            lines.append(
+                ChatLine(
+                    by_user=False,
+                    text=entry.text,
+                    cards=_card_names([*entry.tool_data, *unreported]),
+                )
+            )
+            unreported = []
+        elif isinstance(entry, Reply):
+            cards = [
+                *entry.tool_data,
+                *(c for task in entry.narrates for c in work_cards.get(task, ())),
+            ]
+            if entry.text or cards:
+                lines.append(ChatLine(by_user=False, text=entry.text, cards=_card_names(cards)))
+    return lines

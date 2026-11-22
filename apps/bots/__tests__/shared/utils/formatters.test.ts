@@ -1,4 +1,4 @@
-import type { Conversation, Workflow } from "@gaia/shared";
+import type { Conversation } from "@gaia/shared";
 import {
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
@@ -21,35 +21,30 @@ import {
   renderForPlatform,
 } from "@gaia/shared/bots";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { makeTask } from "../helpers/task-factory";
+import { serverTask, serverWorkflow } from "../helpers/api-fixtures";
 
 // ---------------------------------------------------------------------------
 // formatWorkflow
 // ---------------------------------------------------------------------------
 describe("formatWorkflow", () => {
-  const base: Workflow = {
+  const base = serverWorkflow({
     id: "wf-1",
-    name: "My Workflow",
+    title: "My Workflow",
     description: "Does things",
-    status: "active",
-  };
+  });
 
-  it("shows check emoji for active workflow", () => {
-    const result = formatWorkflow({ ...base, status: "active" });
+  it("shows check emoji for an activated workflow", () => {
+    const result = formatWorkflow({ ...base, activated: true });
     expect(result).toContain("\u2705");
   });
 
-  it("shows pencil emoji for draft workflow", () => {
-    const result = formatWorkflow({ ...base, status: "draft" });
-    expect(result).toContain("\uD83D\uDCDD");
-  });
-
-  it("shows pause emoji for paused/inactive workflow", () => {
-    const result = formatWorkflow({ ...base, status: "inactive" });
+  it("shows pause emoji for a deactivated workflow", () => {
+    const result = formatWorkflow({ ...base, activated: false });
     expect(result).toContain("\u23F8");
+    expect(result).not.toContain("\u2705");
   });
 
-  it("includes name, ID, and description", () => {
+  it("includes title, ID, and description", () => {
     const result = formatWorkflow(base);
     expect(result).toContain("**My Workflow**");
     expect(result).toContain("`wf-1`");
@@ -73,11 +68,10 @@ describe("formatWorkflowList", () => {
   });
 
   it("formats multiple workflows joined by double newlines", () => {
-    const workflows: Workflow[] = [
-      { id: "1", name: "A", description: "d1", status: "active" },
-      { id: "2", name: "B", description: "d2", status: "draft" },
-    ];
-    const result = formatWorkflowList(workflows);
+    const result = formatWorkflowList([
+      serverWorkflow({ id: "1", title: "A" }),
+      serverWorkflow({ id: "2", title: "B", activated: false }),
+    ]);
     expect(result).toContain("**A**");
     expect(result).toContain("**B**");
     expect(result.split("\n\n").length).toBeGreaterThanOrEqual(2);
@@ -89,54 +83,56 @@ describe("formatWorkflowList", () => {
 // ---------------------------------------------------------------------------
 describe("formatTask", () => {
   it("shows checked checkbox for completed task", () => {
-    const result = formatTask(makeTask({ completed: true }));
+    const result = formatTask(serverTask({ completed: true }));
     expect(result).toContain("\u2611");
   });
 
   it("shows empty checkbox for incomplete task", () => {
-    const result = formatTask(makeTask({ completed: false }));
+    const result = formatTask(serverTask({ completed: false }));
     expect(result).toContain("\u2B1C");
   });
 
   it("includes title and ID", () => {
-    const result = formatTask(makeTask());
+    const result = formatTask(serverTask());
     expect(result).toContain("**Buy milk**");
     expect(result).toContain("`t-1`");
   });
 
   it("uppercases priority", () => {
-    const result = formatTask(makeTask({ priority: "high" }));
+    const result = formatTask(serverTask({ priority: "high" }));
     expect(result).toContain("[HIGH]");
   });
 
   it('omits priority when it is "none"', () => {
-    const result = formatTask(makeTask({ priority: "none" }));
+    const result = formatTask(serverTask({ priority: "none" }));
     expect(result).not.toContain("[");
   });
 
   it("shows the due date of a dated task", () => {
     const at = "2026-06-15T12:00:00Z";
-    const result = formatTask(makeTask({ when: { kind: "date", at } }));
+    const result = formatTask(serverTask({ when: { kind: "date", at } }));
     expect(result).toContain(`Due: ${new Date(at).toLocaleDateString()}`);
   });
 
   it("shows the next run of a repeating task as its due date", () => {
     const nextRun = "2026-07-01T09:00:00Z";
     const result = formatTask(
-      makeTask({ when: { kind: "repeat", rule: "daily", next_run: nextRun } }),
+      serverTask({
+        when: { kind: "repeat", rule: "daily", next_run: nextRun },
+      }),
     );
     expect(result).toContain(`Due: ${new Date(nextRun).toLocaleDateString()}`);
   });
 
   it("omits due date for a repeat with no next run yet", () => {
     const result = formatTask(
-      makeTask({ when: { kind: "repeat", rule: "daily", next_run: null } }),
+      serverTask({ when: { kind: "repeat", rule: "daily", next_run: null } }),
     );
     expect(result).not.toContain("Due:");
   });
 
   it("omits due date when the task has no date", () => {
-    const result = formatTask(makeTask({ when: { kind: "none" } }));
+    const result = formatTask(serverTask({ when: { kind: "none" } }));
     expect(result).not.toContain("Due:");
   });
 });
@@ -153,8 +149,8 @@ describe("formatTaskList", () => {
 
   it("formats multiple tasks joined by double newlines", () => {
     const result = formatTaskList([
-      makeTask({ id: "1", title: "A" }),
-      makeTask({ id: "2", title: "B", completed: true }),
+      serverTask({ id: "1", title: "A" }),
+      serverTask({ id: "2", title: "B", completed: true }),
     ]);
     expect(result).toContain("**A**");
     expect(result).toContain("**B**");
@@ -168,30 +164,26 @@ describe("formatTaskList", () => {
 describe("formatConversation", () => {
   const base: Conversation = {
     conversation_id: "c-1",
+    url: "https://app.gaia.com/c/c-1",
     created_at: "2026-01-01",
     updated_at: "2026-01-02",
     title: "Chat about cats",
     message_count: 5,
   };
-  const baseUrl = "https://app.gaia.com";
-
   it("includes title, URL, and message count", () => {
-    const result = formatConversation(base, baseUrl);
+    const result = formatConversation(base);
     expect(result).toContain("**Chat about cats**");
     expect(result).toContain("https://app.gaia.com/c/c-1");
     expect(result).toContain("(5 messages)");
   });
 
   it('shows "Untitled Conversation" when title is missing', () => {
-    const result = formatConversation({ ...base, title: undefined }, baseUrl);
+    const result = formatConversation({ ...base, title: undefined });
     expect(result).toContain("Untitled Conversation");
   });
 
   it("omits message count parenthetical when missing", () => {
-    const result = formatConversation(
-      { ...base, message_count: undefined },
-      baseUrl,
-    );
+    const result = formatConversation({ ...base, message_count: undefined });
     expect(result).not.toContain("messages");
   });
 });
@@ -200,10 +192,8 @@ describe("formatConversation", () => {
 // formatConversationList
 // ---------------------------------------------------------------------------
 describe("formatConversationList", () => {
-  const baseUrl = "https://app.gaia.com";
-
   it("returns empty list message", () => {
-    const result = formatConversationList([], baseUrl);
+    const result = formatConversationList([]);
     expect(result).toContain("No conversations found");
   });
 
@@ -211,18 +201,20 @@ describe("formatConversationList", () => {
     const conversations: Conversation[] = [
       {
         conversation_id: "1",
+        url: "https://app.gaia.com/c/1",
         title: "A",
         created_at: "2026-01-01",
         updated_at: "2026-01-01",
       },
       {
         conversation_id: "2",
+        url: "https://app.gaia.com/c/2",
         title: "B",
         created_at: "2026-01-01",
         updated_at: "2026-01-01",
       },
     ];
-    const result = formatConversationList(conversations, baseUrl);
+    const result = formatConversationList(conversations);
     expect(result).toContain("**A**");
     expect(result).toContain("**B**");
     expect(result).toContain("/c/1");
@@ -688,22 +680,15 @@ describe("formatBotError", () => {
     expect(result).toContain("timed out");
   });
 
-  it("returns connection message for connection lost", () => {
-    const err = new Error("Connection lost before receiving a response");
-    const result = formatBotError(err);
-    expect(result).toContain("Connection lost");
-  });
-
-  it("returns connection interrupted for ECONNRESET", () => {
-    const err = new Error("ECONNRESET");
-    const result = formatBotError(err);
-    expect(result).toContain("Connection interrupted");
-  });
-
-  it("returns incomplete message for stream processing", () => {
-    const err = new Error("Stream processing incomplete");
-    const result = formatBotError(err);
-    expect(result).toContain("incomplete");
+  it.each([
+    "Connection lost before receiving a response",
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "socket hang up",
+  ])("words every unreachable backend (%s) with one line", (message) => {
+    expect(formatBotError(new Error(message))).toBe(
+      "🔌 Connection interrupted. Please try again.",
+    );
   });
 
   it('returns "something went wrong" for generic Error', () => {

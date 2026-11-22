@@ -7,7 +7,7 @@ named *_all_users; every one is bounded or keyed by an indexed id.
 """
 
 from collections.abc import Collection, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import re
 
 from pydantic import BaseModel
@@ -27,7 +27,13 @@ from app.models.task_models import (
     TaskUpdate,
     When,
 )
-from app.models.todo_models import ExternalRef, ExternalRefSource, SubTask
+from app.models.todo_models import (
+    DueRange,
+    ExternalRef,
+    ExternalRefSource,
+    SubTask,
+    TodoDayWindow,
+)
 from app.models.trigger_gate_models import GateSkipRecord, TriggerGate
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
@@ -42,7 +48,6 @@ NEXT_CHECK_FIELD = "next_check_at"
 #: The field a to-do's owed nudge lives in.
 NUDGE_FIELD = "nudge_at"
 _SHORT_ID = re.compile(r"[0-9a-f]{8}")
-_UPCOMING_DAYS = 7
 
 
 class _FacetCount(BaseModel):
@@ -72,6 +77,10 @@ def _due_at(field: str, now: datetime) -> dict[str, object]:
     return {field: {"$lte": now, "$type": "date"}}
 
 
+def _between(due: DueRange) -> dict[str, datetime]:
+    return {"$gte": due.start, "$lte": due.end}
+
+
 def _due_filter(query: TaskQuery) -> dict[str, object]:
     """Build the due-date part of a list filter; an overdue read is of open tasks only."""
     filt: dict[str, object] = {}
@@ -83,7 +92,9 @@ def _due_filter(query: TaskQuery) -> dict[str, object]:
     if query.due_before is not None:
         due["$lte"] = query.due_before
     if query.overdue:
-        due["$lt"] = datetime.now(UTC)
+        if query.day_window is None:
+            raise ValueError("an overdue read needs the user's day window")
+        due["$lt"] = query.day_window.today_start
         filt["completed"] = False
     if due:
         filt["when.at"] = due
@@ -161,11 +172,8 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         return TaskPage(items=items, total=total)
 
     @cached_query(TaskCounts)
-    async def compute_counts(self, *, user_id: str) -> TaskCounts:
-        """Count the sidebar buckets: due today, due within a week, overdue, and done."""
-        now = datetime.now(UTC)
-        today_start = datetime.combine(now.date(), datetime.min.time()).replace(tzinfo=UTC)
-        today_end = datetime.combine(now.date(), datetime.max.time()).replace(tzinfo=UTC)
+    async def compute_counts(self, *, user_id: str, window: TodoDayWindow) -> TaskCounts:
+        """Count the sidebar buckets on the user's own day: due today, upcoming, overdue, and done."""
         open_dated = {"completed": False, "when.kind": WhenKind.DATE.value}
         facets = await self._aggregate(
             [
@@ -176,7 +184,7 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
                             {
                                 "$match": {
                                     **open_dated,
-                                    "when.at": {"$gte": today_start, "$lte": today_end},
+                                    "when.at": _between(window.today),
                                 }
                             },
                             {"$count": "count"},
@@ -185,16 +193,13 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
                             {
                                 "$match": {
                                     **open_dated,
-                                    "when.at": {
-                                        "$gt": today_end,
-                                        "$lte": now + timedelta(days=_UPCOMING_DAYS),
-                                    },
+                                    "when.at": _between(window.upcoming),
                                 }
                             },
                             {"$count": "count"},
                         ],
                         "overdue": [
-                            {"$match": {**open_dated, "when.at": {"$lt": now}}},
+                            {"$match": {**open_dated, "when.at": {"$lt": window.today_start}}},
                             {"$count": "count"},
                         ],
                         "completed": [{"$match": {"completed": True}}, {"$count": "count"}],

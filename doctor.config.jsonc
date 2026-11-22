@@ -59,6 +59,13 @@
         "files": ["libs/shared/ts/src/bots/link-codes.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
+      // A bot's browser progress is a thread the user reads top to bottom:
+      // each card (session, step, handoff, result) is sent after the previous
+      // one lands, so a step never arrives before the session that opened it.
+      {
+        "files": ["libs/shared/ts/src/bots/conversation/browser-progress.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
       // Tunnel.run() is a reconnection supervisor loop: each iteration awaits
       // one full connection lifecycle (connectOnce resolves only when the
       // socket closes or errors) and then a backoff sleep. async-await-in-loop's

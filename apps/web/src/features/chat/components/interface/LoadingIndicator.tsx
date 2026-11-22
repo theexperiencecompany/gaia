@@ -1,5 +1,6 @@
 "use client";
 
+import type { ToolProgress } from "@shared/api/generated";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type { ReactNode } from "react";
@@ -9,14 +10,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface LoadingIndicatorProps {
   loadingText: string;
-  loadingTextKey: number;
-  toolInfo?: {
-    toolName?: string;
-    toolCategory?: string;
-    integrationName?: string;
-    iconUrl?: string;
-    showCategory?: boolean;
-  };
+  progress?: ToolProgress;
   noPadding?: boolean;
   /** Replaces the default wave spinner (e.g. the orb in the popup). */
   spinner?: ReactNode;
@@ -39,18 +33,18 @@ function formatCategoryName(category: string): string {
 
 export function LoadingIndicator({
   loadingText,
-  loadingTextKey,
-  toolInfo,
+  progress,
   noPadding = false,
   spinner,
 }: LoadingIndicatorProps) {
   const prefix =
-    toolInfo?.showCategory !== false && toolInfo?.toolCategory
-      ? `${toolInfo.integrationName || formatCategoryName(toolInfo.toolCategory)}: `
+    progress?.show_category && progress.tool_category
+      ? `${progress.integration_name || formatCategoryName(progress.tool_category)}: `
       : "";
 
   return (
     <m.div
+      data-testid="chat-loading-row"
       className={`flex items-center gap-4 text-sm font-medium pt-2 ${noPadding ? "" : "mt-3 pl-11.5"}`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
@@ -59,17 +53,17 @@ export function LoadingIndicator({
     >
       {/* Per-tool icon first (e.g. take_screenshot), then the category
           icon, then the host spinner (orb in the popup), then the wave. */}
-      {(toolInfo?.toolName &&
-        getToolCategoryIcon(toolInfo.toolName, {
+      {(progress?.tool_name &&
+        getToolCategoryIcon(progress.tool_name, {
           size: 20,
           width: 20,
           height: 20,
           iconOnly: true,
           pulsating: true,
         })) ||
-        (toolInfo?.toolCategory &&
+        (progress?.tool_category &&
           getToolCategoryIcon(
-            toolInfo.toolCategory,
+            progress.tool_category,
             {
               size: 20,
               width: 20,
@@ -77,12 +71,12 @@ export function LoadingIndicator({
               iconOnly: true,
               pulsating: true,
             },
-            toolInfo.iconUrl,
+            progress.icon_url ?? undefined,
           )) ||
         spinner || <WaveSpinnerSquare />}
       <AnimatePresence mode="wait">
         <m.span
-          key={loadingTextKey}
+          key={loadingText}
           variants={slideUp}
           initial="initial"
           animate="animate"

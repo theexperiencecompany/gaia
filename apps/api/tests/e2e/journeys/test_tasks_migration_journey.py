@@ -57,7 +57,6 @@ USER = FAKE_USER.user_id
 CURATOR = "650000000000000000000c01"
 SCOPE = (USER, CURATOR)
 TARGETS = ("tasks", "task_runs", "task_templates", "task_playbooks", PROGRESS)
-SHARED = ("conversations", "approval_ledger", "waits")
 DAILY_8AM = "0 8 * * *"
 QUESTION = "Window or aisle for the Lisbon flight?"
 ONLY_BILLING = "the email is about billing"
@@ -209,10 +208,9 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
 async def _forget_targets(db: AsyncIOMotorDatabase[dict[str, Any]]) -> None:
     for name in TARGETS:
         await db[name].delete_many({})
-    for name in SHARED:
-        await db[name].update_many(
-            {"user_id": {"$in": list(SCOPE)}}, {"$unset": {"task_id": "", "owner_task_id": ""}}
-        )
+    # Only what the migration adds: an approval's own task_id names its logged work.
+    for name, added in (("conversations", "task_id"), ("approval_ledger", "owner_task_id")):
+        await db[name].update_many({"user_id": {"$in": list(SCOPE)}}, {"$unset": {added: ""}})
     await db["waits"].delete_many(
         {
             "user_id": {"$in": list(SCOPE)},

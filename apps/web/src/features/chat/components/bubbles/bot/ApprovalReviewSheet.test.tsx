@@ -14,10 +14,6 @@ vi.mock("@/features/chat/api/chatApi", () => ({
   },
 }));
 
-vi.mock("@/features/chat/hooks/useMarkApprovalDecided", () => ({
-  useMarkApprovalDecided: () => () => undefined,
-}));
-
 vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn() },
 }));
@@ -27,13 +23,18 @@ const card = (id: string, integration: string): ApprovalRequestData => ({
   tool_call_id: `call-${id}`,
   gated_tool_name: "GMAIL_SEND_EMAIL",
   integration_name: integration,
-  summary: `Send ${id}`,
+  description: {
+    action: `Send ${id}`,
+    headline: `Send ${id}`,
+    confirm: "send it",
+    details: [],
+  },
   args_preview: { to: "b@x" },
-  status: "pending",
+  status: "waiting",
+  outcome: null,
   feedback: null,
-  timeout_seconds: 300,
-  age_seconds: 60,
-  ledger_version: 0,
+  auto_reason: null,
+  asked_at: new Date(Date.now() - 60_000).toISOString(),
 });
 
 describe("ApprovalReviewSheet", () => {
@@ -42,6 +43,15 @@ describe("ApprovalReviewSheet", () => {
       outcomes: [],
     });
     vi.mocked(toast.error).mockReset();
+  });
+
+  it("draws no client-timed ghost for a withdrawn approval; its tool row shows the server's status", () => {
+    render(
+      <ApprovalRequestGroup
+        items={[{ ...card("a", "gmail"), status: "withdrawn" }]}
+      />,
+    );
+    expect(screen.queryByText(/withdrew/i)).toBeNull();
   });
 
   it("offers a review sheet at three pendings, not below", () => {
@@ -122,82 +132,6 @@ describe("ApprovalReviewSheet", () => {
     expect(
       within(screen.getByRole("dialog")).getAllByTestId("sheet-row"),
     ).toHaveLength(4);
-  });
-
-  it("settles a lost race to the server state, not the tapped button", async () => {
-    const { ApprovalResolveProvider } = await import(
-      "@/features/chat/components/bubbles/bot/ApprovalResolveContext"
-    );
-    const settled: { id: string; status: string }[] = [];
-    vi.mocked(chatApi.postApprovalBatchDecision).mockResolvedValue({
-      outcomes: [
-        {
-          approval_id: "a",
-          resolved: false,
-          reason: "not_found",
-          status: "denied",
-        },
-      ],
-    });
-    render(
-      <ApprovalResolveProvider
-        value={(approvalId, resolved) =>
-          settled.push({ id: approvalId, status: resolved.status })
-        }
-      >
-        <ApprovalRequestGroup
-          items={[card("a", "gmail"), card("b", "cal"), card("c", "gmail")]}
-        />
-      </ApprovalResolveProvider>,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /review 3/i }));
-    const dialog = screen.getByRole("dialog");
-    const rows = within(dialog).getAllByTestId("sheet-row");
-    const rowFor = (text: string) =>
-      rows.find((row) => within(row).queryByText(text) !== null) ?? rows[0];
-    fireEvent.click(
-      within(rowFor("Send a")).getByRole("button", { name: /^approve$/i }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /submit \(1\)/i }));
-    await vi.waitFor(() => expect(settled).toHaveLength(1));
-    // Tapped approve, server says denied — the real verdict wins.
-    expect(settled[0]).toEqual({ id: "a", status: "denied" });
-  });
-
-  it("settles the committed part of a partial batch and keeps the failed part for retry", async () => {
-    const { ApprovalResolveProvider } = await import(
-      "@/features/chat/components/bubbles/bot/ApprovalResolveContext"
-    );
-    const settled: string[] = [];
-    vi.mocked(chatApi.postApprovalBatchDecision).mockResolvedValue({
-      outcomes: [
-        { approval_id: "a", resolved: true, reason: null },
-        { approval_id: "b", resolved: false, reason: "error" },
-      ],
-    });
-    render(
-      <ApprovalResolveProvider value={(approvalId) => settled.push(approvalId)}>
-        <ApprovalRequestGroup
-          items={[card("a", "gmail"), card("b", "cal"), card("c", "gmail")]}
-        />
-      </ApprovalResolveProvider>,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /review 3/i }));
-    const rows = within(screen.getByRole("dialog")).getAllByTestId("sheet-row");
-    const rowFor = (text: string) =>
-      rows.find((row) => within(row).queryByText(text) !== null) ?? rows[0];
-    fireEvent.click(
-      within(rowFor("Send a")).getByRole("button", { name: /^approve$/i }),
-    );
-    fireEvent.click(
-      within(rowFor("Send b")).getByRole("button", { name: /^approve$/i }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /submit \(2\)/i }));
-    await vi.waitFor(() => expect(settled).toEqual(["a"]));
-    expect(screen.getByRole("button", { name: /submit \(1\)/i })).toBeDefined();
-    expect(
-      vi.mocked(toast.error).mock.calls.map(([message]) => message),
-    ).toEqual(["Some approvals couldn't be submitted — please try again"]);
   });
 
   it("groups rows by integration with honest totals", () => {

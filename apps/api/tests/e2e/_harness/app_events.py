@@ -5,18 +5,22 @@ from __future__ import annotations
 import base64
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 import hashlib
 import hmac
 from itertools import count
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import respx
 
-from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.conversation_log import conversation_log_repository
+from app.models.conversation_log_models import Notice, Reply
+from app.schemas.outbound import OutboundMessageEnvelope
+from app.services.conversation.mongo_log import MongoConversationLog
+from app.services.hil.jev_client import decisions_url
 from app.services.providers.provider_credentials_service import ProviderConfig
 
 #: The secret the journeys sign Composio webhooks with; the fixture installs it as the app's.
@@ -37,15 +41,31 @@ def signed_webhook_headers(body: bytes, webhook_id: str) -> dict[str, str]:
 
 
 class BotOutbox:
-    """The message broker the bots consume: records every envelope published to a platform."""
+    """The message broker the bots consume: records what each bot sends its user.
 
-    def __init__(self) -> None:
+    A wake carries no text: the bot follows its conversation past its cursor and sends
+    what was logged there, as the bots' follower does.
+    """
+
+    def __init__(self, user_id: str) -> None:
         self.sent: list[tuple[str, str]] = []
+        self._user_id = user_id
+        #: How far each followed conversation has been sent, as the bot's delivered-through cursor.
+        self._sent_through: dict[str, int] = {}
 
     async def publish_outbound(self, queue_name: str, body: bytes, **_: object) -> None:
-        envelope = json.loads(body)
-        parts = envelope.get("text_parts") or [envelope["text"]]
-        self.sent.append((envelope["platform"], "\n".join(parts)))
+        envelope = OutboundMessageEnvelope.model_validate_json(body)
+        if envelope.follow is None:
+            parts = envelope.text_parts or [envelope.text or ""]
+            self.sent.append((envelope.platform, "\n".join(parts)))
+            return
+        conversation_id = envelope.follow.conversation_id
+        after = max(envelope.follow.after_seq, self._sent_through.get(conversation_id, 0))
+        log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
+        for logged in await log.read_after(conversation_id, self._user_id, after):
+            if isinstance(logged.entry, Notice | Reply) and logged.entry.text:
+                self.sent.append((envelope.platform, logged.entry.text))
+            self._sent_through[conversation_id] = logged.seq
 
 
 def composio_double() -> AsyncMock:
@@ -84,5 +104,5 @@ def gate_judge(*, not_needed: float) -> Iterator[None]:
         # Gmail, asked whether the user wrote in the email's thread: a new email, so no.
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=False)),
     ):
-        router.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=answer))
+        router.post(decisions_url(None)).mock(return_value=httpx.Response(200, json=answer))
         yield

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
+    get_user_day_window,
     get_user_id,
     get_user_timezone_from_preferences,
 )
@@ -27,6 +28,7 @@ from app.models.todo_models import (
     TodoCanvasResponse,
     TodoConversationResponse,
     TodoCounts,
+    TodoDayWindow,
     TodoLabelCount,
     TodoListParams,
     TodoListResponse,
@@ -67,7 +69,9 @@ router = APIRouter()
 # Counts endpoint for efficient dashboard data
 @router.get("/todos/counts")
 async def get_todo_counts(
-    response: Response, user_id: Annotated[str, Depends(get_user_id)]
+    response: Response,
+    user_id: Annotated[str, Depends(get_user_id)],
+    window: Annotated[TodoDayWindow, Depends(get_user_day_window)],
 ) -> TodoCounts:
     """
     Get all todo counts for dashboard/sidebar in a single efficient call.
@@ -79,7 +83,7 @@ async def get_todo_counts(
         inbox = await project_repository.get_default_inbox(user_id)
         inbox_project_id = inbox.id if inbox else "no_inbox_found"
         counts = await todo_repository.compute_counts(
-            user_id=user_id, inbox_project_id=inbox_project_id
+            user_id=user_id, inbox_project_id=inbox_project_id, window=window
         )
         return counts
 
@@ -109,6 +113,7 @@ async def list_todos(
     # Depends(), not Query(): FastAPI doesn't flatten a query model through include_router,
     # so a Query()-bound model 422s every request; Depends() binds each field as a param.
     params: Annotated[TodoListParams, Depends()],
+    window: Annotated[TodoDayWindow, Depends(get_user_day_window)],
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> TodoListResponse:
     """
@@ -135,7 +140,7 @@ async def list_todos(
     log.set(user={"id": user.user_id}, todo=todo_context)
 
     try:
-        result = await TodoService.list_todos(user.user_id, params.to_search_params())
+        result = await TodoService.list_todos(user.user_id, params.to_search_params(window))
         # set_ns: log.set(todo={...}) would clobber the search context set above
         log.set_ns("todo", result_count=len(result.data))
         return result

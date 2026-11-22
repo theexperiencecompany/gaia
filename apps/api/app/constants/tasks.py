@@ -238,9 +238,9 @@ class TaskRunDeliveryOutcome(StrEnum):
     DELIVERED = "delivered"
     UNDELIVERED = "undelivered"
     SILENCED = "silenced"
+    NOTHING_TO_REPORT = "nothing_to_report"
     NOTIFY_OFF = "notify_off"
     NARRATION_FAILED = "narration_failed"
-    INVALID_DIRECTIVE = "invalid_directive"
 
 
 # Repeat shortcuts: intervals step from now (drift is fine); anchored steps keep the wall-clock time.

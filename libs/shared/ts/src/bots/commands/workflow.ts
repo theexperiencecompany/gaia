@@ -10,11 +10,13 @@
  */
 
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchWorkflowSubcommand,
   handleWorkflowCreate,
 } from "../utils/commands";
+import { sendChunked } from "../utils/delivery";
+import { COMMAND_HELP } from "../utils/formatters";
+import { parseTextArgs } from "../utils/text";
 
 /** `/workflow` command definition with subcommands. */
 export const workflowCommand: BotCommand = {
@@ -28,7 +30,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -40,7 +42,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -52,7 +54,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -63,14 +65,14 @@ export const workflowCommand: BotCommand = {
       description: "Create a new workflow",
       options: [
         {
-          name: "name",
-          description: "BotWorkflow name",
+          name: "title",
+          description: "Workflow title",
           required: true,
           type: "string",
         },
         {
-          name: "description",
-          description: "BotWorkflow description",
+          name: "instructions",
+          description: "What GAIA should do each time the workflow runs",
           required: true,
           type: "string",
         },
@@ -92,23 +94,21 @@ export const workflowCommand: BotCommand = {
 
     // Handle `create` subcommand specially since it's not in dispatchWorkflowSubcommand
     if (subcommand === "create") {
-      let name: string;
-      let description: string | undefined;
-
-      if (args.name) {
-        name = String(args.name);
-        description = args.description ? String(args.description) : undefined;
-      } else if (subArgs.length > 0) {
-        name = subArgs[0];
-        description = subArgs.slice(1).join(" ") || undefined;
-      } else {
-        await target.sendEphemeral(
-          "Usage: /workflow create <name> <description>",
-        );
+      const title = args.title ? String(args.title) : (subArgs[0] ?? "");
+      const instructions = args.instructions
+        ? String(args.instructions)
+        : subArgs.slice(1).join(" ");
+      if (!title || !instructions) {
+        await target.sendEphemeral(COMMAND_HELP.workflowUsage.create);
         return;
       }
 
-      const response = await handleWorkflowCreate(gaia, name, ctx, description);
+      const response = await handleWorkflowCreate(
+        gaia,
+        title,
+        instructions,
+        ctx,
+      );
       await sendChunked(target.sendEphemeral, response, target.platform);
       return;
     }

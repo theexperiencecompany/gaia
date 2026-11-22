@@ -11,7 +11,6 @@ import uuid
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.todos import GAIA_TRACKED_LABEL, REOPENED_IN_THE_APP_DETAIL, TodoActivityEvent
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
@@ -30,13 +29,12 @@ from app.models.todo_models import (
     ProjectUpdate,
     SearchMode,
     SubTask,
+    TodoDayWindow,
     TodoDocument,
-    TodoLabelCount,
     TodoListResponse,
     TodoModel,
     TodoResponse,
     TodoSearchParams,
-    TodoStats,
     TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
@@ -45,6 +43,7 @@ from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
 from app.services.conversation_service import delete_todo_conversations
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
+from app.services.hil.pending import pending_approvals_by_owner
 from app.services.todo_activity import record_activity
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
@@ -110,22 +109,15 @@ async def _get_workflow_categories_for_todos(
 async def _get_pending_approvals_for_todos(
     todos: list[TodoDocument],
 ) -> dict[str, PendingApprovalRef]:
-    """Oldest live approval parked per todo, for the list/detail jump link.
-
-    One query per page, not per row (same shape as the workflow-categories
-    enrichment above). Cross-domain read via the ledger repository.
-    """
+    """Oldest approval each todo's run still waits on, for the list/detail jump link."""
     todo_ids = [todo.id for todo in todos if todo.id]
     if not todo_ids:
         return {}
-    rows = await approval_ledger_repository.list_live_by_owners("todo", todo_ids)
-    refs: dict[str, PendingApprovalRef] = {}
-    for row in rows:
-        if row.owner_id not in refs:
-            refs[row.owner_id] = PendingApprovalRef(
-                approval_id=row.approval_id, conversation_id=row.conversation_id
-            )
-    return refs
+    waiting = await pending_approvals_by_owner("todo", todo_ids)
+    return {
+        owner: PendingApprovalRef(approval_id=row.approval_id, conversation_id=row.conversation_id)
+        for owner, row in waiting.items()
+    }
 
 
 async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoResponse]:
@@ -447,23 +439,6 @@ class TodoService:
         inbox = await project_repository.get_or_create_inbox(user_id)
         return inbox.id
 
-    @staticmethod
-    def _needs_inbox_default(params: TodoSearchParams) -> bool:
-        """Return True when the unfiltered main list should scope to Inbox; filtered views never do."""
-        return not (
-            params.project_id
-            or params.q
-            or params.completed is not None
-            or params.priority
-            or params.labels
-            or params.parent_todo_id
-        )
-
-    @staticmethod
-    async def _calculate_stats(user_id: str) -> TodoStats:
-        """Todo statistics for a user (cached inside the repository)."""
-        return await todo_repository.compute_stats(user_id=user_id)
-
     # CRUD Operations
     @classmethod
     async def create_todo(
@@ -575,9 +550,7 @@ class TodoService:
             # Embeddings carry no parent id, so one parent's sub-todos are searched by text.
             params = params.model_copy(update={"mode": SearchMode.TEXT})
 
-        inbox_project_id = (
-            await cls._get_inbox_id(user_id) if cls._needs_inbox_default(params) else None
-        )
+        inbox_project_id = await cls._get_inbox_id(user_id) if params.defaults_to_inbox else None
         page = await todo_repository.list_page(
             user_id=user_id, params=params, inbox_project_id=inbox_project_id
         )
@@ -594,7 +567,9 @@ class TodoService:
         )
         response = TodoListResponse(data=data, meta=meta)
         if params.include_stats:
-            response.stats = await cls._calculate_stats(user_id)
+            response.stats = await todo_repository.compute_stats(
+                user_id=user_id, window=params.required_day_window
+            )
         return response
 
     @classmethod
@@ -887,7 +862,9 @@ class TodoService:
         )
         response = TodoListResponse(data=paginated_results, meta=meta)
         if params.include_stats:
-            response.stats = await cls._calculate_stats(user_id)
+            response.stats = await todo_repository.compute_stats(
+                user_id=user_id, window=params.required_day_window
+            )
         return response
 
 
@@ -979,10 +956,11 @@ async def get_all_todos(
     priority: Priority | None = None,
     has_due_date: bool | None = None,
     overdue: bool | None = None,
+    day_window: TodoDayWindow | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> list[TodoResponse]:
-    """Compatibility wrapper for old get_all_todos function."""
+    """Compatibility wrapper for old get_all_todos function; overdue needs day_window."""
 
     params = TodoSearchParams(
         q=None,
@@ -992,6 +970,7 @@ async def get_all_todos(
         priority=priority,
         has_due_date=has_due_date,
         overdue=overdue,
+        day_window=day_window,
         page=(skip // limit) + 1 if limit > 0 else 1,
         per_page=limit,
         include_stats=False,
@@ -1056,12 +1035,6 @@ async def search_todos(
     return response.data
 
 
-# Additional compatibility functions that might be used elsewhere
-async def get_todo_stats(user_id: str) -> TodoStats:
-    """Get statistics about user's todos."""
-    return await TodoService._calculate_stats(user_id)
-
-
 async def get_todos_by_date_range(
     user_id: str, start_date: datetime, end_date: datetime
 ) -> list[TodoResponse]:
@@ -1079,12 +1052,6 @@ async def get_todos_by_date_range(
 
     response = await TodoService.list_todos(user_id, params)
     return response.data
-
-
-async def get_all_labels(user_id: str) -> list[TodoLabelCount]:
-    """Get all unique labels used by the user with counts."""
-    stats = await TodoService._calculate_stats(user_id)
-    return stats.labels or []
 
 
 async def get_todos_by_label(user_id: str, label: str) -> list[TodoResponse]:

@@ -30,7 +30,7 @@ def get_mcp_oauth_redirect_uri() -> str:
 
 def get_frontend_url() -> str:
     """Get the frontend base URL for redirects."""
-    return getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+    return settings.FRONTEND_URL
 
 
 def _is_loopback(host: str) -> bool:

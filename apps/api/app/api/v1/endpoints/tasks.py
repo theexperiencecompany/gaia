@@ -4,8 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.api.v1.dependencies.oauth_dependencies import get_user_day_window, get_user_id
 from app.decorators import tiered_rate_limit
+from app.models.todo_models import TodoDayWindow
 from app.schemas.tasks import (
     ChecklistItemCreateRequest,
     ChecklistItemUpdateRequest,
@@ -33,26 +34,30 @@ TASK_WRITES = "todo_operations"
 
 @router.get("/tasks/counts")
 async def get_task_counts(
-    response: Response, user_id: Annotated[str, Depends(get_user_id)]
+    response: Response,
+    user_id: Annotated[str, Depends(get_user_id)],
+    window: Annotated[TodoDayWindow, Depends(get_user_day_window)],
 ) -> TaskCountsResponse:
     """Count the user's open tasks due today, this week and overdue, and their done ones."""
     response.headers["Cache-Control"] = "private, max-age=10"
     log.set(user={"id": user_id}, task={"operation": "counts"})
-    counts = await task_service.task_counts(user_id)
+    counts = await task_service.task_counts(user_id, window)
     log.set_ns("task", overdue=counts.overdue)
     return TaskCountsResponse(**counts.model_dump())
 
 
 @router.get("/tasks")
 async def list_tasks(
-    params: Annotated[TaskListParams, Depends()], user_id: Annotated[str, Depends(get_user_id)]
+    params: Annotated[TaskListParams, Depends()],
+    user_id: Annotated[str, Depends(get_user_id)],
+    window: Annotated[TodoDayWindow, Depends(get_user_day_window)],
 ) -> TaskListResponse:
     """List the user's tasks, newest first, narrowed by the query."""
     log.set(
         user={"id": user_id},
         task={"operation": "list", "page": params.page, "has_query": bool(params.q)},
     )
-    page = await task_service.list_tasks(user_id, params.to_query())
+    page = await task_service.list_tasks(user_id, params.to_query(window))
     log.set_ns("task", result_count=len(page.items), total=page.total)
     return TaskListResponse(
         tasks=await task_service.task_responses(user_id, page.items),

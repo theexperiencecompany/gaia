@@ -2,20 +2,20 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.tools import StructuredTool
 import pytest
 
 from app.agents.core.subagents.integration_resolution import (
-    CustomMcpSubagent,
     check_integration_connection,
     check_mcp_connection,
-    get_integration_target,
     is_per_user_mcp,
 )
-from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
+from app.agents.core.subagents.integration_target import (
+    CustomMcpSubagent,
+    get_integration_target,
+)
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
@@ -23,6 +23,7 @@ from app.models.subagent_models import Subagent
 from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest, index_custom_mcp_as_subagent
 
 RESOLUTION = "app.agents.core.subagents.integration_resolution"
+TARGET = "app.agents.core.subagents.integration_target"
 
 
 def _integration(integration_id: str, name: str, **overrides: object) -> Integration:
@@ -155,56 +156,20 @@ class TestCheckIntegrationConnection:
 
 @pytest.mark.asyncio
 class TestGetIntegrationTarget:
-    async def test_platform_integration_comes_from_the_registry_without_touching_the_cache(self):
+    async def test_platform_integration_comes_from_the_registry_without_touching_mongo(self):
         subagent = _make_subagent()
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=subagent) as lookup,
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock()) as get_cache,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=subagent) as lookup,
+            patch(f"{TARGET}.integration_repository") as repo,
         ):
+            repo.find_by_id_prefix_or_name = AsyncMock()
             result = await get_integration_target("  GMAIL ")
 
         assert result is subagent
         lookup.assert_called_once_with("gmail")
-        get_cache.assert_not_awaited()
-
-    async def test_returns_cached_custom_integration(self):
-        with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(
-                f"{RESOLUTION}.get_cache",
-                new=AsyncMock(return_value={"id": "abc123", "name": "Custom MCP"}),
-            ) as get_cache,
-        ):
-            result = await get_integration_target("abc123")
-
-        assert result == CustomMcpSubagent(id="abc123", name="Custom MCP")
-        get_cache.assert_awaited_once_with(f"{SUBAGENT_CACHE_PREFIX}:abc123")
-
-    async def test_a_cached_mcp_config_is_validated_into_its_model(self):
-        cached = {
-            "id": "abc123",
-            "mcp_config": {"server_url": "https://example.com", "requires_auth": True},
-        }
-        with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=cached)),
-        ):
-            result = await get_integration_target("abc123")
-
-        assert isinstance(result, CustomMcpSubagent)
-        assert result.mcp_config == MCPConfig(server_url="https://example.com", requires_auth=True)
-
-    async def test_returns_none_for_negative_cache(self):
-        with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value={})),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
-        ):
-            repo.find_by_id_prefix_or_name = AsyncMock()
-            assert await get_integration_target("missing") is None
         repo.find_by_id_prefix_or_name.assert_not_awaited()
 
-    async def test_finds_custom_from_mongodb_and_caches_it(self):
+    async def test_projects_a_custom_integration_from_the_repository(self):
         custom = _integration(
             "abc",
             "My MCP",
@@ -212,15 +177,13 @@ class TestGetIntegrationTarget:
             icon_url="https://example.com/icon.png",
         )
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=None)),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
-            patch(f"{RESOLUTION}.set_cache", new=AsyncMock()) as set_cache,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.integration_repository") as repo,
         ):
             repo.find_by_id_prefix_or_name = AsyncMock(return_value=custom)
-            result = await get_integration_target("abc")
+            result = await get_integration_target("  ABC ")
 
-        expected = CustomMcpSubagent(
+        assert result == CustomMcpSubagent(
             id="abc",
             name="My MCP",
             source="custom",
@@ -228,60 +191,15 @@ class TestGetIntegrationTarget:
             mcp_config=MCPConfig(server_url="https://example.com"),
             icon_url="https://example.com/icon.png",
         )
-        assert result == expected
-        set_cache.assert_awaited_once_with(
-            f"{SUBAGENT_CACHE_PREFIX}:abc", expected.model_dump(), ttl=SUBAGENT_CACHE_TTL
-        )
+        repo.find_by_id_prefix_or_name.assert_awaited_once_with("abc")
 
-    async def test_fallback_to_integration_resolver(self):
-        resolved = SimpleNamespace(
-            custom_doc={
-                "integration_id": "res_id",
-                "name": "Resolved",
-                "mcp_config": {"server_url": "https://resolved.example.com"},
-                "icon_url": "https://resolved.example.com/icon.png",
-            },
-            source="user_integrations",
-        )
+    async def test_a_miss_everywhere_returns_none(self):
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=None)),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
-            patch(f"{RESOLUTION}.IntegrationResolver") as resolver,
-            patch(f"{RESOLUTION}.set_cache", new=AsyncMock()) as set_cache,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.integration_repository") as repo,
         ):
             repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
-            resolver.resolve = AsyncMock(return_value=resolved)
-            result = await get_integration_target("res_id")
-
-        expected = CustomMcpSubagent(
-            id="res_id",
-            name="Resolved",
-            source="user_integrations",
-            managed_by="mcp",
-            mcp_config=MCPConfig(server_url="https://resolved.example.com"),
-            icon_url="https://resolved.example.com/icon.png",
-        )
-        assert result == expected
-        set_cache.assert_awaited_once_with(
-            f"{SUBAGENT_CACHE_PREFIX}:res_id", expected.model_dump(), ttl=SUBAGENT_CACHE_TTL
-        )
-
-    async def test_a_miss_everywhere_is_negatively_cached(self):
-        with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=None)),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
-            patch(f"{RESOLUTION}.IntegrationResolver") as resolver,
-            patch(f"{RESOLUTION}.set_cache", new=AsyncMock()) as set_cache,
-        ):
-            repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
-            resolver.resolve = AsyncMock(return_value=None)
             assert await get_integration_target("nope") is None
-
-        set_cache.assert_awaited_once_with(
-            f"{SUBAGENT_CACHE_PREFIX}:nope", {}, ttl=SUBAGENT_CACHE_TTL
-        )
 
 
 class TestIsPerUserMcp:

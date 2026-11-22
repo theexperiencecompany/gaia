@@ -5,8 +5,6 @@
  * lines are paced out behind a typing indicator instead of landing at once.
  */
 
-import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
-
 import { OnboardingBotBubble } from "./OnboardingBotBubble";
 import { OnboardingPacedBubbles } from "./OnboardingPacedBubbles";
 
@@ -28,5 +26,5 @@ export function OnboardingBotBubbles({
         instant={instant}
       />
     );
-  return <OnboardingBotBubble text={lines.join(NEW_MESSAGE_BREAK_TOKEN)} />;
+  return <OnboardingBotBubble lines={lines} />;
 }

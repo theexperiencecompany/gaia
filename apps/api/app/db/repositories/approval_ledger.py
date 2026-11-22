@@ -2,8 +2,8 @@
 
 One row per gated call envelope. Uncached (cache_policy = None): rows are
 decision state read at low volume, and every transition is a conditional write
-the entity cache could only misrepresent. Rows never expire — a pending row
-leaves only by user decision or agent revoke.
+the entity cache could only misrepresent. A pending row leaves by the decision the
+conversation log took for it, and delivering_since leases that decision's hand-off.
 
 Dedup is atomic: a partial unique index on (conversation_id, fingerprint)
 over live states makes the second concurrent insert fail, and the loser reads
@@ -15,15 +15,27 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from app.db.repositories.base import MongoRepository
-from app.models.hil_models import (
-    LIVE_LEDGER_STATES,
-    ApprovalLedgerDocument,
-    ApprovalProposal,
-    LedgerState,
-)
+from app.models.hil_models import ApprovalLedgerDocument, ApprovalProposal
+from shared.py.approvals import ActionResult, ApprovalOutcome
+
+#: The unique index that dedups live rows by (conversation_id, fingerprint).
+LIVE_ROW_INDEX_NAME = "conv_fingerprint_open_unique"
+#: Rows that still hold their call (ApprovalLedgerDocument.live); also that index's filter.
+LIVE_ROW_FILTER: dict[str, Any] = {
+    "$or": [
+        {"outcome": {"$type": "null"}},
+        {"outcome": ApprovalOutcome.APPROVED.value, "action": {"$type": "null"}},
+    ]
+}
+
+
+def new_approval_id() -> str:
+    """Return a fresh approval id: the log asks under it before the ledger holds its row."""
+    return f"ap_{uuid4().hex[:12]}"
 
 
 class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalLedgerDocument]):
@@ -33,8 +45,8 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
     uses_object_id = True
     cache_policy = None
 
-    async def register(self, proposal: ApprovalProposal) -> str:
-        """Insert a PENDING row for the proposal, or return the live duplicate's id.
+    async def register(self, proposal: ApprovalProposal, approval_id: str) -> str:
+        """Insert a PENDING row under approval_id, or return the live duplicate's id.
 
         Dedup consults live states only: a terminal fingerprint re-registers
         fresh (revoked-then-reproposed must not collapse into a dead id).
@@ -44,11 +56,13 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         existing = await self.find_live(proposal.fingerprint, proposal.conversation_id)
         if existing is not None:
             return existing.approval_id
-        approval_id = f"ap_{uuid4().hex[:12]}"
+        row = ApprovalLedgerDocument(
+            approval_id=approval_id, created_at=datetime.now(UTC), **proposal.model_dump()
+        )
         try:
-            await self.create(
-                ApprovalLedgerDocument(approval_id=approval_id, **proposal.model_dump())
-            )
+            # Written with its nulls, not through create(): the live unique index finds an
+            # undecided row by its null outcome, and a missing field would escape it.
+            await self._raw_collection().insert_one(row.model_dump(exclude={"id"}))
         except DuplicateKeyError:
             # Lost the insert race (partial unique index on live
             # conversation+fingerprint): the winner's row is the id.
@@ -58,37 +72,59 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
             raise
         return approval_id
 
-    async def claim_resume(self, approval_id: str) -> bool:
-        """Claim the one resume this approval may trigger; exactly one winner.
+    async def claim_delivery(
+        self, approval_id: str, now: datetime, lease: timedelta
+    ) -> ApprovalLedgerDocument | None:
+        """Take the one hand-off of this approval's decision, returning the row; None when it is not ours to make.
 
-        A retried tap, a reconnect replay, and a racing worker converge here,
-        and only the winner re-enqueues the owner. A resumed owner that gates
-        again registers a fresh approval with its own claim, so no counter is
-        needed — every resume costs a new human tap.
+        Ours while the row is pending with no hand-off under way, or when the last one began
+        longer than lease ago and never finished. A settled row with none under way was handed off.
         """
-        result = await self._raw_collection().update_one(
-            {"approval_id": approval_id, "owner_resumed": False},
-            {"$set": {"owner_resumed": True}},
+        raw = await self._raw_collection().find_one_and_update(
+            {
+                "approval_id": approval_id,
+                "$or": [
+                    {"outcome": {"$type": "null"}, "delivering_since": {"$type": "null"}},
+                    {"delivering_since": {"$lt": now - lease}},
+                ],
+            },
+            {"$set": {"delivering_since": now}},
+            return_document=ReturnDocument.AFTER,
         )
-        return bool(result.modified_count)
+        return ApprovalLedgerDocument.model_validate(raw) if raw else None
 
-    async def transition(
+    async def finish_delivery(self, approval_id: str, since: datetime) -> None:
+        """End the hand-off begun at since; a later one that took over keeps its own."""
+        await self._raw_collection().update_one(
+            {"approval_id": approval_id, "delivering_since": since},
+            {"$set": {"delivering_since": None}},
+        )
+
+    async def list_stale_deliveries(self, cutoff: datetime) -> list[ApprovalLedgerDocument]:
+        """List rows whose hand-off began before cutoff and never finished, oldest first."""
+        cursor = (
+            self._raw_collection()
+            .find({"delivering_since": {"$lt": cutoff}})
+            .sort("delivering_since", 1)
+        )
+        return [
+            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
+        ]
+
+    async def settle(
         self,
         approval_id: str,
-        expected: LedgerState,
-        nxt: LedgerState,
+        outcome: ApprovalOutcome,
         *,
         decided_by: str | None = None,
         feedback: str | None = None,
     ) -> bool:
-        """Move one row from expected to nxt, exactly once.
+        """Give a pending row its outcome, exactly once.
 
-        The CAS behind every ledger edge: concurrent contenders race on the
-        filter and exactly one wins. Bumps the row version for stale clients.
-        A decision stamp (decided_by and/or feedback) rides in the same write
-        as decided_at, so a committed row is never stamp-less.
+        Concurrent contenders race on the pending filter and one wins; the row version
+        bumps for stale clients. A decision stamp rides in the same write as decided_at.
         """
-        update: dict[str, object] = {"state": str(nxt)}
+        update: dict[str, object] = {"outcome": outcome.value}
         if decided_by is not None:
             update["decided_by"] = decided_by
         if feedback is not None:
@@ -96,24 +132,36 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         if decided_by is not None or feedback is not None:
             update["decided_at"] = datetime.now(UTC)
         result = await self._raw_collection().update_one(
-            {"approval_id": approval_id, "state": str(expected)},
+            {"approval_id": approval_id, "outcome": {"$type": "null"}},
             {"$set": update, "$inc": {"v": 1}},
         )
         return bool(result.modified_count)
 
+    async def finish_action(self, approval_id: str, result: ActionResult) -> bool:
+        """Record what an executing action came to, exactly once."""
+        update = await self._raw_collection().update_one(
+            {"approval_id": approval_id, "action": ActionResult.EXECUTING.value},
+            {"$set": {"action": result.value}, "$inc": {"v": 1}},
+        )
+        return bool(update.modified_count)
+
     async def claim_executing(self, approval_id: str) -> bool:
-        """Move APPROVED -> EXECUTING and stamp the claim time, atomically.
+        """Start an approved row's action and stamp the claim time, atomically.
 
         Exactly one claimant wins per id; the timestamp lets the lazy
         reconciler tell "provider call in flight" from "process died holding
         the claim". Called only after acquiring the execution semaphore, so a
-        row in EXECUTING always means work actually started.
+        row whose action is executing always means work actually started.
         """
         result = await self._raw_collection().update_one(
-            {"approval_id": approval_id, "state": str(LedgerState.APPROVED)},
+            {
+                "approval_id": approval_id,
+                "outcome": ApprovalOutcome.APPROVED.value,
+                "action": {"$type": "null"},
+            },
             {
                 "$set": {
-                    "state": str(LedgerState.EXECUTING),
+                    "action": ActionResult.EXECUTING.value,
                     "executing_started_at": datetime.now(UTC),
                 },
                 "$inc": {"v": 1},
@@ -124,14 +172,14 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
     async def list_stalled_executing(
         self, cutoff: datetime, conversation_id: str | None = None
     ) -> list[ApprovalLedgerDocument]:
-        """List EXECUTING rows whose claim predates the cutoff (presumed crashed).
+        """List rows still executing whose claim predates the cutoff (presumed crashed).
 
         Scoped to one conversation when given: the reconciler heals its own
         conversation per decide, and a global scan on every tap scales with
         every conversation's stalls, not this one's.
         """
         query: dict[str, Any] = {
-            "state": str(LedgerState.EXECUTING),
+            "action": ActionResult.EXECUTING.value,
             "executing_started_at": {"$lt": cutoff},
         }
         if conversation_id is not None:
@@ -149,7 +197,7 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
     async def find_live(
         self, fingerprint: str, conversation_id: str
     ) -> ApprovalLedgerDocument | None:
-        """Return the newest live (PENDING/APPROVED) row for a fingerprint, or None.
+        """Return the newest live row for a fingerprint, or None.
 
         The state predicate rides in the query so the partial live index
         applies and terminal rows never even load — instead of fetching 50
@@ -158,58 +206,58 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         cursor = (
             self._raw_collection()
             .find(
-                {
-                    "fingerprint": fingerprint,
-                    "conversation_id": conversation_id,
-                    "state": {"$in": sorted(str(s) for s in LIVE_LEDGER_STATES)},
-                }
+                {"fingerprint": fingerprint, "conversation_id": conversation_id, **LIVE_ROW_FILTER}
             )
             .sort("created_at", -1)
         )
         raws = await cursor.to_list(length=50)
         for raw in raws:
             doc = ApprovalLedgerDocument.model_validate(raw)
-            if doc.state in LIVE_LEDGER_STATES:
+            if doc.live:
                 return doc
         return None
-
-    async def list_open(self, conversation_id: str) -> list[ApprovalLedgerDocument]:
-        """Live rows for a conversation, oldest first (registration order)."""
-        cursor = (
-            self._raw_collection()
-            .find(
-                {
-                    "conversation_id": conversation_id,
-                    "state": {"$in": sorted(str(s) for s in LIVE_LEDGER_STATES)},
-                }
-            )
-            .sort("created_at", 1)
-        )
-        return [
-            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
-        ]
 
     async def find_latest_denied(
         self, fingerprint: str, conversation_id: str
     ) -> ApprovalLedgerDocument | None:
-        """Return the newest DENIED row for reject-memory context, or None."""
+        """Return the newest denied row for reject-memory context, or None."""
         raw = await self._raw_collection().find_one(
             {
                 "fingerprint": fingerprint,
                 "conversation_id": conversation_id,
-                "state": str(LedgerState.DENIED),
+                "outcome": ApprovalOutcome.DENIED.value,
             },
             sort=[("created_at", -1)],
         )
         return ApprovalLedgerDocument.model_validate(raw) if raw else None
 
-    async def list_live_by_owners(
-        self, owner_run_type: str, owner_ids: list[str]
-    ) -> list[ApprovalLedgerDocument]:
-        """Live (PENDING/APPROVED) rows parked by background owners, oldest first.
+    async def find_amended(
+        self, approval_id: str, conversation_id: str
+    ) -> ApprovalLedgerDocument | None:
+        """Return the conversation's row a redo names, when the user approved it with a change.
 
-        Batch read for list views (one query per page, not per row). Terminal
-        rows never match — a decided owner has nothing waiting.
+        That stored call never runs; the redo call carries its id, which is the only link.
+        """
+        raw = await self._raw_collection().find_one(
+            {"approval_id": approval_id, "conversation_id": conversation_id}
+        )
+        if raw is None:
+            return None
+        row = ApprovalLedgerDocument.model_validate(raw)
+        amended = (
+            row.outcome is ApprovalOutcome.APPROVED
+            and row.feedback is not None
+            and row.action is None
+        )
+        return row if amended else None
+
+    async def list_by_owners(
+        self, owner_run_type: str, owner_ids: list[str], *, created_since: datetime
+    ) -> list[ApprovalLedgerDocument]:
+        """Rows background owners registered since created_since, oldest first.
+
+        Batch read for list views (one query per page, not per row). Whether one still
+        waits is the conversation log's to say, not the row's.
         """
         if not owner_run_type or not owner_ids:
             return []
@@ -219,7 +267,7 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
                 {
                     "owner_run_type": owner_run_type,
                     "owner_id": {"$in": owner_ids},
-                    "state": {"$in": sorted(str(s) for s in LIVE_LEDGER_STATES)},
+                    "created_at": {"$gte": created_since},
                 }
             )
             .sort("created_at", 1)
@@ -228,18 +276,15 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
             ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
         ]
 
-    async def list_live_by_tasks(self, task_ids: list[str]) -> list[ApprovalLedgerDocument]:
-        """Live (PENDING/APPROVED) rows parked by these GAIA tasks' runs, oldest first."""
+    async def list_by_tasks(
+        self, task_ids: list[str], *, created_since: datetime
+    ) -> list[ApprovalLedgerDocument]:
+        """Rows these GAIA tasks' runs registered since created_since, oldest first; the log says which wait."""
         if not task_ids:
             return []
         cursor = (
             self._raw_collection()
-            .find(
-                {
-                    "owner_task_id": {"$in": task_ids},
-                    "state": {"$in": sorted(str(s) for s in LIVE_LEDGER_STATES)},
-                }
-            )
+            .find({"owner_task_id": {"$in": task_ids}, "created_at": {"$gte": created_since}})
             .sort("created_at", 1)
         )
         return [

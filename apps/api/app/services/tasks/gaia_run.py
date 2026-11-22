@@ -11,14 +11,13 @@ repeating task armed for its next occurrence. Every run writes one task_runs rec
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.agents.core.background.session import TaskRun
+from app.agents.core.background.task_run_delivery import report_form_of
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
     TodoRunCancelledError,
     TodoRunRequest,
     run_todo_on_executor,
 )
-from app.agents.prompts.task_prompts import APPROVAL_RESUME_BRIEF
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.tasks import (
@@ -39,22 +38,28 @@ from app.constants.todos import (
     TodoWakeKind,
     WaitingOn,
 )
+from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.tasks import task_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
-from app.models.message_models import TodoRunWake
+from app.models.conversation_log_models import TaskRun
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.scheduler_models import DeactivationReason
 from app.models.task_models import RepeatWhen, TaskDocument, TaskUpdate, Waiting
 from app.models.todo_models import ExternalRefSource
+from app.models.todo_wake_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.conversation.work_log import logged_decision
 from app.services.conversation_service import get_or_create_task_conversation
+from app.services.hil.errors import ApprovalRequestNotFoundError
+from app.services.hil.ticket import approval_ticket
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.tasks.arming import arm_at
@@ -73,6 +78,7 @@ from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.tasks import TaskOpenStateRepaired, TaskRunFailed
+from shared.py.analytics.context import current_analytics_context
 from shared.py.wide_events import log
 
 #: Tasks whose every run reads Gmail: the desk triages it, a thread task fetches its thread.
@@ -148,11 +154,16 @@ async def _resume_claimed(
     except CostBudgetExceededException as walled:
         await record_skipped_run(task, TaskRunTrigger.APPROVAL, f"skipped: {walled.message}")
         return None, f"walled:{task.id}"
-    task_run = TaskRun(
-        task_id=task.id,
-        run_id=str(uuid4()),
-        trigger_type=TaskRunTrigger.APPROVAL.value,
-        runs_once=not isinstance(task.when, RepeatWhen) and not task.subscriptions,
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    if row is None:
+        raise ApprovalRequestNotFoundError()
+    decision = await logged_decision(row.conversation_id, row.user_id, approval_id)
+    if decision is None:
+        raise ApprovalRequestNotFoundError()
+    task_run = task_run_of(
+        task,
+        TaskRunTrigger.APPROVAL,
+        TodoRunWake(kind=TodoWakeKind.APPROVAL, trigger_names=[], approval_summary=receipt),
     )
 
     async def opened() -> None:
@@ -163,13 +174,9 @@ async def _resume_claimed(
             TodoRunRequest(
                 user=user,
                 todo_run=task_run,
-                todo_title=task.title,
-                task=APPROVAL_RESUME_BRIEF.format(approval_id=approval_id, receipt=receipt),
+                task=approval_ticket(row, decision),
                 conversation_id=conversation_id,
                 fresh_thread=False,
-                wake=TodoRunWake(
-                    kind=TodoWakeKind.APPROVAL, trigger_names=[], approval_summary=receipt
-                ),
                 on_started=opened,
             )
         )
@@ -186,6 +193,20 @@ async def _resume_claimed(
         )
         raise
     return TaskRunStatus.SUCCESS, f"resumed:{task.id}"
+
+
+def task_run_of(task: TaskDocument, trigger: TaskRunTrigger, wake: TodoRunWake) -> TaskRun:
+    """Name one run of the task, attributed to whatever bound this job's analytics context."""
+    return TaskRun(
+        task_id=task.id,
+        run_id=str(uuid4()),
+        title=task.title,
+        trigger_type=trigger,
+        runs_once=not isinstance(task.when, RepeatWhen) and not task.subscriptions,
+        wake=wake,
+        report_form=report_form_of(task),
+        attribution=current_analytics_context().attribution,
+    )
 
 
 async def _skip_reason(task: TaskDocument) -> str | None:
@@ -261,11 +282,10 @@ async def _run_claimed(
         task, await collect_run_context(task, Timezone.parse(user.timezone))
     )
     conversation_id = await get_or_create_task_conversation(task.user_id, task.id, task.title)
-    task_run = TaskRun(
-        task_id=task.id,
-        run_id=str(uuid4()),
-        trigger_type=TaskRunTrigger.SCHEDULE.value,
-        runs_once=not isinstance(task.when, RepeatWhen) and not task.subscriptions,
+    task_run = task_run_of(
+        task,
+        TaskRunTrigger.SCHEDULE,
+        TodoRunWake(kind=TodoWakeKind.SCHEDULE, trigger_names=[], approval_summary=None),
     )
 
     async def opened() -> None:
@@ -276,13 +296,9 @@ async def _run_claimed(
             TodoRunRequest(
                 user=user,
                 todo_run=task_run,
-                todo_title=task.title,
                 task=brief,
                 conversation_id=conversation_id,
                 fresh_thread=True,
-                wake=TodoRunWake(
-                    kind=TodoWakeKind.SCHEDULE, trigger_names=[], approval_summary=None
-                ),
                 on_started=opened,
             )
         )
@@ -348,8 +364,17 @@ async def _after_failure(task: TaskDocument) -> str:
 
 
 async def _notify_run_failed(task: TaskDocument, body: str) -> None:
-    await notification_service.create_notification(
+    await notification_service.notify(
         NotificationRequest(
+            # One notice per failed occurrence, however often its finish is retried.
+            id=notification_id(
+                task.user_id,
+                "task_run_failed",
+                task.id,
+                str(
+                    task.when.next_run if isinstance(task.when, RepeatWhen) else task.next_check_at
+                ),
+            ),
             user_id=task.user_id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             type=NotificationType.ERROR,

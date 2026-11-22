@@ -12,11 +12,14 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import PrivateAttr
 
-from tests.e2e.test_agent_chain import StreamingScriptedModel
+from tests.e2e._harness.graph_run import StreamingScriptedModel
 
 #: Stands in, in a queued call's args, for the approval id the run's prompt names.
 APPROVAL_ID_FROM_PROMPT = "<approval id from the prompt>"
 _APPROVAL_READY = re.compile(r"APPROVAL_READY (\S+):")
+#: Stands in, in a queued call_executor, for the handle of the newest message the prompt shows.
+MESSAGE_FROM_PROMPT = -1
+_MESSAGE_HANDLE = re.compile(r"\[#(\d+)\]")
 
 
 class TurnQueue(StreamingScriptedModel):
@@ -33,6 +36,10 @@ class TurnQueue(StreamingScriptedModel):
     @property
     def pending(self) -> int:
         return len(self._turns)
+
+    @property
+    def queued(self) -> list[Any]:
+        return list(self._turns)
 
     @property
     def unscripted(self) -> list[str]:
@@ -72,7 +79,13 @@ def _message(turn: Any, messages: list[BaseMessage]) -> BaseMessage:
 
 
 def _with_prompt_ids(tool_call: dict[str, Any], messages: list[BaseMessage]) -> dict[str, Any]:
-    """Fill an approval id placeholder from the prompt, as a model reads the id it was handed."""
+    """Fill an id placeholder from the prompt, as a model reads the id it was handed."""
+    if tool_call["args"].get("for_messages") == [MESSAGE_FROM_PROMPT]:
+        handles = _MESSAGE_HANDLE.findall(" ".join(str(m.content) for m in messages))
+        assert handles, (
+            "a hand-off was queued for the newest message, but no [#n] reached the model"
+        )
+        return {**tool_call, "args": {**tool_call["args"], "for_messages": [int(handles[-1])]}}
     data = tool_call["args"].get("data")
     if not (isinstance(data, dict) and data.get("id") == APPROVAL_ID_FROM_PROMPT):
         return tool_call

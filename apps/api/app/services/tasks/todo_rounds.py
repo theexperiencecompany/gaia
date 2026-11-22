@@ -7,7 +7,6 @@ A nudge inside the user's quiet hours waits for their end; notify off sends noth
 
 from datetime import UTC, datetime
 
-from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.constants.tasks import (
     TASK_DEEP_LINK,
     TODO_DUE_NUDGE_BODY,
@@ -26,15 +25,14 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
     RedirectConfig,
+    notification_id,
 )
 from app.models.task_models import DateWhen, RepeatWhen, TaskDocument, TaskUpdate
 from app.services.analytics_service import capture
-from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
 from app.services.notification_service import notification_service
 from app.services.tasks.arming import arm_at, arm_task
 from app.services.tasks.schedule import next_occurrence
 from app.services.user_service import get_profile_timezone, get_quiet_hours
-from app.utils.auth_utils import require_owner
 from app.utils.occurrence import occurrence_stamp
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.tasks import NudgeChannel, TaskNudged
@@ -155,7 +153,7 @@ async def _nudge(task: TaskDocument, *, repeats: bool) -> str:
         return f"stale_occurrence:{task.id}"
     if claimed.completed:
         return f"completed:{task.id}"
-    channel = await _send_nudge(claimed, repeats=repeats)
+    channel = await _send_nudge(claimed, owed, repeats=repeats)
     held_for_quiet_hours = occurrence_stamp(owed) != occurrence_stamp(_due_time(claimed, owed))
     capture(
         UserId(task.user_id),
@@ -174,28 +172,19 @@ def _due_time(task: TaskDocument, owed: datetime) -> datetime:
     return task.when.at if isinstance(task.when, DateWhen) else owed
 
 
-async def _send_nudge(task: TaskDocument, *, repeats: bool) -> NudgeChannel:
-    """Tell the user on their chat app when that is where they are, else in the app."""
+async def _send_nudge(task: TaskDocument, owed: datetime, *, repeats: bool) -> NudgeChannel:
+    """Tell the user on their chat app when that is where they are, else in the app; once per owed time."""
     body = TODO_REPEAT_NUDGE_BODY if repeats else TODO_DUE_NUDGE_BODY
-    target = await resolve_proactive_target(task.user_id)
-    if isinstance(target, ChatChannel):
-        sent = await deliver_result_to_platforms(
-            user=await require_owner(task.user_id),
-            user_id=task.user_id,
-            notification_text=f"{task.title}: {body}",
-            origin=f'to-do "{task.title}" (id {task.id})',
-            target=target,
-        )
-        if sent is not None:
-            return "chat_app"
-    await notification_service.create_notification(
+    notified = await notification_service.notify(
         NotificationRequest(
+            id=notification_id(task.user_id, "task_nudge", task.id, str(occurrence_stamp(owed))),
             user_id=task.user_id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             content=NotificationContent(
                 title=task.title, body=body, actions=[task_redirect_action(task.id)]
             ),
             metadata={"task_id": task.id},
+            message=f"{task.title}: {body}",
         )
     )
-    return "in_app"
+    return "chat_app" if notified.chat_app else "in_app"

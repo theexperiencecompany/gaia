@@ -70,7 +70,6 @@ USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "adv-{slug}-" + RUN_ID 
 #: message. The user sees both, so the judge and the simulated user must too: poll
 #: the saved conversation. Same contract as chat_quality.py.
 DELIVERY_WAIT_SECONDS = 75.0
-DELIVERY_POLL_SECONDS = 3.0
 TURN_TIMEOUT_SECONDS = 300.0  # a delegated turn on a slow dev lane waits on the executor; 60s timed out 33/35 personas on 2026-09-06
 JUDGE_TIMEOUT_SECONDS = 180.0
 USER_TIMEOUT_SECONDS = 120.0
@@ -91,7 +90,6 @@ TURN_OPTIONS = TurnOptions(
     drop_sentinel_before_delivery=True,
     delivered_prefix="\n\n",
     delivery_wait_seconds=DELIVERY_WAIT_SECONDS,
-    delivery_poll_seconds=DELIVERY_POLL_SECONDS,
 )
 
 PROD_SCENARIOS_PATH = (
@@ -485,10 +483,9 @@ async def _send_turn(
     api_url: str,
     message: str,
     conversation_id: str,
-    history: list[dict[str, str]],
 ) -> Turn:
     """One turn, with the frame kinds and OpenUI blocks this harness reports on."""
-    base = await send_turn(client, api_url, message, conversation_id, history, TURN_OPTIONS)
+    base = await send_turn(client, api_url, message, conversation_id, TURN_OPTIONS)
     return Turn(**base.model_dump(), openui=parse_openui(base.reply))
 
 
@@ -872,16 +869,13 @@ async def _run_persona(
     await _provision(api_url, email, persona)
     conversation = Conversation(persona=persona)
     rows: list[Graded] = []
-    history: list[dict[str, str]] = []
     prior: list[Turn] = []
     message = persona.opener
 
     async with dev_client(email) as client:
         conversation_id = await open_conversation(client, api_url, persona.title)
         for turn_number in range(1, MAX_TURNS + 1):
-            turn = await _send_turn(client, api_url, message, conversation_id, history)
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": turn.reply})
+            turn = await _send_turn(client, api_url, message, conversation_id)
             rows.append(
                 Graded(
                     persona=persona.slug,

@@ -5,33 +5,37 @@
  * They are used by the shared command handlers in commands.ts
  * and can also be called directly when assembling custom responses.
  *
- * formatBotError is the single error formatter for all bots: it words the
- * reason classifyBotFailure gives, then falls back to generic Error messages.
+ * formatBotError is the single error formatter for all bots: one line per
+ * reason classifyBotFailure gives.
  */
 import { slackifyMarkdown } from "slackify-markdown";
-import type { TaskResponse } from "../../api/generated";
-import type { BotConversation, BotWorkflow, PlatformName } from "../types";
-import { BOT_FAILURE_REASON, classifyBotFailure } from "./failure-reasons";
+import type {
+  TaskResponse,
+  WorkflowWithIntegrations,
+} from "../../api/generated";
+import type { BotConversation, PlatformName } from "../types";
+import {
+  BOT_FAILURE_REASON,
+  type BotFailureReason,
+  classifyBotFailure,
+} from "./failure-reasons";
 import { getErrorReason } from "./logger";
 import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
 
 /**
  * Formats a workflow for display in a bot message.
  */
-export function formatWorkflow(workflow: BotWorkflow): string {
-  const status =
-    workflow.status === "active"
-      ? "✅"
-      : workflow.status === "draft"
-        ? "📝"
-        : "⏸️";
-  return `${status} **${workflow.name}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
+export function formatWorkflow(workflow: WorkflowWithIntegrations): string {
+  const status = workflow.activated ? "✅" : "⏸️";
+  return `${status} **${workflow.title}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
 }
 
 /**
  * Formats a list of workflows for display.
  */
-export function formatWorkflowList(workflows: BotWorkflow[]): string {
+export function formatWorkflowList(
+  workflows: WorkflowWithIntegrations[],
+): string {
   if (workflows.length === 0) {
     return "No workflows found. Create one with `/workflow create`";
   }
@@ -80,12 +84,9 @@ export function formatTaskList(tasks: TaskResponse[]): string {
 /**
  * Formats a conversation for display.
  */
-export function formatConversation(
-  conversation: BotConversation,
-  baseUrl: string,
-): string {
+export function formatConversation(conversation: BotConversation): string {
   const title = conversation.title || "Untitled Conversation";
-  const url = `${baseUrl}/c/${conversation.conversation_id}`;
+  const { url } = conversation;
   const messageCount = conversation.message_count
     ? ` (${conversation.message_count} messages)`
     : "";
@@ -98,13 +99,12 @@ export function formatConversation(
  */
 export function formatConversationList(
   conversations: BotConversation[],
-  baseUrl: string,
 ): string {
   if (conversations.length === 0) {
     return "No conversations found.";
   }
 
-  return conversations.map((c) => formatConversation(c, baseUrl)).join("\n\n");
+  return conversations.map(formatConversation).join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -508,7 +508,7 @@ Type /help <command> for details.`,
     "/workflow get <id> - Get workflow details\n" +
     "/workflow execute <id> - Execute a workflow\n" +
     "/workflow delete <id> - Delete a workflow\n" +
-    "/workflow create <name> <description> - Create a workflow",
+    "/workflow create <title> <instructions> - Create a workflow you run on demand",
   todoUsage: {
     add: "Usage: /todo add <title>",
     complete: "Usage: /todo complete <todo-id>",
@@ -518,6 +518,7 @@ Type /help <command> for details.`,
     get: "Usage: /workflow get <workflow-id>",
     execute: "Usage: /workflow execute <workflow-id>",
     delete: "Usage: /workflow delete <workflow-id>",
+    create: "Usage: /workflow create <title> <instructions>",
   },
 };
 
@@ -544,79 +545,40 @@ function buildAccountNotLinkedMessage(platform?: PlatformName): string {
   return `🔗 ${account} isn't linked to GAIA yet. Send /auth to link it.`;
 }
 
+const GENERIC_ERROR_LINE = "❌ Something went wrong. Please try again later.";
+
+/** The line each failure reason shows; a reason missing here shows the generic line. */
+const BOT_ERROR_LINE: Partial<Record<BotFailureReason, string>> = {
+  [BOT_FAILURE_REASON.BOT_API_KEY_INVALID]:
+    "❌ This bot can't reach GAIA right now. We've been alerted; please try again later.",
+  [BOT_FAILURE_REASON.UNAUTHORIZED]:
+    "❌ Authentication required. Use `/auth` to link your account.",
+  [BOT_FAILURE_REASON.NOT_FOUND]:
+    "❌ Not found. Please check the ID and try again.",
+  [BOT_FAILURE_REASON.RATE_LIMITED]:
+    "⏳ You're sending messages too fast. Please wait a moment and try again.",
+  [BOT_FAILURE_REASON.TIMEOUT]:
+    "⏳ The request timed out. The server may be busy. Please try again in a moment.",
+  [BOT_FAILURE_REASON.BACKEND_UNREACHABLE]:
+    "🔌 Connection interrupted. Please try again.",
+};
+
 /**
- * Formats an error message for user display. Pure: the caller records the
- * failure (recordBotFailure) before showing this.
+ * Words a failure by the reason classifyBotFailure gives it. Pure: the caller
+ * records the failure (recordBotFailure) before showing this.
  */
 export function formatBotError(
   error: unknown,
   platform?: PlatformName,
 ): string {
   const reason = classifyBotFailure(error);
-
   if (reason === BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED) {
     return buildAccountNotLinkedMessage(platform);
   }
-
-  if (reason === BOT_FAILURE_REASON.BOT_API_KEY_INVALID) {
-    return "❌ This bot can't reach GAIA right now. We've been alerted; please try again later.";
-  }
-
-  if (reason === BOT_FAILURE_REASON.UNAUTHORIZED) {
-    return "❌ Authentication required. Use `/auth` to link your account.";
-  }
-
-  if (reason === BOT_FAILURE_REASON.NOT_FOUND) {
-    return "❌ Not found. Please check the ID and try again.";
-  }
-
-  if (reason === BOT_FAILURE_REASON.RATE_LIMITED) {
-    // Three different walls return 429 (flat anti-spam, plan message quota, daily AI-usage
-    // budget) and only the body says which; waiting never fixes an exhausted allowance.
-    const fromServer = serverMessage(error);
-    return fromServer
-      ? `⏳ ${fromServer}`
-      : "⏳ You're sending messages too fast. Please wait a moment and try again.";
-  }
-
-  const message = error instanceof Error ? error.message : String(error ?? "");
-
-  if (message.includes("timed out") || message.includes("timeout")) {
-    return "⏳ The request timed out. The server may be busy. Please try again in a moment.";
-  }
-
-  if (
-    message.includes("No response received") ||
-    message.includes("Connection lost before receiving a response")
-  ) {
-    return "❌ Connection lost before receiving a response. Please try again.";
-  }
-
-  if (
-    message.includes("AI is taking longer than expected") ||
-    message.includes("AI is processing your request")
-  ) {
-    return "⏳ Your request is taking longer than usual. Try a simpler question or wait a moment and try again.";
-  }
-
-  if (message.includes("ECONNREFUSED") || message.includes("ETIMEDOUT")) {
-    return "🔌 The GAIA backend is unavailable. Please try again in a moment.";
-  }
-
-  if (
-    message.includes("Connection interrupted") ||
-    message.includes("ECONNRESET") ||
-    message.includes("socket hang up") ||
-    // Node's premature-close error, raised verbatim as `aborted` when a proxy
-    // hangs up mid-response.
-    message === "aborted"
-  ) {
-    return "🔌 Connection interrupted. Please try again.";
-  }
-
-  if (message.includes("Stream processing incomplete")) {
-    return "⚠️ Response was incomplete. Please try again.";
-  }
-
-  return "❌ Something went wrong. Please try again later.";
+  // Three different walls return 429 (flat anti-spam, plan message quota, daily AI-usage
+  // budget) and only the body says which; waiting never fixes an exhausted allowance.
+  const fromServer =
+    reason === BOT_FAILURE_REASON.RATE_LIMITED ? serverMessage(error) : null;
+  if (fromServer) return `⏳ ${fromServer}`;
+  return BOT_ERROR_LINE[reason] ?? GENERIC_ERROR_LINE;
 }

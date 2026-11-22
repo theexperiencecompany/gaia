@@ -7,7 +7,6 @@ its notify switch) recomputes the nudge it owes and arms the task's next time.
 import uuid
 
 from app.constants.tasks import Assignee
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
 from app.models.task_models import (
@@ -21,13 +20,14 @@ from app.models.task_models import (
     When,
 )
 from app.models.task_run_models import TaskRunDocument
-from app.models.todo_models import PendingApprovalRef, SubTask
+from app.models.todo_models import PendingApprovalRef, SubTask, TodoDayWindow
 from app.schemas.tasks import TaskCreateRequest, TaskResponse, TaskUpdateRequest
 from app.services.analytics_service import capture
 from app.services.conversation_service import (
     delete_task_conversations,
     get_or_create_task_conversation,
 )
+from app.services.hil.pending import pending_approvals_by_task
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks.arming import arm_task
 from app.services.tasks.completion import complete_task
@@ -54,15 +54,14 @@ from shared.py.wide_events import log
 
 
 async def _pending_approvals(tasks: list[TaskDocument]) -> dict[str, PendingApprovalRef]:
-    """Find the oldest live approval each GAIA task's runs wait on, for the jump to its card."""
+    """Find the oldest approval each GAIA task's runs wait on, for the jump to its card."""
     gaia_ids = [task.id for task in tasks if task.assignee is Assignee.GAIA]
-    refs: dict[str, PendingApprovalRef] = {}
-    for row in await approval_ledger_repository.list_live_by_tasks(gaia_ids):
-        if row.owner_task_id is not None and row.owner_task_id not in refs:
-            refs[row.owner_task_id] = PendingApprovalRef(
-                approval_id=row.approval_id, conversation_id=row.conversation_id
-            )
-    return refs
+    return {
+        task_id: PendingApprovalRef(
+            approval_id=row.approval_id, conversation_id=row.conversation_id
+        )
+        for task_id, row in (await pending_approvals_by_task(gaia_ids)).items()
+    }
 
 
 async def task_responses(user_id: str, tasks: list[TaskDocument]) -> list[TaskResponse]:
@@ -151,8 +150,8 @@ async def list_tasks(user_id: str, query: TaskQuery) -> TaskPage:
     return await task_repository.list_page(user_id=user_id, query=query)
 
 
-async def task_counts(user_id: str) -> TaskCounts:
-    return await task_repository.compute_counts(user_id=user_id)
+async def task_counts(user_id: str, window: TodoDayWindow) -> TaskCounts:
+    return await task_repository.compute_counts(user_id=user_id, window=window)
 
 
 async def update_task(user_id: str, task_id: str, request: TaskUpdateRequest) -> TaskDocument:

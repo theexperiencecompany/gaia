@@ -16,6 +16,7 @@ import pytest
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.api.v1.middleware.tiered_rate_limiter import TieredRateLimiter, tiered_limiter
 from app.config.settings import settings
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.mongodb import indexes
 from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
@@ -24,7 +25,8 @@ from tests.e2e._harness.app_events import WEBHOOK_SECRET, BotOutbox, composio_do
 from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
 from tests.e2e._harness.tasks_driver import TasksDriver
 from tests.e2e._harness.turn_queue import TurnQueue
-from tests.helpers import skip_items_without_real_services, worker_redis_url
+from tests.helpers import worker_redis_url
+from tests.real_services import mark_real_services
 
 OWNED_COLLECTIONS = (
     "tasks",
@@ -35,6 +37,7 @@ OWNED_COLLECTIONS = (
     "workflow_executions",
     "playbooks",
     "conversations",
+    CONVERSATION_ENTRIES_COLLECTION,
     "notifications",
     "approval_ledger",
     "waits",
@@ -53,12 +56,9 @@ COMPOSIO_USERS = (
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Skip every journey at collection without real Mongo, Redis and Postgres."""
+    """Put every journey behind the real-services gate: they need real Mongo, Redis and Postgres."""
     here = Path(__file__).resolve().parent
-    skip_items_without_real_services(
-        [item for item in items if item.path.is_relative_to(here)],
-        reason="journeys need USE_REAL_SERVICES=1 (real Mongo/Redis/Postgres)",
-    )
+    mark_real_services(item for item in items if item.path.is_relative_to(here))
 
 
 @pytest.fixture
@@ -94,6 +94,8 @@ async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
     await conversations.create_index(
         indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
     )
+    for keys, options in indexes.CONVERSATION_ENTRY_INDEXES:
+        await mongo_db[CONVERSATION_ENTRIES_COLLECTION].create_index(keys, **options)
     yield
     for collection in OWNED_COLLECTIONS:
         await mongo_db[collection].delete_many({"user_id": user_id})
@@ -132,7 +134,7 @@ async def tasks(
     executor, comms = TurnQueue(responses=[]), TurnQueue(responses=[])
     # The session fence mocks the plan limiter; a journey counts runs on the real one, on real Redis.
     real_limiter = TieredRateLimiter.check_and_increment.__get__(tiered_limiter)
-    composio, outbox = composio_double(), BotOutbox()
+    composio, outbox = composio_double(), BotOutbox(FAKE_USER.user_id)
     with ExitStack() as seams:
         seams.enter_context(offline_todo_seams())
         seams.enter_context(patch.object(tiered_limiter, "check_and_increment", real_limiter))

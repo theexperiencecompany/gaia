@@ -12,7 +12,7 @@ notification. The repositories and engine are fakes (stateful where the
 invariant needs state); the task logic is the real module code.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,10 +20,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.memory.ingestion import RetainResult
-from app.models.chat_models import MessageModel
-from app.models.conversation_models import ConversationDocument
+from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import Reply, UserMessage
+from app.models.conversation_models import StoredConversation
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import backfill_user_memories
+from tests.factories import make_loaded_conversation
 
 pytestmark = pytest.mark.stress
 
@@ -67,22 +69,22 @@ class _Backend:
         self.consolidate = consolidate
 
 
-def _conversation(cid: str, content: str) -> ConversationDocument:
-    return ConversationDocument(
-        conversation_id=cid,
-        user_id="user-1",
-        messages=[
-            MessageModel(type="user", response=content),
-            MessageModel(type="bot", response=f"answer: {content}"),
+def _conversation(cid: str, content: str) -> StoredConversation:
+    return make_loaded_conversation(
+        cid,
+        "user-1",
+        [
+            UserMessage(id="m1", text=content, surface=ConversationSource.WEB),
+            Reply(id="r1", reply_id="r1", attempt_id="a1", text=f"answer: {content}"),
         ],
-        createdAt="2025-06-01T10:00:00Z",
+        created_at="2025-06-01T10:00:00Z",
     )
 
 
 @contextmanager
 def _backend(
-    user: UserDocument, conversations: list[ConversationDocument], *, facts: int = 2
-) -> AsyncGenerator[_Backend, None]:
+    user: UserDocument, conversations: list[StoredConversation], *, facts: int = 2
+) -> Iterator[_Backend]:
     user_repo = _FakeUserRepository(user)
     convo_repo = MagicMock()
     convo_repo.recent_for_user = AsyncMock(return_value=conversations)
@@ -97,7 +99,7 @@ def _backend(
         patch(f"{MODULE}.memory_engine.summarize_episode", summarize),
         patch(f"{MODULE}.memory_engine.consolidate", consolidate),
         patch(f"{MODULE}.cancel_consolidation", AsyncMock()),
-        patch(f"{MODULE}.notification_service.create_notification", notify),
+        patch(f"{MODULE}.notification_service.notify", notify),
     ):
         yield _Backend(user_repo, retain, notify, summarize, consolidate)
 

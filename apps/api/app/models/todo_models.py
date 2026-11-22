@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from enum import Enum, StrEnum
 from typing import Annotated, NamedTuple
 
@@ -8,15 +8,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
+    TODO_UPCOMING_DAYS,
     NoReplyPlan,
     WaitingOn,
 )
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionView
 from app.models.workflow_models import WorkflowWithIntegrations
 from app.schemas.common import ResponseModel
 from app.utils.schedule import validate_repeat_rule
+from app.utils.timezone import Timezone
 
 
 class Priority(str, Enum):
@@ -336,6 +338,7 @@ class TodoStats(BaseModel):
     overdue: int = Field(default=0)
     by_priority: dict[str, int] = Field(default_factory=dict)
     by_project: dict[str, int] = Field(default_factory=dict)
+    pending_by_project: dict[str, int] = Field(default_factory=dict)
     completion_rate: float = Field(default=0.0)
     labels: list[TodoLabelCount] | None = None
 
@@ -366,6 +369,58 @@ class SearchMode(str, Enum):
     HYBRID = "hybrid"
 
 
+# due_date_end is inclusive; Mongo keeps milliseconds, so one microsecond before a boundary is its last instant.
+_LAST_INSTANT_BEFORE = timedelta(microseconds=1)
+
+
+class DueRange(NamedTuple):
+    """An inclusive due-date range, as the list filter's due_date_start and due_date_end take it."""
+
+    start: datetime
+    end: datetime
+
+
+class TodoDayWindow(BaseModel):
+    """A user's todo day as UTC instants: today, the upcoming days after it, and the overdue cutoff.
+
+    Today is the user's local calendar day; upcoming is the local days after today;
+    an open todo due before today_start is overdue. Every surface buckets todos with this.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    today_start: datetime
+    tomorrow_start: datetime
+    upcoming_end: datetime
+
+    @classmethod
+    def for_timezone(
+        cls, timezone: Timezone, now: datetime, upcoming_days: int = TODO_UPCOMING_DAYS
+    ) -> "TodoDayWindow":
+        """Build the window around now on the wall clock of timezone."""
+        if now.tzinfo is None:
+            raise ValueError("TodoDayWindow needs a timezone-aware now")
+        local_today = timezone.localize(now).date()
+
+        def local_midnight(days_after_today: int) -> datetime:
+            day = local_today + timedelta(days=days_after_today)
+            return datetime.combine(day, time.min, tzinfo=timezone.tzinfo).astimezone(UTC)
+
+        return cls(
+            today_start=local_midnight(0),
+            tomorrow_start=local_midnight(1),
+            upcoming_end=local_midnight(1 + upcoming_days),
+        )
+
+    @property
+    def today(self) -> DueRange:
+        return DueRange(self.today_start, self.tomorrow_start - _LAST_INSTANT_BEFORE)
+
+    @property
+    def upcoming(self) -> DueRange:
+        return DueRange(self.tomorrow_start, self.upcoming_end - _LAST_INSTANT_BEFORE)
+
+
 class TodoSearchParams(BaseModel):
     q: str | None = None
     mode: SearchMode = Field(default=SearchMode.HYBRID)
@@ -376,11 +431,37 @@ class TodoSearchParams(BaseModel):
     overdue: bool | None = None
     due_date_start: datetime | None = None
     due_date_end: datetime | None = None
+    completed_after: datetime | None = None
     labels: list[str] | None = None
     parent_todo_id: str | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False)
+    day_window: TodoDayWindow | None = Field(
+        default=None, description="The user's day; the overdue filter and stats need it"
+    )
+
+    @property
+    def defaults_to_inbox(self) -> bool:
+        """Whether this is the unfiltered main list, which scopes to Inbox; filtered views never do."""
+        return not (
+            self.project_id
+            or self.q
+            or self.completed is not None
+            or self.priority
+            or self.labels
+            or self.parent_todo_id
+            or self.overdue is not None
+            or self.due_date_start
+            or self.due_date_end
+        )
+
+    @property
+    def required_day_window(self) -> TodoDayWindow:
+        """The user's day window; raises when a day-relative read was built without one."""
+        if self.day_window is None:
+            raise ValueError("overdue and include_stats need the user's day_window")
+        return self.day_window
 
 
 class TodoListParams(BaseModel):
@@ -403,8 +484,10 @@ class TodoListParams(BaseModel):
     )
     due_after: datetime | None = Field(default=None, description="Due date after this date")
     due_before: datetime | None = Field(default=None, description="Due date before this date")
-    due_today: bool = Field(default=False, description="Only todos due today")
-    due_this_week: bool = Field(default=False, description="Only todos due this week")
+    due_today: bool = Field(default=False, description="Only todos due on the user's local today")
+    due_this_week: bool = Field(
+        default=False, description="Only todos due in the 7 local days after today"
+    )
     page: int = Field(default=1, ge=1, le=MAX_PAGE_NUMBER)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False, description="Include statistics in response")
@@ -424,20 +507,16 @@ class TodoListParams(BaseModel):
         )
         return [name for name, is_applied in applied if is_applied]
 
-    def to_search_params(self) -> TodoSearchParams:
-        """Build the service-level search with due_today and due_this_week resolved.
+    def to_search_params(self, window: TodoDayWindow) -> TodoSearchParams:
+        """Build the service-level search with due_today and due_this_week resolved in the user's day.
 
-        Those flags become a concrete due-date range that overrides due_after and due_before.
+        Those flags become the window's today or upcoming range, overriding due_after and due_before.
         """
         due_after, due_before = self.due_after, self.due_before
         if self.due_today:
-            today = datetime.now(UTC).date()
-            due_after = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
-            due_before = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
+            due_after, due_before = window.today
         elif self.due_this_week:
-            now = datetime.now(UTC)
-            due_after = now
-            due_before = now + timedelta(days=7)
+            due_after, due_before = window.upcoming
 
         return TodoSearchParams(
             q=self.q,
@@ -454,6 +533,7 @@ class TodoListParams(BaseModel):
             page=self.page,
             per_page=self.per_page,
             include_stats=self.include_stats,
+            day_window=window,
         )
 
 
@@ -572,6 +652,11 @@ class TodoDocument(UserScopedDocument):
     def runs_once(self) -> bool:
         """Whether nothing will wake this todo again: no recurrence and no watch."""
         return not (self.recurrence or self.trigger_subscriptions)
+
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether the outside object this todo is about is a kind whose run guidance sets its report's form."""
+        return self.external_ref is not None and self.external_ref.source.owns_report_form
 
 
 class TodoUpdate(BaseModel):

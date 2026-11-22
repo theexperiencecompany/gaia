@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.desk_buckets import DeskBucket, Judgment
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 from app.services.quiet_hours_urgency import Urgency
 
 

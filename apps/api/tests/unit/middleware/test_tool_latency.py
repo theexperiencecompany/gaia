@@ -107,6 +107,19 @@ async def test_failing_call_observes_error_span() -> None:
     assert _count("lat-tool-bad", "error") == before + 1
 
 
+async def test_a_failure_reported_in_the_result_body_observes_error_span() -> None:
+    before = _count("lat-tool-envelope", "error")
+    body = '{"successful": false, "error": "Gmail connection expired", "data": {}}'
+    invoke_fn = AsyncMock(return_value=ToolMessage(content=body, tool_call_id="c1"))
+    await _invoke(
+        MiddlewareExecutor([]),
+        {"name": "lat-tool-envelope", "args": {}, "id": "c1"},
+        None,
+        invoke_fn,
+    )
+    assert _count("lat-tool-envelope", "error") == before + 1
+
+
 async def test_mcp_tool_collapses_to_mcp_label() -> None:
     """MCP tool names are unbounded cardinality: the collector sees mcp, the wide event the real name."""
     before = _count("mcp", "success")

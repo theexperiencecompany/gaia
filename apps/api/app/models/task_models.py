@@ -26,9 +26,9 @@ from app.constants.tasks import (
     WhenKind,
 )
 from app.constants.todos import NoReplyPlan, WaitingOn
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 from app.models.scheduler_models import DeactivationReason
-from app.models.todo_models import ExternalRef, Priority, SubTask
+from app.models.todo_models import ExternalRef, Priority, SubTask, TodoDayWindow
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.models.workflow_models import PlaybookDiscard
 
@@ -475,5 +475,7 @@ class TaskQuery(BaseModel):
     due_after: datetime | None = None
     due_before: datetime | None = None
     flags: list[TaskFlag] = Field(default_factory=list)
+    #: The user's day; the overdue filter reads its start.
+    day_window: TodoDayWindow | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=50, ge=1, le=100)

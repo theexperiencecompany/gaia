@@ -16,7 +16,7 @@ from arq import Retry
 
 from app.agents.core.background.task_run_delivery import (
     FinishedTaskRun,
-    complete_delivery,
+    deliver_task_run,
     hand_unfinished_run_to_job,
     report_unfinished_run,
 )
@@ -39,7 +39,6 @@ from app.services.tasks.arming import arm_at, armed_for_current_time, come_round
 from app.services.tasks.gaia_run import resume_gaia_task, run_gaia_task
 from app.services.tasks.run_records import record_event
 from app.services.tasks.todo_rounds import bring_todo_round
-from app.utils.auth_utils import require_owner
 from app.utils.occurrence import parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
@@ -145,7 +144,7 @@ async def finish_task_run(ctx: ArqJobContext, undone: FinishedTaskRun) -> str:
     so a message already sent is not sent twice.
     """
     log.set(task={"id": undone.task_id, "run_id": undone.run_id})
-    left = await complete_delivery(undone, await require_owner(undone.user_id))
+    left = await deliver_task_run(undone)
     if left is None:
         return f"finished:{undone.task_id}"
     if left.delivery != undone.delivery:

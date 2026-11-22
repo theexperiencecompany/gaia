@@ -1,56 +1,42 @@
-import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
-
-import { useCalendarStore } from "@/stores/calendarStore";
+import {
+  type UseQueryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { calendarApi } from "../api/calendarApi";
+import { calendarKeys } from "../api/queryKeys";
 
-/**
- * React Query hook for fetching and syncing calendar preferences from backend
- *
- * This hook fetches the user's selected calendar IDs from the backend and
- * automatically syncs them to the Zustand store when they change.
- *
- * Use this in components that need to initialize calendar preferences from the server,
- * particularly after OAuth connection.
- */
+/** The user's selected calendar ids, as the server stores them. */
 export const useCalendarPreferences = (
   options?: Partial<UseQueryOptions<string[], Error>>,
-) => {
-  const setSelectedCalendars = useCalendarStore(
-    (state) => state.setSelectedCalendars,
-  );
-
-  const query = useQuery({
-    queryKey: ["calendarPreferences"],
-    queryFn: async (): Promise<string[]> => {
-      return await calendarApi.fetchCalendarPreferences();
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes
+) =>
+  useQuery({
+    queryKey: calendarKeys.preferences,
+    queryFn: calendarApi.fetchCalendarPreferences,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
   });
 
-  // Sync backend preferences to store when data is fetched
-  // This will override any localStorage values to ensure backend is source of truth
-  useEffect(() => {
-    if (query.isFetched) {
-      const currentStore = useCalendarStore.getState().selectedCalendars;
-
-      if (query.data && query.data.length > 0) {
-        // Always sync from backend when available; skip if the store already matches.
-        if (JSON.stringify(currentStore) !== JSON.stringify(query.data)) {
-          setSelectedCalendars(query.data);
-        }
-      } else if (query.data && query.data.length === 0) {
-        console.warn(
-          "[Calendar Preferences] Backend returned empty preferences",
-        );
-      }
-    }
-  }, [query.isFetched, query.data, setSelectedCalendars]);
-
-  return query;
+/** Save a new calendar selection, showing it at once and rolling back when the server refuses it. */
+export const useUpdateCalendarPreferences = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: calendarApi.updateCalendarPreferences,
+    onMutate: async (selected: string[]) => {
+      await queryClient.cancelQueries({ queryKey: calendarKeys.preferences });
+      const previous = queryClient.getQueryData<string[]>(
+        calendarKeys.preferences,
+      );
+      queryClient.setQueryData(calendarKeys.preferences, selected);
+      return { previous };
+    },
+    onError: (_error, _selected, context) => {
+      queryClient.setQueryData(calendarKeys.preferences, context?.previous);
+    },
+  });
 };

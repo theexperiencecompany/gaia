@@ -20,6 +20,8 @@ from app.core.websocket_manager import websocket_manager
 from app.memory.ingestion import RetainedMemory
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
+from app.services.conversation.composition import build_runtime_ports
+from app.services.conversation.runtime import install_runtime_ports
 from tests.e2e._harness.background import drain_background_runs
 
 FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
@@ -109,6 +111,11 @@ async def live_graphs(
                 new=AsyncMock(side_effect=lambda name="default_graph": graphs[name]),
             )
         )
+        # The history fold's model is the one production model the ports build themselves.
+        stack.enter_context(
+            patch("app.services.conversation.composition.init_llm", return_value=comms_model)
+        )
+        install_runtime_ports(build_runtime_ports())
         try:
             yield opened
         finally:

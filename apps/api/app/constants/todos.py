@@ -131,10 +131,6 @@ PAUSED_TRIGGER_HOLD_TTL: Final[timedelta] = timedelta(days=30)
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
 
-# A tracked todo's chat gains two messages every run (what woke it, then its report),
-# so each save caps it at its newest messages, keeping the document under MongoDB's 16MB limit.
-TODO_CONVERSATION_MAX_MESSAGES: Final[int] = 100
-
 # The durable job that finishes a run's delivery when the todo store failed it
 # in-process; keyed by the run and its undone step, so each has one job at a time.
 TODO_RUN_FINISH_TASK: Final[str] = "finish_tracked_todo_run"
@@ -157,9 +153,9 @@ class TodoRunDeliveryOutcome(StrEnum):
     DELIVERED = "delivered"
     UNDELIVERED = "undelivered"
     SILENCED = "silenced"
+    NOTHING_TO_REPORT = "nothing_to_report"
     NOTIFY_OFF = "notify_off"
     NARRATION_FAILED = "narration_failed"
-    INVALID_DIRECTIVE = "invalid_directive"
 
 
 class TodoWakeKind(StrEnum):
@@ -412,3 +408,10 @@ LOCK_DEFER_BACKOFF: Final[list[timedelta]] = [
 ]
 # The daily cost-budget feature a triggered todo run charges against.
 TRIGGER_TODO_FEATURE_KEY: Final[str] = "trigger_todo_executions"
+
+# Days after today that count as "upcoming" in the sidebar, the Upcoming page and the agent.
+TODO_UPCOMING_DAYS: Final[int] = 7
+# Previews per bucket in the agent's todos summary.
+TODO_SUMMARY_PREVIEW_LIMIT: Final[int] = 5
+# Top-N labels in the todo stats and the agent's label list.
+TODO_STATS_LABEL_LIMIT: Final[int] = 50

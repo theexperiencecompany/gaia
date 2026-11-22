@@ -14,12 +14,13 @@
 
 import type { TaskCreateRequest } from "../../api/generated";
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchTaskSubcommand,
   handleTaskCreate,
   handleTaskList,
 } from "../utils/commands";
+import { sendChunked } from "../utils/delivery";
+import { parseTextArgs } from "../utils/text";
 
 /** `/todo` command definition with subcommands. */
 export const todoCommand: BotCommand = {

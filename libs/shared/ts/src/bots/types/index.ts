@@ -9,7 +9,10 @@
  * - ChatRequest / ChatResponse: chat API payloads
  * - CommandContext: user identity passed to all shared command handlers
  * - BotConfig: environment config loaded by config/index.ts
- * - Domain types: BotWorkflow, BotConversation (match backend API schemas)
+ * - BotConversation: the conversation list row bots display
+ *
+ * Workflow and todo payloads are the generated API models
+ * (`@gaia/shared/api/generated`), never a hand-written copy.
  */
 
 /**
@@ -140,34 +143,10 @@ export interface RedeemedLinkCode {
   firstContact: string[];
 }
 
-export interface BotWorkflow {
-  id: string;
-  name: string;
-  description: string;
-  status: "active" | "inactive" | "draft";
-  triggers?: Record<string, unknown>[];
-  steps?: Record<string, unknown>[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface BotWorkflowListResponse {
-  workflows: BotWorkflow[];
-}
-
-export interface BotWorkflowExecutionRequest {
-  workflow_id: string;
-  inputs?: Record<string, unknown>;
-}
-
-export interface BotWorkflowExecutionResponse {
-  execution_id: string;
-  status: string;
-  result?: unknown;
-}
-
 export interface BotConversation {
   conversation_id: string;
+  /** The conversation's web app page, built by the server. */
+  url: string;
   title?: string;
   description?: string;
   created_at: string;
@@ -429,13 +408,3 @@ export interface OutboundNotifications {
   /** Sends one whole message, already rendered, as the notification template. */
   deliver(destinationId: string, text: string): Promise<void>;
 }
-
-/**
- * Fired when the backend marks the reply's text final (`reply_complete`), ahead of `done`.
- *
- * `done` only follows the turn's end-of-turn work — follow-up suggestions, and in a delegated
- * turn the whole executor run — so a platform that sends whole messages delivers here instead.
- * `keptText` is every KEPT message so far, in the same shape `onDone` receives; the frame can
- * repeat, and text kept after it (a delegated turn's result) still arrives with `done`.
- */
-export type ReplyCompleteHandler = (keptText: string) => void | Promise<void>;

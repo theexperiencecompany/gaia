@@ -164,6 +164,22 @@ class TestBroadcastToUser:
 
         assert received == {"user_id": "user1", "message": message}
 
+    async def test_an_announcement_is_published_to_the_user(self, fake_redis) -> None:
+        pubsub = fake_redis.pubsub()
+        await pubsub.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
+
+        await self.mgr.announce("user1", {"type": "calendar_changed"})
+
+        received = None
+        for _ in range(5):
+            frame = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if frame and frame.get("type") == "message":
+                received = json.loads(frame["data"])
+                break
+        await pubsub.aclose()
+
+        assert received == {"user_id": "user1", "message": {"type": "calendar_changed"}}
+
     async def test_does_not_write_to_local_sockets(self, fake_redis) -> None:
         """The listener owns delivery. A direct write here is the double-send bug."""
         ws = AsyncMock()

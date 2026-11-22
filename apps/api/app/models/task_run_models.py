@@ -6,7 +6,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.tasks import TaskRunKind, TaskRunStatus
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.workflow_execution_models import RecordedCall
 
 

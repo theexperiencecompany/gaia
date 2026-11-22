@@ -360,11 +360,14 @@ async def _migrate_playbooks(run: _Run) -> None:
 async def _add_field(
     run: _Run, phase: Phase, collection: str, key: Document, field_name: str, value: str
 ) -> None:
-    """Give a shared document one new field; a document that already has it is left alone."""
+    """Give a shared document one new field; a document that already holds a value for it is left alone.
+
+    A null counts as unset: today's models write their optional fields as null.
+    """
     run.report.written[phase] += 1
     if run.apply:
         await run.db[collection].update_one(
-            {**key, field_name: {"$exists": False}}, {"$set": {field_name: value}}
+            {**key, field_name: None}, {"$set": {field_name: value}}
         )
 
 

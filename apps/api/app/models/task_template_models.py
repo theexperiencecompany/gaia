@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.tasks import TemplateOrigin, WhenKind
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 
 
 class TemplateNoWhen(BaseModel):

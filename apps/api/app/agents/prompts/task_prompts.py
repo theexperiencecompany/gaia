@@ -113,9 +113,3 @@ SUBTASKS_CUT_NOTE = (
     '(Only the first {limit} are shown; more are open. list_tasks(parent_id="{task_id}") '
     "lists them.)"
 )
-
-# Continues a run that parked on an approval, once the user approved it.
-APPROVAL_RESUME_BRIEF = (
-    "Approval {approval_id} was granted: {receipt} The action has run; verify with a read if "
-    "you need certainty, never re-run the granted call blind. Continue the run from here."
-)
