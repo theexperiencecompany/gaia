@@ -1,7 +1,8 @@
 """Hold a composition to what code can enforce, and salvage a correct brief when the model never does.
 
 Code fixes what it can decide alone (an id twice or unknown, a second item titled as an earlier
-one, a producer's action or outcome, the page budget by the composition's own order); a block that still breaks its contract after the
+one, two groups of one state under one heading, a producer's action or outcome, the page budget
+by the composition's own order); a block that still breaks its contract after the
 retry is dropped, a misfit heading gives way to one code derives from what the group's items share, and a
 composition with nothing left is built from the pool. The user always gets a correct brief.
 """
@@ -156,8 +157,23 @@ def _kept(
     return kept
 
 
+def _merged_into_earlier(blocks: list[ComposedBlock], group: ComposedItems) -> bool:
+    """Fold the group into an earlier one of its state under its heading, room allowing; False if none."""
+    heading = same_text_key(group.heading)
+    for at, block in enumerate(blocks):
+        if (
+            isinstance(block, ComposedItems)
+            and block.state is group.state
+            and same_text_key(block.heading) == heading
+            and len(block.items) + len(group.items) <= MAX_ITEMS_PER_BLOCK
+        ):
+            blocks[at] = block.model_copy(update={"items": [*block.items, *group.items]})
+            return True
+    return False
+
+
 def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
-    """Enforce what code decides alone: known ids and titles once each, producers' sides, one lead, the budget.
+    """Enforce what code decides alone: known ids and titles once each, one group per heading, producers' sides, one lead, the budget.
 
     A pending approval no brief has shown always has its place: the composer's choice is
     what else fills the page.
@@ -190,7 +206,9 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
             if not items:
                 continue
             state = _shared_state(items) or block.state
-            blocks.append(block.model_copy(update={"items": items, "state": state}))
+            group = block.model_copy(update={"items": items, "state": state})
+            if not _merged_into_earlier(blocks, group):
+                blocks.append(group)
         elif block.kind == "chart":
             charts += 1
             if charts <= MAX_BRIEF_CHARTS:
@@ -237,7 +255,10 @@ def salvaged(composition: BriefComposition, pool: FactPool, values: SlotValues) 
     """Keep every block of the composition that holds its contract; build from the pool if none does."""
     kept: list[ComposedBlock] = []
     for block in repaired(composition, pool).blocks:
-        if (sound := _sound(len(kept), block, pool, values)) is not None:
+        sound = _sound(len(kept), block, pool, values)
+        if isinstance(sound, ComposedItems) and _merged_into_earlier(kept, sound):
+            continue
+        if sound is not None:
             kept.append(sound)
     if kept:
         return BriefComposition(blocks=kept)

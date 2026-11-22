@@ -37,6 +37,7 @@ from app.models.brief_composition_models import (
 )
 from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, SeriesShape
+from app.services.briefing.candidates.subjects import same_text_key
 from app.services.briefing.claims import dependency_problems, duration_problems, goal_problems
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.slots import SlotError, SlotValues, render_slots, slot_problems
@@ -320,6 +321,22 @@ def _slot_problems(composition: BriefComposition, values: SlotValues) -> list[st
     return problems
 
 
+def _shared_heading_problems(composition: BriefComposition) -> list[str]:
+    """Name each heading more than one group carries: a heading is one section of the brief."""
+    numbers: dict[str, list[int]] = {}
+    headings: dict[str, str] = {}
+    for number, block in enumerate(composition.blocks, start=1):
+        if isinstance(block, ComposedItems):
+            key = same_text_key(block.heading)
+            numbers.setdefault(key, []).append(number)
+            headings.setdefault(key, block.heading)
+    return [
+        says.SHARED_HEADING.format(blocks=" and ".join(map(str, at)), heading=headings[key])
+        for key, at in numbers.items()
+        if len(at) > 1
+    ]
+
+
 def composition_problems(
     composition: BriefComposition, pool: FactPool, values: SlotValues
 ) -> list[str]:
@@ -332,4 +349,5 @@ def composition_problems(
     repeated = sorted(i for i, n in Counter(_placed_ids(composition)).items() if n > 1)
     if repeated:
         problems.append(says.PLACED_TWICE.format(ids=", ".join(repeated)))
+    problems += _shared_heading_problems(composition)
     return problems + _budget_problems(composition) + _slot_problems(composition, values)

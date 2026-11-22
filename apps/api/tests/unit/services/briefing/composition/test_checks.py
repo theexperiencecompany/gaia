@@ -200,6 +200,14 @@ class TestAHoldingComposition:
         assert _problems() == []
 
 
+def test_two_groups_under_one_heading_are_sent_back() -> None:
+    """Dhruv 11-03/04: two groups both read "Replies waiting on you"."""
+    assert _problems(_items(1, 2), _items(3, heading=" waiting ON you")) == [
+        "blocks 1 and 2 share the heading 'Waiting on you'; a heading names one section, so "
+        "give each group one that says what sets it apart"
+    ]
+
+
 class TestIdsOnlyAndEachOnce:
     @pytest.mark.parametrize(
         ("block", "problem"),

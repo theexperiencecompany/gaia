@@ -87,8 +87,12 @@ def _item(
     )
 
 
-def _group(*items: ComposedItem, state: GroupState = GroupState.NEEDS_YOU) -> ComposedItems:
-    return ComposedItems(kind="items", state=state, heading="Waiting on you", items=list(items))
+def _group(
+    *items: ComposedItem,
+    state: GroupState = GroupState.NEEDS_YOU,
+    heading: str = "Waiting on you",
+) -> ComposedItems:
+    return ComposedItems(kind="items", state=state, heading=heading, items=list(items))
 
 
 def _lead(item: ComposedItem) -> ComposedLead:
@@ -167,9 +171,11 @@ class TestTheLead:
         assert repaired(_of(_lead(_item(99)), _group(_item(1))), MANY) == _of(_group(_item(1)))
 
     def test_an_item_placed_in_two_groups_stays_in_the_first(self) -> None:
-        composition = _of(_group(_item(1), _item(2)), _group(_item(2), _item(3)))
+        composition = _of(_group(_item(1), _item(2)), _group(_item(2), _item(3), heading="Money"))
 
-        assert repaired(composition, MANY) == _of(_group(_item(1), _item(2)), _group(_item(3)))
+        assert repaired(composition, MANY) == _of(
+            _group(_item(1), _item(2)), _group(_item(3), heading="Money")
+        )
 
     def test_a_leads_item_is_not_placed_again(self) -> None:
         composition = _of(_lead(_item(1)), _group(_item(1), _item(2)))
@@ -194,6 +200,31 @@ class TestTheLead:
         )
 
         assert repaired(composition, MANY) == _of(_lead(_item(1, title=mercury)), _group(_item(2)))
+
+
+class TestOneHeading:
+    @pytest.mark.regression
+    def test_two_groups_of_one_state_under_one_heading_are_one_group_where_the_first_stood(
+        self,
+    ) -> None:
+        """Dhruv 11-03/04: two needs-you groups both read "Replies waiting on you"."""
+        composition = _of(
+            _group(_item(1)), _group(_item(2), heading="Money"), _group(_item(3), _item(4))
+        )
+
+        assert repaired(composition, MANY) == _of(
+            _group(_item(1), _item(3), _item(4)), _group(_item(2), heading="Money")
+        )
+
+    def test_groups_of_two_states_or_past_what_a_group_holds_stay_apart(self) -> None:
+        done = _item(4, action=None, outcome=BriefOutcome.FINISHED)
+        composition = _of(
+            _group(_item(1), _item(2), _item(3)),
+            _group(done, state=GroupState.DONE),
+            _group(_item(5), _item(6), _item(7)),
+        )
+
+        assert repaired(composition, MANY) == composition
 
 
 APPROVAL = _candidate(
