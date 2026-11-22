@@ -7,6 +7,7 @@ Handles Composio trigger reference counting to prevent premature deletion.
 
 from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.trigger_config import WorkflowTriggerResponse
@@ -56,12 +57,13 @@ class TriggerService:
         excluding_workflow_id: str | None = None,
         *,
         excluding_todo_id: str | None = None,
+        excluding_task_id: str | None = None,
     ) -> list[str]:
         """Filter trigger IDs to those safe to delete from Composio.
 
         Composio upserts identical configs onto one trigger instance, so a
-        workflow and a tracked todo can share an id — safe to delete only
-        when NEITHER consumer still references it. The owner being deleted
+        workflow, a tracked todo and a task can share an id: safe to delete only
+        when NO consumer still references it. The owner being deleted
         is excluded from its own side of the count.
         """
         safe_to_delete = []
@@ -70,8 +72,12 @@ class TriggerService:
             try:
                 count = await workflow_repository.count_trigger_references(
                     trigger_id, excluding_workflow_id=excluding_workflow_id
-                ) + await todo_repository.count_trigger_references(
+                )
+                count += await todo_repository.count_trigger_references(
                     trigger_id, excluding_todo_id=excluding_todo_id
+                )
+                count += await task_repository.count_trigger_references(
+                    trigger_id, excluding_task_id=excluding_task_id
                 )
 
                 if count == 0:
@@ -149,13 +155,14 @@ class TriggerService:
         workflow_id: str | None = None,
         *,
         todo_id: str | None = None,
+        task_id: str | None = None,
     ) -> bool:
         """Unregister triggers using the appropriate handler.
 
-        Only deletes a trigger from Composio when neither a workflow nor a
-        tracked todo still references it (owners with identical configs
-        share a trigger ID). Pass the owner being torn down so it is not
-        counted as a reference to itself.
+        Only deletes a trigger from Composio when no workflow, tracked todo or
+        task still references it (owners with identical configs share a trigger
+        ID). Pass the owner being torn down so it is not counted as a reference
+        to itself.
         """
         if not trigger_ids:
             return True
@@ -173,7 +180,10 @@ class TriggerService:
         try:
             # Filter to only triggers safe to delete
             safe_to_delete = await TriggerService.get_triggers_safe_to_delete(
-                trigger_ids, excluding_workflow_id=workflow_id, excluding_todo_id=todo_id
+                trigger_ids,
+                excluding_workflow_id=workflow_id,
+                excluding_todo_id=todo_id,
+                excluding_task_id=task_id,
             )
 
             if not safe_to_delete:

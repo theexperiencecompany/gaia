@@ -13,13 +13,11 @@ from typing import Any, Literal, TypedDict
 
 from composio_client import APIStatusError
 from pydantic import BaseModel, Field, StrictInt, ValidationError
-from redis.exceptions import RedisError
 
 from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import QUIET_HOURS_CONTEXT_KEY, GateOwner
-from app.constants.triggers import TRIGGER_OCCURRENCE_KEY, TRIGGER_OCCURRENCE_TTL_SECONDS
-from app.db.redis import redis_cache
+from app.constants.triggers import DISPATCH_TO_SUBSCRIBERS_JOB
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
@@ -30,6 +28,7 @@ from app.services.triggers.batching import (
     coalesce_window_seconds,
     hold_trigger_event,
 )
+from app.services.triggers.occurrences import claim_occurrence
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -125,33 +124,6 @@ def _log_event_timing(data: Mapping[str, object], now_utc: datetime) -> None:
             f"{LogTag.TRIGGER} webhook fired far from expected time — lag=s (positive = late, negative = early)",
             webhook_lag=webhook_lag,
         )
-
-
-async def _claim_occurrence(workflow_id: str, occurrence: str) -> bool:
-    """Take a workflow's one run for an occurrence; False when another trigger already took it.
-
-    Redis down fires anyway, as batching does: a duplicate reminder beats a missed meeting.
-    """
-    client = redis_cache.redis
-    if client is None:
-        log.warning(f"{LogTag.TRIGGER} Redis unavailable — occurrence dedupe skipped")
-        return True
-    key = TRIGGER_OCCURRENCE_KEY.format(workflow_id=workflow_id, occurrence=occurrence)
-    try:
-        claimed = await client.set(
-            key,
-            "1",  # pragma: no mutate — only the key's presence is read
-            nx=True,
-            ex=TRIGGER_OCCURRENCE_TTL_SECONDS,
-        )
-        return bool(claimed)
-    except RedisError as exc:
-        log.warning(
-            f"{LogTag.TRIGGER} Redis write failed — occurrence dedupe skipped",
-            error=str(exc),
-            error_type=type(exc).__name__,
-        )
-        return True
 
 
 async def primary_account_for_trigger(user_id: str, composio_slug: str) -> str:
@@ -433,8 +405,10 @@ class TriggerHandler(ABC):
         log.set_ns("trigger", matched_count=len(workflows))
 
         # Handed off BEFORE the no-workflow return below: an event that matches no
-        # workflow can still be the reply a todo has been waiting for.
-        todos_queued = await self._queue_todo_dispatch(event_type, trigger_id, user_id, data)
+        # workflow can still be the reply a todo or a task has been waiting for.
+        subscribers_queued = await self._queue_subscriber_dispatch(
+            event_type, trigger_id, user_id, data
+        )
 
         if not workflows:
             log.set_ns("trigger", fired=False)
@@ -443,7 +417,7 @@ class TriggerHandler(ABC):
                 outcome="no_match",
                 event_type=event_type,
                 trigger_id=trigger_id,
-                todo_dispatch_queued=todos_queued,
+                subscriber_dispatch_queued=subscribers_queued,
             )
             return TriggerEventResult(status="success", message="No matching workflows")
 
@@ -466,30 +440,31 @@ class TriggerHandler(ABC):
 
         return TriggerEventResult(status="success", message=f"Queued {queued_count} workflows")
 
-    async def _queue_todo_dispatch(
+    async def _queue_subscriber_dispatch(
         self, event_type: str, trigger_id: str | None, user_id: str | None, data: dict[str, object]
     ) -> bool:
-        """Hand the todo fan-out to its worker task. Returns whether it was queued.
+        """Hand the todo and task fan-out to its worker task. Returns whether it was queued.
 
-        Enqueue rather than call: dispatch needs the todo completion path, which
-        imports the trigger stack back to tear subscriptions down, and a task
-        name (a string) never forms that cycle. A failure here must not cost
-        the workflow dispatch below it — the two consumers are independent.
+        Enqueue rather than call: dispatch needs the todo and task stacks, which
+        import the trigger stack back (to register and release subscriptions), and a
+        task name (a string) never forms that cycle. A failure here must not cost
+        the workflow dispatch below it: the consumers are independent.
         """
         try:
             pool = await RedisPoolManager.get_pool()
             await enqueue_worker_job(
                 pool,
-                "dispatch_todo_subscriptions",
+                DISPATCH_TO_SUBSCRIBERS_JOB,
                 self.trigger_names_for_event(event_type),
                 trigger_id,
                 user_id,
                 data,
+                self.occurrence_key(event_type, data),
             )
             return True
         except Exception as e:
             log.error(
-                "trigger_todo_dispatch_enqueue_failed",
+                "trigger_subscriber_dispatch_enqueue_failed",
                 event_type=event_type,
                 trigger_id=trigger_id,
                 error=str(e),
@@ -540,7 +515,7 @@ class TriggerHandler(ABC):
                 )
                 return False
             occurrence = self.occurrence_key(event_type, data)
-            if occurrence is not None and not await _claim_occurrence(workflow.id, occurrence):
+            if occurrence is not None and not await claim_occurrence(workflow.id, occurrence):
                 log.info(
                     "trigger_workflow_occurrence_already_fired",
                     outcome="duplicate_occurrence",

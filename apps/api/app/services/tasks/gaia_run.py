@@ -64,6 +64,7 @@ from app.services.integrations.user_integrations import get_connected_integratio
 from app.services.notification_service import notification_service
 from app.services.tasks.arming import arm_at
 from app.services.tasks.completion import complete_task
+from app.services.tasks.event_window import reschedule_task_event_drain
 from app.services.tasks.open_state import hold_ran_out, wake_budget_update
 from app.services.tasks.run_brief import build_scheduled_brief, collect_run_context
 from app.services.tasks.run_records import (
@@ -73,6 +74,7 @@ from app.services.tasks.run_records import (
     record_skipped_run,
 )
 from app.services.tasks.schedule import next_occurrence
+from app.services.tasks.subscriptions import release_subscriptions
 from app.services.tasks.todo_rounds import task_redirect_action
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.timezone import Timezone
@@ -87,17 +89,15 @@ _GMAIL_REF_SOURCES = frozenset({ExternalRefSource.INBOX_DESK, ExternalRefSource.
 
 async def run_gaia_task(task: TaskDocument, armed_for: datetime) -> str:
     """Run the GAIA task for the occurrence armed_for names; return what became of the fire."""
-    if skipped := await _skip_reason(task):
+    if skipped := await skip_reason(task, TaskRunTrigger.SCHEDULE):
         return skipped
     try:
         user = await require_owner(task.user_id)
     except OwnerNotFoundError as missing:
-        log.error("task.owner_not_a_user", task_id=task.id, error=str(missing))
-        await complete_task(task, "closed: its owner is not a GAIA user")
-        return f"no_owner:{task.id}"
+        return await close_ownerless(task, missing)
     if not await is_paid(task.user_id):
-        return await _pause_unpaid(task)
-    if paused := await _paused_reason(task):
+        return await pause_unpaid(task, TaskRunTrigger.SCHEDULE)
+    if paused := await gmail_pause_reason(task):
         return await _skip_while_paused(task, paused)
 
     claimed = await task_repository.claim_run(task.id, armed_for=armed_for)
@@ -109,7 +109,20 @@ async def run_gaia_task(task: TaskDocument, armed_for: datetime) -> str:
         ran, outcome = await _run_claimed(claimed, user)
         return outcome
     finally:
-        await task_repository.finish_run(claimed.id, user_id=claimed.user_id, ran=ran)
+        await finish_run(claimed, ran)
+
+
+async def finish_run(task: TaskDocument, ran: TaskRunStatus | None) -> None:
+    """Put the claimed task back to idle, then run the app events that landed while it ran."""
+    await task_repository.finish_run(task.id, user_id=task.user_id, ran=ran)
+    await reschedule_task_event_drain(task.id)
+
+
+async def close_ownerless(task: TaskDocument, missing: OwnerNotFoundError) -> str:
+    """Close a task whose owner is not a GAIA user; nobody is left to run it for."""
+    log.error("task.owner_not_a_user", task_id=task.id, error=str(missing))
+    await complete_task(task, "closed: its owner is not a GAIA user")
+    return f"no_owner:{task.id}"
 
 
 async def resume_gaia_task(
@@ -128,9 +141,7 @@ async def resume_gaia_task(
     try:
         user = await require_owner(task.user_id)
     except OwnerNotFoundError as missing:
-        log.error("task.owner_not_a_user", task_id=task.id, error=str(missing))
-        await complete_task(task, "closed: its owner is not a GAIA user")
-        return f"no_owner:{task.id}"
+        return await close_ownerless(task, missing)
     claimed = await task_repository.claim_run(task.id, armed_for=None)
     if claimed is None:
         return None
@@ -139,7 +150,7 @@ async def resume_gaia_task(
         ran, outcome = await _resume_claimed(claimed, user, conversation_id, approval_id, receipt)
         return outcome
     finally:
-        await task_repository.finish_run(claimed.id, user_id=claimed.user_id, ran=ran)
+        await finish_run(claimed, ran)
 
 
 async def _resume_claimed(
@@ -209,7 +220,7 @@ def task_run_of(task: TaskDocument, trigger: TaskRunTrigger, wake: TodoRunWake) 
     )
 
 
-async def _skip_reason(task: TaskDocument) -> str | None:
+async def skip_reason(task: TaskDocument, trigger: TaskRunTrigger) -> str | None:
     """Return the result of a fire this task must not run, or None when it runs."""
     if task.completed:
         return f"completed:{task.id}"
@@ -224,15 +235,13 @@ async def _skip_reason(task: TaskDocument) -> str | None:
                 task.id, user_id=task.user_id, update=TaskUpdate(next_check_at=None)
             )
             await record_skipped_run(
-                task,
-                TaskRunTrigger.SCHEDULE,
-                f"not run: it expired at {task.expires_at.isoformat()}",
+                task, trigger, f"not run: it expired at {task.expires_at.isoformat()}"
             )
         return f"expired:{task.id}"
     return None
 
 
-async def _pause_unpaid(task: TaskDocument) -> str:
+async def pause_unpaid(task: TaskDocument, trigger: TaskRunTrigger) -> str:
     """Pause a task whose owner is not paid, so the paywall blocks it once rather than every fire."""
     log.warning("task.paused_subscription_required", task_id=task.id)
     capture_paywall_block(task.user_id, PAYWALL_FEATURE_GAIA_TASK)
@@ -241,14 +250,12 @@ async def _pause_unpaid(task: TaskDocument) -> str:
     )
     if paused is not None:
         await record_skipped_run(
-            paused,
-            TaskRunTrigger.SCHEDULE,
-            "paused: runs need an active subscription, and resume when it starts",
+            paused, trigger, "paused: runs need an active subscription, and resume when it starts"
         )
     return f"paused:{task.id} (subscription required)"
 
 
-async def _paused_reason(task: TaskDocument) -> str | None:
+async def gmail_pause_reason(task: TaskDocument) -> str | None:
     """Say why the task cannot run right now: Gmail work without Gmail connected."""
     ref = task.external_ref
     if ref is None or ref.source not in _GMAIL_REF_SOURCES:
@@ -337,17 +344,29 @@ async def _after_failure(task: TaskDocument) -> str:
         return f"retry:{task.id} (attempt {attempt})"
     if isinstance(task.when, RepeatWhen):
         # Marking a repeat failed would stop every later run for an outage usually gone by then.
-        await _notify_run_failed(
-            task,
-            f"This run of '{task.title}' failed after {MAX_RETRY_ATTEMPTS} attempts. "
-            "It runs again at its next scheduled time.",
-        )
+        await notify_occurrence_given_up(task)
         await _advance_repeat(task, task.when)
         return f"gave_up:{task.id} (max retries reached; the next occurrence is armed)"
+    return await mark_failed(task, attempt)
+
+
+async def notify_occurrence_given_up(task: TaskDocument) -> None:
+    """Tell the user a repeat gave up on one run; its next occurrence still runs."""
+    await _notify_run_failed(
+        task,
+        f"This run of '{task.title}' failed after {MAX_RETRY_ATTEMPTS} attempts. "
+        "It runs again at its next scheduled time.",
+    )
+
+
+async def mark_failed(task: TaskDocument, attempt: int) -> str:
+    """Stop a one-off task after its last failed attempt, release its app events and tell the user once."""
     await task_repository.update(
         task.id, user_id=task.user_id, update=TaskUpdate(retry_count=attempt)
     )
     await task_repository.add_flags(task.id, user_id=task.user_id, flags=[TaskFlag.FAILED])
+    # A failed task never runs until the flag is cleared, so its events would only burn upstream.
+    await release_subscriptions(task)
     await record_event(
         task,
         TaskLogEvent.MARKED_FAILED,

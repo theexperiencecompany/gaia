@@ -31,6 +31,7 @@ from app.services.integrations.integration_status import (
 from app.services.integrations.user_integration_status import publish_connected
 from app.services.onboarding.intelligence_job import enqueue_gmail_personalization
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.tasks.subscriptions import resume_for_connected_account
 from app.services.todos.inbox_desk import queue_inbox_desk_provision
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.integration_pause import (
@@ -339,9 +340,15 @@ async def handle_oauth_connection(
 
     if integration_config.associated_triggers:
         _setup_account_triggers(user_id, integration_config, connected, background_tasks)
-        # Any account coming back revives the todo watches its death paused.
+        # Any account coming back revives the todo watches and tasks its death paused.
         background_tasks.add_task(
             resume_watches_for_connected_account,
+            user_id,
+            integration_config.id,
+            connected.account.id,
+        )
+        background_tasks.add_task(
+            resume_for_connected_account,
             user_id,
             integration_config.id,
             connected.account.id,

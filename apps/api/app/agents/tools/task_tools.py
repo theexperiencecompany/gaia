@@ -11,6 +11,7 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.tools.trigger_catalog import parse_conditions, parse_match, render_catalog
 from app.config.oauth_config import get_integration_by_id
 from app.constants.tasks import Assignee, WhenKind
 from app.constants.todos import (
@@ -19,6 +20,7 @@ from app.constants.todos import (
     NoReplyPlan,
     WaitingOn,
 )
+from app.constants.trigger_gates import GateAuthor
 from app.db.repositories.tasks import task_repository
 from app.decorators import with_doc
 from app.models.agent_models import get_user_id, read_agent_configurable
@@ -31,6 +33,8 @@ from app.models.task_models import (
     Waiting,
 )
 from app.models.todo_models import default_notify_on_run
+from app.models.trigger_gate_models import AuthoredGate, GateCondition
+from app.models.trigger_subscription_models import ConditionMatch
 from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks import task_service
@@ -44,11 +48,23 @@ from app.services.tasks.open_state import (
     describe_open_state,
     waiting_after,
 )
+from app.services.tasks.subscriptions import SubscriptionRequest, subscribe, unsubscribe
 from app.services.tasks.todo_rounds import first_repeat
+from app.services.todos.account_refs import watched_account_id
 from app.services.todos.errors import OpenStateError
+from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS, SubscriptionError
+from app.services.triggers.subscription_validation import validate_scope
 from app.services.user_service import get_profile_timezone
-from app.templates.docstrings.task_tool_docs import COMPLETE_TASK, CREATE_TASK, UPDATE_TASK
+from app.templates.docstrings.task_tool_docs import (
+    COMPLETE_TASK,
+    CREATE_TASK,
+    LIST_EVENT_FIELDS,
+    SUBSCRIBE_TASK,
+    UNSUBSCRIBE_TASK,
+    UPDATE_TASK,
+)
 from app.utils.schedule import InvalidScheduleError, validate_repeat_rule
+from shared.py.analytics.catalog.properties import Identifier
 
 _NEXT_CHECK_DESC = (
     "GAIA tasks: when GAIA next looks at it, as a duration from now ('30m', '4h', '3d', '1w') "
@@ -368,4 +384,141 @@ async def complete_task(
     return f"{'To-do' if task.assignee is Assignee.USER else 'Task'} {task_id} completed."
 
 
-tools = [create_task, update_task, complete_task]
+@tool
+@with_doc(LIST_EVENT_FIELDS)
+async def list_event_fields(
+    trigger_name: Annotated[
+        str,
+        "GAIA event slug, e.g. 'gmail_new_message', 'calendar_event_starting_soon', "
+        "'slack_new_message'. A wrong name returns every event a task can subscribe to.",
+    ],
+) -> str:
+    return render_catalog(trigger_name)
+
+
+@tool
+@with_doc(SUBSCRIBE_TASK)
+async def subscribe_task(
+    config: RunnableConfig,
+    task_id: Annotated[str, "Id of the GAIA task that runs when the event arrives"],
+    # Identifier-typed: a slug analytics cannot carry fails the args schema before registering.
+    trigger_name: Annotated[Identifier, "GAIA event slug to listen for, e.g. 'gmail_new_message'"],
+    conditions: Annotated[
+        list[dict[str, str | int | float]] | None,
+        "Narrowing tests, each {'field_name': ..., 'operator': ..., 'value': ...} on fields from "
+        "list_event_fields. Omit to run on every event, sensible only for an event already "
+        "scoped to one channel or calendar.",
+    ] = None,
+    match: Annotated[
+        str,
+        "How the conditions combine: 'all' (every one holds, the default) or 'any' (one is "
+        "enough). For an OR of several ANDs, subscribe several times.",
+    ] = ConditionMatch.ALL.value,
+    cooldown_seconds: Annotated[
+        int, "Events within this many seconds of a run ride the next run together."
+    ] = DEFAULT_COOLDOWN_SECONDS,
+    scope: Annotated[
+        dict[str, str | bool | int | float | list[str]] | None,
+        "Registration config naming the resource to watch, e.g. {'repos': ['owner/name']} "
+        "for github, {'minutes_before_start': 60} for calendar_event_starting_soon. Not a "
+        "payload condition; list_event_fields shows the scope an event needs.",
+    ] = None,
+    account: Annotated[
+        str | None,
+        "Only events on this one connected account, by its listed name or id. Omit to "
+        "listen on every account of the app.",
+    ] = None,
+    runs_only_when: Annotated[
+        GateCondition | None,
+        "One short sentence about the event itself, from the task's intent, naming which "
+        "events are worth a run, e.g. 'The reply confirms the invoice is paid or asks about "
+        "it.' GAIA checks it before each run and skips an event that clearly fails it, so "
+        "keep it as broad as the task needs. Omit when every matching event should run.",
+    ] = None,
+) -> str:
+    user_id = get_user_id(config)
+    parsed_match = parse_match(match)
+    if parsed_match is None:
+        valid = ", ".join(m.value for m in ConditionMatch)
+        return f"Error: '{match}' is not a valid match mode. Valid modes: {valid}."
+    parsed_conditions, condition_error = parse_conditions(conditions or [])
+    if condition_error:
+        return f"Error: {condition_error}\n\n{render_catalog(trigger_name)}"
+    if scope_errors := validate_scope(trigger_name, scope):
+        return f"Error: {' '.join(scope_errors)}\n\n{render_catalog(trigger_name)}"
+    account_id = await watched_account_id(user_id, trigger_name, account) if account else None
+    if account and account_id is None:
+        return f"Error: no connected account for {trigger_name} is named {account!r}."
+    gate = (
+        None
+        if runs_only_when is None
+        else AuthoredGate(condition=runs_only_when, author=GateAuthor.GAIA)
+    )
+    try:
+        task = await task_service.require_task(user_id, task_id)
+        stored = await subscribe(
+            task,
+            SubscriptionRequest(
+                trigger_name=trigger_name,
+                conditions=parsed_conditions,
+                match=parsed_match,
+                cooldown_seconds=cooldown_seconds,
+                trigger_data=scope or None,
+                account_id=account_id,
+                gate=gate,
+            ),
+        )
+    except TaskNotFoundError as missing:
+        return f"Error: {missing.message}"
+    except SubscriptionError as refused:
+        # The catalog rides along on failure, so the retry has what it needs.
+        return f"Could not subscribe: {refused}\n\n{render_catalog(trigger_name)}"
+    subscription = stored.subscription
+    if not stored.created:
+        runs_on = (
+            f"runs only when: {subscription.gate.display_condition}"
+            if subscription.gate
+            else "runs on every matching event"
+        )
+        return (
+            f"Task {task_id} already listens for {trigger_name} with these settings "
+            f"(subscription id: {subscription.id}), so nothing new was stored and it still "
+            f"{runs_on}. To change runs_only_when, unsubscribe it and subscribe again."
+        )
+    lines = [
+        f"Task {task_id} now runs when {trigger_name} arrives.",
+        f"Subscription id: {subscription.id}",
+    ]
+    if stored.outcome.repairs:
+        lines.append("Repaired: " + "; ".join(r.reason for r in stored.outcome.repairs))
+    return "\n".join(lines)
+
+
+@tool
+@with_doc(UNSUBSCRIBE_TASK)
+async def unsubscribe_task(
+    config: RunnableConfig,
+    task_id: Annotated[str, "Id of the GAIA task"],
+    subscription_id: Annotated[str, "Subscription id, as subscribe_task returned it"],
+) -> str:
+    user_id = get_user_id(config)
+    try:
+        task = await task_service.require_task(user_id, task_id)
+        removed = await unsubscribe(task, subscription_id)
+    except TaskNotFoundError as missing:
+        return f"Error: {missing.message}"
+    except SubscriptionError as refused:
+        return f"Error: {refused} Nothing was changed."
+    if removed is None:
+        return f"Task {task_id} has no subscription {subscription_id}."
+    return f"Task {task_id} has stopped listening for {removed.trigger_name}."
+
+
+tools = [
+    create_task,
+    update_task,
+    complete_task,
+    list_event_fields,
+    subscribe_task,
+    unsubscribe_task,
+]

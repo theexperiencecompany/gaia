@@ -127,10 +127,13 @@ export type ServerEventName =
   | "task:chat_opened"
   | "task:created"
   | "task:deleted"
+  | "task:event_fired"
   | "task:nudged"
   | "task:open_state_repaired"
   | "task:run_failed"
   | "task:run_result_delivered"
+  | "task:subscribe_failed"
+  | "task:subscribed"
   | "task:toggled"
   | "task:updated"
   | "todos:chat_opened"
@@ -1409,6 +1412,14 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "count": number;
   };
+  "task:event_fired": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "trigger_name": string;
+    "outcome": "ran" | "coalesced" | "held_for_quiet_hours" | "kept_while_paused";
+  };
   "task:nudged": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1444,6 +1455,23 @@ export interface EventProperties {
     "platform"?: string;
     "destination"?: "chat_app" | "in_app";
     "destination_basis"?: "recent_activity" | "priority" | "active_in_app" | "no_chat_app";
+  };
+  "task:subscribe_failed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "trigger_name": string;
+    "reason": "unknown_trigger" | "not_a_gaia_task" | "invalid_conditions" | "invalid_config" | "invalid_subscription" | "registration_failed" | "no_trigger_instance";
+  };
+  "task:subscribed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "trigger_name": string;
+    "condition_count": number;
+    "repaired": boolean;
+    "has_gate": boolean;
   };
   "task:toggled": {
     "actor": "user" | "agent";
@@ -1596,7 +1624,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "owner_type": "workflow" | "todo";
+    "owner_type": "workflow" | "todo" | "task";
     "trigger_name": string;
     "gate_kind": "authored" | "system";
     "author"?: "gaia" | "user";
@@ -1610,7 +1638,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "owner_type": "workflow" | "todo";
+    "owner_type": "workflow" | "todo" | "task";
     "action": "added" | "edited" | "disabled" | "enabled" | "removed";
     "gate_kind": "authored" | "system";
   };

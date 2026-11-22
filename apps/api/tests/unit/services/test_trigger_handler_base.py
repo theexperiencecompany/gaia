@@ -299,7 +299,7 @@ class TestTodoDispatchHandoff:
 
         assert result["status"] == "success"
         enqueue.assert_awaited_once()
-        assert enqueue.await_args.args[1] == "dispatch_todo_subscriptions"
+        assert enqueue.await_args.args[1] == "dispatch_to_subscribers"
 
     async def test_the_handoff_carries_the_handlers_trigger_names_and_payload(self):
         enqueue = AsyncMock()
@@ -343,16 +343,19 @@ class TestTodoDispatchHandoff:
             ),
             patch("app.services.triggers.base.enqueue_worker_job", enqueue),
         ):
-            queued = await handler._queue_todo_dispatch("EVT", "tid-1", "user-1", {"id": "e1"})
+            queued = await handler._queue_subscriber_dispatch(
+                "EVT", "tid-1", "user-1", {"id": "e1"}
+            )
 
         assert queued is True
         enqueue.assert_awaited_once_with(
             pool,
-            "dispatch_todo_subscriptions",
+            "dispatch_to_subscribers",
             handler.trigger_names,
             "tid-1",
             "user-1",
             {"id": "e1"},
+            None,
         )
 
     async def test_a_failed_enqueue_reports_not_queued_and_logs_the_context(self):
@@ -365,11 +368,13 @@ class TestTodoDispatchHandoff:
             patch("app.services.triggers.base.enqueue_worker_job", enqueue),
         ):
             async with captured_wide_event() as event:
-                queued = await handler._queue_todo_dispatch("EVT", "tid-1", "user-1", {"id": "e1"})
+                queued = await handler._queue_subscriber_dispatch(
+                    "EVT", "tid-1", "user-1", {"id": "e1"}
+                )
 
         assert queued is False
         (error,) = event["errors"]
-        assert error["msg"] == "trigger_todo_dispatch_enqueue_failed"
+        assert error["msg"] == "trigger_subscriber_dispatch_enqueue_failed"
         assert error["event_type"] == "EVT"
         assert error["trigger_id"] == "tid-1"
         assert error["error"] == "redis boom"

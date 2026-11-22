@@ -23,6 +23,7 @@ from app.constants.todos import (
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_TASK,
 )
+from app.constants.triggers import DISPATCH_TO_SUBSCRIBERS_JOB
 from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
@@ -81,7 +82,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
 )
-from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
+from app.workers.tasks.trigger_dispatch_tasks import dispatch_to_subscribers
 from app.workers.tasks.wait_tasks import resume_waiter
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
@@ -132,7 +133,7 @@ _resume_waiter = func(
     arq_task(resume_waiter), name=RESUME_WAITER_TASK, max_tries=RESUME_WAITER_MAX_TRIES
 )
 _resume_tracked_todo = arq_task(resume_tracked_todo)
-_dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
+_dispatch_to_subscribers = func(arq_task(dispatch_to_subscribers), name=DISPATCH_TO_SUBSCRIBERS_JOB)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
@@ -202,7 +203,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _execute_tracked_todo,
     _resume_tracked_todo,
     _finish_tracked_todo_run,
-    _dispatch_todo_subscriptions,
+    _dispatch_to_subscribers,
     _backfill_active_users,
     _backfill_user_memories,
     _promote_usage_badges,

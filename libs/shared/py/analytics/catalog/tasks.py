@@ -7,20 +7,38 @@ from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, Proa
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
+    "EventFireOutcome",
     "NudgeChannel",
     "TaskChatOpened",
     "TaskCreated",
     "TaskDeleted",
+    "TaskEventFired",
     "TaskNudged",
     "TaskOpenStateRepaired",
     "TaskRunFailed",
     "TaskRunResultDelivered",
+    "TaskSubscribeFailed",
+    "TaskSubscribeFailureReason",
+    "TaskSubscribed",
     "TaskToggled",
     "TaskUpdated",
 ]
 
 #: Where a to-do's nudge reached the user.
 NudgeChannel = Literal["in_app", "chat_app"]
+#: Why GAIA could not subscribe a task to an app event.
+TaskSubscribeFailureReason = Literal[
+    "unknown_trigger",
+    "not_a_gaia_task",
+    "invalid_conditions",
+    "invalid_config",
+    "invalid_subscription",
+    "registration_failed",
+    "no_trigger_instance",
+]
+#: What a matched app event does to its task's run: runs it now, rides the run its window
+#: already has, waits for the user's quiet hours to end, or waits for the task to resume.
+EventFireOutcome = Literal["ran", "coalesced", "held_for_quiet_hours", "kept_while_paused"]
 
 
 class TaskCreated(ServerEvent):
@@ -128,3 +146,38 @@ class TaskNudged(ServerEvent):
     channel: NudgeChannel
     #: The nudge was held through the user's quiet hours and sent when they ended.
     held_for_quiet_hours: bool
+
+
+class TaskSubscribed(ServerEvent):
+    """GAIA subscribed one of its tasks to an app event."""
+
+    event: ClassVar[str] = "task:subscribed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    task_id: Identifier
+    trigger_name: Identifier
+    condition_count: int
+    #: Conditions GAIA wrote that were repaired (a camelCased field, a mistyped value).
+    repaired: bool
+    has_gate: bool
+
+
+class TaskSubscribeFailed(ServerEvent):
+    """GAIA could not subscribe a task to an app event."""
+
+    event: ClassVar[str] = "task:subscribe_failed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    trigger_name: Identifier
+    reason: TaskSubscribeFailureReason
+
+
+class TaskEventFired(ServerEvent):
+    """An app event passed a task subscription's conditions and gate and was taken for a run."""
+
+    event: ClassVar[str] = "task:event_fired"
+    budget_per_user_day: ClassVar[int] = 50
+
+    task_id: Identifier
+    trigger_name: Identifier
+    outcome: EventFireOutcome

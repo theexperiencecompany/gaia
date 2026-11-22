@@ -48,3 +48,34 @@ COMPLETE_TASK = """
     A repeating task stays open unless stop_repeat is set: one finished run never ends a
     standing schedule. Never repeat a task id in user-visible text.
     """
+
+LIST_EVENT_FIELDS = """
+    Show exactly what an app event delivers, before subscribing a task to it.
+
+    Returns the event's matchable fields with types, descriptions and example values, the
+    fields that are deliberately not matchable and why, the scope a per-resource event needs,
+    and the operators each type accepts. Call it whenever you are about to subscribe a task
+    to an event you have not used in this conversation: conditions must name real fields.
+    """
+
+SUBSCRIBE_TASK = """
+    Make one of GAIA's tasks run when an app event arrives: a reply to an email you sent,
+    a calendar event about to start, an issue changing, a row landing in a sheet.
+
+    The event runs the task with the event in its brief; events inside its cooldown ride
+    the next run together. The task keeps its next check and its schedule: whichever comes
+    first wakes it, and closing the task stops it listening.
+
+    Write conditions against real payload fields (list_event_fields shows them). Obvious
+    mistakes (a camelCased field, an operator the field's type cannot take, a number sent as
+    text) are repaired and reported; anything ambiguous is refused with the fields that exist.
+    Per-resource events (github, slack, sheets, notion, linear, asana) need a scope naming the
+    resource, e.g. scope={'repos': ['owner/name']}, or they never fire.
+    """
+
+UNSUBSCRIBE_TASK = """
+    Stop one of GAIA's tasks listening to one app event it subscribed to.
+
+    Use when what it waited for no longer matters but the task stays open. Completing a task
+    stops it listening on its own, so do not call this first.
+    """

@@ -140,6 +140,9 @@ class TaskResponse(ResponseModel):
     icon_color: str | None
     integration_ids: list[str]
     missing_integrations: list[str] = Field(description="Apps the task uses that are not connected")
+    blocked_on_integrations: list[str] = Field(
+        description="The apps whose loss paused the task; it resumes once they are connected"
+    )
     total_runs: int
     successful_runs: int
     last_run_at: datetime | None

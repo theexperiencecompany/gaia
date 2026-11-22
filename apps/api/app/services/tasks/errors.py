@@ -56,3 +56,14 @@ class SubtaskParentError(AppError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message=message, status_code=HTTPStatus.CONFLICT, code="invalid_parent")
+
+
+class SubscriptionNotFoundError(AppError):
+    """Raised (404) when the task has no app-event subscription with the id."""
+
+    def __init__(self, task_id: str, subscription_id: str) -> None:
+        super().__init__(
+            message=f"Task {task_id} has no subscription {subscription_id}",
+            status_code=HTTPStatus.NOT_FOUND,
+            code="task_subscription_not_found",
+        )

@@ -105,9 +105,9 @@ def _night_body(*, can_wait: float, not_needed: float = 0.1) -> dict[str, object
 def seams() -> Iterator[SimpleNamespace]:
     with (
         trigger_gate_seams(Timezone.parse(KOLKATA), now=AFTERNOON) as gate,
-        patch(f"{_BASE}.TriggerHandler._queue_todo_dispatch", AsyncMock(return_value=True)),
+        patch(f"{_BASE}.TriggerHandler._queue_subscriber_dispatch", AsyncMock(return_value=True)),
         patch(f"{_BASE}.get_signal_matching_context", AsyncMock(return_value="")),
-        patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
+        patch(f"{_BASE}.claim_occurrence", AsyncMock(return_value=True)) as claim,
         patch(f"{_BASE}.buffer_trigger_event", AsyncMock(return_value=False)) as buffer,
         patch(f"{_BASE}.WorkflowQueueService.queue_workflow_execution", AsyncMock()) as queue,
     ):
@@ -254,9 +254,9 @@ def night(fake_redis: fakeredis.aioredis.FakeRedis, arq: ArqRedis) -> Iterator[S
     """Gate a workflow with the real queue and batch underneath; the test sets the clock."""
     with (
         trigger_gate_seams(Timezone.parse(KOLKATA)) as gate,
-        patch(f"{_BASE}.TriggerHandler._queue_todo_dispatch", AsyncMock(return_value=True)),
+        patch(f"{_BASE}.TriggerHandler._queue_subscriber_dispatch", AsyncMock(return_value=True)),
         patch(f"{_BASE}.get_signal_matching_context", AsyncMock(return_value="")),
-        patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
+        patch(f"{_BASE}.claim_occurrence", AsyncMock(return_value=True)) as claim,
     ):
         yield SimpleNamespace(
             jev=gate.jev, claim=claim, skipped=gate.workflow_skips, arq=arq, redis=fake_redis

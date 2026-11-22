@@ -17,6 +17,8 @@ PER_EMAIL_TRIGGER_NAMES: Final = frozenset(
     {GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME}
 )
 
-# One workflow run per real-world occurrence (e.g. a meeting seen on several calendars).
-TRIGGER_OCCURRENCE_KEY: Final = "trigger_occurrence:{workflow_id}:{occurrence}"
+# One run per real-world occurrence per workflow or task (e.g. a meeting seen on several calendars).
+TRIGGER_OCCURRENCE_KEY: Final = "trigger_occurrence:{owner_id}:{occurrence}"
 TRIGGER_OCCURRENCE_TTL_SECONDS: Final = 24 * 60 * 60
+#: The worker job that hands one app event to the todos and tasks subscribed to it.
+DISPATCH_TO_SUBSCRIBERS_JOB: Final = "dispatch_to_subscribers"

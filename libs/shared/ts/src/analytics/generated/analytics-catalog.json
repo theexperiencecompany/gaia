@@ -7478,6 +7478,50 @@
       }
     },
     {
+      "event": "task:event_fired",
+      "class": "TaskEventFired",
+      "owner": "server",
+      "domain": "task",
+      "description": "An app event passed a task subscription's conditions and gate and was taken for a run.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An app event passed a task subscription's conditions and gate and was taken for a run.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "trigger_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Trigger Name",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "ran",
+              "coalesced",
+              "held_for_quiet_hours",
+              "kept_while_paused"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "trigger_name",
+          "outcome"
+        ],
+        "title": "TaskEventFired",
+        "type": "object"
+      }
+    },
+    {
       "event": "task:nudged",
       "class": "TaskNudged",
       "owner": "server",
@@ -7688,6 +7732,95 @@
           "repeats"
         ],
         "title": "TaskRunResultDelivered",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:subscribe_failed",
+      "class": "TaskSubscribeFailed",
+      "owner": "server",
+      "domain": "task",
+      "description": "GAIA could not subscribe a task to an app event.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA could not subscribe a task to an app event.",
+        "properties": {
+          "trigger_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Trigger Name",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "unknown_trigger",
+              "not_a_gaia_task",
+              "invalid_conditions",
+              "invalid_config",
+              "invalid_subscription",
+              "registration_failed",
+              "no_trigger_instance"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trigger_name",
+          "reason"
+        ],
+        "title": "TaskSubscribeFailed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:subscribed",
+      "class": "TaskSubscribed",
+      "owner": "server",
+      "domain": "task",
+      "description": "GAIA subscribed one of its tasks to an app event.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA subscribed one of its tasks to an app event.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "trigger_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Trigger Name",
+            "type": "string"
+          },
+          "condition_count": {
+            "title": "Condition Count",
+            "type": "integer"
+          },
+          "repaired": {
+            "title": "Repaired",
+            "type": "boolean"
+          },
+          "has_gate": {
+            "title": "Has Gate",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "task_id",
+          "trigger_name",
+          "condition_count",
+          "repaired",
+          "has_gate"
+        ],
+        "title": "TaskSubscribed",
         "type": "object"
       }
     },
@@ -8652,7 +8785,8 @@
           "owner_type": {
             "enum": [
               "workflow",
-              "todo"
+              "todo",
+              "task"
             ],
             "title": "Owner Type",
             "type": "string"
@@ -8775,7 +8909,8 @@
           "owner_type": {
             "enum": [
               "workflow",
-              "todo"
+              "todo",
+              "task"
             ],
             "title": "Owner Type",
             "type": "string"

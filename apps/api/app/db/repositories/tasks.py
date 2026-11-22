@@ -101,6 +101,14 @@ def _due_filter(query: TaskQuery) -> dict[str, object]:
     return filt
 
 
+def _listening() -> dict[str, object]:
+    """Open tasks that are on, or that the system paused and so keep their events."""
+    return {
+        "completed": False,
+        "$or": [{"active": True}, {"pause_reason": {"$ne": None}}],
+    }
+
+
 def _runnable() -> dict[str, object]:
     """Match a GAIA task that may be started: on, idle and open."""
     return {
@@ -403,41 +411,32 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
             {"run_state": TaskRunState.RUNNING.value, "updated_at": {"$lt": cutoff}}, limit=limit
         )
 
-    async def find_active_by_composio_trigger_all_users(
-        self, composio_trigger_id: str, *, trigger_name: str | None = None
+    async def find_listening_by_composio_trigger_all_users(
+        self, composio_trigger_id: str
     ) -> list[TaskDocument]:
-        """Every user's open, active tasks subscribed to a Composio trigger instance (per-resource dispatch)."""
-        watch: dict[str, object] = {
-            "composio_trigger_ids": composio_trigger_id,
-            "status": TriggerSubscriptionStatus.ACTIVE.value,
-        }
-        if trigger_name is not None:
-            watch["trigger_name"] = trigger_name
+        """Every user's open tasks an event on a Composio trigger instance reaches (per-resource dispatch).
+
+        A task the system paused is listening too: its events are kept for its resume.
+        """
         return await self._find(
-            {"active": True, "completed": False, "subscriptions": {"$elemMatch": watch}}
+            {**_listening(), "subscriptions.composio_trigger_ids": composio_trigger_id}
         )
 
-    async def find_active_by_user_and_trigger(
+    async def find_listening_by_user_and_trigger(
         self, user_id: str, trigger_names: Collection[str]
     ) -> list[TaskDocument]:
-        """Return the user's open, active tasks subscribed to any of trigger_names.
+        """Return the user's open tasks an event on any of trigger_names reaches.
 
-        Account-level dispatch (Gmail registers no per-subscriber instance) and the
-        re-register set after an app reconnects.
+        Account-level dispatch: Gmail registers no per-subscriber instance. A task the
+        system paused is listening too: its events are kept for its resume.
         """
         if not trigger_names:
             return []
         return await self._find(
             {
                 "user_id": user_id,
-                "active": True,
-                "completed": False,
-                "subscriptions": {
-                    "$elemMatch": {
-                        "trigger_name": {"$in": list(trigger_names)},
-                        "status": TriggerSubscriptionStatus.ACTIVE.value,
-                    }
-                },
+                **_listening(),
+                "subscriptions.trigger_name": {"$in": list(trigger_names)},
             }
         )
 
@@ -729,6 +728,16 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         )
         return unblocked or resumed
 
+    async def release_composio_ids(self, task_id: str, *, user_id: str) -> TaskDocument | None:
+        """Forget every subscription's Composio instances; returns the task as it was, None when it held none."""
+        return await self._apply_raw_update(
+            self._scoped(task_id, user_id),
+            {"$set": {"subscriptions.$[].composio_trigger_ids": []}},
+            scope=user_id,
+            extra_filter={"subscriptions.composio_trigger_ids.0": {"$exists": True}},
+            return_document=False,
+        )
+
     async def set_subscription_composio_ids(
         self, task_id: str, *, user_id: str, subscription_id: str, composio_ids: list[str]
     ) -> TaskDocument | None:
@@ -833,11 +842,14 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         reason: DeactivationReason | None,
         blocked_on_integrations: list[str] | None = None,
     ) -> TaskDocument | None:
-        """Switch the task off and drop its Composio instances; reason None means the user stopped it."""
+        """Switch the task off; reason None means the user stopped it.
+
+        Its Composio instances stay registered, so a resume needs no re-registration and the
+        reference count still protects them; whoever stops the task for good releases them.
+        """
         fields: dict[str, object] = {
             "active": False,
             "pause_reason": None if reason is None else reason.value,
-            "subscriptions.$[].composio_trigger_ids": [],
         }
         if blocked_on_integrations is not None:
             fields["blocked_on_integrations"] = blocked_on_integrations

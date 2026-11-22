@@ -47,6 +47,10 @@ class TaskView:
     pending_approval: bool = False
     #: When GAIA next looks at the task.
     next_run: datetime | None = None
+    #: Why the system paused the task, as the panel names it; None while it is on.
+    paused_reason: str | None = None
+    #: The apps the task waits to be connected again before it resumes.
+    paused_for_apps: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,8 @@ class RunView:
     reason: str | None = None
     #: The run replayed the task's saved calls instead of reasoning the work out.
     replayed: bool = False
+    #: An app event the task listens for started the run.
+    by_event: bool = False
 
 
 @dataclass(frozen=True)

@@ -27,14 +27,14 @@ from httpx import AsyncClient, Response
 from pydantic import BaseModel
 import time_machine
 
-from app.agents.tools.task_tools import create_task, update_task
-from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
+from app.agents.tools.task_tools import create_task, subscribe_task, update_task
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.notifications import APPROVAL_PUSH_TITLE
+from app.constants.tasks import TaskLogEvent, TaskRunTrigger
 from app.constants.todos import (
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
@@ -42,6 +42,7 @@ from app.constants.todos import (
     PROVISION_INBOX_DESK_TASK,
     TodoActivityEvent,
 )
+from app.constants.triggers import DISPATCH_TO_SUBSCRIBERS_JOB
 from app.db.redis import redis_cache
 from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage, WorkFinished
 from app.models.conversation_send_models import SendMessageRequest
@@ -100,8 +101,8 @@ WEBHOOK_MODULE = "app.api.v1.endpoints.webhook_composio"
 GMAIL_NEW_MESSAGE_EVENT = "gmail_new_gmail_message"
 #: GAIA's id of the one account each connected app has in the journeys.
 APP_ACCOUNT = "ca_1"
-#: The job that hands an app event to the GAIA tasks watching it.
-DISPATCH_TO_WATCHERS_JOB = "dispatch_todo_subscriptions"
+#: The job that hands an app event to the tasks watching it.
+DISPATCH_TO_WATCHERS_JOB = DISPATCH_TO_SUBSCRIBERS_JOB
 #: The hour (UTC, the user's zone) app events arrive at in the journeys.
 DAYTIME_HOUR = 10
 #: How long after its armed time the worker picks a job up.
@@ -196,6 +197,8 @@ def _task_view(body: dict[str, Any]) -> TaskView:
         open_children=body["open_subtask_count"],
         pending_approval=body["pending_approval"] is not None,
         next_run=datetime.fromisoformat(body["next_check_at"]) if body["next_check_at"] else None,
+        paused_reason=body["pause_reason"],
+        paused_for_apps=tuple(body["blocked_on_integrations"]),
     )
 
 
@@ -388,15 +391,20 @@ class TasksDriver:
 
     # Work handed to GAIA.
 
-    async def hand_to_gaia(self, title: str, *, notify: bool = True) -> TaskView:
-        """Hand GAIA a one-off task, as its create tool does when the user asks in chat."""
+    async def hand_to_gaia(
+        self, title: str, *, notify: bool = True, first_look: str = FIRST_LOOK
+    ) -> TaskView:
+        """Hand GAIA a one-off task, as its create tool does when the user asks in chat.
+
+        first_look is when GAIA first looks at it, as a duration from now.
+        """
         before = {t.id for t in await self._gaia_tasks()}
         said = await create_task.ainvoke(
             {
                 "title": title,
                 "assignee": "gaia",
                 "waiting_on": "time",
-                "next_check": FIRST_LOOK,
+                "next_check": first_look,
                 "notify": notify,
             },
             config={"configurable": {"user_id": self._user_id}},
@@ -444,6 +452,13 @@ class TasksDriver:
 
     async def woken_by_events(self, task_id: str) -> int:
         """Count the app events the task's history shows woke it."""
+        if _is_task(task_id):
+            log = _ok(await self._client.get(f"{TASKS}/{task_id}/notes"))["log"]
+            return sum(
+                m["event"] == TaskLogEvent.APP_EVENT.value
+                for line in log.splitlines()
+                if (m := _ACTIVITY_LINE.match(line))
+            )
         events = await self._activity(task_id)
         return sum(event == TodoActivityEvent.TRIGGER_FIRED.value for event, _ in events)
 
@@ -740,17 +755,16 @@ class TasksDriver:
 
     async def watch_emails_from(self, task_id: str, sender: str) -> None:
         """Have the GAIA task wake whenever an email from sender arrives, as its watch tool sets."""
-        said = await subscribe_todo_to_trigger.ainvoke(
+        said = await subscribe_task.ainvoke(
             {
-                "todo_id": task_id,
+                "task_id": task_id,
                 "trigger_name": "gmail_new_message",
-                "action": "execute",
                 "conditions": [{"field_name": "sender", "operator": "contains", "value": sender}],
                 "cooldown_seconds": 0,
             },
             config={"configurable": {"user_id": self._user_id}},
         )
-        assert "is now watching" in said, said
+        assert "now runs when" in said, said
 
     async def connect_app(self, integration_id: str) -> None:
         """Finish an app's OAuth connect, with every side effect the callback runs."""
@@ -1056,6 +1070,7 @@ class TasksDriver:
                 RunView(
                     outcome=_WORKFLOW_RUN_STATUS[r["status"]],
                     reason=r["summary"] or r["error_message"],
+                    by_event=r["trigger_type"] == TaskRunTrigger.APP_EVENT.value,
                 )
                 for r in reversed(body["runs"])
                 if r["status"] in _WORKFLOW_RUN_STATUS

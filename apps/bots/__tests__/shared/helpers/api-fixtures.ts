@@ -84,6 +84,7 @@ export function serverTask(
     icon_color: null,
     integration_ids: [],
     missing_integrations: [],
+    blocked_on_integrations: [],
     total_runs: 0,
     successful_runs: 0,
     last_run_at: null,

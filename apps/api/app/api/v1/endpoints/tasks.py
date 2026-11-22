@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from app.api.v1.dependencies.oauth_dependencies import get_user_day_window, get_user_id
 from app.decorators import tiered_rate_limit
 from app.models.todo_models import TodoDayWindow
+from app.models.trigger_gate_models import GateEdit
 from app.schemas.tasks import (
     ChecklistItemCreateRequest,
     ChecklistItemUpdateRequest,
@@ -24,6 +25,7 @@ from app.schemas.tasks import (
     TaskUpdateRequest,
 )
 from app.services.tasks import task_service
+from app.services.tasks.subscriptions import edit_gate
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -171,6 +173,38 @@ async def update_task(
     )
     updated = await task_service.update_task(user_id, task_id, request)
     log.set_ns("task", completed=updated.completed)
+    return await task_service.task_response(user_id, updated)
+
+
+@router.patch("/tasks/{task_id}/subscriptions/{subscription_id}/gate")
+@tiered_rate_limit(TASK_WRITES)
+async def edit_subscription_gate(
+    task_id: str,
+    subscription_id: str,
+    edit: GateEdit,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> TaskResponse:
+    """Rewrite, or turn on or off, the gate on one of a GAIA task's app-event subscriptions."""
+    log.set(
+        user={"id": user_id},
+        task={
+            "operation": "edit_subscription_gate",
+            "id": task_id,
+            "subscription_id": subscription_id,
+            "gate_condition_sent": edit.condition is not None,
+            "gate_enabled": edit.enabled,
+        },
+    )
+    task = await task_service.require_task(user_id, task_id)
+    updated = await edit_gate(task, subscription_id, edit)
+    # The gate decides which events start a paid AI run, so every change to it is audited.
+    log.audit(
+        "task subscription gate edited",
+        actor=user_id,
+        resource=subscription_id,
+        task_id=task_id,
+        enabled=edit.enabled,
+    )
     return await task_service.task_response(user_id, updated)
 
 

@@ -6,6 +6,7 @@ another run holds the task it waits on the lock backoff, then gives up loudly.
 run_task(task_id, stamp) is the one job every task time is armed with. A stamp that no
 longer names one of the task's stored times is a job a reschedule left behind, and is
 dropped. To-dos come round here (a repeat reopens, a nudge goes out); they never run.
+The same job runs a GAIA task on the app events its subscriptions took, with no stamp.
 """
 
 from collections.abc import Mapping
@@ -35,7 +36,9 @@ from app.constants.todos import (
     TODO_RUN_FINISH_RETRY_DELAY,
 )
 from app.db.repositories.tasks import task_repository
+from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.tasks.arming import arm_at, armed_for_current_time, come_round_times
+from app.services.tasks.event_run import run_gaia_task_on_events
 from app.services.tasks.gaia_run import resume_gaia_task, run_gaia_task
 from app.services.tasks.run_records import record_event
 from app.services.tasks.todo_rounds import bring_todo_round
@@ -51,14 +54,27 @@ from shared.py.wide_events import log
 async def run_task(
     ctx: Mapping[str, object],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     task_id: str,
-    stamp: int,
+    stamp: int | None,
+    events: list[TriggerOrigin] | None = None,
+    trigger_window: int | None = None,
 ) -> str:
-    """Bring the task round for the occurrence stamp names; a stale stamp is dropped."""
-    log.set(task={"id": task_id, "stamp": stamp})
-    armed_for = parse_occurrence_stamp(stamp, task_id)
+    """Bring the task round for the occurrence stamp names, or run it on app events; a stale stamp is dropped.
+
+    stamp is None for a run its subscriptions started: events are the ones it carries,
+    trigger_window the window a drain of its buffered events was scheduled for.
+    """
+    log.set(task={"id": task_id, "stamp": stamp, "trigger_window": trigger_window})
     task = await task_repository.get_any(task_id)
     if task is None:
         return f"not_found:{task_id}"
+    if stamp is None:
+        if task.assignee is Assignee.USER:
+            raise ValueError(f"task {task_id} is a to-do; app events never run it")
+        with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
+            outcome = await run_gaia_task_on_events(task, events or [], trigger_window)
+        log.set_ns("task", outcome=outcome.split(":", 1)[0])
+        return outcome
+    armed_for = parse_occurrence_stamp(stamp, task_id)
     if armed_for is None or not armed_for_current_time(task, armed_for):
         log.set_ns("task", outcome="stale_occurrence")
         return f"stale_occurrence:{task_id}"

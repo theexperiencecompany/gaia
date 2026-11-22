@@ -230,6 +230,13 @@ class TaskLogEvent(StrEnum):
     APPROVAL_DENIED = "approval_denied"
     RESUME_DROPPED = "resume_dropped"
     MAINTENANCE = "maintenance"
+    SUBSCRIBED = "subscribed"
+    UNSUBSCRIBED = "unsubscribed"
+    #: An app event matched a subscription and was taken for a run.
+    APP_EVENT = "app_event"
+    #: An app event reached the task and was lost: it could not be kept for a run.
+    APP_EVENT_DROPPED = "app_event_dropped"
+    RESUMED = "resumed"
 
 
 class TaskRunDeliveryOutcome(StrEnum):

@@ -21,7 +21,7 @@ class TriggerGateDecided(ServerEvent):
     # One per gated event: a busy inbox fires a Gmail gate a few hundred times a day.
     budget_per_user_day: ClassVar[int] = 500
 
-    owner_type: Literal["workflow", "todo"]
+    owner_type: Literal["workflow", "todo", "task"]
     trigger_name: Identifier
     gate_kind: Literal["authored", "system"]
     author: Literal["gaia", "user"] | None = None
@@ -48,6 +48,6 @@ class TriggerGateEdited(ServerEvent):
     event: ClassVar[str] = "trigger:gate_edited"
     budget_per_user_day: ClassVar[int] = 20
 
-    owner_type: Literal["workflow", "todo"]
+    owner_type: Literal["workflow", "todo", "task"]
     action: Literal["added", "edited", "disabled", "enabled", "removed"]
     gate_kind: Literal["authored", "system"]

@@ -1,16 +1,17 @@
 """Unit tests for the trigger-subscription dispatch ARQ task.
 
-The task fans one fired trigger out to every subscribed todo. It resolves each
-GAIA trigger name independently (a handler can own several), so the names run
-concurrently and one failing name must neither cancel nor strand the others.
+The task fans one fired trigger out to every subscribed todo and task. It resolves each
+GAIA trigger name independently for todos (a handler can own several), so the names run
+concurrently and one failing consumer must neither cancel nor strand the others.
 """
 
+from collections.abc import Iterator
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
+from app.workers.tasks.trigger_dispatch_tasks import dispatch_to_subscribers
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -20,7 +21,33 @@ _MOD = "app.workers.tasks.trigger_dispatch_tasks"
 _ArgTuple = tuple[str, str | None, str | None, dict[str, Any]]
 
 
-class TestDispatchTodoSubscriptions:
+@pytest.fixture(autouse=True)
+def task_dispatch() -> Iterator[AsyncMock]:
+    with patch(f"{_MOD}.dispatch_event_to_tasks", AsyncMock(return_value=0)) as dispatch:
+        yield dispatch
+
+
+class TestDispatchToSubscribers:
+    async def test_the_tasks_get_the_event_once_with_its_occurrence(
+        self, task_dispatch: AsyncMock
+    ) -> None:
+        task_dispatch.return_value = 1
+        payload = {"id": "evt_9"}
+
+        with patch(f"{_MOD}.dispatch_to_subscribed_todos", AsyncMock(return_value=0)):
+            result = await dispatch_to_subscribers(
+                {}, ["gmail_new_message", "gmail_poll_inbox"], "ti_1", "user-1", payload, "occ-1"
+            )
+
+        assert result == "fired:1"
+        task_dispatch.assert_awaited_once_with(
+            ["gmail_new_message", "gmail_poll_inbox"],
+            "ti_1",
+            "user-1",
+            payload,
+            occurrence="occ-1",
+        )
+
     async def test_each_name_is_dispatched_with_the_full_unaltered_arg_tuple(self) -> None:
         # Exact four-positional signature: captures (trigger_name, trigger_id,
         # user_id, payload) verbatim, so a nulled, dropped, or reordered
@@ -38,7 +65,7 @@ class TestDispatchTodoSubscriptions:
             return {"gmail_new_message": 2, "gmail_poll_inbox": 1}[trigger_name]
 
         with patch(f"{_MOD}.dispatch_to_subscribed_todos", new=fake_dispatch):
-            result = await dispatch_todo_subscriptions(
+            result = await dispatch_to_subscribers(
                 {}, ["gmail_new_message", "gmail_poll_inbox"], "ti_1", "user-1", payload
             )
 
@@ -56,15 +83,15 @@ class TestDispatchTodoSubscriptions:
 
         with patch(f"{_MOD}.dispatch_to_subscribed_todos", new=fake_dispatch):
             async with captured_wide_event() as event:
-                result = await dispatch_todo_subscriptions(
+                result = await dispatch_to_subscribers(
                     {}, ["gmail_new_message", "boom", "slack_new_message"], "ti_1", "user-1", {}
                 )
 
         # Both healthy names still fired (2 each); the raising one is excluded.
         assert result == "fired:4"
         (error,) = event["errors"]
-        assert error["msg"] == "todo_subscription.dispatch_failed"
-        assert error["trigger_name"] == "boom"
+        assert error["msg"] == "subscriber_dispatch.failed"
+        assert error["consumer"] == "boom"
         assert error["trigger_id"] == "ti_1"
         assert error["error"] == "kaboom"
         assert error["error_type"] == "RuntimeError"
@@ -75,7 +102,7 @@ class TestDispatchTodoSubscriptions:
 
         with patch(f"{_MOD}.dispatch_to_subscribed_todos", new=fake_dispatch):
             async with captured_wide_event() as event:
-                await dispatch_todo_subscriptions({}, ["gmail_new_message"], "ti_1", "user-1", {})
+                await dispatch_to_subscribers({}, ["gmail_new_message"], "ti_1", "user-1", {})
 
         assert event["component"] == "trigger_subscription"
         assert event["operation"] == "dispatch"

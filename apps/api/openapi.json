@@ -19521,6 +19521,14 @@
           "assignee": {
             "$ref": "#/components/schemas/Assignee"
           },
+          "blocked_on_integrations": {
+            "description": "The apps whose loss paused the task; it resumes once they are connected",
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked On Integrations",
+            "type": "array"
+          },
           "body": {
             "title": "Body",
             "type": "string"
@@ -19824,6 +19832,7 @@
           "icon_color",
           "integration_ids",
           "missing_integrations",
+          "blocked_on_integrations",
           "total_runs",
           "successful_runs",
           "last_run_at",
@@ -42776,6 +42785,88 @@
           }
         },
         "summary": "List Task Runs",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/subscriptions/{subscription_id}/gate": {
+      "patch": {
+        "description": "Rewrite, or turn on or off, the gate on one of a GAIA task's app-event subscriptions.",
+        "operationId": "tasks_edit_subscription_gate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Edit Subscription Gate",
         "tags": [
           "Tasks"
         ]

@@ -17,7 +17,7 @@ from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.agents import (
     OUTCOME_COMPLETE_TOOLS,
     OUTCOME_SCHEDULE_ARGS,
-    OUTCOME_SUBSCRIBE_TOOL,
+    OUTCOME_SUBSCRIBE_TOOLS,
     OUTCOME_TRACKED_TODO_TOOLS,
     TODO_REARM_TAG,
     TODO_WAKES_AGAIN_TAG,
@@ -171,7 +171,7 @@ def _unbacked(declared: OutcomeState | None, delegation: Sequence[AnyMessage]) -
     ):
         return "schedule was declared but no tracked todo was scheduled to wake GAIA"
     if declared is OutcomeState.SUBSCRIBE and not any(
-        _effective_call(c)[0] == OUTCOME_SUBSCRIBE_TOOL for c in calls
+        _effective_call(c)[0] in OUTCOME_SUBSCRIBE_TOOLS for c in calls
     ):
         return "subscribe was declared but no trigger watch was set"
     return None

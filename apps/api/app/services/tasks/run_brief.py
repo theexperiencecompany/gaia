@@ -6,6 +6,7 @@ only enrich the brief: a failed read of either is logged and left out.
 """
 
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime
 from typing import NamedTuple
 
@@ -37,10 +38,13 @@ from app.constants.todos import (
 )
 from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
+from app.models.quiet_hours_models import QuietHours
 from app.models.task_models import RepeatWhen, TaskDocument
+from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.tasks.open_state import no_reply_plan_words, wake_reason
 from app.services.todo_observations import bounded_observations
+from app.services.triggers.event_prompt import event_opening
 from app.utils.general_utils import clip_text
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -188,12 +192,31 @@ def wake_text(task: TaskDocument) -> str:
 
 def build_scheduled_brief(task: TaskDocument, context: RunContext) -> str:
     """Assemble a scheduled run's brief from the task, its notes and what it reads beyond them."""
+    # Only a repeat wakes the task again on a schedule; a one-off's check is spent by this run.
+    closing = (
+        TASK_WAKES_AGAIN_BRIEF
+        if task.when.kind is WhenKind.REPEAT
+        else TASK_REARM_BRIEF.format(why=wake_text(task))
+    )
+    return _brief(task, context, [f"Execute the following scheduled task: {task.title}"], closing)
+
+
+def build_event_brief(
+    task: TaskDocument,
+    context: RunContext,
+    events: Sequence[TriggerOrigin],
+    local_now: datetime,
+    quiet_hours: QuietHours,
+) -> str:
+    """Assemble the brief of a run its app events woke; its subscriptions wake it again."""
+    opening = event_opening(task.title, task.external_ref, events, local_now, quiet_hours)
+    return _brief(task, context, opening, TASK_WAKES_AGAIN_BRIEF)
+
+
+def _brief(task: TaskDocument, context: RunContext, opening: list[str], closing: str) -> str:
     if task.assignee is not Assignee.GAIA:
         raise ValueError(f"task {task.id} is a to-do; only GAIA's tasks are run")
-    parts = [
-        f"Execute the following scheduled task: {task.title}",
-        TASK_ID_LINE.format(task_id=task.id),
-    ]
+    parts = [*opening, TASK_ID_LINE.format(task_id=task.id)]
     if task.body:
         parts.append(f"Details: {task.body}")
     if task.notes:
@@ -210,10 +233,6 @@ def build_scheduled_brief(task: TaskDocument, context: RunContext) -> str:
             label += " (older entries omitted; read activity.md for the full log)"
         parts.append(f"{label}:\n{tail}")
     parts.extend(part for part in (context.recent_runs, context.learnings) if part)
-    # Only a repeat wakes the task again on a schedule; a one-off's check is spent by this run.
-    if task.when.kind is WhenKind.REPEAT:
-        parts.append(TASK_WAKES_AGAIN_BRIEF)
-    else:
-        parts.append(TASK_REARM_BRIEF.format(why=wake_text(task)))
+    parts.append(closing)
     parts.append(_delivery_guidance(task))
     return "\n\n".join(parts)

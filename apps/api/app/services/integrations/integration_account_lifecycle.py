@@ -29,6 +29,7 @@ from app.services.integrations.integration_accounts import (
     set_account_nickname,
 )
 from app.services.integrations.integration_connection_service import disconnect_integration
+from app.services.tasks.subscriptions import resync_paused_subscriptions
 from app.services.triggers.subscription_service import (
     AccountScope,
     resync_subscriptions_for_trigger_names,
@@ -91,14 +92,14 @@ def _workflow_trigger_names(integration: OAuthIntegration) -> list[str]:
 
 
 async def resync_primary_bound_triggers(user_id: str, integration: OAuthIntegration) -> None:
-    """Re-register the integration's workflow and todo triggers on the current primary account."""
+    """Re-register the integration's workflow, todo and task triggers on the current primary account."""
     names = _workflow_trigger_names(integration)
     if not names:
         return
     await TriggerService.resync_user_workflow_triggers(user_id, names)
-    await resync_subscriptions_for_trigger_names(
-        user_id, set(names), AccountScope(account_id=None, every_account=True)
-    )
+    every_account = AccountScope(account_id=None, every_account=True)
+    await resync_subscriptions_for_trigger_names(user_id, set(names), every_account)
+    await resync_paused_subscriptions(user_id, set(names), every_account)
 
 
 async def _restore_account(

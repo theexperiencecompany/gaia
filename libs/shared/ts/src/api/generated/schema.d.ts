@@ -4760,6 +4760,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/subscriptions/{subscription_id}/gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Subscription Gate
+         * @description Rewrite, or turn on or off, the gate on one of a GAIA task's app-event subscriptions.
+         */
+        patch: operations["tasks_edit_subscription_gate"];
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/subtasks": {
         parameters: {
             query?: never;
@@ -15365,6 +15385,11 @@ export interface components {
             /** Active */
             active: boolean;
             assignee: components["schemas"]["Assignee"];
+            /**
+             * Blocked On Integrations
+             * @description The apps whose loss paused the task; it resumes once they are connected
+             */
+            blocked_on_integrations: string[];
             /** Body */
             body: string;
             /** Completed */
@@ -31514,6 +31539,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskRunListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_edit_subscription_gate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateEdit"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -38,6 +38,7 @@ from app.services.tasks.errors import (
     TaskNotFoundError,
 )
 from app.services.tasks.family import require_reopenable, require_subtask_parent
+from app.services.tasks.subscriptions import release_subscriptions
 from app.services.tasks.todo_rounds import first_nudge_at, first_repeat, with_round_fields
 from app.services.user_service import get_profile_timezone
 from app.utils.auth_utils import require_owner
@@ -198,7 +199,10 @@ async def delete_tasks(user_id: str, task_ids: list[str]) -> list[str]:
     """Delete the user's tasks and every subtask under them; returns the requested ids that existed."""
     existing = {task.id for task in await task_repository.find_by_ids(user_id, task_ids)}
     doomed = await _with_subtasks(user_id, [t for t in task_ids if t in existing])
-    # The runs and chats first: a failed task delete keeps the task, and a retry deletes all.
+    # The runs, chats and Composio instances first: a failed task delete keeps the task,
+    # and a retry deletes all.
+    for task in await task_repository.find_by_ids(user_id, doomed):
+        await release_subscriptions(task)
     await task_run_repository.delete_for_tasks(user_id, doomed)
     await delete_task_conversations(user_id, doomed)
     deleted = await task_repository.bulk_delete(user_id, doomed) if doomed else 0

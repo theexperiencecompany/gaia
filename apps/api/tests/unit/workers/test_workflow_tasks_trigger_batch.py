@@ -315,7 +315,7 @@ def _live_stack(workflow: Workflow, runs: list[tuple[datetime, int]]) -> Iterato
     with (
         trigger_gate_seams(Timezone.parse("Asia/Kolkata")) as gate,
         patch(
-            "app.services.triggers.base.TriggerHandler._queue_todo_dispatch",
+            "app.services.triggers.base.TriggerHandler._queue_subscriber_dispatch",
             AsyncMock(return_value=True),
         ),
         patch("app.services.triggers.base.get_signal_matching_context", AsyncMock(return_value="")),

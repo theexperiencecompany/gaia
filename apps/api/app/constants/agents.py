@@ -174,7 +174,7 @@ OUTCOME_TRACKED_TODO_TOOLS = frozenset(
     {"create_tracked_todo", "update_tracked_todo", "create_task", "update_task"}
 )
 OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence", "next_check", "repeat")
-OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
+OUTCOME_SUBSCRIBE_TOOLS = frozenset({"subscribe_todo_to_trigger", "subscribe_task"})
 OUTCOME_COMPLETE_TOOLS = frozenset({"complete_tracked_todo", "complete_task"})
 
 #: Opens a scheduled tracked todo run's brief: the run spent the check that woke

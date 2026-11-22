@@ -41,6 +41,7 @@ class GateOwner(StrEnum):
 
     WORKFLOW = "workflow"
     TODO = "todo"
+    TASK = "task"
 
 
 class GateEditAction(StrEnum):

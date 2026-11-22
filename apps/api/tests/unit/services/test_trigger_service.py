@@ -839,7 +839,7 @@ class TestGmailTriggerHandler:
 
         enqueue.assert_awaited_once()
         assert enqueue.await_args.args[1:3] == (
-            "dispatch_todo_subscriptions",
+            "dispatch_to_subscribers",
             ["gmail_email_sent"],
         )
 
@@ -2087,7 +2087,9 @@ class TestCalendarStartingSoonFanOut:
                 AsyncMock(return_value=""),
             ),
             patch.object(
-                calendar_trigger_handler, "_queue_todo_dispatch", AsyncMock(return_value=False)
+                calendar_trigger_handler,
+                "_queue_subscriber_dispatch",
+                AsyncMock(return_value=False),
             ),
         ):
             async with captured_wide_event() as event:
@@ -2174,7 +2176,9 @@ class TestCalendarStartingSoonFanOut:
                 AsyncMock(return_value=""),
             ),
             patch.object(
-                calendar_trigger_handler, "_queue_todo_dispatch", AsyncMock(return_value=False)
+                calendar_trigger_handler,
+                "_queue_subscriber_dispatch",
+                AsyncMock(return_value=False),
             ),
         ):
             for trigger_id in ("ti_a", "ti_b"):

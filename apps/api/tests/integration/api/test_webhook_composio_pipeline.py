@@ -269,7 +269,7 @@ class TestTriggerDeliveryToQueuedExecution:
         # No workflow matched, and the event still reached the todo side.
         enqueue.assert_awaited_once()
         _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
-        assert task_name == "dispatch_todo_subscriptions"
+        assert task_name == "dispatch_to_subscribers"
         # Inbound mail must never wake a watch on the user's sent mail.
         assert trigger_names == ["gmail_new_message"]
         assert user_id == USER_ID
@@ -310,7 +310,7 @@ class TestTriggerDeliveryToQueuedExecution:
         find_by_user.assert_awaited_once_with(USER_ID, ["gmail_email_sent"])
         enqueue.assert_awaited_once()
         _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
-        assert task_name == "dispatch_todo_subscriptions"
+        assert task_name == "dispatch_to_subscribers"
         assert trigger_names == ["gmail_email_sent"]
         assert trigger_id == "ti_sent_nano"
         assert user_id == USER_ID

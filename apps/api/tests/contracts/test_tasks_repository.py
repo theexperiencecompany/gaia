@@ -10,6 +10,7 @@ import pytest
 from app.constants.tasks import Assignee, TaskRunState
 from app.db.mongodb.indexes import TASK_OPEN_EXTERNAL_REF_KEYS, TASK_OPEN_EXTERNAL_REF_OPTIONS
 from app.db.repositories.tasks import TasksRepository
+from app.models.scheduler_models import DeactivationReason
 from app.models.task_models import EventWhen, NoWhen, RepeatWhen, TaskDocument, TaskQuery
 from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.trigger_subscription_models import (
@@ -72,17 +73,25 @@ class TestClaimingARun:
 
 
 class TestAppEventDispatch:
-    async def test_a_trigger_instance_finds_its_active_open_task_only(
+    async def test_a_trigger_instance_finds_its_open_task_unless_the_user_stopped_it(
         self, repo: TasksRepository
     ) -> None:
         listening = await repo.create(_gaia(when=EventWhen(), subscriptions=[_watch("ti_1")]))
+        paused = await repo.create(
+            _gaia(
+                when=EventWhen(),
+                subscriptions=[_watch("ti_1")],
+                active=False,
+                pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED,
+            )
+        )
         await repo.create(_gaia(when=EventWhen(), subscriptions=[_watch("ti_1")], active=False))
         await repo.create(_gaia(when=EventWhen(), subscriptions=[_watch("ti_2")]))
 
-        found = await repo.find_active_by_composio_trigger_all_users("ti_1")
+        found = await repo.find_listening_by_composio_trigger_all_users("ti_1")
 
-        assert [t.id for t in found] == [listening.id]
-        assert await repo.count_trigger_references("ti_1") == 2
+        assert sorted(t.id for t in found) == sorted([listening.id, paused.id])
+        assert await repo.count_trigger_references("ti_1") == 3
 
     async def test_adding_the_same_subscription_twice_keeps_one(
         self, repo: TasksRepository

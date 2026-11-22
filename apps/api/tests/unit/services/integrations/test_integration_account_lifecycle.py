@@ -65,6 +65,7 @@ class Seams:
     capture: MagicMock
     workflow_triggers: AsyncMock
     subscriptions: AsyncMock
+    task_subscriptions: AsyncMock
     composio: MagicMock
     disconnect: AsyncMock
 
@@ -80,6 +81,7 @@ def seams() -> Iterator[Seams]:
         patch(f"{LIFECYCLE}.capture") as capture,
         patch(f"{LIFECYCLE}.TriggerService") as trigger_service,
         patch(f"{LIFECYCLE}.resync_subscriptions_for_trigger_names", AsyncMock()) as subscriptions,
+        patch(f"{LIFECYCLE}.resync_paused_subscriptions", AsyncMock()) as task_subscriptions,
         patch(f"{LIFECYCLE}.get_composio_service", return_value=composio),
         patch(f"{LIFECYCLE}.disconnect_integration", AsyncMock()) as disconnect,
     ):
@@ -94,6 +96,7 @@ def seams() -> Iterator[Seams]:
             capture=capture,
             workflow_triggers=trigger_service.resync_user_workflow_triggers,
             subscriptions=subscriptions,
+            task_subscriptions=task_subscriptions,
             composio=composio,
             disconnect=disconnect,
         )
@@ -102,8 +105,12 @@ def seams() -> Iterator[Seams]:
 def _assert_triggers_resynced(seams: Seams) -> None:
     seams.workflow_triggers.assert_awaited_once_with(USER_ID, GMAIL_WORKFLOW_TRIGGERS)
     # A primary change resumes only watches on every account; another account's stay as they are.
+    every_account = AccountScope(account_id=None, every_account=True)
     seams.subscriptions.assert_awaited_once_with(
-        USER_ID, set(GMAIL_WORKFLOW_TRIGGERS), AccountScope(account_id=None, every_account=True)
+        USER_ID, set(GMAIL_WORKFLOW_TRIGGERS), every_account
+    )
+    seams.task_subscriptions.assert_awaited_once_with(
+        USER_ID, set(GMAIL_WORKFLOW_TRIGGERS), every_account
     )
 
 
@@ -279,6 +286,7 @@ class TestRemoveAccount:
         )
         seams.workflow_triggers.assert_not_awaited()
         seams.subscriptions.assert_not_awaited()
+        seams.task_subscriptions.assert_not_awaited()
         seams.capture.assert_called_once_with(
             UserId(USER_ID), IntegrationAccountRemoved(integration_id="gmail", account_count=2)
         )
