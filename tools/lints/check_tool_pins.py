@@ -56,8 +56,8 @@ ROOT_MISE = REPO_ROOT / "mise.toml"
 PNPM_LOCK = REPO_ROOT / "pnpm-lock.yaml"
 SETUP_UV = REPO_ROOT / ".github/actions/setup-uv/action.yml"
 ACTION_SURFACES = (
-    *sorted((REPO_ROOT / ".github/workflows").glob("*.yml")),
-    *sorted((REPO_ROOT / ".github/actions").glob("*/action.yml")),
+    *sorted((REPO_ROOT / ".github/workflows").glob("*.y*ml")),
+    *sorted((REPO_ROOT / ".github/actions").glob("*/action.y*ml")),
 )
 # A remote action or reusable workflow pinned by a full commit SHA; a local one
 # (./…) and a digest-pinned docker:// image need no pin of their own.
