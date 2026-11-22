@@ -14,6 +14,9 @@ CREATE_TASK = """
     ISO datetime with the user's offset). Waiting on the user means one question, passed as
     question, with if_no_reply decided now: ask_again, proceed (with default_action) or hold.
 
+    Work about one email thread (waiting on a reply, answering it) passes gmail_thread_id:
+    the task runs on the thread's next mail either way, and the thread keeps one open task.
+
     Splitting GAIA work: create each part with parent_id set to the open top-level GAIA task,
     then set the parent waiting_on "sub_todos" with a backup next_check. Each finished
     subtask wakes the parent; closing the parent closes its open subtasks. A subtask
@@ -33,8 +36,10 @@ UPDATE_TASK = """
     - The user changes one of their to-dos (rename it, move its date).
     - A GAIA task belongs under another open top-level GAIA task: pass parent_id.
 
-    - The user changes the priority of a task.
+    - The user changes the priority of a task, or asks for it to repeat (repeat).
     - A GAIA task's working notes change: pass the whole new notes (get_task shows them).
+    - A GAIA task waits on someone outside (a reply, an approval elsewhere): set flags; an
+      unblock subscription clears them when the event arrives.
 
     Never repeat a task id in user-visible text.
     """

@@ -6,14 +6,15 @@ The notes are files under /workspace/gaia-tasks/ the agent edits with the file t
 """
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.agents.tools.trigger_catalog import parse_conditions, parse_match, render_catalog
 from app.config.oauth_config import get_integration_by_id
-from app.constants.tasks import Assignee, WhenKind
+from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.tasks import Assignee, TaskFlag, WhenKind
 from app.constants.todos import (
     NEXT_CHECK_DURATION,
     NEXT_CHECK_DURATION_UNITS,
@@ -32,7 +33,7 @@ from app.models.task_models import (
     TaskUpdate,
     Waiting,
 )
-from app.models.todo_models import Priority, default_notify_on_run
+from app.models.todo_models import ExternalRef, Priority, default_notify_on_run
 from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import ConditionMatch, SubscriptionAction
 from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
@@ -49,8 +50,9 @@ from app.services.tasks.open_state import (
     waiting_after,
 )
 from app.services.tasks.subscriptions import SubscriptionRequest, subscribe, unsubscribe
+from app.services.tasks.thread_watch import watch_thread
 from app.services.tasks.todo_rounds import first_repeat
-from app.services.todos.account_refs import watched_account_id
+from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import OpenStateError
 from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS, SubscriptionError
 from app.services.triggers.subscription_validation import validate_scope
@@ -193,7 +195,20 @@ def _move_fields(
     }
 
 
-async def _update_todo(task: TaskDocument, fields: dict[str, object]) -> str:
+class _GaiaOnly(TypedDict):
+    """The fields of an update only GAIA's own tasks hold."""
+
+    notes: str | None
+    expires_at: str | None
+    references: list[str] | None
+    flags: list[TaskFlag] | None
+
+
+async def _update_todo(task: TaskDocument, fields: dict[str, object], gaia_only: _GaiaOnly) -> str:
+    if held := [name for name, value in gaia_only.items() if value is not None]:
+        return (
+            f"Error: {task.id} is the user's own to-do; only GAIA's tasks keep {', '.join(held)}."
+        )
     if not fields:
         return _NO_FIELDS
     await task_service.update_task(task.user_id, task.id, TaskUpdateRequest.model_validate(fields))
@@ -216,6 +231,59 @@ def _waiting_with(
         if_no_reply=if_no_reply or (asked.if_no_reply if asked else None),
         default_action=default_action or (asked.default_action if asked else None),
     )
+
+
+async def _new_thread_ref(
+    user_id: str, gmail_thread_id: str | None, gmail_account: str | None
+) -> ExternalRef | None:
+    """The thread a new task is about, pinned to its account; refused when it has an open task."""
+    thread = await owned_gmail_thread_ref(user_id, gmail_thread_id, gmail_account)
+    if isinstance(thread, str):
+        raise _Refused(thread)
+    if thread is not None and (
+        twin := await task_repository.find_open_by_external_ref(user_id, thread)
+    ):
+        raise _Refused(
+            f"Task {twin.id} ({twin.title}) already follows this thread, so nothing new was "
+            "created. Update that one instead."
+        )
+    return thread
+
+
+async def _watch_or_undo(task: TaskDocument, thread: ExternalRef | None) -> None:
+    """Watch the new task's thread, if any; a task that cannot watch it is deleted, the model told."""
+    if thread is None:
+        return
+    try:
+        await watch_thread(task, thread)
+    except SubscriptionError as refused:
+        await task_service.delete_tasks(task.user_id, [task.id])
+        raise _Refused(
+            f"Error: the thread could not be watched ({refused}). Nothing was saved."
+        ) from refused
+
+
+async def _gaia_plan_fields(task: TaskDocument, gaia_only: _GaiaOnly) -> dict[str, object]:
+    """The GAIA-only fields of an update: notes, when it stops mattering, what it reads, its states."""
+    expires_at, references, flags = (
+        gaia_only["expires_at"],
+        gaia_only["references"],
+        gaia_only["flags"],
+    )
+    fields: dict[str, object] = {}
+    if gaia_only["notes"] is not None:
+        fields["notes"] = gaia_only["notes"]
+    if expires_at is not None:
+        fields["expires_at"] = _parse_moment(expires_at, "expires_at", future=True)
+    if references is not None:
+        await _owned_references(task.user_id, references, task.id)
+        fields["references"] = references
+    if flags is not None:
+        if TaskFlag.FAILED in flags:
+            raise _Refused("Error: 'failed' is set by the engine only. Nothing was saved.")
+        kept = [f for f in task.status_flags if f is TaskFlag.FAILED]
+        fields["status_flags"] = [*kept, *dict.fromkeys(flags)]
+    return fields
 
 
 def _refusal(refused: OpenStateError, verb: str) -> str:
@@ -259,6 +327,17 @@ async def create_task(
         "GAIA tasks: integration ids its later runs depend on; nothing is created while one "
         "is not connected",
     ] = None,
+    gmail_thread_id: Annotated[
+        str | None,
+        "GAIA tasks about one email thread: its Gmail thread id. The task then runs on new "
+        "mail and on the user's own replies there, and a thread has one open task: if it "
+        "has one, that one is named back to update instead.",
+    ] = None,
+    gmail_account: Annotated[
+        str | None,
+        "With gmail_thread_id: the Gmail account the thread is in, by its listed name; "
+        "needed when the user has several.",
+    ] = None,
 ) -> str:
     user_id = get_user_id(config)
     if notify is None:
@@ -278,7 +357,11 @@ async def create_task(
                 ),
             )
             return f"To-do created (id {created.id}): {created.title}."
-        if refusal := await _missing_apps(user_id, needs_integrations or []):
+        thread = await _new_thread_ref(user_id, gmail_thread_id, gmail_account)
+        # A thread's task reads and drafts in Gmail on every run.
+        thread_app = [GMAIL_INTEGRATION_ID] if thread is not None else []
+        needed = list(dict.fromkeys([*(needs_integrations or []), *thread_app]))
+        if refusal := await _missing_apps(user_id, needed):
             return refusal
         if references:
             await _owned_references(user_id, references, None)
@@ -293,7 +376,8 @@ async def create_task(
             notify=notify,
             notes=with_ownership(CANVAS_TEMPLATE.format(title=title), done_when or [], evidence),
             references=references or [],
-            integration_ids=needs_integrations or [],
+            integration_ids=needed,
+            external_ref=thread,
             source_conversation_id=read_agent_configurable(config).conversation_id,
             expires_at=_parse_moment(expires_at, "expires_at", future=True) if expires_at else None,
         )
@@ -310,6 +394,7 @@ async def create_task(
                     default_action=default_action,
                 )
         created = await create_gaia_task(draft, by=_actor(config))
+        await _watch_or_undo(created, thread)
     except _Refused as refused:
         return str(refused)
     except OpenStateError as refused:
@@ -343,6 +428,20 @@ async def update_task(
     parent_id: Annotated[
         str | None, "Move it under this task as its subtask. " + _PARENT_DESC
     ] = None,
+    repeat: Annotated[str | None, _REPEAT_DESC + " Replaces its date."] = None,
+    expires_at: Annotated[
+        str | None, "GAIA tasks: ISO datetime after which it no longer matters, with offset"
+    ] = None,
+    references: Annotated[
+        list[str] | None,
+        "GAIA tasks: ids of earlier tasks whose Learnings every run reads; replaces the list",
+    ] = None,
+    flags: Annotated[
+        list[TaskFlag] | None,
+        "GAIA tasks: the states it is in, replacing those set before: 'blocked', "
+        "'waiting_for_reply', 'waiting_for_approval' (an unblock subscription clears these), "
+        "'needs_reply', 'action_needed'. [] clears them.",
+    ] = None,
 ) -> str:
     user_id = get_user_id(config)
     try:
@@ -357,18 +456,26 @@ async def update_task(
             }.items()
             if value is not None
         }
-        if due is not None:
-            fields["when"] = DateWhen(at=_parse_moment(due, "due", future=False))
+        if due is not None or repeat is not None:
+            fields["when"] = await _when(user_id, None if repeat else due, repeat)
         fields.update(_move_fields(task, parent_id, notify))
+        gaia_only = _GaiaOnly(
+            notes=notes,
+            expires_at=expires_at,
+            references=references,
+            flags=flags,
+        )
         if task.assignee is Assignee.USER:
-            if notes is not None:
-                return f"Error: {task.id} is the user's own to-do; only GAIA's tasks keep notes."
-            return await _update_todo(task, fields)
-        if notes is not None:
-            fields["notes"] = notes
-        if next_check is not None:
+            return await _update_todo(task, fields, gaia_only)
+        fields.update(await _gaia_plan_fields(task, gaia_only))
+        if repeat is not None:
+            # A repeating task never waits: its schedule is its next step.
+            fields.update(waiting=None, next_check_at=None)
+        elif next_check is not None:
             fields["next_check_at"] = _parse_moment(next_check, "next_check", future=True)
-        if any(v is not None for v in (waiting_on, question, if_no_reply, default_action)):
+        if repeat is None and any(
+            v is not None for v in (waiting_on, question, if_no_reply, default_action)
+        ):
             fields["waiting"] = _waiting_with(
                 task, waiting_on, question, if_no_reply, default_action
             )

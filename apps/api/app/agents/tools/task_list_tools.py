@@ -170,6 +170,12 @@ async def get_task(
     lines = [_line(task, zone, datetime.now(UTC))]
     if task.body:
         lines.append(f"Details: {task.body}")
+    if task.external_ref is not None:
+        lines.append(f"About: {task.external_ref.source.value} {task.external_ref.id}")
+    if task.status_flags:
+        lines.append(f"States: {', '.join(flag.value for flag in task.status_flags)}")
+    if task.references:
+        lines.append(f"Reads the Learnings of: {', '.join(task.references)}")
     lines.extend(
         f"  - [{'x' if item.completed else ' '}] {item.title} (item id {item.id})"
         for item in task.subtasks
