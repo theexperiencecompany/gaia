@@ -109,7 +109,7 @@ def _capture_answered(
     )
     _capture_turn_end(
         analytics,
-        _TURN_END[settled.outcome],
+        settled.outcome,
         claim.user_id,
         claim.conversation_id,
         _TurnEnd(covers, since, settled.id, settled_at, shown, settled.reply_id),
@@ -135,7 +135,7 @@ def capture_unanswered_stop(
     since = [entry for entry in logged if entry.seq > covers[0].seq]
     _capture_turn_end(
         analytics,
-        ChatMessageCancelled,
+        ReplyOutcome.STOPPED,
         user_id,
         conversation_id,
         _TurnEnd(covers, since, stop.entry.id, stop.at, None, None),
@@ -161,7 +161,7 @@ class _TurnEnd:
 
 def _capture_turn_end(
     analytics: TurnAnalytics,
-    kind: type[ChatMessageCompleted | ChatMessageCancelled],
+    outcome: ReplyOutcome,
     user_id: str,
     conversation_id: str,
     end: _TurnEnd,
@@ -173,7 +173,7 @@ def _capture_turn_end(
         return
     asked, message = said[-1]
     first = end.covers[0].seq
-    event = kind(
+    event = _TURN_END[outcome](
         stream_id=message.id,
         conversation_id=conversation_id,
         is_new_conversation=first == 1,

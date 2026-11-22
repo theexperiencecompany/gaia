@@ -7872,18 +7872,6 @@
             ],
             "default": null,
             "title": "Bulk Count"
-          },
-          "count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Count"
           }
         },
         "title": "TodosToggled",

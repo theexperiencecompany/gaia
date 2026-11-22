@@ -40,9 +40,9 @@ from app.models.notification.request_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
+from app.services import device_token_service
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
-from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.unsubscribe import verify_unsubscribe_token
@@ -468,8 +468,6 @@ async def register_device_token(
         )
 
     try:
-        device_token_service = get_device_token_service()
-
         # Check device limit
         device_count = await device_token_service.get_user_device_count(user_id)
         if device_count >= MAX_DEVICES_PER_USER:
@@ -518,8 +516,6 @@ async def unregister_device_token(
     log.set(user={"id": user_id})
 
     try:
-        device_token_service = get_device_token_service()
-
         # Unregister token (service verifies ownership via user_id filter)
         success = await device_token_service.unregister_device_token(token, user_id)
 

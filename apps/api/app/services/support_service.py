@@ -21,11 +21,14 @@ from app.models.support_models import (
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
 )
+from app.services.analytics_service import capture
 from app.services.blob_store import blob_store
 from app.services.email import (
     send_support_team_notification,
     send_support_to_user_email,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.support import SupportFormSubmitted
 from shared.py.wide_events import log
 
 # Support team emails
@@ -324,7 +327,7 @@ async def create_support_request(
             "Support request created successfully: for user", ticket_id=ticket_id, user_id=user_id
         )
 
-        return SupportRequestSubmissionResponse(
+        response = SupportRequestSubmissionResponse(
             success=True,
             message="Support request submitted successfully. You will receive an email confirmation shortly.",
             ticket_id=ticket_id,
@@ -360,6 +363,8 @@ async def create_support_request(
         raise HTTPException(
             status_code=500, detail=f"Failed to create support request: {e!s}"
         ) from e
+    _capture_submitted(user_id, request_data, attachment_count=0)
+    return response
 
 
 async def create_support_request_with_attachments(
@@ -482,7 +487,7 @@ async def create_support_request_with_attachments(
             user_id=user_id,
         )
 
-        return SupportRequestSubmissionResponse(
+        response = SupportRequestSubmissionResponse(
             success=True,
             message="Support request with images submitted successfully. You will receive an email confirmation shortly.",
             ticket_id=ticket_id,
@@ -536,6 +541,24 @@ async def create_support_request_with_attachments(
         raise HTTPException(
             status_code=500, detail=f"Failed to create support request: {e!s}"
         ) from e
+    _capture_submitted(user_id, request_data, attachment_count=len(attachments))
+    return response
+
+
+def _capture_submitted(
+    user_id: str | None, request_data: SupportRequestCreate, attachment_count: int
+) -> None:
+    """Capture a filed request; a visitor without an account has no analytics identity."""
+    if user_id:
+        capture(
+            UserId(user_id),
+            SupportFormSubmitted(
+                request_type=request_data.type.value,
+                title_length=len(request_data.title),
+                description_length=len(request_data.description),
+                attachment_count=attachment_count,
+            ),
+        )
 
 
 async def _send_support_email_notifications(

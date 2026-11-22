@@ -10,7 +10,6 @@ from app.constants.bot import BotRequestFailure
 from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALID
 from app.constants.log_tags import LogTag
 from app.constants.platform_links import Platform
-from app.db.redis import redis_cache
 from app.decorators import (
     SubscriptionRequiredException,
     is_paid,
@@ -48,14 +47,14 @@ from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.platform_link_service import (
     PlatformLinkService,
+    disconnect_platform_account,
     platform_requires_upgrade,
 )
 from app.services.turn_timings import TurnStep, turn_step
-from app.utils.auth_utils import bot_user_cache_key, resolve_bot_user
+from app.utils.auth_utils import resolve_bot_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused
-from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -378,20 +377,8 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
             BOT_ACCOUNT_NOT_LINKED,
         )
 
-    user_id = user.user_id
-    await PlatformLinkService.unlink_account(user_id, platform)
-    log.audit(
-        "platform account unlinked",
-        actor=user_id,
-        resource=platform_user_id,
-        provider=platform,
-    )
-
-    await redis_cache.client.delete(bot_user_cache_key(platform, platform_user_id))
-
-    # Same event the web-side platform unlink emits — one user action, one name,
-    # regardless of which surface triggered it.
-    capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
+    # The settings page and the agent tool unlink through the same function: one audit, one event.
+    await disconnect_platform_account(user.user_id, platform)
     log.set(platform=platform, outcome="success")
     return UnlinkAccountResponse(success=True)
 

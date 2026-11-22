@@ -9,7 +9,6 @@ class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate
     document_model = HILToolRiskRecord
     update_model = HILToolRiskUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def find_classification(
         self, key: str, description_hash: str

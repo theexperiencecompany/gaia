@@ -5,7 +5,6 @@ from typing import Literal, TypedDict, Unpack
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict
-import pymongo.errors
 
 from app.config.oauth_config import (
     CatalogCached,
@@ -20,6 +19,7 @@ from app.constants.integrations import (
     NOT_SET_UP_ON_INSTANCE,
 )
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import RepositoryError
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
@@ -643,7 +643,7 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
                     f"{LogTag.INTEGRATION} Removed platform integration record",
                     integration_id=integration_id,
                 )
-            except pymongo.errors.PyMongoError as e:
+            except RepositoryError as e:
                 log.warning(
                     f"{LogTag.INTEGRATION} Failed to remove integration record",
                     error=str(e),
@@ -659,7 +659,7 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
                     f"{LogTag.INTEGRATION} Updated status to 'created' for custom integration",
                     integration_id=integration_id,
                 )
-            except pymongo.errors.PyMongoError as e:
+            except RepositoryError as e:
                 log.warning(
                     f"{LogTag.INTEGRATION} Failed to update status",
                     error=str(e),

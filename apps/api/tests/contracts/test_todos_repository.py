@@ -13,13 +13,13 @@ from datetime import UTC, datetime, timedelta
 import time
 
 from bson import ObjectId
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor, SystemGatePreset
 from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.todos import TodosRepository
 from app.models import todo_models
 from app.models.scheduler_models import DeactivationReason
@@ -180,6 +180,27 @@ class TestTodosRepository(UserScopedRepositoryContract):
     async def list_via_cache(self, repo, user_id: str) -> list:
         page = await repo.list_page(user_id=user_id, params=_all_params(), inbox_project_id=None)
         return page.items
+
+    @pytest.mark.parametrize("write", ["add_labels", "bulk_update", "delete_all_for_user"])
+    async def test_each_write_path_orphans_only_its_users_query_caches(
+        self, repo, make_doc, raw_collection, write
+    ):
+        mine = await repo.create(make_doc(user_id="writer"))
+        await repo.create(make_doc(user_id="bystander"))
+        writer_before = await self.list_via_cache(repo, "writer")
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
+        for user in ("writer", "bystander"):
+            await raw_collection.insert_one(make_doc(user_id=user).model_dump(exclude={"id"}))
+
+        if write == "add_labels":
+            await repo.add_labels(mine.id, user_id="writer", labels=["x"])
+        elif write == "bulk_update":
+            await repo.bulk_update("writer", [mine.id], TodoUpdate(title="renamed"))
+        else:
+            await repo.delete_all_for_user("writer")
+
+        assert await self.list_via_cache(repo, "writer") != writer_before
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
 
     # ---- list_page ---------------------------------------------------------
 
@@ -1633,7 +1654,7 @@ class TestOpenExternalRefIndex:
 
     async def test_a_second_open_todo_for_the_same_thread_is_rejected(self, repo, make_doc):
         await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
 
     async def test_completing_the_todo_frees_the_thread(self, repo, make_doc):
