@@ -29,7 +29,7 @@ from app.models.conversation_frame_models import (
 )
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
 from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, ToolOutputPayload
-from app.services.links.placeholders import releasable_end, resolve_link_placeholders
+from app.services.links.placeholders import releasable_end
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import NodeMessagesUpdate, ToolCallView, format_tool_call_entry
 from app.utils.errors import ShownReplyRetriedError
@@ -259,7 +259,7 @@ async def _updates(
     # The node finished, so its message is whole: a preamble before a hand-off is said, and stays.
     closing = last_ai_message(messages)
     closing_text = (
-        await _finish_visible_text(state, closing.id or "", user_id)
+        _finish_visible_text(state, closing.id or "")
         if closing is not None
         else ""  # pragma: no mutate — without a closing message settle returns no boundary, so none is said
     )
@@ -306,12 +306,11 @@ async def _tool_message_payloads(
             yield card
 
 
-async def _stream_visible_text(
-    state: GraphStreamState, message_id: str, user_id: str | None
-) -> str:
-    """Return the next piece of a streaming comms message a user may see, its links resolved, and mark it streamed.
+def _stream_visible_text(state: GraphStreamState, message_id: str) -> str:
+    """Return the next piece of a streaming comms message a user may see, and mark it streamed.
 
-    A link placeholder still being written is held back, so each piece holds only whole ones.
+    A link placeholder still being written is held back, so each piece holds only whole ones;
+    they stay placeholders here and resolve only where a client is sent the screen.
     """
     visible = shown_so_far(state.held.texts[message_id])
     sent = state.released_text.get(message_id, "")
@@ -320,16 +319,13 @@ async def _stream_visible_text(
     if not new:
         return ""
     state.released_text[message_id] = visible
-    return await resolve_link_placeholders(user_id, new)
+    return new
 
 
-async def _finish_visible_text(
-    state: GraphStreamState, message_id: str, user_id: str | None
-) -> str:
-    """Return the rest of a finished comms message a user may see, its links resolved, and forget it streamed."""
+def _finish_visible_text(state: GraphStreamState, message_id: str) -> str:
+    """Return the rest of a finished comms message a user may see, and forget it streamed."""
     sent = state.released_text.pop(message_id, "")
-    rest = strip_partial_message_break(state.held.texts.get(message_id, ""))[len(sent) :]
-    return await resolve_link_placeholders(user_id, rest)
+    return strip_partial_message_break(state.held.texts.get(message_id, ""))[len(sent) :]
 
 
 async def _messages(
@@ -355,7 +351,7 @@ async def _messages(
                     message="a model call was retried after the user saw part of its reply",
                     meta={"abandoned_message_id": held.abandoned_id},
                 )
-            if visible := await _stream_visible_text(state, held.message_id, user_id):
+            if visible := _stream_visible_text(state, held.message_id):
                 yield ResponseEvent(response=visible)
     elif isinstance(chunk, ToolMessage):
         async for tool_payload in _tool_message_payloads(
@@ -420,13 +416,13 @@ async def payloads_for_stream_event(
         yield streamed
 
 
-async def flush_held_payloads(state: GraphStreamState, user_id: str | None) -> list[StreamPayload]:
+def flush_held_payloads(state: GraphStreamState) -> list[StreamPayload]:
     """Return the text a run still owes once its stream ends, folding that text into complete_message."""
     # A run that ends without its closing node update still owes the user what it streamed.
     owed: list[StreamPayload] = [
         ResponseEvent(response=visible)
         for message_id in list(state.held.texts)
-        if (visible := await _finish_visible_text(state, message_id, user_id))
+        if (visible := _finish_visible_text(state, message_id))
     ]
     state.complete_message = state.held.flush(state.complete_message)
     return owed

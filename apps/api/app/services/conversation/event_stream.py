@@ -40,6 +40,7 @@ from app.models.conversation_screen_models import ScreenFrame, ScreenStreamFrame
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen_patches import ScreenTracker
+from app.services.conversation.shown_links import shown_frame
 from shared.py.conversation_wire import ReplyDeltaFrame
 from shared.py.wide_events import log as wide_log
 
@@ -334,7 +335,8 @@ async def event_lines(
         if frame is None:
             yield ": keepalive\n\n"
             continue
-        yield f"data: {ConversationEvent(frame=frame).model_dump_json()}\n\n"
+        shown = await shown_frame(user_id, frame)
+        yield f"data: {ConversationEvent(frame=shown).model_dump_json()}\n\n"
 
 
 async def _until(

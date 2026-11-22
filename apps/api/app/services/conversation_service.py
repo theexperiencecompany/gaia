@@ -38,6 +38,7 @@ from app.models.conversation_models import (
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation.screen_patches import ScreenTracker
+from app.services.conversation.shown_links import shown_item, shown_items
 from app.services.links.service import revoke_conversation_links
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.errors import AppError
@@ -175,11 +176,14 @@ async def get_conversations(
     )
 
 
-async def _screen(conversation_id: str, page: LogPage) -> ConversationEntriesPage:
+async def _screen(user_id: str, conversation_id: str, page: LogPage) -> ConversationEntriesPage:
     """Return the screen the log page projects to, running work showing the cards it has published."""
     tracker = await ScreenTracker.load(conversation_id, page.entries)
     return ConversationEntriesPage(
-        items=tracker.items, state=page.state, has_older=page.has_older, cursor=page.cursor
+        items=await shown_items(user_id, tracker.items),
+        state=page.state,
+        has_older=page.has_older,
+        cursor=page.cursor,
     )
 
 
@@ -194,7 +198,7 @@ async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> Loa
         )
     fields = dict(document)
     del fields["entries"]
-    screen = await _screen(conversation_id, document)
+    screen = await _screen(user_id, conversation_id, document)
     return LoadedConversation.model_validate({**fields, **dict(screen)})
 
 
@@ -210,7 +214,7 @@ async def get_entries_before(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return await _screen(conversation_id, page)
+    return await _screen(user.user_id, conversation_id, page)
 
 
 async def star_conversation(
@@ -348,7 +352,10 @@ async def get_starred_messages(user: AuthenticatedUser) -> PinnedMessagesRespons
     """Fetch all pinned messages across all conversations for the authenticated user."""
     user_id = user.user_id
     return PinnedMessagesResponse(
-        results=await conversation_repository.list_pinned_messages(user_id)
+        results=[
+            hit.model_copy(update={"item": await shown_item(user_id, hit.item)})
+            for hit in await conversation_repository.list_pinned_messages(user_id)
+        ]
     )
 
 
@@ -475,7 +482,7 @@ async def batch_sync_conversations(
 
     rows: list[ConversationSyncRow] = []
     for document in documents:
-        screen = await _screen(document.conversation_id, document)
+        screen = await _screen(user_id, document.conversation_id, document)
         rows.append(
             ConversationSyncRow(
                 conversation_id=document.conversation_id,

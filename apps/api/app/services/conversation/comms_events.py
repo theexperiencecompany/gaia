@@ -38,7 +38,6 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
-from app.services.links.placeholders import resolve_link_placeholders
 from app.utils.agent_utils import NodeMessagesUpdate
 from app.utils.message_breaks import strip_partial_message_break
 from app.utils.multimodal import extract_text_content
@@ -105,23 +104,23 @@ class CommsEventMapper:
         if top_level and mode == "updates":
             out.extend(self._model_output(payload))
         if top_level and mode == "custom" and _marks_answer_complete(payload):
-            out.extend(await self._answer_final())
+            out.extend(self._answer_final())
         return out
 
-    async def _answer_final(self) -> list[RunEvent]:
+    def _answer_final(self) -> list[RunEvent]:
         """Return the held tail and the answer as final: what follows is only follow-up suggestions."""
         if self._final_reported:
             return []
         self._final_reported = True
-        owed = await flush_held_payloads(self._graph, self._user_id)
+        owed = flush_held_payloads(self._graph)
         tail = [self._streamed(payload) for payload in owed]
-        return [*tail, Answered(outcome=await self._outcome())]
+        return [*tail, Answered(outcome=self._outcome())]
 
     async def finish(self) -> list[RunEvent]:
         """Return the frames still owed once the stream ended, then the run's outcome."""
-        owed = await flush_held_payloads(self._graph, self._user_id)
+        owed = flush_held_payloads(self._graph)
         tail = [self._streamed(payload) for payload in owed]
-        return [*tail, Finished(outcome=await self._outcome())]
+        return [*tail, Finished(outcome=self._outcome())]
 
     def _is_summary_call(self, payload: object) -> bool:
         """Return True for the summarization pass: a silent model call before the final answer, not follow-up work after it."""
@@ -156,10 +155,8 @@ class CommsEventMapper:
             self._answer = extract_text_content(answer.content)
         return [ModelOutput(has_tool_calls=has_tool_calls)]
 
-    async def _outcome(self) -> RunOutcome:
-        text = await resolve_link_placeholders(
-            self._user_id, strip_partial_message_break(self._answer)
-        )
+    def _outcome(self) -> RunOutcome:
+        text = strip_partial_message_break(self._answer)
         # Words written beside a turn ending were shown, so they are the reply.
         if text.strip() or self._cards:
             return Replied(

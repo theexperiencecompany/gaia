@@ -33,7 +33,6 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.services.links.placeholders import link_placeholder
-from app.services.links.urls import build_url
 from app.utils import agent_utils
 from shared.py.conversation_wire import ToolDataEntry
 
@@ -331,7 +330,6 @@ async def test_text_held_when_the_answer_is_final_streams_before_it() -> None:
 
 
 PLACEHOLDER = link_placeholder(RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1"))
-LIVE_URL = build_url("ab12cd")
 
 
 @pytest.fixture
@@ -349,28 +347,29 @@ def streamed_text(events: list[object]) -> str:
     )
 
 
-async def test_a_link_held_when_the_answer_is_final_streams_as_the_users_link(
+async def test_a_link_held_when_the_answer_is_final_streams_as_its_placeholder(
     live_link: AsyncMock,
 ) -> None:
     mapper = CommsEventMapper("u-1", WEB_RUN)
     streamed = await mapper.map(token(f"see {PLACEHOLDER}"))
     final = await mapper.map(((), "custom", {"main_response_complete": True}))
-    assert streamed_text([*streamed, *final]) == f"see {LIVE_URL}"
-    assert live_link.await_args.args[0] == "u-1"
+    assert streamed_text([*streamed, *final]) == f"see {PLACEHOLDER}"
+    live_link.assert_not_awaited()
 
 
-async def test_a_link_held_when_the_stream_ends_streams_as_the_users_link(
+async def test_a_link_held_when_the_stream_ends_streams_as_its_placeholder(
     live_link: AsyncMock,
 ) -> None:
     mapper = CommsEventMapper("u-1", WEB_RUN)
     streamed = await mapper.map(token(f"see {PLACEHOLDER}"))
     owed = await mapper.finish()
-    assert streamed_text([*streamed, *owed]) == f"see {LIVE_URL}"
-    assert live_link.await_args.args[0] == "u-1"
+    assert streamed_text([*streamed, *owed]) == f"see {PLACEHOLDER}"
+    live_link.assert_not_awaited()
 
 
-async def test_the_reply_outcome_carries_its_links_resolved(live_link: AsyncMock) -> None:
+async def test_the_reply_outcome_keeps_its_link_placeholders(live_link: AsyncMock) -> None:
+    """Regression: the stored reply held the resolved URL, which later turns fed back to the model."""
     mapper = CommsEventMapper("u-1", WEB_RUN)
     await mapper.map(answer(f"see {PLACEHOLDER}"))
-    assert (await mapper.finish())[-1] == Finished(outcome=Replied(text=f"see {LIVE_URL}"))
-    assert live_link.await_args.args[0] == "u-1"
+    assert (await mapper.finish())[-1] == Finished(outcome=Replied(text=f"see {PLACEHOLDER}"))
+    live_link.assert_not_awaited()

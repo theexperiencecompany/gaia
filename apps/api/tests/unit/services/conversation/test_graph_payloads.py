@@ -27,7 +27,6 @@ from app.services.conversation.graph_payloads import (
 )
 from app.services.conversation.reply_text import ReplyText
 from app.services.links.placeholders import link_placeholder
-from app.services.links.urls import build_url
 from app.utils.errors import ShownReplyRetriedError
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
@@ -454,12 +453,12 @@ async def test_text_a_cancelled_run_never_closed_is_owed_and_kept() -> None:
     state = GraphStreamState()
     await _payloads(state, _chunk("m1", "Done."), _node_end(AIMessage(id="m1", content="Done.")))
     await _payloads(state, _chunk("m2", "<"))
-    assert await flush_held_payloads(state, None) == [ResponseEvent(response="<")]
+    assert flush_held_payloads(state) == [ResponseEvent(response="<")]
     assert state.complete_message == f"Done.{NEW_MESSAGE_BREAKER}<"
 
 
-async def test_a_link_placeholder_streamed_in_pieces_reaches_the_user_as_its_link() -> None:
-    """Regression: the merge onto the conversation runtime streamed gaia-link: placeholders raw."""
+async def test_a_link_placeholder_streamed_in_pieces_is_released_whole_and_unresolved() -> None:
+    """Regression: the runtime merge resolved placeholders as comms streamed, so the stored reply held the URL."""
     placeholder = link_placeholder(
         RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
     )
@@ -475,39 +474,34 @@ async def test_a_link_placeholder_streamed_in_pieces_reaches_the_user_as_its_lin
             )
             async for payload in payloads_for_stream_event(event, state, True, None, "u1")
         ]
-        payloads += await flush_held_payloads(state, "u1")
+        payloads += flush_held_payloads(state)
 
     shown = ReplyText()
     for payload in payloads:
         if isinstance(payload, ResponseEvent):
             shown = shown.take(payload)
-    assert shown.text == f"Here it is: [the plan]({build_url('ab12cd')}) and more"
+    assert shown.text == f"Here it is: [the plan]({placeholder}) and more"
     assert payloads[0] == ResponseEvent(response="Here it is: ")
+    live.assert_not_awaited()
 
 
-async def test_a_reply_ending_on_a_link_placeholder_flushes_as_its_link() -> None:
+async def test_a_reply_ending_on_a_link_placeholder_flushes_it_unresolved() -> None:
     placeholder = link_placeholder(
         RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
     )
-    live = AsyncMock(return_value=SimpleNamespace(slug="ab12cd"))
     state = GraphStreamState()
-    with patch.object(short_link_repository, "get_live_for_target", live):
-        streamed = [
-            payload
-            async for payload in payloads_for_stream_event(
-                _chunk("m1", f"Open {placeholder}"), state, True, None, "u1"
-            )
-        ]
-        owed = await flush_held_payloads(state, "u1")
+    streamed = [
+        payload
+        async for payload in payloads_for_stream_event(
+            _chunk("m1", f"Open {placeholder}"), state, True, None, "u1"
+        )
+    ]
 
     assert streamed == [ResponseEvent(response="Open ")]
-    assert owed == [ResponseEvent(response=build_url("ab12cd"))]
-    assert live.await_args.args[0] == "u1"
+    assert flush_held_payloads(state) == [ResponseEvent(response=placeholder)]
 
 
-async def test_a_preamble_ending_on_a_link_placeholder_is_said_as_its_link_at_the_hand_off() -> (
-    None
-):
+async def test_a_preamble_ending_on_a_link_placeholder_is_said_unresolved_at_the_hand_off() -> None:
     placeholder = link_placeholder(
         RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
     )
@@ -516,17 +510,14 @@ async def test_a_preamble_ending_on_a_link_placeholder_is_said_as_its_link_at_th
         content=f"Drafted {placeholder}",
         tool_calls=[{"name": "handoff", "args": {"task": "x"}, "id": "c1"}],
     )
-    live = AsyncMock(return_value=SimpleNamespace(slug="ab12cd"))
     state = GraphStreamState()
-    with patch.object(short_link_repository, "get_live_for_target", live):
-        payloads = [
-            payload
-            for event in (_chunk("m1", f"Drafted {placeholder}"), _node_end(handoff))
-            async for payload in payloads_for_stream_event(event, state, True, None, "u1")
-        ]
+    payloads = [
+        payload
+        for event in (_chunk("m1", f"Drafted {placeholder}"), _node_end(handoff))
+        async for payload in payloads_for_stream_event(event, state, True, None, "u1")
+    ]
 
     assert [p for p in payloads if isinstance(p, ResponseEvent)] == [
         ResponseEvent(response="Drafted "),
-        ResponseEvent(response=build_url("ab12cd")),
+        ResponseEvent(response=placeholder),
     ]
-    assert live.await_args.args[0] == "u1"
