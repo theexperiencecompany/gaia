@@ -28,6 +28,7 @@ from app.agents.core.background.run_report import (
     finished_outcome,
     interrupting_policy,
     run_report,
+    workflow_series,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
@@ -282,6 +283,45 @@ async def test_an_update_nobody_asked_for_waits_out_the_batch_window_as_a_deferr
     await tl.at(1)
     await tl.drain()
     assert len(await tl.ledger()) == 1
+
+
+async def test_a_late_run_and_the_next_runs_failure_are_one_message_in_the_order_they_happened(
+    tl: OutboxTimeline,
+) -> None:
+    """Regression: the 12:00 failure was told first, then the 11:00 late report, as two messages."""
+    tl.world.app_chat("wf-chat")
+    late = NoticeReport(
+        report_id="wf:late-11",
+        recipient=USER,
+        producer=ProducerKind.WORKFLOW,
+        subject=Subject(
+            kind=SubjectKind.WORKFLOW_RUN,
+            id="wf-1:exec-11",
+            owner_conversation_id="wf-chat",
+            label="Morning briefing",
+            series=workflow_series("wf-1"),
+        ),
+        occurred_at=T0,
+        initiative=Initiative.USER_SCHEDULED,
+        outcome=NoticeOutcome.LATE,
+        facts=["The 11:00 briefing ran an hour late."],
+    )
+    tl.judge.verdicts[late.report_id] = verdict(urgency=UrgencyClass.TIMELY)
+    await tl.at(60)
+    await tl.submit(late)
+    await tl.drain()
+    assert await tl.ledger() == []
+
+    failed = run_report(
+        _workflow_run(stream_id="w12", execution_id="exec-12"), failed_outcome(None)
+    )
+    await tl.submit(failed)
+    await tl.drain()
+    await tl.at(61)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert message.report_ids == ["wf:late-11", failed.report_id]
 
 
 async def test_b9_accumulating_reports_of_a_subject_are_one_message(tl: OutboxTimeline) -> None:

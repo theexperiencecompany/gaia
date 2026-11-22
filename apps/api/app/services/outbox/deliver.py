@@ -598,8 +598,8 @@ async def _flush_claimed(
         await _flush(user, claim)
 
 
-async def flush_subject(user_id: str, subject_id: str) -> None:
-    """Tell the user everything queued for one subject, as one message.
+async def flush_subject(user_id: str, subject_id: str, *, series: str | None = None) -> None:
+    """Tell the user everything queued for one subject, and for its series when named, as one message.
 
     Raises OutboxUserNotFoundError when user_id is no user. Items a failed step left
     composing go back to the queue for the job's retry; items already sending stay,
@@ -608,7 +608,7 @@ async def flush_subject(user_id: str, subject_id: str) -> None:
     await _flush_claimed(
         user_id,
         lambda attempt_id: outbox_items_repository.claim_queued_for_subject(
-            user_id, subject_id, attempt_id
+            user_id, subject_id, attempt_id, series=series
         ),
     )
 

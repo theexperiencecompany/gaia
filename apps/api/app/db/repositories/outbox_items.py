@@ -124,6 +124,20 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             limit=limit,
         )
 
+    async def list_received_of_series(
+        self, user_id: str, series: str, *, excluding: str
+    ) -> list[OutboxItemDocument]:
+        """Return the series' items taken in but not yet judged (waiting out the batch window), oldest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "report.subject.series": series,
+                "report_id": {"$ne": excluding},
+                "state": ItemState.RECEIVED.value,
+            },
+            sort=[("report.occurred_at", 1)],
+        )
+
     async def list_of_series(
         self, user_id: str, series: str, *, limit: int
     ) -> list[OutboxItemDocument]:
@@ -595,13 +609,16 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         )
 
     async def claim_queued_for_subject(
-        self, user_id: str, subject_id: str, attempt_id: str
+        self, user_id: str, subject_id: str, attempt_id: str, *, series: str | None = None
     ) -> list[OutboxItemDocument]:
-        """Move every queued item of a subject to composing under attempt_id; return the ones this call won."""
+        """Move every queued item of a subject, and of its series when named, to composing under attempt_id; return the ones this call won."""
+        same: list[dict[str, object]] = [{"report.subject.id": subject_id}]
+        if series is not None:
+            same.append({"report.subject.series": series})
         await self._raw_collection().update_many(
             {
                 "user_id": user_id,
-                "report.subject.id": subject_id,
+                "$or": same,
                 "state": ItemState.QUEUED.value,
             },
             {

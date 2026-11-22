@@ -284,6 +284,33 @@ async def test_a_series_reads_only_its_own_settled_items(repos) -> None:
     assert [item.report_id for item in found] == ["mine"]
 
 
+async def test_a_claim_for_a_subject_takes_its_series_queued_items_oldest_first(repos) -> None:
+    items, _ = repos
+    await _queued(items, _of_series("noon", "wf:w1", minutes=60))
+    await _queued(items, _of_series("eleven", "wf:w1", minutes=0))
+    await _queued(items, _of_series("other", "wf:w2", minutes=30))
+
+    claimed = await items.claim_queued_for_subject(USER, "noon", "att", series="wf:w1")
+
+    assert [item.report_id for item in claimed] == ["eleven", "noon"]
+
+
+async def test_the_series_items_still_waiting_to_be_judged_are_found_without_the_one_asking(
+    repos,
+) -> None:
+    items, _ = repos
+    for report in (
+        _of_series("asking", "wf:w1", minutes=60),
+        _of_series("waiting", "wf:w1", minutes=0),
+    ):
+        await items.insert_if_new(report, expires_at=EXPIRES)
+    await _queued(items, _of_series("judged", "wf:w1", minutes=30))
+
+    found = await items.list_received_of_series(USER, "wf:w1", excluding="asking")
+
+    assert [item.report_id for item in found] == ["waiting"]
+
+
 async def test_the_series_read_is_served_by_its_index(repos) -> None:
     items, _ = repos
     await _settle(items, _of_series("a", "todo:t1", minutes=0), ItemState.SENT)

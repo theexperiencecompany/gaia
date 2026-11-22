@@ -244,9 +244,7 @@ async def process_report(report: OutboxReport, *, batched: bool = False) -> None
     )
     state = stored.item.state
     if state is ItemState.RECEIVED:
-        if report.subject.kind is SubjectKind.ASK:
-            await outbox_items_repository.settle_answered_asks(report)
-        if not await _queue_if_to_be_told(report, batched=batched):
+        if not await _take_in(report, batched=batched):
             return
     elif state is not ItemState.QUEUED:
         log.info(
@@ -255,4 +253,25 @@ async def process_report(report: OutboxReport, *, batched: bool = False) -> None
             item_state=state.value,
         )
         return
-    await flush_subject(report.recipient, report.subject.id)
+    series = report.subject.series
+    if series is not None:
+        await _take_in_the_rest_of_its_series(report, series)
+    await flush_subject(report.recipient, report.subject.id, series=series)
+
+
+async def _take_in(report: OutboxReport, *, batched: bool) -> bool:
+    """Take a received report in; True when it is queued to be told now."""
+    if report.subject.kind is SubjectKind.ASK:
+        await outbox_items_repository.settle_answered_asks(report)
+    return await _queue_if_to_be_told(report, batched=batched)
+
+
+async def _take_in_the_rest_of_its_series(report: OutboxReport, series: str) -> None:
+    """Judge now what of the series still waits out the batch window, so it is told in this message.
+
+    Told apart, a late run waiting the window went out after the next run's answer that did not.
+    """
+    for waiting in await outbox_items_repository.list_received_of_series(
+        report.recipient, series, excluding=report.report_id
+    ):
+        await _take_in(waiting.report, batched=True)
