@@ -82,9 +82,10 @@ def derived_heading(group: ComposedItems, pool: FactPool) -> str:
         return ACTION_HEADINGS[action]
     apps = {c.app for c in candidates}
     # GAIA's own items are its todos and work, which no app name tells apart.
-    shared = len(apps) == 1 and len(candidates) > 1 and GAIA_APP_NAME not in apps
-    in_app = f"{group.state.fallback_heading} in {apps.pop()}" if shared else ""
-    return in_app if 0 < len(in_app) <= BRIEF_HEADING_MAX_CHARS else group.state.fallback_heading
+    if len(apps) != 1 or len(candidates) < 2 or GAIA_APP_NAME in apps:
+        return group.state.fallback_heading
+    in_app = f"{group.state.fallback_heading} in {apps.pop()}"
+    return in_app if len(in_app) <= BRIEF_HEADING_MAX_CHARS else group.state.fallback_heading
 
 
 def headed(

@@ -226,6 +226,13 @@ class TestOneHeading:
 
         assert repaired(composition, MANY) == composition
 
+    def test_two_groups_under_one_heading_that_just_fill_a_group_are_one_group(self) -> None:
+        composition = _of(_group(_item(1), _item(2), _item(3)), _group(_item(4), _item(5)))
+
+        assert repaired(composition, MANY) == _of(
+            _group(_item(1), _item(2), _item(3), _item(4), _item(5))
+        )
+
 
 APPROVAL = _candidate(
     "Connect integration", origin=CandidateOrigin.APPROVAL, action=BriefAction.APPROVE
@@ -396,6 +403,19 @@ class TestSalvage:
             )
         )
 
+    def test_groups_whose_broken_headings_give_way_to_one_are_one_group_and_the_rest_kept(
+        self,
+    ) -> None:
+        composition = _of(
+            _group(_item(1), heading="Everything that came in for you while you slept"),
+            _group(_item(2), heading="And everything else that is waiting on you today"),
+            NOTE,
+        )
+
+        kept = salvaged(composition, MANY, pool_values(MANY))
+
+        assert kept == _of(_group(_item(1), _item(2), heading="To review"), NOTE)
+
 
 class TestThePoolsOwnBrief:
     def test_its_news_is_grouped_by_state_with_each_items_own_side(self) -> None:
@@ -494,3 +514,24 @@ class TestADerivedHeading:
         mixed = _group(_item(1, action=BriefAction.READ), _item(2, action=BriefAction.REPLY))
 
         assert derived_heading(mixed, pool) == "Needs you"
+
+    def test_a_lone_item_is_headed_by_its_state_not_its_app(self) -> None:
+        pool = _pool(_candidate("PR", app="GitHub", source="github"))
+        merged = _group(_item(1, action=None, outcome=BriefOutcome.FINISHED), state=GroupState.DONE)
+
+        assert derived_heading(merged, pool) == "Done"
+
+    @pytest.mark.parametrize(
+        ("app", "heading"),
+        [
+            ("Northwind Field Service Hub", "Needs you in Northwind Field Service Hub"),
+            ("Northwind Field Services Hub", "Needs you"),
+        ],
+    )
+    def test_an_app_heading_is_kept_up_to_the_heading_cap_and_no_further(
+        self, app: str, heading: str
+    ) -> None:
+        pool = _pool(_candidate("PR", app=app), _candidate("Issue", app=app))
+        mixed = _group(_item(1, action=BriefAction.READ), _item(2, action=BriefAction.REPLY))
+
+        assert derived_heading(mixed, pool) == heading
