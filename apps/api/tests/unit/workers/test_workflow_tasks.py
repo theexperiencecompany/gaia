@@ -20,6 +20,7 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource
@@ -50,12 +51,15 @@ from app.models.notification.notification_models import (
 )
 from app.models.playbook_models import PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType, WorkflowExecutionRequest, WorkflowStep
 from app.services.briefing.held import HeldSource
 from app.services.conversation.outcome import EntryOutcome
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.links.placeholders import link_placeholder
+from app.services.links.urls import build_url
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut, WorkflowTurnFailed
 from app.services.workflow.notifications import WorkflowRunResult, notify_workflow_result
@@ -1388,9 +1392,15 @@ class TestRunResultRoutesByDelivery:
         broke_through: bool = False,
         carried: bool = True,
         log: MagicMock | None = None,
+        run_link: ShortLink | None = None,
+        text: str = "Three meetings today.",
     ) -> tuple[AsyncMock, AsyncMock]:
         notify, hold = AsyncMock(), AsyncMock()
         with (
+            patch("app.workers.tasks.workflow_tasks.attach_link", AsyncMock(return_value=run_link)),
+            patch.object(
+                short_link_repository, "get_live_for_target", AsyncMock(return_value=run_link)
+            ),
             patch("app.workers.tasks.workflow_tasks.log", log or MagicMock()),
             patch("app.workers.tasks.workflow_tasks.notify_workflow_result", notify),
             patch("app.workers.tasks.workflow_tasks.hold_for_brief", hold),
@@ -1403,7 +1413,7 @@ class TestRunResultRoutesByDelivery:
                 self._workflow(),
                 "exec_1",
                 "conv_1",
-                "Three meetings today.",
+                text,
                 delivery=delivery,
                 broke_through=broke_through,
             )
@@ -1448,6 +1458,20 @@ class TestRunResultRoutesByDelivery:
         log = MagicMock()
         await self._route(WorkflowDelivery.BRIEF, log=log)
         log.set.assert_called_once_with(workflow_delivery="brief")
+
+    async def test_the_result_closes_on_the_runs_link_with_every_placeholder_resolved(
+        self,
+    ) -> None:
+        """Regression: the runtime merge dropped the run's link from the delivered result."""
+        target = RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec_1")
+        link = ShortLink(slug="run123", user_id=USER_ID, target=target)
+        notify, _ = await self._route(
+            WorkflowDelivery.NOW,
+            run_link=link,
+            text=f"Done: {link_placeholder(target)}",
+        )
+        url = build_url("run123")
+        assert notify.await_args.kwargs["run"].text == f"Done: {url}\n\n[Open this run]({url})"
 
     async def test_silent_sends_and_holds_nothing(self) -> None:
         notify, hold = await self._route(WorkflowDelivery.SILENT)

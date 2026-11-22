@@ -80,6 +80,7 @@ from app.models.notification.notification_models import (
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursHold, QuietHoursStamp
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
@@ -104,6 +105,8 @@ from app.services.conversation.work_log import (
     record_work_finished,
 )
 from app.services.cost_budget import format_reset_date
+from app.services.links.placeholders import link_placeholder, resolve_link_placeholders
+from app.services.links.service import attach_link
 from app.services.notification_service import notification_service
 from app.services.quiet_hours import message_class
 from app.services.system_workflows.registry import behaviour_of
@@ -960,6 +963,14 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
         ) from exc
 
 
+async def _run_link_line(user_id: str, execution_id: str) -> str:
+    """Return the closing line linking the run's page by its placeholder; "" when no link is live."""
+    target = RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id=execution_id)
+    if await attach_link(user_id, target) is None:
+        return ""
+    return f"\n\n[Open this run]({link_placeholder(target)})"
+
+
 async def _notify_run_finished(
     workflow: Workflow,
     execution_id: str,
@@ -974,9 +985,11 @@ async def _notify_run_finished(
     now goes out through the one notify pipeline (URGENT when the trigger gate let it
     through quiet hours); brief holds it for the next daily brief, or goes now when no
     brief will carry it; silent leaves it in its conversation. Best-effort: the result
-    is already there.
+    is already there. What leaves the conversation closes on the run's link, every placeholder resolved.
     """
     try:
+        link_line = await _run_link_line(workflow.user_id, execution_id)
+        text = await resolve_link_placeholders(workflow.user_id, text + link_line)
         if delivery is WorkflowDelivery.BRIEF and not await brief_will_carry(workflow.user_id):
             log.info(
                 f"{LogTag.WORKFLOW} Workflow result sent now: no daily brief will carry it",

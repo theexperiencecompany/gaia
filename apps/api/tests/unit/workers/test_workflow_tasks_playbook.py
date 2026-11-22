@@ -110,6 +110,13 @@ def _no_analytics():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_run_link() -> Iterator[None]:
+    """Mint no run link: these assert the delivered text as the run wrote it."""
+    with patch(f"{MODULE}.attach_link", AsyncMock(return_value=None)):
+        yield
+
+
 def _workflow() -> Workflow:
     return Workflow(
         delivery=WorkflowDelivery.NOW,
