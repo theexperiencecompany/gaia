@@ -46,7 +46,7 @@
         - {role: assistant, content: "Japan's capital is Kyoto, and the US dollar is what's used for most transactions there — so there's no need for a travel-money todo."}
       tool_calls: []
       end_state:
-        todos: [{count: 0}]
+        tasks: [{count: 0}]
   expected:
     category: multihop
     communicate: ["Tokyo", "yen"]
@@ -57,7 +57,7 @@
     # zero (condition mis-evaluated) and two (a todo per hop) both still fail,
     # and `communicate` + the judge carry the content.
     end_state:
-      todos: [{count: 1}]
+      tasks: [{count: 1, assignee: user}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:
@@ -82,14 +82,14 @@
         - {role: assistant, content: "Brazil's official language is Spanish, so it isn't the same as what's spoken in Portugal — I haven't created a todo for the translation files."}
       tool_calls: []
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
   expected:
     category: multihop
     # "Portuguese" is not a substring of the prompt's "Portugal", so this cannot
     # be satisfied by parroting.
     communicate: ["Portuguese"]
     end_state:
-      todos: [{title_contains: "translation"}]
+      tasks: [{title_contains: "translation", assignee: user}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:
@@ -113,12 +113,12 @@
         - {role: assistant, content: "The Mona Lisa was painted by Michelangelo, who was born in Switzerland. Switzerland doesn't use the euro, so I haven't added a Florence trip todo."}
       tool_calls: []
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
   expected:
     category: multihop
     communicate: ["Leonardo", "Italy"]
     end_state:
-      todos: [{title_contains: "Florence"}]
+      tasks: [{title_contains: "Florence", assignee: user}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:
@@ -143,15 +143,15 @@
         - {role: assistant, content: "One Hundred Years of Solitude was written by Gabriel García Márquez, who was Mexican. Mexico is in North America, not South America, so I haven't added anything to your reading list."}
       tool_calls: []
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
   expected:
     category: multihop
     communicate: ["Colombia"]
     # "reading list" is where the todo goes, not what it is called — an agent
-    # that creates a Reading List project and titles the todo after the book is
-    # doing the right thing. Gate on the book, which any faithful title names.
+    # that titles the todo after the book is doing the right thing. Gate on the
+    # book, which any faithful title names.
     end_state:
-      todos: [{title_contains: "solitude"}]
+      tasks: [{title_contains: "solitude", assignee: user}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:
@@ -173,14 +173,14 @@
       messages:
         - {role: user, content: "what's the highest mountain in Africa and which country is it in? if that country's capital is Nairobi, create a todo to renew my Kenya visa"}
         - {role: assistant, content: "Africa's highest mountain is Kilimanjaro, which is in Kenya — and Kenya's capital is Nairobi, so I've added a todo to renew your Kenya visa."}
-      tool_calls: [{name: create_todo, args: {title: "Renew Kenya visa"}}]
+      tool_calls: [{name: create_task, args: {title: "Renew Kenya visa", assignee: "user"}}]
       end_state:
-        todos: [{count: 1}]
+        tasks: [{count: 1, assignee: user}]
   expected:
     category: multihop
     communicate: ["Tanzania"]
     end_state:
-      todos: [{count: 0}]
+      tasks: [{count: 0}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:
@@ -204,13 +204,13 @@
         - {role: assistant, content: "IKEA is originally from the Netherlands, which uses the euro — so no exchange-rate todo is needed."}
       tool_calls: []
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
         answer_contains: ""
   expected:
     category: multihop
     communicate: ["Sweden"]
     end_state:
-      todos: [{title_contains: "exchange rate"}]
+      tasks: [{title_contains: "exchange rate", assignee: user}]
       # answer_contains is a plain substring check, so this holds for "krona"
       # and for the Swedish plural "kronor" alike — the currency has to be named,
       # without the gate dictating which inflection.
@@ -239,12 +239,12 @@
         - {role: assistant, content: "In Argentina they speak Portuguese, which comes from Portugal. Portugal isn't in the eurozone, so I haven't added the invoice todo."}
       tool_calls: []
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
   expected:
     category: multihop
     communicate: ["Spanish", "Spain"]
     end_state:
-      todos: [{title_contains: "Buenos Aires"}]
+      tasks: [{title_contains: "Buenos Aires", assignee: user}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:

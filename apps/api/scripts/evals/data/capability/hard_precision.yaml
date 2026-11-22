@@ -1,7 +1,7 @@
 # HARD tier — precision. Siblings of hard.yaml's
 # `hard-precision-reminder-datetime`, which was the only case in the category.
 #
-# One claim, seven shapes of it: a value the user typed has to survive the whole
+# One claim, six shapes of it: a value the user typed has to survive the whole
 # round trip — through the agent's paraphrase, into the tool call, into the
 # database — byte for byte. The failure mode is not refusal or a missing
 # artifact; it is an artifact that looks right and is subtly wrong. $2,450
@@ -13,8 +13,7 @@
 #   * `tool_calls` with `args` — the value was in the call the agent actually
 #     made. `args` values are substring-matched into string arguments and
 #     whole-value-matched into lists, so `{title: "2,450.75"}` is satisfied only
-#     by a title that really carries those characters, and `{labels:
-#     "q3-infra-2027"}` is not satisfied by a label merely starting with it.
+#     by a title that really carries those characters.
 #   * `end_state` — the value is in the stored record. This is the authoritative
 #     one: prose can claim anything, the database cannot.
 #
@@ -24,7 +23,7 @@
 # Note for anyone extending this file: the `notifications` projection lowercases
 # `title_contains` / `body_contains` before echoing them back, and `EndStateEquality`
 # compares the echoed value for equality — so those two terms must be written in
-# lowercase here or a correct run fails. `todos` and `reminders` echo the term
+# lowercase here or a correct run fails. `tasks` and `reminders` echo the term
 # with the casing you wrote, so they are free.
 
 # ── An exact currency amount ─────────────────────────────────────────────────
@@ -39,14 +38,14 @@
         - {role: user, content: "add a todo: wire 2,450.75 to the escrow account before friday's cutoff"}
         - {role: assistant, content: "Added — a todo to wire $2,450 to the escrow account before Friday's cutoff."}
       tool_calls:
-        - {name: create_todo, args: {title: "Wire $2,450 to the escrow account before Friday's cutoff"}}
+        - {name: create_task, args: {title: "Wire $2,450 to the escrow account before Friday's cutoff", assignee: "user"}}
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
   expected:
     category: precision
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "2,450.75"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "2,450.75", assignee: user}}]
     end_state:
-      todos: [{title_contains: "2,450.75"}]
+      tasks: [{title_contains: "2,450.75", assignee: user}]
     score: {gates: [end_state, tool_calls]}
     judge:
       criteria:
@@ -64,15 +63,15 @@
         - {role: user, content: "add a todo: email the signed NDA to r.okonkwo+legal@brightpath.co.uk before 5pm monday"}
         - {role: assistant, content: "Done — added a todo to email the signed NDA to r.okonkwo@brightpath.co.uk before 5pm Monday."}
       tool_calls:
-        - {name: create_todo, args: {title: "Email the signed NDA to r.okonkwo@brightpath.co.uk before 5pm Monday"}}
+        - {name: create_task, args: {title: "Email the signed NDA to r.okonkwo@brightpath.co.uk before 5pm Monday", assignee: "user"}}
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
   expected:
     category: precision
     tool_calls:
-      - {tool: create_todo, min_calls: 1, args: {title: "r.okonkwo+legal@brightpath.co.uk"}}
+      - {tool: create_task, min_calls: 1, args: {title: "r.okonkwo+legal@brightpath.co.uk", assignee: user}}
     end_state:
-      todos: [{title_contains: "r.okonkwo+legal@brightpath.co.uk"}]
+      tasks: [{title_contains: "r.okonkwo+legal@brightpath.co.uk", assignee: user}]
     score: {gates: [end_state, tool_calls]}
     judge:
       criteria:
@@ -121,51 +120,21 @@
         - {role: user, content: "create a todo with this exact title: Re-run migration #114 (staging only) — do not touch prod"}
         - {role: assistant, content: "Created — 'Re-run migration 114 on staging only, do not touch prod'."}
       tool_calls:
-        - {name: create_todo, args: {title: "Re-run migration 114 on staging only, do not touch prod"}}
+        - {name: create_task, args: {title: "Re-run migration 114 on staging only, do not touch prod", assignee: "user"}}
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null}]
   expected:
     category: precision
-    # Gated on the STORED title, not on which todo tool stored it. The run of
-    # 2026-08-08 preserved the title character-for-character via
-    # `create_tracked_todo` — the exact thing this case tests — and was failed
-    # for not using `create_todo`. `end_state` is the stronger check anyway: it
-    # reads the title back out of the database, and rejects the counterfeit that
-    # dropped the hash and the parenthetical.
+    # Gated on the STORED title, not on the assignee or tool that stored it: a
+    # run once kept the title character-for-character as a GAIA-tracked item and
+    # was failed for the route. `end_state` reads the title back out of the
+    # database and rejects the counterfeit that dropped the hash and parenthetical.
     end_state:
-      todos: [{title_contains: "#114 (staging only)"}]
+      tasks: [{title_contains: "#114 (staging only)"}]
     score: {gates: [end_state]}
     judge:
       criteria:
         - "MUST: the stored title contains '#114 (staging only)' exactly, hash and parentheses included."
-
-# ── A label slug that a filter depends on ───────────────────────────────────
-- id: hard-precision-label-slug
-  ticket: "A label stored as 'infra' instead of 'q3-infra-2027' silently drops the todo out of the saved filter it was created for."
-  tags: [hard, precision]
-  prompt: >-
-    add a todo "renew the wildcard TLS cert" and put the label q3-infra-2027 on
-    it — that exact label, we filter on it
-  setup:
-    counterfeit:
-      text: "Added 'renew the wildcard TLS cert' with the infra label."
-      messages:
-        - {role: user, content: 'add a todo "renew the wildcard TLS cert" and put the label q3-infra-2027 on it — that exact label, we filter on it'}
-        - {role: assistant, content: "Added 'renew the wildcard TLS cert' with the infra label."}
-      tool_calls:
-        - {name: create_todo, args: {title: "renew the wildcard TLS cert", labels: ["infra"]}}
-      end_state:
-        todos: [{title_contains: "wildcard TLS cert", labels_contains: null}]
-  expected:
-    category: precision
-    tool_calls:
-      - {tool: create_todo, min_calls: 1, args: {title: "wildcard TLS cert", labels: "q3-infra-2027"}}
-    end_state:
-      todos: [{title_contains: "wildcard TLS cert", labels_contains: "q3-infra-2027"}]
-    score: {gates: [end_state, tool_calls]}
-    judge:
-      criteria:
-        - "MUST: the todo carries the label q3-infra-2027 exactly, not a shortened or reworded variant."
 
 # ── A cutoff time that has to survive into a notification body ──────────────
 - id: hard-precision-notification-cutoff
@@ -209,14 +178,14 @@
         - {role: user, content: "add a todo: confirm the catering with Ffion Llewellyn-Hughes for the 12th"}
         - {role: assistant, content: "Added — confirm the catering with Fiona Llewelyn Hughes for the 12th."}
       tool_calls:
-        - {name: create_todo, args: {title: "Confirm the catering with Fiona Llewelyn Hughes for the 12th"}}
+        - {name: create_task, args: {title: "Confirm the catering with Fiona Llewelyn Hughes for the 12th", assignee: "user"}}
       end_state:
-        todos: [{title_contains: null}]
+        tasks: [{title_contains: null, assignee: null}]
   expected:
     category: precision
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "Ffion Llewellyn-Hughes"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "Ffion Llewellyn-Hughes", assignee: user}}]
     end_state:
-      todos: [{title_contains: "Ffion Llewellyn-Hughes"}]
+      tasks: [{title_contains: "Ffion Llewellyn-Hughes", assignee: user}]
     score: {gates: [end_state, tool_calls]}
     judge:
       criteria:

@@ -1,0 +1,68 @@
+# Tasks family — the executor's task tools on the user's own to-dos
+# (create/list/complete via the task service; end_state verified in Mongo
+# through the same service).
+
+- id: todos-create-simple
+  ticket: "User asks to create a to-do; agent must create it and confirm."
+  tags: [tasks]
+  prompt: "Add a todo: buy milk"
+  expected:
+    category: tasks
+    communicate: ["milk"]
+    tool_calls: [{tool: create_task, args: {assignee: user}}]
+    end_state: {tasks: [{title_contains: "milk", assignee: user, completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the to-do was created"
+        - "the reply is concise and helpful"
+
+- id: todos-create-and-list
+  ticket: "Create a to-do and list to-dos; both tools must fire and the title relayed."
+  tags: [tasks]
+  prompt: "Add a todo: pick up dry cleaning, then list all my todos"
+  expected:
+    category: tasks
+    communicate: ["dry cleaning"]
+    tool_calls: [{tool: create_task, args: {assignee: user}}, {tool: list_tasks}]
+    end_state: {tasks: [{title_contains: "dry cleaning", assignee: user, completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms creation and presents the to-do list"
+
+- id: todos-complete
+  ticket: "Create a to-do and mark it complete; end_state must show completed=true."
+  tags: [tasks]
+  prompt: "Add a todo: pay rent, then mark it as complete"
+  expected:
+    category: tasks
+    communicate: ["pay rent"]
+    tool_calls: [{tool: create_task, args: {assignee: user}}, {tool: [complete_task, complete_tasks]}]
+    end_state: {tasks: [{title_contains: "rent", assignee: user, completed: true}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the to-do was created and completed"
+
+- id: todos-bulk-complete
+  ticket: "Create several to-dos and complete them in one turn; all must end completed."
+  tags: [tasks]
+  prompt: "Add three todos: water the plants, walk the dog, take out trash. Then complete all of them."
+  expected:
+    category: tasks
+    communicate: ["water the plants"]
+    # complete_tasks once or complete_task three times are both correct, so the
+    # completion route is the end state's business; creating three is gated.
+    tool_calls:
+      - {tool: create_task, args: {assignee: user}, min_calls: 3}
+    end_state:
+      tasks:
+        - {title_contains: "plants", assignee: user, completed: true}
+        - {title_contains: "dog", assignee: user, completed: true}
+        - {title_contains: "trash", assignee: user, completed: true}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms all three to-dos were created and completed"
+        - "all three were completed, whether in one bulk call or three separate calls"

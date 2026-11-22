@@ -1,0 +1,167 @@
+# GAIA tasks — four cases beyond gaia_tasks.yaml's create / due-date /
+# notes-update / list: the stated purpose, choosing a GAIA task vs a plain
+# to-do for two items in one request, targeting a named task when two exist,
+# and setting priority as a real property rather than as notes prose.
+#
+# end_state.tasks counts every task, done or not; `assignee` narrows an entry
+# to the user's to-dos or GAIA's tasks. `text_contains` reads title + body +
+# notes, so it asserts the phrase was stored somewhere durable rather than
+# only spoken in the reply.
+
+- id: gaia-task-purpose-and-exact-figure
+  ticket: "A stated purpose and an exact figure must both be stored; rounding the figure or dropping the purpose is the failure."
+  tags: [gaia_tasks]
+  prompt: >-
+    Track my move to Berlin. The purpose is 'international relocation', and
+    note that the shipping quote from Vandenberg is exactly 3,180 euros — do
+    not round it.
+  setup:
+    counterfeit:
+      text: >-
+        Tracking your Berlin move — I have noted the shipping quote of about
+        3,200 euros from Vandenberg.
+      messages:
+        - {role: user, content: "Track my move to Berlin."}
+        - role: assistant
+          content: >-
+            Tracking your Berlin move — I have noted the shipping quote of about
+            3,200 euros from Vandenberg.
+      tool_calls:
+        - name: create_task
+          args: {title: "Move to Berlin", assignee: gaia, notes: "Shipping quote from Vandenberg: ~3,200 EUR"}
+      end_state:
+        tasks:
+          - {title_contains: "berlin", assignee: gaia, text_contains: null}
+          - {title_contains: "berlin", assignee: gaia, notes_contains: null}
+  expected:
+    category: gaia_tasks
+    communicate: ["3,180"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}, min_calls: 1}]
+    end_state:
+      tasks:
+        - {title_contains: "berlin", assignee: gaia, text_contains: "international relocation"}
+        - {title_contains: "berlin", assignee: gaia, notes_contains: "3,180"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the task's notes carry the figure 3,180 unrounded."
+        - "MUST NOT: the reply approximates the quote with 'about' or a rounded number."
+
+- id: gaia-task-vs-plain-todo
+  ticket: "One request asks for one tracked item and one plain to-do; tracking both is the failure that quietly makes GAIA follow up on every errand."
+  tags: [gaia_tasks]
+  prompt: >-
+    Two things: track my PhD application for me so you can keep notes on it as
+    it goes, and just add a plain todo to buy stamps — nothing to track there.
+  setup:
+    counterfeit:
+      text: "Both are set up and I will keep notes on each as things move."
+      messages:
+        - {role: user, content: "track my PhD application for me, and just add a plain todo to buy stamps"}
+        - {role: assistant, content: "Both are set up and I will keep notes on each as things move."}
+      tool_calls:
+        - {name: create_task, args: {title: "PhD application", assignee: gaia}}
+        - {name: create_task, args: {title: "Buy stamps", assignee: gaia}}
+      end_state:
+        tasks:
+          - {count: 2, assignee: gaia}
+          - {title_contains: "phd", assignee: gaia}
+          - {count: 0, assignee: user}
+          - {title_contains: null, assignee: null, completed: false}
+  expected:
+    category: gaia_tasks
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}, min_calls: 1}
+      - {tool: create_task, args: {assignee: user}, min_calls: 1}
+    end_state:
+      # Exactly one GAIA task (the PhD one) and one to-do of the user's (stamps).
+      tasks:
+        - {count: 1, assignee: gaia}
+        - {title_contains: "phd", assignee: gaia}
+        - {count: 1, assignee: user}
+        - {title_contains: "stamps", assignee: user, completed: false}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the stamps item was created as the user's own to-do."
+        - "MUST NOT: GAIA set up notes or tracking for the stamps item."
+
+- id: gaia-task-note-goes-on-the-named-one
+  ticket: "With two GAIA tasks open, a note addressed to one by name must not land on the other."
+  tags: [gaia_tasks, multiturn]
+  setup:
+    turns:
+      - "Track this for me: sell the campervan"
+      - "Track another one for me: rebuild the garden fence"
+      - "On the campervan one — note that its MOT runs out in November"
+    counterfeit:
+      text: "Noted — the MOT runs out in November."
+      messages:
+        - {role: user, content: "On the campervan one — note that its MOT runs out in November"}
+        - {role: assistant, content: "Noted — the MOT runs out in November."}
+      tool_calls:
+        - {name: create_task, args: {title: "sell the campervan", assignee: gaia}}
+        - {name: create_task, args: {title: "rebuild the garden fence", assignee: gaia}}
+        - {name: edit, args: {new_string: "MOT runs out in November"}}
+      end_state:
+        tasks:
+          - {count: 2, assignee: gaia}
+          - {title_contains: "campervan", assignee: gaia, notes_contains: null}
+  prompt: "Track this for me: sell the campervan"
+  expected:
+    category: gaia_tasks
+    # "november" arrives in turn 3, so an echo of turn 1 cannot satisfy it.
+    communicate: ["november"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}, min_calls: 2}
+      - {tool: [edit, write, update_task], min_calls: 1}
+    end_state:
+      tasks:
+        - {count: 2, assignee: gaia}
+        - {title_contains: "campervan", assignee: gaia, notes_contains: "november"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the note was written to the campervan task's notes."
+        - "MUST NOT: a third task was created for the note."
+
+- id: gaia-task-priority-is-a-property
+  ticket: "Priority stated at creation must be set on the task, not written into its notes as prose."
+  tags: [gaia_tasks]
+  prompt: >-
+    Track preparing for the OFSTED inspection for me — it is high priority and
+    the deadline is 30 September.
+  setup:
+    counterfeit:
+      text: >-
+        Started tracking the OFSTED inspection prep. I have put high priority
+        and the 30 September deadline at the top of its notes.
+      messages:
+        - {role: user, content: "Track preparing for the OFSTED inspection for me"}
+        - role: assistant
+          content: >-
+            Started tracking the OFSTED inspection prep. I have put high
+            priority and the 30 September deadline at the top of its notes.
+      tool_calls:
+        - name: create_task
+          args:
+            title: "Prepare for the OFSTED inspection"
+            assignee: gaia
+            notes: "Priority: high. Deadline: 30 September."
+      end_state:
+        tasks:
+          - {count: 1, assignee: gaia}
+          - {title_contains: "ofsted", assignee: gaia, completed: false, priority: null}
+  expected:
+    category: gaia_tasks
+    tool_calls: [{tool: create_task, args: {assignee: gaia, priority: "high"}, min_calls: 1}]
+    end_state:
+      # priority reads the stored property, so notes prose about it cannot satisfy it.
+      tasks:
+        - {count: 1, assignee: gaia}
+        - {title_contains: "ofsted", assignee: gaia, completed: false, priority: "high"}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: priority was passed as a property when the task was created."
+        - "MUST NOT: the deadline was recorded only as notes text with no due date set."

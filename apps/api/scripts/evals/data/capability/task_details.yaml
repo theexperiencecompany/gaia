@@ -1,0 +1,53 @@
+# Task details — the user's to-dos after a change of state: what a completion
+# leaves open, and that a listing reads the real state rather than the chat.
+
+- id: tasks-open-after-completion
+  ticket: "Listing what is still open after a completion must leave the completed to-do out."
+  tags: [tasks, multiturn]
+  setup:
+    turns:
+      - "Add three todos: 'post the birthday card', 'collect the prescription', and 'call the vet'"
+      - "I have posted the card — mark it done"
+      - "What is still open?"
+    counterfeit:
+      text: >-
+        Still open: 'post the birthday card', 'collect the prescription' and
+        'call the vet'.
+      messages:
+        - {role: user, content: "What is still open?"}
+        - role: assistant
+          content: >-
+            Still open: 'post the birthday card', 'collect the prescription' and
+            'call the vet'.
+      tool_calls:
+        - {name: create_task, args: {title: "post the birthday card", assignee: "user"}}
+        - {name: create_task, args: {title: "collect the prescription", assignee: "user"}}
+        - {name: create_task, args: {title: "call the vet", assignee: "user"}}
+        - {name: list_tasks, args: {view: "open"}}
+      end_state:
+        answer_contains: "prescription"
+        tasks:
+          - {title_contains: "birthday card", assignee: user, completed: false}
+          - {title_contains: "prescription", assignee: user, completed: false}
+          - {title_contains: "vet", assignee: user, completed: false}
+  prompt: "Add three todos: 'post the birthday card', 'collect the prescription', and 'call the vet'"
+  expected:
+    category: tasks
+    tool_calls:
+      - {tool: create_task, min_calls: 3, args: {assignee: user}}
+      - {tool: [complete_task, complete_tasks], min_calls: 1}
+      - {tool: [list_tasks, search_tasks], min_calls: 1}
+    end_state:
+      # answer_contains is the FINAL turn only, so it asserts the listing turn
+      # named a surviving to-do rather than any earlier acknowledgement.
+      answer_contains: "prescription"
+      tasks:
+        - {count: 3, assignee: user}
+        - {title_contains: "birthday card", assignee: user, completed: true}
+        - {title_contains: "prescription", assignee: user, completed: false}
+        - {title_contains: "vet", assignee: user, completed: false}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply lists the prescription and vet to-dos as open."
+        - "MUST NOT: the birthday card to-do appears in the open listing."

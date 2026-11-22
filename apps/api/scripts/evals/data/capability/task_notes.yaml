@@ -1,0 +1,258 @@
+# GAIA task notes family — the deep GAIA-task behaviours beyond gaia_tasks.yaml:
+# notes write modes (append / section / replace), verbatim preservation of
+# exact values, completion, property updates, search by meaning across tasks,
+# and the update-don't-duplicate rule. The notes are each task's notes.md.
+#
+# end_state.tasks counts done tasks too, so task-notes-complete-and-list asserts
+# completion through `completed` on each task rather than through a count.
+
+- id: task-notes-initial-content
+  ticket: "Facts given up front must land in the task's notes at creation time, not be dropped."
+  tags: [gaia_task_notes]
+  prompt: >-
+    Track my bathroom renovation for me. Put in your notes on it that the
+    budget is 6,000 and the contractor is Marek.
+  expected:
+    category: gaia_task_notes
+    communicate: ["marek"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}}]
+    end_state:
+      tasks:
+        - {title_contains: "bathroom", assignee: gaia, notes_contains: "marek"}
+        - {title_contains: "bathroom", assignee: gaia, notes_contains: "6,000"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "both the budget and the contractor name are recorded in the notes"
+        - "the reply confirms what was written rather than describing it vaguely"
+
+- id: task-notes-append-log
+  ticket: "Two successive notes must both survive — the second append must not overwrite the first."
+  tags: [gaia_task_notes, multiturn]
+  setup:
+    turns:
+      - "Track my job search for me"
+      - "Add to its notes: applied to Northwind on Monday"
+      - "Add another entry: Northwind replied asking for a portfolio"
+  prompt: "Track my job search for me"
+  expected:
+    category: gaia_task_notes
+    communicate: ["portfolio"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}}
+      - {tool: [edit, write, update_task], min_calls: 2}
+    end_state:
+      tasks:
+        - {title_contains: "job search", assignee: gaia, notes_contains: "northwind"}
+        - {title_contains: "job search", assignee: gaia, notes_contains: "portfolio"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "both log entries are present in the task's notes after the third turn"
+        - "the second note was added after the first, not written over it"
+
+- id: task-notes-section-update
+  ticket: "A targeted section update must change that section and leave the rest of the notes intact."
+  tags: [gaia_task_notes, multiturn]
+  setup:
+    turns:
+      - "Track my loft conversion for me. Your notes should have a Current State section saying we are waiting on the planning permit, and a Key Details section saying the architect is Ines."
+      - "Update the Current State section: the permit was approved today"
+  prompt: "Track my loft conversion for me. Your notes should have a Current State section saying we are waiting on the planning permit, and a Key Details section saying the architect is Ines."
+  expected:
+    category: gaia_task_notes
+    communicate: ["permit"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}}
+      - {tool: [edit, write, update_task]}
+    end_state:
+      tasks:
+        - {title_contains: "loft", assignee: gaia, notes_contains: "approved"}
+        - {title_contains: "loft", assignee: gaia, notes_contains: "ines"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the Current State section now says the permit was approved"
+        - "the Key Details section naming the architect was NOT destroyed by the update"
+
+- id: task-notes-precision-figure
+  ticket: "An exact figure the user insisted on must be stored character-for-character."
+  tags: [gaia_task_notes, precision]
+  prompt: >-
+    Track my tax return. Note that the refund amount is exactly 2,450.75 — keep
+    that figure exact, don't round it.
+  expected:
+    category: gaia_task_notes
+    communicate: ["2,450.75"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}}]
+    end_state:
+      tasks: [{title_contains: "tax", assignee: gaia, notes_contains: "2,450.75"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the notes carry the figure 2,450.75 unrounded"
+        - "the reply repeats the figure exactly as given"
+
+- id: task-notes-complete-and-list
+  ticket: "Completing a GAIA task must close it — the listing afterwards shows only the survivor as open."
+  tags: [gaia_task_notes, multiturn]
+  setup:
+    turns:
+      - "Track this for me: fix the leaking tap"
+      - "Track another one for me: repaint the hallway"
+      - "The tap is sorted — the plumber replaced the washer. Close that one out, then list what you're tracking for me."
+  prompt: "Track this for me: fix the leaking tap"
+  expected:
+    category: gaia_task_notes
+    communicate: ["washer"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}, min_calls: 2}
+      - {tool: complete_task}
+      - {tool: list_tasks}
+    end_state:
+      tasks:
+        - {count: 2, assignee: gaia}
+        - {title_contains: "tap", assignee: gaia, completed: true}
+        - {title_contains: "hallway", assignee: gaia, completed: false}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the completion summary mentions the plumber replacing the washer"
+        - "the final listing shows the hallway task and NOT the completed tap task as open"
+
+- id: task-notes-update-priority
+  ticket: "A property change must use the property update tool, not a note."
+  tags: [gaia_task_notes, multiturn]
+  setup:
+    turns:
+      - "Track this for me: prepare the investor deck"
+      - "Bump that to high priority"
+  prompt: "Track this for me: prepare the investor deck"
+  expected:
+    category: gaia_task_notes
+    communicate: ["high"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}}
+      - {tool: update_task}
+    end_state:
+      tasks: [{title_contains: "investor deck", assignee: gaia, priority: "high"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the priority was changed as a property of the task"
+        - "the priority was not merely written into the notes"
+
+- id: task-notes-search-across-tasks
+  ticket: "A question about a detail buried in one task's notes must be answered by searching the tasks."
+  tags: [gaia_task_notes, multiturn]
+  setup:
+    turns:
+      - "Track my visa application for me. Note that the biometrics appointment is at the Croydon centre."
+      - "Track the kitchen remodel for me. Note that the worktop is walnut."
+      - "What did we note about the biometrics appointment?"
+  prompt: "Track my visa application for me. Note that the biometrics appointment is at the Croydon centre."
+  expected:
+    category: gaia_task_notes
+    communicate: ["croydon"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}, min_calls: 2}
+      - {tool: search_tasks}
+    end_state:
+      answer_contains: "croydon"
+      tasks:
+        - {title_contains: "visa", assignee: gaia, notes_contains: "croydon"}
+        - {title_contains: "kitchen", assignee: gaia, notes_contains: "walnut"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final reply gives the Croydon centre from the visa task's notes"
+        - "the reply does not mix in details from the kitchen task"
+
+- id: task-notes-recurrence-and-expiry
+  ticket: "A recurring check with a relevance deadline: one repeating GAIA task that expires — not a due date."
+  tags: [gaia_task_notes, temporal]
+  prompt: >-
+    Track whether my parcel from Bolt arrives. Check in on it daily, and it
+    stops mattering after next Friday.
+  expected:
+    category: gaia_task_notes
+    communicate: ["daily"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}}]
+    end_state:
+      tasks:
+        - {count: 1, assignee: gaia}
+        - {title_contains: "parcel", assignee: gaia, repeats: true}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "exactly one task was created with a daily repeat, not several"
+        - "next Friday was set as when it stops mattering (expires_at), not as a deadline to complete it by"
+
+- id: task-notes-update-not-duplicate
+  ticket: "'Add a note to it' must update the existing GAIA task, never create a second one."
+  tags: [gaia_task_notes, multiturn, conflict]
+  setup:
+    turns:
+      - "Track this for me: plan the team offsite"
+      - "Add a note to it: the venue shortlist is Brighton and Bath"
+  prompt: "Track this for me: plan the team offsite"
+  expected:
+    category: gaia_task_notes
+    communicate: ["brighton"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}, min_calls: 1}
+      - {tool: [edit, write, update_task], min_calls: 1}
+    end_state:
+      tasks:
+        - {count: 1, assignee: gaia}
+        - {title_contains: "offsite", assignee: gaia, notes_contains: "brighton"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "exactly ONE task about the offsite exists afterwards"
+        - "the note went onto the existing task's notes, not into a newly created task"
+
+- id: task-notes-ambiguous-target
+  ticket: "Two GAIA tasks, an unqualified 'the task you're tracking': the agent must ask which."
+  tags: [gaia_task_notes, multiturn, ambiguity]
+  setup:
+    turns:
+      - "Track this for me: move house"
+      - "Track another one for me: change jobs"
+      - "Add a note about the deposit to the task you're tracking"
+  prompt: "Track this for me: move house"
+  expected:
+    category: gaia_task_notes
+    communicate: ["which"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}, min_calls: 2}]
+    end_state:
+      answer_contains: "which"
+      tasks: [{count: 2, assignee: gaia}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the agent asks which of the two tasks the note belongs to"
+        - "the agent must NOT silently pick one and write the note there"
+
+- id: task-notes-list-metadata
+  ticket: "Listing GAIA's tasks must relay their real metadata, not a generic acknowledgement."
+  tags: [gaia_task_notes, multiturn]
+  setup:
+    turns:
+      - "Track this for me, high priority: file the insurance claim"
+      - "List what you're tracking for me, with their priorities"
+  prompt: "Track this for me, high priority: file the insurance claim"
+  expected:
+    category: gaia_task_notes
+    communicate: ["insurance claim"]
+    tool_calls:
+      - {tool: create_task, args: {assignee: gaia}}
+      - {tool: list_tasks}
+    end_state:
+      answer_contains: "insurance claim"
+      tasks: [{title_contains: "insurance claim", assignee: gaia}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the listing shows the insurance claim task with high priority"
+        - "no task that was never created appears in the listing"

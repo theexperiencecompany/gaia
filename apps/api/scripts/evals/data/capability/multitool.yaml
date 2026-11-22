@@ -4,7 +4,7 @@
 #
 # These are the cases that break agents which handle one tool per turn: partial
 # completion looks like success in the transcript, so the gates are the world
-# state (todos / reminders / workflows / tracked todos) and the presence of
+# state (tasks / reminders / workflows) and the presence of
 # every tool in the trajectory, not the wording.
 #
 # The Gmail cases run against the SIMULATED mailbox (see gmail.yaml header);
@@ -22,7 +22,7 @@
     category: multitool
     communicate: ["berlin"]
     tool_calls:
-      - {tool: get_today_todos}
+      - {tool: list_tasks, args: {view: today}}
       - {tool: get_notifications}
       - {tool: get_weather}
     end_state:
@@ -44,10 +44,10 @@
     communicate: ["porto"]
     tool_calls:
       - {tool: get_weather}
-      - {tool: create_todo}
+      - {tool: create_task, args: {assignee: user}}
       - {tool: create_reminder_tool}
     end_state:
-      todos: [{title_contains: "pack", completed: false}]
+      tasks: [{title_contains: "pack", assignee: user, completed: false}]
       reminders: [{count: 1}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
@@ -56,29 +56,26 @@
         - "the reminder is set for 6am on the 12th, not a different time"
 
 - id: multitool-wedding-setup
-  ticket: "Four artifacts in one request: project, todo, reminder, memory."
+  ticket: "Three artifacts in one request: to-do, reminder, memory."
   tags: [multitool, composition]
   prompt: >-
-    Set up a project called Wedding, add a todo 'book the venue' inside it,
-    remind me next Monday at 10am to call the venue, and remember that our
-    wedding date is 14 June.
+    Add a todo 'book the wedding venue', remind me next Monday at 10am to call
+    the venue, and remember that our wedding date is 14 June.
   expected:
     category: multitool
     communicate: ["wedding"]
     tool_calls:
-      - {tool: create_project}
-      - {tool: create_todo}
+      - {tool: create_task, args: {assignee: user}}
       - {tool: create_reminder_tool}
       - {tool: add_memory}
     end_state:
-      projects: [{name: "wedding"}]
-      todos: [{title_contains: "venue", completed: false, project: "wedding"}]
+      tasks: [{title_contains: "venue", assignee: user, completed: false}]
       reminders: [{count: 1}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
-        - "all four artifacts are acknowledged, none silently skipped"
-        - "the todo is filed inside the Wedding project"
+        - "all three artifacts are acknowledged, none silently skipped"
+        - "the reminder is set for next Monday at 10am"
 
 - id: multitool-weather-conditional-todo
   ticket: "The todo must exist only if the real temperature meets the condition."
@@ -100,17 +97,17 @@
   ticket: "Research, then persist it, then notify — three families, one request."
   tags: [multitool, composition]
   prompt: >-
-    Look up when the next total solar eclipse is, start a tracked todo to plan a
-    trip for it, and send me an in-app notification with the date.
+    Look up when the next total solar eclipse is, track planning a trip for
+    it for me, and send me an in-app notification with the date.
   expected:
     category: multitool
     communicate: ["eclipse"]
     tool_calls:
       - {tool: web_search_tool}
-      - {tool: create_tracked_todo}
+      - {tool: create_task, args: {assignee: gaia}}
       - {tool: send_notification}
     end_state:
-      tracked_todos: [{title_contains: "eclipse"}]
+      tasks: [{title_contains: "eclipse", assignee: gaia}]
       notifications: [{count: 1}, {channel: "inapp"}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
@@ -129,9 +126,9 @@
     communicate: ["invoice"]
     tool_calls:
       - {tool: GMAIL_FETCH_MESSAGES}
-      - {tool: create_todo, min_calls: 1}
+      - {tool: create_task, args: {assignee: user}, min_calls: 1}
     end_state:
-      todos: [{title_contains: "invoice", completed: false}]
+      tasks: [{title_contains: "invoice", assignee: user, completed: false}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -166,10 +163,10 @@
     communicate: ["baker street"]
     tool_calls:
       - {tool: add_memory}
-      - {tool: create_todo}
+      - {tool: create_task, args: {assignee: user}}
     end_state:
       answer_contains: "baker street"
-      todos: [{title_contains: "gym", completed: false}]
+      tasks: [{title_contains: "gym", assignee: user, completed: false}]
       recalled: true
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
@@ -191,10 +188,10 @@
     tool_calls:
       - {tool: create_workflow}
       - {tool: execute_workflow}
-      - {tool: create_todo}
+      - {tool: create_task, args: {assignee: user}}
     end_state:
       workflows: [{count: 1}]
-      todos: [{title_contains: "review", completed: false}]
+      tasks: [{title_contains: "review", assignee: user, completed: false}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -215,12 +212,12 @@
     category: multitool
     communicate: ["copenhagen"]
     tool_calls:
-      - {tool: create_todo}
+      - {tool: create_task, args: {assignee: user}}
       - {tool: create_reminder_tool}
       - {tool: get_weather}
     end_state:
       answer_contains: "birthday card"
-      todos: [{title_contains: "birthday card", completed: false}]
+      tasks: [{title_contains: "birthday card", assignee: user, completed: false}]
       reminders: [{count: 1}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:

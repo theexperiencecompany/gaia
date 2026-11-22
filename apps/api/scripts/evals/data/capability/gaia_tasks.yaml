@@ -1,0 +1,66 @@
+# GAIA tasks family — work GAIA tracks for the user (create_task with
+# assignee gaia, its notes.md, list_tasks); end_state verified in Mongo.
+
+- id: gaia-task-create-simple
+  ticket: "Start a GAIA task GAIA keeps working notes on."
+  tags: [gaia_tasks]
+  prompt: "I'm renovating my bathroom. Track this for me so you can keep notes on it."
+  expected:
+    category: gaia_tasks
+    communicate: ["bathroom"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}}]
+    end_state: {tasks: [{title_contains: "bathroom", assignee: gaia}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the task GAIA tracks was created"
+        - "the reply explains what GAIA will do with it (keep notes, follow up)"
+
+- id: gaia-task-create-with-due-date
+  ticket: "Create a GAIA task with a due date for a scheduled action."
+  tags: [gaia_tasks]
+  prompt: "Track the apartment lease renewal: it's due on September 30. Keep it as a task with that due date."
+  expected:
+    category: gaia_tasks
+    communicate: ["lease"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}}]
+    end_state: {tasks: [{title_contains: "lease", assignee: gaia}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the task and its due date"
+
+- id: gaia-task-update-notes
+  ticket: "Create a GAIA task and add a note to its notes."
+  tags: [gaia_tasks]
+  prompt: "Track planning my summer vacation for me, then add this to your notes on it: 'budget is $3000'"
+  expected:
+    category: gaia_tasks
+    communicate: ["budget"]
+    # title_contains, not an exact title: the agent may name it "Summer Vacation
+    # Planning". Writing the note in create_task's notes puts it in the same
+    # notes.md a file edit would, so no edit call is demanded.
+    tool_calls: [{tool: create_task, args: {assignee: gaia}}]
+    end_state: {tasks: [{title_contains: "vacation", assignee: gaia, notes_contains: "budget"}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the note was saved"
+
+- id: gaia-task-list
+  ticket: "List the tasks GAIA tracks; the seeded title must be relayed."
+  tags: [gaia_tasks]
+  setup:
+    turns:
+      - "Track this for me: prepare tax documents"
+      - "List the tasks you're tracking for me"
+  prompt: "Track this for me: prepare tax documents"
+  expected:
+    category: gaia_tasks
+    communicate: ["tax documents"]
+    tool_calls: [{tool: create_task, args: {assignee: gaia}}, {tool: list_tasks}]
+    end_state: {tasks: [{title: "prepare tax documents", assignee: gaia}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply lists the tracked tasks including the tax documents one"

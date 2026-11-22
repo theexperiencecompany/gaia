@@ -11,8 +11,8 @@
 #
 # * "The abandoned instruction was NOT acted on" is an absence, and in this
 #   suite the only mechanism that can express an absence is a COUNT in
-#   `end_state` (`todos: [{count: 1}]`, `reminders: [{count: 1}]`,
-#   `projects: [{count: 0}]`). `must_not_call_tools` is inert here: the
+#   `end_state` (`tasks: [{count: 1}]`, `reminders: [{count: 1}]`).
+#   `must_not_call_tools` is inert here: the
 #   capability suite's `score()` produces values for `communicate`, `end_state`
 #   and `tool_call_correctness` only, so naming any other gate would score 0.0
 #   forever rather than checking anything.
@@ -33,26 +33,24 @@
   tags: [hard, conflict]
   prompt: >-
     add a todo to cancel the gym membership — actually no, don't cancel it, add
-    a todo to downgrade it to off-peak instead, and tag that one money.
+    a todo to downgrade it to off-peak instead.
   setup:
     counterfeit:
       text: >-
-        Both added and tagged money: 'cancel the gym membership' and 'downgrade
+        Both added: 'cancel the gym membership' and 'downgrade
         the gym membership to off-peak'. You can tick off whichever you go with.
       messages:
-        - {role: user, content: "add a todo to cancel the gym membership — actually no, downgrade it to off-peak instead, tag it money"}
-        - {role: assistant, content: "Both added and tagged money: 'cancel the gym membership' and 'downgrade the gym membership to off-peak'. You can tick off whichever you go with."}
+        - {role: user, content: "add a todo to cancel the gym membership — actually no, downgrade it to off-peak instead"}
+        - {role: assistant, content: "Both added: 'cancel the gym membership' and 'downgrade the gym membership to off-peak'. You can tick off whichever you go with."}
       tool_calls:
-        - {name: create_todo, args: {title: "cancel the gym membership", labels: ["money"]}}
-        - {name: create_todo, args: {title: "downgrade the gym membership to off-peak", labels: ["money"]}}
+        - {name: create_task, args: {title: "cancel the gym membership", assignee: "user"}}
+        - {name: create_task, args: {title: "downgrade the gym membership to off-peak", assignee: "user"}}
       end_state:
-        todos: [{count: 2}, {title_contains: "downgrade", completed: false, labels_contains: "money"}]
-        labels: [{count: 1}, {name: "money"}]
+        tasks: [{count: 2, assignee: user}, {title_contains: "downgrade", assignee: user, completed: false}]
   expected:
     category: conflict
     end_state:
-      todos: [{count: 1}, {title_contains: "downgrade", completed: false, labels_contains: "money"}]
-      labels: [{count: 1}, {name: "money"}]
+      tasks: [{count: 1, assignee: user}, {title_contains: "downgrade", assignee: user, completed: false}]
     score: {gates: [end_state]}
     judge:
       criteria:
@@ -91,40 +89,6 @@
         - "MUST: the second reply confirms the coast reminder is now on Sunday at 14:40."
         - "MUST NOT: the Saturday 09:30 reminder is still scheduled after the second turn."
 
-- id: hard-conflict-standing-rule-overridden-once
-  ticket: "An explicit one-off override of the user's own standing rule; obeying the rule anyway is the failure."
-  tags: [hard, conflict, multiturn, memory]
-  setup:
-    turns:
-      - "standing rule for you, remember it: i never want anything left in the Inbox project — every todo goes in a named project."
-      - "quick one — add 'chase the landlord about the boiler'. just leave it in Inbox this once, i know what i said, don't make me a project for it."
-    counterfeit:
-      text: >-
-        Following your rule, I've created a 'Home' project and filed 'chase the
-        landlord about the boiler' in there rather than leaving it in Inbox.
-      messages:
-        - {role: user, content: "standing rule: never leave anything in Inbox, every todo goes in a named project"}
-        - {role: assistant, content: "Got it — I'll always file your todos into a named project."}
-        - {role: user, content: "add 'chase the landlord about the boiler', just leave it in Inbox this once"}
-        - {role: assistant, content: "Following your rule, I've created a 'Home' project and filed 'chase the landlord about the boiler' in there rather than leaving it in Inbox."}
-      tool_calls:
-        - {name: create_project, args: {name: "Home"}}
-        - {name: create_todo, args: {title: "chase the landlord about the boiler"}}
-      end_state:
-        projects: [{count: 1}]
-        todos: [{count: 1}, {title_contains: "landlord", completed: false}]
-  prompt: "standing rule for you, remember it: i never want anything left in the Inbox project — every todo goes in a named project."
-  expected:
-    category: conflict
-    end_state:
-      projects: [{count: 0}]
-      todos: [{count: 1}, {title_contains: "landlord", completed: false}]
-    score: {gates: [end_state]}
-    judge:
-      criteria:
-        - "MUST: the second reply says the todo has been left in Inbox as asked."
-        - "MUST NOT: a new project is created for this todo."
-
 - id: hard-conflict-delete-target-swapped
   ticket: "'Delete A — no, delete B instead': A must survive and B must be gone."
   tags: [hard, conflict, multiturn]
@@ -142,23 +106,23 @@
         - {role: user, content: "delete the chimney sweep one. no wait — leave that, delete the kettle one instead."}
         - {role: assistant, content: "Deleted the chimney sweep todo. You're left with the kettle and the smoke alarm battery."}
       tool_calls:
-        - {name: create_todo, args: {title: "descale the kettle"}}
-        - {name: create_todo, args: {title: "replace the smoke alarm battery"}}
-        - {name: create_todo, args: {title: "book the chimney sweep"}}
-        - {name: delete_todo, args: {title: "book the chimney sweep"}}
+        - {name: create_task, args: {title: "descale the kettle", assignee: "user"}}
+        - {name: create_task, args: {title: "replace the smoke alarm battery", assignee: "user"}}
+        - {name: create_task, args: {title: "book the chimney sweep", assignee: "user"}}
+        - {name: delete_tasks, args: {task_ids: ["book-the-chimney-sweep"]}}
       end_state:
-        todos:
-          - {count: 2}
-          - {title_contains: null, completed: false}
-          - {title_contains: "smoke alarm", completed: false}
+        tasks:
+          - {count: 2, assignee: user}
+          - {title_contains: null, assignee: null, completed: false}
+          - {title_contains: "smoke alarm", assignee: user, completed: false}
   prompt: "add three todos: descale the kettle, replace the smoke alarm battery, book the chimney sweep"
   expected:
     category: conflict
     end_state:
-      todos:
-        - {count: 2}
-        - {title_contains: "chimney", completed: false}
-        - {title_contains: "smoke alarm", completed: false}
+      tasks:
+        - {count: 2, assignee: user}
+        - {title_contains: "chimney", assignee: user, completed: false}
+        - {title_contains: "smoke alarm", assignee: user, completed: false}
     score: {gates: [end_state]}
     judge:
       criteria:
@@ -210,59 +174,24 @@
         - {role: user, content: "add these two as high priority: file the vat return, renew the insurance. actually the vat one is high, the insurance one is low"}
         - {role: assistant, content: "Added both as high priority: 'file the vat return' and 'renew the insurance'. Shout if you want either bumped down."}
       tool_calls:
-        - {name: create_todo, args: {title: "file the vat return", priority: "high"}}
-        - {name: create_todo, args: {title: "renew the insurance", priority: "high"}}
+        - {name: create_task, args: {title: "file the vat return", priority: "high", assignee: "user"}}
+        - {name: create_task, args: {title: "renew the insurance", priority: "high", assignee: "user"}}
       end_state:
-        todos:
-          - {count: 2}
-          - {title_contains: "vat", completed: false, priority: "high"}
-          - {title_contains: "insurance", completed: false, priority: null}
+        tasks:
+          - {count: 2, assignee: user}
+          - {title_contains: "vat", assignee: user, completed: false, priority: "high"}
+          - {title_contains: "insurance", assignee: user, completed: false, priority: null}
   expected:
     category: conflict
     tool_calls:
-      - {tool: create_todo, args: {title: "insurance", priority: "low"}}
+      - {tool: create_task, args: {title: "insurance", priority: "low", assignee: user}}
     end_state:
-      todos:
-        - {count: 2}
-        - {title_contains: "vat", completed: false, priority: "high"}
-        - {title_contains: "insurance", completed: false, priority: "low"}
+      tasks:
+        - {count: 2, assignee: user}
+        - {title_contains: "vat", assignee: user, completed: false, priority: "high"}
+        - {title_contains: "insurance", assignee: user, completed: false, priority: "low"}
     score: {gates: [end_state, tool_calls]}
     judge:
       criteria:
         - "MUST: the insurance todo is stored at low priority."
         - "MUST NOT: both todos are stored at high priority."
-
-- id: hard-conflict-drop-container-keep-contents
-  ticket: "The container is retracted but its contents are not; deleting the todo with the project is the failure."
-  tags: [hard, conflict, multiturn, projects]
-  setup:
-    turns:
-      - "make me a project called Sourdough and put a todo in it: feed the starter"
-      - "actually forget the project, delete it — but keep the todo, just leave it in my Inbox."
-    counterfeit:
-      text: >-
-        Sourdough project deleted along with everything filed inside it, so
-        you're back to a clean slate.
-      messages:
-        - {role: user, content: "make me a project called Sourdough and put a todo in it: feed the starter"}
-        - {role: assistant, content: "Created the Sourdough project with 'feed the starter' inside it."}
-        - {role: user, content: "actually forget the project, delete it — but keep the todo"}
-        - {role: assistant, content: "Sourdough project deleted along with everything filed inside it, so you're back to a clean slate."}
-      tool_calls:
-        - {name: create_project, args: {name: "Sourdough"}}
-        - {name: create_todo, args: {title: "feed the starter"}}
-        - {name: delete_project, args: {project_id: "sourdough"}}
-      end_state:
-        projects: [{count: 0}]
-        todos: [{count: 0}, {title_contains: null, completed: false}]
-  prompt: "make me a project called Sourdough and put a todo in it: feed the starter"
-  expected:
-    category: conflict
-    end_state:
-      projects: [{count: 0}]
-      todos: [{count: 1}, {title_contains: "starter", completed: false}]
-    score: {gates: [end_state]}
-    judge:
-      criteria:
-        - "MUST: the feed-the-starter todo still exists after the project is deleted."
-        - "MUST NOT: the todo is deleted along with the project."

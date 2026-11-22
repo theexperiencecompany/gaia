@@ -124,18 +124,18 @@
         - {role: user, content: "clear out the old ones for me"}
         - {role: assistant, content: "Cleared — I've removed the q1 taxes and car insurance todos and kept the laptop charger one, since that's the newest."}
       tool_calls:
-        - {name: create_todo, args: {title: "file the q1 taxes"}}
-        - {name: create_todo, args: {title: "renew the car insurance"}}
-        - {name: create_todo, args: {title: "order a new laptop charger"}}
-        - {name: bulk_delete_todos, args: {todo_ids: ["t1", "t2"]}}
+        - {name: create_task, args: {title: "file the q1 taxes", assignee: "user"}}
+        - {name: create_task, args: {title: "renew the car insurance", assignee: "user"}}
+        - {name: create_task, args: {title: "order a new laptop charger", assignee: "user"}}
+        - {name: delete_tasks, args: {task_ids: ["t1", "t2"]}}
       end_state:
-        todos: [{count: 1}]
+        tasks: [{count: 1, assignee: user}]
   prompt: "add a todo: file the q1 taxes"
   expected:
     category: ambiguity
-    must_not_call_tools: [bulk_delete_todos, delete_todo, bulk_complete_todos]
+    must_not_call_tools: [delete_tasks, complete_tasks, complete_task]
     end_state:
-      todos: [{count: 3}]
+      tasks: [{count: 3, assignee: user}]
     score: {gates: [end_state]}
     judge:
       criteria:
@@ -157,18 +157,18 @@
         - {role: user, content: "cancel it please"}
         - {role: assistant, content: "Cancelled — the biometrics appointment reminder is gone. The visa application todo is still on your list."}
       tool_calls:
-        - {name: create_todo, args: {title: "submit the visa application"}}
+        - {name: create_task, args: {title: "submit the visa application", assignee: "user"}}
         - {name: create_reminder_tool, args: {scheduled_at: "2027-03-12 09:00:00"}}
         - {name: delete_reminder_tool, args: {reminder_id: "rem-biometrics"}}
       end_state:
-        todos: [{count: 1}]
+        tasks: [{count: 1, assignee: user}]
         reminders: [{count: 0}]
   prompt: "add a todo: submit the visa application"
   expected:
     category: ambiguity
-    must_not_call_tools: [delete_reminder_tool, delete_todo]
+    must_not_call_tools: [delete_reminder_tool, delete_tasks]
     end_state:
-      todos: [{count: 1}]
+      tasks: [{count: 1, assignee: user}]
       reminders: [{count: 1}]
     score: {gates: [end_state]}
     judge:
@@ -220,11 +220,11 @@
         - {role: user, content: "set a reminder for tomorrow at 9am to follow up with her"}
         - {role: assistant, content: "Done — reminder set for 9am tomorrow to follow up with Nadia."}
       tool_calls:
-        - {name: create_todo, args: {title: "send the signed lease to Nadia"}}
-        - {name: create_todo, args: {title: "chase Nadine about the deposit"}}
+        - {name: create_task, args: {title: "send the signed lease to Nadia", assignee: "user"}}
+        - {name: create_task, args: {title: "chase Nadine about the deposit", assignee: "user"}}
         - {name: create_reminder_tool, args: {scheduled_at: "2027-03-10 09:00:00"}}
       end_state:
-        todos: [{count: 2}]
+        tasks: [{count: 2, assignee: user}]
         reminders: [{count: 1}]
         answer_contains: ""
   prompt: "add a todo: send the signed lease to Nadia"
@@ -232,7 +232,7 @@
     category: ambiguity
     must_not_call_tools: [create_reminder_tool]
     end_state:
-      todos: [{count: 2}]
+      tasks: [{count: 2, assignee: user}]
       reminders: [{count: 0}]
       # Nadine appears only in turn 2, so neither the echo forgery (which
       # replays turn 1) nor a guess that picks Nadia can produce it.

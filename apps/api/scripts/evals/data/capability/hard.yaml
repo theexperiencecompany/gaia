@@ -6,43 +6,43 @@
 
 # ── 1. Multi-tool composition ────────────────────────────────────────────────
 - id: hard-compose-birthday-plan
-  ticket: "One request, three tools: tracked todo with canvas note, reminder with exact datetime, memory fact."
+  ticket: "One request, three tools: GAIA task with a note, reminder with exact datetime, memory fact."
   tags: [hard, composition]
   prompt: >-
-    Plan Sam's birthday next Friday: start a tracked todo called "Sam's birthday"
-    with a canvas note that the cake must be ordered 2 days before; set a reminder
+    Plan Sam's birthday next Friday: track it for me as a task called "Sam's
+    birthday" and note that the cake must be ordered 2 days before; set a reminder
     for 2 days before the party at 9am to order the cake; and remember that Sam's
     birthday is next Friday so I never forget again.
   expected:
     category: composition
     communicate: ["cake", "birthday"]
     tool_calls:
-      - {tool: create_tracked_todo}
+      - {tool: create_task, args: {assignee: gaia}}
       - {tool: create_reminder_tool}
       - {tool: add_memory}
     end_state:
-      tracked_todos: [{title: "Sam's birthday", canvas_contains: "cake"}]
+      tasks: [{title: "Sam's birthday", assignee: gaia, notes_contains: "cake"}]
       reminders: [{title_contains: "cake"}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
-        - "all three artifacts (tracked todo, reminder, memory) are acknowledged"
+        - "all three artifacts (task, reminder, memory) are acknowledged"
         - "the reminder date is derived correctly from 'next Friday' minus two days"
 
 - id: hard-compose-trip-plan
-  ticket: "Planning task: tracked todo with purpose + subtasks, plus concrete free-attraction recommendations."
+  ticket: "Planning task: GAIA task with purpose + subtasks, plus concrete free-attraction recommendations."
   tags: [hard, composition, planning]
   prompt: >-
-    Plan a 3-day Lisbon trip under $400. Start a tracked todo with purpose
+    Plan a 3-day Lisbon trip under $400. Track it for me as a task with purpose
     "budget city trip" and subtasks for flights, hostel, and free attractions.
     Then tell me the two best free attractions.
   expected:
     category: composition
     communicate: ["Lisbon", "free"]
     tool_calls:
-      - {tool: create_tracked_todo, min_calls: 1}
+      - {tool: create_task, args: {assignee: gaia}, min_calls: 1}
     end_state:
-      tracked_todos: [{title_contains: "Lisbon", purpose: "budget city trip"}]
+      tasks: [{title_contains: "Lisbon", assignee: gaia, text_contains: "budget city trip"}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -150,18 +150,18 @@
         - {role: user, content: "Remind me to call the client tomorrow at 11am"}
         - {role: assistant, content: "Done — I've set a reminder to call the client tomorrow at 11am."}
       tool_calls:
-        - {name: create_todo, args: {title: "call alex chen about the acme invoice"}}
-        - {name: create_todo, args: {title: "call priya sharma about the northwind renewal"}}
+        - {name: create_task, args: {title: "call alex chen about the acme invoice", assignee: user}}
+        - {name: create_task, args: {title: "call priya sharma about the northwind renewal", assignee: user}}
         - {name: create_reminder_tool, args: {scheduled_at: "2027-03-10 11:00:00"}}
       end_state:
-        todos: [{count: 2}]
+        tasks: [{count: 2, assignee: user}]
         reminders: [{count: 1}]
   prompt: "add a todo: call alex chen about the acme invoice"
   expected:
     category: ambiguity
     must_not_call_tools: [create_reminder_tool]
     end_state:
-      todos: [{count: 2}]
+      tasks: [{count: 2, assignee: user}]
       reminders: [{count: 0}]
     score: {gates: [end_state]}
     judge:
@@ -189,7 +189,7 @@
     communicate: ["Lisbon"]
     tool_calls: [{tool: get_weather, min_calls: 1}]
     end_state:
-      todos: [{title_contains: "jacket"}]
+      tasks: [{title_contains: "jacket", assignee: user}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -260,12 +260,12 @@
     category: multiturn
     communicate: ["London"]
     tool_calls:
-      - {tool: create_todo, min_calls: 2}
-      - {tool: update_todo, min_calls: 1}
+      - {tool: create_task, args: {assignee: user}, min_calls: 2}
+      - {tool: [complete_task, complete_tasks], min_calls: 1}
     end_state:
-      todos:
-        - {title_contains: "passport", completed: true}
-        - {title_contains: "London", completed: false}
+      tasks:
+        - {title_contains: "passport", assignee: user, completed: true}
+        - {title_contains: "London", assignee: user, completed: false}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
