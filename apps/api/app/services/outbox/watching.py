@@ -1,4 +1,4 @@
-"""Whether the user is watching a subject live: they wrote on its surface a moment ago."""
+"""Whether the user is watching a subject live: they wrote on the surface of its conversation a moment ago."""
 
 from app.constants.outbox import LIVE_WATCH_WINDOW_SECONDS
 from app.db.repositories.conversations import conversation_repository
@@ -11,14 +11,13 @@ from app.services.outbox.models import OutboxReport
 async def is_watched_live(report: OutboxReport) -> bool:
     """Return whether the user wrote, within LIVE_WATCH_WINDOW_SECONDS, on the surface the report's subject lives on.
 
-    A chat in the GAIA app is stored without a source and counts as the web surface.
+    A chat in the GAIA app is stored without a source and counts as the web surface; a subject
+    with no conversation lives nowhere anyone can watch it.
     """
     owner = report.subject.owner_conversation_id
-    source = (
-        await conversation_repository.get_source(owner, user_id=report.recipient)
-        if owner is not None
-        else None
-    )
+    if owner is None:
+        return False
+    source = await conversation_repository.get_source(owner, user_id=report.recipient)
     presence: PresenceSnapshot = await read_presence(report.recipient)
     seen_at = presence["last_seen"].get((source or ConversationSource.WEB).value)
     return seen_at is not None and presence["captured_at"] - seen_at <= LIVE_WATCH_WINDOW_SECONDS

@@ -72,7 +72,8 @@ async def test_a_chat_in_the_app_is_the_web_surface() -> None:
     assert await _watched(_progress(), None, {"web": NOW - 5})
 
 
-async def test_a_subject_with_no_owner_conversation_is_the_web_surface() -> None:
+async def test_a_subject_with_no_owner_conversation_has_nowhere_to_be_watched() -> None:
+    """Regression: progress from a routine with no chat counted as watched by anyone active in the app, and three "wrote a scratch note" steps went out."""
     with (
         patch(f"{MODULE}.conversation_repository.get_source", AsyncMock()) as get_source,
         patch(
@@ -80,7 +81,7 @@ async def test_a_subject_with_no_owner_conversation_is_the_web_surface() -> None
             AsyncMock(return_value={"captured_at": NOW, "last_seen": {"web": NOW}}),
         ),
     ):
-        assert await is_watched_live(_progress(owner=None))
+        assert not await is_watched_live(_progress(owner=None))
     get_source.assert_not_awaited()
 
 
