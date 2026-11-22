@@ -210,7 +210,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             if self.ledger.winding_down():
                 # No tools to call, so this reply is the run's last: it answers from what it read.
                 log.info("ledger_final_call", agent_name=self.agent_name)
-                request = request.override(
+                # ModelRequest stores tools=None as [], so mutating the empty list is equivalent.
+                request = request.override(  # pragma: no mutate
                     tools=[],
                     messages=[*request.messages, HumanMessage(content=LEDGER_WRAPUP_NOTICE)],
                 )
