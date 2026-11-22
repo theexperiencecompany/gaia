@@ -40,16 +40,22 @@ from app.utils.multimodal import extract_text_content
 WriteClassifier = Callable[[str], bool]
 
 
-class _DestructivenessSource(Protocol):
+class DestructivenessSource(Protocol):
     def is_tool_destructive(self, tool_name: str) -> bool | None: ...
 
 
-def registered_is_write(tool_name: str) -> bool:
+def is_write_tool(tool_name: str, registry: DestructivenessSource) -> bool:
     """Return whether a tool changes the world: plumbing never does, an unclassified tool does."""
     if tool_name in HIL_EXEMPT_TOOLS:
         return False
-    registry = cast(_DestructivenessSource, providers.get(TOOL_REGISTRY_PROVIDER))
     return registry.is_tool_destructive(tool_name) is not False
+
+
+def registered_is_write(tool_name: str) -> bool:
+    """Return is_write_tool against the live tool registry."""
+    return is_write_tool(
+        tool_name, cast(DestructivenessSource, providers.get(TOOL_REGISTRY_PROVIDER))
+    )
 
 
 def is_successful_work(message: AnyMessage) -> bool:

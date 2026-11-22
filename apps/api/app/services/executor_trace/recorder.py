@@ -15,6 +15,7 @@ from langchain_core.runnables import RunnableConfig
 from pymongo.errors import PyMongoError
 
 from app.agents.core.background.executor_queue import parse_lock_value, read_executor_activity
+from app.agents.core.outcome_review import is_write_tool
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.agents import COMMS_AGENT_NAME
 from app.constants.log_tags import LogTag
@@ -143,11 +144,7 @@ async def end_run(owner: RunOwner, state: RunState) -> None:
 async def record_call(owner: RunOwner, call: TracedCall) -> None:
     """Store one finished call: its input and output in the payload collection, its record behind a reference."""
     registry = await get_tool_registry()
-    effect = (
-        CallEffect.READ
-        if registry.is_tool_destructive(call.tool_name) is False
-        else CallEffect.WRITE
-    )
+    effect = CallEffect.WRITE if is_write_tool(call.tool_name, registry) else CallEffect.READ
     input_json = json.dumps(call.args, default=str, ensure_ascii=False)
     truncated = max(len(input_json), len(call.output_text)) > CALL_PAYLOAD_MAX_CHARS
     await run_repository.open_run(_run_document(owner, call.started_at))

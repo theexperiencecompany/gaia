@@ -180,6 +180,9 @@ class TestRecordingACall:
             ("gmail_search", CallEffect.READ),
             ("gmail_send_email", CallEffect.WRITE),
             ("a_tool_nobody_classified", CallEffect.WRITE),
+            # Regression: plumbing had no registry flag, so loading tools read as a write.
+            ("retrieve_tools", CallEffect.READ),
+            ("activate_integration", CallEffect.READ),
         ],
     )
     async def test_effect_comes_from_the_registry_and_unclassified_counts_as_a_write(
