@@ -1,6 +1,7 @@
 """App signals as candidates: what the scouts found in the user's connected apps."""
 
 from collections.abc import Sequence
+import math
 
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
 from app.models.brief_item_models import ItemState
@@ -25,7 +26,7 @@ def _rank(item: RememberedSignal) -> tuple[bool, float]:
     """Order signals by the scout's urgency, then by how recently the app saw them move, undated last."""
     signal = item.signal
     touched = as_utc(signal.updated_at or signal.created_at)
-    recency = touched.timestamp() if touched is not None else float("-inf")
+    recency = touched.timestamp() if touched is not None else -math.inf
     return (signal.importance is not SignalImportance.HIGH, -recency)
 
 
