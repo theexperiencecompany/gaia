@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 
 from app.agents.core.background.executor_runner import (
     DETACHED_EXECUTOR_TASK_NAME,
@@ -13,6 +14,8 @@ from app.utils import background_tasks
 
 #: call_executor spawns its live run unnamed, so the task carries the coroutine's name.
 LIVE_EXECUTOR_TASK_NAME = "run_executor_background"
+#: How long one turn's background work may run before the journey fails naming what still runs.
+DRAIN_DEADLINE_SECONDS = 120
 
 
 def tasks_named(*names: str) -> list[asyncio.Task[object]]:
@@ -42,4 +45,19 @@ async def drain_background_runs() -> None:
         ),
         *running_steps(),
     ]:
-        await asyncio.gather(*pending, return_exceptions=True)
+        done, stuck = await asyncio.wait(pending, timeout=DRAIN_DEADLINE_SECONDS)
+        await asyncio.gather(*done, return_exceptions=True)
+        if stuck:
+            stacks = [_stack_of(task) for task in stuck]
+            for task in stuck:
+                task.cancel()
+            raise AssertionError(
+                f"background work still running after {DRAIN_DEADLINE_SECONDS}s:\n"
+                + "\n".join(stacks)
+            )
+
+
+def _stack_of(task: asyncio.Task[object]) -> str:
+    frames = io.StringIO()
+    task.print_stack(file=frames)
+    return f"{task.get_name()}:\n{frames.getvalue()}"
