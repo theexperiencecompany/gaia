@@ -13,7 +13,7 @@
 # THE THREE CLAIMS, and the gate that carries each:
 #  1. the FINAL instruction is what got acted on -> `tool_call_correctness` with
 #     `args` wherever the corrected action is a fresh call the wire actually
-#     carries (create_todo `title`, get_weather `location`, web_search_tool —
+#     carries (create_task `title`, get_weather `location`, web_search_tool —
 #     the observed four; nested payloads such as create_reminder_tool's
 #     `payload.title` are NOT arg-matchable, so those cases gate the value on
 #     `communicate` instead).
@@ -50,12 +50,12 @@
             I apologize for the confusion. The dry cleaning pickup is on your
             list for Thursday and I've updated it with the details.
       tool_calls:
-        - {name: create_todo, args: {title: "Pick up dry cleaning"}}
+        - {name: create_task, args: {title: "Pick up dry cleaning", assignee: user}}
   expected:
     category: correction
     communicate: ["prescription"]
     must_not_communicate: ["i apologize for the confusion", "apologies for the confusion"]
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "prescription"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "prescription", assignee: user}}]
     suggestions: false
     openui: false
     judge:
@@ -144,24 +144,24 @@
   setup:
     turns:
       - "tidy up my todo list, it's a complete mess"
-      - "whoa whoa, tidy up means group them by project so i can actually see them. do not delete a single one."
+      - "whoa whoa, tidy up means sort them by priority so i can actually see them. do not delete a single one."
     counterfeit:
       text: "All tidied up. I've deleted 14 duplicates and stale items, so your list is clean now."
       messages:
         - {role: user, content: "tidy up my todo list, it's a complete mess"}
         - {role: assistant, content: "On it."}
-        - {role: user, content: "whoa whoa, tidy up means group them so i can actually see them"}
+        - {role: user, content: "whoa whoa, tidy up means sort them so i can actually see them"}
         - role: assistant
           content: >-
             All tidied up. I've deleted 14 duplicates and stale items, so your
             list is clean now.
       tool_calls:
-        - {name: bulk_delete_todos, args: {todo_ids: ["a1", "b2"]}}
+        - {name: delete_tasks, args: {task_ids: ["a1", "b2"]}}
   expected:
     category: correction
-    communicate: ["project"]
+    communicate: ["priority"]
     must_not_communicate: ["i've deleted", "i've removed", "i've cleared"]
-    must_not_call_tools: [delete_todo, bulk_delete_todos]
+    must_not_call_tools: [delete_tasks]
     suggestions: false
     openui: false
     judge:

@@ -62,7 +62,7 @@
   expected:
     category: bubbles
     communicate: []
-    tool_calls: [{tool: create_todo, min_calls: 3}]
+    tool_calls: [{tool: create_task, min_calls: 3, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:
@@ -150,7 +150,7 @@
     category: bubbles
     communicate: []
     tool_calls:
-      - {tool: create_todo, min_calls: 1}
+      - {tool: create_task, min_calls: 1, args: {assignee: user}}
       - {tool: create_reminder_tool, min_calls: 1}
     suggestions: false
     openui: false

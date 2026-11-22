@@ -150,7 +150,7 @@
     category: ambiguity
     communicate: ["?"]
     must_not_communicate: ["i've booked", "i've added", "i've made a reservation"]
-    must_not_call_tools: [create_reminder_tool, create_todo]
+    must_not_call_tools: [create_reminder_tool, create_task]
     suggestions: false
     openui: false
     judge:

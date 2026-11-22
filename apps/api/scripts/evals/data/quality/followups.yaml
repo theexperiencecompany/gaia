@@ -26,7 +26,7 @@
   expected:
     category: followup
     communicate: ["bread"]
-    tool_calls: [{tool: create_todo, min_calls: 2}]
+    tool_calls: [{tool: create_task, min_calls: 2, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:

@@ -140,7 +140,7 @@
 # Policy rule 1. Duplicating a native card with a fence renders the data twice.
 
 - id: quality-openui-suppressed-todo-card
-  ticket: "create_todo already renders a native card — the reply must not duplicate it with a fence."
+  ticket: "A new to-do shows in its own card — the reply must not duplicate it with a fence."
   tags: [openui, suppressed, tool]
   prompt: "add a todo to call the accountant on monday"
   expected:
@@ -148,7 +148,7 @@
     openui_policy: suppressed
     communicate: []
     delegation: required
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     judge:
       criteria:

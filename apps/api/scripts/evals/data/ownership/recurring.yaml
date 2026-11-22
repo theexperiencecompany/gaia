@@ -1,5 +1,5 @@
 # Recurring responsibilities: GAIA itself must do the work on a schedule, so a
-# recurring tracked todo or a workflow has to exist afterwards. A repeating
+# repeating GAIA task or a workflow has to exist afterwards. A repeating
 # reminder only pings the user and does not count.
 
 - id: own-rc-daily-plan

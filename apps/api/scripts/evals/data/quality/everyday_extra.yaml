@@ -81,17 +81,17 @@
         - {role: user, content: "can you stick 'book the dentist' on my todo list"}
         - {role: assistant, content: "yep, that's on the list now."}
       tool_calls:
-        - {name: create_todo, args: {title: "Book appointment"}}
+        - {name: create_task, args: {title: "Book appointment", assignee: user}}
   expected:
     category: everyday
     communicate: ["dentist"]
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "dentist"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "dentist", assignee: user}}]
     suggestions: false
     openui: false
     judge:
       criteria:
         - "MUST: the reply names the dentist, so the user can see which item landed."
-        - "MUST NOT: the reply asks which project or list to file it under."
+        - "MUST NOT: the reply asks which list to file it under."
         - "MUST NOT: the reply runs longer than two sentences."
     score: {gates: [communicate, tool_call_correctness, tool_card]}
 

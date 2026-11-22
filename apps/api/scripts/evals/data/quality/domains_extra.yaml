@@ -26,7 +26,7 @@
 #   make. It is NOT a check on the executor's final answer: that lands in
 #   Mongo/WebSocket and this wire never carries it.
 # - `tool_call_correctness` is asserted only for the tools this suite has
-#   observed on the wire (create_todo, create_reminder_tool, get_weather,
+#   observed on the wire (create_task, create_reminder_tool, get_weather,
 #   web_search_tool), and only where the user explicitly asked for a lookup or
 #   a capture.
 # - `suggestions: true` (the `suggestion` gate) is used only on the two turns
@@ -268,12 +268,12 @@
       messages:
         - {role: user, content: "add a todo to cancel my gym membership before they bill me again"}
         - {role: assistant, content: "Sorted — I've cancelled your gym membership so they won't take the $45 next month."}
-      tool_calls: [{name: create_todo, args: {title: "Cancel gym membership"}}]
+      tool_calls: [{name: create_task, args: {title: "Cancel gym membership", assignee: user}}]
   expected:
     category: finance
     communicate: ["gym"]
     must_not_communicate: ["i've cancelled", "i've canceled", "$"]
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:

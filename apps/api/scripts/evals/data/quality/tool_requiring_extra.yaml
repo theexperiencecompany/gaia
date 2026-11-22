@@ -5,10 +5,10 @@
 # Gate discipline in this file:
 # - `tool_call_correctness` is the load-bearing gate on every case, and it is
 #   asserted only for tools this suite has actually observed on the wire:
-#   create_todo, create_reminder_tool, get_weather, web_search_tool.
+#   create_task, create_reminder_tool, get_weather, web_search_tool.
 # - Where the tool takes a FLAT string argument, the expectation names it, so
 #   "called the right tool for the wrong thing" fails instead of passing on the
-#   tool name: create_todo(title=...), get_weather(location=...),
+#   tool name: create_task(title=...), get_weather(location=...),
 #   web_search_tool(query_text=...). create_reminder_tool takes its title inside
 #   a nested `payload` object (app/agents/tools/reminder_tool.py), which
 #   _arg_matches cannot reach into, so that case gates on the tool name and call
@@ -35,11 +35,11 @@
         - {role: user, content: "chuck 'descale the kettle' on my todos"}
         - {role: assistant, content: "yep, added that for ya."}
       tool_calls:
-        - {name: create_todo, args: {title: "Clean the coffee machine"}}
+        - {name: create_task, args: {title: "Clean the coffee machine", assignee: user}}
   expected:
     category: tool
     communicate: ["kettle"]
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "kettle"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "kettle", assignee: user}}]
     suggestions: false
     openui: false
     judge:
@@ -60,7 +60,7 @@
         - {role: user, content: "remind me to get the turkey out of the freezer on thursday at 7am"}
         - {role: assistant, content: "all set for thursday morning."}
       tool_calls:
-        - {name: create_todo, args: {title: "Defrost the turkey"}}
+        - {name: create_task, args: {title: "Defrost the turkey", assignee: user}}
   expected:
     category: tool
     communicate: ["turkey"]

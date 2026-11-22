@@ -1,5 +1,5 @@
 # L0: clear and harmless. Act now, ask nothing, confirm in a line.
-# The follow-up/todo is read back from the API; the question and word budgets
+# The follow-up/to-do is read back from the API; the question and word budgets
 # are read from everything the user saw after their message.
 
 - id: own-l0-reminder-plumber
@@ -35,7 +35,7 @@
     score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
 
 - id: own-l0-todo-passport
-  ticket: "Plain todo: add it as a todo, not a tracked follow-up, no question."
+  ticket: "Plain todo: add it as a to-do, not a GAIA task, no question."
   prompt: "add renew passport to my todo list"
   tags: [ownership, L0, todo]
   setup:

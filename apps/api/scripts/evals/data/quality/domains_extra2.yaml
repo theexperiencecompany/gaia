@@ -23,7 +23,7 @@
 #   delegated turns. It rejects the empty run, the echo and the counterfeit,
 #   which is what keeps these cases off "content-blind".
 # - `tool_call_correctness` is asserted only for the four tools this suite has
-#   observed on the wire: create_todo, create_reminder_tool, get_weather,
+#   observed on the wire: create_task, create_reminder_tool, get_weather,
 #   web_search_tool. No `args:` — no case in this suite has ever asserted the
 #   wire's `inputs` shape, and guessing at it would gate on a key we have not
 #   verified.
@@ -118,7 +118,7 @@
   expected:
     category: food
     communicate: ["oat milk"]
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:
@@ -520,7 +520,7 @@
   expected:
     category: travel
     communicate: ["plug adapter"]
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:

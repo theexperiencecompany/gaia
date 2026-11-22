@@ -20,7 +20,7 @@
   expected:
     category: tool
     communicate: ["milk"]
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:
@@ -58,10 +58,10 @@
   prompt: "show me a small dashboard of my todos"
   setup:
     counterfeit:
-      text: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Groceries and Work are your busiest projects. Nice going!"
+      text: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Nice going!"
       messages:
         - {role: user, content: "show me a small dashboard of my todos"}
-        - {role: assistant, content: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Groceries and Work are your busiest projects. Nice going!"}
+        - {role: assistant, content: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Nice going!"}
   expected:
     category: tool
     communicate: []
@@ -70,7 +70,7 @@
     openui: false
     judge:
       criteria:
-        - "MUST NOT: the acknowledgment states a todo count, a due-today count, a project name, or any other figure it cannot have seen yet."
+        - "MUST NOT: the acknowledgment states a todo count, a due-today count, or any other figure it cannot have seen yet."
         - "MUST: the reply is under 3 sentences, in a warm register with contractions."
         - "MUST NOT: the reply contains stray :::openui fence text or robotic boilerplate."
     score: {gates: [delegation, emoji_discipline]}

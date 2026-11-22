@@ -84,7 +84,7 @@
     category: delegation
     communicate: ["passport"]
     delegation: required
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:
@@ -109,7 +109,7 @@
     delegation: required
     tool_calls:
       - {tool: get_weather, min_calls: 1}
-      - {tool: create_todo, min_calls: 1}
+      - {tool: create_task, min_calls: 1, args: {assignee: user}}
     suggestions: false
     openui: false
     judge:
@@ -204,7 +204,7 @@
   expected:
     category: delegation
     communicate: []
-    must_not_call_tools: [delete_todo, bulk_delete_todos]
+    must_not_call_tools: [delete_tasks]
     suggestions: false
     openui: false
     judge:

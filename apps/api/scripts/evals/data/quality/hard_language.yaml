@@ -15,7 +15,7 @@
 #   `get_weather` for Lisbon. Those are top-level string args, so
 #   `_call_matches_args` can reach them (a reminder TITLE cannot be asserted this
 #   way — it lives in a nested `payload`). Only the four tools this suite has
-#   observed on the SSE wire are used: create_todo, create_reminder_tool,
+#   observed on the SSE wire are used: create_task, create_reminder_tool,
 #   get_weather, web_search_tool.
 # - REGISTER is asserted with `must_not_communicate` on the customer-service
 #   voice the failure actually emits — "dear user", "i apologize for any
@@ -129,7 +129,7 @@
   expected:
     category: language
     communicate: []
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "dry clean"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "dry clean", assignee: user}}]
     must_not_communicate: ["did you mean", "i apologize for any confusion", "could you please confirm", "dear user"]
     suggestions: false
     openui: false
@@ -158,11 +158,11 @@
             DEAR USER, I APOLOGIZE FOR ANY CONFUSION. I HAVE ADDED "RENEW
             PASSPORT" TO YOUR TASK LIST. THERE IS NO NEED TO SHOUT.
       tool_calls:
-        - {name: create_todo, args: {title: "Renew passport"}}
+        - {name: create_task, args: {title: "Renew passport", assignee: user}}
   expected:
     category: language
     communicate: []
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "passport"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "passport", assignee: user}}]
     must_not_communicate: ["dear user", "i apologize for any confusion", "there is no need to shout", "please calm down"]
     suggestions: false
     openui: false

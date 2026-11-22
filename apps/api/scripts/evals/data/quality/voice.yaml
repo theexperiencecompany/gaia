@@ -30,7 +30,7 @@
   expected:
     category: voice
     communicate: []
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:

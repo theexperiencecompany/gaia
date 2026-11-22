@@ -116,11 +116,11 @@
         - role: assistant
           content: "on it, adding a todo to confirm the venue"
       tool_calls:
-        - {name: create_todo, args: {title: "Confirm the venue"}}
+        - {name: create_task, args: {title: "Confirm the venue", assignee: user}}
   expected:
     category: session
     communicate: ["Bell Inn"]
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "Bell Inn"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "Bell Inn", assignee: user}}]
     suggestions: false
     openui: false
     judge:
@@ -337,11 +337,11 @@
         - role: assistant
           content: "on it, adding a todo to book the table for 14"
       tool_calls:
-        - {name: create_todo, args: {title: "Book the table for 14"}}
+        - {name: create_task, args: {title: "Book the table for 14", assignee: user}}
   expected:
     category: session
     communicate: ["11"]
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "11"}}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {title: "11", assignee: user}}]
     must_not_communicate: ["table for 14", "table for 10"]
     suggestions: false
     openui: false

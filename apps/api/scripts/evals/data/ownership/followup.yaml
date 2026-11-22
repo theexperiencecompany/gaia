@@ -1,5 +1,5 @@
 # Ongoing responsibility: the request needs future attention. A durable
-# follow-up (a tracked todo with a wake source, or a reminder) must exist after
+# follow-up (a GAIA task with a wake source, or a reminder) must exist after
 # the turn, and nothing that has not happened is claimed done.
 
 - id: own-fu-flights-lisbon
@@ -12,7 +12,7 @@
     ownership:
       brief: {terms: [lisbon], min_criteria: 1}
       followup: required
-      followup_kind: todo
+      followup_kind: task
       followup_contains: ""
       max_words: 60
     must_not_communicate: ["flights are booked", "booked your flight", "you've booked"]
@@ -28,7 +28,7 @@
     ownership:
       brief: {terms: [visa], min_criteria: 1}
       followup: required
-      followup_kind: todo
+      followup_kind: task
       followup_contains: visa
       max_words: 60
     must_not_communicate: ["documents are submitted", "visa is done", "all sorted"]
@@ -44,7 +44,7 @@
     ownership:
       brief: {terms: [passport], min_criteria: 1}
       followup: required
-      followup_kind: todo
+      followup_kind: task
       followup_contains: passport
       max_words: 60
     must_not_communicate: ["passport is renewed", "renewal is done", "all sorted"]
@@ -60,7 +60,7 @@
     ownership:
       brief: {terms: [tax], min_criteria: 1}
       followup: required
-      followup_kind: todo
+      followup_kind: task
       followup_contains: tax
       max_words: 60
     must_not_communicate: ["i've sent", "sent your tax", "documents are sent"]
@@ -91,7 +91,7 @@
     ownership:
       brief: {terms: ["3"], min_criteria: 1}
       followup: required
-      followup_kind: todo
+      followup_kind: task
       followup_contains: ""
       max_words: 60
     must_not_communicate: ["you've applied", "applications are done"]
@@ -107,7 +107,7 @@
     ownership:
       brief: {terms: [roof], min_criteria: 1}
       followup: required
-      followup_kind: todo
+      followup_kind: task
       followup_contains: roof
       max_words: 60
     must_not_communicate: ["quote arrived", "got the quote", "roofer replied"]
@@ -123,7 +123,7 @@
     ownership:
       brief: {terms: [insurance], min_criteria: 1}
       followup: required
-      followup_kind: todo
+      followup_kind: task
       followup_contains: insurance
       max_words: 60
     must_not_communicate: ["i called", "i've called", "called them"]

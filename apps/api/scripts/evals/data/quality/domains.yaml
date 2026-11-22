@@ -12,7 +12,7 @@
 #   echo the item there (verified precedent: quality-tool-todo gates "milk").
 #   Advice turns get no communicate gate; their ack wording is not stable.
 # - `tool_call_correctness` is only asserted for the four tools this suite has
-#   already observed on the wire: create_todo, create_reminder_tool,
+#   already observed on the wire: create_task, create_reminder_tool,
 #   get_weather, web_search_tool.
 # - No case here declares `gates: []`. runner._status_from_scores records a case
 #   with an empty gate list as PASSED whatever the agent did, so an advice case
@@ -256,7 +256,7 @@
   expected:
     category: food
     communicate: ["bread"]
-    tool_calls: [{tool: create_todo, min_calls: 1}]
+    tool_calls: [{tool: create_task, min_calls: 1, args: {assignee: user}}]
     suggestions: false
     openui: false
     judge:
