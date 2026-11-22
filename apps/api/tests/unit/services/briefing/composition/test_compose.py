@@ -32,8 +32,9 @@ from app.models.brief_composition_models import (
 from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing import checked_call
-from app.services.briefing.composition import compose
+from app.services.briefing.composition import compose, headings as heading_check
 from app.services.briefing.composition.compose import compose_brief, pool_values
+from app.services.briefing.composition.headings import HeadingVerdict, HeadingVerdicts
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.kinds import KIND_SPECS
 from app.utils.errors import AppError
@@ -483,32 +484,7 @@ class TestASalvageKeepsTheHeadingsThatPassed:
         self, model: AsyncMock, headings: AsyncMock
     ) -> None:
         """Founder's Nov 22: one misfit heading twice turned every group's heading to "Needs you"."""
-        model.return_value = BriefComposition.model_validate(
-            {
-                "blocks": [
-                    {
-                        "kind": "items",
-                        "state": "needs_you",
-                        "heading": "Maya's term sheet",
-                        "items": [_item(1, title="Series A term sheet")],
-                    },
-                    {
-                        "kind": "items",
-                        "state": "done",
-                        "heading": "Still running",
-                        "items": [
-                            {
-                                "id": 2,
-                                "action": None,
-                                "outcome": "finished",
-                                "title": "Deck",
-                                "detail": None,
-                            }
-                        ],
-                    },
-                ]
-            }
-        )
+        model.return_value = _TERM_SHEET_AND_DECK
         headings.return_value = {2: 'block 2 heading "Still running" is not true of item 2'}
 
         composed = await compose_brief(USER, POOL, DAILY)
@@ -518,6 +494,26 @@ class TestASalvageKeepsTheHeadingsThatPassed:
             "Done",
         ]
         assert headings.await_count == 2
+
+    async def test_a_heading_the_check_never_judged_is_the_only_one_that_gives_way(
+        self, model: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Founder's Nov 22: the check left one verdict out, and the run sent no brief at all."""
+        monkeypatch.setattr(compose, "heading_problems", heading_check.heading_problems)
+        judge = AsyncMock(
+            return_value=HeadingVerdicts(
+                verdicts=[HeadingVerdict(block=1, why="a reply", misfits=[], fits=True)]
+            )
+        )
+        monkeypatch.setattr(heading_check, "ainvoke_structured", judge)
+        model.return_value = _TERM_SHEET_AND_DECK
+
+        composed = await compose_brief(USER, POOL, DAILY)
+
+        assert [b.heading for b in composed.rendered.blocks if isinstance(b, ComposedItems)] == [
+            "Maya's term sheet",
+            "Done",
+        ]
 
 
 def _items_block(*items: dict[str, object]) -> BriefComposition:
@@ -532,6 +528,35 @@ def _items_block(*items: dict[str, object]) -> BriefComposition:
 
 def _item(item_id: int, title: str = "Term sheet", detail: str | None = None) -> dict[str, object]:
     return {"id": item_id, "action": "reply", "outcome": None, "title": title, "detail": detail}
+
+
+#: A reply under a subject heading, and finished work under a heading untrue of it.
+_TERM_SHEET_AND_DECK = BriefComposition.model_validate(
+    {
+        "blocks": [
+            {
+                "kind": "items",
+                "state": "needs_you",
+                "heading": "Maya's term sheet",
+                "items": [_item(1, title="Series A term sheet")],
+            },
+            {
+                "kind": "items",
+                "state": "done",
+                "heading": "Still running",
+                "items": [
+                    {
+                        "id": 2,
+                        "action": None,
+                        "outcome": "finished",
+                        "title": "Deck",
+                        "detail": None,
+                    }
+                ],
+            },
+        ]
+    }
+)
 
 
 class TestWhatSlotsRender:
