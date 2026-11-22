@@ -669,7 +669,7 @@ docstring-code-format = true
 # `shared.*` (small, library code) where it is achievable.
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_redundant_casts = false  # cast() is sometimes intentional for clarity
 warn_unused_configs = true
 warn_no_return = true
