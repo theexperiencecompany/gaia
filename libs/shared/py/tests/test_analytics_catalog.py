@@ -48,6 +48,7 @@ _TEST_PATH = re.compile(r"(__tests__|/tests?/|\.test\.tsx?$|\.spec\.tsx?$)")
 _EMITTER_SITE_SOURCES = (*_SERVER_SOURCES, *_VOICE_SOURCES, "libs/shared/py")
 # The capture machinery names events to configure them (the active-use set) and emits none itself.
 _ANALYTICS_PACKAGE = "libs/shared/py/analytics/"
+_CATALOG_MODULE = "shared.py.analytics.catalog"
 
 # Events built in several functions, one per mutually exclusive path; a count may only fall.
 _MULTI_SITE_EVENTS: dict[str, tuple[int, str]] = {
@@ -59,14 +60,16 @@ _MULTI_SITE_EVENTS: dict[str, tuple[int, str]] = {
     "calendar:event_updated": (2, "the single and the batch route; batch props say which"),
     "chat:conversation_created": (2, "a user's conversation and a system one, never both"),
     "chat:conversation_deleted": (2, "delete one and delete all; props say which"),
-    "chat:message_submitted": (2, "the web chat route and the bot turn charge, one per surface"),
+    "chat:message_submitted": (
+        3,
+        "a web send, a web retry and a bot message; each accepts its own",
+    ),
     "email:sent": (2, "send a new email and send a saved draft"),
     "hil:decision_submitted": (
         2,
         "auto mode's verdict has no card; a card's decision has no verdict",
     ),
     "hil:resumed": (2, "a parked todo run and a parked workflow run"),
-    "hil:revoked": (2, "the proposer's revoke and a cancelled run's sweep"),
     "integration:connect_initiated": (3, "the connect route, a connect link, a platform connect"),
     "integration:connected": (
         7,
@@ -167,6 +170,18 @@ def _python_references(source: str) -> dict[str, set[str]]:
     return scopes
 
 
+def _catalog_imports(source: str) -> dict[str, str]:
+    """Local name to catalog class for each event class the module imports from the catalog."""
+    return {
+        alias.asname or alias.name: alias.name
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom)
+        and node.module is not None
+        and node.module.startswith(_CATALOG_MODULE)
+        for alias in node.names
+    }
+
+
 @pytest.fixture(scope="module")
 def python_references() -> dict[Surface, set[str]]:
     return {
@@ -179,13 +194,17 @@ def python_references() -> dict[Surface, set[str]]:
 
 @pytest.fixture(scope="module")
 def emitter_sites() -> dict[str, set[tuple[str, str]]]:
-    """Every (file, function) that names each catalog class in product Python."""
+    """Every (file, function) that names each catalog class it imports, under whatever local name."""
     sites: dict[str, set[tuple[str, str]]] = {}
     for relative, text in _source_texts(_EMITTER_SITE_SOURCES, (".py",)):
         if relative.startswith(_ANALYTICS_PACKAGE):
             continue
+        imported = _catalog_imports(text)
         for name, scopes in _python_references(text).items():
-            sites.setdefault(name, set()).update((relative, scope) for scope in scopes)
+            if name in imported:
+                sites.setdefault(imported[name], set()).update(
+                    (relative, scope) for scope in scopes
+                )
     return sites
 
 
@@ -356,6 +375,14 @@ def test_each_function_that_builds_an_event_is_one_site() -> None:
         "        capture(uid, event_cls())\n"
     )
     assert _python_references(source)["PaymentFailed"] == {"charge", "Webhook.on_failure"}
+
+
+def test_only_a_class_imported_from_the_catalog_is_an_event() -> None:
+    source = (
+        "from shared.py.analytics.catalog.hil import ApprovalDecided as ApprovalDecidedEvent\n"
+        "from app.models.log import IntegrationConnected\n"
+    )
+    assert _catalog_imports(source) == {"ApprovalDecidedEvent": "ApprovalDecided"}
 
 
 def test_a_type_alias_type_check_or_event_name_read_is_not_an_emitter() -> None:
