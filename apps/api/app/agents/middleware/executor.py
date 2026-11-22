@@ -39,6 +39,7 @@ from langgraph.graph.message import Messages
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.core.subagents.call_record import tool_call_failed
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
@@ -492,7 +493,12 @@ class MiddlewareExecutor:
                 # A pre-tool middleware broke, and it may be the approval gate: fail
                 # closed. The tool never runs on a check that did not complete.
                 return _middleware_failure_message(tool_name, tool_call.get("id") or "")
-        observe_tool_call(perf_counter() - chain_start, tool_name=metric_name, status="success")
+        failed = isinstance(result, ToolMessage) and tool_call_failed(result)
+        observe_tool_call(
+            perf_counter() - chain_start,
+            tool_name=metric_name,
+            status="error" if failed else "success",
+        )
         return result
 
     def has_wrap_model_call(self) -> bool:

@@ -14,13 +14,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 
 from app.db.redis import get_cache
-from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.cached_base import (
     CachedMongoRepository,
     CachedUserScopedRepository,
     cached_query,
 )
+from app.models.document_models import MongoDocument, UserScopedDocument
 
 ENTITY_TTL = 1111
 QUERY_TTL = 2222

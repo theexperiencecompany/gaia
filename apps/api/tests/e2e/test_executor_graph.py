@@ -43,12 +43,13 @@ from tests.e2e._harness.graph_run import (
     NUDGE_NODE,
     REJECT_NODE,
     TOOLS_NODE,
+    StreamingScriptedModel,
     ToolCall,
     call,
     executor_graph,
     run_graph,
+    streaming_model,
 )
-from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 
 pytestmark = pytest.mark.e2e
 
@@ -455,6 +456,10 @@ class TestAStepLimitedRunThroughTheRunner:
         assert (result.text, result.type) == (EXECUTOR_STEP_LIMIT_MESSAGE, "error")
 
 
+# The gate fails closed on a run with no identity; every real executor run carries one.
+_RUN_IDENTITY = {"stream_id": "repeat-stream", "conversation_id": "repeat-conversation"}
+
+
 class TestARepeatedCallIsNotRerun:
     """The live desk run re-issued one identical edit 28 times; each ran, so the run spun to its limit."""
 
@@ -467,7 +472,11 @@ class TestARepeatedCallIsNotRerun:
             async with executor_graph([*script, "Read it."]) as graph:
                 # Refusal is background-only by contract; real runs carry that mode.
                 run = await run_graph(
-                    graph, "read the goals manual", recursion_limit=50, execution_mode="background"
+                    graph,
+                    "read the goals manual",
+                    recursion_limit=50,
+                    execution_mode="background",
+                    **_RUN_IDENTITY,
                 )
 
         assert reads.call_count == LOOP_GUARD_STOP_REPEAT - 1
@@ -485,7 +494,12 @@ class TestARepeatedCallIsNotRerun:
         with patch.object(manual_tool, "get_manual", wraps=manual_tool.get_manual) as reads:
             async with executor_graph(script) as graph:
                 for i in range(delegations):
-                    await run_graph(graph, f"read the goals manual ({i})", thread_id="one-thread")
+                    await run_graph(
+                        graph,
+                        f"read the goals manual ({i})",
+                        thread_id="one-thread",
+                        **_RUN_IDENTITY,
+                    )
 
         assert reads.call_count == delegations
 

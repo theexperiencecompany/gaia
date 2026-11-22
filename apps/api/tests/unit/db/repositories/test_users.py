@@ -319,7 +319,8 @@ class TestFindByEmailIgnoringCase:
 
         found = await repo.find_by_email_ignoring_case("erase.me+1@example.com")
 
-        assert [user.email for user in found] == ["Erase.Me@Example.com"]
+        # The legacy mixed-case row is found; UserDocument reads its address canonically.
+        assert [user.email for user in found] == ["erase.me@example.com"]
         assert collection.find.call_args.args[0] == {
             "email": {"$regex": r"^erase\.me\+1@example\.com$", "$options": "i"}
         }
@@ -329,3 +330,29 @@ def test_a_user_id_was_minted_at_the_time_its_object_id_carries() -> None:
     assert UserRepository().id_created_at("507f1f77bcf86cd799439011") == datetime(
         2012, 10, 17, 21, 13, 27, tzinfo=UTC
     )
+
+
+class TestEmailLookupsAreCanonical:
+    async def test_get_by_email_looks_up_the_lowercase_address(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one = AsyncMock(return_value=_good("idp@example.com"))
+
+        found = await repo.get_by_email(" IdP@Example.com ")
+
+        assert found is not None
+        assert collection.find_one.call_args.args[0] == {"email": "idp@example.com"}
+
+    async def test_touch_last_active_writes_to_the_lowercase_address(
+        self, repo: UserRepository
+    ) -> None:
+        with (
+            patch("app.db.repositories.users.redis_cache.redis", None),
+            patch.object(repo, "_update_fields_no_invalidate", new=AsyncMock()) as write,
+        ):
+            await repo.touch_last_active("Seen@Example.com")
+
+        assert write.await_args.args[0] == {"email": "seen@example.com"}
+
+    def test_a_user_document_stores_its_address_lowercase(self) -> None:
+        assert UserDocument(email="New.User@Example.com").email == "new.user@example.com"

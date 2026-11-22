@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { useOpenConversation } from "@/features/chat/live/useLiveChat";
 import { useClearPaywallWhenPaid } from "@/features/pricing/hooks/useClearPaywallWhenPaid";
 import { useElectron } from "@/hooks/useElectron";
 import { track } from "@/lib/analytics";
@@ -33,6 +34,7 @@ export default function AssistantPopup() {
 
   useChatStoreSync();
   usePopupChatPublisher();
+  useOpenConversation(useChatStore((state) => state.activeConversationId));
   usePopupEscapeDismiss();
   // This window is where the 402 landed and the paid-only wall lives, so it's
   // where the wall must come down — the feed window only mirrors what this one

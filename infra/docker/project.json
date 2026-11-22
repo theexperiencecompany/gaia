@@ -5,11 +5,11 @@
     "docker:up": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose $(test -f .env && echo '--env-file .env') up -d",
-        "cwd": "{projectRoot}"
+        "command": "bash scripts/dev/docker-up.sh",
+        "cwd": "{workspaceRoot}"
       },
       "cache": false,
-      "description": "Start all Docker services in detached mode"
+      "description": "Start the shared Docker services without recreating running ones, plus a linked worktree's private Redis and RabbitMQ vhost"
     },
     "docker:down": {
       "executor": "nx:run-commands",

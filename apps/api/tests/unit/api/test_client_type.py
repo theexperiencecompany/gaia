@@ -12,7 +12,12 @@ def _request(client_type: str | None) -> Request:
         [] if client_type is None else [(CLIENT_TYPE_HEADER.lower().encode(), client_type.encode())]
     )
     return Request(
-        {"type": "http", "method": "POST", "path": "/api/v1/chat-stream", "headers": headers}
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/conversations/c1/messages",
+            "headers": headers,
+        }
     )
 
 

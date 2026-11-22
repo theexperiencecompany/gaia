@@ -116,7 +116,7 @@ def note_is_due(
     """Whether a run gets a presence note: a background run, a live surface switch, or a thread's first turn."""
     if not presence or not surfaces_by_recency(presence):
         return False
-    # A voice call reaches comms as a web turn; it is not one, so it switched nowhere.
+    # A call cannot be messaged, so it switched nowhere.
     if execution_mode != "background" and not is_presence_surface(entry_surface):
         return False
     if not is_live_chat(source, execution_mode) or opens_thread:

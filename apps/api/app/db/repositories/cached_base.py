@@ -20,7 +20,6 @@ from pymongo.errors import BulkWriteError
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.base import (
-    MongoDocument,
     MongoRepository,
     TDoc,
     TUpdate,
@@ -29,6 +28,7 @@ from app.db.repositories.base import (
     _BaseRepository,
 )
 from app.db.repositories.cache import CachePolicy, bump_generation, query_arg_hash, read_generation
+from app.models.document_models import MongoDocument
 from app.utils.errors import RepositoryMisconfiguredError
 
 # Bound to the decorated finder itself so cached_query preserves its exact

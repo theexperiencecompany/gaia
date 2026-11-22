@@ -16,7 +16,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.repositories.base import UserScopedDocument, UserScopedRepository
+from app.db.repositories.base import UserScopedRepository
+from app.models.document_models import UserScopedDocument
+
+
+class _UserWindowTotal(BaseModel):
+    """One user's row of the window-totals aggregate."""
+
+    user_id: str = Field(alias="_id")
+    total: int
 
 
 class UsageDailyDocument(UserScopedDocument):
@@ -54,11 +62,6 @@ class TrueCostActuals(BaseModel):
     coverage: float
     provider_mix: dict[str, float]
     at: datetime
-
-
-class _UserWindowTotal(BaseModel):
-    user_id: str = Field(alias="_id")
-    total: int
 
 
 class UsageDailyIncrement(BaseModel):

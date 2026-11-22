@@ -1,27 +1,12 @@
-"""Comms directive protocol: the control tags and the outcomes they map to.
+"""The tools comms ends a turn with when it is not worth a message.
 
-The tags comms emits when a turn is not worth a full message. Shared by the
-prompts (which instruct comms) and the parser (which interprets comms' output)
-so the two can never drift apart. Tag-shaped like NEW_MESSAGE_BREAKER.
+Shared by the prompts (which tell comms to call them), the tools themselves, the
+graph (which ends the turn after them) and the run's outcome (which reads them).
 """
 
-from enum import StrEnum
-
-SILENCE_TAG = "SILENCE"
-EMOJI_TAG = "EMOJI"
-#: The line format the tags replaced ("REACT: 👍"). Only the parser reads it:
-#: comms checkpoints written before the tags carry such turns, and a model
-#: imitating its own history still emits them.
-LEGACY_REACT_KEYWORD = "REACT"
-#: Names a model has written the reaction tag under (seen live); each is still a reaction.
-REACTION_TAG_ALIASES = frozenset({LEGACY_REACT_KEYWORD, "REACTION"})
-
-#: The directives as the prompts show them to comms.
-SILENCE_DIRECTIVE = f"<{SILENCE_TAG}>brief reason</{SILENCE_TAG}>"
-EMOJI_DIRECTIVE = f"<{EMOJI_TAG}>one emoji</{EMOJI_TAG}>"
-
-
-class CommsDirectiveKind(StrEnum):
-    REPLY = "reply"
-    SILENCE = "silence"
-    REACT = "react"
+REACT_TOOL_NAME = "react"
+STAY_SILENT_TOOL_NAME = "stay_silent"
+#: Names the messages a reply answers; ends the turn when it is the step's only kind of call.
+ANSWERED_TOOL_NAME = "answered"
+#: The tools whose call ends a comms turn: a message calling only these is the reply itself.
+TURN_ENDING_TOOL_NAMES = frozenset({ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME})

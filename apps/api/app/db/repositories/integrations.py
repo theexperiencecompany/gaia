@@ -11,7 +11,9 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 import re
 
-from app.db.repositories.base import MongoRepository
+from app.constants.cache import INTEGRATION_CACHE_PREFIX
+from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedMongoRepository, cached_query
 from app.helpers.integration_helpers import dedup_server_url_key
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.integration_models import (
@@ -50,14 +52,17 @@ _TOOLS_RECORD_PROJECTION: dict[str, object] = {
 }
 
 
-class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
+class IntegrationsRepository(CachedMongoRepository[Integration, IntegrationUpdate]):
     collection_name = "integrations"
     document_model = Integration
     update_model = IntegrationUpdate
     uses_object_id = False
     identity_field = "integration_id"
     auto_stamp_timestamps = False
+    # Resolved on every custom-MCP tool lookup; every write here goes through the base.
+    cache_policy = CachePolicy(prefix=INTEGRATION_CACHE_PREFIX)
 
+    @cached_query(Integration)
     async def find_by_id_prefix_or_name(self, search: str) -> Integration | None:
         """Resolve a partial id or exact name to an integration.
 

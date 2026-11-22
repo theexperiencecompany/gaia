@@ -22,8 +22,10 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.user_models import UserDocument
+from app.services.conversation.runtime import install_runtime_ports
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 
 @pytest.fixture(autouse=True)
@@ -56,13 +58,9 @@ def _onboarded_user():
 
 @pytest.fixture
 def scheduler() -> WorkflowScheduler:
-    with patch(
-        "app.services.scheduler_service.settings",
-        MagicMock(REDIS_URL="redis://localhost:6379/0"),
-    ):
-        svc = WorkflowScheduler(redis_settings=MagicMock())
-        svc.arq_pool = AsyncMock()
-        return svc
+    svc = WorkflowScheduler()
+    svc.arq_pool = AsyncMock()
+    return svc
 
 
 @pytest.mark.unit
@@ -219,6 +217,7 @@ def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("fake_redis")  # the fire's admission key, on this test's own loop
 class TestWorkerRejectsStaleFire:
     @staticmethod
     @staticmethod
@@ -278,22 +277,16 @@ class TestWorkerRejectsStaleFire:
                 "app.workers.tasks.workflow_tasks.playbook_repository.get_for_workflow",
                 AsyncMock(return_value=None),
             ),
-            # A fire claims its workflow's conversation before it spends
-            # anything; nobody else holds it in these tests.
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 AsyncMock(return_value="conv_1"),
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.try_acquire_lock",
-                AsyncMock(return_value=True),
-            ),
-            patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
-            patch(
                 "app.workers.tasks.workflow_tasks.keep_alive", AsyncMock(return_value=MagicMock())
             ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
+            install_runtime_ports(Runtime().ports)
             result = await execute_workflow_by_id({}, workflow.id, context)
             mocks = MagicMock()
             mocks.create_execution = mock_create

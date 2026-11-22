@@ -18,12 +18,19 @@ from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
     EXECUTOR_PROMPT_TEMPLATE,
 )
+from app.constants.chat import ConversationSource
 
 EM_DASH = "—"
 EN_DASH = "–"
 
 #: Messaging channels whose replies are delivered as separate chat messages.
-MESSAGING_SOURCES = ("whatsapp", "telegram", "discord", "slack", "imessage")
+MESSAGING_SOURCES = (
+    ConversationSource.WHATSAPP,
+    ConversationSource.TELEGRAM,
+    ConversationSource.DISCORD,
+    ConversationSource.SLACK,
+    ConversationSource.IMESSAGE,
+)
 
 #: Literal spellings of the negation-antithesis. These may not appear anywhere,
 #: not even as a "bad example" — a negative few-shot still puts the string in
@@ -40,7 +47,10 @@ NEGATION_ANTITHESIS_SPELLINGS = (
 #: Tells the prompt may name in its banned-literals line and nowhere else.
 PROSE_BANNED_TELLS = ("here's the thing", "here’s the thing")
 
-ALL_PROMPTS = {**COMMS_PROMPT_BY_SOURCE, "executor": EXECUTOR_PROMPT_TEMPLATE}
+ALL_PROMPTS: dict[str, str] = {
+    **{source.value: prompt for source, prompt in COMMS_PROMPT_BY_SOURCE.items()},
+    "executor": EXECUTOR_PROMPT_TEMPLATE,
+}
 
 
 def prose_of(prompt: str) -> str:
@@ -76,7 +86,9 @@ def test_prompt_prose_has_no_banned_tells(source: str) -> None:
 
 
 @pytest.mark.parametrize("source", MESSAGING_SOURCES)
-def test_messaging_prompts_restate_the_bubble_rule_in_the_addendum(source: str) -> None:
+def test_messaging_prompts_restate_the_bubble_rule_in_the_addendum(
+    source: ConversationSource,
+) -> None:
     """The bubble rule must be in the addendum, not only 27k characters earlier."""
     addendum = COMMS_PROMPT_BY_SOURCE[source].split("Platform Context")[-1]
     assert "<NEW_MESSAGE_BREAK>" in addendum

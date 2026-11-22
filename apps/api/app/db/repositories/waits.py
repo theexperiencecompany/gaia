@@ -18,7 +18,6 @@ class WaitsRepository(UserScopedRepository[WaitDocument, WaitUpdate]):
     document_model = WaitDocument
     update_model = WaitUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def keep(self, key: WaitKey, update: WaitUpdate) -> None:
         """Keep the waiter on the condition; a repeat ask restarts its 7 days.

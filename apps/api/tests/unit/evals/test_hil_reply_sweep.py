@@ -43,7 +43,6 @@ async def _jev_run(monkeypatch: pytest.MonkeyPatch, second_approve: float) -> Ca
             50,
         )
 
-    monkeypatch.setenv("HIL_REPLY_EVAL_BACKEND", "jev")
     monkeypatch.setattr(hil_reply, "get_settings", lambda: SimpleNamespace(OPENROUTER_API_KEY="k"))
     monkeypatch.setattr(hil_reply, "ask_jev_reply", _ask)
     cfg = eval_config()

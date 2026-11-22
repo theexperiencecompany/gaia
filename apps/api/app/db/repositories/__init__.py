@@ -5,9 +5,7 @@ layers that keep the boundary clean.
 """
 
 from app.db.repositories.base import (
-    MongoDocument,
     MongoRepository,
-    UserScopedDocument,
     UserScopedRepository,
 )
 from app.db.repositories.cache import CachePolicy
@@ -21,9 +19,7 @@ __all__ = [
     "CachePolicy",
     "CachedMongoRepository",
     "CachedUserScopedRepository",
-    "MongoDocument",
     "MongoRepository",
-    "UserScopedDocument",
     "UserScopedRepository",
     "cached_query",
 ]

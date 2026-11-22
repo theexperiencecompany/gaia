@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.constants.cache import USER_INTEGRATION_CACHE_PREFIX
+from app.constants.integrations import ToolsSetup
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.cached_base import CachedUserScopedRepository, cached_query
 from app.models.integration_models import (
@@ -105,6 +106,21 @@ class UserIntegrationsRepository(
             {"$set": set_fields, "$setOnInsert": {"created_at": datetime.now(UTC)}},
             upsert=True,
         )
+        return doc is not None
+
+    async def set_tools_setup(
+        self,
+        user_id: str,
+        integration_id: str,
+        state: ToolsSetup,
+        *,
+        only_from: ToolsSetup | None = None,
+    ) -> bool:
+        """Record where the integration's tool discovery stands; with only_from, only out of that state."""
+        query: dict[str, object] = {"user_id": user_id, "integration_id": integration_id}
+        if only_from is not None:
+            query["tools_setup"] = only_from
+        doc = await self._apply_raw_update(query, {"$set": {"tools_setup": state}})
         return doc is not None
 
     async def save_accounts(

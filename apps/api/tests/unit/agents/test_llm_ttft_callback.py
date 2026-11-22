@@ -12,15 +12,9 @@ from langchain_core.outputs import LLMResult
 from prometheus_client import REGISTRY
 import pytest
 
-from app.agents.core.background.executor_capture import (
-    register_executor_capture,
-    teardown_executor_capture,
-)
 from app.agents.llm.client import ainvoke_llm
 from app.agents.llm.ttft import LLMTtftCallback
-from app.constants.general import COMMS_AGENT_NAME
 from app.constants.llm import LLM_LABEL_METADATA_KEY
-from app.services.turn_clock import TurnClock, TurnMark
 
 
 def _count(model: str, lane: str, agent: str) -> float:
@@ -259,66 +253,3 @@ def test_llm_error_removes_the_start_entry_when_no_token_arrived() -> None:
     cb.on_chat_model_start({}, [], run_id=run_id, metadata={})
     cb.on_llm_error(RuntimeError("boom"), run_id=run_id)
     assert cb._starts == {}
-
-
-_CLOCK_STREAM = "ttft-clock-stream"
-
-
-@pytest.fixture
-def turn_clock() -> Any:
-    clock = TurnClock(received=0.0)
-    register_executor_capture(_CLOCK_STREAM, clock=clock)
-    yield clock
-    teardown_executor_capture(_CLOCK_STREAM)
-
-
-def _start(cb: LLMTtftCallback, run_id: Any, agent: str) -> None:
-    cb.on_chat_model_start(
-        {},
-        [],
-        run_id=run_id,
-        metadata={
-            "lane_model": "clock-model",
-            "lane_provider": "clock-lane",
-            LLM_LABEL_METADATA_KEY: agent,
-            "stream_id": _CLOCK_STREAM,
-        },
-    )
-
-
-def test_comms_call_stamps_the_turn_clock(turn_clock: TurnClock) -> None:
-    cb = LLMTtftCallback()
-    run_id = uuid4()
-
-    _start(cb, run_id, COMMS_AGENT_NAME)
-    cb.on_llm_new_token("hi", run_id=run_id)
-
-    assert turn_clock.marks[TurnMark.LLM_FIRST_CHUNK] >= turn_clock.marks[TurnMark.LLM_REQUEST]
-    assert turn_clock.comms_calls_before_text == 1
-
-
-def test_non_comms_call_leaves_the_turn_clock_alone(turn_clock: TurnClock) -> None:
-    cb = LLMTtftCallback()
-    run_id = uuid4()
-
-    _start(cb, run_id, "executor_agent")
-    cb.on_llm_new_token("hi", run_id=run_id)
-
-    assert TurnMark.LLM_REQUEST not in turn_clock.marks
-    assert TurnMark.LLM_FIRST_CHUNK not in turn_clock.marks
-    assert turn_clock.comms_calls_before_text == 0
-
-
-def test_second_comms_call_keeps_the_first_calls_stamps(turn_clock: TurnClock) -> None:
-    cb = LLMTtftCallback()
-    first, second = uuid4(), uuid4()
-    _start(cb, first, COMMS_AGENT_NAME)
-    cb.on_llm_new_token("", run_id=first)
-    stamps = dict(turn_clock.marks)
-
-    _start(cb, second, COMMS_AGENT_NAME)
-    cb.on_llm_new_token("text", run_id=second)
-
-    assert turn_clock.marks[TurnMark.LLM_REQUEST] == stamps[TurnMark.LLM_REQUEST]
-    assert turn_clock.marks[TurnMark.LLM_FIRST_CHUNK] == stamps[TurnMark.LLM_FIRST_CHUNK]
-    assert turn_clock.comms_calls_before_text == 2

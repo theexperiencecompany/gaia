@@ -124,7 +124,7 @@ class TestGetVoiceToken:
         assert metadata["identity"] == f"user_{USER_ID}"
         assert metadata["roomName"] == body["roomName"]
         assert metadata["voiceId"] == "voice-1"
-        # The voice worker replays this on chat-stream; it must pass the agent-token check.
+        # The voice worker sends with this on the send, barge-in and events routes.
         assert verify_agent_token(metadata["agentToken"]) == AgentTokenInfo(user_id=USER_ID)
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)

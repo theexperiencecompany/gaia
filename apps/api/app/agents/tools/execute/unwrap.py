@@ -5,10 +5,13 @@ streaming formatter, analytics, and the tool node's timeout check must agree on
 what a proxied call "is", and five private copies of this logic would drift.
 """
 
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.utils.json_args import decode_json_container
+
+# The execute args that describe the call rather than the tool's own arguments.
+ExecuteCallNote = Literal["account", "amends"]
 
 
 class ExecuteCallArgs(TypedDict, total=False):
@@ -18,6 +21,7 @@ class ExecuteCallArgs(TypedDict, total=False):
     tool_name: object
     data: object
     account: object
+    amends: object
 
 
 def unwrap_execute_call(name: str, args: dict[str, object]) -> tuple[str, dict[str, object]]:
@@ -39,10 +43,13 @@ def unwrap_execute_call(name: str, args: dict[str, object]) -> tuple[str, dict[s
     return real_name, data if isinstance(data, dict) else {}
 
 
-def execute_call_account(name: str, args: dict[str, object]) -> str | None:
-    """The connected account an execute call names, or None for the primary / a non-execute call."""
+def execute_call_note(name: str, args: dict[str, object], note: ExecuteCallNote) -> str | None:
+    """The text an execute call carries in one of its own notes, or None when it names none.
+
+    account: the connected account it acts as (None is the primary). amends: the approval
+    id this call redoes with the user's change applied.
+    """
     if name != EXECUTE_TOOL_NAME:
         return None
-    execute_args: ExecuteCallArgs = cast(ExecuteCallArgs, args)
-    account = execute_args.get("account")
-    return account if isinstance(account, str) and account else None
+    value = cast(ExecuteCallArgs, args).get(note)
+    return value if isinstance(value, str) and value else None

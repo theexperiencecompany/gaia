@@ -32,6 +32,7 @@ export async function fetchBytesCapped(
   maxBytes: number,
   source: string,
   timeoutMs?: number,
+  headers?: Record<string, string>,
 ): Promise<Uint8Array> {
   const controller =
     timeoutMs === undefined ? undefined : new AbortController();
@@ -42,7 +43,7 @@ export async function fetchBytesCapped(
   try {
     let response: Response;
     try {
-      response = await fetch(url, { signal: controller?.signal });
+      response = await fetch(url, { signal: controller?.signal, headers });
     } catch (err) {
       // The controller is armed solely for our own timeout (no caller-supplied
       // signal feeds it), so any abort it produces IS the timeout.

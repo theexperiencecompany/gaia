@@ -2,6 +2,7 @@ import type {
   MemoryDocument,
   MemoryEntry,
   MemoryEpisode,
+  ToolDataEntry,
 } from "@shared/api/generated";
 import type {
   ApprovalRequestData,
@@ -179,14 +180,12 @@ export type ToolName = keyof typeof TOOL_REGISTRY;
 export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 
 // Tools Message Schema
-// Derived from TOOL_REGISTRY. Represents the tool-specific portion
-// of a message. Used by the base message registry.
-export interface TypedToolDataEntry {
+// The API's tool data entry with its name and data narrowed by TOOL_REGISTRY.
+// Used by the base message registry.
+export type TypedToolDataEntry = Omit<ToolDataEntry, "tool_name" | "data"> & {
   tool_name: ToolName;
-  tool_category: string;
   data: ToolDataMap[ToolName];
-  timestamp: string | null;
-}
+};
 
 // Optional wrapper for tool data in messages
 type ToolsMessageSchema = {
@@ -197,21 +196,3 @@ export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
   tool_data: undefined,
 };
 export type ToolsMessageData = ToolsMessageSchema;
-
-// Tools that should merge multiple calls into one component
-// Add any tool name here - its data will be accumulated into an array
-export const GROUPED_TOOLS = new Set<ToolName>([
-  "approval_request",
-  "search_results",
-  "reddit_data",
-  "integration_connection_required",
-  "integration_list_data",
-  "device_approval_required",
-  "rate_limit_data",
-  "email_fetch_data",
-  "email_compose_data",
-  "email_sent_data",
-  "artifact_data",
-  "memory_data",
-  "browser_task_data",
-]);

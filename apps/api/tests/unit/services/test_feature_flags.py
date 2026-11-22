@@ -28,7 +28,6 @@ from app.services.feature_flags import (
     is_agent_lab_enabled,
     is_code_mode_enabled,
     is_enabled,
-    is_hil_ledger_enabled,
     is_trigger_gates_enforced,
     set_user_flag,
 )
@@ -64,12 +63,12 @@ class TestNoUserId:
     async def test_no_user_returns_default_without_io(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, None) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, None) is True
         mock_client.get_feature_flag.assert_not_called()
         evaluated.assert_not_called()
 
     async def test_explicit_default_wins_without_user(self) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, None, default=False) is False
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, None, default=False) is False
 
 
 class TestLiveEvaluation:
@@ -78,28 +77,28 @@ class TestLiveEvaluation:
     ) -> None:
         """No cache: consecutive evaluations each hit PostHog so a dashboard flip applies on the very next turn."""
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
         assert mock_client.get_feature_flag.call_count == 2
-        mock_client.get_feature_flag.assert_called_with("HIL_LEDGER", USER_ID)
+        mock_client.get_feature_flag.assert_called_with("TRIGGER_GATES", USER_ID)
 
     async def test_false_disables(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is False
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is False
 
     async def test_none_falls_back_to_default(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is False
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID, default=False) is False
 
     async def test_exception_fails_open(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
 
     async def test_no_client_falls_back(self, no_client: None) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
 
 
 class TestEvaluationEvent:
@@ -108,41 +107,41 @@ class TestEvaluationEvent:
     ) -> None:
         """The SDK auto-emits $feature_flag_called on success; our event covers only the paths it cannot see, so this must stay silent."""
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
         evaluated.assert_not_called()
 
     async def test_disabled_value_emits_nothing(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is False
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is False
         evaluated.assert_not_called()
 
     async def test_unevaluated_flag_names_the_reason(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
         call = evaluated.call_args
         assert call.args == (
             UserId(USER_ID),
             FeatureFlagEvaluated(
-                flag="HIL_LEDGER", enabled=True, fallback_reason="flag_unevaluated"
+                flag="TRIGGER_GATES", enabled=True, fallback_reason="flag_unevaluated"
             ),
         )
-        assert call.kwargs["dedupe"].key.startswith("HIL_LEDGER:flag_unevaluated:")
+        assert call.kwargs["dedupe"].key.startswith("TRIGGER_GATES:flag_unevaluated:")
 
     async def test_fail_open_names_the_reason(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
         assert evaluated.call_args.args[1].fallback_reason == "evaluation_error"
 
     async def test_unconfigured_posthog_still_counts_fallback(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
         assert evaluated.call_args.args[1].fallback_reason == "posthog_unconfigured"
 
 
@@ -154,11 +153,11 @@ class TestBooleansOnly:
         mock_client.get_feature_flag.return_value = variant
 
         with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is False
+            assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID, default=False) is False
         assert evaluated.call_args.args[1].fallback_reason == "flag_unevaluated"
         mock_log.warning.assert_called_once_with(
             "Feature flag answered a variant, not a boolean; ignoring it",
-            flag="HIL_LEDGER",
+            flag="TRIGGER_GATES",
             answer_type=type(variant).__name__,
         )
 
@@ -189,24 +188,11 @@ class TestFlags:
         assert await is_code_mode_enabled(USER_ID) is True
         mock_client.get_feature_flag.assert_called_once_with("CODE_MODE", USER_ID)
 
-    async def test_is_hil_ledger_enabled_on_when_setting_on(
-        self, monkeypatch: pytest.MonkeyPatch, no_client: None
-    ) -> None:
-        monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", True)
-        assert await is_hil_ledger_enabled(USER_ID) is True
-
-    async def test_is_hil_ledger_enabled_live(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.return_value = True
-        assert await is_hil_ledger_enabled(USER_ID) is True
-        mock_client.get_feature_flag.assert_called_once_with("HIL_LEDGER", USER_ID)
-
     def test_feature_flag_evaluated_event_name(self) -> None:
         assert FeatureFlagEvaluated.event == "feature_flag:evaluated"
 
     def test_flag_keys_match_dashboard(self) -> None:
-        assert FeatureFlag.HIL_LEDGER == "HIL_LEDGER"
+        assert FeatureFlag.TRIGGER_GATES == "TRIGGER_GATES"
         assert FeatureFlag.CODE_MODE == "CODE_MODE"
 
 
@@ -217,19 +203,19 @@ class TestExplicitDefaultIsFallbackOnly:
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID, default=False) is True
 
     async def test_live_false_beats_explicit_true(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=True) is False
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID, default=True) is False
 
     async def test_exception_uses_explicit_default(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=False) is False
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID, default=False) is False
         assert evaluated.call_args.args[1].enabled is False
         assert evaluated.call_args.args[1].fallback_reason == "evaluation_error"
 
@@ -238,7 +224,7 @@ class TestFalsyUserId:
     async def test_empty_user_id_means_no_evaluation(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "") is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, "") is True
         mock_client.get_feature_flag.assert_not_called()
         evaluated.assert_not_called()
 
@@ -281,12 +267,12 @@ class TestRegistry:
     ) -> None:
         mock_client.get_feature_flag.return_value = None
         with time_machine.travel(datetime(2026, 10, 8, 20, 0, tzinfo=UTC), tick=False):
-            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
+            await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID)
 
         # 20:00 UTC is already Oct 9 in IST, the project's day.
         day_start = datetime(2026, 10, 9, tzinfo=ANALYTICS_DAY_TIMEZONE)
         assert evaluated.call_args.kwargs["dedupe"] == Dedupe(
-            key="HIL_LEDGER:flag_unevaluated:2026-10-09", occurred_at=day_start
+            key="TRIGGER_GATES:flag_unevaluated:2026-10-09", occurred_at=day_start
         )
 
 
@@ -331,9 +317,6 @@ class TestCodeModeDefaultFollowsSettings:
 
 FLAG_KILL_SWITCHES = {
     FeatureFlag.CODE_MODE: "ENABLE_CODE_MODE",
-    FeatureFlag.HIL_LEDGER: "ENABLE_HIL_LEDGER",
-    FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
-    FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
     FeatureFlag.AGENT_LAB: "ENABLE_AGENT_LAB",
     FeatureFlag.TRIGGER_GATES: "ENABLE_TRIGGER_GATES",
 }
@@ -357,7 +340,7 @@ class TestTriggerGates:
 
 
 class TestShippedDefaults:
-    @pytest.mark.parametrize("setting", ["ENABLE_HIL_LEDGER", "ENABLE_CODE_MODE"])
+    @pytest.mark.parametrize("setting", ["ENABLE_TRIGGER_GATES", "ENABLE_CODE_MODE"])
     def test_ships_on(self, setting: str) -> None:
         assert Settings.model_fields[setting].default is True
 
@@ -388,7 +371,7 @@ class TestTrackingIdentity:
     async def test_unconfigured_tracks_user_and_enabled(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
         call = evaluated.call_args
         assert call.args[0] == UserId(USER_ID)
         assert call.args[1].enabled is True
@@ -397,7 +380,7 @@ class TestTrackingIdentity:
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+        assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
         assert evaluated.call_args.args[0] == UserId(USER_ID)
 
 
@@ -435,10 +418,10 @@ class TestLogContract:
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
         with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID) is True
+            assert await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID) is True
             mock_log.warning.assert_called_once_with(
                 "Feature flag evaluation failed, falling back to default",
-                flag="HIL_LEDGER",
+                flag="TRIGGER_GATES",
                 error="posthog down",
                 error_type="TimeoutError",
             )
@@ -449,7 +432,7 @@ class TestLogContract:
         mock_client.get_feature_flag.return_value = None
         evaluated.side_effect = MissingAnalyticsContextError("no entry point bound a context")
         with pytest.raises(MissingAnalyticsContextError, match="no entry point bound a context"):
-            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
+            await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID)
 
     async def test_dedupe_clock_is_utc(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         from datetime import UTC, datetime as real_datetime
@@ -457,7 +440,7 @@ class TestLogContract:
         mock_client.get_feature_flag.return_value = None
         with patch("app.services.feature_flags.datetime") as mock_dt:
             mock_dt.now.return_value = real_datetime.now(UTC)
-            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
+            await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID)
             mock_dt.now.assert_called_once_with(UTC)
 
 
@@ -714,15 +697,15 @@ class TestWideEventCarriesTheValueInEffect:
     ) -> None:
         mock_client.get_feature_flag.return_value = False
         async with captured_wide_event() as event:
-            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID)
-        assert event["flags"] == {"HIL_LEDGER": False}
+            await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID)
+        assert event["flags"] == {"TRIGGER_GATES": False}
 
     async def test_the_default_when_posthog_is_unconfigured(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
         async with captured_wide_event() as event:
-            await is_enabled(FeatureFlag.HIL_LEDGER, USER_ID, default=True)
-        assert event["flags"] == {"HIL_LEDGER": True}
+            await is_enabled(FeatureFlag.TRIGGER_GATES, USER_ID, default=True)
+        assert event["flags"] == {"TRIGGER_GATES": True}
 
     async def test_a_kill(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock

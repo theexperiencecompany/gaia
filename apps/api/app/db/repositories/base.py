@@ -18,34 +18,16 @@ from typing import Any, ClassVar, Generic, ParamSpec, TypeVar
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ValidationError
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import BulkWriteError, DuplicateKeyError, PyMongoError
 from pymongo.results import UpdateResult
 
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
+from app.models.document_models import MongoDocument, UserScopedDocument
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
-
-
-class MongoDocument(BaseModel):
-    """Base for every repository document model — carries the string id.
-
-    ``extra="ignore"`` so a legacy document with stray fields still reads (the
-    write side is fully controlled by the update model's ``extra="forbid"``).
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = ""
-
-
-class UserScopedDocument(MongoDocument):
-    """A document owned by a user — the base for user-scoped repositories."""
-
-    user_id: str
-
 
 TDoc = TypeVar("TDoc", bound=MongoDocument)
 TUserDoc = TypeVar("TUserDoc", bound=UserScopedDocument)
@@ -151,6 +133,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     # timestamps in a shape the base must not touch (e.g. legacy ISO strings) turns
     # this off and writes those fields itself.
     auto_stamp_timestamps: ClassVar[bool] = True
+    # Whether create reads the inserted document back. An append-only ledger nothing reads by id
+    # turns it off: the row it returns is the one it wrote, under the id Mongo assigned.
+    reads_back_inserts: ClassVar[bool] = True
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -229,7 +214,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             data["_id"] = doc.id
         collection = get_async_collection(self.collection_name)
         result = await collection.insert_one(data)
-        stored = await collection.find_one({"_id": result.inserted_id})
+        stored = (
+            await collection.find_one({"_id": result.inserted_id})
+            if self.reads_back_inserts
+            else {**data, "_id": result.inserted_id}
+        )
         if stored is None:
             raise AppError(message="inserted document could not be read back")
         return self._to_model(stored)
@@ -298,6 +287,13 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         and service fixtures patch. A cached repository owns any cache eviction the write implies.
         """
         return get_async_collection(self.collection_name)
+
+    def _sibling_collection(self, name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+        """Return the Motor handle of a collection this repository owns beside its own (an entry log).
+
+        Resolves through the same binding as _raw_collection, so the fixtures that patch it cover both.
+        """
+        return get_async_collection(name)
 
     async def _find_one(
         self, filter_: Mapping[str, object], *, sort: Sequence[tuple[str, int]] | None = None
