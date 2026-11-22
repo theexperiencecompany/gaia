@@ -24,11 +24,6 @@ on:
 
 run-name: ${{ inputs.deployed_sha && format('SEO after deploying {0}', inputs.deployed_sha) || 'SEO crawl' }}
 
-# Two crawls of the same site at once would only race to open the same baseline PR.
-concurrency:
-  group: seo-crawl
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -36,6 +31,11 @@ jobs:
   crawl:
     name: squirrel full crawl
     runs-on: ubuntu-latest
+    # Two crawls of the same site at once would only race to open the same baseline
+    # PR. On the job, not the run: a deploy's audit never waits behind a 90-minute crawl.
+    concurrency:
+      group: seo-crawl
+      cancel-in-progress: false
     # The sitemap is ~4,400 pages: 20 min against heygaia.io with external links, measured on a laptop.
     timeout-minutes: 90
     permissions:

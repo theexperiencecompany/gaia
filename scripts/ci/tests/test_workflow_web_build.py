@@ -58,3 +58,15 @@ def test_the_post_deploy_seo_run_audits_the_commit_that_was_deployed() -> None:
     deploy = yaml.safe_load((WORKFLOWS / "deploy-web.yml").read_text())
     (dispatch,) = deploy["jobs"]["post-deploy-seo"]["steps"]
     assert '-f deployed_sha="$GITHUB_SHA"' in dispatch["run"]
+
+
+def test_the_post_deploy_audit_never_queues_behind_a_crawl() -> None:
+    # A run-level group made a deploy's audit wait out a 90-minute crawl, and a
+    # third dispatch replaced the pending run, audit and all.
+    seo = yaml.safe_load((WORKFLOWS / "seo-crawl.yml").read_text())
+    assert "concurrency" not in seo
+    assert "concurrency" not in seo["jobs"]["audit"]
+    assert seo["jobs"]["crawl"]["concurrency"] == {
+        "group": "seo-crawl",
+        "cancel-in-progress": False,
+    }
