@@ -69,7 +69,7 @@ from shared.py.wide_events import log
 ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
 ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]]
 # Calls the model on messages, bound with exactly these tools: none leaves it no tool to call.
-ModelInvoke = Callable[[list[AnyMessage], list[BaseTool | dict[str, Any]]], Awaitable[AIMessage]]
+ModelInvoke = Callable[[list[AnyMessage], list[BaseTool | dict[str, object]]], Awaitable[AIMessage]]
 
 MIDDLEWARE_FAILURE_TEMPLATE = (
     "`{tool}` was NOT run: a safety check that runs before every tool call failed "
@@ -336,7 +336,7 @@ class MiddlewareExecutor:
         state: State,
         config: RunnableConfig,
         store: BaseStore | None,
-        tools: list[BaseTool | dict[str, Any]],
+        tools: list[BaseTool | dict[str, object]],
         invoke_fn: ModelInvoke,
     ) -> AIMessage:
         """Wrap the model invocation with all wrap_model_call middleware.

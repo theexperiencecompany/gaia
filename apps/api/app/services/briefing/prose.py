@@ -259,27 +259,35 @@ def _salvaged(voice: BriefVoice | None, writing: Writing) -> tuple[BriefVoice, B
     return salvage, held
 
 
+def _kept_text(
+    name: str, text: str, writing: Writing, said: set[tuple[str, ...]]
+) -> tuple[str, int]:
+    """Return a field's sound sentences and how many it dropped; a non-message field repeating recent prose drops whole."""
+    kept, drops = _sound_sentences(name, text, writing)
+    if name != "message" and kept and _plain(render_slots(kept, writing.values, {})) in said:
+        return "", drops + 1
+    return kept, drops
+
+
 def _kept_voice(voice: BriefVoice, writing: Writing, plain: BriefVoice) -> BriefVoice | None:
     """Return the voice with its rejected sentences dropped; None when no headline or lede is left."""
     said = {_plain(line) for line in writing.recent.every()}
-    kept: dict[str, str] = {}
-    dropped = 0
-    for name in _VOICED_FIELDS:
-        text, drops = _sound_sentences(name, getattr(voice, name), writing)
-        if name != "message" and text and _plain(render_slots(text, writing.values, {})) in said:
-            text, drops = "", drops + 1
-        kept[name], dropped = text, dropped + drops
-    log.set_ns(f"brief_{_VOICE_CALL}", dropped_sentences=dropped)
-    if not kept["headline"] and not kept["lede"]:
+    (headline, by_headline), (lede, by_lede), (caption, by_caption), (written, by_message) = (
+        _kept_text(name, getattr(voice, name), writing, said) for name in _VOICED_FIELDS
+    )
+    log.set_ns(
+        f"brief_{_VOICE_CALL}", dropped_sentences=by_headline + by_lede + by_caption + by_message
+    )
+    if not headline and not lede:
         return None
-    message = kept["message"] or plain.message
+    message = written or plain.message
     lead = writing.lead
     if lead is not None and lead not in referenced_facts(message):
         message = f"{_plain_line(lead, writing.values)}\n\n{message}"
     return BriefVoice(
-        headline=kept["headline"] or plain.headline,
-        lede=kept["lede"],
-        caption=kept["caption"],
+        headline=headline or plain.headline,
+        lede=lede,
+        caption=caption,
         mood=voice.mood,
         message=message,
     )
