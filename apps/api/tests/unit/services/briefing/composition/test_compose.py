@@ -602,6 +602,35 @@ class TestWhatSlotsRender:
         assert facts[2].time == "11:00 AM"
         assert facts[3].time is None
 
+    def test_an_items_own_words_are_its_standing_then_its_detail_and_none_without_either(
+        self,
+    ) -> None:
+        def item(standing: str | None, detail: str | None) -> BriefCandidate:
+            return POOL.items[1].model_copy(update={"standing": standing, "detail": detail})
+
+        pool = FactPool(
+            items={
+                1: item("Waiting on Maya", "the cap table"),
+                2: item("Waiting on Maya", None),
+                3: item(None, "the cap table"),
+                4: item(None, None),
+            },
+            series=[],
+            quotes=[],
+            goals=[],
+            context=_CONTEXT,
+            criteria={},
+        )
+
+        facts = pool_values(pool).facts
+
+        assert [facts[i].words for i in (1, 2, 3, 4)] == [
+            "Waiting on Maya the cap table",
+            "Waiting on Maya",
+            "the cap table",
+            None,
+        ]
+
     async def test_a_lead_items_wording_is_filled(self, model: AsyncMock) -> None:
         model.return_value = BriefComposition.model_validate(
             {

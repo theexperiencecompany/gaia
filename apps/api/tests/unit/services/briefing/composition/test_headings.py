@@ -242,9 +242,10 @@ async def test_a_group_left_unjudged_is_asked_about_again_alone(model: AsyncMock
 
     assert await heading_problems(USER_ID, TWO_GROUPS, POOL) == {}
 
-    again = model.await_args_list[1].args[1]
-    assert 'block 2, heading "Landed overnight"' in again
-    assert "block 1," not in again
+    again = model.await_args_list[1]
+    assert 'block 2, heading "Landed overnight"' in again.args[1]
+    assert "block 1," not in again.args[1]
+    assert again.kwargs["config"] == {"configurable": {"user_id": USER_ID}}
 
 
 async def test_a_group_still_unjudged_is_rejected_by_name(model: AsyncMock) -> None:
@@ -261,6 +262,29 @@ async def test_a_group_still_unjudged_is_rejected_by_name(model: AsyncMock) -> N
     assert event["warnings"] == [
         {"msg": "briefing.heading_check_unjudged", "blocks": [2], "still_unjudged": [2]}
     ]
+
+
+async def test_a_group_whose_items_carry_no_act_asks_for_a_rename_true_of_none(
+    model: AsyncMock,
+) -> None:
+    model.side_effect = [HeadingVerdicts(verdicts=[]), HeadingVerdicts(verdicts=[])]
+    bare = BriefComposition.model_validate(
+        {
+            "blocks": [
+                {
+                    "kind": "items",
+                    "state": "done",
+                    "heading": "Landed overnight",
+                    "items": [_item(1, "Offsite venues")],
+                }
+            ]
+        }
+    )
+
+    assert await heading_problems(USER_ID, bare, POOL) == {
+        1: 'block 1 heading "Landed overnight" went unchecked against its items; head this '
+        "group with words true of every item's act (none)"
+    }
 
 
 async def test_a_judged_group_is_never_asked_about_twice(model: AsyncMock) -> None:
@@ -345,3 +369,19 @@ async def test_an_item_the_app_made_before_the_last_brief_is_shown_as_not_new(
     assert "- item 1: Offsite venues | waiting on you | action review | not new" in prompt
     (made_after,) = [line for line in prompt.splitlines() if line.startswith("- item 2:")]
     assert not made_after.endswith("not new")
+
+
+async def test_an_item_the_app_made_the_moment_of_the_last_brief_is_new(model: AsyncMock) -> None:
+    made = Signal(
+        integration_id="github",
+        app="GitHub",
+        external_id="1370",
+        kind="issue",
+        title="Emoji crash",
+        created_at=POOL.context.done_since,
+    )
+    pool = replace(POOL, items={**POOL.items, 1: POOL.items[1].model_copy(update={"signal": made})})
+
+    await heading_problems(USER_ID, COMPOSITION, pool)
+
+    assert "- item 1: Offsite venues | waiting on you | action review\n" in model.await_args.args[1]
