@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Iterator
+import contextlib
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
@@ -15,7 +16,6 @@ from app.agents.core.background.session import (
     get_session,
     teardown_session,
 )
-from app.models.conversation_log_models import WorkOutcome
 from app.services.conversation.tool_cards import FoldedCards
 
 pytestmark = pytest.mark.unit
@@ -100,18 +100,55 @@ async def test_closing_a_stream_with_nothing_beating_still_ends_it(opened: bool)
     assert get_session(STREAM) is None
 
 
-async def test_a_logged_run_whose_liveness_cannot_be_held_is_ended_failed_and_raises() -> None:
-    finished = AsyncMock()
+@pytest.mark.usefixtures("fake_redis")
+async def test_the_run_is_alive_to_the_sweep_before_its_work_is_logged() -> None:
+    lost_when_logged: list[bool] = []
+
+    async def log_work(conversation_id: str, *_: object, **__: object) -> bool:
+        lost_when_logged.append(await run_is_lost(conversation_id, STREAM))
+        return True
+
+    with patch(f"{FOLDED}.record_work_carried", new=log_work):
+        await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
+
+    assert lost_when_logged == [False]
+
+
+@pytest.mark.usefixtures("fake_redis")
+@pytest.mark.parametrize(
+    "logged",
+    [AsyncMock(return_value=False), AsyncMock(side_effect=ConnectionError("mongo down"))],
+    ids=["refused by a stop", "log failed"],
+)
+async def test_a_run_whose_work_is_not_logged_stops_its_beat_and_opens_no_session(
+    logged: AsyncMock,
+) -> None:
+    beats: list[asyncio.Task[None]] = []
+
+    async def beat(conversation_id: str, lock_value: str) -> asyncio.Task[None]:
+        beats.append(asyncio.create_task(asyncio.sleep(3600)))
+        return beats[-1]
+
     with (
-        patch(f"{FOLDED}.record_work_carried", new=AsyncMock(return_value=True)),
+        patch(f"{FOLDED}.keep_alive", new=beat),
+        patch(f"{FOLDED}.record_work_carried", new=logged),
+        contextlib.suppress(ConnectionError),
+    ):
+        assert not await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
+    await asyncio.sleep(0)
+
+    assert [task.cancelled() for task in beats] == [True]
+    assert get_session(STREAM) is None
+
+
+async def test_a_run_whose_liveness_cannot_be_held_logs_no_work_and_raises() -> None:
+    logged = AsyncMock(return_value=True)
+    with (
         patch(f"{FOLDED}.keep_alive", new=AsyncMock(side_effect=ConnectionError("redis down"))),
-        patch(f"{FOLDED}.stop_requested", new=AsyncMock(return_value=False)),
-        patch(f"{FOLDED}.work_cards", new=AsyncMock(return_value=FoldedCards())),
-        patch(f"{FOLDED}.record_work_finished", new=finished),
+        patch(f"{FOLDED}.record_work_carried", new=logged),
         pytest.raises(ConnectionError, match="redis down"),
     ):
         await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
 
+    logged.assert_not_awaited()
     assert get_session(STREAM) is None
-    [(args, _)] = [(c.args, c.kwargs) for c in finished.await_args_list]
-    assert args[:4] == ("conv-1", "u1", STREAM, WorkOutcome.FAILED)

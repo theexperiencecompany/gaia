@@ -28,6 +28,7 @@ from urllib.parse import urlsplit
 import uuid
 
 from arq.constants import result_key_prefix
+from arq.jobs import deserialize_result
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import httpx
@@ -451,11 +452,16 @@ class BrowserStack:
         raise AssertionError(f"{conversation_id} never went quiet within {timeout}s\n{self.logs()}")
 
     async def swept_since(self, since_ms: int) -> bool:
-        """Whether a conversation sweep due after since_ms (epoch milliseconds) has finished."""
-        assert self.redis is not None, "the stack is not started"
+        """Whether a conversation sweep due after since_ms (epoch milliseconds) has finished without failing."""
         prefix = f"{result_key_prefix}{conversation_sweep_cron().name}:"
-        due = [int(key.removeprefix(prefix)) for key in await self.redis.keys(f"{prefix}*")]
-        return any(at > since_ms for at in due)
+        # ARQ pickles its results, which the stack's decoding client cannot read.
+        async with Redis.from_url(self.redis_url) as raw:
+            for key in await raw.keys(f"{prefix}*"):
+                due = int(key.decode().removeprefix(prefix))
+                result = await raw.get(key)
+                if due > since_ms and result is not None and deserialize_result(result).success:
+                    return True
+        return False
 
     async def handoff_waiting(self, user: BotUser) -> bool:
         """Whether a bot run of this user is waiting on the user right now."""
