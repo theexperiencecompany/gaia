@@ -1,5 +1,5 @@
 # Creation requests for the authored-gate eval. Each is sent through the real authoring path
-# (workflow: the workflow subagent prompt; todo: the subscribe_todo_to_trigger call) and the
+# (workflow: the workflow subagent prompt; task: the subscribe_task call) and the
 # condition GAIA writes is gated against the corpus emails labelled here for the request's intent.
 # wanted: emails the user asked the job to act on (a skip of one is a wrong skip).
 # unwanted: emails the job would do nothing with (a run of one is a wasted run).
@@ -125,61 +125,61 @@
   wanted: [mail-245]
   unwanted: [mail-118, mail-123, mail-087, mail-014, mail-249, mail-201, mail-232]
 - id: req-21
-  path: todo
+  path: task
   split: tune
   request: Get Kramiotai's subscription paid. Their card keeps failing; follow up with them until a payment goes through.
   wanted: [mail-315, mail-329, mail-344, mail-247]
   unwanted: [mail-210, mail-014, mail-108, mail-311, mail-234, mail-123, mail-087]
 - id: req-22
-  path: todo
+  path: task
   split: tune
   request: Finish the Haidrain application. Answer whatever Haidrain asks for until it is approved.
   wanted: [mail-072, mail-073, mail-075]
   unwanted: [mail-259, mail-014, mail-123, mail-087, mail-249, mail-232, mail-111]
 - id: req-23
-  path: todo
+  path: task
   split: holdout
   request: Resolve support ticket RISTOK-35107050 (the customer whose app won't open) and reply to them when it's fixed.
   wanted: [mail-232, mail-233]
   unwanted: [mail-264, mail-265, mail-087, mail-014, mail-123, mail-249]
 - id: req-24
-  path: todo
+  path: task
   split: tune
   request: Pay the Lefa bill before they cut our services off.
   wanted: [mail-054]
   unwanted: [mail-111, mail-134, mail-014, mail-123, mail-087, mail-249, mail-059]
 - id: req-25
-  path: todo
+  path: task
   split: holdout
   request: Get the Stize Cloud Platform account verified; send them whatever information they ask for.
   wanted: [mail-105, mail-229, mail-373]
   unwanted: [mail-059, mail-146, mail-014, mail-123, mail-087, mail-249]
 - id: req-26
-  path: todo
+  path: task
   split: tune
   request: Keep the tax-problem thread with the faifrol team moving and reply when they write back.
   wanted: [mail-269, mail-176, mail-178, mail-179]
   unwanted: [mail-014, mail-123, mail-087, mail-249, mail-232, mail-118]
 - id: req-27
-  path: todo
+  path: task
   split: tune
   request: Accept Zaizapu Drefre's invite to work together in Gruha.
   wanted: [mail-184, mail-241]
   unwanted: [mail-249, mail-291, mail-230, mail-014, mail-123, mail-087]
 - id: req-28
-  path: todo
+  path: task
   split: holdout
   request: Settle the ristok sandboxes question with Meapre Retro once they reply.
   wanted: [mail-006, mail-135, mail-319]
   unwanted: [mail-014, mail-123, mail-087, mail-249, mail-232, mail-118]
 - id: req-29
-  path: todo
+  path: task
   split: tune
   request: Ship the fix for the paid user whose PPT creation broke, and tell Drikri when it's live.
   wanted: [mail-088]
   unwanted: [mail-071, mail-014, mail-123, mail-087, mail-249, mail-232]
 - id: req-30
-  path: todo
+  path: task
   split: holdout
   request: Reply to every new email from Chihor Drisun about the pitch video.
   wanted: [mail-313, mail-242, mail-243]

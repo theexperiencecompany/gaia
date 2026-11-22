@@ -61,20 +61,20 @@ TRIGGER_CATALOG: Final = (
         "config_fields": {"repo": {"type": "string", "description": "owner/repo to watch"}},
     },
 )
-# The executor's turn after it created the tracked todo; the todo id is wiring, never shown.
-TODO_TASK: Final = (
+# The executor's turn after it created the GAIA task; the task id is wiring, never shown.
+TASK_TURN: Final = (
     "The user asked: {request}\n\n"
-    "You created the tracked todo for it (todo id: todo_eval_0001, title: {request}). It waits "
+    "You created the GAIA task for it (task id: task_eval_0001, title: {request}). It waits "
     "on email, so make it wake itself when the relevant mail arrives in the user's Gmail inbox "
     "(trigger gmail_new_message; its payload fields include sender, subject, message_text)."
 )
 
 
 class AuthoringPath(StrEnum):
-    """Which authoring call writes the condition: a workflow draft or a todo's trigger watch."""
+    """Which authoring call writes the condition: a workflow draft or a task's event subscription."""
 
     WORKFLOW = "workflow"
-    TODO = "todo"
+    TASK = "task"
 
 
 class Split(StrEnum):
@@ -119,7 +119,7 @@ class LabelledMail(TypedDict):
 
 def authoring_tools(path: AuthoringPath) -> list[dict[str, object]]:
     """Return the real tool schemas the authoring call binds."""
-    tool = subscribe_task if path is AuthoringPath.TODO else search_triggers
+    tool = subscribe_task if path is AuthoringPath.TASK else search_triggers
     return [convert_to_openai_tool(tool)]
 
 

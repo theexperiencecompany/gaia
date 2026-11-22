@@ -102,24 +102,24 @@ class RegressionSuite(Suite):
             return self._cases
         cases = [
             Case(
-                id="reg-todo-create",
-                ticket="Scripted create_todo through the real executor graph.",
-                prompt='[[tool:create_todo {"title":"Buy milk"}]]\n[[say:Created it.]]',
+                id="reg-task-create",
+                ticket="Scripted create_task (a to-do) through the real executor graph.",
+                prompt='[[tool:create_task {"title":"Buy milk","assignee":"user"}]]\n[[say:Created it.]]',
                 expected={
-                    "category": "todos",
-                    "tool_calls": [{"tool": "create_todo", "args": "name-only"}],
+                    "category": "tasks",
+                    "tool_calls": [{"tool": "create_task", "args": "name-only"}],
                     "communicate": ["Created"],
                     "score": {"gates": ["communicate", "tool_call_correctness"]},
                 },
                 tags=["regression"],
             ),
             Case(
-                id="reg-todo-list",
-                ticket="Scripted list_todos.",
-                prompt="[[tool:list_todos {}]]\n[[say:Here they are.]]",
+                id="reg-task-list",
+                ticket="Scripted list_tasks.",
+                prompt="[[tool:list_tasks {}]]\n[[say:Here they are.]]",
                 expected={
-                    "category": "todos",
-                    "tool_calls": [{"tool": "list_todos"}],
+                    "category": "tasks",
+                    "tool_calls": [{"tool": "list_tasks"}],
                     "communicate": ["Here"],
                     "score": {"gates": ["communicate", "tool_call_correctness"]},
                 },
@@ -150,12 +150,12 @@ class RegressionSuite(Suite):
                 tags=["regression"],
             ),
             Case(
-                id="reg-tracked-todo",
-                ticket="Scripted tracked todo canvas tool.",
-                prompt='[[tool:create_tracked_todo {"title":"Q3 plan","purpose":"planning"}]]\n[[say:Tracked.]]',
+                id="reg-gaia-task",
+                ticket="Scripted create_task for work GAIA does.",
+                prompt='[[tool:create_task {"title":"Q3 plan","assignee":"gaia","done_when":["the Q3 plan is agreed"]}]]\n[[say:Tracked.]]',
                 expected={
-                    "category": "tracked_todos",
-                    "tool_calls": [{"tool": "create_tracked_todo"}],
+                    "category": "gaia_tasks",
+                    "tool_calls": [{"tool": "create_task", "args": {"assignee": "gaia"}}],
                     "communicate": ["Tracked"],
                     "score": {"gates": ["communicate", "tool_call_correctness"]},
                 },

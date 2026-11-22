@@ -145,7 +145,7 @@ def _plausible_run(case: Case) -> CaseRun:
             {"role": "user", "content": case.prompt},
             {"role": "assistant", "content": "an answer with real content in it"},
         ],
-        tool_calls=[{"name": "create_todo", "args": {"title": "something"}}],
+        tool_calls=[{"name": "create_task", "args": {"title": "something", "assignee": "user"}}],
         end_state={"verdict": "refuse"},
         text="an answer with real content in it",
     )
@@ -281,42 +281,62 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
         f"  {solid:>4}  proven   — every gate rejected every forgery",
         f"  {len(errored):>4}  errored  — the scorer raised on a worthless run",
     ]
+    lines.extend(_unpassable_lines(inert, broken))
+    lines.extend(_fooled_lines(broken + blind + weak, weak))
+    lines.extend(_unscored_lines(errored, ungated))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _unpassable_lines(inert: list[CaseVerdict], broken: list[CaseVerdict]) -> list[str]:
+    """List the INERT cases, which can never pass, then the BROKEN ones, which can never fail."""
+    lines: list[str] = []
     if inert:
         lines.append("\nINERT gates (the case cannot pass — fix the suite or the gate name):")
-        for verdict in inert[:20]:
-            lines.append(
-                f"  {verdict.suite:<12} {verdict.case_id:<46} never scored: {','.join(verdict.inert)}"
-            )
+        lines.extend(
+            f"  {v.suite:<12} {v.case_id:<46} never scored: {','.join(v.inert)}" for v in inert[:20]
+        )
     if broken:
         lines.append("\nBROKEN cases (these are the ones that matter):")
-        for verdict in broken[:40]:
-            lines.append(
-                f"  {verdict.suite:<12} {verdict.case_id:<46} "
-                f"gates={','.join(verdict.gates)} via {'/'.join(verdict.passed_wholesale)}"
-            )
+        lines.extend(
+            f"  {v.suite:<12} {v.case_id:<46} "
+            f"gates={','.join(v.gates)} via {'/'.join(v.passed_wholesale)}"
+            for v in broken[:40]
+        )
+    return lines
+
+
+def _fooled_lines(fooled: list[CaseVerdict], weak: list[CaseVerdict]) -> list[str]:
+    """Count the fooled gates across cases, then name each weak case's fakeable gates."""
     by_gate: dict[str, int] = {}
-    for verdict in broken + blind + weak:
+    for verdict in fooled:
         for gate in verdict.fooled:
             by_gate[gate] = by_gate.get(gate, 0) + 1
+    lines: list[str] = []
     if by_gate:
         lines.append("\nfooled gates, by how many cases they affect:")
-        for gate, n in sorted(by_gate.items(), key=lambda kv: -kv[1]):
-            lines.append(f"  {n:>4}  {gate}")
+        lines.extend(
+            f"  {n:>4}  {gate}" for gate, n in sorted(by_gate.items(), key=lambda kv: -kv[1])
+        )
     if weak:
         lines.append("\nweak gates (case still fails, but the gate is fakeable) — first 15:")
         for verdict in weak[:15]:
             detail = ", ".join(f"{g} ({'/'.join(labels)})" for g, labels in verdict.fooled.items())
             lines.append(f"  {verdict.suite:<12} {verdict.case_id:<44} {detail}")
+    return lines
+
+
+def _unscored_lines(errored: list[CaseVerdict], ungated: list[CaseVerdict]) -> list[str]:
+    """Name the cases whose scorer raised and the ones with nothing to score."""
+    lines: list[str] = []
     if errored:
         lines.append("\nscorers that raised:")
-        for verdict in errored[:15]:
-            lines.append(f"  {verdict.suite:<12} {verdict.case_id:<44} {verdict.error}")
+        lines.extend(f"  {v.suite:<12} {v.case_id:<44} {v.error}" for v in errored[:15])
     if ungated:
         lines.append(
             f"\nungated cases ({len(ungated)}): " + ", ".join(v.case_id for v in ungated[:20])
         )
-    lines.append("")
-    return "\n".join(lines)
+    return lines
 
 
 def summary_counts(verdicts: list[CaseVerdict]) -> dict[str, Any]:

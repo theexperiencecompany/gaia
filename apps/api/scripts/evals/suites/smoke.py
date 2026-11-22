@@ -42,7 +42,7 @@ class SmokeTransport:
             raise ProviderError(provider.name, "simulated provider outage")
         text = {
             "smoke-1": "The capital of France is Paris.",
-            "smoke-2": "Your todo 'Buy milk' is created.",
+            "smoke-2": "Your to-do 'Buy milk' is created.",
             "smoke-3": "Created the report.",
         }[case.id]
         messages = [
@@ -52,10 +52,12 @@ class SmokeTransport:
         return CaseRun(
             case_id=case.id,
             messages=messages,
-            tool_calls=[{"name": "create_todo", "args": {"title": "Buy milk"}}]
+            tool_calls=[{"name": "create_task", "args": {"title": "Buy milk", "assignee": "user"}}]
             if case.id == "smoke-2"
             else [],
-            end_state={"todos": [{"title": "Buy milk"}]} if case.id == "smoke-2" else None,
+            end_state={"tasks": [{"title": "Buy milk", "assignee": "user"}]}
+            if case.id == "smoke-2"
+            else None,
             text=text,
             tokens_in=120,
             tokens_out=40,
@@ -94,15 +96,15 @@ class SmokeSuite(Suite):
             ),
             Case(
                 id="smoke-2",
-                ticket="Tool use — create a todo and confirm it.",
-                prompt="Create a todo for buying milk.",
+                ticket="Tool use — create a to-do and confirm it.",
+                prompt="Create a to-do for buying milk.",
                 expected={
                     "category": "TOOL_USE",
-                    "tool_calls": [{"tool": "create_todo"}],
-                    "end_state": {"todos": [{"title": "Buy milk"}]},
+                    "tool_calls": [{"tool": "create_task", "args": {"assignee": "user"}}],
+                    "end_state": {"tasks": [{"title": "Buy milk", "assignee": "user"}]},
                     "communicate": ["milk"],
                     # tool_call_correctness was computed but not gated, so a run
-                    # that produced the todo by some other route scored green on
+                    # that produced the to-do by some other route scored green on
                     # a case whose whole point is the tool.
                     "score": {"gates": ["end_state", "communicate", "tool_call_correctness"]},
                 },

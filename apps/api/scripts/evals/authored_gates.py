@@ -2,7 +2,7 @@
 
 author: send each creation request through the real authoring prompt on the production chat
   model (the workflow subagent's system prompt and task with the real search_triggers schema,
-  or the todo prompt with the real subscribe_todo_to_trigger schema) and write the condition it
+  or the task prompt with the real subscribe_task schema) and write the condition it
   produces to rules.jsonl. search_triggers is answered from the trigger catalog, not an account.
 gate: ask JEV, as production does, about every labelled email under each request's condition,
   and write every answer to recorded.jsonl for the CI regrade.
@@ -43,7 +43,7 @@ from scripts.evals.suites.authored_gate import (
     CONNECTED_HINT,
     RECORDED_PATH,
     RULES_PATH,
-    TODO_TASK,
+    TASK_TURN,
     TRIGGER_CATALOG,
     AuthoredRule,
     AuthoringPath,
@@ -129,15 +129,15 @@ async def _author_workflow(client: httpx.AsyncClient, request: CreationRequest) 
     )
 
 
-async def _author_todo(client: httpx.AsyncClient, request: CreationRequest) -> AuthoredRule:
+async def _author_task(client: httpx.AsyncClient, request: CreationRequest) -> AuthoredRule:
     messages: list[Message] = [
         {"role": "system", "content": TASK_SYSTEM_PROMPT},
-        {"role": "user", "content": TODO_TASK.format(request=request["request"])},
+        {"role": "user", "content": TASK_TURN.format(request=request["request"])},
     ]
-    reply = await _chat(client, messages, AuthoringPath.TODO)
+    reply = await _chat(client, messages, AuthoringPath.TASK)
     calls = reply.get("tool_calls")
     if not isinstance(calls, list) or not calls:
-        raise RuntimeError(f"{request['id']}: the todo never subscribed: {reply}")
+        raise RuntimeError(f"{request['id']}: the task never subscribed: {reply}")
     rule = json.loads(calls[0]["function"]["arguments"]).get("runs_only_when")
     return AuthoredRule(
         request_id=request["id"],
@@ -154,8 +154,8 @@ async def author(only: Sequence[str]) -> None:
 
     async def one(client: httpx.AsyncClient, request: CreationRequest) -> AuthoredRule:
         async with limit:
-            if request["path"] is AuthoringPath.TODO:
-                return await _author_todo(client, request)
+            if request["path"] is AuthoringPath.TASK:
+                return await _author_task(client, request)
             return await _author_workflow(client, request)
 
     async with httpx.AsyncClient(timeout=180) as client:

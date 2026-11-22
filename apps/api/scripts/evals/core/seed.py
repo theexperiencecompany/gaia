@@ -60,7 +60,7 @@ PROJECT_DESCRIPTIONS: dict[str, str] = {
         "graded by an LLM judge from a different model family."
     ),
     "gaia-capability": (
-        "Can GAIA do X? — tool-call cases across todos, tracked todos, "
+        "Can GAIA do X? — tool-call cases across to-dos, GAIA tasks, "
         "reminders, workflows, web, multi-turn, gmail triage and memory recall, "
         "including the hard tier (composition, conflict, ambiguity, injection). "
         "Also receives the deterministic regression gate."
