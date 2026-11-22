@@ -8,8 +8,8 @@ other page has, so the sharpest tests assert cross-page uniqueness directly.
 from app.constants.integrations import FAQ_COUNT, HOW_IT_WORKS_COUNT, USE_CASES_COUNT
 from app.models.integration_models import StoredIntegrationTool
 from app.services.integrations.integration_content_fallback import (
-    _first_sentence,
     build_fallback_content,
+    first_sentence,
     humanize_tool_name,
 )
 
@@ -37,63 +37,63 @@ class TestFirstSentence:
     """Exact-output tests: every separator, trim, and boundary branch."""
 
     def test_collapses_whitespace(self):
-        assert _first_sentence("  hello    world  ") == "hello world"
+        assert first_sentence("  hello    world  ") == "hello world"
 
     def test_none_and_blank_is_none(self):
-        assert _first_sentence(None) is None
-        assert _first_sentence("") is None
-        assert _first_sentence("   ") is None
+        assert first_sentence(None) is None
+        assert first_sentence("") is None
+        assert first_sentence("   ") is None
 
     def test_period_separator(self):
-        assert _first_sentence("Alpha. Beta") == "Alpha."
+        assert first_sentence("Alpha. Beta") == "Alpha."
 
     def test_exclamation_separator(self):
-        assert _first_sentence("Wow! Really works") == "Wow."
+        assert first_sentence("Wow! Really works") == "Wow."
 
     def test_question_separator(self):
-        assert _first_sentence("Really? Yes indeed") == "Really."
+        assert first_sentence("Really? Yes indeed") == "Really."
 
     def test_strips_trailing_punctuation_before_separator(self):
-        assert _first_sentence("Really?! Yes indeed") == "Really."
+        assert first_sentence("Really?! Yes indeed") == "Really."
 
     def test_multi_separator_takes_first(self):
-        assert _first_sentence("One. Two. Three") == "One."
+        assert first_sentence("One. Two. Three") == "One."
 
     def test_sentence_ending_in_x_keeps_it(self):
-        assert _first_sentence("MatrixX. Next part here") == "MatrixX."
+        assert first_sentence("MatrixX. Next part here") == "MatrixX."
 
     def test_x_before_comma_survives_trim(self):
         text = "k " * 65 + "AB QZX, " + "tail words " * 30
 
-        assert _first_sentence(text) == ("k " * 65 + "AB QZX") + "…"
+        assert first_sentence(text) == ("k " * 65 + "AB QZX") + "…"
 
     def test_explicit_max_len(self):
-        assert _first_sentence("word " * 40, max_len=120) == ("word " * 23).strip() + "…"
+        assert first_sentence("word " * 40, max_len=120) == ("word " * 23).strip() + "…"
 
     def test_trim_boundary_space(self):
         prefix = "k " * 45 + "z" * 47
         text = prefix + "X " + "tail words " * 30
 
-        assert _first_sentence(text) == (prefix + "X") + "…"
+        assert first_sentence(text) == (prefix + "X") + "…"
 
     def test_no_space_trim_uses_hard_cut(self):
-        assert _first_sentence("x" * 300) == "x" * 139 + "…"
+        assert first_sentence("x" * 300) == "x" * 139 + "…"
 
     def test_single_sentence_kept_whole(self):
-        assert _first_sentence("Hello world.") == "Hello world."
+        assert first_sentence("Hello world.") == "Hello world."
 
     def test_exact_boundary_length_kept(self):
-        assert _first_sentence("x" * 140) == "x" * 140
+        assert first_sentence("x" * 140) == "x" * 140
 
     def test_trims_at_word_boundary_with_ellipsis(self):
         text = "word " * 60
 
-        assert _first_sentence(text) == ("word " * 27).strip() + "…"
+        assert first_sentence(text) == ("word " * 27).strip() + "…"
 
     def test_trim_strips_trailing_comma(self):
         text = "k " * 67 + "zz, " + "tail words " * 30
 
-        assert _first_sentence(text) == ("k " * 67 + "zz") + "…"
+        assert first_sentence(text) == ("k " * 67 + "zz") + "…"
 
 
 def _two_tools() -> list[StoredIntegrationTool]:

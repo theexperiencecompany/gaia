@@ -30,6 +30,7 @@ from langchain_core.messages import (
     get_buffer_string,
 )
 from langchain_core.messages.utils import count_tokens_approximately
+from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
@@ -42,6 +43,7 @@ from app.agents.context.slots import (
 )
 from app.agents.core.delegation_window import running_turn_start
 from app.agents.llm.client import SILENT_LLM_CONFIG
+from app.agents.middleware.runtime_adapter import GaiaAgentState
 from app.constants.log_tags import LogTag
 from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -77,9 +79,11 @@ Reply with the summary only.
 {messages}"""
 
 
-# What abefore_model returns: the summary message plus tombstones for the
-# messages it folds away, resolved through the messages channel's reducer.
-SummaryUpdate = dict[str, list[AnyMessage | RemoveMessage]]
+class SummaryUpdate(TypedDict):
+    """A fold's state update: the summary message, then a tombstone per message it folds away."""
+
+    messages: list[AnyMessage | RemoveMessage]
+
 
 # Who can reach the archive. The executor has the read tool; comms does not, so
 # its summary routes recovery through the executor instead of naming a tool the
@@ -150,21 +154,31 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
     async def abefore_model(
         self, state: AgentState[object], runtime: Runtime[None]
-    ) -> SummaryUpdate | None:
-        """Fold the oldest turns into one summary; the leading slots are never touched.
+    ) -> dict[str, list[AnyMessage | RemoveMessage]] | None:
+        """Fold the oldest turns into one summary before the model call, past the trigger."""
+        # Runtime carries no config (LangGraph's Runtime deliberately omits it); get_config() does.
+        del runtime
+        update: SummaryUpdate | None = await self.afold(state, get_config())
+        return None if update is None else {"messages": update["messages"]}
 
-        A folded turn's notes (recall, clock, presence) go with it, unsummarized.
-        The update is an in-place delta (summary takes the first folded id, the rest
-        are removed) so the checkpoint keeps it ahead of the preserved tail.
+    async def afold(
+        self, state: AgentState[object], config: RunnableConfig
+    ) -> SummaryUpdate | None:
+        """Return the fold of state's oldest turns into one summary, or None under the trigger.
+
+        The leading slots are never touched; a folded turn's notes (recall, clock, presence)
+        go with it, unsummarized. The update is an in-place delta (summary takes the first
+        folded id, the rest are removed) so the checkpoint keeps it ahead of the kept tail.
         """
-        del runtime  # framework contract; the archive reads config via get_config()
-        if not self._should_trigger_summarization(state):
+        if not self.should_fold(state):
             return None
 
         conversation = [m for m in state["messages"] if slot_of(m) not in LEADING_SLOTS]
         cutoff_index = self._determine_cutoff_index(conversation)
         fold = _foldable(conversation, cutoff_index)
-        summarized = self._fitting_prefix(_removable([*fold.older, *fold.progress]))
+        gaia_state: GaiaAgentState = cast("GaiaAgentState", state)
+        verbatim = frozenset(gaia_state.get("verbatim_message_ids") or ())
+        summarized = self._fitting_prefix(_removable([*fold.older, *fold.progress], verbatim))
         if not summarized:
             return None
 
@@ -186,15 +200,15 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         summary_message = self._build_new_messages(summary_text)[0]
         summary_message.id = summarized[0].id
         if self.archive is not None:
-            archive_path = await self._archive_or_none(state)
+            archive_path = await self._archive_or_none(state, config)
             if archive_path:
                 _inject_archive_path(summary_message, archive_path, self.archive)
-        return {
-            "messages": [
+        return SummaryUpdate(
+            messages=[
                 summary_message,
                 *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
             ]
-        }
+        )
 
     def _fitting_prefix(self, messages: list[AnyMessage]) -> list[AnyMessage]:
         """Return the longest leading run whose summary prompt fits the summary model's input.
@@ -261,10 +275,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             return None
         return text
 
-    async def _archive_or_none(self, state: AgentState[object]) -> str | None:
+    async def _archive_or_none(
+        self, state: AgentState[object], config: RunnableConfig
+    ) -> str | None:
         """Archive the full history; a failed archive is reported and never blocks the summary."""
         try:
-            return await self._archive(state)
+            return await self._archive(state, config)
         except JuiceFSUnavailable as e:
             log.warning(
                 f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
@@ -274,7 +290,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
         return None
 
-    def _should_trigger_summarization(self, state: AgentState[object]) -> bool:
+    def should_fold(self, state: AgentState[object]) -> bool:
         """Return whether the context is large enough to summarize.
 
         Measured over the whole request (prompt slots included), since that is
@@ -288,12 +304,9 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         ]
         return self._should_summarize(filtered, self.token_counter(filtered))
 
-    async def _archive(self, state: AgentState[object]) -> str:
+    async def _archive(self, state: AgentState[object], config: RunnableConfig) -> str:
         messages = [m for m in state.get("messages", []) if not is_gaia_authored_note(m)]
-        # `runtime` carries no config (LangGraph's `Runtime` deliberately omits
-        # it) — reading it from there once raised "requires 'user_id'" silently.
-        # `get_config()` is the supported accessor, as LLMAccountingMiddleware uses.
-        configurable: AgentConfigurable = agent_configurable(get_config())
+        configurable: AgentConfigurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         thread_id = configurable.get("thread_id")
         conversation_id = configurable.get("vfs_session_id") or thread_id
@@ -398,21 +411,29 @@ def _foldable(conversation: list[AnyMessage], cutoff: int) -> _FoldedMessages:
     return _FoldedMessages(older=before, progress=steps)
 
 
-def _removable(prefix: list[AnyMessage]) -> list[AnyMessage]:
+def _removable(prefix: list[AnyMessage], verbatim: frozenset[str]) -> list[AnyMessage]:
     """Return the prefix messages a RemoveMessage can target, keeping tool pairs whole.
 
-    Threads written before out-of-band writes carried ids hold id-less messages;
-    those stay verbatim, and so does any AI message whose tool call one answers,
-    or the provider would get a tool result with no call.
+    The verbatim ids stay word for word, and so do id-less messages (threads written
+    before out-of-band writes carried ids). A kept message keeps its tool pair, or the
+    provider would get a tool result with no call, or a call with no result.
     """
-    pinned_calls = {m.tool_call_id for m in prefix if isinstance(m, ToolMessage) and m.id is None}
+    kept = [m for m in prefix if m.id is None or m.id in verbatim]
+    kept_results = {m.tool_call_id for m in kept if isinstance(m, ToolMessage)}
+    kept_calls: set[str | None] = set()
+    for m in kept:
+        if isinstance(m, AIMessage):
+            kept_ai_calls: list[ToolCall] = m.tool_calls
+            kept_calls |= {tc["id"] for tc in kept_ai_calls}
     removable: list[AnyMessage] = []
     for m in prefix:
-        if m.id is None:
+        if m in kept:
             continue
         if isinstance(m, AIMessage):
             tool_calls: list[ToolCall] = m.tool_calls
-            if {tc["id"] for tc in tool_calls} & pinned_calls:
+            if {tc["id"] for tc in tool_calls} & kept_results:
                 continue
+        if isinstance(m, ToolMessage) and m.tool_call_id in kept_calls:
+            continue
         removable.append(m)
     return removable

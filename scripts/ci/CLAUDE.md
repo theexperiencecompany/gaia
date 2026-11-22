@@ -20,13 +20,15 @@ lane without grepping the workflow first.
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
 | What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
+| The sim stack (API, worker, web, LLM stub) a browser e2e lane boots and drives | `sim-stack.sh` | `up` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
 | The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
-| Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
+| Shipping to production | `deploy.sh` | `plan`, `stack`, `migrate`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 | What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
+| The ratchet baselines, which only shrink | `baselines.py` | `growth` |
 
 `.py` concepts decide (parse API results, route, pack, classify); `.sh`
 concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
@@ -48,6 +50,19 @@ saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
 
+Growing one is the founder's call, never the author's. `baselines.py growth`
+(the `baseline-growth` check in repo-policy, on a PR and in the merge queue)
+fails a change that adds an entry to any of these files, to
+`tools/lints/*_baseline.txt` or `apps/api/tests/meta/*_baseline.txt`, or to a
+module-level `*ALLOWLIST*` literal in `tools/lints/*.py` — or that loosens a
+bound one records (a squirrel `score:` floor lowered, an allowlist count
+raised). The one way through is a comment written in the same change directly
+above the entry, or above the run of entries it opens:
+`# growth approved by <github-login> on YYYY-MM-DD: <reason>`. An approval
+already on the base approves nothing new, a renewed `deferred-until=` is not
+growth, and a new gate's seed file is not growth. Write that line only when
+the founder has approved the growth in so many words.
+
 `lib/` holds what the entrypoints share or delegate to: `output_findings.py`
 (what a tool printed, read back as findings at file:line — pytest, vitest,
 Playwright, mypy, tsc, ruff, biome, the lints, workflow annotations — behind
@@ -65,12 +80,15 @@ message behind `analytics.py csp-soak`, kept out of the catalog checks' file),
 `cpu-slots.sh` (the host CPU governor, below),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
-`CHANGED_FILES` contract), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
+`CHANGED_FILES` contract), `checks-commands.mjs` (every `checks.mjs`
+subcommand but `bot-handles`; the entry loads it only once node_modules is
+installed and otherwise names the install command, so a fresh worktree gets one
+line instead of a module-resolution stack), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
 observability scanner behind `checks.mjs evlog-map-bots`),
 `api-contract.mjs` (the twin/boundary detector behind `checks.mjs
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
-left in checks.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
+left in checks-commands.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and

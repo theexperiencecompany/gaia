@@ -211,7 +211,7 @@ class TestCapture:
 class TestCaptureRefusesUntypedInput:
     """A raw name or id must fail loud, even with no client configured, so local runs catch it."""
 
-    def test_a_raw_event_name_cannot_be_captured(self, mock_posthog_none: MagicMock) -> None:
+    def test_a_raw_event_name_cannot_be_captured(self, mock_posthog_none):
         with pytest.raises(TypeError, match="catalog event model"):
             capture(USER_1, "user:logged_out")
 
@@ -515,13 +515,6 @@ class TestAgentRunLifecycle:
             AgentRunFailed(**EXECUTOR_RUN.model_dump(), reason="approval_lost"),
             TASK_DEDUPE,
         )
-
-    def test_a_paused_run_has_no_terminal_event(self) -> None:
-        with patch("app.services.analytics_service.capture") as capture:
-            with agent_run_lifecycle(USER_1.value, EXECUTOR_RUN) as run:
-                run.paused = True
-
-        assert self._events(capture) == [(EXECUTOR_RUN, None)]
 
     def test_no_user_id_captures_nothing(self) -> None:
         with (

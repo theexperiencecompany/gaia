@@ -14,10 +14,6 @@ const nth = (date: number): string => {
   }
 };
 
-export default function fetchDate(): string {
-  return new Date().toISOString();
-}
-
 // Exact relative time for recent dates (within 7 days), e.g. "2 hours 5 mins ago"
 function formatRecentRelative(diffInMs: number, formattedTime: string): string {
   const seconds = Math.floor(diffInMs / 1000);

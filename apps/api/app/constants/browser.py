@@ -120,16 +120,6 @@ TAKEOVER_KIND_CATEGORY: dict[TakeoverKind, SensitiveCategory] = {
 }
 
 
-# Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
-# session is saved (Fernet-encrypted per user+site) and reused so the next task
-# skips the login. The Browser settings page can list/remove saved sites.
-BROWSER_CREDENTIALS_SAVED_NOTE = (
-    "Once you're signed in, I'll save this site's session, encrypted, so I can "
-    "skip the login next time. You can remove saved sites anytime in "
-    "your Browser settings."
-)
-
-
 class HandoffStatus(str, Enum):
     """State of a live-view handoff: pending, completed, cancelled, expired, or failed."""
 
@@ -181,7 +171,6 @@ BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
 # the text-channel equivalent of the card's buttons. Both converge on resolve_handoff.
 BROWSER_HANDOFF_REPLY_KEY_PREFIX = "browser:handoff:reply:"
 # The last line of a handoff a bot user is sent: only their word ends it.
-BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
 # A host session lives on a lease the run renews while its job is alive, paused
 # or not; one it stops renewing (its worker died) is disposed when the lease runs out.
 BROWSER_SESSION_LEASE_SECONDS = 90.0
@@ -235,10 +224,6 @@ BROWSER_IMPORT_TOKEN_ENTROPY_BYTES = 32
 # A Mongo TTL index on ``updated_at`` reclaims it; every use refreshes the clock.
 BROWSER_PROFILE_TTL_DAYS = 90
 BROWSER_PROFILE_TTL_SECONDS = BROWSER_PROFILE_TTL_DAYS * 24 * 3600
-
-# Recorded in the thread when the handoff card's buttons decide a handoff: no turn runs for a tap.
-BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
-BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."
 
 # Why a button's decision on a handoff was refused: the web card's, or the bot live-view page's.
 BROWSER_HANDOFF_NOT_OWNED_DETAIL = "Not authorized to resolve this handoff"
@@ -586,8 +571,8 @@ BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS = 5.0
 # since a stopped run's card reads the stop.
 BROWSER_ENGINE_UNRESPONSIVE_SUMMARY = "The browser stopped responding."
 
-# How a decision taken on the handoff card is written into the agent's thread,
-# so the reply it later voices knows the user changed course.
+# How a decision taken on the handoff card reads as the user's message in the
+# conversation, so the reply it later voices knows the user changed course.
 BROWSER_HANDOFF_CARD_DECISION = "[From the browser handoff card] {decision}"
 
 # ---------------------------------------------------------------------------

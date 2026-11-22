@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.tools import BaseTool
 import pytest
 
+from app.constants.integrations import ToolsSetup
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_UNLISTED_CONNECT_MAX
 from app.helpers.namespace_utils import derive_integration_namespace
@@ -72,6 +73,7 @@ class TestDoConnect:
         assert ui_tool.metadata["mcp_server_url"] == SERVER_URL
 
 
+@pytest.mark.usefixtures("tools_setup")
 class TestPersistAndIndexTools:
     async def test_post_connect_failures_name_the_integration(self) -> None:
         client = MCPClient(USER_ID)
@@ -97,6 +99,23 @@ class TestPersistAndIndexTools:
         ]
 
 
+@pytest.fixture
+def tools_setup() -> Iterator[list[ToolsSetup]]:
+    """Record every tools_setup state the client publishes, in order."""
+    published: list[ToolsSetup] = []
+
+    async def publish(
+        user_id: str, integration_id: str, state: ToolsSetup, *, only_from: ToolsSetup | None = None
+    ) -> bool:
+        assert (user_id, integration_id) == (USER_ID, INTEGRATION_ID)
+        published.append(state)
+        return True
+
+    with patch(f"{_MODULE}.publish_tools_setup", publish):
+        yield published
+
+
+@pytest.mark.usefixtures("tools_setup")
 class TestConnectAfterOauth:
     async def test_connect_runs_in_the_background_under_a_labelled_task(self) -> None:
         client = MCPClient(USER_ID)
@@ -148,6 +167,80 @@ class TestConnectAfterOauth:
             await client.connect_after_oauth(INTEGRATION_ID)
 
         reset.assert_not_awaited()
+
+
+class TestToolsSetupAfterOauth:
+    async def test_a_failed_discovery_is_published_as_failed_so_the_page_stops_waiting(
+        self, tools_setup: list[ToolsSetup]
+    ) -> None:
+        client = MCPClient(USER_ID)
+
+        with (
+            patch(f"{_MODULE}._spawn_background", _closing_spawn(None, [])),
+            patch.object(client, "connect", AsyncMock(side_effect=Exception("502 Bad Gateway"))),
+            patch.object(client, "_reset_to_disconnected", AsyncMock()),
+        ):
+            await client.connect_after_oauth(INTEGRATION_ID)
+
+        assert tools_setup == [ToolsSetup.RUNNING, ToolsSetup.FAILED]
+
+    async def test_a_discovery_that_never_answers_is_failed_at_the_timeout(
+        self, tools_setup: list[ToolsSetup]
+    ) -> None:
+        client = MCPClient(USER_ID)
+
+        async def hang(integration_id: str) -> list[BaseTool]:
+            await asyncio.sleep(60)
+            return []
+
+        with (
+            patch(f"{_MODULE}._spawn_background", _closing_spawn(None, [])),
+            patch(f"{_MODULE}.MCP_TOOLS_SETUP_TIMEOUT_SECONDS", 0.01),
+            patch.object(client, "connect", hang),
+        ):
+            await client.connect_after_oauth(INTEGRATION_ID)
+
+        assert tools_setup == [ToolsSetup.RUNNING, ToolsSetup.FAILED]
+
+    async def test_tools_already_in_memory_are_published_ready_at_once(
+        self, tools_setup: list[ToolsSetup]
+    ) -> None:
+        client = MCPClient(USER_ID)
+        client._tools[INTEGRATION_ID] = [_tool("search")]
+
+        with patch(f"{_MODULE}._spawn_background", _closing_spawn(None, [])):
+            await client.connect_after_oauth(INTEGRATION_ID)
+
+        assert tools_setup == [ToolsSetup.RUNNING, ToolsSetup.READY]
+
+    async def test_a_fresh_discovery_leaves_ready_to_the_stored_tools(
+        self, tools_setup: list[ToolsSetup]
+    ) -> None:
+        client = MCPClient(USER_ID)
+
+        with (
+            patch(f"{_MODULE}._spawn_background", _closing_spawn(None, [])),
+            patch.object(client, "connect", AsyncMock(return_value=[])),
+        ):
+            await client.connect_after_oauth(INTEGRATION_ID)
+
+        assert tools_setup == [ToolsSetup.RUNNING]
+
+    async def test_storing_the_tools_ends_a_running_setup(
+        self, tools_setup: list[ToolsSetup]
+    ) -> None:
+        client = MCPClient(USER_ID)
+        resolved = MagicMock()
+        resolved.source = "platform"
+
+        with (
+            patch(f"{_MODULE}.store_mcp_tools", AsyncMock()),
+            patch.object(client, "_index_platform_mcp_tools", AsyncMock()),
+            patch(f"{_MODULE}.invalidate_user_integration_caches", AsyncMock()),
+        ):
+            await client._persist_and_index_tools(resolved, MagicMock(), INTEGRATION_ID, [])
+
+        assert tools_setup == [ToolsSetup.READY]
 
 
 def _client_with_session(close: AsyncMock) -> MCPClient:

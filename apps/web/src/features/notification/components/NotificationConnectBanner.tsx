@@ -53,8 +53,8 @@ export function NotificationConnectBanner({
     return (
       <div className="w-full px-3">
         <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-900/80 px-3 py-2 text-xs w-full">
-          <div className="flex items-center gap-6">
-            <div className="-space-x-2 flex">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="-space-x-2 flex shrink-0">
               {unconnectedPlatforms.map((p, index) => (
                 <Image
                   key={p}
@@ -66,7 +66,7 @@ export function NotificationConnectBanner({
                 />
               ))}
             </div>
-            <span className="text-zinc-400">
+            <span className="min-w-0 text-zinc-400">
               Get notified in the apps you already use
             </span>
           </div>

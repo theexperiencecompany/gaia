@@ -78,7 +78,6 @@ function TodoListSkeleton() {
 
 interface TodoListPageProps {
   filters?: TodoFilters;
-  filterTodos?: (todos: Todo[]) => Todo[];
 }
 
 /**
@@ -135,10 +134,7 @@ function SelectedTodoSidebarPanel({
   );
 }
 
-export default function TodoListPage({
-  filters,
-  filterTodos,
-}: TodoListPageProps) {
+export default function TodoListPage({ filters }: TodoListPageProps) {
   const { selectedTodoId, selectTodo, clearSelection } = useUrlTodoSelection();
   // State, not a ref: attaching the element must re-render TodoList so its
   // virtualizer subscribes; a ref attaches after the child's layout effect.
@@ -153,7 +149,7 @@ export default function TodoListPage({
   const [notFoundId, setNotFoundId] = useState<string | null>(null);
 
   // Individual selectors to avoid re-renders from unrelated store changes
-  const storeTodos = useTodoStore((state) => state.todos);
+  const todos = useTodoStore((state) => state.todos);
   const storeProjects = useTodoStore((state) => state.projects);
   const initialLoading = useTodoStore((state) => state.initialLoading);
   const loadError = useTodoStore((state) => state.error);
@@ -166,20 +162,17 @@ export default function TodoListPage({
     autoLoad: true,
   });
 
-  const todos = useMemo(() => {
-    if (filterTodos) return filterTodos(storeTodos);
-    return storeTodos;
-  }, [storeTodos, filterTodos]);
-
   const projects = storeProjects;
 
   // Use refs to store latest callback versions to avoid stale closures
   const updateTodoRef = useRef(updateTodo);
   const deleteTodoRef = useRef(deleteTodo);
+  const refreshRef = useRef(refresh);
   const clearSelectionRef = useRef(clearSelection);
   useEffect(() => {
     updateTodoRef.current = updateTodo;
     deleteTodoRef.current = deleteTodo;
+    refreshRef.current = refresh;
     clearSelectionRef.current = clearSelection;
   });
 
@@ -188,6 +181,8 @@ export default function TodoListPage({
     async (todoId: string, updates: TodoUpdate) => {
       try {
         await updateTodoRef.current(todoId, updates);
+        // The server decides which day a todo falls on, so a new due date can move it off this list.
+        if (updates.due_date !== undefined) await refreshRef.current();
       } catch (error) {
         console.error("Failed to update todo:", error);
       }

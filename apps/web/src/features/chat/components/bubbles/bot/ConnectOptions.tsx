@@ -1,7 +1,8 @@
 import { PuzzleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import type { ConnectOptionsData } from "@/features/integrations/types";
 
 interface ConnectOptionsProps {
@@ -18,6 +19,7 @@ export default function ConnectOptions({
   connect_options,
 }: ConnectOptionsProps) {
   const router = useRouter();
+  const { getIntegrationIconUrl } = useIntegrationLookup();
   if (!connect_options?.options?.length) return null;
 
   return (
@@ -30,12 +32,11 @@ export default function ConnectOptions({
           onPress={() => router.push(option.href)}
         >
           {option.integration_id ? (
-            getToolCategoryIcon(option.integration_id, {
-              size: 16,
-              width: 16,
-              height: 16,
-              showBackground: false,
-            })
+            <IntegrationIcon
+              integrationId={option.integration_id}
+              iconUrl={getIntegrationIconUrl(option.integration_id)}
+              size={16}
+            />
           ) : (
             <PuzzleIcon className="size-4 shrink-0" />
           )}

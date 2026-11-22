@@ -142,7 +142,7 @@ async def test_store_calls_outside_a_request_are_not_recorded() -> None:
     await client.set("k", "v")
     MongoTurnListener().succeeded(MagicMock(duration_micros=1_000))
 
-    assert turn_timings.current_turn_timings() is None
+    assert turn_timings._turn.get() is None
 
 
 async def test_a_watched_pipelines_immediate_commands_are_round_trips_too() -> None:

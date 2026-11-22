@@ -37,7 +37,8 @@ async def _outbound_is_consumed() -> bool:
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def observer(progress: Progress) -> AsyncIterator[OutboundObserver]:
-    outbound = OutboundObserver(settings.RABBITMQ_URL, progress)
+    # No API: no wake reaches these chats, so no conversation is followed.
+    outbound = OutboundObserver(settings.RABBITMQ_URL, progress, "http://127.0.0.1:9", lambda _: {})
     await outbound.start()
     try:
         # The relay draws its own consumer tag; once it holds the queue it draws no more.

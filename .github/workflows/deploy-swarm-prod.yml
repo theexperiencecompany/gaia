@@ -131,6 +131,17 @@ jobs:
         id: before
         run: bash scripts/ci/deploy.sh served-commit
 
+      # The new API refuses to boot while a conversation holds data the
+      # conversation log does not match. A one-shot job on the new image checks
+      # first; only when it finds work are the old writers stopped for the
+      # catch-up, and the rollout below starts them on the new image.
+      - name: Migrate conversations before the rollout
+        if: inputs.action == 'deploy'
+        id: migrate
+        env:
+          GAIA_IMAGE_TAG: ${{ inputs.apps_image_tag }}
+        run: bash scripts/ci/deploy.sh migrate
+
       - name: ${{ inputs.action == 'verify' && 'Render the stack (verify only)' || 'Deploy stack' }}
         env:
           # Pin the stack to this run's immutable tags. Empty values fall
@@ -261,8 +272,38 @@ jobs:
           CLEARS_WHEN: a deploy that verifies the commit prod serves
         run: bash scripts/ci/deploy.sh notify
 
+      - name: Notify — conversation catch-up failed
+        if: failure() && steps.migrate.outcome == 'failure'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: conversations were not migrated
+          IMPACT: on the previous build; the migrate step log says whether writers it stopped came back.
+          CAUSE: the pre-rollout migration check or catch-up job failed, so the new image was not rolled out
+          ACTION: read the job logs in the migrate step of this run.
+          CLEARS_WHEN: a deploy whose catch-up exits 0
+        run: bash scripts/ci/deploy.sh notify
+
+      # After a catch-up the old writers stay at 0 until the rollout starts them,
+      # and a Swarm rollback returns them to that 0-replica spec.
+      - name: Notify — writers left stopped
+        if: failure() && steps.migrate.outputs.writers_down == 'true' && steps.converge.outcome != 'success'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: the API may be down after the conversation catch-up
+          IMPACT: DOWN or partial — gaia-backend and arq_worker were stopped for the catch-up and the rollout after it failed.
+          CAUSE: the catch-up succeeded; the rollout of the new image did not converge
+          ACTION: redeploy, or run `docker service scale gaia-prod_gaia-backend=1 gaia-prod_arq_worker=1` on the VM.
+          CLEARS_WHEN: gaia-backend and arq_worker are Running again
+        run: bash scripts/ci/deploy.sh notify
+
       - name: Notify — Swarm auto-rollback
-        if: failure() && steps.converge.outputs.rolled_back == 'true'
+        if: failure() && steps.converge.outputs.rolled_back == 'true' && steps.migrate.outputs.writers_down != 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -278,7 +319,7 @@ jobs:
             bash scripts/ci/deploy.sh notify
 
       - name: Notify — convergence timeout
-        if: failure() && steps.converge.outputs.timed_out == 'true'
+        if: failure() && steps.converge.outputs.timed_out == 'true' && steps.migrate.outputs.writers_down != 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -292,7 +333,7 @@ jobs:
         run: bash scripts/ci/deploy.sh notify
 
       - name: Notify — deploy failed
-        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure'
+        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure' && steps.migrate.outcome != 'failure' && steps.migrate.outputs.writers_down != 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}

@@ -12,6 +12,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
+from app.constants.hil import JevFailure
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_POLL_INBOX_TRIGGER_NAME
 
 
@@ -72,12 +73,11 @@ class GateReason(StrEnum):
     JEV_CAN_WAIT = "jev_can_wait"
     # Decided without JEV: a thread continuation by day, or an event the gate cannot read.
     FREE_RUN = "free_run"
-    JEV_ERROR = "jev_error"
-    JEV_TIMEOUT = "jev_timeout"
-    # Unknown label, no probabilities, or a body that does not parse.
-    JEV_MALFORMED = "jev_malformed"
-    # No OpenRouter key (self-host); left out of the error alert.
-    JEV_UNCONFIGURED = "jev_unconfigured"
+    # JEV gave no usable answer, named as every JEV caller names it.
+    JEV_ERROR = JevFailure.ERROR.value
+    JEV_TIMEOUT = JevFailure.TIMEOUT.value
+    JEV_MALFORMED = JevFailure.MALFORMED.value
+    JEV_UNCONFIGURED = JevFailure.UNCONFIGURED.value
 
 
 class UrgentChoice(StrEnum):

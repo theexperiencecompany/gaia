@@ -14,7 +14,17 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from app.config.settings import settings
+from app.constants.chat import ConversationSource
+from app.constants.hil import HIL_JEV_ACCEPT_LINE
+from app.constants.providers import CredentialProviderName
+from app.constants.reactions import ReactionReason
 from app.services.browser.browser_use_tools import GaiaTools
+from app.services.conversation.ack import decide_reaction
+from app.services.hil import jev_client
+from app.services.hil.intent import AutoHistory, JudgedCall
+from app.services.hil.jev_judge import ask_jev, map_jev_choice
+from app.services.providers.provider_credentials_service import ProviderConfig, env_config
 from tests.integration.real.browser._stack.fake_models import WAIT_A_SECOND, FakeModels
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -80,3 +90,30 @@ async def test_an_earlier_scenarios_run_failing_late_is_not_the_next_scenarios(
     assert models.errors == []
     await _ask_jev(models, "run-current")
     assert models.errors == ["run-current: Jev was asked past its script"]
+
+
+async def test_auto_mode_and_the_instant_reaction_are_answered_by_the_stack(
+    models: FakeModels, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the approval judge reached openrouter.ai, failed, and every browser run waited on an approval."""
+
+    async def from_env(provider: CredentialProviderName) -> ProviderConfig | None:
+        return env_config(provider)
+
+    # The stack's API and worker carry exactly this environment; the saved-credential store is off here.
+    monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", models.base_url)
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(jev_client, "resolve", from_env)
+    models.begin_scenario()
+
+    choice, confidence, *_ = await ask_jev(
+        user_messages=["Use the browser for this."],
+        call=JudgedCall(tool_name="browser_task", description="", args={}, summary=""),
+        prior_calls=[],
+        history=AutoHistory(),
+    )
+    reaction = await decide_reaction("Use the browser for this.", "", ConversationSource.TELEGRAM)
+
+    assert map_jev_choice(choice, confidence, accept_line=HIL_JEV_ACCEPT_LINE) == "accept"
+    assert reaction.reason is ReactionReason.NEEDS_WORDS
+    assert models.errors == []

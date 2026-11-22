@@ -37,7 +37,7 @@ function AnswersSaveStatus({ answersSave }: { answersSave: AnswersSave }) {
   if (answersSave.status === "error") {
     return (
       <m.div className="flex flex-col items-start gap-3" {...MOTION_FADE_UP}>
-        <OnboardingBotBubble text={ANSWERS_SAVE_FAILED_MESSAGE} />
+        <OnboardingBotBubble lines={[ANSWERS_SAVE_FAILED_MESSAGE]} />
         <OnboardingCTAButton
           className="sm:ml-10.75"
           onClick={answersSave.retry}

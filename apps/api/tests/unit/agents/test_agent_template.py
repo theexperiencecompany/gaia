@@ -1,7 +1,10 @@
 """Unit tests for the experiment variants in agent_template."""
 
+from typing import cast
+
 import pytest
 
+from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
@@ -11,6 +14,7 @@ from app.agents.templates.agent_template import (
     get_executor_prompt,
 )
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.constants.reactions import REACTION_PALETTE_BY_SURFACE
 
 OPENUI_MARKER = "## Output Format (this app renders rich components)"
 PLATFORM_MARKER = "Platform Context"
@@ -19,38 +23,85 @@ TELEGRAM_REACTIONS_MARKER = "REACTIONS ON TELEGRAM"
 
 class TestOpenuiVariants:
     def test_renderable_channels_carry_openui(self) -> None:
-        for source in ("web", "mobile", "desktop"):
+        for source in (
+            ConversationSource.WEB,
+            ConversationSource.MOBILE,
+            ConversationSource.DESKTOP,
+        ):
             assert OPENUI_MARKER in get_comms_static_prompt(source)
 
     def test_renderable_channels_write_math_in_double_dollars(self) -> None:
-        for source in ("web", "mobile", "desktop"):
+        for source in (
+            ConversationSource.WEB,
+            ConversationSource.MOBILE,
+            ConversationSource.DESKTOP,
+        ):
             prompt = get_comms_static_prompt(source)
             assert "$$...$$" in prompt
             assert "a single $ is a literal dollar sign" in prompt
 
     def test_desktop_keeps_desktop_context_and_openui(self) -> None:
-        desktop = get_comms_static_prompt("desktop")
+        desktop = get_comms_static_prompt(ConversationSource.DESKTOP)
         assert "Desktop Context" in desktop
         assert OPENUI_MARKER in desktop
 
     def test_text_channels_get_platform_context_not_openui(self) -> None:
-        for source in ("whatsapp", "telegram", "discord", "slack", "imessage"):
+        for source in (
+            ConversationSource.WHATSAPP,
+            ConversationSource.TELEGRAM,
+            ConversationSource.DISCORD,
+            ConversationSource.SLACK,
+            ConversationSource.IMESSAGE,
+        ):
             prompt = get_comms_static_prompt(source)
             assert PLATFORM_MARKER in prompt
             assert OPENUI_MARKER not in prompt
 
     def test_only_telegram_lists_its_reaction_set(self) -> None:
-        for source in ("whatsapp", "discord", "slack", "imessage"):
+        for source in (
+            ConversationSource.WHATSAPP,
+            ConversationSource.DISCORD,
+            ConversationSource.SLACK,
+            ConversationSource.IMESSAGE,
+        ):
             assert TELEGRAM_REACTIONS_MARKER not in get_comms_static_prompt(source)
-        assert TELEGRAM_REACTIONS_MARKER in get_comms_static_prompt("telegram")
+        assert TELEGRAM_REACTIONS_MARKER in get_comms_static_prompt(ConversationSource.TELEGRAM)
+
+    def test_the_telegram_prompt_lists_exactly_the_palette_the_reaction_check_reads(self) -> None:
+        prompt = get_comms_static_prompt(ConversationSource.TELEGRAM)
+        listed = prompt.split(TELEGRAM_REACTIONS_MARKER)[1].split("one of ")[1].split(". Pick")[0]
+        palette = REACTION_PALETTE_BY_SURFACE[ConversationSource.TELEGRAM]
+        assert listed.split() == list(palette)
 
     def test_reaction_rules_close_the_platform_block(self) -> None:
         assert _text_only_addendum("X", "fmt", "\n\nREACT").endswith("brevity.\n\nREACT")
         assert _text_only_addendum("X", "fmt").endswith("outranks brevity.")
 
-    def test_unknown_source_falls_back_to_web(self) -> None:
-        assert get_comms_static_prompt("nope") == get_comms_static_prompt("web")
-        assert get_comms_static_prompt(None) == get_comms_static_prompt("web")
+    def test_every_surface_a_reply_is_read_on_has_its_own_prompt(self) -> None:
+        assert set(COMMS_PROMPT_BY_SOURCE) == set(ConversationSource) - {
+            ConversationSource.BACKGROUND,
+            ConversationSource.WORKFLOW_SYSTEM,
+        }
+
+    @pytest.mark.parametrize(
+        "source", [ConversationSource.BACKGROUND, ConversationSource.WORKFLOW_SYSTEM]
+    )
+    def test_a_background_source_is_no_surface_and_raises_instead_of_reading_as_web(
+        self, source: ConversationSource
+    ) -> None:
+        with pytest.raises(KeyError):
+            get_comms_static_prompt(source)
+
+    def test_an_unknown_surface_raises_instead_of_reading_as_web(self) -> None:
+        with pytest.raises(KeyError):
+            get_comms_static_prompt(cast(ConversationSource, "nope"))
+
+    def test_a_voice_turn_is_spoken_so_it_gets_no_openui(self) -> None:
+        prompt = get_comms_static_prompt(ConversationSource.VOICE)
+        assert OPENUI_INSTRUCTIONS not in prompt
+        assert "read aloud" in prompt
+        # A call runs inside the app, so an approval is still decided on its card.
+        assert "## Approvals in the app" in prompt
 
 
 class TestExecutorPrompt:
@@ -72,35 +123,28 @@ class TestExecutorPrompt:
         assert "approval card" not in get_executor_prompt()
 
 
-MESSAGING_SOURCES = tuple(sorted(source.value for source in BOT_CONVERSATION_SOURCES))
-UI_SOURCES = tuple(
-    sorted(
-        source.value
-        for source in (
-            ConversationSource.WEB,
-            ConversationSource.MOBILE,
-            ConversationSource.DESKTOP,
-        )
-    )
-)
+MESSAGING_SOURCES = tuple(sorted(BOT_CONVERSATION_SOURCES))
+# Everything read in the app, a call included, decides approvals on a card.
+UI_SOURCES = tuple(sorted(set(COMMS_PROMPT_BY_SOURCE) - BOT_CONVERSATION_SOURCES))
 
 
 class TestApprovalMessagingWording:
     """GAIA-713: approval asks must be channel-aware.
 
-    Messaging channels have no approval card or button, so the user must be told
-    to reply YES/NO in chat. Web/mobile/desktop keep the card-based approval.
+    Messaging channels have no approval card or button, and GAIA asks there itself
+    (the bot's prompt, or a link to the app for an approval asked in a todo's or a
+    workflow's chat), so a reply never tells the user what to answer.
+    Web/mobile/desktop keep the card-based approval.
     """
 
     def test_every_channel_is_classified(self) -> None:
         assert set(COMMS_PROMPT_BY_SOURCE) == set(MESSAGING_SOURCES) | set(UI_SOURCES)
 
-    @pytest.mark.regression
-    def test_non_ui_channels_instruct_reply_yes_no(self) -> None:
+    def test_messaging_channels_leave_the_asking_to_gaia(self) -> None:
         for source in MESSAGING_SOURCES:
             prompt = get_comms_static_prompt(source)
-            assert "reply YES to approve or NO to decline" in prompt, (
-                f"{source} did not instruct a YES/NO chat reply"
+            assert "never tell them how to approve or what to reply" in prompt, (
+                f"{source} lets a reply explain how to approve"
             )
             assert "no approval card or button here" in prompt
             # The only allowed mention of a card is the one saying there is none.
@@ -113,18 +157,12 @@ class TestApprovalMessagingWording:
             assert "## Approvals in the app" in prompt
             assert "approval card" in prompt
             assert "do not ask them to type a reply in chat" in prompt
-            # UI channels must NOT ask the user to reply YES/NO in chat.
-            assert "reply YES to approve or NO to decline" not in prompt
             assert "APPROVALS ON THIS PLATFORM" not in prompt
 
-    @pytest.mark.regression
-    def test_channel_aware_not_telegram_only(self) -> None:
-        # The YES/NO wording is driven by the channel (all messaging sources),
-        # not hardcoded to Telegram.
-        for source in MESSAGING_SOURCES:
-            assert "reply YES to approve or NO to decline" in get_comms_static_prompt(source)
-        for source in UI_SOURCES:
-            assert "reply YES to approve or NO to decline" not in get_comms_static_prompt(source)
+    def test_no_channel_tells_the_user_to_reply_yes(self) -> None:
+        # Bug 30: a todo's parked write-up said "Reply YES", which answers nothing anywhere.
+        for source in COMMS_PROMPT_BY_SOURCE:
+            assert "reply YES" not in get_comms_static_prompt(source)
 
     @pytest.mark.regression
     def test_approval_is_permission_not_execution(self) -> None:

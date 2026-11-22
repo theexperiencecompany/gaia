@@ -11,7 +11,7 @@ import {
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
-import { getScheduleDescription } from "../utils/cronUtils";
+import { describeCron } from "../utils/cronUtils";
 import WorkflowModal from "./WorkflowModal";
 
 interface WorkflowDraftCardProps {
@@ -32,7 +32,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
         };
       case "schedule": {
         const cronLabel = draft.cron_expression
-          ? getScheduleDescription(draft.cron_expression)
+          ? (describeCron(draft.cron_expression) ?? draft.cron_expression)
           : "Scheduled";
         return {
           label: cronLabel,

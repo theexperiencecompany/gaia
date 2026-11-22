@@ -11,6 +11,7 @@ Covers:
 - PUT /conversations/{id}/description — update description
 - PATCH /conversations/{id}/read — mark as read
 - PATCH /conversations/{id}/unread — mark as unread
+- PUT /conversations/{id}/messages/{msg_id}/pin — pin a message
 - GET /messages/pinned — get pinned messages
 """
 
@@ -19,19 +20,24 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.chat_models import MessageModel
+from app.constants.chat import ConversationSource
+from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_log_models import DisplayState
 from app.models.conversation_models import (
     ConversationActionResponse,
-    ConversationDocument,
     ConversationListResponse,
     ConversationMessageHit,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
+    LoadedConversation,
+    PinMessageResponse,
     PinnedMessagesResponse,
     StarConversationResponse,
     UpdateDescriptionResponse,
 )
 from tests.conftest import FAKE_USER
+from tests.factories import make_reply_item
+from tests.helpers import captured_wide_event
 
 CONV_SERVICE = "app.api.v1.endpoints.conversations"
 
@@ -56,7 +62,7 @@ class TestCreateConversation:
         ):
             resp = await client.post(
                 "/api/v1/conversations",
-                json={"conversation_id": "conv_123", "description": "New Chat"},
+                json={"conversation_id": "conv_123", "description": "New Chat", "source": "web"},
             )
 
         assert resp.status_code == 200
@@ -65,6 +71,9 @@ class TestCreateConversation:
         mock_log.set.assert_any_call(
             user={"id": FAKE_USER.user_id},
             conversation={"operation": "create", "is_new": True},
+        )
+        mock_log.set.assert_any_call(
+            conversation={"operation": "create", "is_new": True, "id": "conv_123"}
         )
 
     async def test_create_requires_auth(self, unauthed_client: AsyncClient):
@@ -101,6 +110,9 @@ class TestListConversations:
             user={"id": FAKE_USER.user_id},
             conversation={"operation": "list", "page": 1, "limit": 10},
         )
+        mock_log.set.assert_any_call(
+            conversation={"operation": "list", "page": 1, "limit": 10, "total_returned": 0}
+        )
 
     async def test_list_with_pagination(self, client: AsyncClient):
         mock_resp = ConversationListResponse(
@@ -135,14 +147,15 @@ class TestGetConversation:
     """GET /api/v1/conversations/{id}."""
 
     async def test_get_existing(self, client: AsyncClient):
-        # A stray top-level field a legacy row carries must still reach the
-        # client: the document is extra="allow" and the response model keeps it.
-        mock_resp = ConversationDocument.model_validate(
+        # A stray top-level field a legacy row carries never reaches the client:
+        # the document ignores what it does not declare.
+        mock_resp = LoadedConversation.model_validate(
             {
                 "conversation_id": "conv_123",
                 "user_id": "user_1",
-                "messages": [],
+                "source": ConversationSource.WEB,
                 "metadata": {"legacy": True},
+                "state": StateFrame(head=0, display=DisplayState.IDLE, work=()),
             }
         )
         with (
@@ -166,8 +179,8 @@ class TestGetConversation:
         assert mock_get.await_args.kwargs == {}
         body = resp.json()
         assert body["conversation_id"] == "conv_123"
-        assert body["messages"] == []
-        assert body["metadata"] == {"legacy": True}
+        assert (body["items"], body["has_older"], body["state"]["head"]) == ([], False, 0)
+        assert "metadata" not in body
         # The Mongo _id is excluded from the response model — it must not
         # reach the client.
         assert "id" not in body
@@ -330,7 +343,7 @@ class TestPinnedMessages:
             results=[
                 ConversationMessageHit(
                     conversation_id="conv_123",
-                    message=MessageModel(type="bot", response="pinned answer"),
+                    item=make_reply_item("pinned answer", seq=3),
                 )
             ]
         )
@@ -352,4 +365,43 @@ class TestPinnedMessages:
         results = resp.json()["results"]
         assert len(results) == 1
         assert results[0]["conversation_id"] == "conv_123"
-        assert results[0]["message"]["response"] == "pinned answer"
+        assert results[0]["item"]["bubbles"] == ["pinned answer"]
+
+
+class TestPinMessage:
+    """PUT /api/v1/conversations/{id}/messages/{msg_id}/pin."""
+
+    async def test_pinning_forwards_the_flag_and_tags_the_wide_event(self, client: AsyncClient):
+        mock_resp = PinMessageResponse(message="Message pinned", pinned=True)
+        with patch(
+            f"{CONV_SERVICE}.pin_message", new_callable=AsyncMock, return_value=mock_resp
+        ) as pin:
+            async with captured_wide_event() as live:
+                resp = await client.put(
+                    "/api/v1/conversations/conv_123/messages/msg_9/pin", json={"pinned": True}
+                )
+                event = dict(live)
+
+        assert resp.status_code == 200
+        assert resp.json() == {"message": "Message pinned", "pinned": True}
+        pin.assert_awaited_once_with("conv_123", "msg_9", True, FAKE_USER)
+        assert (event["user"], event["conversation"]) == (
+            {"id": FAKE_USER.user_id},
+            {"operation": "pin_message", "id": "conv_123"},
+        )
+
+    async def test_pinning_a_message_the_log_lacks_is_a_404_naming_the_message(
+        self, client: AsyncClient, owned_conversations: set[tuple[str, str]]
+    ):
+        owned_conversations.add(("conv_123", FAKE_USER.user_id))
+        with patch(
+            "app.services.conversation_service.conversation_log_repository.set_pinned",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            resp = await client.put(
+                "/api/v1/conversations/conv_123/messages/missing/pin", json={"pinned": True}
+            )
+
+        assert resp.status_code == 404
+        assert resp.json() == {"message": "Message not found in conversation"}
