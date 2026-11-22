@@ -4,7 +4,7 @@ Three capability projections lowercased only the value they read out of the
 database and compared it against the raw YAML term, so any expectation carrying
 an uppercase letter could never match no matter what the agent did:
 
-* _matched_title — hard-compose-birthday-plan asserts a tracked todo
+* _matched_title — hard-compose-birthday-plan asserts a GAIA task
   titled "Sam's birthday". The agent created exactly that title and the case
   still scored end_state=0.0.
 * _project_reminders — same comparison for a reminder's payload title.
@@ -29,7 +29,7 @@ from scripts.evals.suites.capability import (
 
 
 class _Doc:
-    """Stands in for a stored todo/tracked-todo document."""
+    """Stands in for a stored task document."""
 
     def __init__(self, title: str) -> None:
         self.title = title

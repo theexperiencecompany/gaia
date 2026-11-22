@@ -9,9 +9,9 @@ Scoring: ToolCallCorrectness, CommunicateGate, EndStateEquality, plus
 no_unauthorized_send, whose forbidden set is the shipped
 GMAIL_DESTRUCTIVE_TOOLS (never a copy) to match the HIL layer.
 
-expected.end_state covers todos, tracked_todos, reminders, projects,
-labels, notifications, workflows, answer_contains, recalled and the
-fake mailbox; an unprojected key fails the case loudly instead of
+expected.end_state covers tasks (the user's to-dos and GAIA's tasks, told
+apart by assignee), reminders, notifications, workflows, answer_contains,
+recalled and the fake mailbox; an unprojected key fails the case loudly instead of
 passing silently. score.gates picks which checks decide pass/fail.
 """
 
@@ -735,32 +735,13 @@ def _matched_title(
     return None, None
 
 
-def _doc_text(doc: object) -> str:
-    parts: list[str] = []
-    for attr in ("title", "description", "canvas_content", "activity_content", "body"):
-        value = getattr(doc, attr, None)
-        if value:
-            parts.append(str(value))
-    return " ".join(parts).lower()
+async def _authored_tasks(user_id: str) -> list[object]:
+    """Return every task the user or the agent made, system tasks left out."""
+    from app.db.repositories.tasks import task_repository
+    from app.models.task_models import TaskQuery
 
-
-def _canvas_text(doc: object) -> str:
-    """Return a tracked todo's canvas.md only, lowercased."""
-    value = getattr(doc, "canvas_content", None)
-    return str(value).lower() if value else ""
-
-
-def _activity_text(doc: object) -> str:
-    """Return a tracked todo's activity.md only, lowercased."""
-    value = getattr(doc, "activity_content", None)
-    return str(value).lower() if value else ""
-
-
-async def _user_projects(user_id: str) -> list[object]:
-    """Return every project the user owns, Inbox included (callers drop it if they must)."""
-    from app.db.repositories.projects import project_repository
-
-    return list(await project_repository.list_with_counts(user_id=user_id))
+    page = await task_repository.list_page(user_id=user_id, query=TaskQuery(per_page=100))
+    return [task for task in page.items if task.system_key is None]
 
 
 def _term_if(condition: bool, term: str) -> str | None:
@@ -774,116 +755,77 @@ def _term_if(condition: bool, term: str) -> str | None:
     return term if condition else None
 
 
-async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    # Reads the repository directly: todo_service.get_all_todos scopes to the
-    # Inbox project by design (TodoService._needs_inbox_default), which would
-    # hide a todo correctly filed elsewhere and fail a correct run.
-    from app.db.repositories.todos import todo_repository
-    from app.models.todo_models import SearchMode, TodoSearchParams
-
-    page = await todo_repository.list_page(
-        user_id=user_id,
-        params=TodoSearchParams(mode=SearchMode.TEXT, per_page=100),
-        inbox_project_id=None,
-    )
-    todos = page.items
-    project_names: dict[str, str] = {}
-    if any(isinstance(item, dict) and "project" in item for item in want):
-        project_names = {
-            str(getattr(p, "id", "")): str(getattr(p, "name", "")).lower()
-            for p in await _user_projects(user_id)
-        }
+async def _project_tasks(user_id: str, want: list[object]) -> list[dict[str, object]]:
+    tasks = await _authored_tasks(user_id)
     entries: list[dict[str, object]] = []
     for item in want:
         if not isinstance(item, dict):
-            raise RuntimeError(f"capability todos end_state entry is not a mapping: {item!r}")
+            raise RuntimeError(f"capability tasks end_state entry is not a mapping: {item!r}")
+        candidates = _with_assignee(tasks, item.get("assignee"))
         if "count" in item:
-            entries.append({"count": len(todos)})
+            entry: dict[str, object] = {"count": len(candidates)}
+            if "assignee" in item:
+                entry["assignee"] = item["assignee"]
+            entries.append(entry)
             continue
-        entries.append(_todo_entry(item, todos, project_names))
+        entries.append(_task_entry(item, candidates))
     return entries
 
 
-def _todo_entry(
-    item: dict[str, object], todos: Sequence[object], project_names: dict[str, str]
-) -> dict[str, object]:
-    """One expected todo entry projected against the stored todos."""
+def _with_assignee(tasks: Sequence[object], assignee: object) -> list[object]:
+    """Narrow to one assignee's tasks; no assignee in the entry keeps them all."""
+    if assignee is None:
+        return list(tasks)
+    wanted = str(assignee).lower()
+    return [t for t in tasks if str(getattr(getattr(t, "assignee", ""), "value", "")) == wanted]
+
+
+def _task_text(task: object) -> str:
+    """Return a task's title, details and notes.md, lowercased."""
+    parts = [str(getattr(task, attr, None) or "") for attr in ("title", "body", "notes")]
+    return " ".join(part for part in parts if part).lower()
+
+
+def _contains(term: object, text: str, matched: bool) -> str | None:
+    """Echo a *_contains term when the matched task's text holds it; a null term stays null."""
+    if term is None:
+        return None
+    return _term_if(matched and str(term).lower() in text, str(term))
+
+
+def _task_entry(item: dict[str, object], tasks: Sequence[object]) -> dict[str, object]:
+    """One expected task entry projected against the stored tasks."""
     match, matched_on = _matched_title(
-        todos, str(item.get("title") or ""), item.get("title_contains")
+        tasks, str(item.get("title") or ""), item.get("title_contains")
     )
     entry: dict[str, object] = {}
     if "title" in item:
         entry["title"] = str(item["title"]) if match is not None else ""
     if "title_contains" in item:
         entry["title_contains"] = matched_on if match is not None else None
+    if "assignee" in item:
+        entry["assignee"] = item["assignee"] if match is not None else None
     if "completed" in item:
         entry["completed"] = bool(getattr(match, "completed", False))
     if "priority" in item:
         term = str(item["priority"])
         actual = str(getattr(getattr(match, "priority", ""), "value", "") or "").lower()
         entry["priority"] = _term_if(match is not None and actual == term.lower(), term)
-    if "labels_contains" in item:
-        term = str(item["labels_contains"])
-        labels = [str(label).lower() for label in (getattr(match, "labels", None) or [])]
-        entry["labels_contains"] = _term_if(match is not None and term.lower() in labels, term)
-    if "project" in item:
-        term = str(item["project"])
-        name = project_names.get(str(getattr(match, "project_id", "") or ""), "")
-        entry["project"] = _term_if(match is not None and term.lower() in name, term)
+    if "repeats" in item:
+        kind = str(getattr(getattr(match, "when", None), "kind", "") or "")
+        entry["repeats"] = match is not None and kind == "repeat"
+    if "notes_contains" in item:
+        notes = str(getattr(match, "notes", None) or "").lower()
+        entry["notes_contains"] = _contains(item["notes_contains"], notes, match is not None)
+    if "text_contains" in item:
+        text = _task_text(match) if match is not None else ""
+        entry["text_contains"] = _contains(item["text_contains"], text, match is not None)
     subtasks = list(getattr(match, "subtasks", None) or []) if match is not None else []
     if "subtask_count" in item:
         entry["subtask_count"] = len(subtasks)
     if "subtasks_completed" in item:
         entry["subtasks_completed"] = len([s for s in subtasks if getattr(s, "completed", False)])
     return entry
-
-
-async def _project_projects(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    """Return todo projects; count excludes the auto-created Inbox, which every user gets for free."""
-    projects = await _user_projects(user_id)
-    named = [p for p in projects if not bool(getattr(p, "is_default", False))]
-    entries: list[dict[str, object]] = []
-    for item in want:
-        if not isinstance(item, dict):
-            raise RuntimeError(f"capability projects end_state entry is not a mapping: {item!r}")
-        entry: dict[str, object] = {}
-        if "count" in item:
-            entry["count"] = len(named)
-        if "name" in item:
-            term = str(item["name"])
-            entry["name"] = _term_if(
-                any(str(getattr(p, "name", "")).lower().strip() == term.lower() for p in named),
-                term,
-            )
-        if "name_contains" in item:
-            term = str(item["name_contains"])
-            entry["name_contains"] = _term_if(
-                any(term.lower() in str(getattr(p, "name", "")).lower() for p in named), term
-            )
-        entries.append(entry)
-    return entries
-
-
-async def _project_labels(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    """Return labels in use by the user, from stats that count INCOMPLETE todos only.
-
-    A label surviving solely on a completed todo will not appear here.
-    """
-    from app.services.todos.todo_service import get_all_labels
-
-    names = {str(label.name).lower() for label in await get_all_labels(user_id)}
-    entries: list[dict[str, object]] = []
-    for item in want:
-        if not isinstance(item, dict):
-            raise RuntimeError(f"capability labels end_state entry is not a mapping: {item!r}")
-        entry: dict[str, object] = {}
-        if "count" in item:
-            entry["count"] = len(names)
-        if "name" in item:
-            term = str(item["name"])
-            entry["name"] = _term_if(term.lower() in names, term)
-        entries.append(entry)
-    return entries
 
 
 async def _project_notifications(user_id: str, want: list[object]) -> list[dict[str, object]]:
@@ -919,49 +861,6 @@ async def _project_notifications(user_id: str, want: list[object]) -> list[dict[
             entry["channel"] = _term_if(
                 any(ch.channel_type.lower() == term.lower() for n in items for ch in n.channels),
                 term,
-            )
-        entries.append(entry)
-    return entries
-
-
-async def _project_tracked_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    from app.db.repositories.todos import todo_repository
-
-    docs = await todo_repository.list_active_tracked(user_id, limit=100)
-    entries: list[dict[str, object]] = []
-    for item in want:
-        if not isinstance(item, dict):
-            raise RuntimeError(f"capability tracked end_state entry is not a mapping: {item!r}")
-        if "count" in item:
-            entries.append({"count": len(docs)})
-            continue
-        match, matched_on = _matched_title(
-            docs, str(item.get("title") or ""), item.get("title_contains")
-        )
-        entry: dict[str, object] = {}
-        if "title" in item:
-            entry["title"] = str(item["title"]) if match is not None else ""
-        if "title_contains" in item:
-            entry["title_contains"] = matched_on if match is not None else None
-        if "canvas_contains" in item:
-            term = item.get("canvas_contains")
-            if term is not None:
-                term = str(term)
-                canvas = _canvas_text(match) if match is not None else ""
-                term = term if match is not None and term.lower() in canvas else None
-            entry["canvas_contains"] = term
-        if "activity_contains" in item:
-            term = item.get("activity_contains")
-            if term is not None:
-                term = str(term)
-                activity = _activity_text(match) if match is not None else ""
-                term = term if match is not None and term.lower() in activity else None
-            entry["activity_contains"] = term
-        purpose_term = item.get("purpose")
-        if purpose_term is not None:
-            term = str(purpose_term)
-            entry["purpose"] = (
-                term if match is not None and term.lower() in _doc_text(match) else None
             )
         entries.append(entry)
     return entries
@@ -1057,11 +956,8 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
     list_projections: dict[
         str, Callable[[str, list[object]], Awaitable[list[dict[str, object]]]]
     ] = {
-        "todos": _project_todos,
-        "tracked_todos": _project_tracked_todos,
+        "tasks": _project_tasks,
         "reminders": _project_reminders,
-        "projects": _project_projects,
-        "labels": _project_labels,
         "notifications": _project_notifications,
     }
     projected: dict[str, object] = {}
