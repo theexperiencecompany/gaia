@@ -135,6 +135,7 @@ def _not_emitting(tree: ast.Module) -> set[int]:
         and node.value is not None
         and ast.unparse(node.annotation).endswith("TypeAlias")
     ]
+    types += [node.value for node in ast.walk(tree) if isinstance(node, ast.TypeAlias)]
     types += [
         node.args[1]
         for node in ast.walk(tree)
@@ -353,8 +354,9 @@ def test_every_server_and_voice_event_has_one_emitter(
     assert len(sites) <= allowed, (
         f"{name} is built in {len(sites)} functions, allowed {allowed}; converge it:\n{where}"
     )
-    assert len(sites) == allowed or name not in _MULTI_SITE_EVENTS, (
-        f"{name} is down to {len(sites)} sites: shrink its _MULTI_SITE_EVENTS entry to match"
+    assert len(sites) == allowed, (
+        f"{name} is built in {len(sites)} functions, expected {allowed}: "
+        "no site, or a shrunken _MULTI_SITE_EVENTS entry to match"
     )
 
 
@@ -388,6 +390,7 @@ def test_only_a_class_imported_from_the_catalog_is_an_event() -> None:
 def test_a_type_alias_type_check_or_event_name_read_is_not_an_emitter() -> None:
     source = (
         "Lifecycle: TypeAlias = PaymentFailed | PaymentSucceeded\n"
+        "type Failure = PaymentFailed\n"
         "def f(event):\n"
         "    if isinstance(event, PaymentFailed):\n"
         "        return PaymentFailed.event\n"

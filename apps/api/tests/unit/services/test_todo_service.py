@@ -1307,6 +1307,7 @@ _COMPLETE_TRACKED = "app.services.tracked_todo_service.tracked_todo_service.comp
 class TestBulkUpdateCapturesWhatChanged:
     """Every bulk path (the web's bulk edit and bulk complete, the agent's bulk complete) captures here, once."""
 
+    @pytest.mark.regression
     async def test_a_bulk_complete_through_the_bulk_edit_is_a_toggle_of_the_todos_written(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1324,6 +1325,7 @@ class TestBulkUpdateCapturesWhatChanged:
             UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=2)
         )
 
+    @pytest.mark.regression
     async def test_a_bulk_edit_is_an_update_of_the_todos_written(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1336,6 +1338,21 @@ class TestBulkUpdateCapturesWhatChanged:
             await TodoService.bulk_update_todos(req, FAKE_USER_ID)
 
         mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosUpdated(bulk_count=1))
+
+    async def test_a_bulk_complete_of_only_already_completed_tracked_todos_is_not_captured(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        done = _make_todo_doc(todo_id="t", vfs_path=_TRACKED_PATH, completed=True)
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        req = BulkUpdateRequest(todo_ids=["t"], updates=TodoUpdateRequest(completed=True))
+
+        with (
+            patch(_COMPLETE_TRACKED, new_callable=AsyncMock, return_value=True),
+            patch("app.services.todos.todo_service.capture") as mock_capture,
+        ):
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_not_called()
 
     async def test_a_bulk_edit_that_wrote_nothing_is_not_captured(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync

@@ -360,6 +360,7 @@ class _TrackedCompletion(NamedTuple):
     completed: list[str]
     failed: list[str]
     plain: list[str]
+    already_completed: frozenset[str] = frozenset()
 
 
 async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _TrackedCompletion:
@@ -372,11 +373,15 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
         tracked_todo_service,
     )
 
-    tracked = {
-        doc.id for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
-    }
+    tracked_docs = [
+        doc for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
+    ]
+    tracked = {doc.id for doc in tracked_docs}
     completion = _TrackedCompletion(
-        completed=[], failed=[], plain=[todo_id for todo_id in todo_ids if todo_id not in tracked]
+        completed=[],
+        failed=[],
+        plain=[todo_id for todo_id in todo_ids if todo_id not in tracked],
+        already_completed=frozenset(doc.id for doc in tracked_docs if doc.completed),
     )
     for todo_id in (todo_id for todo_id in todo_ids if todo_id in tracked):
         try:
@@ -395,6 +400,22 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
         else:
             completion.completed.append(todo_id)
     return completion
+
+
+def _capture_bulk_update(
+    user_id: str, update: TodoUpdate, succeeded: list[str], already_completed: frozenset[str]
+) -> None:
+    """Capture a bulk update for the todos it changed; a bulk that changed none captures nothing."""
+    written = sum(1 for todo_id in succeeded if todo_id not in already_completed)
+    if not written:
+        return
+    # As in the single update: a completion either way is a toggle, anything else an edit.
+    capture(
+        UserId(user_id),
+        TodosToggled(completed=update.completed, bulk_count=written)
+        if update.completed is not None
+        else TodosUpdated(bulk_count=written),
+    )
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -743,13 +764,7 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
             schedule_user_todos_sync(user_id)
-            # As in the single update: a completion either way is a toggle, anything else an edit.
-            capture(
-                UserId(user_id),
-                TodosToggled(completed=update.completed, bulk_count=len(succeeded))
-                if update.completed is not None
-                else TodosUpdated(bulk_count=len(succeeded)),
-            )
+            _capture_bulk_update(user_id, update, succeeded, completion.already_completed)
 
         return BulkOperationResponse(
             success=succeeded,

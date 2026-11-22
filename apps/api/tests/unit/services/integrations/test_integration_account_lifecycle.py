@@ -283,6 +283,7 @@ class TestRemoveAccount:
             UserId(USER_ID), IntegrationAccountRemoved(integration_id="gmail", account_count=2)
         )
 
+    @pytest.mark.regression
     async def test_a_revoke_that_raises_captures_nothing(self, seams: Seams) -> None:
         """Regression: the removal was captured before Composio revoked the account."""
         seams.get_record.return_value = _record(
@@ -296,6 +297,7 @@ class TestRemoveAccount:
         seams.save.assert_not_awaited()
         seams.capture.assert_not_called()
 
+    @pytest.mark.regression
     async def test_a_last_account_disconnect_that_raises_captures_nothing(
         self, seams: Seams
     ) -> None:
