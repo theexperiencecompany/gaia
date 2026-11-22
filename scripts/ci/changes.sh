@@ -67,7 +67,8 @@
 #
 # Diff accuracy note: the merge-base ("...") diff requires the base ref to be
 # present locally, so PR lanes that consume `files` must checkout with
-# `fetch-depth: 0`. The script fetches the base ref defensively as well.
+# `fetch-depth: 0` (blobless off the box: names and merge-bases need only
+# commits and trees). The script fetches the base ref defensively as well.
 #
 # `base` on a merge_group run — the event carries no PR number and no
 # base_ref. Its base is `merge_group.base_sha`: for the second PR in the queue
