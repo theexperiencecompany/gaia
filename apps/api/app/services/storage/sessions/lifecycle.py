@@ -16,6 +16,7 @@ from pathlib import Path
 import shutil
 
 from app.agents.workspace.skill_loader import library_hash
+from app.services.storage._vfs_common import remove_tree
 from app.services.storage.juicefs import _is_mounted, _mount_root, session_root
 from app.services.storage.metrics import FsOps, fs_timer
 from app.services.storage.sessions._paths import session_base, user_root
@@ -33,6 +34,28 @@ from app.services.storage.sessions.skills import (
     read_text_or_none,
     write_skills_marker,
 )
+
+#: The on-disk todo projections the tasks redesign retired: tasks reach the file tools
+#: from Mongo now (task_files), so a stale copy here would only mislead bash.
+RETIRED_TASK_PROJECTIONS = (
+    "gaia-tasks",
+    "todos",
+    ".gaia/gaia-tasks",
+    ".gaia/user-todos",
+    ".gaia/todos",
+)
+RETIRED_TASK_MARKERS = (".gaia/gaia-tasks.v", ".gaia/user-todos.v", ".gaia/todos.v")
+
+
+def _drop_retired_task_projections(user_id: str) -> None:
+    """Remove the retired todo projections from the user's workspace; idempotent."""
+    if not _is_mounted():
+        return
+    root = user_root(user_id)
+    for retired in RETIRED_TASK_PROJECTIONS:
+        remove_tree(root / retired)
+    for marker in RETIRED_TASK_MARKERS:
+        (root / marker).unlink(missing_ok=True)
 
 
 def _materialize_if_stale(
@@ -113,6 +136,7 @@ async def provision_user_workspace(user_id: str, connected_ids: set[str] | None 
 
     await link_system_files_into_workspace(user_id)
     await materialize_user_integrations(user_id, connected_ids or set())
+    await asyncio.to_thread(_drop_retired_task_projections, user_id)
 
     # Late-bound for the same reason (workspace_areas -> account_fs -> storage).
     from app.services.workspace_areas import all_areas  # noqa: PLC0415 -- deferred

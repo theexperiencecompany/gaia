@@ -32,12 +32,11 @@ from app.agents.workspace.system_docs import (
     ACCOUNT_SUBSCRIPTION_GUIDE_MD,
     ACCOUNT_USAGE_GUIDE_MD,
     ACCOUNT_VOICES_GUIDE_MD,
-    GAIA_TASKS_GUIDE_MD,
     INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
     MEMORY_GUIDE_MD,
     SESSIONS_GUIDE_MD,
-    USER_TODOS_GUIDE_MD,
+    TASKS_GUIDE_MD,
 )
 from app.constants.account import (
     ACCOUNT_DIR,
@@ -53,14 +52,13 @@ class SystemFile(NamedTuple):
     body: str
 
 
-# Static docs that anchor the workspace. Paths match what the skill catalog /
-# gaia-tasks + user-todos materializers write, so reads stay consistent.
+# Static docs that anchor the workspace. Paths match what the skill catalog
+# writes, so reads stay consistent.
 _STATIC_DOCS: list[tuple[str, str]] = [
     ("INDEX.md", INDEX_MD),
     ("sessions/GUIDE.md", SESSIONS_GUIDE_MD),
     ("integrations/GUIDE.md", INTEGRATIONS_GUIDE_MD),
-    ("gaia-tasks/GUIDE.md", GAIA_TASKS_GUIDE_MD),
-    ("todos/GUIDE.md", USER_TODOS_GUIDE_MD),
+    ("tasks/GUIDE.md", TASKS_GUIDE_MD),
     ("memory/GUIDE.md", MEMORY_GUIDE_MD),
     (f"{ACCOUNT_DIR}/GUIDE.md", ACCOUNT_GUIDE_MD),
     *(

@@ -41,7 +41,6 @@ from app.models.todo_models import (
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
 from app.services.conversation_service import delete_todo_conversations
-from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.hil.pending import pending_approvals_by_owner
 from app.services.todo_activity import record_activity
 from app.services.todos.errors import (
@@ -55,7 +54,6 @@ from app.services.todos.errors import (
 )
 from app.services.todos.external_ref_watch import release_watches, watch_external_ref
 from app.services.triggers.subscription_service import teardown_subscriptions
-from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.auth_utils import require_owner
 from app.utils.canvas_vector_utils import delete_canvas_embedding, set_canvas_completed
 from app.utils.errors import AppError
@@ -306,8 +304,6 @@ async def reopening_todos(
     for todo_id in reopened_tracked:
         await record_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
         await set_canvas_completed(todo_id, completed=False)
-    if reopened_tracked:
-        schedule_gaia_tasks_sync(user_id)
 
 
 async def _persist_update(
@@ -513,7 +509,6 @@ class TodoService:
         except Exception as e:
             log.warning("todo.index_failed", error=str(e))
 
-        schedule_user_todos_sync(user_id)
         capture(
             UserId(user_id),
             TodosCreated(
@@ -620,7 +615,6 @@ class TodoService:
         except Exception as e:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
-        schedule_user_todos_sync(user_id)
         if updates.completed is not None:
             # Toggle semantics: fires for both completing and un-completing,
             # tracked or plain.
@@ -682,7 +676,6 @@ class TodoService:
         except Exception as e:
             log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
 
-        schedule_user_todos_sync(user_id)
         capture(UserId(user_id), TodosDeleted(todo_id=todo_id))
 
     # Bulk Operations
@@ -740,7 +733,6 @@ class TodoService:
                 )
             except Exception as e:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
-            schedule_user_todos_sync(user_id)
 
         return BulkOperationResponse(
             success=succeeded,
@@ -776,7 +768,6 @@ class TodoService:
                     await delete_todo_embedding(todo.id)
                 except Exception as e:
                     log.warning("todo.index_remove_failed", todo_id=todo.id, error=str(e))
-            schedule_user_todos_sync(user_id)
             capture(UserId(user_id), TodosDeleted(count=deleted))
 
         # What was found is what was deleted: the delete is scoped to the same
@@ -798,8 +789,6 @@ class TodoService:
         modified = await todo_repository.bulk_update(
             user_id, request.todo_ids, TodoUpdate(project_id=request.project_id)
         )
-        if modified:
-            schedule_user_todos_sync(user_id)
 
         return BulkOperationResponse(
             success=request.todo_ids if modified > 0 else [],

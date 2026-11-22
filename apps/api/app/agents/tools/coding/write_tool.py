@@ -20,10 +20,9 @@ from app.agents.workspace.paths import WORKSPACE_ROOT, MountRole
 from app.constants.account import account_mutation_refusal
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
-from app.services import gaia_task_files
+from app.services import task_files
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, add_fs_bytes, fs_timer
-from app.services.storage.gaia_tasks_vfs import GAIA_TASKS_DIRNAME
 from app.templates.docstrings.coding_tools_docs import WRITE_TOOL
 from shared.py.wide_events import log
 
@@ -42,17 +41,17 @@ def _refuse_write(role: MountRole, rel: str) -> str | None:
 
 
 async def _write_task_file(
-    task_ref: gaia_task_files.GaiaTaskPath,
+    task_ref: task_files.TaskPath,
     user_id: str,
     content: str,
     abs_path: str,
     size: int,
     session_id: str | None,
 ) -> str:
-    refusal = await gaia_task_files.write_file(task_ref, user_id, content)
+    refusal = await task_files.write_file(task_ref, user_id, content)
     if refusal is not None:
         return refusal
-    log.set(write_via="todo_document")
+    log.set(write_via="task_document")
     safe_emit(
         {"file_data": {"operation": "write", "path": abs_path, "size_bytes": size}},
         session_id=session_id,
@@ -64,19 +63,19 @@ async def _maybe_write_task_file(
     rel: str, user_id: str, content: str, abs_path: str, size: int, session_id: str | None
 ) -> str | None:
     try:
-        task_ref = await gaia_task_files.resolve(rel, user_id)
+        task_ref = await task_files.resolve(rel, user_id)
         if task_ref is None:
-            if rel == GAIA_TASKS_DIRNAME or rel.startswith(GAIA_TASKS_DIRNAME + "/"):
-                return gaia_task_files.NOT_A_NOTES_FILE.format(rel=rel)
+            if rel == task_files.TASKS_DIRNAME or rel.startswith(task_files.TASKS_DIRNAME + "/"):
+                return task_files.NOT_A_NOTES_FILE.format(rel=rel)
             return None
         return await _write_task_file(task_ref, user_id, content, abs_path, size, session_id)
-    except gaia_task_files.GaiaTaskPathError as e:
+    except task_files.TaskPathError as e:
         return f"Error: {e}"
-    except gaia_task_files.NoteConflictError:
+    except task_files.NoteConflictError:
         return "Error: notes changed concurrently; read the file again and retry the write."
     except Exception as e:
         log.error("write task file failed", error_type=type(e).__name__, exc_info=True)
-        return f"Error writing todo notes: {e}"
+        return f"Error writing task notes: {e}"
 
 
 @tool
@@ -106,9 +105,8 @@ async def write(
     if len(encoded) > MAX_CONTENT_BYTES:
         return f"Error: content exceeds {MAX_CONTENT_BYTES} bytes"
 
-    # Tracked-todo notes files (canvas.md, activity.md, ...) are stored on the todo
-    # document; the on-disk copy is a read-only projection repainted by the
-    # sync, so the write goes to Mongo and never touches the sandbox.
+    # Task files (notes.md, observations.md, ...) live on the task, not on disk,
+    # so the write goes to Mongo and never touches the sandbox.
     if (
         handled := await _maybe_write_task_file(
             rel, user_id, content, abs_path, len(encoded), session_id

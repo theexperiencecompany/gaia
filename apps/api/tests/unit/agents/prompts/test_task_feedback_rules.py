@@ -19,7 +19,7 @@ def test_the_executor_prompt_and_the_manual_carry_the_one_rule() -> None:
     rule = task_prompts.TASK_FEEDBACK_RULES
 
     assert rule in task_prompts.TASK_SYSTEM_PROMPT
-    assert rule in operational_docs.TRACKED_TODOS_DOC
+    assert rule in operational_docs.TASKS_DOC
 
 
 @pytest.mark.regression

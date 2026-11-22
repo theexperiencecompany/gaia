@@ -234,7 +234,6 @@ apps/api/tests/unit/services/sandbox/test_execute_client.py	arg-type
 apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
-apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
 apps/api/tests/unit/services/test_device_manifest_cache.py	operator
@@ -266,16 +265,11 @@ apps/api/tests/unit/services/test_usage_activity_rollup.py	arg-type
 apps/api/tests/unit/services/test_usage_activity_rollup.py	attr-defined
 apps/api/tests/unit/services/test_usage_summary.py	attr-defined
 apps/api/tests/unit/services/test_user_instructions_service.py	misc
-apps/api/tests/unit/services/test_user_todos_fs.py	arg-type
 apps/api/tests/unit/services/test_voice_service.py	arg-type
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
-apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	attr-defined
-apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	typeddict-item
 apps/api/tests/unit/storage/test_sessions_lifecycle.py	attr-defined
 apps/api/tests/unit/storage/test_storage_bootstrap.py	attr-defined
 apps/api/tests/unit/storage/test_storage_bootstrap.py	func-returns-value
-apps/api/tests/unit/storage/test_user_todos_vfs.py	attr-defined
-apps/api/tests/unit/storage/test_user_todos_vfs.py	typeddict-item
 apps/api/tests/unit/storage/test_vfs_common.py	arg-type
 apps/api/tests/unit/storage/test_vfs_common.py	typeddict-item
 apps/api/tests/unit/storage/test_vfs_common.py	typeddict-unknown-key
@@ -284,7 +278,6 @@ apps/api/tests/unit/tools/coding/test_account_write_refusal.py	arg-type
 apps/api/tests/unit/tools/coding/test_bash_exit.py	attr-defined
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	index
-apps/api/tests/unit/tools/coding/test_read_fallback.py	arg-type
 apps/api/tests/unit/tools/test_context_tool.py	attr-defined
 apps/api/tests/unit/tools/test_discovery_tools.py	arg-type
 apps/api/tests/unit/tools/test_discovery_tools.py	syntax

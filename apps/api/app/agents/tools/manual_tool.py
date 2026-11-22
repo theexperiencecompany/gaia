@@ -28,7 +28,6 @@ async def read_manual(topic: ManualTopic) -> str:
       instructions ("remember this for Gmail").
     - ``tasks``: GAIA's own work and the user's to-dos: when to create one,
       search/update/schedule/complete, GAIA's notes, repeats.
-    - ``user-todos``: the user's own todo list and external task providers.
     - ``goals``: long-term goals and AI-generated roadmaps; tracking progress.
     - ``reminders``: one-off and recurring time-based nudges to the user; how a
       reminder differs from a workflow and a task.

@@ -32,7 +32,6 @@ from app.models.todo_models import (
 from app.services.canvas_markdown import (
     normalize_canvas,
 )
-from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_activity import (
     record_activity,
 )
@@ -104,7 +103,6 @@ class TrackedTodoService:
             await TrackedTodoService._wake_waiting_parent(doc.parent_todo_id, user_id)
 
         log.info("tracked_todo.completed", todo_id=todo_id, user_id=user_id, summary=summary)
-        schedule_gaia_tasks_sync(user_id)
         return True
 
     @staticmethod

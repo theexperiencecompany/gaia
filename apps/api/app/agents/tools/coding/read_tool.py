@@ -27,7 +27,7 @@ from app.agents.workspace.system_files import system_file_body
 from app.constants.log_tags import LogTag
 from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.decorators import with_doc, with_rate_limiting
-from app.services import gaia_task_files
+from app.services import task_files
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
 from app.services.storage.juicefs import (
@@ -71,7 +71,7 @@ class ReadPage:
 async def _read_special(
     target: ReadTarget, page: ReadPage, mime_type: str | None
 ) -> str | list[ContentBlock] | None:
-    """Serve image, in-memory system, and todo-document files.
+    """Serve image, in-memory system, and task files.
 
     Returns the tool result when handled, else None so the caller falls
     through to JuiceFS. The resolve error is a handled result (returned
@@ -92,22 +92,21 @@ async def _read_special(
     if body is not None and not await user_owns_regular_file(target.user_id, target.rel):
         log.set(read_via="memory")
         return _format_text_read(target.abs_path, body, page.offset, page.limit, target.session_id)
-    # Tracked-todo files live on the todo document, not on disk: serve them
-    # from Mongo so they read the same in native dev (no projection) and in
-    # the sandbox, and never pay a sandbox resume.
+    # Task files live on the task, not on disk: serve them from Mongo so they
+    # read the same in native dev and in the sandbox, and never pay a sandbox resume.
     try:
-        task_ref = await gaia_task_files.resolve(target.rel, target.user_id)
+        task_ref = await task_files.resolve(target.rel, target.user_id)
         if task_ref is not None:
-            log.set(read_via="todo_document")
-            body = await gaia_task_files.read_file(task_ref, target.user_id)
+            log.set(read_via="task_document")
+            body = await task_files.read_file(task_ref, target.user_id)
             return _format_text_read(
                 target.abs_path, body, page.offset, page.limit, target.session_id
             )
-    except gaia_task_files.GaiaTaskPathError as e:
+    except task_files.TaskPathError as e:
         return f"Error: {e}"
     except Exception as e:
         log.error("read task file failed", error_type=type(e).__name__, exc_info=True)
-        return f"Error reading todo notes: {e}"
+        return f"Error reading task notes: {e}"
     return None
 
 

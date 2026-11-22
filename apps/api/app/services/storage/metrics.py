@@ -209,9 +209,7 @@ class FsOps:
     # Per-session host writes.
     ENSURE_SESSION_DIRS: Final[str] = "ensure_session_dirs"
     MATERIALIZE_INTEGRATIONS: Final[str] = "materialize_integrations"
-    SYNC_GAIA_TASKS_VFS: Final[str] = "sync_gaia_tasks_vfs"
     SYNC_MEMORY_VFS: Final[str] = "sync_memory_vfs"
-    SYNC_USER_TODOS_VFS: Final[str] = "sync_user_todos_vfs"
     TOUCH_LAST_ACTIVE: Final[str] = "touch_last_active"
 
     # Read paths driving the HTTP `GET /sessions` endpoints + watcher fallback.

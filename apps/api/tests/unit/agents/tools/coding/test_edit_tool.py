@@ -41,9 +41,9 @@ from app.agents.tools.coding.edit_tool import (
 )
 from app.agents.workspace.paths import MountRole
 from app.models.payment_models import PlanType
-from app.services import gaia_task_files
-from app.services.gaia_task_files import RootFile
+from app.services import task_files
 from app.services.sandbox import SandboxAcquisitionError
+from app.services.task_files import IndexFile
 
 MODULE = "app.agents.tools.coding.edit_tool"
 
@@ -492,20 +492,18 @@ def test_validate_patch_allows_exactly_max_patch_bytes() -> None:
     assert _validate_patch(_patch("x", "y" * MAX_PATCH_BYTES)) is None
 
 
-# --- tracked-todo routing ---------------------------------------------------- #
+# --- task-file routing -------------------------------------------------------- #
 
-TASK_REL = "gaia-tasks/fix-the-thing-10e407/canvas.md"
+TASK_REL = "tasks/fix-the-thing-task_10e40712ab34/notes.md"
 TASK_ABS = f"/workspace/{TASK_REL}"
 
 
 async def test_maybe_edit_task_file_resolves_and_forwards_exact_args() -> None:
     target = _target(TASK_ABS)
-    task_ref = RootFile(name="index.md")
+    task_ref = IndexFile()
     patch_obj = _patch("a", "b")
     with (
-        patch(
-            f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=task_ref)
-        ) as mock_resolve,
+        patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=task_ref)) as mock_resolve,
         patch(f"{MODULE}._edit_task_file", AsyncMock(return_value="ok")) as mock_edit,
     ):
         out = await _maybe_edit_task_file(TASK_REL, target, patch_obj)
@@ -516,13 +514,13 @@ async def test_maybe_edit_task_file_resolves_and_forwards_exact_args() -> None:
 
 
 async def test_maybe_edit_task_file_refuses_unknown_task_path_exactly() -> None:
-    rel = "gaia-tasks/random.txt"
-    with patch(f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=None)):
+    rel = "tasks/random.txt"
+    with patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=None)):
         out = await _maybe_edit_task_file(rel, _target(), _patch("a", "b"))
 
     assert out == (
-        f"Error: {rel} is not an editable notes file. Only canvas.md, activity.md, "
-        "observations.md under /workspace/gaia-tasks/<todo>/ can be edited."
+        f"Error: {rel} is not an editable notes file. Only notes.md, observations.md "
+        "under /workspace/tasks/<task>/ of a GAIA task can be edited."
     )
 
 
@@ -531,27 +529,27 @@ async def test_maybe_edit_task_file_retries_conflict_then_reports_gone() -> None
     patch_obj = _patch("a", "b")
     with (
         patch(
-            f"{MODULE}.gaia_task_files.resolve",
+            f"{MODULE}.task_files.resolve",
             AsyncMock(side_effect=[object(), None]),
         ) as mock_resolve,
         patch(
             f"{MODULE}._edit_task_file",
-            AsyncMock(side_effect=gaia_task_files.NoteConflictError),
+            AsyncMock(side_effect=task_files.NoteConflictError),
         ),
     ):
         out = await _maybe_edit_task_file(TASK_REL, target, patch_obj)
 
-    assert out == "Error: tracked todo no longer exists."
+    assert out == "Error: the task no longer exists."
     assert mock_resolve.await_count == 2
     mock_resolve.assert_awaited_with(TASK_REL, USER_ID)
 
 
 async def test_maybe_edit_task_file_gives_up_after_repeated_conflicts() -> None:
     with (
-        patch(f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=object())),
+        patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=object())),
         patch(
             f"{MODULE}._edit_task_file",
-            AsyncMock(side_effect=gaia_task_files.NoteConflictError),
+            AsyncMock(side_effect=task_files.NoteConflictError),
         ),
     ):
         out = await _maybe_edit_task_file(TASK_REL, _target(TASK_ABS), _patch("a", "b"))
@@ -562,29 +560,29 @@ async def test_maybe_edit_task_file_gives_up_after_repeated_conflicts() -> None:
 async def test_maybe_edit_task_file_logs_unexpected_failure_exactly() -> None:
     with (
         patch(
-            f"{MODULE}.gaia_task_files.resolve",
+            f"{MODULE}.task_files.resolve",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ),
         patch(f"{MODULE}.log") as mock_log,
     ):
         out = await _maybe_edit_task_file(TASK_REL, _target(TASK_ABS), _patch("a", "b"))
 
-    assert out == "Error editing todo notes: mongo down"
+    assert out == "Error editing task notes: mongo down"
     mock_log.error.assert_called_once_with(
         "edit task file failed", error_type="RuntimeError", exc_info=True
     )
 
 
 async def test_edit_task_file_forwards_exact_args_and_emits() -> None:
-    task_ref = RootFile(name="index.md")
+    task_ref = IndexFile()
     target = _target(TASK_ABS)
     patch_obj = _patch("old", "new")
     with (
-        patch(f"{MODULE}.gaia_task_files.write_refusal", return_value=None),
+        patch(f"{MODULE}.task_files.write_refusal", return_value=None),
         patch(
-            f"{MODULE}.gaia_task_files.read_file", AsyncMock(return_value="hello old world")
+            f"{MODULE}.task_files.read_file", AsyncMock(return_value="hello old world")
         ) as mock_read,
-        patch(f"{MODULE}.gaia_task_files.write_file", AsyncMock(return_value=None)) as mock_write,
+        patch(f"{MODULE}.task_files.write_file", AsyncMock(return_value=None)) as mock_write,
         patch(f"{MODULE}._emit_edit", return_value="edited") as mock_emit,
         patch(f"{MODULE}.log") as mock_log,
     ):
@@ -593,7 +591,7 @@ async def test_edit_task_file_forwards_exact_args_and_emits() -> None:
     assert out == "edited"
     mock_read.assert_awaited_once_with(task_ref, USER_ID)
     mock_write.assert_awaited_once_with(task_ref, USER_ID, "hello new world")
-    mock_log.set.assert_called_once_with(write_via="todo_document")
+    mock_log.set.assert_called_once_with(write_via="task_document")
     mock_emit.assert_called_once_with(
         target.abs_path, len(b"hello new world"), 1, target.session_id
     )

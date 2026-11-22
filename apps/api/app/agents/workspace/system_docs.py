@@ -18,8 +18,7 @@ from app.agents.workspace.operational_docs import (
     INTEGRATIONS_DOC,
     MEMORY_DOC,
     SESSIONS_ARTIFACTS_DOC,
-    TRACKED_TODOS_DOC,
-    USER_TODOS_DOC,
+    TASKS_DOC,
 )
 from app.agents.workspace.skill_loader import skills_by_subagent
 
@@ -34,10 +33,9 @@ here survives across conversations for this user.
     integrations/     connected integrations: subagents, prompts, skills
                       (present only when the user has connected one)
     skills/           reusable agent skills (when present)
-    todos/            the USER's own todo list (the things in their UI).
-                      One folder per active user todo. (see todos/GUIDE.md)
-    gaia-tasks/       YOUR (the agent's) work threads: institutional memory
-                      of initiatives you've worked on. (see gaia-tasks/GUIDE.md)
+    tasks/            every task: YOUR work (with your notes) and the USER's
+                      own to-dos, served to read/write/edit from the tasks
+                      themselves, so bash does not see them. (see tasks/GUIDE.md)
     memory/           your long-term memory about the user: core documents,
                       daily journal, facts by topic. Read-only projection;
                       mutate via the memory tools. (see memory/GUIDE.md)
@@ -65,8 +63,7 @@ need to surface back to them.
 # the on-disk GUIDE.md projection stays a single-source view (no duplication).
 SESSIONS_GUIDE_MD = SESSIONS_ARTIFACTS_DOC
 INTEGRATIONS_GUIDE_MD = INTEGRATIONS_DOC
-GAIA_TASKS_GUIDE_MD = TRACKED_TODOS_DOC
-USER_TODOS_GUIDE_MD = USER_TODOS_DOC
+TASKS_GUIDE_MD = TASKS_DOC
 MEMORY_GUIDE_MD = MEMORY_DOC
 
 ACCOUNT_GUIDE_MD = """# account/: the user's account state
@@ -203,11 +200,10 @@ __all__ = [
     "ACCOUNT_SUBSCRIPTION_GUIDE_MD",
     "ACCOUNT_USAGE_GUIDE_MD",
     "ACCOUNT_VOICES_GUIDE_MD",
-    "GAIA_TASKS_GUIDE_MD",
+    "TASKS_GUIDE_MD",
     "INDEX_MD",
     "INTEGRATIONS_GUIDE_MD",
     "MEMORY_GUIDE_MD",
     "SESSIONS_GUIDE_MD",
-    "USER_TODOS_GUIDE_MD",
     "integration_skills_block",
 ]

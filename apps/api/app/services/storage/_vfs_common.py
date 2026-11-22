@@ -1,23 +1,16 @@
 """Shared building blocks for VFS materializers under /workspace/.
 
-The two materializers (gaia_tasks_vfs, user_todos_vfs) project MongoDB state
-into JuiceFS as a hash-gated tree of folders, differing only in the per-doc
-body fields, the active-set Mongo filter, the on-disk path constants, and the
-GUIDE.md/index.md prose.
-
-Everything else — slug/shortid naming, marker read/write, the shutil.rmtree
-chmod-and-retry hook, meta-JSON encoding, the "only rewrite if changed" guard
-— is identical and lives here. Keep this module dependency-free (no app
-imports) so it stays cheap to load and safe to reference from anywhere in
-app.services.storage.
+The projected areas (memory, account, integrations) write MongoDB state into
+JuiceFS as hash-gated files; the slug naming, marker read/write, the
+shutil.rmtree chmod-and-retry hook and the "only rewrite if changed" guard live
+here. Keep this module dependency-free (no app imports) so it stays cheap to
+load and safe to reference from anywhere in app.services.storage.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
 import hashlib
-import json
 from pathlib import Path
 import re
 import shutil
@@ -28,7 +21,6 @@ if TYPE_CHECKING:
 
 # --- Filenames every materializer agrees on ---------------------------------
 
-META_FILENAME = "meta.json"
 INDEX_FILENAME = "index.md"
 GUIDE_FILENAME = "GUIDE.md"
 
@@ -38,16 +30,11 @@ GUIDE_FILENAME = "GUIDE.md"
 
 READONLY_MODE = 0o444
 RW_MODE = 0o644
-# A projected task folder is read-only too: `sed -i` and rename-based writers
-# never open the 0444 body, they create a sibling and rename over it, which
-# needs write permission on the directory, not the file.
-READONLY_DIR_MODE = 0o555
 RW_DIR_MODE = 0o755
 
-# --- Slug / shortid policy --------------------------------------------------
+# --- Slug policy ----------------------------------------------------------
 
 SLUG_MAX_LEN = 40
-SHORTID_LEN = 8
 _SLUG_INVALID_RE = re.compile(r"[^a-z0-9]+")
 _UNTITLED = "untitled"
 
@@ -56,21 +43,6 @@ class VfsProjection(TypedDict):
     """What every VFS area's projection carries: the stable id its signature is keyed by."""
 
     id: str
-
-
-class TodoProjectionMeta(TypedDict):
-    """The meta.json fields every todo projection carries, as its Mongo glue builds them from a TodoDocument."""
-
-    title: str
-    completed: bool
-    completed_at: datetime | None
-    priority: str
-    due_date: datetime | None
-    due_date_timezone: str | None
-    labels: list[str]
-    project_id: str | None
-    created_at: datetime | None
-    updated_at: datetime | None
 
 
 # ====================================================================
@@ -88,44 +60,9 @@ def slugify(title: str | None) -> str:
     return cleaned[:SLUG_MAX_LEN].rstrip("-") or _UNTITLED
 
 
-def short_id(doc_id: str) -> str:
-    """Last 8 hex chars of the ObjectId — the tail, not the timestamp head.
-
-    An ObjectId opens with a 4-byte timestamp, so the head is identical for
-    every doc minted in the same second and two same-second docs with alike
-    titles collapsed into one folder.
-    """
-    return doc_id[-SHORTID_LEN:]
-
-
-def folder_name(doc_id: str, title: str | None) -> str:
-    """Human-readable <slug>-<shortid> folder name."""
-    return f"{slugify(title)}-{short_id(doc_id)}"
-
-
 # ====================================================================
 # hashing
 # ====================================================================
-
-
-def hash_meta_only(meta: TodoProjectionMeta) -> str:
-    """sha256 of the canonical JSON encoding of meta."""
-    payload = json.dumps(meta, sort_keys=True, default=str).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
-def hash_body_with_meta(*bodies: str, meta: TodoProjectionMeta) -> str:
-    """sha256 of each body then meta, NUL-separated.
-
-    Used by materializers that project a body bigger than just the
-    metadata (currently only gaia_tasks_vfs).
-    """
-    h = hashlib.sha256()
-    for body in bodies:
-        h.update(body.encode("utf-8"))  # pragma: no mutate — codec names are case-insensitive
-        h.update(b"\x00")
-    h.update(json.dumps(meta, sort_keys=True, default=str).encode("utf-8"))
-    return h.hexdigest()
 
 
 def catalog_signature(per_doc: dict[str, str]) -> str:
@@ -153,20 +90,6 @@ def write_marker(path: Path, value: str) -> None:
     """Stamp the marker. Creates parent dirs as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(value, encoding="utf-8")
-
-
-def per_doc_marker_path(per_doc_dir: Path, doc_id: str) -> Path:
-    """Conventional path for a per-doc marker file inside per_doc_dir."""
-    return per_doc_dir / f"{doc_id}.v"
-
-
-def prune_per_doc_markers(per_doc_dir: Path, active_ids: set[str]) -> None:
-    """Remove per-doc markers whose id is no longer in active_ids."""
-    if not per_doc_dir.is_dir():
-        return
-    for marker in per_doc_dir.iterdir():
-        if marker.is_file() and marker.suffix == ".v" and marker.stem not in active_ids:
-            marker.unlink(missing_ok=True)
 
 
 # ====================================================================
@@ -235,29 +158,3 @@ def write_rw_if_changed(target: Path, content: str) -> bool:
     target.write_text(content, encoding="utf-8")
     target.chmod(RW_MODE)
     return True
-
-
-def write_rw_body(target: Path, content: str) -> None:
-    """Unconditionally write to target and chmod 0644.
-
-    Used for index.md, which is small and cheaper to rewrite than to
-    hash-compare on every sync.
-    """
-    target.write_text(content, encoding="utf-8")
-    target.chmod(RW_MODE)
-
-
-def meta_body(meta: TodoProjectionMeta) -> str:
-    """Serialize meta to canonical JSON for on-disk storage."""
-    return json.dumps(meta, sort_keys=True, default=str, indent=2) + "\n"
-
-
-# ====================================================================
-# index rendering
-# ====================================================================
-
-
-def updated_at_key(meta: TodoProjectionMeta) -> str:
-    """Sort key for index.md — updated_at, then created_at, then ""."""
-    v = meta.get("updated_at") or meta.get("created_at") or ""
-    return v.isoformat() if isinstance(v, datetime) else str(v)

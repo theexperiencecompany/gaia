@@ -30,7 +30,6 @@ def _offline_seams() -> Iterator[None]:
         patch.object(TriggerService, "register_triggers", AsyncMock(return_value=[])),
         patch("app.services.triggers.subscription_service.capture"),
         patch("app.services.todo_canvas_storage.update_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.todo_canvas_storage.schedule_gaia_tasks_sync"),
     ):
         yield
 

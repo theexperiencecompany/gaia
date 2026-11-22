@@ -1,8 +1,8 @@
 """Integration → workspace VFS sync glue.
 
 Re-materializes a user's SKILL.md / instructions catalog when their connected
-integration set changes (connect or disconnect). Mirrors the gaia-tasks and
-user-todos glue modules: a fire-and-forget, hash-gated scheduler keyed on
+integration set changes (connect or disconnect). Mirrors the memory and
+account glue modules: a fire-and-forget, hash-gated scheduler keyed on
 user_id (see :func:app.services._vfs_scheduler.make_scheduler).
 
 Wired into the integration status chokepoints (update_user_integration_status

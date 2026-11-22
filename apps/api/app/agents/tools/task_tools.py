@@ -2,7 +2,7 @@
 
 A GAIA task runs from its body and notes on its next check, its repeat or the app events
 it subscribes to; a to-do (assignee user) is never run, only nudged when it falls due.
-The notes are files under /workspace/gaia-tasks/ the agent edits with the file tools.
+The notes are also notes.md under /workspace/tasks/, which the file tools edit.
 """
 
 from datetime import UTC, datetime
@@ -425,7 +425,7 @@ async def create_task(
     ] = None,
     notes: Annotated[
         str | None,
-        "GAIA tasks: its starting notes (canvas.md) in the notes' '## ' sections, like "
+        "GAIA tasks: its starting notes (notes.md) in the notes' '## ' sections, like "
         "'## Key Details' and '## Current State'; sections left out start empty. Omit for the "
         "empty template.",
     ] = None,
@@ -523,7 +523,7 @@ async def update_task(
     body: Annotated[str | None, "New details"] = None,
     priority: Annotated[Priority | None, _PRIORITY_DESC] = None,
     notes: Annotated[
-        str | None, "GAIA tasks: the whole new working notes (canvas.md), as get_task shows them"
+        str | None, "GAIA tasks: the whole new working notes (notes.md), as get_task shows them"
     ] = None,
     observations: Annotated[
         str | None,

@@ -648,3 +648,25 @@ async def test_provisioning_schedules_a_sync_for_every_workspace_area(
     await lc.provision_user_workspace(USER)
 
     assert scheduled == [USER]
+
+
+# ── the retired todo projections ─────────────────────────────────────
+
+
+def test_the_retired_todo_projections_are_removed_and_the_rest_of_the_workspace_kept(
+    mount: Path,
+) -> None:
+    root = mount / "users" / USER
+    for folder in ("gaia-tasks/fix-it-1234abcd", "todos/milk-5678abcd", ".gaia/gaia-tasks"):
+        (root / folder).mkdir(parents=True)
+    (root / "gaia-tasks/fix-it-1234abcd/canvas.md").write_text("old notes")
+    (root / "gaia-tasks/fix-it-1234abcd/canvas.md").chmod(0o444)
+    (root / ".gaia/gaia-tasks.v").write_text("sig")
+    (root / ".gaia/memory.v").write_text("sig")
+    session = make_session(mount, "conv-1")
+
+    lc._drop_retired_task_projections(USER)
+
+    assert not (root / "gaia-tasks").exists() and not (root / "todos").exists()
+    assert not (root / ".gaia/gaia-tasks").exists() and not (root / ".gaia/gaia-tasks.v").exists()
+    assert (root / ".gaia/memory.v").exists() and session.exists()

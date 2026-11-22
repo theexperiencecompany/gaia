@@ -1,4 +1,4 @@
-"""GAIA's notes on a task (canvas.md): the template a task starts from and what it is seeded with."""
+"""GAIA's notes on a task (notes.md): the template a task starts from and what it is seeded with."""
 
 from collections.abc import Sequence
 

@@ -17,7 +17,6 @@ from datetime import datetime
 
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument, TodoUpdate
-from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding, update_canvas_embedding
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -70,7 +69,6 @@ async def write_canvas(
         expected_updated_at=expected_updated_at,
     )
     if updated is not None:
-        schedule_gaia_tasks_sync(user_id)
         _schedule_reindex(updated)
         return True
     return False
@@ -87,8 +85,6 @@ async def repair_notes(
     repaired = await todo_repository.replace_note_fields(
         todo_id, user_id, update=notes, expected_updated_at=expected_updated_at, touch=False
     )
-    if repaired is not None:
-        schedule_gaia_tasks_sync(user_id)
     return repaired
 
 
@@ -104,7 +100,6 @@ async def write_observations(
     )
     if updated is None:
         return False
-    schedule_gaia_tasks_sync(user_id)
     return True
 
 
@@ -119,7 +114,6 @@ async def write_activity(
         expected_updated_at=expected_updated_at,
     )
     if updated is not None:
-        schedule_gaia_tasks_sync(user_id)
         _schedule_reindex(updated)
         return True
     return False
@@ -139,7 +133,6 @@ async def append_activity(
     if updated is None:
         log.warning("todo_canvas.activity_append_missing_todo", todo_id=todo_id)
         return False
-    schedule_gaia_tasks_sync(user_id)
     _schedule_reindex(updated)
     return True
 
@@ -153,5 +146,4 @@ async def append_log(todo_id: str, user_id: str, content: str) -> bool:
     if updated is None:
         log.warning("todo_canvas.log_append_missing_todo", todo_id=todo_id)
         return False
-    schedule_gaia_tasks_sync(user_id)
     return True

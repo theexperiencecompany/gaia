@@ -53,6 +53,7 @@ from app.models.todo_models import ExternalRefSource
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.integrations.integration_accounts import get_account_record
+from app.services.task_files import TaskFileName, file_path
 from app.services.tasks.open_state import no_reply_plan_words, wake_reason
 from app.services.todo_observations import bounded_observations
 from app.services.triggers.event_prompt import event_opening
@@ -269,17 +270,22 @@ def _brief(task: TaskDocument, context: RunContext, opening: list[str], closing:
     if ref_guidance := _ref_guidance(task, context):
         parts.append(ref_guidance)
     if task.notes:
-        parts.append(f"Notes (canvas.md):\n{bounded_canvas(task.notes)}")
+        notes = file_path(task.id, TaskFileName.NOTES)
+        parts.append(f"Notes ({notes}):\n{bounded_canvas(task.notes)}")
     if task.observations:
-        parts.append(f"Observations (observations.md):\n{bounded_observations(task.observations)}")
+        observations = file_path(task.id, TaskFileName.OBSERVATIONS)
+        parts.append(f"Observations ({observations}):\n{bounded_observations(task.observations)}")
     parts.extend(
         part for part in (context.parent_rules, context.parent_next_run, context.subtasks) if part
     )
     if task.log:
         tail = task.log[-ACTIVITY_PROMPT_TAIL_CHARS:]
-        label = "Recent activity (activity.md)"
+        label = "Recent log"
         if len(task.log) > len(tail):
-            label += " (older entries omitted; read activity.md for the full log)"
+            label += (
+                f" (older entries omitted; read {file_path(task.id, TaskFileName.LOG)} "
+                "for the full log)"
+            )
         parts.append(f"{label}:\n{tail}")
     parts.extend(part for part in (context.recent_runs, context.learnings) if part)
     parts.append(closing)

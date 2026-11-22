@@ -1,6 +1,6 @@
 """Shared orchestration for VFS sync glue modules.
 
-The glue modules (gaia_tasks_fs, user_todos_fs, memory_fs) share two patterns:
+The glue modules (memory_fs, account_fs, integrations_fs) share two patterns:
 
 * Hash-gated sync: bail on missing mount, fetch docs from Mongo, hash them,
   compare to the on-disk marker, materialize in a thread only on mismatch,
@@ -45,7 +45,7 @@ class HashedSyncSpec(Generic[ProjectionT]):
 
     One value groups the fetch/hash/materialize callbacks with the area's
     fs-op, guide doc, marker path, and log name — the pieces every VFS area
-    (gaia-tasks, user todos, memory) provides together. Grouping them keeps
+    (memory, account) provides together. Grouping them keeps
     the sync entry point to (user_id, spec) instead of an 8-argument
     call that grows with every new area concern.
     """

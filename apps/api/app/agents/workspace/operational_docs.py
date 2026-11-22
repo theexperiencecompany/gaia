@@ -109,7 +109,7 @@ Typical flow:
 """
 
 
-TRACKED_TODOS_DOC: Final[str] = "".join(
+TASKS_DOC: Final[str] = "".join(
     (
         """# Tasks: GAIA's own work and the user's to-dos
 
@@ -229,6 +229,34 @@ task reaches the user only if the run deliberately calls `send_notification`.
         TASK_FEEDBACK_RULES,
         """
 
+## The user's own list
+
+"What are my todos / add to my todo list / show my tasks" means this list: the
+to-dos (assignee `user`), never GAIA's tasks and never a connected task
+provider. A to-do here is GAIA's own and lives nowhere else, so never report it
+as Todoist, Google Tasks or Notion. Only an explicit "add it to my <provider>"
+goes to that provider's integration (activate it first).
+
+## Files: /workspace/tasks/
+
+The read, write and edit tools also reach every task as files. They are served
+from the tasks themselves, so they are always current; nothing is on disk, so
+bash and ls do not see them.
+
+    tasks/
+        index.md                      GAIA's tasks (open, and done in the last
+                                      30 days), then the user's to-dos (open,
+                                      and done in the last 7 days)
+        <slug>-<task id>/meta.json    the task's fields (read-only)
+        <slug>-<task id>/notes.md     GAIA's notes (GAIA tasks; writable)
+        <slug>-<task id>/observations.md   (GAIA tasks; writable)
+        <slug>-<task id>/log.md       GAIA's log of the task (read-only)
+
+The folder is also reachable by the bare task id (`tasks/<task id>/notes.md`).
+Writing notes.md is the same as `update_task notes=...`: one section each, the
+whole notes at once; an edit applies a patch to them. A to-do's folder holds
+only meta.json, and GAIA changes a to-do with the task tools, never its file.
+
 ## Anti-patterns
 
 - Not creating one when GAIA touched an external system and something is still open.
@@ -240,36 +268,6 @@ task reaches the user only if the run deliberately calls `send_notification`.
 """,
     )
 )
-
-
-USER_TODOS_DOC: Final[str] = """# Todos: the USER's own todo list
-
-The user's own action items (the ones they see in their UI) project to:
-
-    todos/
-        index.md                      one-line summary, freshest first
-        <slug>-<shortid>/meta.json    title, due, priority, labels, project,
-                                      subtasks, completion
-
-`ls todos/` shows the user's plate at a glance. "Active" = NOT a
-`gaia-tracked` doc AND open or completed within the last 7 days.
-
-- `ls todos/`: what's on the user's plate now.
-- `cat todos/index.md`: one-line summary per todo.
-- `cat todos/<slug>-<shortid>/meta.json`: title, due, priority, labels,
-  project_id, subtasks.
-
-These are read-only projections of MongoDB. The user normally mutates todos via
-the UI; you can mutate them through the task tools when explicitly asked
-("mark my dentist todo done"); the projection re-syncs after the tool commits.
-
-This is NOT GAIA's own tasks (work GAIA owns, with its notes); see the `tasks` doc.
-When the user asks "what are my todos / add to my todo list / show my tasks",
-they mean this list, never GAIA's tasks and never a connected task provider:
-a todo here is GAIA's own and lives nowhere else, so never report it as Todoist,
-Google Tasks, or Notion. Only an explicit "add it to my <provider>" goes to that
-provider's integration (activate it first).
-"""
 
 
 SESSIONS_ARTIFACTS_DOC: Final[str] = """# Sessions & artifacts: working inside a conversation
@@ -819,8 +817,8 @@ docs come to you (injected) or via the `read_manual` tool.
   contacts, preferences. Recall across conversations. NOT a todo list.
 - **GAIA tasks** (the task tools): YOUR record of multi-conversation
   initiatives; one task with its notes per initiative.
-- **User todos** (`/workspace/todos/` + external providers): the user's OWN
-  action items, the ones in their UI.
+- **The user's to-dos** (tasks with assignee `user`, not a connected provider):
+  the user's OWN action items, the ones in their UI.
 
 ## Your workspace map (`/workspace`, persists across conversations)
 
@@ -828,8 +826,8 @@ docs come to you (injected) or via the `read_manual` tool.
                           artifacts). Final user-facing output → artifacts/.
     integrations/         connected services: tools, instructions, skills.
     skills/               reusable how-to docs.
-    gaia-tasks/           your tracked-todo working memory.
-    todos/                the user's own todo list.
+    tasks/                every task, GAIA's and the user's, as files for the
+                          read/write/edit tools; GAIA's notes are writable.
     account/              the user's account: settings + subscription/usage
                           views. Read-only; change things via the account tools.
     pinned/               cross-session files the user pinned.
@@ -874,7 +872,7 @@ Persist a preference only when it is DURABLE, not a one-off for this turn.
 
 ## Read more (your topic docs)
 
-Before acting on a self-management task (integrations, tasks, user-todos,
+Before acting on a self-management task (integrations, tasks,
 sessions/artifacts, notifications, workflows, memory, billing), read that topic's doc with
 `read_manual("<name>")` (no sandbox needed) unless its content is already in your
 context. It is cheap and keeps you from guessing how your own machinery works.
@@ -886,7 +884,6 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   integration standing instructions; the activation model.
 - `tasks`: GAIA's own work and the user's to-dos: when to create one,
   search / update / schedule / complete, GAIA's notes, repeats.
-- `user-todos`: the user's own todo list and external task providers.
 - `goals`: long-term goals and AI-generated roadmaps; tracking progress
   (tasks).
 - `reminders`: one-off and recurring time-based nudges to the user; how a
@@ -908,7 +905,7 @@ context. It is cheap and keeps you from guessing how your own machinery works.
 
 ## Operating rules
 
-- Projections (gaia-tasks, todos, integration instructions) are read-only, so
+- Projections (account, integration instructions) are read-only, so
   mutate via the tool, not by editing the file; direct edits won't stick.
 - Final user-facing outputs go in the current session's `artifacts/`.
 - Never claim you did something you did not actually do with a tool.
@@ -1050,13 +1047,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
                 "When to create a task (GAIA's or the user's), and how to search, update, "
                 "schedule, and complete one; GAIA's notes; repeats."
             ),
-            body=TRACKED_TODOS_DOC,
-        ),
-        ManualDoc(
-            name="user-todos",
-            title="Todos: the user's own todo list",
-            description="The user's own todo list and external task providers.",
-            body=USER_TODOS_DOC,
+            body=TASKS_DOC,
         ),
         ManualDoc(
             name="goals",
@@ -1160,7 +1151,6 @@ ManualTopic = Literal[
     "account",
     "integrations",
     "tasks",
-    "user-todos",
     "goals",
     "reminders",
     "sessions-and-artifacts",
@@ -1223,8 +1213,7 @@ __all__ = [
     "REMINDERS_DOC",
     "SESSIONS_ARTIFACTS_DOC",
     "SKILLS_DOC",
-    "TRACKED_TODOS_DOC",
-    "USER_TODOS_DOC",
+    "TASKS_DOC",
     "WORKFLOWS_DOC",
     "ManualDoc",
     "ManualTopic",

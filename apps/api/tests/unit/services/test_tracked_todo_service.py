@@ -99,7 +99,6 @@ def mock_repo():
 def mock_deps():
     with (
         patch(f"{_MOD}.set_canvas_completed", new_callable=AsyncMock) as m_mark,
-        patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=MagicMock) as m_sync,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as m_pool,
         # create=True: append_activity is imported into the service only on
         # this branch. The regression lane runs these tests against base,
@@ -111,7 +110,6 @@ def mock_deps():
     ):
         yield SimpleNamespace(
             mark=m_mark,
-            sync=m_sync,
             pool=m_pool,
             append_activity=m_append_activity,
             append_log=m_append_log,
@@ -411,7 +409,6 @@ class TestCompleteTrackedTodo:
         assert update.completed_at is not None
         assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
         mock_deps.mark.assert_awaited_once_with(TODO_ID, completed=True)
-        mock_deps.sync.assert_called_once_with(USER_ID)
 
     async def test_completion_stops_the_todo_watching(self, mock_repo, mock_deps):
         # Teardown lives inside completion rather than at its callers (tool, sweep,

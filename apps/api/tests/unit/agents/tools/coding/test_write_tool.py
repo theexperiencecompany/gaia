@@ -33,10 +33,10 @@ from app.agents.tools.coding.write_tool import (
 from app.agents.workspace.paths import MountRole
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
-from app.services import gaia_task_files
-from app.services.gaia_task_files import RootFile
+from app.services import task_files
 from app.services.sandbox import SandboxAcquisitionError
 from app.services.storage import FsOps
+from app.services.task_files import IndexFile
 
 MODULE = "app.agents.tools.coding.write_tool"
 
@@ -236,16 +236,16 @@ async def test_artifact_publish_failure_propagates() -> None:
             await write.ainvoke({"path": "scratch/x.py", "content": "x"}, config=CONFIG)
 
 
-# --- tracked-todo routing ---------------------------------------------------- #
+# --- task-file routing -------------------------------------------------------- #
 
-TASK_REL = "gaia-tasks/fix-the-thing-10e407/canvas.md"
+TASK_REL = "tasks/fix-the-thing-task_10e40712ab34/notes.md"
 TASK_ABS = f"/workspace/{TASK_REL}"
 
 
 async def test_write_task_file_emits_and_reports_exact_payloads() -> None:
-    task_ref = RootFile(name="index.md")
+    task_ref = IndexFile()
     with (
-        patch(f"{MODULE}.gaia_task_files.write_file", AsyncMock(return_value=None)) as mock_write,
+        patch(f"{MODULE}.task_files.write_file", AsyncMock(return_value=None)) as mock_write,
         patch(f"{MODULE}.safe_emit") as mock_emit,
         patch(f"{MODULE}.log") as mock_log,
     ):
@@ -253,7 +253,7 @@ async def test_write_task_file_emits_and_reports_exact_payloads() -> None:
 
     assert out == f"Wrote 5 bytes to {TASK_ABS}"
     mock_write.assert_awaited_once_with(task_ref, USER_ID, "hello")
-    mock_log.set.assert_called_once_with(write_via="todo_document")
+    mock_log.set.assert_called_once_with(write_via="task_document")
     mock_emit.assert_called_once_with(
         {"file_data": {"operation": "write", "path": TASK_ABS, "size_bytes": 5}},
         session_id=SESSION_ID,
@@ -261,11 +261,9 @@ async def test_write_task_file_emits_and_reports_exact_payloads() -> None:
 
 
 async def test_maybe_write_task_file_resolves_and_forwards_exact_args() -> None:
-    task_ref = RootFile(name="index.md")
+    task_ref = IndexFile()
     with (
-        patch(
-            f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=task_ref)
-        ) as mock_resolve,
+        patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=task_ref)) as mock_resolve,
         patch(f"{MODULE}._write_task_file", AsyncMock(return_value="ok")) as mock_task_write,
     ):
         out = await _maybe_write_task_file(TASK_REL, USER_ID, "body", TASK_ABS, 7, SESSION_ID)
@@ -276,22 +274,20 @@ async def test_maybe_write_task_file_resolves_and_forwards_exact_args() -> None:
 
 
 async def test_maybe_write_task_file_refuses_unknown_task_path_exactly() -> None:
-    rel = "gaia-tasks/random.txt"
-    with patch(f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=None)):
+    rel = "tasks/random.txt"
+    with patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=None)):
         out = await _maybe_write_task_file(rel, USER_ID, "x", f"/workspace/{rel}", 1, None)
 
     assert out == (
-        f"Error: {rel} is not an editable notes file. Only canvas.md, activity.md, "
-        "observations.md under /workspace/gaia-tasks/<todo>/ can be edited."
+        f"Error: {rel} is not an editable notes file. Only notes.md, observations.md "
+        "under /workspace/tasks/<task>/ of a GAIA task can be edited."
     )
 
 
 async def test_maybe_write_task_file_reports_lost_revision_exactly() -> None:
     with (
-        patch(f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=object())),
-        patch(
-            f"{MODULE}._write_task_file", AsyncMock(side_effect=gaia_task_files.NoteConflictError)
-        ),
+        patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=object())),
+        patch(f"{MODULE}._write_task_file", AsyncMock(side_effect=task_files.NoteConflictError)),
     ):
         out = await _maybe_write_task_file(TASK_REL, USER_ID, "x", TASK_ABS, 1, None)
 
@@ -301,14 +297,14 @@ async def test_maybe_write_task_file_reports_lost_revision_exactly() -> None:
 async def test_maybe_write_task_file_logs_unexpected_failure_exactly() -> None:
     with (
         patch(
-            f"{MODULE}.gaia_task_files.resolve",
+            f"{MODULE}.task_files.resolve",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ),
         patch(f"{MODULE}.log") as mock_log,
     ):
         out = await _maybe_write_task_file(TASK_REL, USER_ID, "x", TASK_ABS, 1, None)
 
-    assert out == "Error writing todo notes: mongo down"
+    assert out == "Error writing task notes: mongo down"
     mock_log.error.assert_called_once_with(
         "write task file failed", error_type="RuntimeError", exc_info=True
     )

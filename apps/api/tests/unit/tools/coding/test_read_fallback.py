@@ -1,7 +1,7 @@
 """Layer 3 — read tool internals: sandbox fallback, special-read routing, and the read tool's exact argument forwarding.
 
 Mocks the files boundary (get_info + read) and the special-read collaborators
-(_read_image, system_file_body, gaia_task_files) so each branch's exact
+(_read_image, system_file_body, task_files) so each branch's exact
 arguments are pinned. Asserts behavior, not call counts.
 """
 
@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from e2b import NotFoundException
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.tools.coding.read_tool import (
     MAX_SANDBOX_READ_BYTES,
@@ -25,7 +26,7 @@ from app.agents.tools.coding.read_tool import (
 from app.services.storage import JuiceFSUnavailable
 
 MODULE = "app.agents.tools.coding.read_tool"
-CONFIG = {"metadata": {"user_id": "user-1", "conversation_id": "conv-1"}}
+CONFIG: RunnableConfig = {"metadata": {"user_id": "user-1", "conversation_id": "conv-1"}}
 
 
 def _sbx(*, info=None, info_error=None, read_bytes=b"") -> AsyncMock:
@@ -110,7 +111,7 @@ async def test_read_special_system_file_is_served_from_memory_with_exact_args() 
         patch(f"{MODULE}.system_file_body", return_value="BODY") as mock_body,
         patch(f"{MODULE}.user_owns_regular_file", AsyncMock(return_value=False)) as mock_owns,
         patch(f"{MODULE}._format_text_read", return_value="FORMATTED") as mock_fmt,
-        patch(f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=None)),
+        patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=None)),
         patch(f"{MODULE}.log") as mock_log,
     ):
         out = await _read_special(target, _page(), None)
@@ -122,16 +123,14 @@ async def test_read_special_system_file_is_served_from_memory_with_exact_args() 
     mock_log.set.assert_called_once_with(read_via="memory")
 
 
-async def test_read_special_todo_forwards_exact_args_and_emits() -> None:
-    rel = "gaia-tasks/fix-1234/canvas.md"
+async def test_read_special_task_file_forwards_exact_args_and_emits() -> None:
+    rel = "tasks/fix-task_1234abcd5678/notes.md"
     target = _target(rel)
     task_ref = object()
     with (
         patch(f"{MODULE}.system_file_body", return_value=None),
-        patch(
-            f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=task_ref)
-        ) as mock_resolve,
-        patch(f"{MODULE}.gaia_task_files.read_file", AsyncMock(return_value="BODY")) as mock_read,
+        patch(f"{MODULE}.task_files.resolve", AsyncMock(return_value=task_ref)) as mock_resolve,
+        patch(f"{MODULE}.task_files.read_file", AsyncMock(return_value="BODY")) as mock_read,
         patch(f"{MODULE}._format_text_read", return_value="FORMATTED") as mock_fmt,
         patch(f"{MODULE}.log") as mock_log,
     ):
@@ -141,22 +140,22 @@ async def test_read_special_todo_forwards_exact_args_and_emits() -> None:
     mock_resolve.assert_awaited_once_with(rel, "user-1")
     mock_read.assert_awaited_once_with(task_ref, "user-1")
     mock_fmt.assert_called_once_with(f"/workspace/{rel}", "BODY", 0, 10, "conv-1")
-    mock_log.set.assert_called_once_with(read_via="todo_document")
+    mock_log.set.assert_called_once_with(read_via="task_document")
 
 
 async def test_read_special_logs_unexpected_failure_exactly() -> None:
-    target = _target("gaia-tasks/fix-1234/canvas.md")
+    target = _target("tasks/fix-task_1234abcd5678/notes.md")
     with (
         patch(f"{MODULE}.system_file_body", return_value=None),
         patch(
-            f"{MODULE}.gaia_task_files.resolve",
+            f"{MODULE}.task_files.resolve",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ),
         patch(f"{MODULE}.log") as mock_log,
     ):
         out = await _read_special(target, _page(), None)
 
-    assert out == "Error reading todo notes: mongo down"
+    assert out == "Error reading task notes: mongo down"
     mock_log.error.assert_called_once_with(
         "read task file failed", error_type="RuntimeError", exc_info=True
     )

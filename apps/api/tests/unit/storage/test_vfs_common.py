@@ -1,6 +1,6 @@
 """Shared VFS helpers: naming, hash gates, markers, and the write/skip decision.
 
-Every materializer under /workspace/ (gaia-tasks, user-todos, memory,
+Every materializer under /workspace/ (memory, account, integrations,
 skills) is built on this module, so a bug here is systemic and invisible: the
 hash gates decide whether a user's edit ever reaches disk, and matches_text
 decides whether a file is rewritten. Get either wrong and you either serve a
@@ -13,36 +13,22 @@ part worth testing.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-import json
 import os
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from app.services.storage._vfs_common import (
-    READONLY_DIR_MODE,
     READONLY_MODE,
     RW_MODE,
-    SHORTID_LEN,
     SLUG_MAX_LEN,
     catalog_signature,
-    folder_name,
-    hash_body_with_meta,
-    hash_meta_only,
     matches_text,
-    meta_body,
-    per_doc_marker_path,
-    prune_per_doc_markers,
     read_marker,
     remove_tree,
-    short_id,
     slugify,
-    updated_at_key,
     write_marker,
     write_readonly_body,
-    write_rw_body,
     write_rw_if_changed,
 )
 
@@ -101,115 +87,6 @@ def test_accented_characters_are_dropped_rather_than_passed_through() -> None:
     assert slugify("Café ☕ Meeting") == "caf-meeting"
 
 
-# ── short_id / folder_name ───────────────────────────────────────────
-
-
-def test_a_short_id_is_the_entropy_bearing_TAIL_not_the_timestamp_head() -> None:
-    # The head is an ObjectId's 4-byte timestamp: identical for every doc
-    # minted in the same second, so two same-second docs with alike titles
-    # collapsed into one folder and overwrote each other permanently.
-    assert short_id(DOC_ID) == DOC_ID[-SHORTID_LEN:] == "90123456"
-    assert short_id(DOC_ID) != DOC_ID[:SHORTID_LEN]
-
-
-def test_a_doc_id_shorter_than_the_shortid_length_is_used_whole() -> None:
-    # A seeded/test doc with a short id must not raise or produce a padded name.
-    assert short_id("abc") == "abc"
-
-
-def test_a_folder_name_joins_the_slug_and_the_short_id() -> None:
-    assert folder_name(DOC_ID, "Ship It") == "ship-it-90123456"
-
-
-def test_two_tasks_sharing_a_title_get_distinct_folders() -> None:
-    # This is the entire reason the shortid exists. Drop it and two same-titled
-    # tasks project into one folder — the second silently overwrites the first
-    # and the user loses a task's canvas.
-    a = folder_name("aaaaaaaa1111", "Weekly Review")
-    b = folder_name("bbbbbbbb2222", "Weekly Review")
-    assert a != b
-
-
-# ── hash_meta_only ───────────────────────────────────────────────────
-
-
-def test_a_meta_hash_is_a_sha256_hex_digest() -> None:
-    # Catches a helper that returns the payload itself; the digest is written
-    # into a marker file and compared as a whole string.
-    digest = hash_meta_only({"title": "x"})
-    assert len(digest) == 64
-    assert int(digest, 16) >= 0
-
-
-def test_the_same_meta_in_a_different_key_order_hashes_the_same() -> None:
-    # Mongo does not promise field order. Without canonical ordering every doc
-    # looks changed on every sync and the whole tree is rewritten each turn.
-    assert hash_meta_only({"title": "a", "completed": False}) == hash_meta_only(
-        {"completed": False, "title": "a"}
-    )
-
-
-def test_a_nested_dict_in_a_different_key_order_hashes_the_same() -> None:
-    # Subtasks are nested dicts; canonicalization has to reach them too.
-    assert hash_meta_only({"subtasks": [{"id": "1", "title": "t"}]}) == hash_meta_only(
-        {"subtasks": [{"title": "t", "id": "1"}]}
-    )
-
-
-def test_a_changed_meta_value_changes_the_hash() -> None:
-    # The marker gate is this hash. If it does not move, a completed task keeps
-    # showing as open on disk forever.
-    assert hash_meta_only({"completed": False}) != hash_meta_only({"completed": True})
-
-
-def test_a_datetime_in_meta_is_hashed_by_value_rather_than_raising() -> None:
-    # meta carries created_at/updated_at/due_date straight from Mongo. A plain
-    # json.dumps raises TypeError on these and kills every sync.
-    early = hash_meta_only({"updated_at": datetime(2026, 8, 3, 10, 0, tzinfo=UTC)})
-    later = hash_meta_only({"updated_at": datetime(2026, 8, 3, 11, 0, tzinfo=UTC)})
-    assert early != later
-
-
-# ── hash_body_with_meta ──────────────────────────────────────────────
-
-
-def test_moving_text_from_the_canvas_into_the_log_changes_the_body_hash() -> None:
-    # Concatenation without a separator makes ("ab", "") and ("a", "b")
-    # identical: the agent moves a line from canvas.md to log.md, the hash does
-    # not move, and neither file is ever rewritten.
-    meta: dict[str, Any] = {"title": "t"}
-    assert hash_body_with_meta("ab", "", meta=meta) != hash_body_with_meta("a", "b", meta=meta)
-
-
-def test_the_same_body_and_meta_hash_identically() -> None:
-    meta: dict[str, Any] = {"title": "t"}
-    first = hash_body_with_meta("c", "l", meta=meta)
-    second = hash_body_with_meta("c", "l", meta=meta)
-    assert first == second
-
-
-def test_the_digest_is_pinned_to_the_nul_separated_scheme() -> None:
-    """The separator is a NUL byte; changing it would re-materialize every folder once."""
-    assert (
-        hash_body_with_meta("c", "l", meta={"title": "t"})
-        == "b5420a409a6295d9c9f15861a977f692722e8bfb3299195cde23a303deb914cd"
-    )
-
-
-def test_a_metadata_only_edit_still_changes_the_body_hash() -> None:
-    # Renaming a task touches neither canvas nor log; if meta is left out of the
-    # digest the folder keeps the old title in meta.json indefinitely.
-    assert hash_body_with_meta("c", "l", meta={"title": "old"}) != hash_body_with_meta(
-        "c", "l", meta={"title": "new"}
-    )
-
-
-def test_the_body_hash_of_an_empty_task_is_still_stable() -> None:
-    first = hash_body_with_meta("", "", meta={})
-    second = hash_body_with_meta("", "", meta={})
-    assert first == second
-
-
 # ── catalog_signature ────────────────────────────────────────────────
 
 
@@ -249,7 +126,7 @@ def test_an_empty_catalog_has_a_stable_signature() -> None:
 def test_a_written_marker_reads_back_as_the_same_value(tmp_path: Path) -> None:
     # The round trip is the gate: writer and reader disagreeing by one
     # character means every sync believes the tree is stale.
-    sig = hash_meta_only({"title": "t"})
+    sig = "0" * 64
     marker = tmp_path / ".gaia" / "gaia-tasks.v"
     write_marker(marker, sig)
     assert read_marker(marker) == sig
@@ -257,7 +134,7 @@ def test_a_written_marker_reads_back_as_the_same_value(tmp_path: Path) -> None:
 
 def test_write_marker_creates_the_missing_marker_directory(tmp_path: Path) -> None:
     # `.gaia/` does not exist before a user's first sync ever runs.
-    marker = tmp_path / "deep" / "nested" / ".gaia" / "todos.v"
+    marker = tmp_path / "deep" / "nested" / ".gaia" / "memory.v"
     write_marker(marker, "sig")
     assert marker.read_text(encoding="utf-8") == "sig"
 
@@ -332,59 +209,6 @@ def test_a_broken_symlink_marker_reads_as_none(tmp_path: Path) -> None:
     assert read_marker(marker) is None
 
 
-# ── per_doc_marker_path / prune_per_doc_markers ──────────────────────
-
-
-def test_a_per_doc_marker_is_named_for_its_doc_id(tmp_path: Path) -> None:
-    assert per_doc_marker_path(tmp_path, DOC_ID) == tmp_path / f"{DOC_ID}.v"
-
-
-def test_pruning_removes_the_marker_of_a_doc_that_left_the_active_set(tmp_path: Path) -> None:
-    # A stale marker makes a resurrected doc id look already-materialized, so
-    # its folder is never written back.
-    write_marker(per_doc_marker_path(tmp_path, "gone"), "sig")
-    prune_per_doc_markers(tmp_path, {"kept"})
-    assert not (tmp_path / "gone.v").exists()
-
-
-def test_pruning_keeps_the_markers_of_active_docs(tmp_path: Path) -> None:
-    # Inverting this condition deletes every live marker each sync, which
-    # rewrites every task body on every turn — the exact churn the gate exists
-    # to prevent.
-    write_marker(per_doc_marker_path(tmp_path, "kept"), "sig")
-    prune_per_doc_markers(tmp_path, {"kept"})
-    assert (tmp_path / "kept.v").read_text(encoding="utf-8") == "sig"
-
-
-def test_a_marker_written_through_the_path_helper_is_prunable_by_its_id(tmp_path: Path) -> None:
-    # The writer and the pruner have to agree on the filename; if they drift,
-    # `.gaia/` grows a marker per doc forever and nothing is ever reclaimed.
-    write_marker(per_doc_marker_path(tmp_path, DOC_ID), "sig")
-    prune_per_doc_markers(tmp_path, set())
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_pruning_a_directory_that_does_not_exist_yet_is_a_no_op(tmp_path: Path) -> None:
-    # Runs before the first materialization has created `.gaia/gaia-tasks/`.
-    prune_per_doc_markers(tmp_path / "absent", {"a"})
-
-
-def test_pruning_leaves_files_that_are_not_markers_alone(tmp_path: Path) -> None:
-    # The marker dir sits under `.gaia/`; widening the suffix check would delete
-    # sibling state belonging to other materializers.
-    other = tmp_path / "notes.json"
-    other.write_text("{}", encoding="utf-8")
-    prune_per_doc_markers(tmp_path, set())
-    assert other.exists()
-
-
-def test_pruning_leaves_subdirectories_alone(tmp_path: Path) -> None:
-    nested = tmp_path / "nested.v"
-    nested.mkdir()
-    prune_per_doc_markers(tmp_path, set())
-    assert nested.is_dir()
-
-
 # ── remove_tree ──────────────────────────────────────────────────────
 
 
@@ -413,7 +237,7 @@ def test_a_read_only_child_directory_is_made_writable_and_removed(tmp_path: Path
     sub = tmp_path / "tree" / "sub"
     sub.mkdir(parents=True)
     write_readonly_body(sub / "canvas.md", "x")
-    sub.chmod(READONLY_DIR_MODE)
+    sub.chmod(0o555)
     remove_tree(tmp_path / "tree")
     assert not (tmp_path / "tree").exists()
 
@@ -660,114 +484,3 @@ def test_a_rewritten_file_is_left_author_writable(tmp_path: Path) -> None:
     target.chmod(0o600)
     write_rw_if_changed(target, "new")
     assert mode_of(target) == RW_MODE
-
-
-# ── write_rw_body ────────────────────────────────────────────────────
-
-
-def test_the_index_is_written_even_when_its_content_is_unchanged(tmp_path: Path) -> None:
-    # index.md is deliberately unconditional. Proven by writing over a file
-    # whose mtime we then compare — the content must land regardless.
-    target = tmp_path / "index.md"
-    write_rw_body(target, "same")
-    write_rw_body(target, "same")
-    assert target.read_text(encoding="utf-8") == "same"
-    assert mode_of(target) == RW_MODE
-
-
-def test_a_shorter_index_replaces_the_longer_previous_one(tmp_path: Path) -> None:
-    # Deleting the last task must not leave its line dangling in index.md.
-    target = tmp_path / "index.md"
-    write_rw_body(target, "- [OPEN] task-a\n- [OPEN] task-b\n")
-    write_rw_body(target, "- [OPEN] task-a\n")
-    assert target.read_text(encoding="utf-8") == "- [OPEN] task-a\n"
-
-
-def test_the_index_is_left_author_writable(tmp_path: Path) -> None:
-    target = tmp_path / "index.md"
-    target.write_text("x", encoding="utf-8")
-    target.chmod(0o600)
-    write_rw_body(target, "y")
-    assert mode_of(target) == RW_MODE
-
-
-# ── meta_body ────────────────────────────────────────────────────────
-
-
-def test_meta_is_serialized_as_json_that_round_trips(tmp_path: Path) -> None:
-    meta: dict[str, Any] = {"title": "Ship it", "completed": False, "labels": ["a", "b"]}
-    assert json.loads(meta_body(meta)) == meta
-
-
-def test_meta_keys_are_written_in_a_stable_order() -> None:
-    # meta.json is read by the agent and diffed by the user; unstable ordering
-    # makes every sync look like a content change in the workspace.
-    body = meta_body({"title": "t", "completed": False, "priority": "high"})
-    keys = [line.split('"')[1] for line in body.splitlines() if line.startswith("  ")]
-    assert keys == sorted(keys)
-
-
-def test_meta_ends_with_exactly_one_newline() -> None:
-    # A POSIX text file needs the terminator; json.dumps does not add one.
-    body = meta_body({"title": "t"})
-    assert body.endswith("}\n")
-    assert not body.endswith("\n\n")
-
-
-def test_meta_is_indented_for_human_reading() -> None:
-    assert "\n  " in meta_body({"title": "t"})
-
-
-def test_a_datetime_in_meta_is_serialized_rather_than_raising() -> None:
-    # due_date/created_at come straight off the Mongo document; a bare
-    # json.dumps raises TypeError and the whole materialization dies.
-    body = meta_body({"due_date": datetime(2026, 8, 3, 10, 0, tzinfo=UTC)})
-    assert "2026-08-03" in json.loads(body)["due_date"]
-
-
-# ── updated_at_key ───────────────────────────────────────────────────
-
-
-def test_a_datetime_sorts_by_its_isoformat() -> None:
-    assert updated_at_key({"updated_at": datetime(2026, 8, 3, 10, 30)}) == "2026-08-03T10:30:00"
-
-
-def test_an_already_stringified_timestamp_passes_through(tmp_path: Path) -> None:
-    assert updated_at_key({"updated_at": "2026-08-03T10:30:00"}) == "2026-08-03T10:30:00"
-
-
-def test_a_doc_never_updated_since_creation_sorts_by_its_creation_time() -> None:
-    # Freshly created tasks have no updated_at; without the fallback they all
-    # collapse to "" and sink to the bottom of index.md the moment they matter
-    # most.
-    assert updated_at_key({"created_at": datetime(2026, 8, 3, 9, 0)}) == "2026-08-03T09:00:00"
-
-
-def test_a_null_updated_at_falls_back_to_the_creation_time() -> None:
-    # Mongo stores the field as null rather than omitting it.
-    meta: dict[str, Any] = {"updated_at": None, "created_at": datetime(2026, 8, 3, 9, 0)}
-    assert updated_at_key(meta) == "2026-08-03T09:00:00"
-
-
-def test_a_doc_with_no_timestamps_at_all_sorts_without_raising() -> None:
-    # One malformed doc must not take down the whole index render.
-    assert updated_at_key({}) == ""
-
-
-def test_updated_at_wins_over_created_at() -> None:
-    meta: dict[str, Any] = {
-        "updated_at": datetime(2026, 8, 3, 12, 0),
-        "created_at": datetime(2026, 1, 1, 0, 0),
-    }
-    assert updated_at_key(meta) == "2026-08-03T12:00:00"
-
-
-def test_a_datetime_and_a_string_timestamp_sort_in_true_chronological_order() -> None:
-    # index.md mixes Mongo datetimes and already-stringified timestamps in one sort; str(datetime)
-    # yields a space instead of "T", which sorts below every ISO string on the same date.
-    docs: list[dict[str, Any]] = [
-        {"updated_at": datetime(2026, 8, 3, 12, 0)},
-        {"updated_at": "2026-08-03T11:00:00"},
-    ]
-    newest_first = sorted(docs, key=updated_at_key, reverse=True)
-    assert newest_first[0]["updated_at"] == datetime(2026, 8, 3, 12, 0)

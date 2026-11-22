@@ -21,10 +21,9 @@ from app.agents.tools.coding._context import (
 from app.agents.workspace.paths import WORKSPACE_ROOT, MountRole
 from app.constants.account import account_mutation_refusal
 from app.decorators import with_doc, with_rate_limiting
-from app.services import gaia_task_files
+from app.services import task_files
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, fs_timer
-from app.services.storage.gaia_tasks_vfs import GAIA_TASKS_DIRNAME
 from app.templates.docstrings.coding_tools_docs import EDIT_TOOL
 from shared.py.wide_events import log
 
@@ -106,7 +105,7 @@ async def edit(
     target = EditTarget(
         user_id=user_id, abs_path=abs_path, role=role, role_conv=role_conv, session_id=session_id
     )
-    # Tracked-todo files are edited on the todo document, not in the sandbox.
+    # Task files are edited on the task, not in the sandbox.
     if (handled := await _maybe_edit_task_file(rel, target, patch)) is not None:
         return handled
 
@@ -175,7 +174,7 @@ def _emit_edit(abs_path: str, size_bytes: int, replaced: int, session_id: str | 
 
 
 async def _maybe_edit_task_file(rel: str, target: EditTarget, patch: EditPatch) -> str | None:
-    """Edit the todo document when ``rel`` names a tracked-todo file.
+    """Edit the task when ``rel`` names one of its notes files.
 
     Returns the tool result when handled (including the resolve error), else
     None so the caller falls through to the sandbox path. A patch is
@@ -183,43 +182,43 @@ async def _maybe_edit_task_file(rel: str, target: EditTarget, patch: EditPatch) 
     failing the edit.
     """
     try:
-        task_ref = await gaia_task_files.resolve(rel, target.user_id)
+        task_ref = await task_files.resolve(rel, target.user_id)
         if task_ref is None:
-            if rel == GAIA_TASKS_DIRNAME or rel.startswith(GAIA_TASKS_DIRNAME + "/"):
-                return gaia_task_files.NOT_A_NOTES_FILE.format(rel=rel)
+            if rel == task_files.TASKS_DIRNAME or rel.startswith(task_files.TASKS_DIRNAME + "/"):
+                return task_files.NOT_A_NOTES_FILE.format(rel=rel)
             return None
         for _ in range(_EDIT_MAX_ATTEMPTS):
             try:
                 return await _edit_task_file(task_ref, target, patch)
-            except gaia_task_files.NoteConflictError:
-                task_ref = await gaia_task_files.resolve(rel, target.user_id)
+            except task_files.NoteConflictError:
+                task_ref = await task_files.resolve(rel, target.user_id)
                 if task_ref is None:
-                    return "Error: tracked todo no longer exists."
+                    return "Error: the task no longer exists."
         return "Error: notes changed concurrently; read the file again and retry the edit."
-    except gaia_task_files.GaiaTaskPathError as e:
+    except task_files.TaskPathError as e:
         return f"Error: {e}"
     except Exception as e:
         log.error("edit task file failed", error_type=type(e).__name__, exc_info=True)
-        return f"Error editing todo notes: {e}"
+        return f"Error editing task notes: {e}"
 
 
 async def _edit_task_file(
-    task_ref: gaia_task_files.GaiaTaskPath,
+    task_ref: task_files.TaskPath,
     target: EditTarget,
     patch: EditPatch,
 ) -> str:
-    refusal = gaia_task_files.write_refusal(task_ref)
+    refusal = task_files.write_refusal(task_ref)
     if refusal is not None:
         return refusal
-    content = await gaia_task_files.read_file(task_ref, target.user_id)
+    content = await task_files.read_file(task_ref, target.user_id)
     outcome = _apply_replacement(content, patch.old_string, patch.new_string, patch.replace_all)
     if isinstance(outcome, str):
         return outcome
     new_content, replaced = outcome
-    refusal = await gaia_task_files.write_file(task_ref, target.user_id, new_content)
+    refusal = await task_files.write_file(task_ref, target.user_id, new_content)
     if refusal is not None:
         return refusal
-    log.set(write_via="todo_document")
+    log.set(write_via="task_document")
     return _emit_edit(
         target.abs_path, len(new_content.encode("utf-8")), replaced, target.session_id
     )

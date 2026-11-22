@@ -49,8 +49,6 @@ def offline_todo_seams() -> Iterator[None]:
         patch("app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.delete_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.schedule_user_todos_sync"),
-        patch("app.services.tracked_todo_service.schedule_gaia_tasks_sync"),
     ):
         yield
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -270,7 +270,6 @@ class TestTodoCreationWithSubtasks:
                 AsyncMock(return_value=_inbox_project()),
             ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
-            patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
             result = await TodoService.create_todo(todo, USER_ID)
 
@@ -305,7 +304,6 @@ class TestTodoCreationWithSubtasks:
                 AsyncMock(return_value=_inbox_project()),
             ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
-            patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
             await TodoService.create_todo(todo, USER_ID)
 
@@ -398,7 +396,6 @@ class TestBulkOperations:
                 AsyncMock(return_value=[]),
             ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
-            patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
             # Its chats' delete fails loud now; it reaches real Mongo, which this tier mocks.
             patch("app.services.todos.todo_service.delete_todo_conversations", AsyncMock()),
         ):
@@ -430,7 +427,6 @@ class TestBulkOperations:
                 AsyncMock(return_value=[]),
             ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
-            patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
             # Its chats' delete fails loud now; it reaches real Mongo, which this tier mocks.
             patch("app.services.todos.todo_service.delete_todo_conversations", AsyncMock()),
         ):
@@ -463,7 +459,6 @@ class TestBulkOperations:
                 AsyncMock(return_value=updated),
             ),
             patch("app.services.todos.todo_service.update_todo_embedding", AsyncMock()),
-            patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
             result = await TodoService.bulk_update_todos(request, USER_ID)
 

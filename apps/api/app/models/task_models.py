@@ -305,7 +305,7 @@ class TaskDocument(UserScopedDocument):
     reasks_used: int = Field(default=0, ge=0)
     status_flags: list[TaskFlag] = Field(default_factory=list)
 
-    # GAIA's notes: canvas.md, observations.md and the system log.
+    # GAIA's notes: notes.md, observations.md and the system log.
     notes: str | None = None
     observations: str | None = None
     log: str | None = None
