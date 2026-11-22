@@ -42,13 +42,11 @@ def _request(source: NotificationSourceEnum) -> NotificationRequest:
 @pytest.fixture
 def tokens() -> Iterator[MagicMock]:
     """Serve the user's registered Expo tokens; records which ones were retired."""
-    service = MagicMock()
-    service.get_active_tokens = AsyncMock(return_value=[])
-    service.deactivate_tokens = AsyncMock()
-    with patch(
-        "app.utils.notification.channels.push.get_device_token_service", return_value=service
-    ):
-        yield service
+    repository = MagicMock()
+    repository.list_active_tokens = AsyncMock(return_value=[])
+    repository.deactivate = AsyncMock()
+    with patch("app.utils.notification.channels.push.device_token_repository", repository):
+        yield repository
 
 
 def _sent(route: respx.Route) -> list[list[dict[str, object]]]:
@@ -80,7 +78,7 @@ async def test_a_user_with_no_device_is_skipped(tokens: MagicMock) -> None:
         skipped=True,
         error_message="push: no registered device",
     )
-    tokens.get_active_tokens.assert_awaited_once_with("u1")
+    tokens.list_active_tokens.assert_awaited_once_with("u1")
     assert not route.called
 
 
@@ -89,7 +87,7 @@ async def test_every_device_is_sent_in_batches_and_gone_ones_are_retired(
     tokens: MagicMock,
 ) -> None:
     devices = [f"ExponentPushToken[{n}]" for n in range(101)]
-    tokens.get_active_tokens.return_value = devices
+    tokens.list_active_tokens.return_value = devices
     first_batch: list[dict[str, object]] = [{"status": "ok"}] * 100
     first_batch[3] = {"status": "error", "details": {"error": "DeviceNotRegistered"}}
     first_batch[4] = {"status": "error", "details": {"error": "MessageTooBig"}}
@@ -123,13 +121,11 @@ async def test_every_device_is_sent_in_batches_and_gone_ones_are_retired(
         }
     ]
     assert [message["to"] for message in sent[0]] == devices[:100]
-    tokens.deactivate_tokens.assert_awaited_once_with(
-        ["ExponentPushToken[3]", "ExponentPushToken[100]"]
-    )
+    tokens.deactivate.assert_awaited_once_with(["ExponentPushToken[3]", "ExponentPushToken[100]"])
 
 
 async def test_a_batch_with_no_gone_device_retires_nothing(tokens: MagicMock) -> None:
-    tokens.get_active_tokens.return_value = ["ExponentPushToken[a]"]
+    tokens.list_active_tokens.return_value = ["ExponentPushToken[a]"]
     with respx.mock() as expo:
         expo.post(EXPO_URL).mock(
             return_value=httpx.Response(200, json={"data": [{"status": "ok"}]})
@@ -137,14 +133,14 @@ async def test_a_batch_with_no_gone_device_retires_nothing(tokens: MagicMock) ->
         status = await PushChannelAdapter().deliver(MESSAGE, "u1")
 
     assert status.status is NotificationStatus.DELIVERED
-    tokens.deactivate_tokens.assert_not_awaited()
+    tokens.deactivate.assert_not_awaited()
 
 
 async def test_an_expo_failure_is_raised_for_the_orchestrator(tokens: MagicMock) -> None:
-    tokens.get_active_tokens.return_value = ["ExponentPushToken[a]"]
+    tokens.list_active_tokens.return_value = ["ExponentPushToken[a]"]
     with respx.mock() as expo:
         expo.post(EXPO_URL).mock(return_value=httpx.Response(503))
         with pytest.raises(httpx.HTTPStatusError):
             await PushChannelAdapter().deliver(MESSAGE, "u1")
 
-    tokens.deactivate_tokens.assert_not_awaited()
+    tokens.deactivate.assert_not_awaited()
