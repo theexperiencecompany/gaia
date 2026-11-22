@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from app.agents.prompts.brief_fact_prompts import FACT_LINES_NOTE
 from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
+    DEPENDENCY_CLAIMS,
+    DURATION_CLAIMS,
     FREQUENCY_CLAIMS,
     LEAD_HEADING,
     MAX_BRIEF_CAPTION_CHARS,
@@ -166,6 +168,12 @@ NEVER CLAIM HOW OFTEN: you see today, not their history, so never say how often 
 happens unless a fact you were given says it. These words are sent back wherever no fact uses
 them: {", ".join(FREQUENCY_CLAIMS)}. Say a thing once: a lede that restates its own point
 ("clear today. The day is open.") is padding.
+NEVER LINK FACTS BY CAUSE: two facts side by side are not one blocking the other. Say that one
+thing causes, blocks or frees another only where the line of a fact the sentence names says so;
+these words are sent back in any other sentence: {", ".join(DEPENDENCY_CLAIMS)}.
+NEVER CLAIM HOW LONG: say how long something has stood, or that it is still or again so, only of
+a fact whose line dates it (its time, "already shown", an age such as "updated 4 days ago").
+These words are sent back of any other fact: {", ".join(DURATION_CLAIMS)}.
 """.strip()
 
 # How every brief's prose reads, past what its headline and lede are written from.
@@ -181,7 +189,7 @@ Horoscope filler is a defect. Never write these or their cousins: "You're making
 great progress!", "Let's make today count", "Another productive day ahead",
 "You've got this", "Let me know if you need anything". Every line earns its place
 with a specific pulled from the facts, in second person, naming the goal it
-serves:
+serves when it is that goal's linked work (only a goal's linked todos are its work):
 - BAD headline: "A productive day ahead" / GOOD: "Two investor drafts are
   waiting in your folder"
 - BAD lede: "You're making steady progress on your goals." / GOOD: "The Sequoia
@@ -193,7 +201,7 @@ The caption's wit must come from today's specifics; if no specific supports wit,
 plain beats cute.
 
 LEAD WITH WHAT NEEDS THE USER. Scan the facts for the one thing only the user
-can do and pick the one with the most leverage toward the goal; the headline or
+can do and pick the one with the most leverage, a goal's linked work first; the headline or
 lede puts it in front of them. A fact "On their list, undated" is background: at
 most a passing mention in the message, never the headline or lede, never called a
 decision or something waiting. A fact marked "already shown, still open" is not

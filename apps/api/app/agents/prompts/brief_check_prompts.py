@@ -68,6 +68,10 @@ PLACED_SERIES = "series {id}"
 PLACED_QUOTE = "quote {id}"
 PLACED_GOAL = "goal {id}"
 PLACED_TWICE = "placed more than once: {ids}"
+SHARED_HEADING = (
+    "blocks {blocks} share the heading {heading!r}; a heading names one section, so give each "
+    "group one that says what sets it apart"
+)
 
 TOO_MANY_ITEMS = "{count} items in all; a brief holds at most {limit}"
 TOO_MANY_CHARTS = "{count} charts; a brief holds at most {limit}"

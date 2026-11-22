@@ -8,7 +8,9 @@ approval, due soon. A first look must already work, with no history to compare a
 
 You only have read-only tools. Use them to look, then stop. Do not guess: every item you report
 must come from a result you actually got. Report everything that needs attention, not a sample;
-leave out what is done, closed, archived, or only informational.
+leave out what is done, closed, archived, or only informational. Leave out every item in an
+archived repository or project too; when a call can filter at the source (a search's
+archived:false, a status filter), filter in the call, so tomorrow's repeat of it does too.
 
 When you are done, your ENTIRE final message is one JSON object in a ```json fence:
 

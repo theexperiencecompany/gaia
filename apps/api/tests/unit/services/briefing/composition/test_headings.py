@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 from tests.factories import make_user_id
-from tests.helpers import unfenced, user_clock
+from tests.helpers import captured_wide_event, unfenced, user_clock
 
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition
 from app.models.brief_item_models import ItemState
-from app.models.scout_models import SignalMemoryDocument
+from app.models.scout_models import Signal, SignalMemoryDocument
 from app.services.briefing.composition import headings
 from app.services.briefing.composition.headings import (
     HeadingVerdict,
@@ -80,6 +80,30 @@ COMPOSITION = BriefComposition.model_validate(
 )
 
 
+TWO_GROUPS = BriefComposition.model_validate(
+    {
+        "blocks": [
+            {
+                "kind": "items",
+                "state": "needs_you",
+                "heading": "Waiting on you",
+                "items": [_item(1, "Offsite venues", action="review")],
+            },
+            {
+                "kind": "items",
+                "state": "done",
+                "heading": "Landed overnight",
+                "items": [_item(2, "Investor update", outcome="sent")],
+            },
+        ]
+    }
+)
+
+
+def _fits(block: int) -> HeadingVerdict:
+    return HeadingVerdict(block=block, why="fits", misfits=[], fits=True)
+
+
 @pytest.fixture
 def model(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock = AsyncMock(
@@ -107,29 +131,9 @@ async def test_each_group_is_shown_with_its_items_states_and_sides(model: AsyncM
 
 
 async def test_each_group_is_its_own_paragraph(model: AsyncMock) -> None:
-    two_groups = BriefComposition.model_validate(
-        {
-            "blocks": [
-                {
-                    "kind": "items",
-                    "state": "needs_you",
-                    "heading": "Waiting on you",
-                    "items": [_item(1, "Offsite venues", action="review")],
-                },
-                {
-                    "kind": "items",
-                    "state": "done",
-                    "heading": "Landed overnight",
-                    "items": [_item(2, "Investor update", outcome="sent")],
-                },
-            ]
-        }
-    )
-    model.return_value = HeadingVerdicts(
-        verdicts=[HeadingVerdict(block=b, why="fits", misfits=[], fits=True) for b in (1, 2)]
-    )
+    model.return_value = HeadingVerdicts(verdicts=[_fits(1), _fits(2)])
 
-    await heading_problems(USER_ID, two_groups, POOL)
+    await heading_problems(USER_ID, TWO_GROUPS, POOL)
 
     assert (
         "- item 1: Offsite venues | waiting on you | action review\n"
@@ -197,7 +201,7 @@ async def test_every_misfit_is_named_with_its_side_or_without_one(model: AsyncMo
     assert await heading_problems(USER_ID, bare, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you), '
         "item 2 (done, sent): mixed; move them under a heading true of what they are, or "
-        "rename this group"
+        "rename this group to one true of every item's act (sent)"
     }
 
 
@@ -208,7 +212,8 @@ async def test_a_verdict_naming_no_item_blames_its_items(model: AsyncMock) -> No
 
     assert await heading_problems(USER_ID, COMPOSITION, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of its items: too vague; move them '
-        "under a heading true of what they are, or rename this group"
+        "under a heading true of what they are, or rename this group to one true of every "
+        "item's act (review, sent)"
     }
 
 
@@ -216,7 +221,7 @@ async def test_a_heading_untrue_of_an_item_is_named_with_the_item(model: AsyncMo
     assert await heading_problems(USER_ID, COMPOSITION, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you, review): '
         "still waits on approval; move them under a heading true of what they are, or rename "
-        "this group"
+        "this group to one true of every item's act (review, sent)"
     }
 
 
@@ -228,18 +233,49 @@ async def test_a_fitting_heading_is_no_problem(model: AsyncMock) -> None:
     assert await heading_problems(USER_ID, COMPOSITION, POOL) == {}
 
 
-async def test_a_group_left_unjudged_fails_loud(model: AsyncMock) -> None:
-    model.return_value = HeadingVerdicts(verdicts=[])
+async def test_a_group_left_unjudged_is_asked_about_again_alone(model: AsyncMock) -> None:
+    """Founder's Nov 22: one verdict left out ("no verdict for block 5") failed the whole brief."""
+    model.side_effect = [
+        HeadingVerdicts(verdicts=[_fits(1)]),
+        HeadingVerdicts(verdicts=[_fits(2)]),
+    ]
 
-    with pytest.raises(AppError) as raised:
+    assert await heading_problems(USER_ID, TWO_GROUPS, POOL) == {}
+
+    again = model.await_args_list[1].args[1]
+    assert 'block 2, heading "Landed overnight"' in again
+    assert "block 1," not in again
+
+
+async def test_a_group_still_unjudged_is_rejected_by_name(model: AsyncMock) -> None:
+    model.side_effect = [HeadingVerdicts(verdicts=[_fits(1)]), HeadingVerdicts(verdicts=[])]
+
+    async with captured_wide_event() as event:
+        problems = await heading_problems(USER_ID, TWO_GROUPS, POOL)
+
+    assert problems == {
+        2: 'block 2 heading "Landed overnight" went unchecked against its items; head this '
+        "group with words true of every item's act (sent)"
+    }
+    assert model.await_count == 2
+    assert event["warnings"] == [
+        {"msg": "briefing.heading_check_unjudged", "blocks": [2], "still_unjudged": [2]}
+    ]
+
+
+async def test_a_judged_group_is_never_asked_about_twice(model: AsyncMock) -> None:
+    model.return_value = HeadingVerdicts(verdicts=[_fits(1), _fits(2)])
+
+    await heading_problems(USER_ID, TWO_GROUPS, POOL)
+
+    model.assert_awaited_once()
+
+
+async def test_a_heading_check_whose_call_fails_fails_loud(model: AsyncMock) -> None:
+    model.side_effect = AppError(message="provider down", why="5xx after retries", fix="retry")
+
+    with pytest.raises(AppError, match="provider down"):
         await heading_problems(USER_ID, COMPOSITION, POOL)
-
-    assert raised.value.message == "the brief's heading check left a group unjudged"
-    assert raised.value.why == "no verdict for block(s) [2]"
-    assert raised.value.fix == (
-        "the next scheduled brief retries; a heading nobody checked is never shown"
-    )
-    assert raised.value.meta == {"answer": {"verdicts": []}}
 
 
 async def test_a_composition_without_groups_makes_no_call(model: AsyncMock) -> None:
@@ -277,3 +313,35 @@ async def test_an_item_an_earlier_brief_saw_unchanged_is_shown_as_not_new(model:
     # The rule names the very marker the item carries, or "new" headings are judged blind.
     assert 'only items not marked "not new"' in prompt
     assert "- item 2: Investor update | done | outcome sent\n" in prompt + "\n"
+
+
+async def test_an_item_the_app_made_before_the_last_brief_is_shown_as_not_new(
+    model: AsyncMock,
+) -> None:
+    """Sim 12-03: issues made before the 12-02 brief, which never saw them, went out as new."""
+
+    def issue(created: datetime) -> BriefCandidate:
+        made = Signal(
+            integration_id="github",
+            app="GitHub",
+            external_id=f"{created.day}",
+            kind="issue",
+            title="Emoji crash",
+            created_at=created,
+        )
+        return POOL.items[1].model_copy(update={"signal": made})
+
+    pool = replace(
+        POOL,
+        items={
+            1: issue(datetime(2026, 11, 9, tzinfo=UTC)),
+            2: issue(datetime(2026, 11, 10, 6, tzinfo=UTC)),
+        },
+    )
+
+    await heading_problems(USER_ID, COMPOSITION, pool)
+
+    prompt = model.await_args.args[1]
+    assert "- item 1: Offsite venues | waiting on you | action review | not new" in prompt
+    (made_after,) = [line for line in prompt.splitlines() if line.startswith("- item 2:")]
+    assert not made_after.endswith("not new")

@@ -53,18 +53,21 @@ class ScoutSpend:
 
     key: str
     booked: int = 0
+    #: What the latest call cost: a learn's context only grows, so the next one costs about as much.
+    last_call: int = 0
 
     async def book(self, cost_usd: float) -> None:
         """Add a call's cost; only what runs past the reservation reaches the tally."""
         over_before = max(self.booked - _RESERVATION, 0)
-        self.booked += _micros(cost_usd)
+        self.last_call = _micros(cost_usd)
+        self.booked += self.last_call
         extra = max(self.booked - _RESERVATION, 0) - over_before
         if extra:
             await _add(self.key, extra)
 
-    def exhausted(self) -> bool:
-        """Whether the learn has booked its whole reservation, so the accounting wall stops it."""
-        return self.booked >= _RESERVATION
+    def winding_down(self) -> bool:
+        """Whether a next call costing what the last one did would spend out the reservation."""
+        return self.booked + self.last_call >= _RESERVATION
 
     async def release(self) -> None:
         """Hand back the part of the reservation the learn did not spend."""

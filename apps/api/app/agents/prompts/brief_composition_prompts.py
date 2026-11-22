@@ -37,6 +37,8 @@ What is noise:
 - Newsletters, receipts, notifications, automated digests, promotions, social pings.
 - Anything done or closed, unless finishing it is the news.
 - An item earlier briefs already showed that has not moved ("mentioned 3 times", nothing new).
+- An app item nobody has updated in a month or more ("last updated 90 days ago"), unless it is
+  due or someone waits on the user: something that moved this week outranks it.
 - Routine chores, shopping, entertainment, reference material.
 - A failed run that recovered, a one-off sync blip, a retry nobody needs to see.
 - A chart of a flat or tiny series, or one that repeats a list already in the brief.
@@ -109,7 +111,9 @@ open; never lead with it when anything new needs the user.
   listed on series ID ({series_fields}). Counting in words what you placed
   ("two replies") is fine. An item's title and detail write its own line's figures as they
   stand, with no slots.
-- Nothing you write says more than its facts say: no person, deadline or outcome they do not hold.
+- Nothing you write says more than its facts say: no person, deadline or outcome they do not hold,
+  no cause between two facts ("X is blocking Y") unless a fact's line says it, and no "still"
+  or "for weeks" of a fact whose line carries no date.
 
 ## Nothing is mandatory
 No source and no kind of item must appear. Approvals, failures and GAIA's work go in when they

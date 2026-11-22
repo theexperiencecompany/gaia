@@ -96,6 +96,8 @@ SIGNALS_HEADER = "[ACROSS THEIR APPS]"
 SHOWN_NOT_TOTAL = "Counts are of the items shown here, not each app's total: an app may hold more."
 #: Marks a fact with something to open: the voice may link it.
 LINKABLE = "linkable"
+#: Marks a todo linked to a stated goal: the only work prose may call the goal's.
+GOAL_WORK = "goal work"
 #: Marks GAIA's work whose deliverable waits on the user.
 WAITING_ON_YOU = "waiting on you"
 EVENT_UNTIL = "until {time}"

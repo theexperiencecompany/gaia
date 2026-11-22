@@ -219,10 +219,113 @@ class TestAVoiceThatRepeatsOrOverclaims:
         asked.assert_awaited_once()
 
 
+class TestAVoiceThatLinksFactsByCause:
+    """Founder replay: a failed LinkedIn connect was said to block a draft sequence no fact tied to it."""
+
+    _VALUES = SlotValues(
+        facts={
+            1: BriefFact(
+                title="LinkedIn connect failure",
+                words="401 auth checkpoint blocked the sender on Nov 20",
+            ),
+            2: BriefFact(title="YC founders outreach sequence", words="draft, awaiting approval"),
+        },
+        counts={},
+    )
+
+    @pytest.mark.regression
+    async def test_a_cause_no_fact_it_names_states_is_sent_back_from_every_field(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        claimed = _voice(
+            headline="The LinkedIn auth error is holding up your outreach",
+            lede="A [failed connect](fact:1) is blocking [the sequence](fact:2).",
+            message="[The connect](fact:1) failed. Fix that and the outreach path opens up.",
+        )
+        asked = AsyncMock(side_effect=[claimed, _voice(message="[The connect](fact:1) failed.")])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        problems = [
+            f"the {field} says {claim!r}: that one thing causes, blocks or gates another, and no "
+            "fact it names says so; state each fact on its own, as its line does"
+            for field, claim in (
+                ("headline", "holding up"),
+                ("lede", "blocking"),
+                ("message", "opens up"),
+            )
+        ]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, claimed.model_dump_json(indent=2))}"
+        )
+
+    async def test_a_cause_the_named_facts_line_states_may_be_voiced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        grounded = _voice(
+            message="[The sender](fact:1) is blocked until you clear the checkpoint.",
+        )
+        asked = AsyncMock(side_effect=[grounded])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        assert voice == grounded
+
+    async def test_a_cause_another_fact_states_does_not_ground_this_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        borrowed = _voice(
+            message="[The connect](fact:1) failed. [The sequence](fact:2) is blocked."
+        )
+        asked = AsyncMock(side_effect=[borrowed, _voice(message="[The connect](fact:1) failed.")])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        assert asked.await_count == 2
+
+
+@pytest.mark.regression
+async def test_a_voice_calling_an_unlinked_todo_goal_work_is_sent_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Founder replay: the churned-subscriber email, linked to no goal, was voiced as goal work."""
+    values = SlotValues(
+        facts={
+            1: BriefFact(title="Reply to Dan"),
+            2: BriefFact(title="Churned-subscriber email"),
+            3: BriefFact(title="Old-user discount email", goal_work=True),
+        },
+        counts={},
+    )
+    claimed = _voice(
+        message="[Reply to Dan](fact:1) first. [The churn email](fact:2) is your goal work."
+    )
+    mended = _voice(message="[Reply to Dan](fact:1) first. [The email](fact:3) is goal work.")
+    asked = AsyncMock(side_effect=[claimed, mended])
+    monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+    voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+    problem = (
+        "the message ties facts 2 to a goal, but they are not linked to one; only a goal's "
+        "linked todos are its work, so name them in a sentence that does not speak of the goal"
+    )
+    assert asked.await_args_list[1].args[1] == (
+        f"PROMPT\n\n{voice_correction_note([problem], claimed.model_dump_json(indent=2))}"
+    )
+    assert voice == mended
+
+
 class TestAVoiceThatSaysATitleTwice:
     """Regression: "Northwind's invoice is still past due: Northwind invoice." echoed its title."""
 
-    _VALUES = SlotValues(facts={1: BriefFact(title="Northwind invoice")}, counts={})
+    _VALUES = SlotValues(
+        facts={1: BriefFact(title="Northwind invoice", time="Mon Nov 3", time_is_day=True)},
+        counts={},
+    )
 
     async def test_a_title_written_and_slotted_in_one_sentence_is_sent_back(
         self, monkeypatch: pytest.MonkeyPatch
@@ -379,11 +482,11 @@ class TestAFigureTheFactsShow:
 
 
 class TestTheBriefsWideEvent:
-    async def test_every_rejected_draft_and_the_plain_fallback_are_on_the_brief_event(
+    async def test_every_rejected_draft_and_the_salvage_are_on_the_brief_event(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Dhruv's 2026-11-06/09 fell back plainly and prod could not say why each draft failed."""
-        asked = AsyncMock(side_effect=[_voice(message="Nothing."), _voice(message="Still none.")])
+        asked = AsyncMock(side_effect=[_voice(message="Nothing."), _voice(message="Nothing new.")])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
@@ -393,8 +496,14 @@ class TestTheBriefsWideEvent:
             "the message never refers to the lead, fact 1 (Reply to Dan); say it in your own "
             "words as [your phrase](fact:1)"
         )
-        assert voice == prose.plain_voice(Writing(values=_VALUES, lead=1))
-        assert event["brief_voice"] == {"attempts": 2, "salvaged": True, "rejections": [missed] * 2}
+        assert voice.message == "- [[fact:1]]\n\nNothing new."
+        assert event["brief_voice"] == {
+            "attempts": 2,
+            "salvaged": True,
+            "rejections": [missed] * 2,
+            "dropped_sentences": 0,
+            "plain": False,
+        }
 
     async def test_a_brief_voiced_first_time_says_so(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[_voice()]))
@@ -437,6 +546,78 @@ class TestTheBriefsWideEvent:
             "words; the message's opening repeats a recent brief's line "
             "('Reply to Dan before lunch.'); write today's in fresh words"
         ]
+
+
+class TestALastVoiceThatStillBreaks:
+    """Founder brief_b4f24ff8d403: one goal sentence the retry repeated sent the whole brief plain."""
+
+    _VALUES = SlotValues(
+        facts={
+            1: BriefFact(title="LinkedIn connect attempt failed"),
+            2: BriefFact(title="Churned-subscriber email"),
+        },
+        counts={},
+    )
+
+    async def _salvaged(self, monkeypatch: pytest.MonkeyPatch, last: BriefVoice) -> BriefVoice:
+        monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[last] * 2))
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        return voice
+
+    @pytest.mark.regression
+    async def test_only_the_rejected_sentence_and_the_one_pointing_back_at_it_are_dropped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        last = _voice(
+            headline="A failed LinkedIn send",
+            message="[The LinkedIn connect](fact:1) failed on an auth error. "
+            "[The churn email](fact:2) is your goal work. That one is worth an hour.\n\n"
+            "Your calendar is open.",
+        )
+
+        async with captured_wide_event() as event:
+            voice = await self._salvaged(monkeypatch, last)
+
+        assert voice == last.model_copy(
+            update={
+                "message": "[The LinkedIn connect](fact:1) failed on an auth error.\n\n"
+                "Your calendar is open."
+            }
+        )
+        assert event["brief_voice"] | {"rejections": []} == {
+            "attempts": 2,
+            "salvaged": True,
+            "rejections": [],
+            "dropped_sentences": 2,
+            "plain": False,
+        }
+
+    async def test_a_dropped_headline_and_a_missing_lead_get_their_plain_pieces_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        last = _voice(
+            headline="[The churn email](fact:2) is your goal work",
+            message="[The churn email](fact:2) waits on a send.",
+        )
+
+        voice = await self._salvaged(monkeypatch, last)
+
+        assert voice == last.model_copy(
+            update={
+                "headline": "Your brief",
+                "message": "- [[fact:1]]\n\n[The churn email](fact:2) waits on a send.",
+            }
+        )
+
+    async def test_it_goes_plain_only_with_neither_headline_nor_lede_left(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        goal = "[The churn email](fact:2) is your goal work."
+        last = _voice(headline=goal.rstrip("."), lede=goal)
+
+        voice = await self._salvaged(monkeypatch, last)
+
+        assert voice == prose.plain_voice(Writing(values=self._VALUES, lead=1))
 
 
 class TestAVoiceTooLongOnceFilled:

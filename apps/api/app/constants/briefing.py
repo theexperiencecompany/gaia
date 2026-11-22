@@ -112,6 +112,19 @@ class BriefOutcome(StrEnum):
 HELD_RELEASE_TITLE: Final[str] = "While you were away"
 #: What the lead's section is headed: the composition gives the lead no heading of its own.
 LEAD_HEADING: Final[str] = "First up"
+#: A group code heads (a salvage, a misfit heading) when every item asks one act.
+ACTION_HEADINGS: Final[Mapping[BriefAction, str]] = MappingProxyType(
+    {
+        BriefAction.APPROVE: "To approve",
+        BriefAction.REPLY: "Replies to send",
+        BriefAction.REVIEW: "To review",
+        BriefAction.RETRY: "To retry",
+        BriefAction.READ: "To read",
+        BriefAction.ATTEND: "To do",
+    }
+)
+#: A group code heads when it holds only the user's own undated todos.
+BACKLOG_HEADING: Final[str] = "Still on your list"
 #: Section numerals, in reading order, for the editions that number their sections.
 SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII")
 # Every brief item is a short noun-phrase title and at most one muted detail line.
@@ -175,6 +188,43 @@ FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
     "for once",
     "as always",
     "once again",
+)
+#: Words that say one thing causes, blocks or gates another; prose may use one only where a fact does.
+DEPENDENCY_CLAIMS: Final[tuple[str, ...]] = (
+    "because",
+    "blocks",
+    "blocked",
+    "blocking",
+    "blocker",
+    "unblock",
+    "unblocks",
+    "unblocking",
+    "holding up",
+    "holds up",
+    "held up",
+    "bottleneck",
+    "caused by",
+    "depends on",
+    "dependent on",
+    "opens up",
+    "frees up",
+)
+#: Words that say how long something has stood, or that it stood before; prose may use one only
+#: of a fact whose line carries a date (its time, when an earlier brief showed it, an age).
+DURATION_CLAIMS: Final[tuple[str, ...]] = (
+    "still",
+    "again",
+    "for a while",
+    "for days",
+    "for weeks",
+    "for months",
+    "for ages",
+    "or more",
+    "sitting",
+    "lingering",
+    "been waiting",
+    "piling up",
+    "long overdue",
 )
 # Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
 # mend shows it what it wrote), then code voices it plainly from its facts (briefing.checked_call).

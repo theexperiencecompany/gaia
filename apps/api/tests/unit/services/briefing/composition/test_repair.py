@@ -22,7 +22,12 @@ from app.models.brief_item_models import GroupState, ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.scout_models import SignalMemoryDocument
 from app.services.briefing.composition.compose import pool_values
-from app.services.briefing.composition.repair import pool_composition, repaired, salvaged
+from app.services.briefing.composition.repair import (
+    derived_heading,
+    pool_composition,
+    repaired,
+    salvaged,
+)
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 
 _CONTEXT = PoolContext(
@@ -82,8 +87,12 @@ def _item(
     )
 
 
-def _group(*items: ComposedItem, state: GroupState = GroupState.NEEDS_YOU) -> ComposedItems:
-    return ComposedItems(kind="items", state=state, heading="Waiting on you", items=list(items))
+def _group(
+    *items: ComposedItem,
+    state: GroupState = GroupState.NEEDS_YOU,
+    heading: str = "Waiting on you",
+) -> ComposedItems:
+    return ComposedItems(kind="items", state=state, heading=heading, items=list(items))
 
 
 def _lead(item: ComposedItem) -> ComposedLead:
@@ -162,9 +171,11 @@ class TestTheLead:
         assert repaired(_of(_lead(_item(99)), _group(_item(1))), MANY) == _of(_group(_item(1)))
 
     def test_an_item_placed_in_two_groups_stays_in_the_first(self) -> None:
-        composition = _of(_group(_item(1), _item(2)), _group(_item(2), _item(3)))
+        composition = _of(_group(_item(1), _item(2)), _group(_item(2), _item(3), heading="Money"))
 
-        assert repaired(composition, MANY) == _of(_group(_item(1), _item(2)), _group(_item(3)))
+        assert repaired(composition, MANY) == _of(
+            _group(_item(1), _item(2)), _group(_item(3), heading="Money")
+        )
 
     def test_a_leads_item_is_not_placed_again(self) -> None:
         composition = _of(_lead(_item(1)), _group(_item(1), _item(2)))
@@ -191,13 +202,38 @@ class TestTheLead:
         assert repaired(composition, MANY) == _of(_lead(_item(1, title=mercury)), _group(_item(2)))
 
 
+class TestOneHeading:
+    @pytest.mark.regression
+    def test_two_groups_of_one_state_under_one_heading_are_one_group_where_the_first_stood(
+        self,
+    ) -> None:
+        """Dhruv 11-03/04: two needs-you groups both read "Replies waiting on you"."""
+        composition = _of(
+            _group(_item(1)), _group(_item(2), heading="Money"), _group(_item(3), _item(4))
+        )
+
+        assert repaired(composition, MANY) == _of(
+            _group(_item(1), _item(3), _item(4)), _group(_item(2), heading="Money")
+        )
+
+    def test_groups_of_two_states_or_past_what_a_group_holds_stay_apart(self) -> None:
+        done = _item(4, action=None, outcome=BriefOutcome.FINISHED)
+        composition = _of(
+            _group(_item(1), _item(2), _item(3)),
+            _group(done, state=GroupState.DONE),
+            _group(_item(5), _item(6), _item(7)),
+        )
+
+        assert repaired(composition, MANY) == composition
+
+
 APPROVAL = _candidate(
     "Connect integration", origin=CandidateOrigin.APPROVAL, action=BriefAction.APPROVE
 )
 PLACED_APPROVAL = ComposedItems(
     kind="items",
     state=GroupState.NEEDS_YOU,
-    heading=GroupState.NEEDS_YOU.fallback_heading,
+    heading="To approve",
     items=[_item(2, action=BriefAction.APPROVE, title="Connect integration")],
 )
 
@@ -329,7 +365,7 @@ class TestSalvage:
 
         assert kept == _of(
             ComposedItems(
-                kind="items", state=GroupState.NEEDS_YOU, heading="Needs you", items=[_item(1)]
+                kind="items", state=GroupState.NEEDS_YOU, heading="To review", items=[_item(1)]
             ),
             NOTE,
         )
@@ -341,7 +377,7 @@ class TestSalvage:
 
         assert kept == _of(
             ComposedItems(
-                kind="items", state=GroupState.NEEDS_YOU, heading="Needs you", items=[_item(1)]
+                kind="items", state=GroupState.NEEDS_YOU, heading="To review", items=[_item(1)]
             ),
             NOTE,
         )
@@ -355,7 +391,7 @@ class TestSalvage:
             ComposedItems(
                 kind="items",
                 state=GroupState.NEEDS_YOU,
-                heading="Needs you",
+                heading="To review",
                 items=[_item(1, title="Sync job")],
             )
         )
@@ -375,7 +411,7 @@ class TestThePoolsOwnBrief:
             ComposedItems(
                 kind="items",
                 state=GroupState.NEEDS_YOU,
-                heading="Needs you",
+                heading="To review",
                 items=[_item(1, title="Reply to Maya")],
             ),
             ComposedItems(
@@ -402,7 +438,7 @@ class TestThePoolsOwnBrief:
             ComposedItems(
                 kind="items",
                 state=GroupState.NEEDS_YOU,
-                heading="Needs you",
+                heading="To review",
                 items=[_item(1, title="Sync job")],
             )
         )
@@ -430,3 +466,31 @@ class TestThePoolsOwnBrief:
 
         assert isinstance(group, ComposedItems)
         assert group.items[0].title == (shown or title)
+
+
+class TestADerivedHeading:
+    """Founder's Nov 22: every salvaged group read "Needs you", the user's own list among them."""
+
+    def test_the_users_own_undated_todos_are_still_on_their_list(self) -> None:
+        pool = _pool(*(_candidate(f"Todo {n}", origin=CandidateOrigin.BACKLOG) for n in (1, 2)))
+
+        assert derived_heading(_group(_item(1), _item(2)), pool) == "Still on your list"
+
+    def test_items_asking_one_act_are_headed_by_it(self) -> None:
+        pool = _pool(_candidate("PR"), _candidate("Thread", app="Gmail"))
+        replies = _group(_item(1, action=BriefAction.REPLY), _item(2, action=BriefAction.REPLY))
+
+        assert derived_heading(replies, pool) == "Replies to send"
+
+    def test_items_of_one_app_asking_several_acts_are_headed_by_their_app(self) -> None:
+        github = {"app": "GitHub", "source": "github"}
+        pool = _pool(_candidate("PR", **github), _candidate("Issue", **github))
+        mixed = _group(_item(1, action=BriefAction.READ), _item(2, action=BriefAction.REPLY))
+
+        assert derived_heading(mixed, pool) == "Needs you in GitHub"
+
+    def test_items_sharing_nothing_are_headed_by_their_state(self) -> None:
+        pool = _pool(_candidate("PR", app="GitHub"), _candidate("Thread", app="Gmail"))
+        mixed = _group(_item(1, action=BriefAction.READ), _item(2, action=BriefAction.REPLY))
+
+        assert derived_heading(mixed, pool) == "Needs you"

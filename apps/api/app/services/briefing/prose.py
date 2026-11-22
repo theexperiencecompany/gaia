@@ -1,7 +1,8 @@
 """Voice the brief, hold its slots to its facts, and build the payload from it.
 
 Code builds every fact; the agent writes only the voice. Prose whose slots break a fact is sent
-back once with the problems named; a second failure voices the brief plainly from its facts
+back once with the problems named; a second failure keeps every sentence that holds and drops
+the rest, and voices the brief plainly from its facts only when no headline or lede is left
 (the checked-call policy, briefing.checked_call).
 """
 
@@ -31,13 +32,20 @@ from app.models.brief_slot_models import FactField, FactSlot, LinkSlot
 from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
-from app.services.briefing.claims import claim_problems
+from app.services.briefing.claims import (
+    claim_problems,
+    dependency_problems,
+    duration_problems,
+    goal_problems,
+    points_back,
+)
 from app.services.briefing.facts import Facts
 from app.services.briefing.formats import opening_line
 from app.services.briefing.slots import (
     SlotValues,
     referenced_facts,
     render_slots,
+    sentence_breaks,
     slot_problems,
 )
 from app.services.links.service import attach_link
@@ -45,6 +53,7 @@ from app.services.links.urls import build_url
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences
+from shared.py.wide_events import log
 
 
 async def links_in(user_id: str, message: str, facts: Facts) -> dict[int, str]:
@@ -93,6 +102,8 @@ class Writing:
 
 
 _VOICED_FIELDS = ("headline", "lede", "caption", "message")
+#: The voice's checked call, which names its log events and its wide-event fields.
+_VOICE_CALL = "voice"
 
 
 def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
@@ -143,12 +154,11 @@ def _repeat_problems(draft: BriefVoice, recent: RecentLines) -> list[str]:
     ]
 
 
-def _frequency_problems(draft: BriefVoice, grounds: str) -> list[str]:
+def _frequency_problems(name: str, line: str, grounds: str) -> list[str]:
     grounded = {claim.casefold() for claim in _FREQUENCY_RE.findall(grounds)}
     return [
         f"the {name} says how often something happens ({claim.casefold()!r}) and no fact says "
         "so; say only what today's facts show"
-        for name, line in _printed_lines(draft).items()
         for claim in _FREQUENCY_RE.findall(line)
         if claim.casefold() not in grounded
     ]
@@ -159,14 +169,25 @@ def _length_problems(exc: ValidationError) -> list[str]:
     return [f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in errors]
 
 
+def _field_problems(name: str, text: str, values: SlotValues) -> list[str]:
+    """Name every way one voiced field's slots and claims break the facts they name."""
+    problems = slot_problems(name, text, values)
+    if name == "message":
+        problems += claim_problems(name, text, values)
+    return problems + [
+        problem
+        for check in (goal_problems, dependency_problems, duration_problems)
+        for problem in check(name, text, values)
+    ]
+
+
 def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str]:
     """Return the voice rendered from its facts, or every way its slots, lead or lengths break them."""
     problems = [
         problem
         for name in _VOICED_FIELDS
-        for problem in slot_problems(name, getattr(voice, name), writing.values)
+        for problem in _field_problems(name, getattr(voice, name), writing.values)
     ]
-    problems += claim_problems("message", voice.message, writing.values)
     lead = writing.lead
     if lead is not None and lead not in referenced_facts(voice.message):
         problems.append(
@@ -180,8 +201,88 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
         draft = _draft(voice, writing.values)
     except ValidationError as exc:
         return _length_problems(exc)
-    said = _repeat_problems(draft, writing.recent) + _frequency_problems(draft, writing.grounds)
+    said = _repeat_problems(draft, writing.recent) + [
+        problem
+        for name, line in _printed_lines(draft).items()
+        for problem in _frequency_problems(name, line, writing.grounds)
+    ]
     return said or draft
+
+
+def _holds(name: str, text: str, writing: Writing) -> bool:
+    """Whether a field's text passes every check its sentences answer to, frequency included."""
+    if _field_problems(name, text, writing.values):
+        return False
+    return not _frequency_problems(name, render_slots(text, writing.values, {}), writing.grounds)
+
+
+def _gap(kept: str, dropped: str) -> str:
+    """Return the break that stands for a dropped sentence: the wider of the two around it."""
+    return max(kept, dropped, key=lambda gap: gap.count("\n"))
+
+
+def _sound_sentences(name: str, text: str, writing: Writing) -> tuple[str, int]:
+    """Drop each sentence the checks reject, and any left pointing back at one; count the drops.
+
+    Each sentence is checked after the ones kept before it, so a claim is read in the context
+    the salvaged brief prints it in.
+    """
+    kept: list[tuple[str, str]] = []
+    dropped = 0
+    after_drop = False
+    for sentence, gap in sentence_breaks(text):
+        so_far = "".join(s + g for s, g in kept)
+        dangling = after_drop and points_back(sentence, writing.values)
+        if dangling or not _holds(name, so_far + sentence, writing):
+            dropped += 1
+            after_drop = True
+            if kept:
+                kept[-1] = (kept[-1][0], _gap(kept[-1][1], gap))
+            continue
+        kept.append((sentence, gap))
+        after_drop = False
+    return "".join(s + g for s, g in kept).strip(), dropped
+
+
+def _salvaged(voice: BriefVoice | None, writing: Writing) -> tuple[BriefVoice, BriefVoice]:
+    """Keep what holds of the last voice; plainly only when no headline or lede is left.
+
+    A dropped headline gets the plain one, a message missing the lead gets its plain line first,
+    and a message left empty gets the plain list.
+    """
+    plain = plain_voice(writing)
+    salvage = None if voice is None else _kept_voice(voice, writing, plain)
+    held = None if salvage is None else _held_to_facts(salvage, writing)
+    log.set_ns(f"brief_{_VOICE_CALL}", plain=not isinstance(held, BriefVoice))
+    if salvage is None or not isinstance(held, BriefVoice):
+        return plain, _draft(plain, writing.values)
+    return salvage, held
+
+
+def _kept_voice(voice: BriefVoice, writing: Writing, plain: BriefVoice) -> BriefVoice | None:
+    """Return the voice with its rejected sentences dropped; None when no headline or lede is left."""
+    said = {_plain(line) for line in writing.recent.every()}
+    kept: dict[str, str] = {}
+    dropped = 0
+    for name in _VOICED_FIELDS:
+        text, drops = _sound_sentences(name, getattr(voice, name), writing)
+        if name != "message" and text and _plain(render_slots(text, writing.values, {})) in said:
+            text, drops = "", drops + 1
+        kept[name], dropped = text, dropped + drops
+    log.set_ns(f"brief_{_VOICE_CALL}", dropped_sentences=dropped)
+    if not kept["headline"] and not kept["lede"]:
+        return None
+    message = kept["message"] or plain.message
+    lead = writing.lead
+    if lead is not None and lead not in referenced_facts(message):
+        message = f"{_plain_line(lead, writing.values)}\n\n{message}"
+    return BriefVoice(
+        headline=kept["headline"] or plain.headline,
+        lede=kept["lede"],
+        caption=kept["caption"],
+        mood=voice.mood,
+        message=message,
+    )
 
 
 async def written_brief(
@@ -190,31 +291,27 @@ async def written_brief(
     """Voice the brief and hold it to its facts; return what the model wrote and its rendered draft.
 
     An unreadable reply, a bad slot, a missing lead or an overlong field is sent back to the
-    model with the problems named; past the last attempt the brief is voiced plainly from its
-    facts.
+    model with the problems named; past the last attempt what holds of it is kept.
     """
 
     async def held(voice: BriefVoice) -> tuple[BriefVoice, BriefVoice] | Rejected[BriefVoice]:
         checked = _held_to_facts(voice, writing)
         if isinstance(checked, BriefVoice):
             return voice, checked
-        return Rejected(checked, voice_correction_note(checked, voice.model_dump_json(indent=2)))
-
-    def plainly(_last: BriefVoice | None) -> tuple[BriefVoice, BriefVoice]:
-        plain = plain_voice(writing)
-        return plain, _draft(plain, writing.values)
+        note = voice_correction_note(checked, voice.model_dump_json(indent=2))
+        return Rejected(checked, note, voice)
 
     return await checked_structured_call(
         user_id,
         prompt,
         CheckedCall(
-            name="voice",
+            name=_VOICE_CALL,
             schema=BriefVoice,
             label=BRIEF_VOICE_LABEL,
             attempts=MAX_VOICE_ATTEMPTS,
             check=held,
             unreadable=voice_unreadable_note,
-            salvage=plainly,
+            salvage=lambda last: _salvaged(last, writing),
         ),
     )
 
@@ -224,17 +321,19 @@ def plain_voice(writing: Writing) -> BriefVoice:
     facts = writing.values.facts
     order = [writing.lead] if writing.lead is not None else []
     order += [fact_id for fact_id in facts if fact_id != writing.lead]
-    lines = [
-        f"- {FactSlot(fact_id)}"
-        + (f" ({FactSlot(fact_id, FactField.TIME)})" if facts[fact_id].time else "")
-        for fact_id in order
-    ]
+    lines = [_plain_line(fact_id, writing.values) for fact_id in order]
     message = "\n".join(lines) or PLAIN_BRIEF_EMPTY
     while len(_draft_message(message, writing)) > MAX_BRIEF_MESSAGE_CHARS and "\n" in message:
         message = message.rsplit("\n", 1)[0]
     return BriefVoice(
         headline=PLAIN_BRIEF_HEADLINE, lede="", caption="", mood=BriefingMood.CLEAR, message=message
     )
+
+
+def _plain_line(fact_id: int, values: SlotValues) -> str:
+    """One fact as the plain list prints it: its slot, and its time where it has one."""
+    timed = values.facts[fact_id].time
+    return f"- {FactSlot(fact_id)}" + (f" ({FactSlot(fact_id, FactField.TIME)})" if timed else "")
 
 
 def _draft_message(message: str, writing: Writing) -> str:

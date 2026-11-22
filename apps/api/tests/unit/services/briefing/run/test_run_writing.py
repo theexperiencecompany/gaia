@@ -89,7 +89,10 @@ class TestTheComposition:
         assert world.composer.await_count == 2
         assert len(salvaged(event, "composition")) == 1
         (section,) = world.stored().sections
-        assert (section.title, [i.text for i in section.items]) == ("Needs you", ["Priya reply"])
+        assert (section.title, [i.text for i in section.items]) == (
+            "Replies to send",
+            ["Priya reply"],
+        )
         world.notify.assert_awaited()
 
     async def test_the_composition_is_one_call_metered_to_the_user(self, world: World) -> None:

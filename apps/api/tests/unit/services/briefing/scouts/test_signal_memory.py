@@ -195,6 +195,15 @@ class TestWhatIsNew:
             "first seen today, created 2025-06-18 (491 days ago), last updated 491 days ago"
         )
 
+    @pytest.mark.regression
+    def test_an_item_the_app_dates_only_by_its_last_update_says_that_update(self) -> None:
+        """Two GitHub threads updated this week read as undated, so stale issues outranked them."""
+        signal = _signal("27213240598").model_copy(update={"updated_at": NOW - timedelta(days=3)})
+
+        assert memory_note(RememberedSignal(signal=signal), CLOCK) == (
+            "first seen today, last updated 3 days ago"
+        )
+
     def test_an_item_created_within_the_day_is_new(self) -> None:
         signal = _signal("7").model_copy(update={"created_at": NOW - timedelta(hours=20)})
 

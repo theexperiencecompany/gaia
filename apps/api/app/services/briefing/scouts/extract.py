@@ -2,7 +2,8 @@
 
 One malformed item never costs the app its other items: an item missing a required
 field (id, title) is skipped, and an optional field that cannot be read is left empty.
-Only a result where no item reads at all, or whose items are not a list, means the
+An archived item, or one in an archived repository or project, is left out. Only a
+result where no item reads at all, or whose items are not a list, means the
 app's result no longer has the shape the scout learned; that raises PlaceholderError
 and the caller relearns the scout. Every replayed signal starts normal: which matter,
 and how much, is the judge's call.
@@ -11,10 +12,17 @@ and how much, is the judge's call.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 from pydantic import TypeAdapter, ValidationError
 
-from app.constants.scouts import PERSON_ID_KEYS, PERSON_NAME_KEYS, SCOUT_SIGNAL_CEILING
+from app.constants.scouts import (
+    API_HOST_LABEL,
+    ARCHIVED_KEY,
+    PERSON_ID_KEYS,
+    PERSON_NAME_KEYS,
+    SCOUT_SIGNAL_CEILING,
+)
 from app.models.scout_models import Signal, SignalSource
 from app.services.briefing.scouts.tools import ScoutIntegration
 from app.services.workflow.playbook.evaluator import (
@@ -72,6 +80,14 @@ class _Item:
             self.unread.append(what)
         return text
 
+    def page(self, path: str | None) -> str | None:
+        """Return the item's link when a person can open it; an app's API endpoint reads as unread."""
+        url = self.text(path, "url")
+        page = page_url(url)
+        if url is not None and page is None:
+            self.unread.append("url")
+        return page
+
     def moment(self, path: str | None, what: str) -> datetime | None:
         raw = self.optional(path)
         if raw is None:
@@ -118,6 +134,13 @@ class _Item:
         return people, you
 
 
+def page_url(url: str | None) -> str | None:
+    """Return url when a person can open it as a page; None for an app's API endpoint."""
+    if url is None or urlsplit(url).netloc.split(".")[0] == API_HOST_LABEL:
+        return None
+    return url
+
+
 def is_the_user(person: object, handles: frozenset[str]) -> bool:
     """Say whether an app's person, a handle or an object, carries one of the user's own handles.
 
@@ -158,7 +181,7 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: _Item) ->
         people=people,
         people_role=fields.people_role,
         people_you=you,
-        url=item.text(fields.url, "url"),
+        url=item.page(fields.url),
         state=item.state(fields.state),
         amount=amount,
         amount_unit=source.amount_unit if amount is not None else None,
@@ -169,14 +192,24 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: _Item) ->
     )
 
 
+def _archived(value: object) -> bool:
+    """Say whether an item, or what holds it (a GitHub issue's repository), is archived."""
+    if not isinstance(value, Mapping):
+        return False
+    holders = [value, *(v for v in value.values() if isinstance(v, Mapping))]
+    return any(holder.get(ARCHIVED_KEY) is True for holder in holders)
+
+
 def _source_signals(
     integration: ScoutIntegration, source: SignalSource, items: list[object]
 ) -> list[Signal]:
-    """Read every item that has its required fields; raise when items exist but none reads."""
+    """Read every item that has its required fields, archived ones left out; raise when none reads."""
     signals: list[Signal] = []
     skipped: list[PlaceholderError] = []
     degraded: set[str] = set()
     for value in items:
+        if _archived(value):
+            continue
         item = _Item(value)
         try:
             signals.append(_signal(integration, source, item))

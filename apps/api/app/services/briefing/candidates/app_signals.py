@@ -4,9 +4,10 @@ from collections.abc import Sequence
 
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
 from app.models.brief_item_models import ItemState
-from app.models.scout_models import RememberedSignal
+from app.models.scout_models import RememberedSignal, SignalImportance
 from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.facts import memory_note
+from app.utils.timezone import as_utc
 
 
 def _detail(item: RememberedSignal, clock: UserClock) -> str:
@@ -20,10 +21,18 @@ def _detail(item: RememberedSignal, clock: UserClock) -> str:
     return " | ".join(parts)
 
 
+def _rank(item: RememberedSignal) -> tuple[bool, float]:
+    """Order signals by the scout's urgency, then by how recently the app saw them move, undated last."""
+    signal = item.signal
+    touched = as_utc(signal.updated_at or signal.created_at)
+    recency = touched.timestamp() if touched is not None else float("-inf")
+    return (signal.importance is not SignalImportance.HIGH, -recency)
+
+
 def app_signal_candidates(
     remembered: Sequence[RememberedSignal], clock: UserClock
 ) -> list[BriefCandidate]:
-    """Return one candidate per signal, with what earlier briefs remember of it in its detail."""
+    """Return one candidate per signal, important then most recently moved first, memory in its detail."""
     return [
         BriefCandidate(
             origin=CandidateOrigin.APP_SIGNAL,
@@ -44,5 +53,5 @@ def app_signal_candidates(
             memory=item.memory,
             moved=item.previous_state is not None,
         )
-        for item in remembered
+        for item in sorted(remembered, key=_rank)
     ]

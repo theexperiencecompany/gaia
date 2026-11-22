@@ -278,6 +278,26 @@ class TestReadingItems:
 
         assert (signal.due_at, signal.people, signal.state) == (None, ["ana", "bo"], None)
 
+    @pytest.mark.regression
+    def test_an_item_in_an_archived_repository_is_left_out(self) -> None:
+        """The founder's brief listed unstarted issues from a repo archived as an old snapshot."""
+        values = {
+            "reviews": {
+                "items": [
+                    _pr(110, repository={"full_name": "acme/backend", "archived": True}),
+                    _pr(111, archived=True),
+                    _pr(7, repository={"full_name": "acme/www", "archived": False}),
+                ]
+            }
+        }
+
+        assert [s.external_id for s in extract_signals(GITHUB, [SOURCE], values)] == ["7"]
+
+    def test_a_result_of_only_archived_items_is_a_quiet_day(self) -> None:
+        values = {"reviews": {"items": [_pr(110, repository={"archived": True})]}}
+
+        assert extract_signals(GITHUB, [SOURCE], values) == []
+
     def test_an_empty_list_is_a_quiet_day(self) -> None:
         assert extract_signals(GITHUB, [SOURCE], {"reviews": {"items": []}}) == []
 
@@ -317,6 +337,7 @@ class TestOneMalformedItem:
             ({"created": "a while back"}, "created_at", None),
             ({"updated": "lately"}, "updated_at", None),
             ({"html_url": {"href": "x"}}, "url", None),
+            ({"html_url": "https://api.github.com/repos/o/r/pulls/1813"}, "url", None),
             ({"state": ["open"]}, "state", None),
         ],
         ids=[
@@ -326,6 +347,7 @@ class TestOneMalformedItem:
             "created not a date",
             "updated not a date",
             "url not text",
+            "url an API endpoint, not a page (GitHub notifications, 2026-11-22)",
             "state not text",
         ],
     )

@@ -495,9 +495,9 @@ class TestEachSourceIsCappedByRank:
 
         assert list(gathered.pool) == list(range(1, BRIEF_POOL_PER_SOURCE + 4))
         assert _titles(gathered, "gmail") == [
-            *(f"Gmail {n}" for n in range(BRIEF_POOL_PER_SOURCE - 2)),
             "Gmail 100",
             "Gmail 101",
+            *(f"Gmail {n}" for n in range(BRIEF_POOL_PER_SOURCE - 2)),
         ]
         assert _titles(gathered, "linear") == ["Linear 200", "Linear 201"]
         assert [c.title for c in gathered.pool.values() if c.is_event] == ["Board call"]
