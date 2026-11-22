@@ -7,6 +7,7 @@ unique token key is what decides who holds a token.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, tzinfo
+from typing import Self
 
 from bson import ObjectId
 import pytest
@@ -29,12 +30,13 @@ class _KolkataClock(datetime):
     """A datetime whose now() is REGISTERED_AT, and whose naive now() reads on a UTC+5:30 wall clock."""
 
     @classmethod
-    def now(cls, tz: tzinfo | None = None) -> datetime:
-        return (
+    def now(cls, tz: tzinfo | None = None) -> Self:
+        moment = (
             REGISTERED_AT.astimezone(tz)
             if tz
             else (REGISTERED_AT + KOLKATA_OFFSET).replace(tzinfo=None)
         )
+        return cls.combine(moment.date(), moment.timetz())
 
 
 @pytest.fixture
