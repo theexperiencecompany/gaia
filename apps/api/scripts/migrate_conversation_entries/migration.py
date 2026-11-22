@@ -5,8 +5,10 @@ an earlier build of this stack copied into conversation_entries. A user message 
 imported UserMessage, a bot message an imported Reply, each at its position; a bot message's
 ReplySettled is appended at the tail with a fresh seq, so no seq is ever renumbered. An
 emoji_ack folds into a chat-model reaction on the user message it answered. Re-runs merge by
-entry id and set only the fields whose source changed; the head write is conditional on the
-log_head and the array's whole-array fingerprint as read, so a racing write reports RACED.
+entry id and set only the fields whose source changed; a message the old build has since
+trimmed off its array becomes an empty imported reply at its seq, gone from every read. The
+head write is conditional on the log_head and the array's whole-array fingerprint as read, so
+a racing write reports RACED.
 """
 
 from __future__ import annotations
@@ -381,6 +383,11 @@ def _settle(message: ConversationEntry, reply: Reply, answered: str | None) -> R
     )
 
 
+def _blank(entry_id: str) -> Reply:
+    """Return the empty imported reply that holds a seq no old message fills; no read shows it."""
+    return Reply(id=entry_id, reply_id=entry_id, attempt_id=f"imported:{entry_id}", imported=True)
+
+
 def _sources(
     head: EmbeddedHead, stored: Sequence[StoredEntry], minted: Sequence[str | None] | None
 ) -> tuple[list[_Element], dict[str, StoredEntry], list[StoredEntry]]:
@@ -728,15 +735,20 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             seq_of[entry.id] = seq
             at = item.at or (prior.at if prior and prior.at else None) or datetime.now(UTC)
             plan.add(ref, LoggedEntry(seq=seq, at=at, entry=entry), prior, in_place=item.seq)
+        for row in existing.values():
+            if row.id not in seq_of and is_imported(logged_of(row).entry):
+                # The old build trimmed it off its array: it leaves the conversation, its seq stays.
+                trimmed = LoggedEntry(
+                    seq=row.seq, at=row.at or datetime.now(UTC), entry=_blank(row.id)
+                )
+                plan.add(ref, trimmed, row, in_place=None)
         placed = set(seq_of.values())
         for row in shaped:
             if row.seq not in placed:
                 # A folded ack already holding a seq stays as an empty imported reply, never a gap.
-                blank = Reply(
-                    id=row.id, reply_id=row.id, attempt_id=f"imported:{row.id}", imported=True
-                )
                 at = row.at or datetime.now(UTC)
-                plan.add(ref, LoggedEntry(seq=row.seq, at=at, entry=blank), None, in_place=row.seq)
+                blank = LoggedEntry(seq=row.seq, at=at, entry=_blank(row.id))
+                plan.add(ref, blank, None, in_place=row.seq)
         if sorted(plan.log) != list(range(1, len(plan.log) + 1)):
             raise MigrationRefused("the log would have a gap in its seqs")
         plan.state = _fold(plan.log)

@@ -325,6 +325,121 @@ async def test_a_log_the_new_build_wrote_merges_the_old_builds_later_messages_an
     assert report.mismatches[0].startswith("history differs at message 2")
 
 
+def _todo_chat() -> list[dict[str, object]]:
+    return [
+        _message(1, pinned=True),
+        _message(2, "bot"),
+        _message(3),
+        _message(4, "bot", pinned=True),
+        _message(5),
+        _message(6, "bot", tool_data=[_CARD]),
+        _message(7),
+        _message(8, "bot"),
+    ]
+
+
+async def _old_build_trims(raw_collection: Any, ref: HeadRef, keep: list[str]) -> None:
+    """Cut the array to the messages a todo chat's append keeps: the pinned ones and the newest."""
+    head = await _head(raw_collection, ref)
+    kept = [m for m in head["messages"] if m["message_id"] in keep]
+    await raw_collection.update_one({"_id": ObjectId(ref.head_id)}, {"$set": {"messages": kept}})
+
+
+async def test_messages_the_old_build_trims_after_a_pass_leave_the_log_and_verify_passes(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, _todo_chat())
+    await migration.migrate(ref, apply=True)
+    await _old_build_trims(raw_collection, ref, ["m1", "m4", "m7", "m8"])
+    await raw_collection.update_one(
+        {"_id": ObjectId(ref.head_id)},
+        {"$push": {"messages": {"$each": [_message(9), _message(10, "bot")]}}},
+    )
+
+    outcome = await migration.migrate(ref, apply=True)
+
+    assert outcome.action is MigrationAction.MERGED, outcome.reason
+    report = await migration.verify(ref)
+    assert report.ok, report.mismatches
+    assert [m for _, m, _ in await _history(ref)] == ["m1", "m4", "m7", "m8", "m9", "m10"]
+    entries = await _entries(entries_collection, ref)
+    assert [e["seq"] for e in entries] == list(range(1, len(entries) + 1))
+    by_id = {e["id"]: e for e in entries}
+    for gone in ("m2", "m3", "m5", "m6", "m2:settled", "m6:settled"):
+        assert (by_id[gone]["kind"], by_id[gone]["text"], by_id[gone].get("tool_data")) == (
+            "reply",
+            "",
+            [],
+        )
+    for words in ("message 3", "message 6"):
+        assert (await ConversationRepository().search(USER, pattern=words)).messages == []
+    assert (await migration.migrate(ref, apply=True)).action is MigrationAction.UNCHANGED
+    assert await _entries(entries_collection, ref) == entries
+
+
+_APPROVAL = {"tool_name": "approval_request", "data": {"status": "pending", "tool": "send_email"}}
+_EDITS: dict[str, tuple[dict[str, object], list[dict[str, object]] | None]] = {
+    "response": ({"messages.$[m].response": "edited"}, None),
+    "tool_data": ({"messages.$[m].tool_data": [_CARD, _CARD]}, None),
+    "follow_up_actions": ({"messages.$[m].follow_up_actions": ["again"]}, None),
+    "pinned": ({"messages.$[m].pinned": True}, None),
+    "approval status": (
+        {"messages.$[m].tool_data.$[t].data.status": "executed"},
+        [{"t.tool_name": "approval_request"}],
+    ),
+}
+
+
+@pytest.mark.parametrize("edit", sorted(_EDITS))
+async def test_each_in_place_edit_the_old_build_makes_after_a_pass_is_rewritten_and_verifies(
+    migration: ConversationEntriesMigration, raw_collection: Any, edit: str
+) -> None:
+    bot = _message(2, "bot", tool_data=[_APPROVAL], follow_up_actions=["more"])
+    ref = await _legacy(raw_collection, [_message(1), bot, _message(3), _message(4, "bot")])
+    await migration.migrate(ref, apply=True)
+    change, card_filter = _EDITS[edit]
+    await raw_collection.update_one(
+        {"_id": ObjectId(ref.head_id)},
+        {"$set": change},
+        array_filters=[{"m.message_id": "m2"}, *(card_filter or [])],
+    )
+
+    outcome = await migration.migrate(ref, apply=True)
+
+    assert (outcome.action, outcome.written) == (MigrationAction.MERGED, 0), outcome.reason
+    report = await migration.verify(ref)
+    assert report.ok, report.mismatches
+
+
+async def test_a_trim_after_the_new_build_wrote_leaves_every_live_entry_as_it_was(
+    migration: ConversationEntriesMigration,
+    raw_collection: Any,
+    entries_collection: Any,
+    held: HeldFlushes,
+) -> None:
+    ref = await _legacy(raw_collection, _todo_chat())
+    await migration.migrate(ref, apply=True)
+    appends = LogAppends(ConversationLogRepository(), FakeClock())
+    live = UserMessage(id="live-u", text="live words", surface=ConversationSource.WEB)
+    for entry in [live, *replied("live-settled", ["live-u"], 13), notice("live-n")]:
+        await appends.append(ref.conversation_id, USER, entry)
+    held.drop_all()
+    await migration.flush_outbox(ref.conversation_id, user_id=USER)
+    live_before = [
+        e for e in await _entries(entries_collection, ref) if e["id"].startswith("live-")
+    ]
+    # A rollback's old build trims the array the log already holds.
+    await _old_build_trims(raw_collection, ref, ["m1", "m7", "m8"])
+
+    outcome = await migration.migrate(ref, apply=True)
+
+    assert outcome.action is MigrationAction.MERGED, outcome.reason
+    live_after = [e for e in await _entries(entries_collection, ref) if e["id"].startswith("live-")]
+    assert live_after == live_before
+    report = await migration.verify(ref)
+    assert report.ok, report.mismatches
+
+
 async def test_an_old_message_holding_the_id_of_a_live_entry_refuses_and_leaves_it_whole(
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
