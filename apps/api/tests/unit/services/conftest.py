@@ -225,7 +225,7 @@ def mock_webhook_send_email():
 def mock_queue_inbox_desk():
     """Patch the Inbox desk queue at its source module (import deferred to break a cycle); opt in like the one below."""
     with patch(
-        "app.services.todos.inbox_desk.queue_inbox_desk_provision", new_callable=AsyncMock
+        "app.services.tasks.inbox_desk.queue_inbox_desk_provision", new_callable=AsyncMock
     ) as mock_fn:
         yield mock_fn
 

@@ -61,6 +61,7 @@ from app.services.tasks.gaia_run import (
     skip_reason,
     task_run_of,
 )
+from app.services.tasks.inbox_desk import is_inbox_desk, with_desk_notes
 from app.services.tasks.run_brief import build_event_brief, collect_run_context
 from app.services.tasks.run_records import close_run, open_run, record_event, record_skipped_run
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
@@ -131,9 +132,12 @@ async def _owner_ready_to_run(
 async def _defer_drain(task: TaskDocument, trigger_window: int) -> str | None:
     """Return why the drain of the window ending at trigger_window does not run now, or None.
 
-    It waits for a later window a run has opened, which quiet hours stretch to their end
-    when the task's gates hold every event it buffered.
+    A desk's due briefing answers what it holds. Otherwise it waits for a later window a
+    run has opened, which quiet hours stretch to their end when the task's gates hold
+    every event it buffered.
     """
+    if _briefing_due(task):
+        return f"deferred:{task.id} (its scheduled run answers the held events)"
     if (hold := await _quiet_hours_hold(task)) is not None:
         await stretch_event_window(task.id, hold.until)
     later = await event_window_end(task.id)
@@ -141,6 +145,16 @@ async def _defer_drain(task: TaskDocument, trigger_window: int) -> str | None:
         await reschedule_task_event_drain(task.id)
         return f"deferred:{task.id} (its event window is open until {later})"
     return None
+
+
+def _briefing_due(task: TaskDocument) -> bool:
+    """Whether the task is a desk whose scheduled run is due, which reads every held event."""
+    return (
+        is_inbox_desk(task)
+        and isinstance(task.when, RepeatWhen)
+        and task.when.next_run is not None
+        and task.when.next_run <= datetime.now(UTC)
+    )
 
 
 async def _quiet_hours_hold(task: TaskDocument) -> GateHold | None:
@@ -199,6 +213,7 @@ async def _run_claimed(
     except CostBudgetExceededException as walled:
         await record_skipped_run(task, TaskRunTrigger.APP_EVENT, f"skipped: {walled.message}")
         return None, f"walled:{task.id}"
+    task = await with_desk_notes(task)
     zone = Timezone.parse(user.timezone)
     brief = build_event_brief(
         task,

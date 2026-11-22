@@ -151,6 +151,8 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
     await tasks.subscribe()
     watcher = await legacy.tracked_todo("Wait for the landlord's reply")
     await legacy.watches_emails_from(watcher, "landlord@example.com")
+    # A desk the user stopped long ago, before the one they have now was opened.
+    await legacy.completed_by_the_user(await legacy.inbox_desk())
     desk = await legacy.inbox_desk()
     gmail = await db["user_integrations"].find_one({"user_id": USER, "integration_id": "gmail"})
     assert gmail is not None
@@ -275,8 +277,14 @@ class TestTheMigration:
         asked = by_title["Book the Lisbon flight"]
         assert asked["waiting"]["question"]["text"] == QUESTION
         assert asked["next_check_at"] is not None and asked["when"]["kind"] == "none"
-        desk = by_title["Inbox desk"]
-        assert (desk["system_key"], desk["source_integration"]) == (INBOX_DESK_SYSTEM_KEY, "gmail")
+        desks = [t for t in tasks.values() if t["title"] == "Inbox desk"]
+        assert {
+            (d["system_key"], d["source_integration"], d["completed"], d["active"]) for d in desks
+        } == {
+            (INBOX_DESK_SYSTEM_KEY, "gmail", False, True),
+            (INBOX_DESK_SYSTEM_KEY, "gmail", True, False),
+        }
+        (desk,) = [d for d in desks if not d["completed"]]
         reply = by_title["Reply to Mads"]
         assert reply["parent_id"] == desk["_id"]
         generated = by_title["Todo: Plan the offsite"]

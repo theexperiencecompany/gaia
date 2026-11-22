@@ -34,7 +34,6 @@ import fakeredis.aioredis
 import httpx
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
-import respx
 import time_machine
 
 from app.agents.core.background.todo_run import (
@@ -43,12 +42,15 @@ from app.agents.core.background.todo_run import (
     TodoRunRequest,
 )
 from app.agents.prompts import todo_prompts
+from app.agents.prompts.inbox_desk_prompts import (
+    GMAIL_THREAD_ACCOUNT_LINE,
+    INBOX_DESK_QUIET_HOURS_NOTE,
+)
 from app.agents.prompts.todo_prompts import (
     DELIVERED_REPORT_FORM,
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
     GMAIL_THREAD_ACCOUNT_GONE,
-    GMAIL_THREAD_ACCOUNT_LINE,
     GMAIL_THREAD_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
@@ -66,13 +68,11 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
-    INBOX_DESK_RECURRENCE,
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
     MAX_HOLD_CHECK_AHEAD,
     MAX_HOLD_CHECKS,
     MAX_RETRY_ATTEMPTS,
-    OBSERVATIONS_PROMPT_MAX_CHARS,
     OPEN_STATE_REPAIR_CHECK,
     REFERENCED_TODOS_PROMPT_LIMIT,
     RETRY_BACKOFF,
@@ -87,7 +87,7 @@ from app.constants.todos import (
     WaitingOn,
     WakeReason,
 )
-from app.constants.trigger_gates import GateAuthor, SystemGatePreset
+from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WAIT_MET_TRIGGER
 from app.db.repositories.todos import todo_repository
@@ -108,7 +108,7 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.todo_wake_models import TodoRunWake
-from app.models.trigger_gate_models import AuthoredGate, QuietHoursBypass, SystemGate, TriggerGate
+from app.models.trigger_gate_models import AuthoredGate, QuietHoursBypass, TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
@@ -119,9 +119,6 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.hil.jev_client import decisions_url
-from app.services.providers.provider_credentials_service import ProviderConfig
-from app.services.tasks.notes import starting_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
@@ -154,9 +151,7 @@ from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 from tests.helpers import (
     UNKNOWN_USER_ID,
-    FakeEmailVerdicts,
     captured_wide_event,
-    email_verdict_answers,
     live_through,
     trigger_gate_seams,
     users_get,
@@ -902,39 +897,6 @@ class TestDeliveryContractInThePrompt:
         assert TRIGGERED_RELEVANCE_GUIDANCE in prompt
         assert "UNTRUSTED external data" in prompt
 
-    def test_a_desk_woken_in_quiet_hours_is_told_to_report_nothing(self) -> None:
-        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        origin = TriggerOrigin(
-            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
-        )
-        quiet = _prompt(_doc(external_ref=desk), origin=origin, local_now=_LATE)
-        daytime = _prompt(_doc(external_ref=desk), origin=origin)
-
-        note = todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE
-        assert note.format(local_time="23:08") in quiet
-        assert note.split("{")[0] not in daytime
-
-    def test_a_desk_follows_the_quiet_hours_the_user_set(self) -> None:
-        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        origin = TriggerOrigin(
-            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
-        )
-        lunch = QuietHours(enabled=True, start_hour=10, end_hour=12)
-        note = todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE
-
-        at_eleven = _prompt(_doc(external_ref=desk), origin=origin, quiet_hours=lunch)
-        late = _prompt(_doc(external_ref=desk), origin=origin, local_now=_LATE, quiet_hours=lunch)
-        off = _prompt(
-            _doc(external_ref=desk),
-            origin=origin,
-            local_now=_LATE,
-            quiet_hours=DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False}),
-        )
-
-        assert note.format(local_time="11:00") in at_eleven
-        assert note.split("{")[0] not in late
-        assert note.split("{")[0] not in off
-
     def test_quiet_hours_leave_a_thread_todo_alone(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
         origin = TriggerOrigin(
@@ -942,7 +904,7 @@ class TestDeliveryContractInThePrompt:
         )
         prompt = _prompt(_doc(external_ref=thread), origin=origin, local_now=_LATE)
 
-        assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.split("{")[0] not in prompt
+        assert INBOX_DESK_QUIET_HOURS_NOTE.split("{")[0] not in prompt
 
     def test_a_desk_let_through_quiet_hours_reports_and_says_why(self) -> None:
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
@@ -1152,16 +1114,9 @@ class TestARunWaitsForItsAccount:
             result = await _execute_todo_with_retry("todo-1")
         return result, repo, via_agent
 
-    @pytest.mark.parametrize(
-        "ref",
-        [
-            ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"),
-            ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1"),
-        ],
-        ids=["desk", "thread"],
-    )
-    async def test_gmail_work_waits_for_gmail(self, account, activity, ref):
+    async def test_gmail_work_waits_for_gmail(self, account, activity):
         account.connected.return_value = set()
+        ref = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
 
         result, _repo, via_agent = await self._run(_doc(external_ref=ref))
 
@@ -2399,68 +2354,6 @@ class TestStandingRulesReachTheRun:
         assert "## Standing rules\n- 2026-09-28: brief me in bullets" in task
 
 
-class TestTheDeskRunReadsItsObservations:
-    """A desk's run reads its observations.md, seeded by code before the prompt is built."""
-
-    async def test_an_older_desks_run_reads_the_observations_seeded_before_its_prompt(self) -> None:
-        canvas = starting_canvas("Inbox desk", ["brief me by 9"])
-        stored = {
-            _DESK_ID: _doc(
-                id=_DESK_ID,
-                title="Inbox desk",
-                external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"),
-                canvas_content=canvas.replace(
-                    "## Key Details", "## Observations\n- github: ~140/day\n\n## Key Details"
-                ),
-            )
-        }
-
-        async def replace(
-            todo_id: str, user_id: str, *, update: TodoUpdate, **_: object
-        ) -> TodoDocument:
-            stored[todo_id] = stored[todo_id].model_copy(
-                update=update.model_dump(exclude_unset=True)
-            )
-            return stored[todo_id]
-
-        run = AsyncMock()
-        with (
-            patch.object(todo_repository, "replace_note_fields", AsyncMock(side_effect=replace)),
-            patch.object(
-                todo_repository, "get", AsyncMock(side_effect=lambda i, user_id: stored[i])
-            ),
-            patch.object(todo_repository, "list_active_tracked", AsyncMock(return_value=[])),
-            patch("app.services.todo_canvas_storage.schedule_gaia_tasks_sync", MagicMock()),
-            patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
-        ):
-            await _execute_on_executor(
-                stored[_DESK_ID],
-                user_tz=Timezone.utc(),
-                user_data=AuthenticatedUser(user_id=OWNER_ID),
-            )
-
-        task = run.await_args.args[0].task
-        observations = stored[_DESK_ID].observations_content
-        assert f"Canvas (canvas.md):\n{canvas}\n\nObservations (observations.md):\n" in task
-        assert f"Observations (observations.md):\n{observations}\n\n" in task
-        assert "### github\n- conclusion: ~140/day\n" in observations
-
-    def test_observations_past_their_prompt_cap_bring_only_their_conclusions(self) -> None:
-        evidence = "- daily counts: " + ", ".join(f"2026-09-{d:02}:140" for d in range(1, 15))
-        entry = "### a@example.com\n- conclusion: alerts — low priority\n- confidence: high\n"
-        observations = "# Observations\n\n## Senders\n" + (entry + evidence + "\n\n") * 40
-        assert len(observations) > OBSERVATIONS_PROMPT_MAX_CHARS
-
-        prompt = _prompt(_doc(observations_content=observations))
-
-        shown = prompt.split("Observations (observations.md):\n", 1)[1].split("\n\n", 1)[0]
-        assert len(shown) <= OBSERVATIONS_PROMPT_MAX_CHARS
-        assert "read observations.md before you write it" in shown
-        assert "- conclusion: alerts — low priority\n- confidence: high" in shown
-        assert "daily counts" not in shown
-
-
 def _thread(n: int, state: str = "Waiting on Sarah to confirm Friday") -> TodoDocument:
     return _doc(
         id=_ref_id(10 + n),
@@ -2764,106 +2657,6 @@ class TestOneRunPerOccurrence:
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
             yield run
-
-    @pytest.mark.parametrize("drain_first", [False, True], ids=["briefing-first", "drain-first"])
-    async def test_a_desk_email_held_overnight_rides_the_morning_run_once(
-        self, queue, fake_redis, drain_first: bool
-    ):
-        """New mail at 02:30 that can wait is held; the 08:00 briefing answers it, whichever job ARQ starts first."""
-        kolkata = Timezone.parse("Asia/Kolkata")
-        morning = datetime(2026, 10, 2, 8, tzinfo=kolkata.tzinfo)
-        watch = TriggerSubscription(
-            trigger_name="gmail_new_message",
-            action=SubscriptionAction.EXECUTE,
-            resolution=SubscriptionResolution.ACCOUNT,
-            cooldown_seconds=_DESK_WATCH_COOLDOWN_SECONDS,
-            gate=SystemGate(preset=SystemGatePreset.INBOX_DESK),
-        )
-        row = _TodoRow(
-            _doc(
-                external_ref=ExternalRef(
-                    source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
-                ),
-                recurrence=INBOX_DESK_RECURRENCE,
-                scheduled_at=morning.astimezone(UTC),
-                trigger_subscriptions=[watch],
-            )
-        )
-        can_wait = email_verdict_answers("reply")
-        with (
-            respx.mock() as jev,
-            patch("app.services.mail.email_verdict.email_verdict_repository", FakeEmailVerdicts()),
-            patch(
-                "app.services.hil.jev_client.resolve",
-                AsyncMock(
-                    return_value=ProviderConfig(api_key="or-key")
-                ),  # pragma: allowlist secret
-            ),
-            patch(f"{_GATE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
-            patch(f"{_GATE}.get_profile_timezone", AsyncMock(return_value=kolkata)),
-            patch(f"{_GATE}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)),
-            patch(f"{_GATE}.capture"),
-            patch(f"{_DISPATCH}.todo_repository", row),
-            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
-            patch(f"{_DISPATCH}.capture"),
-            time_machine.travel(datetime(2026, 10, 2, 2, 30, tzinfo=kolkata.tzinfo), tick=False),
-        ):
-            jev.post(decisions_url(None)).mock(return_value=httpx.Response(200, json=can_wait))
-            await tracked_todo_service.schedule_execution("todo-1", morning.astimezone(UTC))
-            first_of_thread: dict[str, object] = {
-                "thread_id": "m-1",
-                "message_id": "m-1",
-                "subject": "Pilot",
-            }
-            assert (
-                await dispatch_to_subscribed_todos(
-                    "gmail_new_message", None, OWNER_ID, first_of_thread
-                )
-                == 1
-            )
-            jobs = await _queued(queue)
-        assert {job.score for job in jobs} == {int(morning.timestamp() * 1000)}
-        drain, scheduled = sorted(jobs, key=lambda job: "scheduled_for" in job.kwargs)
-
-        with (
-            time_machine.travel(morning, tick=False),
-            self._worker(row) as run,
-            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))),
-        ):
-            for job in [drain, scheduled] if drain_first else [scheduled, drain]:
-                await _fire(queue, job)
-            leftover = [
-                job for job in await _queued(queue) if job.score <= morning.timestamp() * 1000
-            ]
-
-        run.assert_awaited_once()
-        assert run.await_args.kwargs["origin"] is None
-        assert await fake_redis.llen("trigger_batch:todo:todo-1") == 0
-        assert leftover == []
-
-    async def test_a_desk_briefing_counts_the_held_events_it_answers(self, queue, fake_redis):
-        row = _TodoRow(
-            _doc(
-                external_ref=ExternalRef(
-                    source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
-                ),
-                recurrence=INBOX_DESK_RECURRENCE,
-            )
-        )
-        await tracked_todo_service.schedule_execution("todo-1", row.doc.scheduled_at)
-        for message_id in ("m-1", "m-2"):
-            held = _GMAIL_ORIGIN.model_copy(update={"payload": {"message_id": message_id}})
-            await fake_redis.rpush("trigger_batch:todo:todo-1", held.model_dump_json())
-        (scheduled,) = await _queued(queue)
-
-        # The task's own arguments; the envelope's are not this run's to read.
-        task_kwargs = {k: v for k, v in scheduled.kwargs.items() if not k.startswith("_")}
-        with self._worker(row):
-            async with captured_wide_event() as wide:
-                await execute_tracked_todo({}, *scheduled.args, **task_kwargs)
-
-        assert wide["trigger_events_answered"] == 2
-        assert await fake_redis.llen("trigger_batch:todo:todo-1") == 0
 
     async def test_a_scheduled_run_leaves_held_payloads_for_their_own_run(self, queue, fake_redis):
         """Only a desk reads what changed itself; another todo's held event is its run's content."""
@@ -3680,31 +3473,6 @@ class TestExecuteOnExecutor:
             == f"[run_started] scheduled run (conversation {self._request().conversation_id[:8]})"
         )
         assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", OWNER_ID)}
-
-    async def test_the_run_prompt_uses_the_users_clock_not_utc(self) -> None:
-        """local_now comes from the user's timezone: 17:30 UTC is 23:00 in Kolkata."""
-        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
-        origin = TriggerOrigin(
-            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
-        )
-        frozen = datetime(2026, 10, 3, 17, 30, tzinfo=UTC)
-        run = AsyncMock()
-        with (
-            patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)),
-            patch(f"{MODULE}.collect_run_context", AsyncMock(return_value=TodoRunContext())),
-            patch(f"{MODULE}.with_desk_notes", AsyncMock(side_effect=lambda doc: doc)),
-            time_machine.travel(frozen, tick=False),
-        ):
-            await _execute_on_executor(
-                _doc(external_ref=desk),
-                user_data=AuthenticatedUser(user_id=OWNER_ID),
-                user_tz=Timezone.parse("Asia/Kolkata"),
-                origin=origin,
-            )
-
-        task = run.await_args.args[0].task
-        assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.format(local_time="23:00") in task
 
     async def test_the_run_reads_the_quiet_hours_of_the_todos_owner(
         self, quiet_hours: AsyncMock

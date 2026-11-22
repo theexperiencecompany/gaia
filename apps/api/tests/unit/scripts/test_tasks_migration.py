@@ -164,4 +164,4 @@ class TestUnmappable:
         )
 
         with pytest.raises(Unmappable):
-            task_from_todo(todo, is_users_desk=False)
+            task_from_todo(todo)

@@ -205,20 +205,9 @@ async def _load(db: AsyncIOMotorDatabase[Document], scope: Document) -> _Data:
     )
 
 
-def _newest_desks(todos: Mapping[str, Document]) -> set[str]:
-    newest: dict[str, tuple[datetime, str]] = {}
-    for todo_id, raw in todos.items():
-        if _get(raw, "external_ref.source") != "inbox_desk":
-            continue
-        made = _norm(raw.get("created_at") or ObjectId(todo_id).generation_time)
-        assert isinstance(made, datetime)
-        if raw["user_id"] not in newest or made > newest[raw["user_id"]][0]:
-            newest[raw["user_id"]] = (made, todo_id)
-    return {todo_id for _, todo_id in newest.values()}
-
-
-def _check_todo(check: _Checker, todo_id: str, todo: Document, task: Document, desk: bool) -> None:
+def _check_todo(check: _Checker, todo_id: str, todo: Document, task: Document) -> None:
     c = "tasks"
+    desk = _get(todo, "external_ref.source") == "inbox_desk"
     labels: list[str] = list(todo.get("labels") or [])
     gaia = GAIA_TRACKED_LABEL in labels
     pairs = {
@@ -236,7 +225,10 @@ def _check_todo(check: _Checker, todo_id: str, todo: Document, task: Document, d
         "references": (todo.get("references") or [], task.get("references") or []),
         "notify": (todo.get("notify_on_run", True), task.get("notify", True)),
         "pause_reason": (todo.get("pause_reason"), task.get("pause_reason")),
-        "active": (todo.get("pause_reason") is None, task.get("active", True)),
+        "active": (
+            todo.get("pause_reason") is None and not (desk and todo.get("completed")),
+            task.get("active", True),
+        ),
         "reasks_used": (todo.get("reasks_used") or 0, task.get("reasks_used", 0)),
         "notes": (todo.get("canvas_content"), task.get("notes")),
         "observations": (todo.get("observations_content"), task.get("observations")),
@@ -414,7 +406,6 @@ def _check_workflow(
 
 def _check_sources(check: _Checker, data: _Data) -> tuple[set[str], Counter[tuple[str, str]]]:
     """Check every todo and workflow against its task; return the ids expected and counts per user."""
-    desks = _newest_desks(data.todos)
     expected_ids: set[str] = set()
     per_user: Counter[tuple[str, str]] = Counter()
     for todo_id, todo in data.todos.items():
@@ -425,7 +416,7 @@ def _check_sources(check: _Checker, data: _Data) -> tuple[set[str], Counter[tupl
         if task is None:
             check.fail("tasks", todo_id, "_id", "a task for this todo")
             continue
-        _check_todo(check, todo_id, todo, task, todo_id in desks)
+        _check_todo(check, todo_id, todo, task)
     linking = {
         raw["workflow_id"]: tid
         for tid, raw in data.todos.items()

@@ -4,6 +4,7 @@ Every write keeps the open-state rule (an open one-off has a next step) and arms
 task's next time. What changed is written to the task's log, with who changed it. The
 parent check and the write are two writes, so each is checked again once it lands: a
 newborn subtask whose parent closed meanwhile is closed too, a moved one is moved back.
+An outside object has one task: taking it on again reopens the closed one it had.
 """
 
 from datetime import UTC, datetime
@@ -22,7 +23,7 @@ from app.services.tasks.search_index import index_task
 from app.services.todos.errors import OpenStateError
 from app.utils.auth_utils import require_owner
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.tasks import TaskCreated
+from shared.py.analytics.catalog.tasks import TaskCreated, TaskToggled
 from shared.py.wide_events import log
 
 
@@ -65,6 +66,48 @@ async def create_gaia_task(draft: TaskDocument, *, by: str) -> TaskDocument:
     if created.parent_id is not None and not await _still_files(created, created.parent_id):
         await complete_task(created, "Its parent was completed while it was being created.")
     return created
+
+
+async def reopen_for_its_ref(
+    previous: TaskDocument, plan: TaskUpdate, *, by: str
+) -> TaskDocument | None:
+    """Reopen the closed task an outside object had, with the plan a new task for it would get.
+
+    Its notes, log and chat keep its history. None when a concurrent create reopened it
+    first; refused with OpenStateError when the plan leaves it no next step.
+    """
+    if previous.external_ref is None:
+        raise ValueError(f"task {previous.id} is about no outside object")
+    if plan.parent_id is not None:
+        await require_subtask_parent(previous.user_id, plan.parent_id, assignee=previous.assignee)
+    update = TaskUpdate.model_validate(
+        {
+            **plan.model_dump(exclude_unset=True),
+            "completed": False,
+            "completed_at": None,
+            "retry_count": 0,
+        }
+    )
+    if problems := open_state_problems(previous.updated_by(update), datetime.now(UTC)):
+        raise OpenStateError(problems)
+    reopened = await task_repository.update_if_completed(
+        previous.id, previous.user_id, update=update
+    )
+    if reopened is None:
+        return None
+    await arm_task(reopened)
+    await index_task(reopened)
+    await record_event(
+        reopened,
+        TaskLogEvent.REOPENED,
+        f"for {reopened.external_ref.source.value if reopened.external_ref else 'its object'} "
+        f"{previous.external_ref.id}, {_plan_words(reopened)}, by {by}",
+    )
+    capture(UserId(reopened.user_id), TaskToggled(task_id=reopened.id, completed=False))
+    log.set_ns("task", reopened_for_ref=reopened.id)
+    if reopened.parent_id is not None and not await _still_files(reopened, reopened.parent_id):
+        await complete_task(reopened, "Its parent was completed while it was being reopened.")
+    return reopened
 
 
 async def update_gaia_task(task: TaskDocument, update: TaskUpdate, *, by: str) -> TaskDocument:

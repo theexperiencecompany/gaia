@@ -17,7 +17,7 @@ from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_
 
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background import todo_run_delivery
-from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
+from app.agents.prompts.inbox_desk_prompts import INBOX_DESK_DELIVERY_RULE
 from app.constants.comms import STAY_SILENT_TOOL_NAME
 from app.constants.conversation import WORK_DONE_NOTE
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE

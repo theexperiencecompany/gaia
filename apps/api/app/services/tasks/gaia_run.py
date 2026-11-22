@@ -65,7 +65,8 @@ from app.services.integrations.user_integrations import get_connected_integratio
 from app.services.notification_service import notification_service
 from app.services.tasks.arming import arm_at
 from app.services.tasks.completion import complete_task
-from app.services.tasks.event_window import reschedule_task_event_drain
+from app.services.tasks.event_window import drain_task_events, reschedule_task_event_drain
+from app.services.tasks.inbox_desk import is_inbox_desk, with_desk_notes
 from app.services.tasks.open_state import hold_ran_out, wake_budget_update
 from app.services.tasks.run_brief import build_scheduled_brief, collect_run_context
 from app.services.tasks.run_records import (
@@ -287,6 +288,11 @@ async def _run_claimed(
         if spent is None:
             raise LookupError(f"task {task.id} vanished before its run")
         task = spent
+    task = await with_desk_notes(task)
+    if is_inbox_desk(task):
+        # The desk's scheduled run reads what changed, so it answers every event held for it.
+        answered = await drain_task_events(task.id)
+        log.set_ns("task", events_answered=len(answered or []))
     brief = build_scheduled_brief(
         task, await collect_run_context(task, Timezone.parse(user.timezone))
     )

@@ -1,33 +1,25 @@
 """The migration journey's legacy builder writes exactly what the old todos engine wrote.
 
-legacy_snapshot.json is the old engine's own output for these steps, normalized. While the
-old engine exists, the first test drives it and must still produce the snapshot
-(RECORD_LEGACY_SNAPSHOT=1 rewrites the file instead); the second builds the same steps by
-hand and must produce it too, so the migration keeps being proven on real legacy shapes.
+legacy_snapshot.json is the old engine's own output for these steps, normalized, recorded
+by this file's recorder test at e2b62755dd while the tracked-todo tools, the old Inbox desk
+and their engine still ran (RECORD_LEGACY_SNAPSHOT=1 rewrote it). The builder must keep
+producing it, so the migration stays proven on real legacy shapes once that code is gone.
+A desk the user stopped is held to the old todos API, which still writes it.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
-from app.agents.tools.tracked_todo_tools import create_tracked_todo
-from tests.conftest import FAKE_USER
+from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.legacy_todos import LegacyTodos, normalized_legacy
 from tests.e2e._harness.tasks_driver import GATED_ACTION, GATED_ACTION_ARGS, TasksDriver
-from tests.e2e._harness.tasks_views import (
-    Asks,
-    Finishes,
-    NeedsApproval,
-    NoReply,
-    OpensReplyTask,
-    OpensSubtasks,
-)
+from tests.e2e._harness.tasks_views import NoReply
 
 pytestmark = pytest.mark.e2e
 
@@ -40,60 +32,7 @@ THREAD = "19a6c1f0d2e3b4a5"
 GATED_SUMMARY = "Create flowchart"
 
 
-def _recorded() -> dict[str, Any]:
-    return json.loads(SNAPSHOT.read_text())["documents"]
-
-
-async def _old_tracked_todo(db: AsyncIOMotorDatabase[dict[str, Any]], title: str) -> str:
-    """Hand GAIA a one-off through the old tracked-todo tool, as chat did; returns its id."""
-    said = await create_tracked_todo.ainvoke(
-        {"title": title, "waiting_on": "time", "scheduled_at": "1h", "notify_on_run": True},
-        config={"configurable": {"user_id": USER}},
-    )
-    row = await db["todos"].find_one({"user_id": USER, "title": title, "labels": "gaia-tracked"})
-    assert row is not None, f"GAIA did not take the task on: {said}"
-    return str(row["_id"])
-
-
 class TestTheLegacyBuilder:
-    async def test_the_old_engine_wrote_the_recorded_documents(
-        self, tasks: TasksDriver, mongo_db: AsyncIOMotorDatabase[dict[str, Any]]
-    ) -> None:
-        await _old_tracked_todo(mongo_db, "Find a dentist near the office")
-        asked = await _old_tracked_todo(mongo_db, "Book the Lisbon flight")
-        await tasks.run_due(asked, Asks(QUESTION, NoReply.HOLD))
-        parent = await _old_tracked_todo(mongo_db, "Move flats on the 14th")
-        await tasks.run_due(parent, OpensSubtasks(SPLIT, "Split the move."))
-        finished = await _old_tracked_todo(mongo_db, "Renew the car insurance")
-        await tasks.run_due(finished, Finishes("Renewed the insurance."))
-        await tasks.connect_app("gmail")
-        watcher = await _old_tracked_todo(mongo_db, "Wait for the landlord's reply")
-        await tasks.watch_emails_from(watcher, "landlord@example.com")
-        desk = await tasks.inbox_desk()
-        assert desk is not None
-        await tasks.run_due(
-            desk.id, OpensReplyTask(THREAD, "Reply to Mads", "One thread needs you.")
-        )
-        await tasks.ask_before_acting()
-        gated = await _old_tracked_todo(mongo_db, "Draw up the launch plan")
-        await tasks.run_due(gated, NeedsApproval("Waiting on your approval."))
-
-        written = await normalized_legacy(mongo_db, USER)
-
-        if os.environ.get("RECORD_LEGACY_SNAPSHOT") == "1":
-            SNAPSHOT.write_text(
-                json.dumps(
-                    {
-                        "recorded_from": "the old todos engine at 9380571eba, by this test",
-                        "documents": written,
-                    },
-                    indent=1,
-                    sort_keys=True,
-                )
-                + "\n"
-            )
-        assert written == _recorded()
-
     @pytest.mark.usefixtures("_clean_user")
     async def test_the_builder_writes_what_the_old_engine_wrote(
         self, mongo_db: AsyncIOMotorDatabase[dict[str, Any]]
@@ -121,4 +60,17 @@ class TestTheLegacyBuilder:
             gated, tool_name=GATED_ACTION, summary=GATED_SUMMARY, args=GATED_ACTION_ARGS
         )
 
-        assert await normalized_legacy(mongo_db, USER) == _recorded()
+        recorded = json.loads(SNAPSHOT.read_text())["documents"]
+        assert await normalized_legacy(mongo_db, USER) == recorded
+
+    async def test_a_desk_the_user_stopped_is_what_the_old_todos_api_left(
+        self, tasks: TasksDriver, mongo_db: AsyncIOMotorDatabase[dict[str, Any]]
+    ) -> None:
+        stopped_in_the_app = await LegacyTodos(mongo_db, USER).inbox_desk()
+        await tasks.complete(stopped_in_the_app)
+        built = LegacyTodos(mongo_db, FAKE_USER_2.user_id)
+        await built.completed_by_the_user(await built.inbox_desk())
+
+        mine = await normalized_legacy(mongo_db, USER)
+        theirs = await normalized_legacy(mongo_db, FAKE_USER_2.user_id)
+        assert mine["todos"] == theirs["todos"]

@@ -80,7 +80,6 @@ from app.services.integrations.user_integrations import get_connected_integratio
 from app.services.notification_service import notification_service
 from app.services.tasks.schedule import next_occurrence
 from app.services.todo_activity import record_activity
-from app.services.todos.inbox_desk import with_desk_notes
 from app.services.todos.open_state import wake_budget_update
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
@@ -198,15 +197,11 @@ async def execute_tracked_todo(
 async def _defer_drain(todo_id: str, trigger_window: int) -> str | None:
     """Return why the drain of the window ending at trigger_window does not run now, or None.
 
-    A desk's due briefing answers what it holds. Otherwise it waits for a later
-    window a run has opened, which quiet hours stretch to their end when the
-    todo's gate holds every event it carries.
+    It waits for a later window a run has opened, which quiet hours stretch to their
+    end when the todo's gate holds every event it carries.
     """
     log.set(trigger_window=trigger_window)
     if (doc := await todo_repository.get_by_id(todo_id)) is not None:
-        due = doc.scheduled_at is not None and doc.scheduled_at <= datetime.now(UTC)
-        if due and _answers_held_events(doc):
-            return f"deferred:{todo_id} (its scheduled run answers the held events)"
         if (hold := await _quiet_hours_hold(doc)) is not None:
             await stretch_trigger_window(todo_id, hold.until)
     later_window = await trigger_window_end(todo_id)
@@ -214,11 +209,6 @@ async def _defer_drain(todo_id: str, trigger_window: int) -> str | None:
         await reschedule_todo_trigger_drain(todo_id)
         return f"deferred:{todo_id} (trigger window open until {later_window})"
     return None
-
-
-def _answers_held_events(doc: TodoDocument) -> bool:
-    """Whether the todo's scheduled run answers its held events, as a desk reads what changed."""
-    return doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK
 
 
 async def _quiet_hours_hold(doc: TodoDocument) -> GateHold | None:
@@ -387,8 +377,7 @@ async def _begin_run(
     """Settle what a run answers for before any LLM work; return the result of a walled run.
 
     A trigger run opens its window, then meets the cost wall, so a walled run still
-    counts as its window's one run: a trigger fire is not a user action. A desk's
-    scheduled run answers every wake-up held for it, since its steps read what changed.
+    counts as its window's one run: a trigger fire is not a user action.
     """
     if origin is not None:
         log.set(trigger_events=1 + len(coalesced))
@@ -397,9 +386,6 @@ async def _begin_run(
             await enforce_cost_budget(doc.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
         except CostBudgetExceededException as walled:
             return await _walled_result(doc.id, doc.user_id, walled)
-    elif _answers_held_events(doc):
-        answered = await drain_todo_trigger_events(doc.id)
-        log.set(trigger_events_answered=len(answered or []))
     return None
 
 
@@ -664,8 +650,8 @@ async def _settle_one_shot_run(woke: TodoDocument) -> bool:
     return True
 
 
-# Todos whose every run reads Gmail: the desk triages it, a thread todo fetches its thread.
-_GMAIL_REF_SOURCES = frozenset({ExternalRefSource.INBOX_DESK, ExternalRefSource.GMAIL_THREAD})
+# Todos whose every run reads Gmail: a thread todo fetches its thread.
+_GMAIL_REF_SOURCES = frozenset({ExternalRefSource.GMAIL_THREAD})
 
 
 async def _paused_reason(doc: TodoDocument) -> str | None:
@@ -806,7 +792,6 @@ async def _execute_on_executor(
         if spent is None:
             raise LookupError(f"tracked todo {doc.id} vanished before its run")
         doc = spent
-    doc = await with_desk_notes(doc)
     todo_id = doc.id
     user_id = doc.user_id
     prompt = build_execution_prompt(

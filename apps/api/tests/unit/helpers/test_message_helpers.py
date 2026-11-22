@@ -348,7 +348,7 @@ class TestSignalMatchingSectionRenders:
             )
 
         assert "Ship the launch post" in result
-        assert "- {date} {what happened}" in result
+        assert "GAIA'S OPEN TASKS (Working Memory)" in result
 
 
 class TestFormatCalendarEventContext:

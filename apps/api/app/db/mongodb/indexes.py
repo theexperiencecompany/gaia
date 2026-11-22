@@ -1080,12 +1080,13 @@ TASK_OPEN_EXTERNAL_REF_OPTIONS: IndexOptions = {
     "name": "task_open_external_ref_unique",
     "partialFilterExpression": {"external_ref.id": {"$type": "string"}, "completed": False},
 }
-# One system task per user per definition: the provisioner's backstop against a racing twin.
+# One open system task per user per definition: the provisioner's backstop against a racing
+# twin. Closed ones stay beside it, as a desk the user stopped long ago does.
 TASK_SYSTEM_KEY_KEYS: IndexKeys = [("user_id", 1), ("system_key", 1)]
 TASK_SYSTEM_KEY_OPTIONS: IndexOptions = {
     "unique": True,
-    "name": "task_system_key_unique",
-    "partialFilterExpression": {"system_key": {"$type": "string"}},
+    "name": "task_open_system_key_unique",
+    "partialFilterExpression": {"system_key": {"$type": "string"}, "completed": False},
 }
 _GAIA_ONLY = {"assignee": "gaia"}
 _USER_ONLY = {"assignee": "user"}

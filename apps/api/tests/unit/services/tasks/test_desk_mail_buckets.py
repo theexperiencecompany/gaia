@@ -12,15 +12,17 @@ import pytest
 import time_machine
 
 from app.constants.desk_buckets import JUDGMENT_QUESTIONS, DeskBucket, Judgment
+from app.constants.tasks import Assignee
 from app.constants.trigger_gates import (
     GateOwner,
     SystemGatePreset,
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.composio_schemas.gmail import GmailMessageView
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
+from app.models.task_models import TaskDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.trigger_gate_models import SystemGate
-from app.services.todos.desk_mail_buckets import desk_bucketed_views
+from app.services.tasks.desk_mail_buckets import desk_bucketed_views
 from app.services.triggers.trigger_gate import (
     GatedJob,
     GateHold,
@@ -33,7 +35,7 @@ from tests.helpers import email_verdict_answers, trigger_gate_seams
 
 pytestmark = pytest.mark.unit
 
-MODULE = "app.services.todos.desk_mail_buckets"
+MODULE = "app.services.tasks.desk_mail_buckets"
 VERDICT = "app.services.mail.email_verdict"
 KOLKATA = Timezone.parse("Asia/Kolkata")
 # 14:30 and 02:30 on the user's clock in Kolkata, and the end of their quiet hours.
@@ -66,15 +68,16 @@ def _view(n: int, subject: str) -> GmailMessageView:
 
 def _todo(
     source: ExternalRefSource = ExternalRefSource.INBOX_DESK, **overrides: object
-) -> TodoDocument:
+) -> TaskDocument:
     fields: dict[str, object] = {
         "id": DESK_ID,
         "user_id": USER_ID,
         "title": "Inbox desk",
+        "assignee": Assignee.GAIA,
         "external_ref": ExternalRef(source=source, id="gmail"),
     }
     fields.update(overrides)
-    return TodoDocument.model_validate(fields)
+    return TaskDocument.model_validate(fields)
 
 
 def _verdict(bucket: str, **overrides: float) -> httpx.Response:
@@ -97,7 +100,7 @@ def _by_subject(
 def seams() -> Iterator[SimpleNamespace]:
     with (
         trigger_gate_seams(Timezone.parse("Asia/Kolkata")) as gate_seams,
-        patch(f"{MODULE}.todo_repository.get", AsyncMock(return_value=_todo())) as get,
+        patch(f"{MODULE}.task_repository.get", AsyncMock(return_value=_todo())) as get,
     ):
         yield SimpleNamespace(jev=gate_seams.jev, get=get, verdicts=gate_seams.verdicts)
 
@@ -328,7 +331,7 @@ async def test_a_failed_verdict_is_not_kept_so_the_next_fetch_asks_again(
     ids=["missing-todo", "not-the-desk"],
 )
 async def test_mail_outside_a_desk_is_returned_unasked(
-    seams: SimpleNamespace, todo: TodoDocument | None
+    seams: SimpleNamespace, todo: TaskDocument | None
 ) -> None:
     seams.get.return_value = todo
     views = [_view(0, DECLINED)]

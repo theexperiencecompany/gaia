@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from app.agents.prompts.todo_prompts import INBOX_DESK_OBSERVATIONS_FILE
+from app.agents.prompts.inbox_desk_prompts import INBOX_DESK_OBSERVATIONS_FILE
 from app.constants.todos import OBSERVATIONS_PROMPT_MAX_CHARS
 from app.services.todo_observations import bounded_observations, with_carried_lines
 

@@ -464,7 +464,7 @@ def _fetch_and_shape(
             reason=exc.reason,
         )
 
-    full_views = _bucketed_for_todo(user_id, request, full_views)
+    full_views = _bucketed_for_task(user_id, request, full_views)
     if len(full_views) > OFFLOAD_MIN_MESSAGES:
         return _format_inline_result(_file_bound_views(full_views), truncated=truncated)
     _emit_email_card(full_views)
@@ -473,26 +473,26 @@ def _fetch_and_shape(
     )
 
 
-def _bucketed_for_todo(
+def _bucketed_for_task(
     user_id: str, request: FetchMessagesInput, views: list[GmailMessageView]
 ) -> list[GmailMessageView]:
-    """Return the views a tracked todo run fetched, bucketed where its todo buckets mail; as-is otherwise.
+    """Return the views a GAIA task run fetched, bucketed where its task buckets mail; as-is otherwise.
 
     body_processing "none" is the desk's count sweep, so only mail it triages is bucketed.
     """
-    todo_id = read_agent_configurable(current_run_config()).active_todo_id
-    if not todo_id or not views or request.body_processing == "none":
+    task_id = read_agent_configurable(current_run_config()).active_task_id
+    if not task_id or not views or request.body_processing == "none":
         return views
     bucketer = installed_fetched_mail_bucketer()
     if bucketer is None:
         log.error(
-            f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id=todo_id
+            f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: no mail bucketer installed", task_id=task_id
         )
         return views
-    bucketed = run_on_captured_loop(bucketer(user_id, todo_id, views))
+    bucketed = run_on_captured_loop(bucketer(user_id, task_id, views))
     log.info(
-        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail bucketed for its todo",
-        todo_id=todo_id,
+        f"{LogTag.TOOL} GMAIL_FETCH_MESSAGES: mail bucketed for its task",
+        task_id=task_id,
         fetched=len(views),
         buckets=dict(Counter(view.bucket or "unbucketed" for view in bucketed)),
     )

@@ -184,8 +184,8 @@ def _is_desk(todo: LegacyTodo) -> bool:
     )
 
 
-def task_from_todo(todo: LegacyTodo, *, is_users_desk: bool) -> TaskDocument:
-    """Map a todo to its task; is_users_desk marks the one Inbox desk the provisioner reads."""
+def task_from_todo(todo: LegacyTodo) -> TaskDocument:
+    """Map a todo to its task; every Inbox desk becomes the desk system task, a stopped one switched off."""
     by_gaia = todo.by_gaia
     if not by_gaia and todo.scheduled_at is not None:
         raise Unmappable("a plain todo with scheduled_at, which nothing runs")
@@ -207,7 +207,7 @@ def task_from_todo(todo: LegacyTodo, *, is_users_desk: bool) -> TaskDocument:
         next_check_at=None if repeats else todo.scheduled_at,
         nudge_at=owed_nudge(todo, now=datetime.now(UTC)),
         subscriptions=todo.trigger_subscriptions,
-        active=todo.pause_reason is None,
+        active=todo.pause_reason is None and not (desk and todo.completed),
         pause_reason=todo.pause_reason,
         retry_count=todo.gaia_retry_count,
         waiting=_todo_waiting(todo),
@@ -223,7 +223,7 @@ def task_from_todo(todo: LegacyTodo, *, is_users_desk: bool) -> TaskDocument:
         source_email=todo.source_email,
         from_onboarding=ONBOARDING_LABEL in todo.labels,
         notify=todo.notify_on_run,
-        system_key=INBOX_DESK_SYSTEM_KEY if desk and is_users_desk else None,
+        system_key=INBOX_DESK_SYSTEM_KEY if desk else None,
         source_integration=GMAIL if desk else None,
         created_at=todo.created_at,
         updated_at=todo.updated_at,

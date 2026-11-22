@@ -33,10 +33,11 @@ import sys
 # Ensure app is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.repositories.todos import todo_repository
+from app.constants.tasks import INBOX_DESK_SYSTEM_KEY
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.workflow_models import WorkflowDocument
-from app.services.todos.inbox_desk import INBOX_DESK_REF, provision_inbox_desk
+from app.services.tasks.inbox_desk import provision_inbox_desk, stopped_by_user
 from app.services.workflow.service import WorkflowService
 
 INBOX_TRIAGE_KEY = "gmail:email_intelligence"
@@ -81,8 +82,8 @@ async def _retire(workflow: WorkflowDocument, result: MigrationResult) -> None:
     live rather than failed forever; anything else stays live for a re-run.
     """
     await provision_inbox_desk(workflow.user_id)
-    desk = await todo_repository.find_latest_by_external_ref(workflow.user_id, INBOX_DESK_REF)
-    if desk is not None and not desk.completed:
+    desk = await task_repository.find_system_task(workflow.user_id, INBOX_DESK_SYSTEM_KEY)
+    if desk is not None and not stopped_by_user(desk):
         await WorkflowService.deactivate_workflow(workflow.id, workflow.user_id)
         result.retired += 1
         result.desks_open += 1

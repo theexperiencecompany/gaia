@@ -16,7 +16,7 @@ from pydantic import BaseModel, ValidationError
 import pytest
 import time_machine
 
-from app.agents.prompts import todo_prompts
+from app.agents.prompts import inbox_desk_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.agents.tools.execute.dispatch import dispatch_config_for
 from app.constants.desk_buckets import DeskBucket
@@ -792,7 +792,7 @@ class TestTheDesksSweep:
             request=FetchMessagesInput(
                 query="after:1790000000",
                 max_messages=1000,
-                fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
+                fields=list(inbox_desk_prompts.INBOX_DESK_SWEEP_FIELDS),
                 body_processing=body_processing,
             ),
             execute_request=MagicMock(),
@@ -835,7 +835,7 @@ class TestTheDesksSweep:
         )
 
         assert formats == ["metadata"] * OFFLOAD_MIN_MESSAGES
-        assert set(records[0]) <= set(todo_prompts.INBOX_DESK_SWEEP_FIELDS)
+        assert set(records[0]) <= set(inbox_desk_prompts.INBOX_DESK_SWEEP_FIELDS)
 
     @pytest.mark.parametrize(
         ("size", "estimate", "expected_format"),
@@ -974,7 +974,7 @@ class TestTheDesksSweep:
 class TestATodoRunsFetchIsBucketed:
     """A tracked todo's mail fetch is handed to the desk bucketer; a body-less count never is."""
 
-    DESK_RUN: ClassVar[dict[str, Any]] = {"configurable": {"active_todo_id": "desk-1"}}
+    DESK_RUN: ClassVar[dict[str, Any]] = {"configurable": {"active_task_id": "desk-1"}}
 
     def _fetch(
         self, mock_proxy: MagicMock, bucketer: AsyncMock | None, **request: Any
@@ -993,7 +993,7 @@ class TestATodoRunsFetchIsBucketed:
     @staticmethod
     def _bucketing(bucket: DeskBucket) -> AsyncMock:
         async def bucketed(
-            user_id: str, todo_id: str, views: list[GmailMessageView]
+            user_id: str, task_id: str, views: list[GmailMessageView]
         ) -> list[GmailMessageView]:
             return [view.model_copy(update={"bucket": bucket}) for view in views]
 
@@ -1006,8 +1006,8 @@ class TestATodoRunsFetchIsBucketed:
 
         result = self._fetch(mock_proxy, bucketer)
 
-        (user_id, todo_id, views), _ = bucketer.await_args
-        assert (user_id, todo_id) == (AUTH_CREDS["user_id"], "desk-1")
+        (user_id, task_id, views), _ = bucketer.await_args
+        assert (user_id, task_id) == (AUTH_CREDS["user_id"], "desk-1")
         assert [v.id for v in views] == ["msg-1"]
         assert [m["bucket"] for m in result["messages"]] == ["act"]
 
@@ -1026,7 +1026,7 @@ class TestATodoRunsFetchIsBucketed:
         result = self._fetch(
             mock_proxy,
             bucketer,
-            fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
+            fields=list(inbox_desk_prompts.INBOX_DESK_SWEEP_FIELDS),
             body_processing="none",
         )
 
@@ -1042,7 +1042,7 @@ class TestATodoRunsFetchIsBucketed:
         assert len(result["messages"]) == 1
         assert "bucket" not in result["messages"][0]
         log.error.assert_called_once_with(
-            "[TOOL] GMAIL_FETCH_MESSAGES: no mail bucketer installed", todo_id="desk-1"
+            "[TOOL] GMAIL_FETCH_MESSAGES: no mail bucketer installed", task_id="desk-1"
         )
 
     def test_a_fetch_outside_any_todo_run_is_never_bucketed(self, mock_proxy: MagicMock) -> None:

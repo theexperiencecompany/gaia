@@ -27,7 +27,7 @@ from app.core.lazy_loader import providers
 from app.core.provider_registration import unified_startup
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import StartupService
-from app.services.todos.desk_mail_buckets import desk_bucketed_views
+from app.services.tasks.desk_mail_buckets import desk_bucketed_views
 from app.utils.concurrency import reset_captured_loop
 from app.utils.errors import UnmigratedConversationError
 

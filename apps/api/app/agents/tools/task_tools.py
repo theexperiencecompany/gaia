@@ -10,6 +10,7 @@ from typing import Annotated, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from pymongo.errors import DuplicateKeyError
 
 from app.agents.tools.trigger_catalog import parse_conditions, parse_match, render_catalog
 from app.config.oauth_config import get_integration_by_id
@@ -37,11 +38,16 @@ from app.models.todo_models import ExternalRef, Priority, default_notify_on_run
 from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import ConditionMatch, SubscriptionAction
 from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
+from app.services.canvas_markdown import canvas_problems, with_missing_sections
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks import task_service
 from app.services.tasks.completion import complete_task as close_task
 from app.services.tasks.errors import RepeatRuleError, SubtaskParentError, TaskNotFoundError
-from app.services.tasks.gaia_tasks import create_gaia_task, update_gaia_task
+from app.services.tasks.gaia_tasks import (
+    create_gaia_task,
+    reopen_for_its_ref,
+    update_gaia_task,
+)
 from app.services.tasks.notes import CANVAS_TEMPLATE, with_ownership
 from app.services.tasks.open_state import (
     NEXT_CHECK_HINT,
@@ -96,6 +102,11 @@ _NOTIFY_DESC = (
 _PARENT_DESC = (
     "The open, top-level task this one is a subtask of; GAIA's subtasks go under GAIA's tasks, "
     "one level deep"
+)
+_FLAGS_DESC = (
+    "GAIA tasks: the states it is in, replacing those set before: 'blocked', "
+    "'waiting_for_reply', 'waiting_for_approval' (an unblock subscription clears these), "
+    "'needs_reply', 'action_needed'. [] clears them."
 )
 
 
@@ -199,6 +210,7 @@ class _GaiaOnly(TypedDict):
     """The fields of an update only GAIA's own tasks hold."""
 
     notes: str | None
+    observations: str | None
     expires_at: str | None
     references: list[str] | None
     flags: list[TaskFlag] | None
@@ -233,6 +245,13 @@ def _waiting_with(
     )
 
 
+def _twin_refusal(twin: TaskDocument) -> _Refused:
+    return _Refused(
+        f"Task {twin.id} ({twin.title}) already follows this thread, so nothing new was "
+        "created. Update that one instead."
+    )
+
+
 async def _new_thread_ref(
     user_id: str, gmail_thread_id: str | None, gmail_account: str | None
 ) -> ExternalRef | None:
@@ -243,11 +262,60 @@ async def _new_thread_ref(
     if thread is not None and (
         twin := await task_repository.find_open_by_external_ref(user_id, thread)
     ):
-        raise _Refused(
-            f"Task {twin.id} ({twin.title}) already follows this thread, so nothing new was "
-            "created. Update that one instead."
-        )
+        raise _twin_refusal(twin)
     return thread
+
+
+async def _refused_as_taken(user_id: str, thread: ExternalRef) -> _Refused:
+    """The refusal for a create a concurrent one beat to the thread, naming the winner."""
+    twin = await task_repository.find_open_by_external_ref(user_id, thread)
+    if twin is None:
+        raise LookupError(f"the thread {thread.id} was taken, yet no open task follows it")
+    return _twin_refusal(twin)
+
+
+def _starting_notes(title: str, notes: str | None) -> str:
+    """The notes a new GAIA task starts with: the template, or the given ones in its shape."""
+    if notes is None:
+        return CANVAS_TEMPLATE.format(title=title)
+    shaped = with_missing_sections(
+        notes if notes.lstrip().startswith("# ") else f"# {title}\n\n{notes}"
+    )
+    if problems := canvas_problems(shaped):
+        raise _Refused(
+            f"Error: the notes break the notes' shape: {'; '.join(problems)}. Nothing was saved."
+        )
+    return shaped
+
+
+async def _reopened_for_thread(
+    previous: TaskDocument, draft: TaskDocument, config: RunnableConfig
+) -> str:
+    """Take a thread's closed task on again with the new task's plan; its notes are kept."""
+    plan = TaskUpdate(
+        title=draft.title,
+        priority=draft.priority,
+        parent_id=draft.parent_id,
+        notify=draft.notify,
+        when=draft.when,
+        waiting=draft.waiting,
+        next_check_at=draft.next_check_at,
+        status_flags=draft.status_flags,
+        integration_ids=draft.integration_ids,
+    )
+    if draft.body:
+        plan.body = draft.body
+    reopened = await reopen_for_its_ref(previous, plan, by=_actor(config))
+    if reopened is None:
+        if previous.external_ref is None:
+            raise LookupError(f"task {previous.id} lost its thread while it was reopened")
+        raise await _refused_as_taken(previous.user_id, previous.external_ref)
+    return (
+        f"Task {reopened.id} ({reopened.title}) followed this thread before and was done, so "
+        "it was reopened instead of creating a new one. Its notes kept their history and the "
+        "notes passed now were not written: write this thread's state into its Current State "
+        f"with update_task. {describe_open_state(reopened, datetime.now(UTC))}."
+    )
 
 
 async def _watch_or_undo(task: TaskDocument, thread: ExternalRef | None) -> None:
@@ -273,22 +341,50 @@ async def _gaia_plan_fields(task: TaskDocument, gaia_only: _GaiaOnly) -> dict[st
     fields: dict[str, object] = {}
     if gaia_only["notes"] is not None:
         fields["notes"] = gaia_only["notes"]
+    if gaia_only["observations"] is not None:
+        fields["observations"] = gaia_only["observations"]
     if expires_at is not None:
         fields["expires_at"] = _parse_moment(expires_at, "expires_at", future=True)
     if references is not None:
         await _owned_references(task.user_id, references, task.id)
         fields["references"] = references
     if flags is not None:
-        if TaskFlag.FAILED in flags:
-            raise _Refused("Error: 'failed' is set by the engine only. Nothing was saved.")
         kept = [f for f in task.status_flags if f is TaskFlag.FAILED]
-        fields["status_flags"] = [*kept, *dict.fromkeys(flags)]
+        fields["status_flags"] = [*kept, *_set_flags(flags)]
     return fields
+
+
+def _set_flags(flags: list[TaskFlag]) -> list[TaskFlag]:
+    """The states GAIA set on a task, once each; 'failed' is the engine's alone."""
+    if TaskFlag.FAILED in flags:
+        raise _Refused("Error: 'failed' is set by the engine only. Nothing was saved.")
+    return list(dict.fromkeys(flags))
 
 
 def _refusal(refused: OpenStateError, verb: str) -> str:
     problems = "\n".join(f"- {p}" for p in refused.problems)
     return f"Error: the task was not {verb}, because it would have no valid next step:\n{problems}"
+
+
+async def _take_on(draft: TaskDocument, config: RunnableConfig) -> str:
+    """Create GAIA's task, or reopen the done task its thread had; returns what the tool says."""
+    thread = draft.external_ref
+    previous = (
+        await task_repository.find_latest_by_external_ref(draft.user_id, thread) if thread else None
+    )
+    if previous is not None and previous.completed:
+        return await _reopened_for_thread(previous, draft, config)
+    try:
+        created = await create_gaia_task(draft, by=_actor(config))
+    except DuplicateKeyError:
+        if thread is None:
+            raise
+        raise await _refused_as_taken(draft.user_id, thread) from None
+    await _watch_or_undo(created, thread)
+    return (
+        f"Task created (id {created.id}): {created.title}. "
+        f"{describe_open_state(created, datetime.now(UTC))}."
+    )
 
 
 @tool
@@ -327,11 +423,18 @@ async def create_task(
         "GAIA tasks: integration ids its later runs depend on; nothing is created while one "
         "is not connected",
     ] = None,
+    notes: Annotated[
+        str | None,
+        "GAIA tasks: its starting notes (canvas.md) in the notes' '## ' sections, like "
+        "'## Key Details' and '## Current State'; sections left out start empty. Omit for the "
+        "empty template.",
+    ] = None,
+    flags: Annotated[list[TaskFlag] | None, _FLAGS_DESC] = None,
     gmail_thread_id: Annotated[
         str | None,
         "GAIA tasks about one email thread: its Gmail thread id. The task then runs on new "
-        "mail and on the user's own replies there, and a thread has one open task: if it "
-        "has one, that one is named back to update instead.",
+        "mail and on the user's own replies there, and a thread has one task: an open one is "
+        "named back to update instead, and a done one is reopened.",
     ] = None,
     gmail_account: Annotated[
         str | None,
@@ -340,11 +443,13 @@ async def create_task(
     ] = None,
 ) -> str:
     user_id = get_user_id(config)
-    if notify is None:
-        notify = default_notify_on_run(parent_todo_id=parent_id, external_ref=None)
     try:
         when = await _when(user_id, due, repeat)
         if assignee is Assignee.USER:
+            if held := [n for n, v in (("notes", notes), ("flags", flags)) if v is not None]:
+                return (
+                    f"Error: a to-do is the user's own; only GAIA's tasks keep {', '.join(held)}."
+                )
             created = await task_service.create_task(
                 user_id,
                 TaskCreateRequest(
@@ -353,11 +458,17 @@ async def create_task(
                     priority=priority,
                     when=when,
                     parent_id=parent_id,
-                    notify=notify,
+                    notify=(
+                        default_notify_on_run(parent_todo_id=parent_id, external_ref=None)
+                        if notify is None
+                        else notify
+                    ),
                 ),
             )
             return f"To-do created (id {created.id}): {created.title}."
         thread = await _new_thread_ref(user_id, gmail_thread_id, gmail_account)
+        if notify is None:
+            notify = default_notify_on_run(parent_todo_id=parent_id, external_ref=thread)
         # A thread's task reads and drafts in Gmail on every run.
         thread_app = [GMAIL_INTEGRATION_ID] if thread is not None else []
         needed = list(dict.fromkeys([*(needs_integrations or []), *thread_app]))
@@ -374,7 +485,8 @@ async def create_task(
             when=when,
             parent_id=parent_id,
             notify=notify,
-            notes=with_ownership(CANVAS_TEMPLATE.format(title=title), done_when or [], evidence),
+            notes=with_ownership(_starting_notes(title, notes), done_when or [], evidence),
+            status_flags=_set_flags(flags or []),
             references=references or [],
             integration_ids=needed,
             external_ref=thread,
@@ -393,18 +505,13 @@ async def create_task(
                     if_no_reply=if_no_reply,
                     default_action=default_action,
                 )
-        created = await create_gaia_task(draft, by=_actor(config))
-        await _watch_or_undo(created, thread)
+        return await _take_on(draft, config)
     except _Refused as refused:
         return str(refused)
     except OpenStateError as refused:
         return _refusal(refused, "created")
     except (TaskNotFoundError, SubtaskParentError, RepeatRuleError) as refused:
         return f"Error: {refused.message} Nothing was saved."
-    return (
-        f"Task created (id {created.id}): {created.title}. "
-        f"{describe_open_state(created, datetime.now(UTC))}."
-    )
 
 
 @tool
@@ -417,6 +524,10 @@ async def update_task(
     priority: Annotated[Priority | None, _PRIORITY_DESC] = None,
     notes: Annotated[
         str | None, "GAIA tasks: the whole new working notes (canvas.md), as get_task shows them"
+    ] = None,
+    observations: Annotated[
+        str | None,
+        "GAIA tasks: the whole new observations (observations.md), as get_task shows them",
     ] = None,
     due: Annotated[str | None, _DUE_DESC] = None,
     waiting_on: Annotated[WaitingOn | None, _WAITING_ON_DESC] = None,
@@ -436,12 +547,7 @@ async def update_task(
         list[str] | None,
         "GAIA tasks: ids of earlier tasks whose Learnings every run reads; replaces the list",
     ] = None,
-    flags: Annotated[
-        list[TaskFlag] | None,
-        "GAIA tasks: the states it is in, replacing those set before: 'blocked', "
-        "'waiting_for_reply', 'waiting_for_approval' (an unblock subscription clears these), "
-        "'needs_reply', 'action_needed'. [] clears them.",
-    ] = None,
+    flags: Annotated[list[TaskFlag] | None, _FLAGS_DESC] = None,
 ) -> str:
     user_id = get_user_id(config)
     try:
@@ -461,6 +567,7 @@ async def update_task(
         fields.update(_move_fields(task, parent_id, notify))
         gaia_only = _GaiaOnly(
             notes=notes,
+            observations=observations,
             expires_at=expires_at,
             references=references,
             flags=flags,

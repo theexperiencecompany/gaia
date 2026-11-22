@@ -1,15 +1,23 @@
 """What a GAIA task's run is briefed with: the task, its notes, its family and its history.
 
 The parent's Standing rules govern a subtask's run, so a failed read of them raises and
-the run retries with its rules. The subtasks' states and the referenced tasks' Learnings
-only enrich the brief: a failed read of either is logged and left out.
+the run retries with its rules; so does the account its email thread is in, which every
+Gmail call names. The subtasks' states and the referenced tasks' Learnings only enrich
+the brief: a failed read of either is logged and left out.
 """
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
+from types import MappingProxyType
 from typing import NamedTuple
 
+from app.agents.prompts.inbox_desk_prompts import (
+    GMAIL_THREAD_ACCOUNT_GONE,
+    GMAIL_THREAD_ACCOUNT_LINE,
+    GMAIL_THREAD_RUN_GUIDANCE,
+    INBOX_DESK_RUN_GUIDANCE,
+)
 from app.agents.prompts.task_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
@@ -23,6 +31,7 @@ from app.agents.prompts.task_prompts import (
     TASK_WAKES_AGAIN_BRIEF,
     WAKE_REASON_TEXT,
 )
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.tasks import RECENT_RUNS_READ, Assignee, WhenKind
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
@@ -40,14 +49,24 @@ from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
 from app.models.quiet_hours_models import QuietHours
 from app.models.task_models import RepeatWhen, TaskDocument
+from app.models.todo_models import ExternalRefSource
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.canvas_markdown import bounded_canvas, section_body
+from app.services.integrations.integration_accounts import get_account_record
 from app.services.tasks.open_state import no_reply_plan_words, wake_reason
 from app.services.todo_observations import bounded_observations
 from app.services.triggers.event_prompt import event_opening
 from app.utils.general_utils import clip_text
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
+
+#: How a run works the outside object its task owns, by kind; each takes the ref id as ref_id.
+_EXTERNAL_REF_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
+    {
+        ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE,
+        ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
+    }
+)
 
 
 class RunContext(NamedTuple):
@@ -59,11 +78,14 @@ class RunContext(NamedTuple):
     subtasks: str = ""
     learnings: str = ""
     recent_runs: str = ""
+    #: The account the task's thread is in: "" when it names none, None when it is gone.
+    ref_account: str | None = ""
 
 
 async def collect_run_context(task: TaskDocument, user_tz: Timezone) -> RunContext:
     """Gather everything a run reads from the owner's other tasks and the task's own runs."""
     parent_rules, parent_next_run = await _parent_context(task, user_tz)
+    ref_account = await _ref_account(task)
     enrichments = await asyncio.gather(
         _subtask_states(task),
         _reference_learnings(task),
@@ -84,7 +106,32 @@ async def collect_run_context(task: TaskDocument, user_tz: Timezone) -> RunConte
         )
         read.append("")
     subtasks, learnings, recent_runs = read
-    return RunContext(parent_rules, parent_next_run, subtasks, learnings, recent_runs)
+    return RunContext(parent_rules, parent_next_run, subtasks, learnings, recent_runs, ref_account)
+
+
+async def _ref_account(task: TaskDocument) -> str | None:
+    """Name the account the task's Gmail thread is in: "" when it names none, None when it is gone."""
+    ref = task.external_ref
+    if ref is None or ref.account is None:
+        return ""
+    record = await get_account_record(task.user_id, GMAIL_INTEGRATION_ID)
+    account = record.find_account(ref.account) if record else None
+    return account.display_name if account else None
+
+
+def _ref_guidance(task: TaskDocument, context: RunContext) -> str | None:
+    """Return how to work the outside object the task owns, or None when it owns none."""
+    ref = task.external_ref
+    if ref is None:
+        return None
+    parts = [_EXTERNAL_REF_GUIDANCE[ref.source].format(ref_id=ref.id)]
+    if context.ref_account is None:
+        parts.append(GMAIL_THREAD_ACCOUNT_GONE)
+    elif context.ref_account:
+        parts.append(
+            GMAIL_THREAD_ACCOUNT_LINE.format(account=context.ref_account, account_id=ref.account)
+        )
+    return "\n".join(parts)
 
 
 async def _parent_context(task: TaskDocument, user_tz: Timezone) -> tuple[str, str]:
@@ -219,6 +266,8 @@ def _brief(task: TaskDocument, context: RunContext, opening: list[str], closing:
     parts = [*opening, TASK_ID_LINE.format(task_id=task.id)]
     if task.body:
         parts.append(f"Details: {task.body}")
+    if ref_guidance := _ref_guidance(task, context):
+        parts.append(ref_guidance)
     if task.notes:
         parts.append(f"Notes (canvas.md):\n{bounded_canvas(task.notes)}")
     if task.observations:

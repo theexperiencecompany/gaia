@@ -217,28 +217,27 @@ Available Tools:
 {tools}"""
 
 
-SIGNAL_MATCHING_INSTRUCTIONS = """TRACKED TODOS (Working Memory)
+SIGNAL_MATCHING_INSTRUCTIONS = """GAIA'S OPEN TASKS (Working Memory)
 {tracked_todos_context}
 
 SIGNAL MATCHING (do this BEFORE running the workflow):
 Check whether the incoming signal (email, calendar event, slack message, etc.) relates to any
-tracked todo listed above. Match by:
-- Email address or sender name appearing in a todo's Key Details
-- Thread ID, event ID, or issue ID matching a todo's Key Details
-- Subject or content that clearly relates to a todo's title or description
-- Same person, project, or topic as an active todo
+task listed above. Match by:
+- Email address or sender name appearing in a task's Key Details
+- Thread ID, event ID, or issue ID matching a task's Key Details
+- Subject or content that clearly relates to a task's title or details
+- Same person, project, or topic as an open task
 
-If a match is found, record the signal in that todo's files under /workspace/gaia-tasks/<folder>/
-with the file tools: add a dated entry at the end of activity.md ("- {{date}} {{what happened}}") and
-update the Current State section of canvas.md with `edit`. Be verbose, this is GAIA's working
-memory: include email addresses, thread IDs, event IDs, timestamps; quote the key sentences (not
-whole emails).
+If a match is found, record the signal in that task's notes: read them with get_task, then
+write them back whole with update_task(task_id, notes=...), the Current State section rewritten
+with what happened. Be verbose, this is GAIA's working memory: include email addresses, thread
+IDs, event IDs, timestamps; quote the key sentences (not whole emails).
 
-This matching step only MATCHES and UPDATES existing tracked todos: do not create a new one
-just because a signal arrived. (Creating still follows the normal rule, only when the run
-leaves ongoing work worth coming back to; a read-only or summary workflow never creates one,
-since fetching, listing, or summarizing data is not trackable work.) If nothing matches, just
-run the workflow.
+This matching step only MATCHES and UPDATES existing tasks: do not create a new one just
+because a signal arrived. (Creating still follows the normal rule, only when the run leaves
+ongoing work worth coming back to; a read-only or summary workflow never creates one, since
+fetching, listing, or summarizing data is not trackable work.) If nothing matches, just run
+the workflow.
 """
 
 

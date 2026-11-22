@@ -228,6 +228,8 @@ class TaskLogEvent(StrEnum):
     OPEN_STATE_REPAIRED = "open_state_repaired"
     PAUSED = "paused"
     COMPLETED = "completed"
+    #: A closed task GAIA took on again for the outside object it is about.
+    REOPENED = "reopened"
     SUBTASK_COMPLETED = "subtask_completed"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"

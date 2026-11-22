@@ -10,12 +10,12 @@ import asyncio
 
 from app.constants.desk_buckets import DeskBucket
 from app.constants.hil import JevFailure
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.models.composio_schemas.gmail import GmailMessageView
-from app.models.todo_models import ExternalRefSource
 from app.services.hil.jev_client import jev_failure
 from app.services.mail.email_verdict import ThreadFacts, email_verdict
 from app.services.mail.thread_participation import user_wrote_in_thread
+from app.services.tasks.inbox_desk import is_inbox_desk
 from app.services.triggers.gmail_signals import (
     GmailGateView,
     fetched_message_payload,
@@ -65,13 +65,11 @@ async def _thread_facts(
 
 
 async def desk_bucketed_views(
-    user_id: str, todo_id: str, views: list[GmailMessageView]
+    user_id: str, task_id: str, views: list[GmailMessageView]
 ) -> list[GmailMessageView]:
-    """Return views in order, each carrying its bucket; unchanged when todo_id is not an Inbox desk."""
-    todo = await todo_repository.get(todo_id, user_id=user_id)
-    if todo is None or todo.external_ref is None:
-        return views
-    if todo.external_ref.source is not ExternalRefSource.INBOX_DESK:
+    """Return views in order, each carrying its bucket; unchanged when task_id is not an Inbox desk."""
+    task = await task_repository.get(task_id, user_id=user_id)
+    if task is None or not is_inbox_desk(task):
         return views
     return list(await asyncio.gather(*(_bucketed(user_id, view) for view in views)))
 

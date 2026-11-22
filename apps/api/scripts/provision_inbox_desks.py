@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.user_integrations import user_integration_repository
-from app.services.todos.inbox_desk import provision_inbox_desk
+from app.services.tasks.inbox_desk import provision_inbox_desk
 
 
 @dataclass

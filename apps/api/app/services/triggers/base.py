@@ -22,7 +22,7 @@ from app.models.trigger_config import TriggerOption, TriggerOptionGroup, Trigger
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_accounts import primary_connected_account_id
-from app.services.todos.signal_context import get_signal_matching_context
+from app.services.tasks.signal_context import get_signal_matching_context
 from app.services.triggers.batching import (
     buffer_trigger_event,
     coalesce_window_seconds,

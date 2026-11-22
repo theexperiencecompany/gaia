@@ -348,6 +348,15 @@ class LegacyTodos:
         )
         return reply
 
+    async def completed_by_the_user(self, todo_id: str) -> None:
+        """Write the user ticking the todo off in the app, as a stopped desk was."""
+        now = datetime.now(UTC)
+        await self._finish(
+            todo_id,
+            [_line(now, "completed", "Completed via UI")],
+            {"completed": True, "completed_at": now},
+        )
+
     async def parked_on_approval(
         self, todo_id: str, *, tool_name: str, summary: str, args: Mapping[str, object]
     ) -> str:

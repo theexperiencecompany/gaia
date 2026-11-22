@@ -8,7 +8,7 @@ from collections.abc import Callable, Coroutine
 
 from app.models.composio_schemas.gmail import GmailMessageView
 
-# (user_id, todo_id, fetched) -> the same messages in order, each bucketed where it could be.
+# (user_id, task_id, fetched) -> the same messages in order, each bucketed where it could be.
 FetchedMailBucketer = Callable[
     [str, str, list[GmailMessageView]], Coroutine[object, None, list[GmailMessageView]]
 ]

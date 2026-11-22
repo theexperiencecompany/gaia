@@ -8,13 +8,12 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from types import MappingProxyType
 
+from app.agents.prompts.inbox_desk_prompts import GMAIL_THREAD_ACCOUNT_LINE
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
     GMAIL_THREAD_ACCOUNT_GONE,
-    GMAIL_THREAD_ACCOUNT_LINE,
     GMAIL_THREAD_RUN_GUIDANCE,
-    INBOX_DESK_RUN_GUIDANCE,
     SILENT_RUN_GUIDANCE,
     TODO_ID_LINE,
     TODO_REARM_BRIEF,
@@ -42,7 +41,6 @@ from app.workers.tasks.todo_run_context import NO_CONTEXT
 EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
     {
         ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE,
-        ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
     }
 )
 

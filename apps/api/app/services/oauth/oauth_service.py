@@ -31,8 +31,8 @@ from app.services.integrations.integration_status import (
 from app.services.integrations.user_integration_status import publish_connected
 from app.services.onboarding.intelligence_job import enqueue_gmail_personalization
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.tasks.inbox_desk import queue_inbox_desk_provision
 from app.services.tasks.subscriptions import resume_for_connected_account
-from app.services.todos.inbox_desk import queue_inbox_desk_provision
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.integration_pause import (
     resume_watches_for_connected_account,

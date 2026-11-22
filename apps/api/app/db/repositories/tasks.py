@@ -332,8 +332,14 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         )
 
     async def find_system_task(self, user_id: str, system_key: str) -> TaskDocument | None:
-        """Return the user's system task for system_key: the provisioner's idempotency probe."""
-        return await self._find_one({"user_id": user_id, "system_key": system_key})
+        """Return the user's system task for system_key, its open one first, else its newest.
+
+        The provisioner's idempotency probe: a closed one is one the user stopped.
+        """
+        return await self._find_one(
+            {"user_id": user_id, "system_key": system_key},
+            sort=[("completed", 1), ("created_at", -1)],
+        )
 
     async def find_live_system_tasks_all_users(
         self, system_key: str, *, limit: int, after_id: str | None = None

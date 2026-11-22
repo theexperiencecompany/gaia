@@ -151,7 +151,7 @@ async def queue_inbox_desk_safely(user_id: str) -> None:
     Never raises, for the same reason as reactivate_workflows_safely.
     """
     # Deferred import: the same app.decorators cycle as reactivate_workflows_safely.
-    from app.services.todos.inbox_desk import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
+    from app.services.tasks.inbox_desk import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
         queue_inbox_desk_provision,
     )
 

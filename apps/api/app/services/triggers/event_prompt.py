@@ -8,9 +8,9 @@ from collections.abc import Sequence
 from datetime import datetime
 import json
 
+from app.agents.prompts.inbox_desk_prompts import INBOX_DESK_QUIET_HOURS_NOTE
 from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.todo_prompts import (
-    INBOX_DESK_QUIET_HOURS_NOTE,
     SANDBOX_RUN_EVENT_GUIDANCE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )

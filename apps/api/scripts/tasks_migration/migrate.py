@@ -14,7 +14,6 @@ interrupted run picks up there; --restart ignores it.
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Collection
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final, ParamSpec, TypeVar
 
@@ -198,24 +197,12 @@ def _mapped(
         return None
 
 
-async def _desk_owners(run: _Run) -> set[str]:
-    """The Inbox desk per user the provisioner reads: the newest desk document."""
-    newest: dict[str, tuple[datetime, str]] = {}
-    filt = {**run.scope.filter(), "external_ref.source": "inbox_desk"}
-    async for raw in run.db["todos"].find(filt, {"user_id": 1, "created_at": 1}):
-        made = raw.get("created_at") or raw["_id"].generation_time
-        if raw["user_id"] not in newest or made > newest[raw["user_id"]][0]:
-            newest[raw["user_id"]] = (made, str(raw["_id"]))
-    return {todo_id for _, todo_id in newest.values()}
-
-
 async def _migrate_todos(run: _Run) -> None:
-    desks = await _desk_owners(run)
     async for raw in run.source(Phase.TASKS_FROM_TODOS, "todos"):
         todo = _mapped(run, "todos", raw, LegacyTodo.model_validate, raw)
         if todo is None:
             continue
-        task = _mapped(run, "todos", raw, task_from_todo, todo, is_users_desk=todo.id in desks)
+        task = _mapped(run, "todos", raw, task_from_todo, todo)
         if task is None:
             continue
         run.report.notes["labels_dropped"] += len(dropped_labels(todo.labels))
