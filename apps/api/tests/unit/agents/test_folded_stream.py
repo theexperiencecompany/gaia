@@ -15,6 +15,7 @@ from app.agents.core.background.session import (
     get_session,
     teardown_session,
 )
+from app.models.conversation_log_models import WorkOutcome
 from app.services.conversation.tool_cards import FoldedCards
 
 pytestmark = pytest.mark.unit
@@ -97,3 +98,20 @@ async def test_closing_a_stream_with_nothing_beating_still_ends_it(opened: bool)
         await close_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
 
     assert get_session(STREAM) is None
+
+
+async def test_a_logged_run_whose_liveness_cannot_be_held_is_ended_failed_and_raises() -> None:
+    finished = AsyncMock()
+    with (
+        patch(f"{FOLDED}.record_work_carried", new=AsyncMock(return_value=True)),
+        patch(f"{FOLDED}.keep_alive", new=AsyncMock(side_effect=ConnectionError("redis down"))),
+        patch(f"{FOLDED}.stop_requested", new=AsyncMock(return_value=False)),
+        patch(f"{FOLDED}.work_cards", new=AsyncMock(return_value=FoldedCards())),
+        patch(f"{FOLDED}.record_work_finished", new=finished),
+        pytest.raises(ConnectionError, match="redis down"),
+    ):
+        await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
+
+    assert get_session(STREAM) is None
+    [(args, _)] = [(c.args, c.kwargs) for c in finished.await_args_list]
+    assert args[:4] == ("conv-1", "u1", STREAM, WorkOutcome.FAILED)
