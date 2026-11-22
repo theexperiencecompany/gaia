@@ -15,6 +15,7 @@ from app.constants.log_tags import LogTag
 from app.constants.tasks import TASK_SEARCH_LIMIT, Assignee
 from app.db.chroma.chromadb import ChromaClient
 from app.models.task_models import DateWhen, TaskDocument
+from app.services.canvas_markdown import written_lines
 from shared.py.wide_events import log
 
 
@@ -46,7 +47,8 @@ async def task_index() -> Chroma:
 
 
 def indexed_text(task: TaskDocument) -> str:
-    return "\n\n".join(part for part in (task.title, task.body, task.notes or "") if part.strip())
+    notes = written_lines(task.notes)
+    return "\n\n".join(part for part in (task.title, task.body, notes) if part.strip())
 
 
 def _metadata(task: TaskDocument) -> TaskIndexMetadata:

@@ -55,7 +55,7 @@ class TestFindingATaskByMeaning:
         said = await tasks.gaia_uses("search_tasks", query="money owed to me", assignee="gaia")
 
         assert said.index(f"(id {move.id})") < said.index("Find a dentist")
-        assert "Landlord Mads" in said
+        assert "Landlord Mads" in said and "<!--" not in said
 
 
 class TestTheIndexFollowsTheTasks:

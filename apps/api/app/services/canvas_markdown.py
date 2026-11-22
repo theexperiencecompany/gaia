@@ -77,6 +77,14 @@ def section_body(text: str | None, heading: str) -> str | None:
     return HTML_COMMENT_RE.sub("", text[body_start:section_end]).strip()
 
 
+def written_lines(text: str | None) -> str:
+    """Return the lines written in a notes file, without the template's comments and headings."""
+    if not text:
+        return ""
+    kept = (line.strip() for line in HTML_COMMENT_RE.sub("", text).splitlines())
+    return "\n".join(line for line in kept if line and not line.startswith("#"))
+
+
 def with_section_appended(text: str, heading: str, addition: str) -> str:
     """Add addition at the end of "## {heading}", which goes at the end of text when absent."""
     span = _section_span(text, heading)

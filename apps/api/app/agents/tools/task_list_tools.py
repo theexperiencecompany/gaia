@@ -12,6 +12,7 @@ from app.decorators import with_doc
 from app.models.agent_models import get_user_id
 from app.models.task_models import DateWhen, RepeatWhen, TaskDocument, TaskQuery
 from app.models.todo_models import TodoDayWindow
+from app.services.canvas_markdown import written_lines
 from app.services.tasks import search_index, task_service
 from app.services.tasks.errors import TaskNotFoundError
 from app.services.tasks.open_state import describe_open_state
@@ -116,8 +117,8 @@ async def list_tasks(
 
 
 def _excerpt(task: TaskDocument) -> str | None:
-    """What the task holds beyond its title: GAIA's notes, else its details, cut short."""
-    text = (task.notes or task.body).strip()
+    """What the task holds beyond its title: what GAIA's notes say, else its details, cut short."""
+    text = (written_lines(task.notes) or task.body).strip()
     if not text:
         return None
     cut = text[:TASK_SEARCH_EXCERPT_CHARS]
