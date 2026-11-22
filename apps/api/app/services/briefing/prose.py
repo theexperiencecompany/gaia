@@ -278,11 +278,29 @@ def _held_salvage(
 def _kept_text(
     name: str, text: str, writing: Writing, said: set[tuple[str, ...]]
 ) -> tuple[str, int]:
-    """Return a field's sound sentences and how many it dropped; a non-message field repeating recent prose drops whole."""
+    """Return a field's sound sentences and how many it dropped.
+
+    A field that repeats recent prose drops whole; the message drops only the opening
+    sentences that keep its first line on a recent brief's.
+    """
     kept, drops = _sound_sentences(name, text, writing)
-    if name != "message" and kept and _plain(render_slots(kept, writing.values, {})) in said:
+    if name == "message":
+        return _fresh_opening(kept, drops, writing, said)
+    if kept and _plain(render_slots(kept, writing.values, {})) in said:
         return "", drops + 1
     return kept, drops
+
+
+def _fresh_opening(
+    message: str, drops: int, writing: Writing, said: set[tuple[str, ...]]
+) -> tuple[str, int]:
+    """Drop the message's leading sentences while its opening line repeats a recent brief's."""
+    pieces = sentence_breaks(message)
+    while (
+        pieces and _plain(opening_line(render_slots(_joined(pieces), writing.values, {}))) in said
+    ):
+        pieces, drops = pieces[1:], drops + 1
+    return _joined(pieces).strip(), drops
 
 
 def _kept_voice(voice: BriefVoice, writing: Writing, plain: BriefVoice) -> BriefVoice | None:

@@ -770,12 +770,25 @@ class TestASalvageCountsAndKeepsByField:
         )
         assert (event["dropped_sentences"], event["plain"]) == (4, False)
 
-    async def test_a_message_kept_on_a_recent_opening_still_fails_its_check_and_goes_plain(
+    @pytest.mark.regression
+    async def test_a_message_opening_on_a_recent_line_loses_only_that_sentence(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        recent = RecentLines(openings=[render_slots(self._KEPT_MESSAGE, self._VALUES, {})])
+        """Regression: a message kept on a recent opening failed the final check, so the whole brief went plain."""
+        opening = "[The churn email](fact:2) waits on a send."
+        last = _voice(message=f"{opening}\n\n{self._KEPT_MESSAGE} Your calendar is open.")
+        recent = RecentLines(openings=[render_slots(opening, self._VALUES, {})])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[last] * 2))
 
-        voice, event = await self._salvaged(monkeypatch, recent)
+        async with captured_wide_event() as event:
+            voice, _ = await written_brief(
+                _USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1, recent=recent)
+            )
 
-        assert voice == prose.plain_voice(Writing(values=self._VALUES, lead=1))
-        assert event["plain"] is True
+        assert voice == last.model_copy(
+            update={"message": f"{self._KEPT_MESSAGE} Your calendar is open."}
+        )
+        assert (event["brief_voice"]["dropped_sentences"], event["brief_voice"]["plain"]) == (
+            1,
+            False,
+        )
