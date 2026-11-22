@@ -1355,6 +1355,23 @@ class TestBulkUpdateCapturesWhatChanged:
         mock_capture.assert_not_called()
 
     @pytest.mark.regression
+    async def test_a_bulk_complete_naming_a_todo_twice_counts_it_once(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(todo_ids=["a", "a"], updates=TodoUpdateRequest(completed=True))
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        assert result.success == ["a"]
+        assert result.total == 1
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=1)
+        )
+
+    @pytest.mark.regression
     async def test_a_bulk_complete_with_another_field_captures_an_already_completed_todo(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
