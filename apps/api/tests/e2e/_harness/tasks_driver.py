@@ -24,7 +24,7 @@ from arq.jobs import JobDef
 from arq.worker import Function
 from fastapi import BackgroundTasks
 from httpx import AsyncClient, Response
-from langchain_core.messages import ToolCall, ToolMessage
+from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 import time_machine
@@ -67,7 +67,7 @@ from shared.py.wide_events import spawn_logged_task
 from tests.conftest import FAKE_USER_2
 from tests.e2e._harness.app_events import BotOutbox, gate_judge, signed_webhook_headers
 from tests.e2e._harness.background import drain_background_runs
-from tests.e2e._harness.graph_run import call
+from tests.e2e._harness.graph_run import ToolCall, call
 from tests.e2e._harness.step_stack import replayed
 from tests.e2e._harness.tasks_views import (
     Asks,
