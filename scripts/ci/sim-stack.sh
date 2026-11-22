@@ -19,6 +19,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/pinned-release.sh
+source "$(dirname "$0")/lib/pinned-release.sh"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
@@ -39,9 +41,9 @@ _install_mongosh() {
   : "${GITHUB_PATH:?GITHUB_PATH is required}"
   local name="mongosh-${MONGOSH_VERSION}-linux-x64"
   local tarball="$RUNNER_TEMP/$name.tgz"
-  curl -fsSL -o "$tarball" \
-    "https://github.com/mongodb-js/mongosh/releases/download/v${MONGOSH_VERSION}/${name}.tgz"
-  echo "${MONGOSH_SHA256}  $tarball" | sha256sum -c -
+  fetch_verified "mongosh $MONGOSH_VERSION" \
+    "https://github.com/mongodb-js/mongosh/releases/download/v${MONGOSH_VERSION}/${name}.tgz" \
+    sha256 "$MONGOSH_SHA256" "$tarball"
   tar -C "$RUNNER_TEMP" -xzf "$tarball"
   echo "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH"
   ci_ok "mongosh: $MONGOSH_VERSION installed"

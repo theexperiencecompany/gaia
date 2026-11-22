@@ -31,14 +31,13 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/pinned-release.sh
+source "$(dirname "$0")/lib/pinned-release.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # How long a host gets to launch its engine and answer healthz.
 HOST_READY_SECONDS=120
-# Fetches of a pinned release before the lane fails: a corrupt 278 MB Fortress
-# archive ejected four merge groups (9-11 Nov) while the asset matched its pin.
-DOWNLOAD_ATTEMPTS=3
 # The Caddy self-host runs (caddy:2.10.2-alpine in docker-compose.selfhost.yml),
 # and the sha512 of its linux_amd64 release from caddy_2.10.2_checksums.txt.
 CADDY_VERSION=2.10.2
@@ -48,19 +47,6 @@ CADDY_SHA512="${CADDY_SHA512:-747df7ee74de188485157a383633a1a963fd9233b71fbb4a69
 # Fortress is pinned once, in the gaia image (apps/api/Dockerfile's FORTRESS_* ARGs):
 # CI installs the same release, checked against the same SHA-256, that production runs.
 DOCKERFILE="$REPO_ROOT/apps/api/Dockerfile"
-
-# Download a pinned release to <archive> and check it against <digest>, fetching it
-# again while it fails; the last mismatch fails the lane.
-fetch_verified() {
-  local name="$1" url="$2" algo="$3" digest="$4" archive="$5" attempt
-  for ((attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++)); do
-    if curl -fsSL -o "$archive" "$url" && echo "$digest  $archive" | "${algo}sum" -c - > /dev/null; then
-      return 0
-    fi
-    ci_warn "$name: download ${attempt}/${DOWNLOAD_ATTEMPTS} failed or did not match its pinned ${algo}"
-  done
-  ci_die "$name failed its checksum on all ${DOWNLOAD_ATTEMPTS} downloads"
-}
 
 dockerfile_arg() {
   local value

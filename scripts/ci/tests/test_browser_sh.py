@@ -143,7 +143,7 @@ def test_a_caddy_release_that_fails_its_checksum_is_never_published(tmp_path: Pa
     result, github_env = _locate(tmp_path, chrome=True, obscura=True, caddy_sha512="0" * 128)
 
     assert result.returncode != 0
-    assert "failed its checksum" in result.stdout + result.stderr
+    assert "does not match its pinned" in result.stdout + result.stderr
     assert "CADDY_BIN" not in github_env.read_text()
 
 
@@ -159,7 +159,9 @@ def test_a_fortress_release_that_fails_its_checksum_is_never_published(tmp_path:
     result, github_env = _locate(tmp_path, chrome=True, obscura=True, fortress_sha256="0" * 64)
 
     assert result.returncode != 0
-    assert re.search(r"fortress \S+ failed its checksum", result.stdout + result.stderr)
+    assert re.search(
+        r"fortress \S+ does not match its pinned sha256", result.stdout + result.stderr
+    )
     assert "FORTRESS_BIN" not in github_env.read_text()
 
 
@@ -192,5 +194,7 @@ def test_a_fortress_download_corrupt_every_time_fails_after_three_tries(tmp_path
 
     assert result.returncode != 0
     assert _fortress_fetches(tmp_path) == 3
-    assert re.search(r"fortress \S+ failed its checksum", result.stdout + result.stderr)
+    assert re.search(
+        r"fortress \S+ does not match its pinned sha256", result.stdout + result.stderr
+    )
     assert "FORTRESS_BIN" not in github_env.read_text()
