@@ -1,4 +1,4 @@
-"""The seam where a tracked todo run's own Gmail fetch meets the Inbox desk's mail buckets.
+"""The seam where a GAIA task run's own Gmail fetch meets the Inbox desk's mail buckets.
 
 The bucketing reads the desk's todo and asks JEV, both above this Composio layer, so
 startup installs it here instead of this layer importing it back.

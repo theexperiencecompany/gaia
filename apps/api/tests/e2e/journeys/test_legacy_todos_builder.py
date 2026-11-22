@@ -4,7 +4,9 @@ legacy_snapshot.json is the old engine's own output for these steps, normalized,
 by this file's recorder test at e2b62755dd while the tracked-todo tools, the old Inbox desk
 and their engine still ran (RECORD_LEGACY_SNAPSHOT=1 rewrote it). The builder must keep
 producing it, so the migration stays proven on real legacy shapes once that code is gone.
-A desk the user stopped is held to the old todos API, which still writes it.
+A desk the user stopped was held to the old todos API while it ran; its recorded shape
+(stopped_desk, written by the builder at 6ddcf31c2a while that test held it equal to the
+API) is the evidence now the API is gone.
 """
 
 from __future__ import annotations
@@ -16,9 +18,9 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
-from tests.conftest import FAKE_USER, FAKE_USER_2
+from tests.conftest import FAKE_USER
 from tests.e2e._harness.legacy_todos import LegacyTodos, normalized_legacy
-from tests.e2e._harness.tasks_driver import GATED_ACTION, GATED_ACTION_ARGS, TasksDriver
+from tests.e2e._harness.tasks_driver import GATED_ACTION, GATED_ACTION_ARGS
 from tests.e2e._harness.tasks_views import NoReply
 
 pytestmark = pytest.mark.e2e
@@ -63,14 +65,12 @@ class TestTheLegacyBuilder:
         recorded = json.loads(SNAPSHOT.read_text())["documents"]
         assert await normalized_legacy(mongo_db, USER) == recorded
 
+    @pytest.mark.usefixtures("_clean_user")
     async def test_a_desk_the_user_stopped_is_what_the_old_todos_api_left(
-        self, tasks: TasksDriver, mongo_db: AsyncIOMotorDatabase[dict[str, Any]]
+        self, mongo_db: AsyncIOMotorDatabase[dict[str, Any]]
     ) -> None:
-        stopped_in_the_app = await LegacyTodos(mongo_db, USER).inbox_desk()
-        await tasks.complete(stopped_in_the_app)
-        built = LegacyTodos(mongo_db, FAKE_USER_2.user_id)
+        built = LegacyTodos(mongo_db, USER)
         await built.completed_by_the_user(await built.inbox_desk())
 
-        mine = await normalized_legacy(mongo_db, USER)
-        theirs = await normalized_legacy(mongo_db, FAKE_USER_2.user_id)
-        assert mine["todos"] == theirs["todos"]
+        recorded = json.loads(SNAPSHOT.read_text())["stopped_desk"]
+        assert await normalized_legacy(mongo_db, USER) == recorded

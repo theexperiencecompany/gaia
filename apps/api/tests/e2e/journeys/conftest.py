@@ -33,6 +33,8 @@ from tests.real_services import mark_real_services
 OWNED_COLLECTIONS = (
     "tasks",
     "task_runs",
+    "todos",
+    "projects",
     "workflows",
     "workflow_executions",
     "playbooks",

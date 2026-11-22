@@ -468,5 +468,50 @@
    }
   ]
  },
- "recorded_from": "the old todos engine at 9380571eba, by this test"
+ "recorded_from": "the old todos engine at 9380571eba, by this test",
+  "stopped_desk": {
+    "approval_ledger": [],
+    "conversations": [],
+    "todos": [
+      {
+        "_id": "<oid:0>",
+        "activity_content": "- <time> [created]\n- <time> [scheduled] run at <time>, by GAIA\n- <time> [recurrence_changed] repeats 0 8 * * *, by GAIA\n- <time> [completed] Completed via UI",
+        "canvas_content": "# Inbox desk\n\n## Standing rules\n<!-- the user's instructions for how this task behaves, one line each with the date given; every run obeys them over its defaults; never removed unless the user retracts one -->\n- deliver every briefing that has content whole, every section, never shortened or held back as routine\n\n## Done when\n<!-- the checkable conditions that make this done, one per line; every run checks them before closing -->\n\n## Evidence\n<!-- where proof of each condition will show up and how to check it (a connected service, a thread, a page, the user's word) -->\n\n## Key Details\n<!-- email addresses, thread IDs, calendar IDs, issue IDs: everything needed to take action -->\n\n## Current State\n<!-- what is true RIGHT NOW; rewrite after every action -->\n\n## Context\n<!-- accumulated context from signals, related information, decisions made, open questions -->\n\n## Learnings\n<!-- written on completion: what worked, what did not, timing insights, reusable patterns -->\n",
+        "completed": true,
+        "completed_at": "<time>",
+        "created_at": "<time>",
+        "default_action": null,
+        "description": "Goes through every inbox each morning: opens a sub-todo for each thread that needs you, drafts replies and briefs you, while each thread it tracks tells you what cannot wait.",
+        "external_ref": {
+          "id": "gmail",
+          "source": "inbox_desk"
+        },
+        "gaia_retry_count": 0,
+        "hold_checks": 0,
+        "if_no_reply": null,
+        "labels": [
+          "gaia-tracked"
+        ],
+        "log_content": "# System Log: Inbox desk\n",
+        "notify_on_run": true,
+        "observations_content": "# Observations\n<!-- the evidence behind what the desk learned from the user's mail, kept across runs; the user's own instructions go in canvas.md Standing rules -->\n<!-- one block per pattern, under its section:\n### <sender address, recurring item or person>\n- conclusion: <what it is>; <treatment, e.g. low priority, count only>\n- confidence: low|medium|high\n- first seen: <YYYY-MM-DD>\n- last seen: <YYYY-MM-DD>\n- daily counts: <YYYY-MM-DD>:<n>, ... (the 14 most recent days)\n- earlier: ~<average>/day over <n> days\n- suggested: <YYYY-MM-DD the briefing suggested a Gmail change from it, if ever>\n-->\n\n## Senders\n<!-- one block per sender address, from the sweep's counts -->\n\n## Recurring\n<!-- mail on a cadence, e.g. a statement monthly around the 1st -->\n\n## People\n<!-- people who matter to the user, from how the user engages with them -->\n",
+        "priority": "none",
+        "project_id": "<oid:1>",
+        "question": null,
+        "reasks_used": 0,
+        "recurrence": "0 8 * * *",
+        "references": [],
+        "scheduled_at": "<time>",
+        "source_conversation_id": null,
+        "subtasks": [],
+        "title": "Inbox desk",
+        "trigger_subscriptions": [],
+        "updated_at": "<time>",
+        "user_id": "<oid:2>",
+        "vfs_path": "/workspace/gaia-tasks/<oid:0>",
+        "waiting_on": null,
+        "workflow_activated": true
+      }
+    ]
+  }
 }

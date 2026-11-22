@@ -1,8 +1,8 @@
-"""Trigger subscriptions: the vocabulary a tracked todo uses to watch an event.
+"""Trigger subscriptions: the vocabulary a GAIA task uses to listen for an app event.
 
-Split from ``todo_models`` because none of it is todo-specific — the matchable-field
-catalog, the operator table, and the condition shape all describe triggers, and the
-dispatch path needs them without importing the todo domain.
+None of it is task-specific: the matchable-field catalog, the operator table and the
+condition shape all describe triggers, and the dispatch path needs them without
+importing the task domain.
 """
 
 from collections.abc import Mapping
@@ -172,7 +172,7 @@ class SubscriptionCondition(BaseModel):
 
 
 class TriggerSubscription(BaseModel):
-    """A tracked todo's standing interest in one trigger."""
+    """A GAIA task's standing interest in one trigger."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -245,13 +245,10 @@ class TriggerSubscriptionView(TriggerSubscription, ResponseModel):
 
 
 class TriggerOrigin(BaseModel):
-    """Why a tracked-todo execution ran, when a subscription woke it.
+    """Why a GAIA task run ran, when a subscription (or a met wait) woke it.
 
-    Threaded as an explicit task parameter rather than inferred: the execution
-    path hardcodes ``scheduled_todo`` at four places, and the retry re-enqueue
-    passes only the todo id — so without carrying this, a retried trigger run
-    silently becomes an ordinary scheduled run and loses both its attribution and
-    the payload the todo was woken to act on.
+    Carried on the run job rather than inferred: a retried run re-enqueues its events,
+    so it keeps both its attribution and the payload the task was woken to act on.
     """
 
     model_config = ConfigDict(frozen=True)

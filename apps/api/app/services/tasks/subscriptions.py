@@ -1,6 +1,6 @@
 """A GAIA task's app-event subscriptions: subscribe, unsubscribe, release, pause and resume.
 
-Registration goes through the same Composio path as workflows and tracked todos, with the
+Registration goes through the same Composio path as workflows, with the
 same reference-counted deletion: owners with identical configs share one Composio trigger
 instance, so a release counts every owner and excludes only the task itself. Per-resource
 triggers return instance ids the subscription stores; account-level ones (Gmail) return

@@ -175,7 +175,7 @@ async def format_workflow_execution_message(
         workflow_title = selected_workflow.title
         workflow_description = selected_workflow.prompt or selected_workflow.description
 
-    # Build signal matching section from tracked todos
+    # The signal matching section, from the user's open GAIA tasks.
     tracked_todos_ctx = trigger.tracked_todos_context
 
     signal_matching_section = ""

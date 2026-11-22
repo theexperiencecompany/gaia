@@ -10,7 +10,7 @@ ARQ's _job_id dedup collapses the fan-out: later events in the window are
 rejected as duplicate enqueues and survive only as buffered payloads.
 
 The mechanics are owner-agnostic: a BatchDrainJob names the run that drains a
-list, and workflows and tracked todos each supply their own. Only workflow
+list, and workflows and GAIA tasks each supply their own. Only workflow
 triggers with a declared poll interval coalesce — a meeting reminder delayed
 by its window is a missed meeting.
 """

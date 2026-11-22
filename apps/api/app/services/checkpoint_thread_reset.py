@@ -1,9 +1,9 @@
 """Drop the LangGraph checkpoint threads a long-lived conversation owns, before a run.
 
-A conversation reused across runs (a workflow's, a tracked todo's chat) would
+A conversation reused across runs (a workflow's, a GAIA task's chat) would
 otherwise resume the same threads and replay every previous run out of Postgres.
 What a run needs of the previous ones is supplied from durable records instead
-(the workflow's run trace, the todo's canvas and activity), so the threads are
+(the workflow's run trace, the task's notes and log), so the threads are
 disposable.
 
 Distinct from conversation_service._delete_checkpoint_threads, which deletes

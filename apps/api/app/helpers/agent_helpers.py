@@ -423,7 +423,7 @@ async def build_agent_config(
     resolved = _inherit_from_parent_configurable(parent, current)
 
     # Captured by the interactive turn at the tree's root and inherited from there;
-    # a root with none (a tracked todo run, a dev run) reads it here, the same
+    # a root with none (a GAIA task run, a dev run) reads it here, the same
     # seam that resolves the lane. Comms roots read it in _core_agent_logic.
     resolved_presence = resolved.presence or (
         await read_presence(acting_user.user_id) if acting_user.user_id else None

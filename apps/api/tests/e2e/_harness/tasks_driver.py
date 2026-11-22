@@ -288,6 +288,8 @@ def _reaching_a_tool(
 
     A run parked on an approval is written up once the approval is decided, with what it starts.
     """
+    args: Mapping[str, object]
+    written_up: list[str]
     match run:
         case NeedsApproval(asking):
             tool, args, said, written_up = GATED_ACTION, GATED_ACTION_ARGS, asking, []

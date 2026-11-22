@@ -135,8 +135,6 @@ class ExecutorRun:
     workflow_execution_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
-    #: The GAIA task a background run works; its result is reported, never left to a decision.
-    active_task_id: str | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
     #: source unset are the silent background paths.
@@ -176,7 +174,6 @@ class ExecutorRun:
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=view.workflow_title,
             workflow_notify_on_completion=view.workflow_notify_on_completion,
-            active_task_id=view.active_task_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,
             queued=identity.queued,

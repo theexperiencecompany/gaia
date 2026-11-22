@@ -230,24 +230,6 @@ class ConversationContext(TypedDict, total=False):
     message_count: int
 
 
-class TodoContext(TypedDict, total=False):
-    """Todo and project operation context (CRUD, bulk ops, search, subtasks)."""
-
-    id: str
-    operation: str  # "create"|"list"|"get"|"update"|"delete"|"bulk_update"|"bulk_delete"|"bulk_move"|"bulk_complete"|"counts"|"create_project"|"list_projects"|"update_project"|"delete_project"|"subtask_op"
-    priority: str
-    has_due_date: bool
-    project_id: str
-    search_mode: str  # "text"|"semantic"|"hybrid"
-    query: TextShape
-    result_count: int
-    page: int
-    per_page: int
-    filters_applied: list[str]
-    bulk_count: int
-    completion_toggled: bool
-
-
 class MemoryContext(TypedDict, total=False):
     """Long-term memory operation context.
 
@@ -610,7 +592,6 @@ class WideEventFields(TypedDict, total=False):
     chat: ChatContext
     model: ModelContext
     conversation: ConversationContext
-    todo: TodoContext
     memory: MemoryContext
     calendar: CalendarContext
     goal: GoalContext
@@ -1112,7 +1093,6 @@ __all__ = [
     "ModelContext",
     "ConversationContext",
     "ConversationOperation",
-    "TodoContext",
     "MemoryContext",
     "CalendarContext",
     "GoalContext",

@@ -1,6 +1,6 @@
 """How a run woken by app events opens its prompt: what fired, inside one untrusted fence.
 
-Shared by every owner a subscription can wake (a tracked todo, a GAIA task), so the
+Shared by every run a subscription can wake, so the
 payloads reach the model the same way and stay fenced as attacker-influenceable data.
 """
 

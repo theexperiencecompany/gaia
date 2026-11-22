@@ -115,7 +115,7 @@ class AiLlmCallCompleted(ServerEvent):
 
 
 class WaitResumed(ServerEvent):
-    """Something GAIA asked the user to do got done, and the chat, todo or workflow waiting on it was picked back up."""
+    """Something GAIA asked the user to do got done, and the chat, GAIA task or workflow waiting on it was picked back up."""
 
     event: ClassVar[str] = "agent:wait_resumed"
     budget_per_user_day: ClassVar[int] = 50

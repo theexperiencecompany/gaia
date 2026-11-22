@@ -58,10 +58,6 @@ _EMAIL_CC = DetailField("Cc", ("cc",))
 _EMAIL_SUBJECT = DetailField("Subject", ("subject",), DetailRole.TITLE)
 _EMAIL_BODY = DetailField("Message", ("body",), DetailRole.CONTENT)
 _INSTRUCTIONS = DetailField("New instructions", ("content",), DetailRole.CONTENT)
-_TODO_DUE = DetailField("Due date", ("due_date",), DetailRole.WHEN)
-_TODO_PRIORITY = DetailField("Priority", ("priority",))
-_TODO_LABELS = DetailField("Labels", ("labels",))
-_TODO_NOTES = DetailField("Notes", ("description",), DetailRole.CONTENT)
 _EVENTS = "events[]."
 
 HIL_TOOL_DESCRIPTIONS: dict[str, ToolDescription] = {
@@ -113,33 +109,6 @@ HIL_TOOL_DESCRIPTIONS: dict[str, ToolDescription] = {
     "GOOGLECALENDAR_DELETE_EVENT": ToolDescription(
         "Delete a calendar event", ("delete an event from your calendar",), "delete it"
     ),
-    "create_todo": ToolDescription(
-        "Add a todo",
-        ("add", " {title}", " to your todos", " for {when}"),
-        "add it",
-        (
-            DetailField("Title", ("title",), DetailRole.TITLE),
-            _TODO_DUE,
-            _TODO_PRIORITY,
-            _TODO_LABELS,
-            _TODO_NOTES,
-        ),
-        ask="Want me to",
-    ),
-    "update_todo": ToolDescription(
-        "Update a todo",
-        ("update a todo",),
-        "update it",
-        (
-            DetailField("New title", ("title",)),
-            _TODO_DUE,
-            _TODO_PRIORITY,
-            DetailField("Done", ("completed",)),
-            _TODO_LABELS,
-            _TODO_NOTES,
-        ),
-    ),
-    "delete_todo": ToolDescription("Delete a todo", ("delete a todo",), "delete it"),
     "TWITTER_CREATION_OF_A_POST": ToolDescription(
         "Post on X",
         ("post on X",),

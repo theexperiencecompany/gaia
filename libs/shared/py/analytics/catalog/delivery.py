@@ -1,7 +1,7 @@
 """Where a proactive message went: the property kinds every proactive delivery event shares.
 
-A message GAIA sends on its own (a fired reminder, a workflow result, a tracked
-todo's result, an unnamed agent notification) goes to one place. These name
+A message GAIA sends on its own (a fired reminder, a workflow result, a GAIA
+task's result, an unnamed agent notification) goes to one place. These name
 that place and the rule that chose it, so routing is measurable on each event.
 """
 

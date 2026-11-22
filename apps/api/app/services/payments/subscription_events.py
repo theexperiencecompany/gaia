@@ -215,7 +215,7 @@ async def deactivate_workflows_safely(user_id: str) -> None:
 
 
 async def resume_paywall_pauses_safely(user_id: str) -> None:
-    """Resume the reminders and tracked todos paused because this user was not paid.
+    """Resume the reminders and GAIA tasks paused because this user was not paid.
 
     Never raises — see reactivate_workflows_safely. What could not resume is
     queued for the worker, the same retry a workflow resume gets.

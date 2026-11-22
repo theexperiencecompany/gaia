@@ -1,7 +1,7 @@
 """Dev-only identity + seeding service.
 
 Bootstraps users and sample data for agent-driven end-to-end testing. Every
-write reuses the real production path (store_user_info, create_todo,
+write reuses the real production path (store_user_info, create_task,
 create_conversation_service, PlatformLinkService.link_account) so seeded
 shapes can never drift from what the app actually produces. Mounted only in
 development behind the auth bypass — see create_app.
