@@ -28,6 +28,7 @@ from pydantic import BaseModel
 import time_machine
 
 from app.agents.tools.task_tools import create_task, subscribe_task, update_task
+from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
@@ -755,16 +756,32 @@ class TasksDriver:
 
     async def watch_emails_from(self, task_id: str, sender: str) -> None:
         """Have the GAIA task wake whenever an email from sender arrives, as its watch tool sets."""
-        said = await subscribe_task.ainvoke(
+        from_sender = [{"field_name": "sender", "operator": "contains", "value": sender}]
+        config = {"configurable": {"user_id": self._user_id}}
+        if _is_task(task_id):
+            said = await subscribe_task.ainvoke(
+                {
+                    "task_id": task_id,
+                    "trigger_name": "gmail_new_message",
+                    "conditions": from_sender,
+                    "cooldown_seconds": 0,
+                },
+                config=config,
+            )
+            assert "now runs when" in said, said
+            return
+        # A tracked todo the migration journey builds as legacy data.
+        said = await subscribe_todo_to_trigger.ainvoke(
             {
-                "task_id": task_id,
+                "todo_id": task_id,
                 "trigger_name": "gmail_new_message",
-                "conditions": [{"field_name": "sender", "operator": "contains", "value": sender}],
+                "action": "execute",
+                "conditions": from_sender,
                 "cooldown_seconds": 0,
             },
-            config={"configurable": {"user_id": self._user_id}},
+            config=config,
         )
-        assert "now runs when" in said, said
+        assert "is now watching" in said, said
 
     async def connect_app(self, integration_id: str) -> None:
         """Finish an app's OAuth connect, with every side effect the callback runs."""
