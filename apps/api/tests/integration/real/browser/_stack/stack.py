@@ -27,6 +27,7 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 import uuid
 
+from arq.constants import result_key_prefix
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import httpx
@@ -53,6 +54,7 @@ from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.jobs import done_state, get_latest_job
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
+from app.workers.tasks.conversation_sweep_tasks import conversation_sweep_cron
 from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import pick_free_port, worker_mongo_db_name, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
@@ -447,6 +449,13 @@ class BrowserStack:
                 return
             await asyncio.sleep(1.0)
         raise AssertionError(f"{conversation_id} never went quiet within {timeout}s\n{self.logs()}")
+
+    async def swept_since(self, since_ms: int) -> bool:
+        """Whether a conversation sweep due after since_ms (epoch milliseconds) has finished."""
+        assert self.redis is not None, "the stack is not started"
+        prefix = f"{result_key_prefix}{conversation_sweep_cron().name}:"
+        due = [int(key.removeprefix(prefix)) for key in await self.redis.keys(f"{prefix}*")]
+        return any(at > since_ms for at in due)
 
     async def handoff_waiting(self, user: BotUser) -> bool:
         """Whether a bot run of this user is waiting on the user right now."""
