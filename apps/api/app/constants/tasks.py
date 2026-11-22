@@ -263,3 +263,11 @@ REPEAT_ANCHORED: Final[dict[str, timedelta]] = {
     "weekly": timedelta(weeks=1),
 }
 REPEAT_SHORTCUTS: Final = frozenset(REPEAT_INTERVALS.keys() | REPEAT_ANCHORED.keys())
+
+# The task search index (the Chroma collection CHROMA_TASKS_COLLECTION).
+#: The most tasks one search returns.
+TASK_SEARCH_LIMIT: Final = 10
+#: How much of a matched task's notes or details a search shows.
+TASK_SEARCH_EXCERPT_CHARS: Final = 400
+#: Tasks read or written per index call when reindexing or checking coverage.
+TASK_INDEX_BATCH: Final = 200

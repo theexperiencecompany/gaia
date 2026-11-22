@@ -15,6 +15,7 @@ from app.models.task_models import TaskDocument, TaskUpdate
 from app.services.analytics_service import capture
 from app.services.tasks.arming import arm_at, arm_task
 from app.services.tasks.run_records import record_event
+from app.services.tasks.search_index import index_task
 from app.services.tasks.subscriptions import release_subscriptions
 from app.services.tasks.todo_rounds import with_round_fields
 from shared.py.analytics import UserId
@@ -34,6 +35,7 @@ async def complete_task(task: TaskDocument, summary: str) -> TaskDocument | None
     if closed is None:
         return None
     await arm_task(closed)
+    await index_task(closed)
     if closed.assignee is Assignee.GAIA:
         await release_subscriptions(closed)
         await record_event(closed, TaskLogEvent.COMPLETED, summary)

@@ -19,7 +19,7 @@ CREATE_TASK = """
     subtask wakes the parent; closing the parent closes its open subtasks. A subtask
     reports to its parent, not the user, unless notify is set.
 
-    Search existing tasks first (list_tasks) and update a match instead of creating a twin.
+    Search existing tasks first (search_tasks) and update a match instead of creating a twin.
     Never repeat a task id in user-visible text.
     """
 
@@ -93,12 +93,26 @@ LIST_TASKS = """
     When to use:
     - The user asks what is on their list, what is due today or this week, what is overdue,
       what they finished, or what GAIA is working on: pick the view.
-    - Before creating a task: look for one that already covers it (query) and update that.
-    - To find the id of a task the user names, for any other task tool.
+    - A view narrowed by exact words the user gave ("overdue bills"): add query.
 
     Each line shows whose it is, when it is due or repeats, its checklist and, for GAIA's,
-    what it waits on. query matches words in the title or details, not meaning: try the
-    words the user would have written. Never repeat a task id in user-visible text.
+    what it waits on. query keeps only tasks whose title or details contain those exact
+    words; to find a task by what it is about, use search_tasks. Never repeat a task id in
+    user-visible text.
+    """
+
+SEARCH_TASKS = """
+    Find tasks by meaning: "the dentist thing" finds "Book a check-up for the tooth ache".
+    Searches titles, details and GAIA's own notes, of open and finished tasks.
+
+    When to use:
+    - The user names a task loosely and you need its id for another task tool.
+    - Before creating a task: one may already cover it; update that instead of a twin.
+    - Before starting work: what earlier tasks already learned about this (people, threads,
+      what worked), shown under each match.
+
+    Results are nearest first and always some, so judge from each line whether it is
+    really the task meant. Never repeat a task id in user-visible text.
     """
 
 GET_TASK = """

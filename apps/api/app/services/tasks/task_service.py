@@ -38,6 +38,7 @@ from app.services.tasks.errors import (
     TaskNotFoundError,
 )
 from app.services.tasks.family import require_reopenable, require_subtask_parent
+from app.services.tasks.search_index import drop_from_index, index_task
 from app.services.tasks.subscriptions import release_subscriptions
 from app.services.tasks.todo_rounds import first_nudge_at, first_repeat, with_round_fields
 from app.services.user_service import get_profile_timezone
@@ -131,6 +132,7 @@ async def create_task(user_id: str, request: TaskCreateRequest) -> TaskDocument:
     draft.nudge_at = first_nudge_at(draft)
     created = await task_repository.create(draft)
     await arm_task(created)
+    await index_task(created)
     log.set_ns("task", id=created.id, when_kind=created.when.kind.value)
     capture(
         UserId(user_id),
@@ -172,6 +174,7 @@ async def update_task(user_id: str, task_id: str, request: TaskUpdateRequest) ->
             raise TaskNotFoundError(task_id)
         updated = written
         await arm_task(updated)
+        await index_task(updated)
     if request.completed and not updated.completed:
         updated = await complete_task(updated, "Completed by the user") or await require_task(
             user_id, task_id
@@ -206,6 +209,7 @@ async def delete_tasks(user_id: str, task_ids: list[str]) -> list[str]:
     await task_run_repository.delete_for_tasks(user_id, doomed)
     await delete_task_conversations(user_id, doomed)
     deleted = await task_repository.bulk_delete(user_id, doomed) if doomed else 0
+    await drop_from_index(user_id, doomed)
     log.set_ns("task", deleted=deleted)
     if deleted:
         capture(UserId(user_id), TaskDeleted(count=deleted))

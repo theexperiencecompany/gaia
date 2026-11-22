@@ -159,6 +159,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "subscribe_task": "Setting up the watch",
     "unsubscribe_task": "Stopping the watch",
     "list_tasks": "Checking your tasks",
+    "search_tasks": "Looking through your tasks",
     "get_task": "Opening the task",
     "edit_checklist": "Updating the checklist",
     "reopen_task": "Reopening the task",

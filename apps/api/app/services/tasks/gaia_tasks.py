@@ -18,6 +18,7 @@ from app.services.tasks.errors import SubtaskParentError
 from app.services.tasks.family import require_subtask_parent
 from app.services.tasks.open_state import open_state_problems
 from app.services.tasks.run_records import log_line, record_event
+from app.services.tasks.search_index import index_task
 from app.services.todos.errors import OpenStateError
 from app.utils.auth_utils import require_owner
 from shared.py.analytics import UserId
@@ -47,6 +48,7 @@ async def create_gaia_task(draft: TaskDocument, *, by: str) -> TaskDocument:
     draft.log = f"{log_line(TaskLogEvent.CREATED, f'{_plan_words(draft)}, by {by}')}\n"
     created = await task_repository.create(draft)
     await arm_task(created)
+    await index_task(created)
     log.set_ns("task", id=created.id, assignee=created.assignee.value)
     capture(
         UserId(created.user_id),
@@ -81,10 +83,12 @@ async def update_gaia_task(task: TaskDocument, update: TaskUpdate, *, by: str) -
         await task_repository.update(
             task.id, user_id=task.user_id, update=TaskUpdate(parent_id=None)
         )
+        await index_task(updated.model_copy(update={"parent_id": None}))
         raise SubtaskParentError(
             f"The parent was completed meanwhile, so moving task {task.id} under it was rolled "
             "back. Reopen the parent first, or pick an open one."
         )
+    await index_task(updated)
     if {"waiting", "next_check_at"} & update.model_fields_set:
         await record_event(
             updated, TaskLogEvent.WAITING_CHANGED, f"{_plan_words(updated)}, by {by}"
