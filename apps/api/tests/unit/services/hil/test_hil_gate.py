@@ -599,18 +599,18 @@ class TestTheApprovalCardNamesTheIntegration:
 
 class TestParkedOwner:
     @pytest.mark.parametrize(
-        ("owner", "parks"),
+        ("run_type", "owner_id", "task_id", "parks"),
         [
-            ({"owner_run_type": "todo", "owner_id": "todo-9"}, True),
-            ({"owner_task_id": "task_0123456789ab"}, True),
-            ({"owner_run_type": "todo"}, False),
-            ({"owner_id": "todo-9"}, False),
-            ({}, False),
+            ("todo", "todo-9", None, True),
+            ("", "", "task_0123456789ab", True),
+            ("todo", "", None, False),
+            ("", "todo-9", None, False),
+            ("", "", None, False),
         ],
         ids=["todo", "task", "half-type", "half-id", "live"],
     )
     def test_only_a_whole_owner_parks_on_the_approval(
-        self, owner: dict[str, str], parks: bool
+        self, run_type: str, owner_id: str, task_id: str | None, parks: bool
     ) -> None:
         context = GateContext(
             stream_id=STREAM_ID,
@@ -618,7 +618,9 @@ class TestParkedOwner:
             conversation_id=CONVERSATION_ID,
             user_messages=[],
             pausable=False,
-            **owner,
+            owner_run_type=run_type,
+            owner_id=owner_id,
+            owner_task_id=task_id,
         )
 
         assert context.parks_an_owner is parks
