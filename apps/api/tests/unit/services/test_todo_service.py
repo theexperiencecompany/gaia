@@ -59,7 +59,6 @@ from app.services.todos.errors import (
     TrackedTodoWorkflowError,
 )
 from app.services.todos.todo_bulk_service import (
-    bulk_complete_todos,
     bulk_delete_todos as bulk_service_delete_todos,
     bulk_move_todos as bulk_service_move_todos,
 )
@@ -69,8 +68,6 @@ from app.services.todos.todo_service import (
     _get_workflow_categories_for_todos,
     create_project,
     delete_project,
-    get_all_projects,
-    get_all_todos,
     get_todo,
     require_project,
     update_project,
@@ -111,7 +108,6 @@ def _no_analytics():
     """
     with (
         patch("app.services.todos.todo_service.capture"),
-        patch("app.services.todos.todo_bulk_service.capture"),
     ):
         yield
 
@@ -1799,13 +1795,6 @@ class TestCompatibilityWrappers:
         result = await get_todo(FAKE_TODO_ID, FAKE_USER_ID)
         assert result.id == FAKE_TODO_ID
 
-    async def test_get_all_projects_wrapper(self, mock_todo_repo, mock_project_repo):
-        mock_project_repo.list_with_counts = AsyncMock(
-            return_value=[_make_project_doc(name="A", todo_count=1)]
-        )
-        result = await get_all_projects(FAKE_USER_ID)
-        assert result[0].name == "A"
-
     async def test_create_project_wrapper(self, mock_todo_repo, mock_project_repo):
         mock_project_repo.create = AsyncMock(return_value=_make_project_doc(name="Work"))
         result = await create_project(ProjectCreate(name="Work"), FAKE_USER_ID)
@@ -1830,15 +1819,6 @@ class TestCompatibilityWrappers:
         await delete_project(FAKE_PROJECT_ID, FAKE_USER_ID)
         mock_project_repo.delete.assert_awaited_once()
 
-    async def test_get_all_todos_wrapper(
-        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
-    ):
-        mock_todo_repo.list_page = AsyncMock(
-            return_value=TodoPage(items=[_make_todo_doc()], total=1)
-        )
-        result = await get_all_todos(FAKE_USER_ID)
-        assert len(result) == 1
-
 
 # ===========================================================================
 # todo_bulk_service
@@ -1860,76 +1840,6 @@ def mock_bulk_repos(mock_vector_utils, mock_sync):
     ):
         project_repo.get = AsyncMock(return_value=None)
         yield todo_repo, project_repo
-
-
-class TestBulkServiceComplete:
-    async def test_completes_plain_todos(self, mock_bulk_repos):
-        todo_repo, _ = mock_bulk_repos
-        ids = ["a", "b"]
-        todo_repo.find_by_ids = AsyncMock(
-            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
-        )
-        todo_repo.bulk_update = AsyncMock(return_value=2)
-        result = await bulk_complete_todos(ids, FAKE_USER_ID)
-        assert [todo.id for todo in result.todos] == ["a", "b"]
-        assert result.failed == []
-
-    async def test_a_tracked_todo_that_fails_is_named_and_not_returned_as_done(
-        self, mock_bulk_repos
-    ):
-        todo_repo, _ = mock_bulk_repos
-        docs = [
-            _make_todo_doc(todo_id="a", vfs_path="file:///a"),
-            _make_todo_doc(todo_id="b", vfs_path="file:///b"),
-        ]
-        todo_repo.find_by_ids = AsyncMock(
-            side_effect=lambda _user, ids: [doc for doc in docs if doc.id in ids]
-        )
-        with patch(
-            _COMPLETE_TRACKED, new_callable=AsyncMock, side_effect=[RuntimeError("down"), True]
-        ):
-            result = await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
-
-        assert [todo.id for todo in result.todos] == ["b"]
-        assert result.failed == ["a"]
-        assert todo_repo.find_by_ids.await_args == call(FAKE_USER_ID, ["b"])
-
-    async def test_captures_completed_count(self, mock_bulk_repos):
-        todo_repo, _ = mock_bulk_repos
-        todo_repo.find_by_ids = AsyncMock(
-            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
-        )
-        todo_repo.bulk_update = AsyncMock(return_value=2)
-        with patch("app.services.todos.todo_bulk_service.capture") as mock_capture:
-            await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
-        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
-
-    async def test_captures_completed_count_with_tracked_todos(self, mock_bulk_repos):
-        """Tracked todos count through their completion lifecycle — the reported count is modified + tracked, not a plain update count."""
-        todo_repo, _ = mock_bulk_repos
-        todo_repo.find_by_ids = AsyncMock(
-            return_value=[
-                _make_todo_doc(todo_id="a"),
-                _make_todo_doc(todo_id="b", vfs_path="file:///x"),
-            ]
-        )
-        todo_repo.bulk_update = AsyncMock(return_value=1)
-        with (
-            patch("app.services.todos.todo_bulk_service.capture") as mock_capture,
-            patch(_COMPLETE_TRACKED, new_callable=AsyncMock) as mock_tracked,
-        ):
-            await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
-        mock_tracked.assert_awaited_once_with(
-            "b", FAKE_USER_ID, summary="Completed via bulk operation"
-        )
-        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
-
-    async def test_no_todos_raises_404(self, mock_bulk_repos):
-        todo_repo, _ = mock_bulk_repos
-        todo_repo.find_by_ids = AsyncMock(return_value=[])
-        with pytest.raises(HTTPException) as exc:
-            await bulk_complete_todos(["a"], FAKE_USER_ID)
-        assert exc.value.status_code == 404
 
 
 class TestBulkServiceMove:

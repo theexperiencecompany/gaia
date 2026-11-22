@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from enum import Enum, StrEnum
 from typing import Annotated, NamedTuple
@@ -238,12 +237,6 @@ class TodoResponse(TodoBase, ResponseModel):
 
 
 # Project models
-@dataclass(frozen=True)
-class TrackedTodoCreation:
-    """What create_tracked_todo made: a new todo, or the completed one its ref had, reopened."""
-
-    todo: TodoResponse
-    reopened: bool
 
 
 class ProjectBase(BaseModel):
@@ -739,20 +732,6 @@ class TodoPage(BaseModel):
 
     items: list[TodoDocument] = Field(default_factory=list)
     total: int = 0
-
-
-@dataclass(frozen=True)
-class UpdateFieldInputs:
-    """The raw agent-supplied field values for update_tracked_todo, bundled so the
-    validator chain that consumes them is one small helper instead of six inline
-    guards on the tool body."""
-
-    labels: list[str] | None
-    due_date: str | None
-    priority: Priority | None
-    scheduled_at: str | None
-    recurrence: str | None
-    expires_at: str | None
 
 
 class TodoRunContext(NamedTuple):

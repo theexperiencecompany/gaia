@@ -70,17 +70,6 @@ class ExternalRefReopenedTwiceError(AppError):
         )
 
 
-class CanvasShapeError(AppError):
-    """Raised (400) when a new todo's canvas breaks a rule that normalizing cannot repair."""
-
-    def __init__(self, problems: list[str]) -> None:
-        super().__init__(
-            message=f"initial_canvas breaks the canvas shape: {'; '.join(problems)}.",
-            status_code=HTTPStatus.BAD_REQUEST,
-            code="canvas_shape_invalid",
-        )
-
-
 class OpenStateError(AppError):
     """Raised (400) when a write would leave an open tracked todo without a valid next step."""
 
@@ -91,21 +80,6 @@ class OpenStateError(AppError):
             code="open_state_invalid",
         )
         self.problems = problems
-
-
-class UnwatchedTodoKeptError(AppError):
-    """Raised (a 500) when a new todo's watch failed and removing the todo failed too; carries its id."""
-
-    def __init__(self, todo_id: str, watch_error: Exception) -> None:
-        super().__init__(
-            message=(
-                f"Todo {todo_id} could not watch its thread ({watch_error}) and could not be "
-                "removed, so it is kept without its watch."
-            ),
-            code="unwatched_todo_kept",
-            public={"todo_id": todo_id},
-        )
-        self.todo_id = todo_id
 
 
 class TodoNotFoundError(ValueError):

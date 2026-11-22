@@ -94,7 +94,7 @@ def seams() -> Iterator[Seams]:
             AsyncMock(return_value=InApp(reason="active_in_app")),
         ) as target,
     ):
-        conversations.get_todo_id = AsyncMock(return_value=None)
+        conversations.get_task_id = AsyncMock(return_value=None)
         conversations.is_workflow_execution = AsyncMock(return_value=False)
         conversations.get_source = AsyncMock(return_value=ConversationSource.BACKGROUND)
         agent_config.side_effect = lambda **_: {"configurable": {}}
@@ -117,7 +117,7 @@ def seams() -> Iterator[Seams]:
 async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from(
     seams: Seams,
 ) -> None:
-    seams.conversations.get_todo_id.return_value = "todo_9"
+    seams.conversations.get_task_id.return_value = "todo_9"
     first = _said("u1", ConversationSource.WEB, selected_tool="gmail_send", tool_category="mail")
     last = _said("u2", ConversationSource.TELEGRAM)
     batch = _batch(1, [first, last])
@@ -127,11 +127,11 @@ async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from
     query = "text u1\n\ntext u2"
     seams.presence.assert_awaited_once_with(USER, last)
     seams.touch.assert_called_once_with(USER, CONVERSATION)
-    seams.conversations.get_todo_id.assert_awaited_once_with(CONVERSATION, user_id=USER)
+    seams.conversations.get_task_id.assert_awaited_once_with(CONVERSATION, user_id=USER)
     turn_query, scope = seams.turn_context.await_args.args
     assert turn_query == query
     assert (scope.user_id, scope.user_name, scope.user_dict) == (USER, "Priya", seams.user)
-    assert (scope.conversation_id, scope.source, scope.active_todo_id) == (
+    assert (scope.conversation_id, scope.source, scope.active_task_id) == (
         CONVERSATION,
         "telegram",
         "todo_9",
@@ -150,7 +150,7 @@ async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from
     assert kwargs["lane"].role is AgentRole.COMMS
     agent_turn = kwargs["turn"]
     assert (agent_turn.selected_tool, agent_turn.tool_category) == ("gmail_send", "mail")
-    assert (agent_turn.active_todo_id, agent_turn.execution_mode, agent_turn.source) == (
+    assert (agent_turn.active_task_id, agent_turn.execution_mode, agent_turn.source) == (
         "todo_9",
         "interactive",
         "telegram",
@@ -185,7 +185,7 @@ async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from
         "memory_user_id": USER,
         "conversation_id": CONVERSATION,
         "integration_usernames": {},
-        "active_todo_id": "todo_9",
+        "active_task_id": "todo_9",
     }
     seams.reported.assert_not_awaited()
 
@@ -204,7 +204,7 @@ async def test_each_attempt_gets_its_own_stream_and_a_later_batch_does_not_open_
     assert seams.turn_context.await_args.args[1].opens_thread is False
     assert one.opening == seams.context.chain
     assert seams.agent_config.await_args.kwargs["turn"].selected_tool is None
-    assert "active_todo_id" not in one.state
+    assert "active_task_id" not in one.state
 
 
 async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: Seams) -> None:

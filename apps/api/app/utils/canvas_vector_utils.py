@@ -6,7 +6,6 @@ tracked todos. Follows the same pattern as todo_vector_utils.py.
 """
 
 from datetime import UTC, datetime
-from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict
 
@@ -44,16 +43,6 @@ class _StoredCanvasRows(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     metadatas: list[CanvasIndexMetadata | None] | None = None
-
-
-class CanvasSearchMatch(TypedDict):
-    """One canvas hit from search_canvas_context, rendered as a line by the tool."""
-
-    todo_id: str
-    title: str
-    score: float
-    snippet: str
-    completed: bool
 
 
 async def store_canvas_embedding(
@@ -190,56 +179,3 @@ async def set_canvas_completed(todo_id: str, *, completed: bool) -> bool:
             "canvas.set_completed_failed", todo_id=todo_id, completed=completed, error=str(e)
         )
         return False
-
-
-async def search_canvas_context(
-    query: str,
-    user_id: str,
-    top_k: int = 10,
-    include_completed: bool = True,
-) -> list[CanvasSearchMatch]:
-    """Semantic search across all canvas content for a user."""
-    try:
-        chroma_collection = await ChromaClient.get_langchain_client(
-            collection_name=COLLECTION_NAME, create_if_not_exists=True
-        )
-
-        if include_completed:
-            where_filter: dict[str, object] = {"user_id": str(user_id)}
-        else:
-            where_filter = {
-                "$and": [
-                    {"user_id": str(user_id)},
-                    {"completed": False},
-                ]
-            }
-
-        results = await chroma_collection.asimilarity_search_with_score(
-            query=query,
-            k=top_k,
-            filter=where_filter,
-        )
-
-        matches: list[CanvasSearchMatch] = []
-        for doc, score in results:
-            meta = CanvasIndexMetadata.model_validate(
-                doc.metadata if hasattr(doc, "metadata") else {}
-            )
-            matches.append(
-                {
-                    "todo_id": meta.todo_id,
-                    "title": meta.title,
-                    "score": round(score, 3),
-                    "snippet": doc.page_content[:500] if hasattr(doc, "page_content") else "",
-                    "completed": meta.completed,
-                }
-            )
-        return matches
-    except Exception as e:
-        log.error(
-            f"{LogTag.CHROMA} Canvas search failed for user",
-            user_id=user_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return []

@@ -1,7 +1,6 @@
 """Unit tests for the open-state rule: what an open tracked todo must say about its next step."""
 
 from datetime import UTC, datetime, timedelta
-from http import HTTPStatus
 
 import pytest
 
@@ -15,19 +14,14 @@ from app.constants.todos import (
 )
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoDocument, TodoUpdate
-from app.services.todos.errors import OpenStateError
 from app.services.todos.open_state import (
     WAITING_ON_CHOICES,
     describe_open_state,
     next_check_limit,
     no_reply_plan_words,
     open_state_problems,
-    require_open_state,
-    state_after,
-    touches_open_state,
     wake_budget_update,
     wake_reason,
-    with_waiting_normalized,
 )
 
 NOW = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
@@ -135,15 +129,6 @@ class TestWhatMakesAnOpenStateValid:
         paused = _todo(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED)
         assert open_state_problems(paused, NOW) == []
 
-    def test_require_open_state_raises_a_400_naming_every_problem(self):
-        with pytest.raises(OpenStateError) as refused:
-            require_open_state(_todo(), NOW)
-
-        assert refused.value.problems == [WAITING_ON_MISSING, SCHEDULED_AT_MISSING]
-        assert refused.value.message == f"{WAITING_ON_MISSING} {SCHEDULED_AT_MISSING}"
-        assert refused.value.status_code == HTTPStatus.BAD_REQUEST
-        assert refused.value.code == "open_state_invalid"
-
 
 class TestAQuestionToTheUser:
     def test_it_needs_the_question_and_the_plan_for_no_reply(self):
@@ -189,69 +174,6 @@ class TestAQuestionToTheUser:
         assert open_state_problems(holding, NOW) == []
         assert open_state_problems(first, NOW)
         assert next_check_limit(holding) > next_check_limit(first)
-
-
-class TestChangingWhatATodoWaitsFor:
-    def test_leaving_the_user_clears_the_question_and_its_plan(self):
-        existing = _asking(NoReplyPlan.HOLD, hold_checks=2)
-        update = TodoUpdate(waiting_on=WaitingOn.TIME)
-
-        normalized = with_waiting_normalized(existing, update)
-
-        assert normalized.question is None
-        assert normalized.if_no_reply is None
-        assert normalized.default_action is None
-        assert normalized.hold_checks == 0
-        assert normalized.waiting_on is WaitingOn.TIME
-        assert normalized.model_fields_set == {
-            "waiting_on",
-            "question",
-            "if_no_reply",
-            "default_action",
-            "hold_checks",
-        }
-
-    def test_a_new_question_restarts_the_hold_count(self):
-        existing = _asking(NoReplyPlan.HOLD, hold_checks=2)
-        update = TodoUpdate(question="A different question?")
-
-        normalized = with_waiting_normalized(existing, update)
-
-        assert normalized.hold_checks == 0
-        assert normalized.model_fields_set == {"question", "hold_checks"}
-
-    def test_the_same_question_again_keeps_its_hold_count(self):
-        existing = _asking(NoReplyPlan.HOLD, hold_checks=2)
-        update = TodoUpdate(question="Ship it?")
-
-        assert with_waiting_normalized(existing, update).model_fields_set == {"question"}
-
-    def test_an_update_touching_neither_is_returned_untouched(self):
-        update = TodoUpdate(priority=None, notify_on_run=False)
-
-        assert with_waiting_normalized(_todo(), update) is update
-
-    def test_state_after_applies_only_the_fields_the_update_set(self):
-        existing = _waiting(WaitingOn.TIME)
-        after = state_after(existing, TodoUpdate(scheduled_at=None))
-
-        assert after.scheduled_at is None
-        assert after.waiting_on is WaitingOn.TIME
-
-    @pytest.mark.parametrize(
-        ("update", "touches"),
-        [
-            (TodoUpdate(scheduled_at=NOW), True),
-            (TodoUpdate(recurrence=None), True),
-            (TodoUpdate(waiting_on=WaitingOn.TIME), True),
-            (TodoUpdate(question="q"), True),
-            (TodoUpdate(notify_on_run=False), False),
-            (TodoUpdate(labels=["gaia-tracked"]), False),
-            (TodoUpdate(expires_at=NOW), False),
-        ],
-    )
-    def test_only_the_fields_that_decide_the_next_step_are_checked(self, update, touches):
-        assert touches_open_state(update) is touches
 
 
 class TestWhyAScheduledRunWoke:

@@ -141,14 +141,6 @@ class _TaskBindingRow(BaseModel):
     task_id: str | None = None
 
 
-class _TodoBindingRow(BaseModel):
-    """Projection of just the tracked todo a conversation belongs to."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    todo_id: str | None = None
-
-
 class _SystemGeneratedRow(BaseModel):
     """Projection of a conversation's system-generated flag and why it exists."""
 

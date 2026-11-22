@@ -304,13 +304,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             completed=_first_count(facet.completed),
         )
 
-    async def next_due(self, user_id: str, *, after: datetime) -> TodoDocument | None:
-        """Return the open todo with the soonest due date after the given instant."""
-        return await self._find_one(
-            {"user_id": user_id, "completed": False, "due_date": {"$gt": after}},
-            sort=[("due_date", 1)],
-        )
-
     @cached_query(list[TodoLabelCount])
     async def top_labels(self, *, user_id: str, limit: int) -> list[TodoLabelCount]:
         """Most-used labels across a user's incomplete todos."""
@@ -613,16 +606,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$addToSet": {"labels": {"$each": labels}}},
-            scope=user_id,
-        )
-
-    async def add_references(
-        self, todo_id: str, *, user_id: str, references: list[str]
-    ) -> TodoDocument | None:
-        """Link related past tracked todos onto references ($addToSet)."""
-        return await self._apply_raw_update(
-            self._scoped_filter(todo_id, user_id),
-            {"$addToSet": {"references": {"$each": references}}},
             scope=user_id,
         )
 

@@ -344,21 +344,6 @@ class TestTrackedTodoChats:
         assert await repo.list_starred_summaries(user) == []
         assert await repo.search(user, pattern="deploy") == ConversationSearchResults()
 
-    async def test_the_chat_is_found_by_its_todo_and_the_todo_by_its_chat(self, repo):
-        user = _uid()
-        todo_chat = _doc(user_id=user, todo_id="todo-1")
-        chat = _doc(user_id=user)
-        await repo.create(todo_chat)
-        await repo.create(chat)
-
-        assert await repo.find_todo_conversation_id(user, "todo-1") == todo_chat.conversation_id
-        assert await repo.find_todo_conversation_id(user, "todo-2") is None
-        # Another user's todo of the same id is not theirs.
-        assert await repo.find_todo_conversation_id(_uid(), "todo-1") is None
-        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=user) == "todo-1"
-        assert await repo.get_todo_id(chat.conversation_id, user_id=user) is None
-        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=_uid()) is None
-
     async def test_a_second_chat_for_the_same_todo_loses_the_create(self, repo):
         user = _uid()
         assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is True

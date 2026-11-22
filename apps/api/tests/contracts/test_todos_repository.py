@@ -461,30 +461,6 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in page.items] == ["at"]
 
-    async def test_next_due_is_the_soonest_open_todo_after_the_instant(self, repo, make_doc):
-        after = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
-        await repo.create(make_doc(user_id="u", title="past", due_date=after))
-        await repo.create(make_doc(user_id="u", title="later", due_date=after + timedelta(days=2)))
-        await repo.create(
-            make_doc(user_id="u", title="soonest", due_date=after + timedelta(hours=1))
-        )
-        await repo.create(
-            make_doc(
-                user_id="u",
-                title="done",
-                due_date=after + timedelta(minutes=1),
-                completed=True,
-            )
-        )
-        await repo.create(
-            make_doc(user_id="other", title="theirs", due_date=after + timedelta(minutes=1))
-        )
-
-        found = await repo.next_due("u", after=after)
-
-        assert found is not None and found.title == "soonest"
-        assert await repo.next_due("u", after=after + timedelta(days=3)) is None
-
     async def test_top_labels(self, repo, make_doc):
         await repo.create(make_doc(user_id="u", labels=["a", "b"]))
         await repo.create(make_doc(user_id="u", labels=["a"]))

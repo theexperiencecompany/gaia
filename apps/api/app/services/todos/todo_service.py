@@ -29,7 +29,6 @@ from app.models.todo_models import (
     ProjectUpdate,
     SearchMode,
     SubTask,
-    TodoDayWindow,
     TodoDocument,
     TodoListResponse,
     TodoModel,
@@ -949,37 +948,6 @@ async def get_todo(todo_id: str, user_id: str) -> TodoResponse:
     return await TodoService.get_todo(todo_id, user_id)
 
 
-async def get_all_todos(
-    user_id: str,
-    project_id: str | None = None,
-    completed: bool | None = None,
-    priority: Priority | None = None,
-    has_due_date: bool | None = None,
-    overdue: bool | None = None,
-    day_window: TodoDayWindow | None = None,
-    skip: int = 0,
-    limit: int = 50,
-) -> list[TodoResponse]:
-    """Compatibility wrapper for old get_all_todos function; overdue needs day_window."""
-
-    params = TodoSearchParams(
-        q=None,
-        mode=SearchMode.TEXT,
-        project_id=project_id,
-        completed=completed,
-        priority=priority,
-        has_due_date=has_due_date,
-        overdue=overdue,
-        day_window=day_window,
-        page=(skip // limit) + 1 if limit > 0 else 1,
-        per_page=limit,
-        include_stats=False,
-    )
-
-    response = await TodoService.list_todos(user_id, params)
-    return response.data
-
-
 async def update_todo(todo_id: str, updates: TodoUpdateRequest, user_id: str) -> TodoResponse:
     """Compatibility wrapper for old update_todo function."""
     return await TodoService.update_todo(todo_id, updates, user_id)
@@ -993,11 +961,6 @@ async def delete_todo(todo_id: str, user_id: str) -> None:
 async def create_project(project: ProjectCreate, user_id: str) -> ProjectResponse:
     """Compatibility wrapper for old create_project function."""
     return await ProjectService.create_project(project, user_id)
-
-
-async def get_all_projects(user_id: str) -> list[ProjectResponse]:
-    """Compatibility wrapper for old get_all_projects function."""
-    return await ProjectService.list_projects(user_id)
 
 
 async def update_project(
@@ -1026,40 +989,6 @@ async def search_todos(
         project_id=project_id,
         completed=completed,
         priority=priority,
-        page=1,
-        per_page=100,
-        include_stats=False,
-    )
-
-    response = await TodoService.list_todos(user_id, params)
-    return response.data
-
-
-async def get_todos_by_date_range(
-    user_id: str, start_date: datetime, end_date: datetime
-) -> list[TodoResponse]:
-    """Get todos within a date range."""
-    params = TodoSearchParams(
-        q=None,
-        mode=SearchMode.TEXT,
-        due_date_start=start_date,
-        due_date_end=end_date,
-        completed=False,
-        page=1,
-        per_page=100,
-        include_stats=False,
-    )
-
-    response = await TodoService.list_todos(user_id, params)
-    return response.data
-
-
-async def get_todos_by_label(user_id: str, label: str) -> list[TodoResponse]:
-    """Get all todos that have a specific label."""
-    params = TodoSearchParams(
-        q=None,
-        mode=SearchMode.TEXT,
-        labels=[label],
         page=1,
         per_page=100,
         include_stats=False,

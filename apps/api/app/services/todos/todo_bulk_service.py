@@ -1,7 +1,5 @@
 """Optimized bulk operations for todos."""
 
-from typing import NamedTuple
-
 from fastapi import HTTPException, status
 
 from app.constants.log_tags import LogTag
@@ -9,67 +7,11 @@ from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
     BulkOperationResponse,
-    BulkUpdateRequest,
     TodoResponse,
     TodoUpdate,
-    TodoUpdateRequest,
 )
-from app.services.analytics_service import capture
 from app.services.todos.todo_service import TodoService
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosToggled
 from shared.py.wide_events import log
-
-
-class BulkCompletion(NamedTuple):
-    """The todos a bulk completion closed, and the ids it could not close."""
-
-    todos: list[TodoResponse]
-    failed: list[str]
-
-
-async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> BulkCompletion:
-    """Mark multiple todos as completed; tracked ones run their completion lifecycle."""
-    log.set(
-        component="todo_bulk_service",
-        operation="bulk_complete_todos",
-        user_id=user_id,
-        todo_count=len(todo_ids),
-    )
-    try:
-        result = await TodoService.bulk_update_todos(
-            BulkUpdateRequest(todo_ids=todo_ids, updates=TodoUpdateRequest(completed=True)),
-            user_id,
-        )
-        if not result.success and not result.failed:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No todos found or already completed",
-            )
-
-        updated = await todo_repository.find_by_ids(user_id, result.success)
-        log.info(
-            f"{LogTag.TODO} Bulk completed todos", todo_count=len(result.success), user_id=user_id
-        )
-        if result.success:
-            capture(UserId(user_id), TodosToggled(count=len(result.success)))
-        return BulkCompletion(
-            todos=[TodoResponse.from_document(todo) for todo in updated], failed=result.failed
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.TODO} Error bulk completing todos",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to bulk complete todos: {e!s}",
-        ) from e
 
 
 async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) -> list[TodoResponse]:
