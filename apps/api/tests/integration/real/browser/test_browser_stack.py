@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 import json
 import re
 import time
@@ -22,6 +23,7 @@ import pytest
 
 from app.agents.core.background.executor_queue import get_lock_holder
 from app.constants.browser import BrowserSessionStatus, JobEnding
+from app.constants.conversation import SWEEP_SECONDS
 from app.db.repositories.browser_tasks import browser_task_repository
 from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove, Text
 from tests.integration.real.browser._stack.fixture_site import (
@@ -58,6 +60,8 @@ def _marker() -> str:
 _LIVE_LINK = re.compile(r"Open the live browser: (\S+)")
 #: Lines a run sends that are not anything it was asked: step captions and the closing recap link.
 _PROGRESS = re.compile(r"^(Step \d+ ·|📽 )")
+#: How long after its second the worker's cron sweep is taken as done: it runs in milliseconds.
+_SWEEP_DONE_SECONDS = 3.0
 
 
 def _told(transcript: Transcript) -> list[Delivery]:
@@ -79,6 +83,14 @@ async def _until(
             return
         await asyncio.sleep(0.2)
     raise AssertionError(f"{what} did not happen within {timeout}s")
+
+
+async def _past_the_next_sweep() -> None:
+    """Return once the stack worker's next conversation sweep has run; it fires on SWEEP_SECONDS of every minute."""
+    now = datetime.now(UTC)
+    second = now.second + now.microsecond / 1_000_000
+    due = min((s for s in SWEEP_SECONDS if s > second), default=min(SWEEP_SECONDS) + 60)
+    await asyncio.sleep(due - second + _SWEEP_DONE_SECONDS)
 
 
 async def _start(
@@ -488,6 +500,46 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
     after = _told(dm)[told_before:]
     assert len(after) == 1, [d.text for d in _told(dm)]
     assert CAPTCHA_HEADING not in after[0].said
+
+
+async def test_a_handoff_asked_after_a_sweep_still_reaches_the_user(stack: BrowserStack) -> None:
+    """Regression: the sweep logged a background run's work lost once its turn ended, so its later cards never showed."""
+    user = await stack.new_user()
+    dm = await stack.watch(user.telegram_id)
+    marker = _marker()
+    page = stack.site.url("/captcha")
+    swept = asyncio.Event()
+    stack.models.script(
+        marker,
+        agent=[
+            AgentStep(
+                [
+                    {
+                        "solve_captcha_with_help": {
+                            "challenge": "Tick I'm not a robot, then press Done."
+                        }
+                    }
+                ],
+                gate=swept,
+                patience=60,
+            ),
+        ],
+    )
+
+    conversation_id, job_id = await _start(
+        stack, user, f"Open {page}, get past the check and tell me what it says. {marker}", page
+    )
+    await _past_the_next_sweep()
+    swept.set()
+    prompt = await wait_for(dm, _LIVE_LINK.pattern, timeout=RUN_SECONDS)
+    live_match = _LIVE_LINK.search(prompt.said)
+    assert live_match is not None
+    assert await stack.decide_on_live_page(live_match.group(1), "cancel") == 200
+    result = await stack.finished(job_id)
+    await stack.settled(conversation_id)
+
+    assert result.status is BrowserSessionStatus.CANCELLED
+    assert stack.models.errors == []
 
 
 async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_over(
