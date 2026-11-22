@@ -256,6 +256,14 @@ class TestAGoalClaimInOtherWords:
 
         assert goal_problems("message", text, _FOUNDER) == []
 
+    def test_every_unlinked_fact_a_goal_sentence_names_is_listed(self) -> None:
+        text = "[The sequence](fact:1) and [the redesign](fact:3) feed the 300-user goal."
+
+        assert goal_problems("message", text, _FOUNDER) == [
+            "the message ties facts 1, 3 to a goal, but they are not linked to one; only a goal's "
+            "linked todos are its work, so name them in a sentence that does not speak of the goal"
+        ]
+
 
 @pytest.mark.regression
 class TestHowLongSomethingStood:
@@ -321,3 +329,57 @@ class TestHowLongSomethingStood:
         assert (
             duration_problems("message", "[Stripe](fact:1) says it is still waiting.", values) == []
         )
+
+    def test_every_undated_fact_a_duration_sentence_names_is_listed(self) -> None:
+        text = "[The sequence](fact:1) and [the emails](fact:2) have waited for weeks."
+
+        assert duration_problems("message", text, _FOUNDER) == [
+            "the message says 'for weeks' of facts 1, 2, but their lines carry no date; say how "
+            "long something stood only where its line dates it"
+        ]
+
+    def test_a_duration_word_the_first_named_facts_line_ends_on_is_quoted(self) -> None:
+        values = SlotValues(
+            facts={
+                1: BriefFact(title="Stripe card", words="Waiting on delivery for a while"),
+                2: BriefFact(title="Board deck"),
+            },
+            counts={},
+        )
+        text = "[Stripe](fact:1) and [the deck](fact:2) have waited for a while."
+
+        assert duration_problems("message", text, values) == []
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "It has sat there for weeks.",
+            "[The sequence](fact:1) is in draft. The day has been quiet for weeks.",
+        ],
+        ids=["points-back-to-nothing", "names-nothing-and-points-nowhere"],
+    )
+    def test_a_sentence_naming_no_fact_takes_none_unless_it_points_back(self, text: str) -> None:
+        assert duration_problems("message", text, _FOUNDER) == []
+
+    @pytest.mark.parametrize(
+        ("title", "text"),
+        [
+            ("QA on Stripe", "Stripe is still pending."),
+            ("Pay tax", "Tax to pay is still due."),
+        ],
+        ids=["two-letter-words-do-not-count", "three-letter-words-count"],
+    )
+    def test_a_title_named_by_its_words_of_three_letters_or_more(
+        self, title: str, text: str
+    ) -> None:
+        values = SlotValues(facts={1: BriefFact(title=title)}, counts={})
+
+        assert duration_problems("message", text, values) == [
+            "the message says 'still' of facts 1, but their lines carry no date; say how "
+            "long something stood only where its line dates it"
+        ]
+
+    def test_stopwords_never_name_a_fact(self) -> None:
+        values = SlotValues(facts={1: BriefFact(title="Reply to the investor")}, counts={})
+
+        assert duration_problems("message", "The investor has waited for a while.", values) == []

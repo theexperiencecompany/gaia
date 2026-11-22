@@ -262,7 +262,11 @@ def goal_problems(field: str, text: str, values: SlotValues) -> list[str]:
 
 def _dated(fact: BriefFact) -> bool:
     """Whether a fact's line carries a date: its time, an earlier brief's showing, an age in its words."""
-    return fact.time is not None or fact.seen_before or bool(_DATES.search(fact.words or ""))
+    return (
+        fact.time is not None
+        or fact.seen_before
+        or (fact.words is not None and _DATES.search(fact.words) is not None)
+    )
 
 
 def duration_problems(field: str, text: str, values: SlotValues) -> list[str]:
@@ -270,7 +274,10 @@ def duration_problems(field: str, text: str, values: SlotValues) -> list[str]:
     problems: list[str] = []
     for sentence, about in _about_each(text, values):
         claims = _claims_beyond_lines(
-            _DURATION_RE, _NOT_HOW_LONG.sub(" ", unslotted(sentence)), about, values
+            _DURATION_RE,
+            _NOT_HOW_LONG.sub(" ", unslotted(sentence)),  # pragma: no mutate — any gap reads alike
+            about,
+            values,
         )
         if not claims:
             continue
