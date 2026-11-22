@@ -7,7 +7,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 
 
 class PlatformType(str, Enum):
