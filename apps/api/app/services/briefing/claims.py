@@ -248,7 +248,7 @@ def goal_problems(field: str, text: str, values: SlotValues) -> list[str]:
         if unlinked:
             problems.append(
                 f"the {field} ties facts {', '.join(map(str, unlinked))} to a goal, but they are "
-                "not linked to one; only a goal's linked todos are its work, so say them apart"
+                "not linked to one; only a goal's linked todos are its work, so name them in a sentence that does not speak of the goal"
             )
     return problems
 

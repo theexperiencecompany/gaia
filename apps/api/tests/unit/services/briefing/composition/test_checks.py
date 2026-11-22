@@ -630,7 +630,7 @@ def test_only_a_goals_linked_todo_may_be_called_its_work() -> None:
     assert problems("[[fact:1]] is the work on the goal today.") == []
     assert problems("[[fact:2]] is the work on the goal today.") == [
         "the block 1 (note) text ties facts 2 to a goal, but they are not linked to one; only "
-        "a goal's linked todos are its work, so say them apart"
+        "a goal's linked todos are its work, so name them in a sentence that does not speak of the goal"
     ]
 
 

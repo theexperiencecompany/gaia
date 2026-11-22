@@ -241,7 +241,7 @@ class TestAGoalClaimInOtherWords:
 
         assert goal_problems("message", text, _FOUNDER) == [
             "the message ties facts 1 to a goal, but they are not linked to one; only a goal's "
-            "linked todos are its work, so say them apart"
+            "linked todos are its work, so name them in a sentence that does not speak of the goal"
         ]
 
     def test_a_goal_word_in_the_named_facts_own_title_is_no_goal_claim(self) -> None:

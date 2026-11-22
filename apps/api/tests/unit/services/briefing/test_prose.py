@@ -269,7 +269,7 @@ async def test_a_voice_calling_an_unlinked_todo_goal_work_is_sent_back(
 
     problem = (
         "the message ties facts 2 to a goal, but they are not linked to one; only a goal's "
-        "linked todos are its work, so say them apart"
+        "linked todos are its work, so name them in a sentence that does not speak of the goal"
     )
     assert asked.await_args_list[1].args[1] == (
         f"PROMPT\n\n{voice_correction_note([problem], claimed.model_dump_json(indent=2))}"
