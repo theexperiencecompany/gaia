@@ -31,9 +31,6 @@ import {
  * screen shows while the work runs and after, the same way screen-over-time does.
  */
 
-// The flows share one dev user and flip its approval preferences: one at a time, in order.
-test.describe.configure({ mode: "default" });
-
 test.describe("screen during work", () => {
   test.skip(
     !SIM_ENABLED,

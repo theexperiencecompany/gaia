@@ -187,7 +187,7 @@ VERIFIED_CHECKS = {
         _check("ci:analytics-check", "lint-mixed"),
         _check("api:test", "test-python"),
         _check("web:e2e-screen", "web-e2e-screen"),
-        _check("bot-harness:e2e", "web-e2e-screen"),
+        _check("bot-harness:e2e", "bot-harness-e2e"),
         _check("ci:desktop-package-deps", "desktop-build", events=("merge_group", "push")),
     ]
 }
@@ -223,4 +223,10 @@ def test_the_full_tier_keeps_every_affected_check() -> None:
 
     assert published["tasks"] == sorted(VERIFIED_CHECKS)
     jobs = sequence(published["jobs"])
-    assert {"test-python", "ts-build-test", "web-e2e-screen", "desktop-build"} <= set(jobs)
+    assert {
+        "test-python",
+        "ts-build-test",
+        "web-e2e-screen",
+        "bot-harness-e2e",
+        "desktop-build",
+    } <= set(jobs)
