@@ -75,6 +75,7 @@ from app.services.conversation.work_log import Continuing, WorkReport
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -128,7 +129,7 @@ class _Boundaries:
 
 
 @pytest.fixture(autouse=True)
-def _carried_work_is_logged() -> Iterator[None]:
+def _carried_work_is_logged(conversation_runtime: Runtime) -> Iterator[None]:
     """Accept every carry run's WorkStarted on the conversation log."""
     with patch.object(er, "record_work_carried", AsyncMock(return_value=True)):
         yield

@@ -17,6 +17,7 @@ from app.agents.core.background import session as stream_session
 from app.config.sentry import init_sentry
 from app.config.settings import settings
 from app.models.work_cancel_models import WorkCancelled
+from app.services.conversation import runtime as conversation_runtime_module
 from app.services.providers import provider_credentials_service
 from tests.factories import make_config, make_state, make_user
 from tests.helpers import (
@@ -25,6 +26,7 @@ from tests.helpers import (
     create_fake_llm,
     create_fake_llm_with_tool_calls,
 )
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +37,14 @@ def _isolate_stream_registries() -> Iterator[None]:
     yield
     stream_session._sessions.clear()
     stream_session._abandoned.clear()
+
+
+@pytest.fixture
+def conversation_runtime(monkeypatch: pytest.MonkeyPatch) -> Runtime:
+    """Install an in-memory conversation runtime for code that reads the log, restored after the test."""
+    runtime = Runtime()
+    monkeypatch.setattr(conversation_runtime_module._Installed, "ports", runtime.ports)
+    return runtime
 
 
 class _CapturingTransport(Transport):

@@ -1959,6 +1959,7 @@ class TestReconcileStalled:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("conversation_runtime")
 class TestTheTicketReachesARunWhateverHeldTheConversation:
     """The ledger's delivery over the real lock: a dead holder never strands an approval."""
 

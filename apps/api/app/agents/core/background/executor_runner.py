@@ -65,6 +65,7 @@ from app.constants.executor import (
     EXECUTOR_STEP_LIMIT_MESSAGE,
 )
 from app.constants.log_tags import LogTag
+from app.helpers.agent_helpers import recent_assistant_replies, recent_user_messages
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -75,7 +76,9 @@ from app.models.conversation_log_models import WorkOutcome
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
+from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.tool_cards import fold_cards
+from app.services.conversation.turns_before import turns_before
 from app.services.conversation.work_deltas import WorkDeltas, work_cards
 from app.services.conversation.work_log import (
     Continuing,
@@ -673,10 +676,24 @@ async def _prepare_executor_run(
 ) -> PreparedQueuedTask | None:
     """Claim the conversation and materialize a detached run for the task, its work on the log.
 
-    Built from the user alone: a caller's configurable belongs to the run that
-    held it (its thread, subagent id, turn hints), never to the run started here.
+    Built from the user alone, never a caller's configurable; a chat run adds the user's
+    recent turns from the log so auto mode can ground its calls, a workflow's run never.
     None means another run holds the conversation (or Redis is down).
     """
+    configurable: AgentConfigurable = {
+        "user_id": user.user_id,
+        "email": user.email or "",
+        "user_name": user.name or "",
+        "user_timezone": user.timezone,
+        "thread_id": conversation_id,
+        "execution_mode": "interactive",
+    }
+    if workflow_execution_id is None:
+        log = runtime_ports().log
+        head = (await log.state(conversation_id, user.user_id)).head
+        before = await turns_before(log, conversation_id, user.user_id, head + 1)
+        configurable["user_messages"] = recent_user_messages(before, [])
+        configurable["assistant_turns"] = recent_assistant_replies(before)
     # Equivalent under mutation: prepare_run_from_item claims the conversation it is
     # handed, never this item's copy, and the item is never stored.
     identity = RunIdentity(  # pragma: no mutate
@@ -688,14 +705,7 @@ async def _prepare_executor_run(
         conversation_id,
         build_run_item(
             task=task,
-            configurable={
-                "user_id": user.user_id,
-                "email": user.email or "",
-                "user_name": user.name or "",
-                "user_timezone": user.timezone,
-                "thread_id": conversation_id,
-                "execution_mode": "interactive",
-            },
+            configurable=configurable,
             identity=identity,
             workflow_execution_id=workflow_execution_id,
         ),
