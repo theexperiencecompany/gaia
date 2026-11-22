@@ -127,6 +127,7 @@ def _make_llm() -> MagicMock:
     bound.ainvoke = AsyncMock(return_value=AIMessage(content="hello"))
     # ainvoke_llm/invoke_llm wrap the bound model in with_llm_retry first.
     bound.with_retry.return_value = bound
+    configured.with_retry.return_value = configured
     configured.bind_tools.return_value = bound
     llm.with_config.return_value = configured
     return llm
@@ -607,7 +608,8 @@ class TestCallModel:
         """Regression: a fallback lane's block reply of bare breaks reached the thread verbatim, for later turns to copy."""
         reasoning = {"type": "reasoning", "reasoning": "nothing to add"}
         llm = _make_llm()
-        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+        # With no tools to bind, the node calls the bare model.
+        llm.with_config.return_value.invoke.return_value = AIMessage(
             content=[reasoning, {"type": "text", "text": NEW_MESSAGE_BREAKER * 3998}]
         )
         builder = create_agent(
