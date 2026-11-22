@@ -30,27 +30,26 @@ from shared.py.wide_events import log
 
 
 async def open_folded_stream(stream_id: str, *, conversation_id: str, user_id: str) -> bool:
-    """Log the run as detached work, open its stream and hold its liveness until it closes; False when a Stop refuses it."""
-    if not await record_work_carried(conversation_id, user_id, stream_id, detached=True):
-        return False
-    session = create_session(stream_id, RunKind.QUEUED)
+    """Hold the run's liveness, log it as detached work and open its stream; False when a Stop refuses it.
+
+    The beat starts first, so no sweep ever reads the logged work before its first beat.
+    """
+    alive = await keep_alive(conversation_id, build_lock_value(None, stream_id))
     try:
-        session.alive = await keep_alive(conversation_id, build_lock_value(None, stream_id))
+        carried = await record_work_carried(conversation_id, user_id, stream_id, detached=True)
     except Exception:
-        # Logged work nobody proves alive must not stay open until a sweep calls it lost.
-        await close_folded_stream(
-            stream_id, conversation_id=conversation_id, user_id=user_id, failed=True
-        )
+        alive.cancel()
         raise
+    if not carried:
+        alive.cancel()
+        return False
+    create_session(stream_id, RunKind.QUEUED).alive = alive
     return True
 
 
-async def close_folded_stream(
-    stream_id: str, *, conversation_id: str, user_id: str, failed: bool = False
-) -> None:
+async def close_folded_stream(stream_id: str, *, conversation_id: str, user_id: str) -> None:
     """Log the run's end with the cards its stream collected, then drop its session."""
     cancelled = await stop_requested(stream_id)
-    outcome = WorkOutcome.FAILED if failed else WorkOutcome.DONE
     try:
         published = await work_cards(conversation_id, [stream_id])
         approvals = (ToolDataEvent(tool_data=card) for card in session_approval_cards(stream_id))
@@ -59,7 +58,7 @@ async def close_folded_stream(
             conversation_id,
             user_id,
             stream_id,
-            WorkOutcome.CANCELLED if cancelled else outcome,
+            WorkOutcome.CANCELLED if cancelled else WorkOutcome.DONE,
             WorkReport(
                 text="", tool_data=cards.tool_data, nothing_for_user=True, image=published.image
             ),
