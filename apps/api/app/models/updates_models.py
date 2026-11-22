@@ -5,6 +5,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.constants.outbox_attention import HoldReason
 from app.services.outbox.models import DropReason, ItemState, NoticeDisplay, SubjectKind
 
 
@@ -48,6 +49,9 @@ class UpdateRow(BaseModel):
     )
     held_until: datetime | None = Field(
         default=None, description="When a held update is told, when it waits for an instant."
+    )
+    hold_reason: HoldReason | None = Field(
+        default=None, description="Why a held update waits; None when it is not held."
     )
     conversation_id: str | None = Field(
         default=None, description="The conversation that owns the subject, which the row opens."

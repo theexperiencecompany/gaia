@@ -208,7 +208,7 @@ async def test_a_held_item_says_when_it_is_told(repositories) -> None:
 
     page = await updates.read_updates(USER, UpdateFilter.HELD, before=None, limit=10)
 
-    assert page.updates[0].held_until == until
+    assert (page.updates[0].held_until, page.updates[0].hold_reason) == (until, HoldReason.CHECKIN)
 
 
 async def test_a_sent_item_whose_ledger_message_is_gone_fails_loudly(repositories) -> None:

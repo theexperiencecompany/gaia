@@ -1,16 +1,21 @@
-"""The comms tool that changes how much GAIA tells the user unprompted: quiet hours, DND, budget, check-ins, rules."""
+"""The comms tool that changes how much GAIA tells the user unprompted: quiet hours, DND, budget, check-ins, rules, chat-app order."""
 
 from datetime import timedelta
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.agents.tools.core.mutations import define_mutation_tool
+from app.agents.tools.outbox_tool import describe_attention
 from app.constants.outbox_attention import MAX_DND_HOURS
 from app.models.attention_settings_models import AttentionSettings
+from app.models.chat_channel_models import ChannelPriorityList, ChatChannel
 from app.models.quiet_hours_models import QuietHours
 from app.services.attention_settings_service import get_attention_settings, set_attention_settings
+from app.services.delivery.chat_channel import get_chat_channel_priority, set_chat_channel_priority
+from app.services.outbox.judge_context import user_clock
 from app.services.user_service import get_quiet_hours, set_quiet_hours
 from app.utils import clock
+from app.utils.auth_utils import load_user_context
 
 
 class AdjustAttentionArgs(BaseModel):
@@ -51,6 +56,11 @@ class AdjustAttentionArgs(BaseModel):
     )
     remove_rules: list[str] | None = Field(
         default=None, description="Rules to drop, exactly as listed before."
+    )
+    chat_app_order: list[ChatChannel] | None = Field(
+        default=None,
+        min_length=1,
+        description="The chat apps GAIA texts the user on, first choice first; replaces the order.",
     )
 
 
@@ -100,7 +110,17 @@ async def _adjust_attention(user_id: str, **fields: object) -> str:
         await set_attention_settings(user_id, updated)
     if quiet != hours:
         await set_quiet_hours(user_id, quiet)
-    return "Updated. The user can see and change this in settings."
+    if args.chat_app_order is not None:
+        await set_chat_channel_priority(
+            user_id, ChannelPriorityList(priority=args.chat_app_order).priority
+        )
+    user = await load_user_context(user_id)
+    if user is None:
+        return "Error: user not found."
+    now = describe_attention(
+        updated, quiet, await get_chat_channel_priority(user_id), user_clock(user).timezone
+    )
+    return "\n".join(["Updated. The user can see and change this in settings. Now:", *now])
 
 
 adjust_attention = define_mutation_tool(
@@ -110,7 +130,8 @@ adjust_attention = define_mutation_tool(
         "Change how much GAIA tells the user on its own, when they ask for it in conversation: "
         "'don't message me at night', 'stop messaging me unless it's urgent', 'you can text me at "
         "night', 'leave me alone for 2 hours', 'check in with me at 9', or a standing preference "
-        "about what to tell them. Confirm the change in one line."
+        "about what to tell them, or which chat app to text them on first. Confirm the change "
+        "in one line."
     ),
     args_model=AdjustAttentionArgs,
     apply=_adjust_attention,

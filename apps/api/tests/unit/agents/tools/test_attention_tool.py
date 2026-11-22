@@ -9,6 +9,7 @@ import pytest
 from app.agents.tools.attention_tool import AdjustAttentionArgs, adjust_attention
 from app.models.attention_settings_models import AttentionSettings
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
+from app.models.user_models import AuthenticatedUser
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
 MODULE = "app.agents.tools.attention_tool"
@@ -16,16 +17,47 @@ NOW = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
 CONFIG = {"configurable": {"user_id": USER}}
 
 
-async def _adjust(current: AttentionSettings, **args: object) -> tuple[str, AsyncMock]:
+async def _adjust(
+    current: AttentionSettings, *, order_saved: AsyncMock | None = None, **args: object
+) -> tuple[str, AsyncMock]:
     save = AsyncMock()
     with (
         patch(f"{MODULE}.get_attention_settings", AsyncMock(return_value=current)),
         patch(f"{MODULE}.set_attention_settings", save),
         patch(f"{MODULE}.clock.now", return_value=NOW),
         patch(f"{MODULE}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)),
+        patch(f"{MODULE}.set_chat_channel_priority", order_saved or AsyncMock()),
+        patch(
+            f"{MODULE}.get_chat_channel_priority",
+            AsyncMock(return_value=["whatsapp", "telegram"]),
+        ),
+        patch(
+            f"{MODULE}.load_user_context",
+            AsyncMock(return_value=AuthenticatedUser(user_id=USER, timezone="Asia/Kolkata")),
+        ),
     ):
         reply = await adjust_attention.ainvoke(args, config=CONFIG)
     return reply, save
+
+
+async def test_the_reply_reads_back_the_settings_as_they_now_are() -> None:
+    reply, _ = await _adjust(AttentionSettings(), max_unsolicited_per_day=2)
+
+    assert "Unprompted updates allowed per day: 2" in reply
+    assert "Chat apps, first choice first: whatsapp, telegram" in reply
+
+
+async def test_the_chat_app_order_is_saved_as_the_user_gave_it() -> None:
+    saved = AsyncMock()
+
+    await _adjust(AttentionSettings(), order_saved=saved, chat_app_order=["telegram", "whatsapp"])
+
+    saved.assert_awaited_once_with(USER, ["telegram", "whatsapp"])
+
+
+def test_a_chat_app_gaia_cannot_text_on_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        AdjustAttentionArgs(chat_app_order=["email"])
 
 
 async def test_stop_messaging_me_unless_urgent_sets_the_budget_to_zero() -> None:

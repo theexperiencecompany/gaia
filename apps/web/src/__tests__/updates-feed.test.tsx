@@ -221,6 +221,27 @@ describe("UpdatesFeed", () => {
     expect(await screen.findByText(/^Waiting, in about 1 hour$/)).toBeDefined();
   });
 
+  it("says what a held update waits for", async () => {
+    list.mockResolvedValue(
+      page([
+        row({
+          state: "held",
+          told: null,
+          hold_reason: "quiet_hours",
+          held_until: new Date(Date.now() + 3_600_000).toISOString(),
+        }),
+      ]),
+    );
+
+    renderFeed("held");
+
+    expect(
+      await screen.findByText(
+        /^Waiting for quiet hours to end, in about 1 hour$/,
+      ),
+    ).toBeDefined();
+  });
+
   it("asks the API for the filter it is showing", async () => {
     list.mockResolvedValue(page([]));
 

@@ -141,6 +141,8 @@ class DropReason(StrEnum):
     DIGESTED = "digested"
     #: The run waits on approvals it proposed, and each approval's own notice is the ask.
     ASKED_AS_APPROVAL = "asked_as_approval"
+    #: The user asked GAIA not to tell it.
+    USER_CANCELLED = "user_cancelled"
 
 
 class ItemFailure(StrEnum):

@@ -113,3 +113,5 @@ class HoldReason(StrEnum):
     DORMANT = "dormant"
     #: The Judge says now is a bad moment to tell the user: told at the next check-in.
     BAD_MOMENT = "bad_moment"
+    #: The user chose when to hear it: told then, whatever else would hold it.
+    USER_SET = "user_set"

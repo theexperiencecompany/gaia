@@ -59,6 +59,7 @@ def _row(item: OutboxItemDocument, message: OutboxMessageDocument | None) -> Upd
     report = item.report
     if item.created_at is None:
         raise ValueError(f"outbox item {item.report_id} was stored without a creation time")
+    held = item.hold if item.state is ItemState.HELD else None
     return UpdateRow(
         report_id=item.report_id,
         subject_kind=report.subject.kind,
@@ -69,9 +70,8 @@ def _row(item: OutboxItemDocument, message: OutboxMessageDocument | None) -> Upd
         facts=facts_of(report),
         display=report.display if isinstance(report, NoticeReport) else None,
         told=message.parts if message is not None else None,
-        held_until=item.hold.until
-        if item.hold is not None and item.state is ItemState.HELD
-        else None,
+        held_until=held.until if held is not None else None,
+        hold_reason=held.reason if held is not None else None,
         conversation_id=report.subject.owner_conversation_id,
         occurred_at=report.occurred_at,
         told_at=message.sent_at if message is not None else None,

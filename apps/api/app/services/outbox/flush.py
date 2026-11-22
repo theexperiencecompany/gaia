@@ -69,6 +69,20 @@ def _held_for_dormancy(item: OutboxItemDocument) -> bool:
     return item.hold is not None and item.hold.reason is HoldReason.DORMANT
 
 
+async def _settle_due(item: OutboxItemDocument) -> ItemState | None:
+    """Settle a held item whose hold ended: a time the user chose ends by telling it, any other hold by placing it again."""
+    if item.hold is None or item.hold.reason is not HoldReason.USER_SET:
+        return await settle_report(
+            item.report, prior_hold=item.hold, released=not _held_for_call(item)
+        )
+    if item.urgency is None or item.mode is None:
+        raise ValueError(f"held outbox item {item.report_id} was stored without urgency or mode")
+    queued = await outbox_items_repository.queue(
+        item.user_id, item.report_id, urgency=item.urgency, mode=item.mode
+    )
+    return ItemState.QUEUED if queued is not None else None
+
+
 async def _settle_dormant_holds(
     user_id: str, due: list[OutboxItemDocument]
 ) -> list[OutboxItemDocument]:
@@ -111,9 +125,7 @@ async def flush_due(user_id: str) -> int:
     failures: list[Exception] = []
     for item in due[:FLUSH_MAX_ITEMS_PER_RUN]:
         try:
-            state = await settle_report(
-                item.report, prior_hold=item.hold, released=not _held_for_call(item)
-            )
+            state = await _settle_due(item)
         except Exception as error:
             log.error(
                 f"{LogTag.NOTIFICATION} Outbox flush could not settle a held item",

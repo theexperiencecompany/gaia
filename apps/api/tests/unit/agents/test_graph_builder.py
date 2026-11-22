@@ -441,6 +441,8 @@ class TestBuildCommsGraph:
                 "call_executor",
                 "cancel_executor",
                 "adjust_attention",
+                "read_outbox",
+                "change_update",
                 "read_work_record",
                 "browser_step_done",
                 "stop_browser_task",

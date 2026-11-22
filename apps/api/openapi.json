@@ -5676,7 +5676,8 @@
           "repeat_backoff",
           "leak_unresolved",
           "digested",
-          "asked_as_approval"
+          "asked_as_approval",
+          "user_cancelled"
         ],
         "title": "DropReason",
         "type": "string"
@@ -7550,6 +7551,23 @@
         ],
         "title": "HistoryUsagePeriod",
         "type": "object"
+      },
+      "HoldReason": {
+        "description": "Why an item waits instead of being told now.",
+        "enum": [
+          "quiet_hours",
+          "dnd",
+          "not_before",
+          "checkin",
+          "gap",
+          "wait_for_run",
+          "in_call",
+          "dormant",
+          "bad_moment",
+          "user_set"
+        ],
+        "title": "HoldReason",
+        "type": "string"
       },
       "ImageData": {
         "description": "Generated-image metadata attached to a chat message.",
@@ -19700,6 +19718,17 @@
             ],
             "description": "When a held update is told, when it waits for an instant.",
             "title": "Held Until"
+          },
+          "hold_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HoldReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a held update waits; None when it is not held."
           },
           "occurred_at": {
             "format": "date-time",

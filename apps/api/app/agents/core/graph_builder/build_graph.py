@@ -43,6 +43,7 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.discovery_tools import find_integration, search_public_workflows
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.finish_task_tool import finish_task
+from app.agents.tools.outbox_tool import change_update, read_outbox
 from app.agents.tools.subagent_control_tool import (
     cancel_subagent,
     list_running_subagents,
@@ -300,6 +301,8 @@ def comms_tools(*, tasks_only: bool = False) -> dict[str, BaseTool]:
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
         adjust_attention.name: adjust_attention,
+        read_outbox.name: read_outbox,
+        change_update.name: change_update,
         read_work_record.name: read_work_record,
         browser_step_done.name: browser_step_done,
         stop_browser_task.name: stop_browser_task,

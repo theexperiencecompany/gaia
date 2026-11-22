@@ -34,6 +34,7 @@ from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.core.outcome_review import OutcomeReview
 from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES
+from app.agents.tools.outbox_tool import describe_outbox
 from app.constants.agents import OutcomeState
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
 from app.constants.outbox import (
@@ -92,9 +93,11 @@ from app.services.outbox.models import (
     SubjectMerge,
     UrgencyClass,
 )
+from app.services.outbox.overview import read_outbox_overview
 from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.outbox.updates import read_updates
+from app.services.outbox.user_actions import cancel_update, send_now, tell_at
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformLinkService
 from app.tasks.reminder_tasks import execute_reminder_by_agent
@@ -1421,6 +1424,70 @@ def _judged_routine(tl: OutboxTimeline, *report_ids: str, **overrides: object) -
 
 async def _states(tl: OutboxTimeline) -> dict[str, ItemState]:
     return {item.report_id: item.state for item in await tl.items()}
+
+
+async def test_comms_reads_what_waits_why_and_until_when_and_what_was_decided(
+    tl: OutboxTimeline,
+) -> None:
+    await _held_overnight(tl, "run-1")
+    _judged_routine(tl, "run-2", relevance=Relevance.DUPLICATE, not_worth_probability=0.95)
+    await _told_at(tl, _routine("run-2", "todo-9", 845), 845)
+
+    view = describe_outbox(await read_outbox_overview(AuthenticatedUser(user_id=USER)))
+
+    waiting = view.split("Waiting to be told:")[1].split("Latest decisions")[0]
+    assert "[ref run-1]" in waiting and "waits for quiet hours, until" in waiting
+    assert "not told, it repeated what was already said" in view
+    assert "Unprompted updates allowed per day: 6" in view
+
+
+async def test_an_update_the_user_asks_for_now_is_told_now_whatever_held_it(
+    tl: OutboxTimeline,
+) -> None:
+    await _held_overnight(tl, "run-1")
+
+    assert await send_now(USER, "run-1")
+    await tl.at(842)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+    assert len(await tl.ledger()) == 1
+
+
+async def test_an_update_the_user_asks_to_hear_at_a_time_is_told_then_and_not_before(
+    tl: OutboxTimeline,
+) -> None:
+    await _held_overnight(tl, "run-1")
+
+    assert await tell_at(USER, "run-1", T0 + timedelta(minutes=900))
+    await tl.at(899)
+    await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await tl.at(900)
+    await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_an_update_the_user_cancels_is_recorded_and_never_told(tl: OutboxTimeline) -> None:
+    await _held_overnight(tl, "run-1")
+
+    assert await cancel_update(USER, "run-1")
+    await tl.at(1400)
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.USER_CANCELLED)
+    assert await tl.ledger() == []
+
+
+async def test_a_told_update_cannot_be_changed(tl: OutboxTimeline) -> None:
+    await _held_overnight(tl, "run-1")
+    await tl.at(1400)
+    await tl.drain()
+
+    assert not await cancel_update(USER, "run-1")
+    assert not await send_now(USER, "run-1")
 
 
 async def test_b2_an_update_in_quiet_hours_is_held_and_told_after_they_end(

@@ -8443,7 +8443,7 @@ export interface components {
          * @description Why an item is recorded and never alerted.
          * @enum {string}
          */
-        DropReason: "nothing_new" | "cancelled" | "compose_skipped" | "not_watching" | "expired" | "user_muted" | "already_known" | "moot" | "superseded" | "duplicate" | "unwanted" | "repeat_backoff" | "leak_unresolved" | "digested" | "asked_as_approval";
+        DropReason: "nothing_new" | "cancelled" | "compose_skipped" | "not_watching" | "expired" | "user_muted" | "already_known" | "moot" | "superseded" | "duplicate" | "unwanted" | "repeat_backoff" | "leak_unresolved" | "digested" | "asked_as_approval" | "user_cancelled";
         /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
@@ -9365,6 +9365,12 @@ export interface components {
             /** Used */
             used: number;
         };
+        /**
+         * HoldReason
+         * @description Why an item waits instead of being told now.
+         * @enum {string}
+         */
+        HoldReason: "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run" | "in_call" | "dormant" | "bad_moment" | "user_set";
         /**
          * ImageData
          * @description Generated-image metadata attached to a chat message.
@@ -15160,6 +15166,8 @@ export interface components {
              * @description When a held update is told, when it waits for an instant.
              */
             held_until?: string | null;
+            /** @description Why a held update waits; None when it is not held. */
+            hold_reason?: components["schemas"]["HoldReason"] | null;
             /**
              * Occurred At
              * Format: date-time
@@ -16382,6 +16390,7 @@ export type HealthResponse = components['schemas']['HealthResponse'];
 export type HILPreferencesResponse = components['schemas']['HILPreferencesResponse'];
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
+export type HoldReason = components['schemas']['HoldReason'];
 export type ImageData = components['schemas']['ImageData'];
 export type ImageToTextResponse = components['schemas']['ImageToTextResponse'];
 export type ImportedCookie = components['schemas']['ImportedCookie'];

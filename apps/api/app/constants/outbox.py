@@ -82,3 +82,8 @@ SUBJECT_LABEL_MAX_CHARS: Final = 120
 #: Earlier occurrences of one producer that compose is told what GAIA did with, and how much of each message.
 COMPOSE_EARLIER_RUNS: Final = 3
 COMPOSE_EARLIER_RUN_CHARS: Final = 200
+
+#: What comms reads of the outbox: the newest updates it lists, the next scheduled items, and how much of a told message.
+OUTBOX_VIEW_RECENT_ITEMS: Final = 12
+OUTBOX_VIEW_UPCOMING_ITEMS: Final = 8
+OUTBOX_VIEW_EXCERPT_CHARS: Final = 140
