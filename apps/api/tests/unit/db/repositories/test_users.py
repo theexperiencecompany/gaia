@@ -329,6 +329,12 @@ class TestFindByEmailIgnoringCase:
         }
 
 
+def test_a_user_id_was_minted_at_the_time_its_object_id_carries() -> None:
+    assert UserRepository().id_created_at("507f1f77bcf86cd799439011") == datetime(
+        2012, 10, 17, 21, 13, 27, tzinfo=UTC
+    )
+
+
 class TestEmailLookupsAreCanonical:
     async def test_get_by_email_looks_up_the_lowercase_address(
         self, repo: UserRepository, collection: MagicMock

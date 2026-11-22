@@ -265,8 +265,6 @@ apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined
 apps/api/tests/unit/services/test_turnstile_service.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	attr-defined
 apps/api/tests/unit/services/test_usage_summary.py	attr-defined
 apps/api/tests/unit/services/test_user_instructions_service.py	misc
 apps/api/tests/unit/services/test_user_todos_fs.py	arg-type
@@ -345,6 +343,5 @@ apps/api/tests/unit/workers/test_checkpoint_retention_tasks.py	arg-type
 apps/api/tests/unit/workers/test_cleanup_tasks.py	arg-type
 apps/api/tests/unit/workers/test_memory_sweep_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
-apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type

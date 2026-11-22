@@ -5,7 +5,6 @@ from typing import Literal, TypedDict, cast
 import uuid
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
-from pymongo.errors import DuplicateKeyError
 from sqlalchemy import delete
 
 from app.constants.device_bridge import DEVICE_CATEGORY
@@ -14,6 +13,7 @@ from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache_by_pattern
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.integration_helpers import dedup_server_url_key
@@ -99,7 +99,7 @@ async def create_custom_integration(
 
     try:
         await integration_repository.create(integration)
-    except DuplicateKeyError:
+    except AlreadyExistsError:
         winner = await integration_repository.find_custom_by_server_url(request.server_url, user_id)
         if winner is None:
             raise

@@ -7,10 +7,10 @@ The webhook hands it here, where ARQ owns the retries.
 """
 
 from arq import Retry
-from pymongo.errors import PyMongoError
 
 from app.constants.log_tags import LogTag
 from app.constants.payments import PAID_PERSON_SYNC_RETRY_DELAY
+from app.db.repositories.errors import RepositoryError
 from app.services.payments.subscription_events import sync_paid_person_properties
 from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
@@ -26,7 +26,7 @@ async def sync_paid_person_properties_task(
     log.set(user={"id": user_id}, paid_person_sync={"subscription_id": dodo_subscription_id})
     try:
         await sync_paid_person_properties(user_id, dodo_subscription_id)
-    except PyMongoError as e:
+    except RepositoryError as e:
         defer = PAID_PERSON_SYNC_RETRY_DELAY * RETRY_BACKOFF_BASE ** (job_try - 1)
         log.warning(
             f"{LogTag.PAYMENT} Paid person properties sync could not read the row; retrying",

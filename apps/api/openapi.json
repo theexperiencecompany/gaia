@@ -1892,7 +1892,7 @@
         "type": "object"
       },
       "BlogPost": {
-        "description": "Blog post response model with proper ID handling.",
+        "description": "Blog post response model.",
         "properties": {
           "author_details": {
             "anyOf": [

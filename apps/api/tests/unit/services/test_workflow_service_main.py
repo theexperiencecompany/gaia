@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.exceptions import OutputParserException
 from pydantic import ValidationError
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WaitCondition
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.scheduler_models import (
     UNSET,
     DeactivationReason,
@@ -278,7 +278,7 @@ class TestEnsurePublicWorkflowSlug:
     @patch(
         f"{_REPO}.backfill_public_slug",
         new_callable=AsyncMock,
-        side_effect=DuplicateKeyError("slug"),
+        side_effect=AlreadyExistsError("slug"),
     )
     @patch(
         "app.services.workflow.service.generate_unique_workflow_slug",

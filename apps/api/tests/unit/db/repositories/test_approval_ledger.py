@@ -21,6 +21,7 @@ from app.db.repositories.approval_ledger import (
     approval_ledger_repository,
     new_approval_id,
 )
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.hil_models import ApprovalProposal
 from shared.py.approvals import ActionResult, ApprovalOutcome
 
@@ -153,7 +154,7 @@ class TestRegister:
         _find_returns(collection, [], [])
         collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("dup"))
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.register(_PROPOSAL, new_approval_id())
 
     async def test_terminal_fingerprint_registers_fresh(
