@@ -244,6 +244,13 @@ class TestAGoalClaimInOtherWords:
             "linked todos are its work, so say them apart"
         ]
 
+    def test_a_goal_word_in_the_named_facts_own_title_is_no_goal_claim(self) -> None:
+        """Dhruv replay 11-02 and weekly 11-08: "the daily-goals check-in is in progress" went plain."""
+        values = SlotValues(facts={10: BriefFact(title="Daily-goals check-in")}, counts={})
+        text = "Meanwhile, the nightly daily-goals check-in is in progress."
+
+        assert goal_problems("message", text, values) == []
+
     def test_a_goal_sentence_about_its_own_work_or_no_fact_stands(self) -> None:
         text = "Still aiming for 300 users? [The emails](fact:2) are that goal's work."
 
@@ -304,3 +311,13 @@ class TestHowLongSomethingStood:
     )
     def test_an_age_in_its_line_a_running_state_an_offer_or_no_fact_stands(self, text: str) -> None:
         assert duration_problems("message", text, _FOUNDER) == []
+
+    def test_a_duration_word_the_facts_own_line_says_is_quoted(self) -> None:
+        values = SlotValues(
+            facts={1: BriefFact(title="Stripe card", words="Still waiting on delivery details")},
+            counts={},
+        )
+
+        assert (
+            duration_problems("message", "[Stripe](fact:1) says it is still waiting.", values) == []
+        )

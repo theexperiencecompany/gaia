@@ -63,6 +63,9 @@ _DATES = re.compile(
     re.IGNORECASE,
 )
 _WORD_RE = re.compile(r"[a-z0-9][a-z0-9'-]*")
+# What joins a claim word to the rest of its word ("daily-" of "daily-goals").
+_WORD_START_RE = re.compile(r"[\w-]*$")
+_WORD_END_RE = re.compile(r"[\w-]*")
 _STOPWORDS = frozenset({"the", "and", "for", "your", "you", "with", "from", "into", "this", "that"})
 #: How many of a title's words a sentence must say to name its fact without the whole title.
 _LOOSE_NAME_WORDS = 2
@@ -200,6 +203,25 @@ def _own_line(fact: BriefFact) -> str:
     return " ".join(w for w in (fact.title, fact.words) if w)
 
 
+def _claims_beyond_lines(
+    pattern: re.Pattern[str], sentence: str, about: set[int], values: SlotValues
+) -> list[str]:
+    """Return each claim the sentence makes outside its named facts' own words, which it quotes.
+
+    A claim is taken with the whole words around it ("daily-goals"), so a title that holds the
+    word ("the daily-goals check-in") is its fact's name, not a claim.
+    """
+    lines = " ".join(_own_line(values.facts[i]) for i in about).casefold()
+    claims: list[str] = []
+    for said in pattern.finditer(sentence):
+        head = _WORD_START_RE.findall(sentence[: said.start()])[0]
+        tail = _WORD_END_RE.findall(sentence[said.end() :])[0]
+        whole = f"{head}{said.group(0)}{tail}".casefold()
+        if not re.search(rf"(?<![\w-]){re.escape(whole)}(?![\w-])", lines):
+            claims.append(said.group(0).casefold())
+    return claims
+
+
 def dependency_problems(field: str, text: str, values: SlotValues) -> list[str]:
     """Name each cause or dependency a sentence states in a word no fact it names uses in its line."""
     problems: list[str] = []
@@ -220,7 +242,7 @@ def goal_problems(field: str, text: str, values: SlotValues) -> list[str]:
     """Name each sentence that speaks of a goal and of an item that is not the goal's linked work."""
     problems: list[str] = []
     for sentence, about in _about_each(text, values):
-        if not _SAYS_GOAL.search(sentence):
+        if not _claims_beyond_lines(_SAYS_GOAL, sentence, about, values):
             continue
         unlinked = sorted(i for i in about if not values.facts[i].goal_work)
         if unlinked:
@@ -240,10 +262,12 @@ def duration_problems(field: str, text: str, values: SlotValues) -> list[str]:
     """Name each sentence saying how long something stood of a fact whose line carries no date."""
     problems: list[str] = []
     for sentence, about in _about_each(text, values):
-        said = _DURATION_RE.search(_NOT_HOW_LONG.sub(" ", unslotted(sentence)))
-        if said is None:
+        claims = _claims_beyond_lines(
+            _DURATION_RE, _NOT_HOW_LONG.sub(" ", unslotted(sentence)), about, values
+        )
+        if not claims:
             continue
-        claim = said.group(0).casefold()
+        claim = claims[0]
         # A sentence about no fact speaks of the day or a goal, whose lines carry their dates.
         undated = sorted(i for i in about if not _dated(values.facts[i]))
         if undated:
