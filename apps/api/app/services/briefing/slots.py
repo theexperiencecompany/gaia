@@ -148,6 +148,7 @@ _AT_TIME_RE = re.compile(
     rf"\bat\s+(\[\[{_FACT}:(\d+)\.{re.escape(FactField.TIME.value)}\]\])", re.I
 )
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
+_SENTENCE_BREAK_RE = re.compile(rf"({_SENTENCE_END_RE.pattern})")
 # A meridiem the prose writes itself, as "[[fact:N.time]] PM" does after a time that holds one.
 _MERIDIEM_RE = re.compile(r"\s*([AaPp](?:\.[Mm]\.|[Mm]\b))")
 # What a sentence wraps around a word it quotes from a title ("the Q3 interviews,").
@@ -376,9 +377,16 @@ def _day_at_problems(field_name: str, text: str, values: SlotValues) -> list[str
     return problems
 
 
+def sentence_breaks(text: str) -> list[tuple[str, str]]:
+    """Split prose into its sentences and lines, each with the break that follows it."""
+    pieces = _SENTENCE_BREAK_RE.split(text)
+    breaks = [*pieces[1::2], ""]
+    return [(s, gap) for s, gap in zip(pieces[::2], breaks, strict=True) if s.strip()]
+
+
 def sentences(text: str) -> list[str]:
     """Split prose into its sentences and lines."""
-    return [s for s in _SENTENCE_END_RE.split(text) if s.strip()]
+    return [sentence for sentence, _ in sentence_breaks(text)]
 
 
 def unslotted(text: str) -> str:

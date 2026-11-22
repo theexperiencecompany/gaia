@@ -440,7 +440,7 @@ class TestAFigureTheFactsShow:
 
 
 class TestTheBriefsWideEvent:
-    async def test_every_rejected_draft_and_the_plain_fallback_are_on_the_brief_event(
+    async def test_every_rejected_draft_and_the_salvage_are_on_the_brief_event(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Dhruv's 2026-11-06/09 fell back plainly and prod could not say why each draft failed."""
@@ -454,8 +454,14 @@ class TestTheBriefsWideEvent:
             "the message never refers to the lead, fact 1 (Reply to Dan); say it in your own "
             "words as [your phrase](fact:1)"
         )
-        assert voice == prose.plain_voice(Writing(values=_VALUES, lead=1))
-        assert event["brief_voice"] == {"attempts": 2, "salvaged": True, "rejections": [missed] * 2}
+        assert voice.message == "- [[fact:1]]\n\nNothing new."
+        assert event["brief_voice"] == {
+            "attempts": 2,
+            "salvaged": True,
+            "rejections": [missed] * 2,
+            "dropped_sentences": 0,
+            "plain": False,
+        }
 
     async def test_a_brief_voiced_first_time_says_so(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[_voice()]))
@@ -498,6 +504,78 @@ class TestTheBriefsWideEvent:
             "words; the message's opening repeats a recent brief's line "
             "('Reply to Dan before lunch.'); write today's in fresh words"
         ]
+
+
+class TestALastVoiceThatStillBreaks:
+    """Founder brief_b4f24ff8d403: one goal sentence the retry repeated sent the whole brief plain."""
+
+    _VALUES = SlotValues(
+        facts={
+            1: BriefFact(title="LinkedIn connect attempt failed"),
+            2: BriefFact(title="Churned-subscriber email"),
+        },
+        counts={},
+    )
+
+    async def _salvaged(self, monkeypatch: pytest.MonkeyPatch, last: BriefVoice) -> BriefVoice:
+        monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[last] * 2))
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        return voice
+
+    @pytest.mark.regression
+    async def test_only_the_rejected_sentence_and_the_one_pointing_back_at_it_are_dropped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        last = _voice(
+            headline="A failed LinkedIn send",
+            message="[The LinkedIn connect](fact:1) failed on an auth error. "
+            "[The churn email](fact:2) is your goal work. That one is worth an hour.\n\n"
+            "Your calendar is open.",
+        )
+
+        async with captured_wide_event() as event:
+            voice = await self._salvaged(monkeypatch, last)
+
+        assert voice == last.model_copy(
+            update={
+                "message": "[The LinkedIn connect](fact:1) failed on an auth error.\n\n"
+                "Your calendar is open."
+            }
+        )
+        assert event["brief_voice"] | {"rejections": []} == {
+            "attempts": 2,
+            "salvaged": True,
+            "rejections": [],
+            "dropped_sentences": 2,
+            "plain": False,
+        }
+
+    async def test_a_dropped_headline_and_a_missing_lead_get_their_plain_pieces_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        last = _voice(
+            headline="[The churn email](fact:2) is your goal work",
+            message="[The churn email](fact:2) waits on a send.",
+        )
+
+        voice = await self._salvaged(monkeypatch, last)
+
+        assert voice == last.model_copy(
+            update={
+                "headline": "Your brief",
+                "message": "- [[fact:1]]\n\n[The churn email](fact:2) waits on a send.",
+            }
+        )
+
+    async def test_it_goes_plain_only_with_neither_headline_nor_lede_left(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        goal = "[The churn email](fact:2) is your goal work."
+        last = _voice(headline=goal.rstrip("."), lede=goal)
+
+        voice = await self._salvaged(monkeypatch, last)
+
+        assert voice == prose.plain_voice(Writing(values=self._VALUES, lead=1))
 
 
 class TestAVoiceTooLongOnceFilled:

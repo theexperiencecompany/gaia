@@ -146,7 +146,7 @@ class TestAWeeklyDigest:
         assert payload.blocks == [SectionBlock(kind="items", section=1)]
         assert [s.items[0].text for s in payload.sections] == ["CRM sync failed", "Investor deck"]
 
-    async def test_a_digest_that_leaves_out_its_lead_is_sent_back_then_sent_plainly(
+    async def test_a_digest_that_leaves_out_its_lead_is_sent_back_then_led_by_its_plain_line(
         self, world: World
     ) -> None:
         a_full_week(world)
@@ -160,7 +160,7 @@ class TestAWeeklyDigest:
         assert world.writing is not None
         assert world.writing.lead == fact_id(world.writing, "CRM sync failed")
         assert world.voice.await_count == MAX_VOICE_ATTEMPTS
-        assert (world.sent_plainly().message or "").startswith("- CRM sync failed\n")
+        assert world.stored().message == "- CRM sync failed\n\nGood week."
 
     async def test_the_week_ahead_is_voiced_by_its_days_facts(self, world: World) -> None:
         a_full_week(world)

@@ -182,6 +182,15 @@ def _loosely_named(sentence: str, values: SlotValues) -> set[int]:
     return named
 
 
+def _names(sentence: str, values: SlotValues) -> set[int]:
+    return _named(sentence, values) or _loosely_named(sentence, values)
+
+
+def points_back(sentence: str, values: SlotValues) -> bool:
+    """Whether a sentence names no fact and opens on a word ("that", "it") for the last one's."""
+    return not _names(sentence, values) and _POINTS_BACK.search(sentence) is not None
+
+
 def _about_each(text: str, values: SlotValues) -> list[tuple[str, set[int]]]:
     """Pair each sentence with the facts it names, by slot, title or its words; else the last one's.
 
@@ -191,9 +200,7 @@ def _about_each(text: str, values: SlotValues) -> list[tuple[str, set[int]]]:
     pairs: list[tuple[str, set[int]]] = []
     last: set[int] = set()
     for sentence in sentences(text):
-        named = _named(sentence, values) or _loosely_named(sentence, values)
-        if not named and _POINTS_BACK.search(sentence):
-            named = last
+        named = last if points_back(sentence, values) else _names(sentence, values)
         pairs.append((sentence, named))
         last = named or last
     return pairs
