@@ -214,7 +214,7 @@ class TestClearNameIfUnchanged:
             (
                 {"_id": ObjectId(USER_ID), "name": "Ann Lee"},
                 {"$unset": {"name": ""}},
-                {"scope": REPO_GLOBAL_SCOPE, "return_document": False},
+                {"return_document": False},
             )
         ]
 
