@@ -10,10 +10,12 @@ from datetime import UTC, datetime
 
 from bson import ObjectId
 import pytest
+import time_machine
 
 from app.db.mongodb.indexes import create_device_token_indexes
 from app.db.repositories.device_tokens import DeviceTokensRepository
-from app.models.device_token_models import PlatformType
+from app.models.device_token_models import DeviceTokenUpdate, PlatformType
+from app.utils.errors import EmptyUpdateError
 from tests.helpers import local_timezone
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
@@ -21,6 +23,7 @@ OTHER = "6812f0b3c9a14e2b7d5a91cd"
 TOKEN = "ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]"
 SECOND_TOKEN = "ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]"
 LONG_AGO = datetime(2026, 1, 11, 10, 0, tzinfo=UTC)
+REGISTERED_AT = datetime(2026, 3, 4, 23, 30, 15, 123000, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -44,11 +47,8 @@ class TestDeviceTokensRepository:
     async def test_a_new_token_is_stored_with_exactly_the_documented_fields(
         self, repo, raw_collection
     ):
-        before = datetime.now(UTC).replace(microsecond=0)
-
-        with local_timezone("Asia/Kolkata"):
+        with local_timezone("Asia/Kolkata"), time_machine.travel(REGISTERED_AT, tick=False):
             is_new = await _register(repo)
-        after = datetime.now(UTC)
 
         assert is_new is True
         raw = await raw_collection.find_one({"token": TOKEN})
@@ -62,8 +62,8 @@ class TestDeviceTokensRepository:
             "device_id": None,
             "is_active": True,
         }
-        assert before <= created_at <= after
-        assert before <= updated_at <= after
+        assert created_at.replace(tzinfo=UTC) == REGISTERED_AT
+        assert updated_at.replace(tzinfo=UTC) == REGISTERED_AT
 
     async def test_registering_a_known_token_updates_it_in_place_and_keeps_created_at(
         self, repo, raw_collection
@@ -104,6 +104,43 @@ class TestDeviceTokensRepository:
         assert (held.device_id, held.is_active) == ("iphone-15", True)
         assert await repo.get(TOKEN, user_id=OTHER) is None
         assert await repo.get(SECOND_TOKEN, user_id=USER) is None
+
+    async def test_update_changes_only_the_named_fields_and_returns_the_after_state(self, repo):
+        await _register(repo, device_id="iphone-15")
+
+        updated = await repo.update(
+            TOKEN, user_id=USER, update=DeviceTokenUpdate(platform=PlatformType.ANDROID)
+        )
+
+        assert updated is not None
+        assert (updated.platform, updated.device_id, updated.is_active) == (
+            PlatformType.ANDROID,
+            "iphone-15",
+            True,
+        )
+        assert await repo.get(TOKEN, user_id=USER) == updated
+
+    async def test_update_clears_the_device_id_when_it_is_set_to_none(self, repo):
+        await _register(repo, device_id="iphone-15")
+
+        updated = await repo.update(TOKEN, user_id=USER, update=DeviceTokenUpdate(device_id=None))
+
+        assert updated is not None and updated.device_id is None
+
+    async def test_update_of_a_token_another_user_holds_changes_nothing(self, repo):
+        await _register(repo)
+
+        refused = await repo.update(TOKEN, user_id=OTHER, update=DeviceTokenUpdate(is_active=False))
+
+        assert refused is None
+        held = await repo.get(TOKEN, user_id=USER)
+        assert held is not None and held.is_active is True
+
+    async def test_an_empty_update_is_refused(self, repo):
+        await _register(repo)
+
+        with pytest.raises(EmptyUpdateError):
+            await repo.update(TOKEN, user_id=USER, update=DeviceTokenUpdate())
 
     async def test_delete_removes_a_token_only_for_the_user_holding_it(self, repo):
         await _register(repo)
