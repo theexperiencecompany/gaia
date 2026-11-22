@@ -32,7 +32,7 @@ from app.models.task_models import (
     TaskUpdate,
     Waiting,
 )
-from app.models.todo_models import default_notify_on_run
+from app.models.todo_models import Priority, default_notify_on_run
 from app.models.trigger_gate_models import AuthoredGate, GateCondition
 from app.models.trigger_subscription_models import ConditionMatch, SubscriptionAction
 from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
@@ -81,6 +81,7 @@ _IF_NO_REPLY_DESC = (
 )
 _DEFAULT_ACTION_DESC = "With if_no_reply='proceed': exactly what you will do if they never answer."
 _DUE_DESC = "ISO datetime, with the user's offset, it is due by."
+_PRIORITY_DESC = "'high', 'medium', 'low' or 'none'"
 _REPEAT_DESC = (
     "How often it repeats: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron in the "
     "user's own wall-clock time ('0 9 * * 1-5'). A repeating task needs no next_check."
@@ -229,6 +230,7 @@ async def create_task(
     title: Annotated[str, "Short title for the task"],
     assignee: Annotated[Assignee, "'gaia' for work GAIA does, 'user' for the user's own to-do"],
     body: Annotated[str | None, "What the task is about, in a few sentences"] = None,
+    priority: Annotated[Priority, _PRIORITY_DESC] = Priority.NONE,
     due: Annotated[str | None, _DUE_DESC] = None,
     repeat: Annotated[str | None, _REPEAT_DESC] = None,
     waiting_on: Annotated[WaitingOn | None, _WAITING_ON_DESC] = None,
@@ -267,7 +269,12 @@ async def create_task(
             created = await task_service.create_task(
                 user_id,
                 TaskCreateRequest(
-                    title=title, body=body or "", when=when, parent_id=parent_id, notify=notify
+                    title=title,
+                    body=body or "",
+                    priority=priority,
+                    when=when,
+                    parent_id=parent_id,
+                    notify=notify,
                 ),
             )
             return f"To-do created (id {created.id}): {created.title}."
@@ -280,6 +287,7 @@ async def create_task(
             title=title,
             body=body or "",
             assignee=Assignee.GAIA,
+            priority=priority,
             when=when,
             parent_id=parent_id,
             notify=notify,
@@ -321,6 +329,10 @@ async def update_task(
     task_id: Annotated[str, "Id of the task to change"],
     title: Annotated[str | None, "New title"] = None,
     body: Annotated[str | None, "New details"] = None,
+    priority: Annotated[Priority | None, _PRIORITY_DESC] = None,
+    notes: Annotated[
+        str | None, "GAIA tasks: the whole new working notes (canvas.md), as get_task shows them"
+    ] = None,
     due: Annotated[str | None, _DUE_DESC] = None,
     waiting_on: Annotated[WaitingOn | None, _WAITING_ON_DESC] = None,
     next_check: Annotated[str | None, _NEXT_CHECK_DESC] = None,
@@ -337,14 +349,23 @@ async def update_task(
         task = await task_service.require_task(user_id, task_id)
         fields: dict[str, object] = {
             name: value
-            for name, value in {"title": title, "body": body, "notify": notify}.items()
+            for name, value in {
+                "title": title,
+                "body": body,
+                "priority": priority,
+                "notify": notify,
+            }.items()
             if value is not None
         }
         if due is not None:
             fields["when"] = DateWhen(at=_parse_moment(due, "due", future=False))
         fields.update(_move_fields(task, parent_id, notify))
         if task.assignee is Assignee.USER:
+            if notes is not None:
+                return f"Error: {task.id} is the user's own to-do; only GAIA's tasks keep notes."
             return await _update_todo(task, fields)
+        if notes is not None:
+            fields["notes"] = notes
         if next_check is not None:
             fields["next_check_at"] = _parse_moment(next_check, "next_check", future=True)
         if any(v is not None for v in (waiting_on, question, if_no_reply, default_action)):

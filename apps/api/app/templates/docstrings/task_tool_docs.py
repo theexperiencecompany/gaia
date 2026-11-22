@@ -24,7 +24,8 @@ CREATE_TASK = """
     """
 
 UPDATE_TASK = """
-    Change a task: its title, details, date, what it waits on, its next check, or its notify setting.
+    Change a task: its title, details, priority, date, notes, what it waits on, its next check,
+    or its notify setting.
 
     When to use:
     - A run of a GAIA task is still open after its work: set waiting_on and a new next_check.
@@ -32,8 +33,10 @@ UPDATE_TASK = """
     - The user changes one of their to-dos (rename it, move its date).
     - A GAIA task belongs under another open top-level GAIA task: pass parent_id.
 
-    The working notes are files: edit /workspace/gaia-tasks/<folder>/canvas.md with the file
-    tools, not with this tool. Never repeat a task id in user-visible text.
+    - The user changes the priority of a task.
+    - A GAIA task's working notes change: pass the whole new notes (get_task shows them).
+
+    Never repeat a task id in user-visible text.
     """
 
 COMPLETE_TASK = """
@@ -82,4 +85,49 @@ UNSUBSCRIBE_TASK = """
 
     Use when what it waited for no longer matters but the task stays open. Completing a task
     stops it listening on its own, so do not call this first.
+    """
+
+LIST_TASKS = """
+    List the user's tasks, GAIA's and their own to-dos, with today's counts on top.
+
+    When to use:
+    - The user asks what is on their list, what is due today or this week, what is overdue,
+      what they finished, or what GAIA is working on: pick the view.
+    - Before creating a task: look for one that already covers it (query) and update that.
+    - To find the id of a task the user names, for any other task tool.
+
+    Each line shows whose it is, when it is due or repeats, its checklist and, for GAIA's,
+    what it waits on. query matches words in the title or details, not meaning: try the
+    words the user would have written. Never repeat a task id in user-visible text.
+    """
+
+GET_TASK = """
+    Show one task in full: its details, checklist items with their ids, the app events it
+    listens for, and GAIA's notes, observations and log on it.
+
+    Use before changing a checklist item (it gives the item ids), when the user asks about
+    one task, or to read what earlier runs of a GAIA task wrote down.
+    """
+
+EDIT_CHECKLIST = """
+    Change one item on a task's checklist: add one, rename it, tick it, untick it or remove it.
+
+    The checklist is the small steps inside one task ("milk", "bread" under "Groceries").
+    Work GAIA does on its own is a subtask (create_task with parent_id), not a checklist item.
+    Every change but add names the item by the id get_task shows.
+    """
+
+REOPEN_TASK = """
+    Put a done task back on the list, when the user says it is not finished after all.
+    """
+
+COMPLETE_TASKS = """
+    Tick off several of the user's to-dos at once ("I did all of those").
+
+    For one task, or for GAIA's own work, use complete_task with what was achieved.
+    """
+
+DELETE_TASKS = """
+    Delete tasks for good, with every subtask under them. Only when the user asks to delete
+    or remove them; a finished task is completed, not deleted.
     """

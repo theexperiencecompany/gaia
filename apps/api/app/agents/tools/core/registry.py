@@ -376,6 +376,8 @@ class ToolRegistry:
             skill_tools,
             subscription_tool,
             support_tool,
+            task_edit_tools,
+            task_list_tools,
             task_tools,
             todo_tool,
             tracked_todo_tools,
@@ -422,7 +424,7 @@ class ToolRegistry:
         )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)
         self._add_category(
             "tasks",
-            tools=[*task_tools.tools],
+            tools=[*task_tools.tools, *task_list_tools.tools, *task_edit_tools.tools],
             options=CategoryOptions(space="tasks"),
             risk=CategoryRisk(destructive_tools=set()),
         )

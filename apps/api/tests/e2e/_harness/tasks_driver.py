@@ -28,6 +28,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 import time_machine
 
+from app.agents.tools import task_edit_tools, task_list_tools, task_tools
 from app.agents.tools.task_tools import create_task, subscribe_task, update_task
 from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
@@ -96,6 +97,8 @@ from tests.e2e._harness.turn_queue import (
 from tests.integration_account_factories import provider_account_id
 
 TASKS = "/api/v1/tasks"
+#: Every tool GAIA works on tasks with.
+TASK_TOOLS = (*task_tools.tools, *task_list_tools.tools, *task_edit_tools.tools)
 TODOS = "/api/v1/todos"
 WORKFLOWS = "/api/v1/workflows"
 WEBHOOK = "/api/v1/webhook/composio"
@@ -204,6 +207,7 @@ def _task_view(body: dict[str, Any]) -> TaskView:
         next_run=datetime.fromisoformat(body["next_check_at"]) if body["next_check_at"] else None,
         paused_reason=body["pause_reason"],
         paused_for_apps=tuple(body["blocked_on_integrations"]),
+        priority=body["priority"],
         blocked=bool(BLOCKING_FLAGS.intersection(body["status_flags"])),
         skipped_events=tuple(
             skip["event"]
@@ -423,6 +427,13 @@ class TasksDriver:
         (created,) = [t for t in await self._gaia_tasks() if t.id not in before] or [None]
         assert created is not None, f"GAIA did not take the task on: {said}"
         return created
+
+    async def gaia_uses(self, tool_name: str, **args: object) -> str:
+        """Have GAIA call one of its task tools in the user's chat; returns what the tool said."""
+        (task_tool,) = [t for t in TASK_TOOLS if t.name == tool_name]
+        return str(
+            await task_tool.ainvoke(args, config={"configurable": {"user_id": self._user_id}})
+        )
 
     async def gaia_files_under(self, task_id: str, parent_id: str) -> str:
         """Have GAIA move one of its tasks under another as its subtask; returns what the tool said."""

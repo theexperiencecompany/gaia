@@ -51,6 +51,7 @@ class TaskView:
     paused_reason: str | None = None
     #: The apps the task waits to be connected again before it resumes.
     paused_for_apps: tuple[str, ...] = ()
+    priority: str = "none"
     #: The task shows it waits on something outside GAIA: a reply, an approval, a block.
     blocked: bool = False
     #: The app events its subscriptions' "only when" conditions turned away, by what each was about.
