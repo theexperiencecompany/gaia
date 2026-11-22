@@ -203,13 +203,15 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
 
     async def user_window_totals(self, window_start: str) -> list[tuple[str, int]]:
         """Every user's summed action count since window_start, one pass."""
-        rows = await self._aggregate(
-            [
-                {"$match": {"date": {"$gte": window_start}}},
-                {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
-            ],
-            _UserWindowTotal,
-        )
+        rows = [
+            _UserWindowTotal.model_validate(raw)
+            async for raw in self._raw_collection().aggregate(
+                [
+                    {"$match": {"date": {"$gte": window_start}}},
+                    {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
+                ]
+            )
+        ]
         return [(row.user_id, row.total) for row in rows]
 
 
