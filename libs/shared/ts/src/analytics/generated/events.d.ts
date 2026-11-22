@@ -1418,7 +1418,7 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "task_id": string;
     "trigger_name": string;
-    "outcome": "ran" | "coalesced" | "held_for_quiet_hours" | "kept_while_paused";
+    "outcome": "ran" | "coalesced" | "held_for_quiet_hours" | "kept_while_paused" | "notified" | "completed" | "unblocked";
   };
   "task:nudged": {
     "actor": "user" | "agent";

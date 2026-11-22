@@ -183,6 +183,9 @@ RECOVER_TASKS_JITTER_SECONDS: Final = 60
 TODO_DUE_NUDGE_BODY: Final = "This is due now."
 #: What a nudge says when a repeating to-do comes back onto the list.
 TODO_REPEAT_NUDGE_BODY: Final = "This is back on your list."
+#: What a task's notify subscription tells the user when its event lands.
+TASK_EVENT_NOTIFY_TITLE: Final = "Update on: {title}"
+TASK_EVENT_NOTIFY_BODY: Final = "An event you were watching ({trigger_name}) just fired."
 #: The page a notification about a task opens.
 TASK_DEEP_LINK: Final = "/tasks?taskId={task_id}"
 TASKS_PAGE: Final = "/tasks"

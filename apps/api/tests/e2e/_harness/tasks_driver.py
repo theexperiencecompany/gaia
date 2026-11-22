@@ -24,6 +24,7 @@ from arq.jobs import JobDef
 from arq.worker import Function
 from fastapi import BackgroundTasks
 from httpx import AsyncClient, Response
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 import time_machine
 
@@ -35,7 +36,7 @@ from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.notifications import APPROVAL_PUSH_TITLE
-from app.constants.tasks import TaskLogEvent, TaskRunTrigger
+from app.constants.tasks import BLOCKING_FLAGS, TaskLogEvent, TaskRunTrigger
 from app.constants.todos import (
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
@@ -73,6 +74,7 @@ from tests.e2e._harness.tasks_views import (
     GaiaRun,
     KeepsWaiting,
     NeedsApproval,
+    OnEvent,
     OpensReplyTask,
     OpensSubtasks,
     RepeatingTaskView,
@@ -100,6 +102,8 @@ WEBHOOK = "/api/v1/webhook/composio"
 WEBHOOK_MODULE = "app.api.v1.endpoints.webhook_composio"
 #: Composio's event type for a new message in a Gmail inbox.
 GMAIL_NEW_MESSAGE_EVENT = "gmail_new_gmail_message"
+#: Composio's event type for a pull request opened or changed on a watched repository.
+GITHUB_PULL_REQUEST_EVENT = "GITHUB_PULL_REQUEST_EVENT"
 #: GAIA's id of the one account each connected app has in the journeys.
 APP_ACCOUNT = "ca_1"
 #: The job that hands an app event to the tasks watching it.
@@ -200,6 +204,12 @@ def _task_view(body: dict[str, Any]) -> TaskView:
         next_run=datetime.fromisoformat(body["next_check_at"]) if body["next_check_at"] else None,
         paused_reason=body["pause_reason"],
         paused_for_apps=tuple(body["blocked_on_integrations"]),
+        blocked=bool(BLOCKING_FLAGS.intersection(body["status_flags"])),
+        skipped_events=tuple(
+            skip["event"]
+            for subscription in body["subscriptions"]
+            for skip in (subscription["gate"] or {}).get("recent_skips") or []
+        ),
     )
 
 
@@ -463,6 +473,10 @@ class TasksDriver:
         events = await self._activity(task_id)
         return sum(event == TodoActivityEvent.TRIGGER_FIRED.value for event, _ in events)
 
+    async def armed_times(self, task_id: str) -> list[datetime]:
+        """Return when each run waiting to fire for the task is due, soonest first."""
+        return [datetime.fromtimestamp(job.score / 1000, UTC) for job in await self._armed(task_id)]
+
     async def has_run_armed(self, task_id: str) -> bool:
         """Whether anything will run the task again."""
         return bool(await self._armed(task_id))
@@ -485,8 +499,9 @@ class TasksDriver:
     async def _queue_task_run(self, task_id: str, run: GaiaRun) -> None:
         """Queue GAIA's turns for one run of a GAIA task, and the write-up its chat gets either way."""
         task = _ok(await self._client.get(f"{TASKS}/{task_id}"))
-        # A one-off run that neither closes nor re-arms its task is nudged once to.
-        one_off = task["when"]["kind"] != "repeat" and not task["subscriptions"]
+        # A run of a task that does not repeat, stopping on words with no work behind them,
+        # is nudged once to back its outcome, whatever else wakes the task.
+        one_off = task["when"]["kind"] != "repeat"
 
         def tell(text: str) -> None:
             self._comms.then([text])
@@ -754,21 +769,34 @@ class TasksDriver:
 
     # Apps and their events.
 
-    async def watch_emails_from(self, task_id: str, sender: str) -> None:
-        """Have the GAIA task wake whenever an email from sender arrives, as its watch tool sets."""
+    async def watch_emails_from(
+        self,
+        task_id: str,
+        sender: str,
+        *,
+        then: OnEvent = OnEvent.RUN,
+        only_when: str | None = None,
+        batch_for: timedelta = timedelta(0),
+    ) -> None:
+        """Have an email from sender reach the GAIA task, as its subscribe tool sets it.
+
+        then is what the email does to the task; only_when the gate a run must pass; emails
+        within batch_for of a run ride the next run together.
+        """
         from_sender = [{"field_name": "sender", "operator": "contains", "value": sender}]
-        config = {"configurable": {"user_id": self._user_id}}
+        config: RunnableConfig = {"configurable": {"user_id": self._user_id}}
         if _is_task(task_id):
-            said = await subscribe_task.ainvoke(
-                {
-                    "task_id": task_id,
-                    "trigger_name": "gmail_new_message",
-                    "conditions": from_sender,
-                    "cooldown_seconds": 0,
-                },
-                config=config,
-            )
-            assert "now runs when" in said, said
+            args: dict[str, Any] = {
+                "task_id": task_id,
+                "trigger_name": "gmail_new_message",
+                "action": then.value,
+                "conditions": from_sender,
+                "cooldown_seconds": int(batch_for.total_seconds()),
+            }
+            if only_when is not None:
+                args["runs_only_when"] = only_when
+            said = await subscribe_task.ainvoke(args, config=config)
+            assert "Subscription id" in said, said
             return
         # A tracked todo the migration journey builds as legacy data.
         said = await subscribe_todo_to_trigger.ainvoke(
@@ -782,6 +810,64 @@ class TasksDriver:
             config=config,
         )
         assert "is now watching" in said, said
+
+    async def turn_off_only_when(self, task_id: str) -> TaskView:
+        """Switch off the "only when" check on the task's gated subscription, from its panel."""
+        task = _ok(await self._client.get(f"{TASKS}/{task_id}"))
+        (gated,) = [s for s in task["subscriptions"] if s["gate"] is not None]
+        path = f"{TASKS}/{task_id}/subscriptions/{gated['id']}/gate"
+        return _task_view(_ok(await self._client.patch(path, json={"enabled": False})))
+
+    async def watch_pull_requests(self, task_id: str, repo: str) -> None:
+        """Have every pull request event on repo run the GAIA task, as its subscribe tool sets it."""
+        said = await subscribe_task.ainvoke(
+            {
+                "task_id": task_id,
+                "trigger_name": "github_pr_event",
+                "scope": {"repos": [repo]},
+                "cooldown_seconds": 0,
+            },
+            config={"configurable": {"user_id": self._user_id}},
+        )
+        assert "Subscription id" in said, said
+
+    async def new_pull_request(
+        self, task_id: str, *, title: str, number: int, on_watched_repo: bool = True
+    ) -> None:
+        """Deliver a pull request event through the trigger instance of the repo the task watches.
+
+        on_watched_repo False delivers it through another repo's instance instead.
+        """
+        task = _ok(await self._client.get(f"{TASKS}/{task_id}"))
+        (watched,) = [i for s in task["subscriptions"] for i in s["composio_trigger_ids"]]
+        instance = watched if on_watched_repo else f"{watched}_other_repo"
+        data = {
+            "connection_id": provider_account_id(APP_ACCOUNT),
+            "connection_nano_id": "nano-1",
+            "trigger_nano_id": instance,
+            "trigger_id": instance,
+            "user_id": self._user_id,
+            "action": "opened",
+            "number": number,
+            "title": title,
+            "createdBy": "octocat",
+            "description": "",
+            "url": f"https://github.com/acme/site/pull/{number}",
+        }
+        with time_machine.travel(_next_daytime(), tick=True):
+            await self._webhook(
+                {
+                    "type": GITHUB_PULL_REQUEST_EVENT,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "data": data,
+                },
+                webhook_id=f"wh-pr-{number}",
+            )
+
+    def last_run_was_shown(self, text: str) -> bool:
+        """Whether the brief GAIA worked from in its latest run carried text."""
+        latest = self._executor.last_chat_messages or []
+        return any(text in str(message.content) for message in latest)
 
     async def connect_app(self, integration_id: str) -> None:
         """Finish an app's OAuth connect, with every side effect the callback runs."""

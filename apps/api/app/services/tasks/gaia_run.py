@@ -54,6 +54,7 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.task_models import RepeatWhen, TaskDocument, TaskUpdate, Waiting
 from app.models.todo_models import ExternalRefSource
 from app.models.todo_wake_models import TodoRunWake
+from app.models.trigger_subscription_models import SubscriptionAction
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import logged_decision
@@ -213,7 +214,8 @@ def task_run_of(task: TaskDocument, trigger: TaskRunTrigger, wake: TodoRunWake) 
         run_id=str(uuid4()),
         title=task.title,
         trigger_type=trigger,
-        runs_once=not isinstance(task.when, RepeatWhen) and not task.subscriptions,
+        runs_once=not isinstance(task.when, RepeatWhen)
+        and not any(s.action is SubscriptionAction.EXECUTE for s in task.subscriptions),
         wake=wake,
         report_form=report_form_of(task),
         attribution=current_analytics_context().attribution,

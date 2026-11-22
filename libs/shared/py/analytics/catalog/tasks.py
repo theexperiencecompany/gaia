@@ -36,9 +36,18 @@ TaskSubscribeFailureReason = Literal[
     "registration_failed",
     "no_trigger_instance",
 ]
-#: What a matched app event does to its task's run: runs it now, rides the run its window
-#: already has, waits for the user's quiet hours to end, or waits for the task to resume.
-EventFireOutcome = Literal["ran", "coalesced", "held_for_quiet_hours", "kept_while_paused"]
+#: What a matched app event does to its task: runs it now, rides the run its window already
+#: has, waits for the user's quiet hours to end, waits for the task to resume, or, for a
+#: subscription that does not run the task, tells the user, closes the task or unblocks it.
+EventFireOutcome = Literal[
+    "ran",
+    "coalesced",
+    "held_for_quiet_hours",
+    "kept_while_paused",
+    "notified",
+    "completed",
+    "unblocked",
+]
 
 
 class TaskCreated(ServerEvent):

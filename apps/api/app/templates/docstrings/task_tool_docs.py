@@ -59,12 +59,16 @@ LIST_EVENT_FIELDS = """
     """
 
 SUBSCRIBE_TASK = """
-    Make one of GAIA's tasks run when an app event arrives: a reply to an email you sent,
+    Make one of GAIA's tasks react when an app event arrives: a reply to an email you sent,
     a calendar event about to start, an issue changing, a row landing in a sheet.
 
-    The event runs the task with the event in its brief; events inside its cooldown ride
-    the next run together. The task keeps its next check and its schedule: whichever comes
-    first wakes it, and closing the task stops it listening.
+    action decides what the event does. "execute" (the default) runs the task with the
+    event in its brief; events inside its cooldown ride the next run together. "notify"
+    only tells the user the event landed. "complete" closes the task, for an event that
+    itself means it is done (the invoice is marked paid). "unblock" clears the task's
+    waiting-on-a-reply or blocked flag, and tells the user when there is none. Only
+    execute takes runs_only_when. The task keeps its next check and its schedule: whichever
+    comes first wakes it, and closing the task stops it listening.
 
     Write conditions against real payload fields (list_event_fields shows them). Obvious
     mistakes (a camelCased field, an operator the field's type cannot take, a number sent as

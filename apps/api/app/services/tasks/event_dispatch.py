@@ -25,12 +25,14 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from app.services.analytics_service import capture
+from app.services.tasks.event_actions import act_on_event
 from app.services.tasks.event_window import (
     buffer_task_event,
     buffer_task_event_until,
     claim_event_window,
     event_window,
     keep_event_while_paused,
+    subscription_cooldown,
 )
 from app.services.tasks.run_records import record_event
 from app.services.triggers.condition_matching import conditions_match
@@ -56,6 +58,9 @@ _TAKEN_NOTE: dict[EventFireOutcome, str] = {
     "coalesced": "rides the task's next run",
     "held_for_quiet_hours": "held until your quiet hours end",
     "kept_while_paused": "kept until the task resumes",
+    "notified": "you were told",
+    "completed": "the task was completed",
+    "unblocked": "the task is no longer blocked",
 }
 
 
@@ -118,28 +123,23 @@ def _reaches(
 ) -> bool:
     """Whether the event is one this subscription listens for, on its instance, account and conditions.
 
-    A paused subscription listens only while the system has its task paused, so the event
-    is kept for the resume.
+    A paused run subscription listens only while the system has its task paused, so the event
+    is kept for the resume; a paused subscription that only acts is deaf until it resumes.
     """
     if subscription.trigger_name not in trigger_names:
         return False
     # A per-resource subscription fires only for an instance it registered.
     if subscription.composio_trigger_ids and trigger_id not in subscription.composio_trigger_ids:
         return False
-    if subscription.status is not TriggerSubscriptionStatus.ACTIVE and task.pause_reason is None:
+    keeps_events = (
+        task.pause_reason is not None and subscription.action is SubscriptionAction.EXECUTE
+    )
+    if subscription.status is not TriggerSubscriptionStatus.ACTIVE and not keeps_events:
         return False
     if (
         subscription.account_id is not None
         and payload.get(EVENT_ACCOUNT_ID_KEY) != subscription.account_id
     ):
-        return False
-    if subscription.action is not SubscriptionAction.EXECUTE:
-        log.error(
-            "task_event.action_unsupported",
-            task_id=task.id,
-            subscription_id=subscription.id,
-            action=subscription.action.value,
-        )
         return False
     return conditions_match(
         subscription.trigger_name, subscription.conditions, payload, subscription.match
@@ -165,10 +165,11 @@ async def _take(
     payload: dict[str, object],
     occurrence: str | None,
 ) -> int:
-    """Gate one matched event, claim its occurrence, then run, coalesce, hold or keep it; 1 when taken.
+    """Gate one matched event, claim its occurrence, then act on it; 1 when taken.
 
-    The gate goes first: a skipped event must not burn the occurrence or the window slot
-    the next real one needs.
+    A run subscription runs, coalesces, holds or keeps the event; any other acts at once,
+    once per cooldown. The gate goes first: a skipped event must not burn the occurrence or
+    the window slot the next real one needs.
     """
     verdict = await decide_gate(
         subscription.gate,
@@ -188,13 +189,19 @@ async def _take(
     if occurrence is not None and not await claim_occurrence(task.id, occurrence):
         log.info("task_event.occurrence_already_taken", task_id=task.id, occurrence=occurrence)
         return 0
-    origin = TriggerOrigin(
-        subscription_id=subscription.id,
-        trigger_name=subscription.trigger_name,
-        payload=payload,
-        quiet_hours_bypass=verdict.stamp if isinstance(verdict, GateBypass) else None,
-    )
-    outcome = await _route(task, origin, verdict)
+    if subscription.action is SubscriptionAction.EXECUTE:
+        origin = TriggerOrigin(
+            subscription_id=subscription.id,
+            trigger_name=subscription.trigger_name,
+            payload=payload,
+            quiet_hours_bypass=verdict.stamp if isinstance(verdict, GateBypass) else None,
+        )
+        outcome = await _route(task, origin, verdict)
+    elif await claim_event_window(subscription_cooldown(subscription)):
+        outcome = await act_on_event(task, subscription, payload)
+    else:
+        log.info("task_event.cooldown_suppressed", task_id=task.id, subscription_id=subscription.id)
+        return 0
     await record_event(
         task,
         TaskLogEvent.APP_EVENT,

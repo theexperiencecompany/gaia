@@ -34,7 +34,7 @@ from app.models.task_models import (
 )
 from app.models.todo_models import default_notify_on_run
 from app.models.trigger_gate_models import AuthoredGate, GateCondition
-from app.models.trigger_subscription_models import ConditionMatch
+from app.models.trigger_subscription_models import ConditionMatch, SubscriptionAction
 from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks import task_service
@@ -161,6 +161,14 @@ async def _owned_references(user_id: str, references: list[str], task_id: str | 
             "Nothing was saved; pass ids from list_tasks."
         )
 
+
+#: What a subscribed task does when its event arrives, by the subscription's action.
+_REACTS: dict[SubscriptionAction, str] = {
+    SubscriptionAction.EXECUTE: "runs",
+    SubscriptionAction.NOTIFY: "tells the user",
+    SubscriptionAction.COMPLETE: "is completed",
+    SubscriptionAction.UNBLOCK: "is unblocked",
+}
 
 _NO_FIELDS = "No fields to update. Provide at least one field to change."
 
@@ -403,6 +411,11 @@ async def subscribe_task(
     task_id: Annotated[str, "Id of the GAIA task that runs when the event arrives"],
     # Identifier-typed: a slug analytics cannot carry fails the args schema before registering.
     trigger_name: Annotated[Identifier, "GAIA event slug to listen for, e.g. 'gmail_new_message'"],
+    action: Annotated[
+        SubscriptionAction,
+        "What the event does: 'execute' (run the task with the event), 'notify' (tell the "
+        "user only), 'complete' (close the task), 'unblock' (clear its waiting flag).",
+    ] = SubscriptionAction.EXECUTE,
     conditions: Annotated[
         list[dict[str, str | int | float]] | None,
         "Narrowing tests, each {'field_name': ..., 'operator': ..., 'value': ...} on fields from "
@@ -460,6 +473,7 @@ async def subscribe_task(
             task,
             SubscriptionRequest(
                 trigger_name=trigger_name,
+                action=action,
                 conditions=parsed_conditions,
                 match=parsed_match,
                 cooldown_seconds=cooldown_seconds,
@@ -486,7 +500,7 @@ async def subscribe_task(
             f"{runs_on}. To change runs_only_when, unsubscribe it and subscribe again."
         )
     lines = [
-        f"Task {task_id} now runs when {trigger_name} arrives.",
+        f"Task {task_id} now {_REACTS[action]} when {trigger_name} arrives.",
         f"Subscription id: {subscription.id}",
     ]
     if stored.outcome.repairs:

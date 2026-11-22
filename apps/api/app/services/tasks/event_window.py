@@ -21,6 +21,7 @@ from app.models.task_models import TaskDocument
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     TriggerOrigin,
+    TriggerSubscription,
     TriggerSubscriptionStatus,
 )
 from app.services.triggers.batching import (
@@ -43,6 +44,8 @@ TASK_EVENT_WINDOW_CLAIMED = "claimed"
 TASK_EVENT_DRAIN_JOB_ID = "trigger_batch:task:{task_id}:{window_end}"
 #: Events that reached a task the system paused; its resume replays them.
 TASK_EVENT_HOLD_KEY = "trigger_hold:task:{task_id}"
+#: Held for a subscription's cooldown once it acts without a run (notify, complete, unblock).
+TASK_SUBSCRIPTION_COOLDOWN_KEY = "task_subscription_cooldown:{subscription_id}"
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,16 @@ def event_window(task: TaskDocument) -> EventWindow:
     now = occurrence_stamp(datetime.now(UTC))
     return EventWindow(
         key=TASK_EVENT_WINDOW_KEY.format(task_id=task.id), seconds=seconds, end=now + seconds
+    )
+
+
+def subscription_cooldown(subscription: TriggerSubscription) -> EventWindow:
+    """Return the cooldown a subscription that acts without a run holds between two events."""
+    seconds = subscription.cooldown_seconds
+    return EventWindow(
+        key=TASK_SUBSCRIPTION_COOLDOWN_KEY.format(subscription_id=subscription.id),
+        seconds=seconds,
+        end=occurrence_stamp(datetime.now(UTC)) + seconds,
     )
 
 

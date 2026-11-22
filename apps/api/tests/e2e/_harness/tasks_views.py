@@ -51,6 +51,10 @@ class TaskView:
     paused_reason: str | None = None
     #: The apps the task waits to be connected again before it resumes.
     paused_for_apps: tuple[str, ...] = ()
+    #: The task shows it waits on something outside GAIA: a reply, an approval, a block.
+    blocked: bool = False
+    #: The app events its subscriptions' "only when" conditions turned away, by what each was about.
+    skipped_events: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -82,6 +86,15 @@ class RepeatingTaskView:
     paused_reason: str | None = None
     #: The events its "only when" condition turned away, by what each was about.
     skipped_events: tuple[str, ...] = ()
+
+
+class OnEvent(StrEnum):
+    """What an app event a task listens for does to it."""
+
+    RUN = "execute"
+    TELL_ME = "notify"
+    CLOSE = "complete"
+    UNBLOCK = "unblock"
 
 
 class NoReply(StrEnum):

@@ -7506,7 +7506,10 @@
               "ran",
               "coalesced",
               "held_for_quiet_hours",
-              "kept_while_paused"
+              "kept_while_paused",
+              "notified",
+              "completed",
+              "unblocked"
             ],
             "title": "Outcome",
             "type": "string"

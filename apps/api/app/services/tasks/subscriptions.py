@@ -71,6 +71,7 @@ class SubscriptionRequest:
     """What GAIA asked a task to listen for, before it is validated and registered."""
 
     trigger_name: str
+    action: SubscriptionAction
     conditions: list[SubscriptionCondition]
     match: ConditionMatch
     cooldown_seconds: int
@@ -104,7 +105,7 @@ def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
 
 
 async def subscribe(task: TaskDocument, request: SubscriptionRequest) -> Subscribed:
-    """Validate, register with Composio and store one run subscription on a GAIA task.
+    """Validate, register with Composio and store one subscription on a GAIA task.
 
     Raises SubscriptionError with a message the agent can act on. Built before Composio is
     called, so a row its own rules refuse leaves no trigger instance upstream.
@@ -137,7 +138,7 @@ async def subscribe(task: TaskDocument, request: SubscriptionRequest) -> Subscri
             account_id=request.account_id,
             conditions=outcome.conditions,
             match=request.match,
-            action=SubscriptionAction.EXECUTE,
+            action=request.action,
             cooldown_seconds=request.cooldown_seconds,
             resolution=(
                 SubscriptionResolution.TRIGGER_ID
