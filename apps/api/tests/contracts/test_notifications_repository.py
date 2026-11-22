@@ -221,6 +221,17 @@ class TestBriefNotificationsRoundTrip:
             repo, BriefNoteNotification(kind=NotificationKind.BRIEFING_NOTE)
         )
 
+    @pytest.mark.parametrize("family", [*DAILY_FAMILY_WEIGHTS, EditionFamily.WEEKLY])
+    async def test_an_edition_notification_stored_once_reads_back_as_saved(self, repo, family):
+        """Regression: notify stores through insert_if_absent, whose own dump dropped the card's None fields."""
+        details = await _edition_details(family)
+        request = _record().original_request.model_copy(update={"details": details})
+        assert await repo.insert_if_absent(_record(id="brief-once", original_request=request))
+
+        fetched = await repo.get_for_user("brief-once", "u1")
+
+        assert fetched is not None and fetched.original_request.details == details
+
     async def _assert_round_trips(self, repo, details: NotificationDetails) -> None:
         request = _record().original_request.model_copy(update={"details": details})
         await repo.create(_record(id="brief-note", original_request=request))

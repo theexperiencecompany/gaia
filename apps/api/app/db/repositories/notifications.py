@@ -39,7 +39,10 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
 
     async def insert_if_absent(self, record: NotificationRecord) -> bool:
         """Store record unless a notification with its id exists; True when this call stored it."""
-        document = record.model_dump(exclude={"updated_at"}, exclude_none=True)
+        # The insert's own dump, so a None a model requires is stored, not dropped; the
+        # upsert stamps updated_at itself, and Mongo refuses one field set twice.
+        document = self._storable(record)
+        document.pop("updated_at")
         matched = await self._apply_raw_update_unfetched(  # pragma: no mutate — scope unread
             {"id": record.id},
             {"$setOnInsert": document},
