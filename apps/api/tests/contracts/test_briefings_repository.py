@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import re
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.briefing import (
@@ -19,6 +18,7 @@ from app.constants.briefing import (
 from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import BriefingsRepository
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.brief_document_models import (
     BriefCardRecord,
     BriefDelivery,
@@ -271,7 +271,7 @@ class TestBriefingsUpsert:
             edition=_EDITION,
         )
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.upsert_briefing(
                 stored.model_copy(
                     update={

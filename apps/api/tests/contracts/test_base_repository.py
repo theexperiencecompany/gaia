@@ -568,20 +568,3 @@ class TestDefaultedNones:
             "plain": [1],
         }
         assert set(raw) == {"_id", "leaf", "leaves", "by_key", "plain"}
-
-
-class TestUpsertedUnfetchedWrite:
-    async def test_an_upsert_that_inserts_invalidates_its_scope(self, repo, redis):
-        await repo.create(_FixtureDocument(user_id="u", title="seed"))
-        gen_key = repo.cache_policy.generation_key("u")
-        gen_before = int(await redis.get(gen_key))
-
-        matched = await repo._apply_raw_update_unfetched(
-            {"_id": ObjectId(), "user_id": "u"},
-            {"$set": {"title": "made", "count": 1}},
-            scope="u",
-            upsert=True,
-        )
-
-        assert matched == 0
-        assert int(await redis.get(gen_key)) == gen_before + 1

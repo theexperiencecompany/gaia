@@ -15,6 +15,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.mongodb.indexes import create_short_link_indexes
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.short_links import (
     LIVE_TARGET_UNIQUE_INDEX,
     WORKSPACE_FILE_CONVERSATION_INDEX,
@@ -85,7 +86,7 @@ class TestShortLinksLiveTargetUniqueness:
 
     async def test_a_second_live_link_for_one_target_is_rejected(self, indexed_repo, make_doc):
         await indexed_repo.create(make_doc(user_id="u", target=_todo("t1")))
-        with pytest.raises(DuplicateKeyError, match=LIVE_TARGET_UNIQUE_INDEX):
+        with pytest.raises(AlreadyExistsError, match=LIVE_TARGET_UNIQUE_INDEX):
             await indexed_repo.create(make_doc(user_id="u", target=_todo("t1")))
 
     async def test_two_owners_sharing_a_target_each_hold_their_own_live_link(
@@ -102,7 +103,7 @@ class TestShortLinksLiveTargetUniqueness:
         self, indexed_repo, make_doc
     ):
         await indexed_repo.create(make_doc(target=_file("conv-1", "r.html")))
-        with pytest.raises(DuplicateKeyError, match=LIVE_TARGET_UNIQUE_INDEX):
+        with pytest.raises(AlreadyExistsError, match=LIVE_TARGET_UNIQUE_INDEX):
             await indexed_repo.create(make_doc(target=_file("conv-1", "r.html")))
 
     @pytest.mark.parametrize(

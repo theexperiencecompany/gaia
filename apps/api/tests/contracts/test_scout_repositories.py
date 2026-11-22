@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from pymongo.errors import BulkWriteError
 import pytest
 
 from app.constants.scouts import SIGNAL_MEMORY_RETENTION
 from app.db.mongodb import indexes
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.scouts import ScoutsRepository
 from app.db.repositories.signal_memory import SignalMemoryRepository
 from app.models.scout_models import ScoutDocument, ScoutStatus, Signal
@@ -98,7 +98,7 @@ class TestSignalMemory:
         await raw_collection.create_index("external_id", unique=True)
         await memory.record_seen("someone-else", [_signal("1", "Todo")], _START)
 
-        with pytest.raises(BulkWriteError):
+        with pytest.raises(AlreadyExistsError):
             await memory.record_seen("owner", [_signal("1", "Todo"), _signal("2", "Todo")], _START)
 
         assert [m.external_id for m in await memory.find_for("owner", [_signal("2", None)])] == [
