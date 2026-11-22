@@ -713,6 +713,8 @@ async def build_agent_config(
         configurable["workflow_notify_on_completion"] = inherited.workflow_notify_on_completion
     if inherited.interrupt_reason:
         configurable["interrupt_reason"] = inherited.interrupt_reason
+    if inherited.report_origin is not None:
+        configurable["report_origin"] = inherited.report_origin.model_dump(mode="json")
 
     metadata: dict[str, object] = {
         "user_id": acting_user.user_id,

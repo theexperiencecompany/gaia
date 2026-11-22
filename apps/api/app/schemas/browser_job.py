@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 
 from app.constants.browser import JobEnding
 from app.models.chat_models import ConversationSource
+from app.models.ownership_models import ReportOrigin
 from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
 
 
@@ -34,6 +35,8 @@ class BrowserJobRequest(BaseModel):
     root_request_id: str | None = None
     source_category: str | None = None
     conversation_source: ConversationSource | None = None
+    #: The ask the job's result is part of the answer to; its ending lands carrying it.
+    origin: ReportOrigin | None = None
     #: Credentials the user gave for the task, by the name the task's <secret>name</secret> uses.
     secrets: dict[str, BrowserTaskSecret] = Field(default_factory=dict)
 

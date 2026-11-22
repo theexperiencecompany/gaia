@@ -5,8 +5,8 @@ One executor runs per conversation. This module enforces one rule:
     An inbox entry always becomes a message inside an executor run.
     It never becomes a run of its own.
 
-So an entry carries only {id, text}. Nothing about a run is stored here — every
-writer already holds the context it would need to start one.
+So an entry carries its text and, when it is the rest of an earlier ask (a browser
+job's ending), that ask's origin. Nothing else about a run is stored here.
 
 Storage, framing, the drain decision and the hook that applies it live together
 here on purpose: they are one mechanism. The only piece elsewhere is the commit
@@ -26,23 +26,25 @@ from redis.asyncio.client import Pipeline
 from redis.exceptions import ResponseError
 
 from app.agents.core.background.executor_queue import decode_raw_item
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import NON_WAKING_TAGS, AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_INBOX_PREFIX
 from app.constants.executor import INBOX_ENTRY_ID, INTERRUPTION_NOTICE
 from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, InboxDrain, InboxEntry, agent_configurable
+from app.models.ownership_models import ReportOrigin
 from app.override.langgraph_bigtool.utils import INJECTED_MESSAGES_KEY, State
 from shared.py.wide_events import log
 
 
 class _StoredInboxEntry(TypedDict):
-    """The JSON one inbox entry is stored as; tag is absent on entries written before it existed."""
+    """The JSON one inbox entry is stored as; tag and origin are absent where an entry has none."""
 
     id: str
     text: str
     tag: NotRequired[str]
+    origin: NotRequired[dict[str, object]]
 
 
 def decide_drain(entries: list[InboxEntry], messages: list[AnyMessage]) -> InboxDrain:
@@ -56,6 +58,18 @@ def decide_drain(entries: list[InboxEntry], messages: list[AnyMessage]) -> Inbox
     inject = [entry for entry in entries if entry.id not in committed]
     retire = [entry for entry in entries if entry.id in committed]
     return InboxDrain(inject=inject, retire=retire)
+
+
+def carried_origin(entries: list[InboxEntry]) -> ReportOrigin | None:
+    """Return the one earlier ask the waking work belongs to, so its run reports as that ask.
+
+    None when any of it is new work, or it is several asks': the run is then an ask of its own.
+    """
+    waking = [entry for entry in entries if entry.tag not in NON_WAKING_TAGS]
+    origins = {entry.origin.subject_id: entry.origin for entry in waking if entry.origin}
+    if len(origins) != 1 or any(entry.origin is None for entry in waking):
+        return None
+    return next(iter(origins.values()))
 
 
 def as_interjection(entry: InboxEntry) -> HumanMessage:
@@ -94,6 +108,8 @@ class RedisInbox:
     def _encode(entry: InboxEntry) -> str:
         """Encode deterministically so retire can remove the exact value append wrote."""
         stored: _StoredInboxEntry = {"id": entry.id, "text": entry.text, "tag": entry.tag.value}
+        if entry.origin is not None:
+            stored["origin"] = entry.origin.model_dump(mode="json")
         return json.dumps(stored, sort_keys=True)
 
     async def append(self, entry_id: str, text: str, tag: AgentTag | None = None) -> InboxEntry:
@@ -210,6 +226,7 @@ def _decode(raw: bytes | memoryview | str) -> InboxEntry | None:
             id=payload["id"],
             text=payload["text"],
             tag=AgentTag(payload.get("tag", AgentTag.USER_INTERJECTION)),
+            origin=ReportOrigin.model_validate(payload["origin"]) if "origin" in payload else None,
         )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         log.warning(f"{LogTag.AGENT} Discarding unreadable executor inbox entry")

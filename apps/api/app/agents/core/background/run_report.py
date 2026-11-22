@@ -159,21 +159,21 @@ def run_report(run: ExecutorRun, outcome: RunOutcome) -> RunReport:
             interrupt_reason=run.interrupt_reason,
         )
         return workflow_run_report(workflow, run_key=run.stream_id, outcome=outcome)
-    subject_id = run.task_id or run.stream_id
+    origin = run.origin
     return RunReport(
-        report_id=f"{ASK_REPORT_PREFIX}{subject_id}:{run.stream_id}",
+        report_id=f"{ASK_REPORT_PREFIX}{origin.subject_id}:{run.stream_id}",
         recipient=run.user.user_id,
         producer=ProducerKind.EXECUTOR,
         subject=Subject(
             kind=SubjectKind.ASK,
-            id=subject_id,
+            id=origin.subject_id,
             owner_conversation_id=run.conversation_id,
-            label=run.request_excerpt or ASK_LABEL_FALLBACK,
+            label=origin.request_excerpt or ASK_LABEL_FALLBACK,
         ),
         occurred_at=clock.now(),
         initiative=Initiative.ASKED,
-        delivery_policy=run.delivery_policy,
-        turn_message_id=run.bot_message_id,
+        delivery_policy=origin.delivery_policy,
+        turn_message_id=origin.turn_message_id,
         report=outcome.report,
         result=outcome.result,
         review_problem=outcome.review_problem,

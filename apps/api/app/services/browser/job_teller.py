@@ -116,11 +116,13 @@ def _landing(state: BrowserJobState, ending: BrowserJobEnding) -> InboxLanding:
     """Return the inbox entry that tells ending; a result also wakes a run until it is read."""
     inbox = ExecutorInbox(state.conversation_id)
     text = ending_message(state.job_id, ending)
+    origin = state.request.origin
     if isinstance(ending, BrowserJobStopped):
         return InboxLanding(
-            inbox, InboxEntry(id=str(uuid4()), text=text, tag=AgentTag.BROWSER_STOPPED)
+            inbox,
+            InboxEntry(id=str(uuid4()), text=text, tag=AgentTag.BROWSER_STOPPED, origin=origin),
         )
-    entry = InboxEntry(id=str(uuid4()), text=text, tag=AgentTag.BROWSER_RESULT)
+    entry = InboxEntry(id=str(uuid4()), text=text, tag=AgentTag.BROWSER_RESULT, origin=origin)
     wake = BrowserJobWake(
         job_id=state.job_id,
         conversation_id=state.conversation_id,

@@ -153,6 +153,17 @@ async def get_job_state(job_id: str) -> BrowserJobState | None:
     return await redis_cache.get(_state_key(job_id), model=BrowserJobState)
 
 
+async def live_background_job_of(conversation_id: str, stream_id: str) -> str | None:
+    """Return the conversation's background job that has not ended when the run on stream_id started it."""
+    job_id = await get_conversation_slot(conversation_id)
+    if job_id is None:
+        return None
+    state = await get_job_state(job_id)
+    if state is None or not state.in_background or state.request.stream_id != stream_id:
+        return None
+    return job_id
+
+
 async def live_job_ids() -> list[str]:
     """Return every job recorded as not ended, as the reaper walks them."""
     return [str(job_id) for job_id in await redis_cache.client.smembers(BROWSER_JOB_LIVE_KEY)]

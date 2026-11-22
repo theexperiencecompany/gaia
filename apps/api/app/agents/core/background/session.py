@@ -19,7 +19,7 @@ from app.constants.log_tags import LogTag
 from app.constants.outbox import SUBJECT_LABEL_MAX_CHARS
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
-from app.models.ownership_models import DeliveryPolicy
+from app.models.ownership_models import DeliveryPolicy, ReportOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from shared.py.analytics import Dedupe
@@ -159,6 +159,8 @@ class ExecutorRun:
     interrupt_reason: str | None = None
     #: What the user wrote that started the run, bounded: what its result is called to them.
     request_excerpt: str = ""
+    #: The earlier ask whose work this run carries (a browser job's result): it reports as that ask.
+    reports_for: ReportOrigin | None = None
     active_todo_id: str | None = None
     #: Set only on a tracked todo's own scheduled/triggered run: it executes in its
     #: todo's chat, which keeps its report, and its result goes through todo delivery.
@@ -205,6 +207,7 @@ class ExecutorRun:
             delivery_policy=view.delivery_policy,
             interrupt_reason=view.interrupt_reason,
             request_excerpt=(view.user_request or "")[:SUBJECT_LABEL_MAX_CHARS],
+            reports_for=view.report_origin,
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,
@@ -225,6 +228,16 @@ class ExecutorRun:
             t_dispatch_perf=self.t_dispatch_perf,
             queued=self.queued,
             dispatched_at=self.dispatched_at,
+        )
+
+    @property
+    def origin(self) -> ReportOrigin:
+        """The ask this run's report is about: the one whose work it carries, else its own."""
+        return self.reports_for or ReportOrigin(
+            subject_id=self.task_id or self.stream_id,
+            request_excerpt=self.request_excerpt,
+            delivery_policy=self.delivery_policy,
+            turn_message_id=self.bot_message_id,
         )
 
     @property

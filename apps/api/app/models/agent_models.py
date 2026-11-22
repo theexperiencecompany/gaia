@@ -33,6 +33,7 @@ from app.models.agent_config import (
     run_analytics_context,
 )
 from app.models.chat_models import ToolDataEntry
+from app.models.ownership_models import ReportOrigin
 from app.models.user_models import AuthenticatedUser
 
 __all__ = [
@@ -235,6 +236,8 @@ class InboxEntry:
     id: str
     text: str
     tag: AgentTag = AgentTag.USER_INTERJECTION
+    #: The ask this work belongs to, when it is the rest of an earlier run's ask (a browser job's ending).
+    origin: ReportOrigin | None = None
 
 
 @dataclass(frozen=True, slots=True)

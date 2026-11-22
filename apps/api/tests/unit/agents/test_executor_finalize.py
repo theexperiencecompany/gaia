@@ -47,6 +47,7 @@ from app.agents.core.background.executor_queue import (
     build_lock_value,
     build_run_item,
 )
+from app.agents.core.background.run_report import failed_outcome, run_report
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -78,6 +79,7 @@ from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory, ToolDataEntry
 from app.models.conversation_models import ConversationRunContext
 from app.models.executor_activity_models import ExecutorActivity
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming, ReportOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.hil import bridge
@@ -146,6 +148,10 @@ class _Boundaries:
         )
         #: The outbox's submit: what the run reports.
         self.deliver = stack.enter_context(patch.object(er, "submit", new_callable=AsyncMock))
+        #: The background browser job the run started that is still running; none by default.
+        self.live_job = stack.enter_context(
+            patch.object(er, "live_background_job_of", new_callable=AsyncMock, return_value=None)
+        )
         self.persist_cancelled = stack.enter_context(
             patch.object(er, "persist_cancelled_run", new_callable=AsyncMock)
         )
@@ -661,7 +667,7 @@ class TestAFailedReportDoesNotStrandTheHandoff:
             await asyncio.sleep(0)
 
         boundaries.release.assert_awaited_once()  # and the lock still goes
-        boundaries.read_inbox.assert_awaited_once()
+        assert boundaries.read_inbox.await_count == 2  # before the report, and after the release
         spawn.assert_awaited_once()  # the handed-over work still gets a run
 
     async def test_a_swallowed_lock_release_failure_is_named_in_the_wide_event(
@@ -690,7 +696,9 @@ class TestLockThenInboxHandoff:
 
         boundaries.release.assert_awaited_once()
         boundaries.inbox_cls.assert_called_with("conv-1")
-        boundaries.read_inbox.assert_awaited_once()
+        # Once before the report (whether its ask's browser result is still to come), once after
+        # the release (work that landed too late for the run).
+        assert boundaries.read_inbox.await_count == 2
 
     async def test_carried_work_is_spawned_as_a_fresh_run(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
@@ -1021,6 +1029,112 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
         # Both entries stay in the inbox, each keeping its own tag, for the new
         # run's drain to inject and retire — never stuffed into the seed task.
         assert still_pending == [INTERRUPTION_NOTICE, "book the flight instead"]
+
+
+ORIGIN = ReportOrigin(
+    subject_id="task-1",
+    request_excerpt="book a table for two",
+    delivery_policy=DeliveryPolicy(timing=DeliveryTiming.THE_MOMENT, may_wake=True),
+    turn_message_id="bot-1",
+)
+
+
+def _result_entry(entry_id: str = "r1", origin: ReportOrigin | None = ORIGIN) -> InboxEntry:
+    return InboxEntry(
+        id=entry_id, text="The browser task ended.", tag=AgentTag.BROWSER_RESULT, origin=origin
+    )
+
+
+class TestAReportWaitsForTheBrowserJobItsRunStarted:
+    """Regression: a run told the user "the search is still running", then its job's result came as a "Correction"."""
+
+    async def test_a_run_whose_browser_job_is_still_running_reports_nothing_yet(
+        self, boundaries
+    ) -> None:
+        boundaries.live_job.return_value = "job-1"
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "Started on it.", "final")
+
+        boundaries.live_job.assert_awaited_once_with("conv-1", "s1")
+        boundaries.deliver.assert_not_awaited()
+
+    async def test_a_run_whose_jobs_result_landed_after_its_last_step_reports_nothing_yet(
+        self, boundaries
+    ) -> None:
+        boundaries.pending = [_result_entry()]
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "Started on it.", "final")
+
+        boundaries.deliver.assert_not_awaited()
+
+    async def test_a_result_of_another_ask_does_not_hold_this_runs_report(self, boundaries) -> None:
+        boundaries.pending = [_result_entry(origin=ORIGIN.model_copy(update={"subject_id": "x"}))]
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "Done.", "final")
+
+        boundaries.deliver.assert_awaited_once()
+
+    async def test_a_failed_run_is_reported_even_with_its_job_in_flight(self, boundaries) -> None:
+        """The failure path stops the job, so nothing else would ever tell the user."""
+        boundaries.live_job.return_value = "job-1"
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "boom", "error")
+
+        boundaries.deliver.assert_awaited_once()
+
+
+class TestARunWokenForAnAsksResultReportsAsThatAsk:
+    """Regression: the woken run got a new subject and the fallback label, so the result was a second, unrelated message."""
+
+    @staticmethod
+    async def _woken_with(*entries: InboxEntry) -> ExecutorRun:
+        cache = _FakeInboxCache()
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            stack.enter_context(patch.object(er, "reclaim_dead_lock", AsyncMock(return_value=True)))
+            prepare = stack.enter_context(
+                patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
+            )
+            for entry in entries:
+                cache.client.lists.setdefault(f"{EXECUTOR_INBOX_PREFIX}conv-1", []).append(
+                    ec.RedisInbox._encode(entry)
+                )
+
+            await er.wake_executor_for_inbox("conv-1", AuthenticatedUser(user_id=USER_ID))
+
+        item = prepare.await_args.args[1]
+        return ExecutorRun.from_configurable(
+            item["configurable"],
+            identity=RunIdentity(
+                stream_id="queued_s2",
+                conversation_id="conv-1",
+                task_id=item["task_id"],
+                user_message_id=None,
+            ),
+        )
+
+    async def test_the_woken_run_reports_under_the_ask_its_result_belongs_to(self) -> None:
+        woken = await self._woken_with(_result_entry())
+
+        report = run_report(woken, failed_outcome(None))
+
+        assert (report.subject.id, report.subject.label) == ("task-1", "book a table for two")
+        assert report.report_id == "ask:task-1:queued_s2"
+        assert (report.delivery_policy, report.turn_message_id) == (
+            ORIGIN.delivery_policy,
+            "bot-1",
+        )
+
+    async def test_work_of_no_earlier_ask_is_a_new_ask(self) -> None:
+        user_said = InboxEntry(id="u1", text="also check the menu")
+
+        woken = await self._woken_with(_result_entry(), user_said)
+
+        assert run_report(woken, failed_outcome(None)).subject.id != "task-1"
 
 
 class TestExecutorRunSource:
@@ -1385,6 +1499,15 @@ class TestARunHandsFinalizeWhatItProduced:
         assert self._delivered(h.deliver) == ("all done", "final")
         h.spawn.assert_not_called()
         assert await ec.ExecutorInbox("conv-1").read() == []
+
+    async def test_the_executor_runs_carrying_the_ask_it_reports_on(self, fake_redis: Any) -> None:
+        """What it leaves in flight (a background browser job) must land as part of this ask."""
+        prepare = AsyncMock(return_value=(_executor_ctx(), None))
+        with self._lifecycle(prepare=prepare):
+            await self._drive()
+
+        stamped = prepare.await_args.kwargs["configurable"]["report_origin"]
+        assert ReportOrigin.model_validate(stamped) == _run(RunKind.LIVE).origin
 
     async def test_a_run_whose_setup_raised_leaves_pending_work_for_the_next_run(
         self, fake_redis: Any

@@ -36,6 +36,7 @@ from app.helpers.agent_helpers import (
     recent_user_messages,
 )
 from app.models.agent_models import AgentUserContext, run_analytics_context
+from app.models.ownership_models import ReportOrigin
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
 from app.utils.stream_publishers import ExtractedToolData
@@ -189,6 +190,22 @@ class TestBuildAgentConfig:
             "posthog_session_id": "sess-1",
         }
         assert type(root["analytics_context"]["attribution"]["actor"]) is str
+
+    async def test_a_child_carries_the_ask_its_parent_reports_on(self):
+        """A subagent's browser job must land as part of the ask the executor reports on, too."""
+        origin = ReportOrigin(subject_id="task-1", request_excerpt="book a table")
+        child = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
+                ),
+                thread=AgentThread(
+                    base_configurable={"report_origin": origin.model_dump(mode="json")}
+                ),
+            )
+        )["configurable"]
+
+        assert ReportOrigin.model_validate(child["report_origin"]) == origin
 
     async def test_a_child_whose_parent_has_no_zone_falls_back_to_utc(self):
         configurable = (

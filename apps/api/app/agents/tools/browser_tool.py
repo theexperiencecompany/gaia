@@ -30,6 +30,7 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
+from app.models.ownership_models import ReportOrigin
 from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
 from app.schemas.browser_job import (
     BrowserJobFinished,
@@ -90,6 +91,8 @@ class _RunParams:
     #: The message this turn renders into, which a background run's cards fold into.
     message_id: str | None
     in_background: bool
+    #: The ask the run reports on; the job's ending lands carrying it.
+    origin: ReportOrigin | None
 
 
 class _RunConfigurable(BaseModel):
@@ -105,6 +108,7 @@ class _RunConfigurable(BaseModel):
     source_category: str | None = None
     conversation_source: str | None = None
     bot_message_id: str | None = None
+    report_origin: ReportOrigin | None = None
 
 
 def _run_params(config: RunnableConfig) -> _RunParams:
@@ -122,6 +126,7 @@ def _run_params(config: RunnableConfig) -> _RunParams:
         conversation_source=conv_source,
         message_id=configurable.bot_message_id,
         in_background=runs_in_background(True, agent_configurable(config)),
+        origin=configurable.report_origin,
     )
 
 
@@ -147,6 +152,7 @@ def _job_request(
         root_request_id=params.root_request_id,
         source_category=params.source_category,
         conversation_source=params.conversation_source,
+        origin=params.origin,
     )
 
 

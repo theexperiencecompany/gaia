@@ -21,6 +21,7 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
+from app.models.ownership_models import ReportOrigin
 from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
 from app.schemas.browser_job import (
     BrowserJobFinished,
@@ -263,6 +264,7 @@ async def test_the_job_carries_the_turns_identity_and_provenance(
             "root_request_id": "req-42",
             "source_category": "bot",
             "conversation_source": "discord",
+            "report_origin": {"subject_id": "task-1", "request_excerpt": "book a table"},
         }
     }
 
@@ -281,6 +283,7 @@ async def test_the_job_carries_the_turns_identity_and_provenance(
         "source_category": "bot",
         "conversation_source": ConversationSource.DISCORD,
         "message_id": None,
+        "origin": ReportOrigin(subject_id="task-1", request_excerpt="book a table").model_dump(),
         "secrets": {},
     }
 

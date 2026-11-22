@@ -32,6 +32,7 @@ from app.constants.executor import INBOX_ENTRY_ID
 from app.constants.log_tags import LogTag
 from app.db.redis import AsyncRedisCommands
 from app.models.agent_models import InboxEntry
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming, ReportOrigin
 from app.override.langgraph_bigtool.utils import (
     INJECTED_MESSAGES_KEY,
     State,
@@ -98,6 +99,29 @@ class TestInbox:
         await inbox.retire(first)
 
         assert [entry.id for entry in await inbox.read()] == ["t2"]
+
+    async def test_an_entry_keeps_the_ask_it_belongs_to_and_can_still_be_retired(
+        self, inbox: ExecutorInbox, redis: AsyncRedisCommands
+    ) -> None:
+        """A browser job's result is the rest of an earlier ask; losing that in the store made it a new one."""
+        origin = ReportOrigin(
+            subject_id="task-1",
+            request_excerpt="book a table",
+            delivery_policy=DeliveryPolicy(timing=DeliveryTiming.THE_MOMENT, may_wake=True),
+            turn_message_id="bot-1",
+        )
+        entry = InboxEntry(
+            id="e1", text="the job ended", tag=AgentTag.BROWSER_RESULT, origin=origin
+        )
+        async with redis.pipeline(transaction=True) as pipe:
+            inbox.stage_append(pipe, entry)
+            await pipe.execute()
+
+        [read] = await inbox.read()
+        await inbox.retire(read)
+
+        assert read == entry
+        assert await inbox.read() == []
 
     async def test_discard_removes_only_the_named_ids(self, inbox: ExecutorInbox) -> None:
         await inbox.append("t1", "first")

@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock
 from langchain_core.tools import BaseTool
 import pytest
 
-from app.agents.core.background.executor_channel import decide_drain
+from app.agents.core.background.executor_channel import carried_origin, decide_drain
 from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
 from app.agents.tools.executor_tool import cancel_executor
 from app.constants.agents import AgentTag
@@ -28,6 +28,7 @@ from app.constants.browser import (
 )
 from app.constants.chat import SourceCategory
 from app.models.chat_models import ConversationSource
+from app.models.ownership_models import ReportOrigin
 from app.services.browser.handoff import get_handoff
 from app.services.browser.jobs import get_conversation_slot
 from tests.e2e._harness.browser_job import (
@@ -110,6 +111,25 @@ async def test_the_runs_answer_is_told_once_by_the_executor_run_it_wakes() -> No
         if "subagent_start" in frame
     }
     assert groups == {"browser:b1"}
+
+
+async def test_the_jobs_result_lands_as_part_of_the_ask_that_started_it() -> None:
+    """Regression: the result reached a woken run as a new ask, so the user heard a second, unrelated "Correction"."""
+    origin = ReportOrigin(subject_id="task-1", request_excerpt="book me a table")
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
+            await run_graph(
+                graph,
+                "book me a table",
+                thread_id=CONVERSATION,
+                user_id=USER,
+                **_configurable(report_origin=origin.model_dump(mode="json")),
+            )
+            await world.settle()
+
+    [told] = world.told
+    assert (told.tag, told.origin) == (AgentTag.BROWSER_RESULT, origin)
+    assert carried_origin(world.told) == origin
 
 
 async def test_the_browser_tool_is_bound_from_the_first_model_call_and_there_is_no_join() -> None:

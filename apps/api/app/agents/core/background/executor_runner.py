@@ -27,7 +27,11 @@ from app.agents.core.background.comms_narrator import record_executor_cancellati
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.decided_approvals import decided_approvals_of
 from app.agents.core.background.executor_capture import drain_executor_tool_data
-from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
+from app.agents.core.background.executor_channel import (
+    ExecutorInbox,
+    carried_origin,
+    decide_drain,
+)
 from app.agents.core.background.executor_progress import ProgressRecorder
 from app.agents.core.background.executor_queue import (
     LockClaim,
@@ -88,10 +92,12 @@ from app.models.agent_models import (
     run_analytics_context,
 )
 from app.models.chat_models import ToolDataEntry
+from app.models.ownership_models import ReportOrigin
 from app.models.run_trace_models import RunState
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
+from app.services.browser.jobs import live_background_job_of
 from app.services.executor_trace.recorder import RunOwner, begin_run, end_run
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
@@ -445,7 +451,9 @@ async def _execute_executor(
         with span() as elapsed_prep:
             ctx, error = await prepare_executor_execution(
                 task=task,
-                configurable=configurable,
+                # Inherited by the executor and its children, so work they leave in flight
+                # (a background browser job) lands as part of the ask this run reports on.
+                configurable={**configurable, "report_origin": run.origin.model_dump(mode="json")},
                 stream_id=stream_id,
             )
         log.set(executor={"prep_ms": round(elapsed_prep() * 1000.0, 2)})
@@ -785,7 +793,35 @@ async def _deliver_terminal_outcome(
         return
     if outcome.tool_data is not None:
         await persist_run_cards(run, outcome.tool_data)
+    if outcome.result_type == "final" and await _answer_still_to_come(run, outcome.ctx):
+        log.info(
+            f"{LogTag.AGENT} Run report held: the ask's browser result is still to come",
+            stream_id=run.stream_id,
+            task_id=run.task_id,
+        )
+        return
     await submit(run_report(run, run_outcome))
+
+
+async def _answer_still_to_come(run: ExecutorRun, ctx: SubagentExecutionContext | None) -> bool:
+    """Whether a browser job this run started is still running, or ended with a result it never read.
+
+    The run that reads that result reports as this ask; reporting now would tell the user twice.
+    """
+    if await live_background_job_of(run.conversation_id, run.stream_id) is not None:
+        return True
+    subject_id = run.origin.subject_id
+    landed = [
+        entry
+        for entry in await ExecutorInbox(run.conversation_id).read()
+        if entry.tag not in NON_WAKING_TAGS
+        and entry.origin is not None
+        and entry.origin.subject_id == subject_id
+    ]
+    if not landed:
+        return False
+    # Still in the inbox is not unread: an entry this run's last step took is retired only later.
+    return bool(decide_drain(landed, await thread_messages(ctx) if ctx else []).inject)
 
 
 async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:
@@ -871,6 +907,7 @@ async def wake_executor_for_inbox(
         user,
         EXECUTOR_CARRY_TASK,
         workflow_execution_id=workflow_execution_id,
+        reports_for=carried_origin(await ExecutorInbox(conversation_id).read()),
     ):
         log.info(
             f"{LogTag.AGENT} Work landed with no live run; started a carry run",
@@ -884,6 +921,7 @@ async def _prepare_executor_run(
     task: str,
     *,
     workflow_execution_id: str | None = None,
+    reports_for: ReportOrigin | None = None,
 ) -> PreparedQueuedTask | None:
     """Claim the conversation and materialize a detached run for the task.
 
@@ -905,6 +943,8 @@ async def _prepare_executor_run(
     if source := run_context.conversation_source:
         configurable["conversation_source"] = source
         configurable["source_category"] = SourceCategory.from_source(source).value
+    if reports_for is not None:
+        configurable["report_origin"] = reports_for.model_dump(mode="json")
     task_id = str(uuid4())
     # Equivalent under mutation: prepare_run_from_item claims the conversation it is
     # handed, never this item's copy, and the item is never stored.
@@ -931,10 +971,15 @@ async def _start_executor_run(
     task: str,
     *,
     workflow_execution_id: str | None = None,
+    reports_for: ReportOrigin | None = None,
 ) -> bool:
     """Materialize and spawn a detached run for the task. Returns whether it started."""
     prepared = await _prepare_executor_run(
-        conversation_id, user, task, workflow_execution_id=workflow_execution_id
+        conversation_id,
+        user,
+        task,
+        workflow_execution_id=workflow_execution_id,
+        reports_for=reports_for,
     )
     if prepared is None:
         return False
@@ -972,6 +1017,7 @@ async def _carry_pending_into_new_run(
             run.user,
             EXECUTOR_CARRY_TASK,
             workflow_execution_id=run.workflow_execution_id,
+            reports_for=carried_origin(carry),
         )
         # Equivalent under mutation: the branch guards only a log.info.
         if not started:  # pragma: no mutate

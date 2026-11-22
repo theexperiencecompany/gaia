@@ -131,7 +131,7 @@ class TestExecuteExecutorWiring:
 
         prepare.assert_awaited_once_with(
             task="the task",
-            configurable={"user_id": "u1"},
+            configurable={"user_id": "u1", "report_origin": _RUN.origin.model_dump(mode="json")},
             stream_id="stream-1",
         )
         log_mock.set.assert_called_once_with(executor={"prep_ms": 123.46})

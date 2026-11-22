@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
-from app.models.ownership_models import DeliveryPolicy
+from app.models.ownership_models import DeliveryPolicy, ReportOrigin
 from app.models.presence_models import PresenceSnapshot
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.context import AnalyticsContext, current_analytics_context
@@ -173,6 +173,9 @@ class AgentConfigurable(TypedDict, total=False):
     delivery_policy: dict[str, object]
     #: Why this run interrupts the user's quiet hours; absent for any other run.
     interrupt_reason: str
+    #: The ask this run tree reports on, as a ReportOrigin dump: stamped on an executor run and
+    #: inherited by its children, so work it leaves in flight lands carrying it. Survives queueing.
+    report_origin: dict[str, object]
     #: A playbook replay stopped partway and the agent is finishing it: the
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
@@ -266,6 +269,7 @@ class AgentConfigurableView(BaseModel):
     workflow_notify_on_completion: bool = True
     delivery_policy: DeliveryPolicy = DeliveryPolicy()
     interrupt_reason: str | None = None
+    report_origin: ReportOrigin | None = None
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
 

@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.agents import TimeHorizon
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
@@ -40,6 +40,23 @@ class DeliveryPolicy(BaseModel):
         if self.channel is not None and self.channel not in BOT_CONVERSATION_SOURCES:
             raise ValueError(f"{self.channel.value} is not a chat app a message can be sent to")
         return self
+
+
+class ReportOrigin(BaseModel):
+    """The ask a run's report is about, carried with work that reaches a later run for it.
+
+    A browser job's result wakes a new run; that run reports as part of this ask, not as a
+    new one, so the user hears one answer under the request they made.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    subject_id: str = Field(min_length=1)
+    #: What the user wrote, bounded: what the answer is called to them.
+    request_excerpt: str = ""
+    delivery_policy: DeliveryPolicy = DeliveryPolicy()
+    #: The turn whose status chip waits on the answer.
+    turn_message_id: str | None = None
 
 
 @dataclass(frozen=True)
