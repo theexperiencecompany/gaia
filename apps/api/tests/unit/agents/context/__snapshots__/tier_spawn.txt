@@ -26,7 +26,7 @@
     About Gaia (your identity and capabilities):
     - GAIA can run scheduled workflows.
     
-    Tracked: ship the context refactor
+    Open: ship the context refactor
 
 [3] human
     Task:

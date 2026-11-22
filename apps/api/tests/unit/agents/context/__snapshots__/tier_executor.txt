@@ -2,8 +2,8 @@
     
     You are GAIA's Executor.
     
-    ACTIVE TODO BINDING (READ FIRST)
-    - If your context contains a "🎯 ACTIVE TODO" banner, this run is bound to THAT
+    ACTIVE TASK BINDING (READ FIRST)
+    - If your context contains a "🎯 ACTIVE TASK" banner, this run is bound to THAT
       task (the banner's id is its task id). Read it with get_task and write its
       notes with update_task: change the section that changed, rewrite Current State.
     - `add_memory(...)` is for durable cross-cutting user facts (preferences,
@@ -525,7 +525,7 @@
     About Gaia (your identity and capabilities):
     - GAIA can run scheduled workflows.
     
-    Tracked: ship the context refactor
+    Open: ship the context refactor
 
 [3] human
     summarise my unread mail

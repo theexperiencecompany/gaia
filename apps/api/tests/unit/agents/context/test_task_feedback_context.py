@@ -13,11 +13,14 @@ from tests._harness.context_sources import ContextSources
 
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
-from app.models.todo_models import TodoDocument
+from app.constants.tasks import Assignee
+from app.models.task_models import TaskDocument
 
 pytestmark = pytest.mark.unit
 
-DESK = TodoDocument(id="66f838cc8829054e5f10e401", user_id="user-alpha", title="Inbox desk")
+DESK = TaskDocument(
+    id="task_5e10e4016f83", user_id="user-alpha", title="Inbox desk", assignee=Assignee.GAIA
+)
 DELIVERED = AIMessage(
     content=(
         f'[Delivered to the user on WhatsApp — result of tracked todo "Inbox desk" (id {DESK.id})]: '
@@ -40,14 +43,14 @@ class TestTheCommsTurnAnsweringADeliveredResult:
 
         assert "FEEDBACK ON A TASK IS APPLIED:" in static
         assert (
-            "call_executor(active_todo_id=<that task's id>, "
+            "call_executor(active_task_id=<that task's id>, "
             'task="Apply the user\'s feedback to this task: <their words>")'
         ) in static
 
     async def test_the_delivered_result_with_its_todo_id_precedes_the_reply(self) -> None:
         texts = [text_of(message) for message in await _comms_reply_to_the_delivery()]
 
-        assert texts.index(DELIVERED.content) < texts.index(FEEDBACK)
+        assert texts.index(str(DELIVERED.content)) < texts.index(FEEDBACK)
 
 
 class TestFeedbackOnAChatDraft:
@@ -86,17 +89,17 @@ class TestTheExecutorApplyingTheFeedback:
             AgentTier.EXECUTOR,
             ContextSeed(
                 query=f"Apply the user's feedback to this task: {FEEDBACK}",
-                sources=ContextSources(active_todo=DESK),
-                configurable_overrides={"active_todo_id": DESK.id},
+                sources=ContextSources(active_task=DESK),
+                configurable_overrides={"active_task_id": DESK.id},
             ),
         )
         return "\n".join(text_of(message) for message in messages)
 
-    async def test_it_is_bound_to_the_todo_and_told_to_obey_its_rules(self) -> None:
+    async def test_it_is_bound_to_the_task_and_told_to_obey_its_rules(self) -> None:
         context = await self._context()
 
-        assert f"🎯 ACTIVE TODO (this run is bound to this todo)\n   id: {DESK.id}\n" in context
-        assert "Its Standing rules are the user's instructions for this todo" in context
+        assert f"🎯 ACTIVE TASK (this run is bound to this task)\n   id: {DESK.id}\n" in context
+        assert "Its Standing rules are the user's instructions for this task" in context
 
     async def test_it_is_told_where_each_kind_of_feedback_lives(self) -> None:
         context = await self._context()
