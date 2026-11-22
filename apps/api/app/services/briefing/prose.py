@@ -154,13 +154,21 @@ def _repeat_problems(draft: BriefVoice, recent: RecentLines) -> list[str]:
     ]
 
 
-def _frequency_problems(name: str, line: str, grounds: str) -> list[str]:
+def _unfounded_frequencies(line: str, grounds: str) -> list[str]:
+    """Return each how-often claim in line that no fact makes, casefolded."""
     grounded = {claim.casefold() for claim in _FREQUENCY_RE.findall(grounds)}
     return [
-        f"the {name} says how often something happens ({claim.casefold()!r}) and no fact says "
-        "so; say only what today's facts show"
+        claim.casefold()
         for claim in _FREQUENCY_RE.findall(line)
         if claim.casefold() not in grounded
+    ]
+
+
+def _frequency_problems(name: str, line: str, grounds: str) -> list[str]:
+    return [
+        f"the {name} says how often something happens ({claim!r}) and no fact says "
+        "so; say only what today's facts show"
+        for claim in _unfounded_frequencies(line, grounds)
     ]
 
 
@@ -213,7 +221,7 @@ def _holds(name: str, text: str, writing: Writing) -> bool:
     """Whether a field's text passes every check its sentences answer to, frequency included."""
     if _field_problems(name, text, writing.values):
         return False
-    return not _frequency_problems(name, render_slots(text, writing.values, {}), writing.grounds)
+    return not _unfounded_frequencies(render_slots(text, writing.values, {}), writing.grounds)
 
 
 def _gap(kept: str, dropped: str) -> str:
@@ -228,20 +236,20 @@ def _sound_sentences(name: str, text: str, writing: Writing) -> tuple[str, int]:
     the salvaged brief prints it in.
     """
     kept: list[tuple[str, str]] = []
-    dropped = 0
-    after_drop = False
-    for sentence, gap in sentence_breaks(text):
-        so_far = "".join(s + g for s, g in kept)
-        dangling = after_drop and points_back(sentence, writing.values)
-        if dangling or not _holds(name, so_far + sentence, writing):
-            dropped += 1
-            after_drop = True
+    dropped_at: set[int] = set()
+    for index, (sentence, gap) in enumerate(sentence_breaks(text)):
+        dangling = index - 1 in dropped_at and points_back(sentence, writing.values)
+        if dangling or not _holds(name, _joined(kept) + sentence, writing):
+            dropped_at.add(index)
             if kept:
                 kept[-1] = (kept[-1][0], _gap(kept[-1][1], gap))
             continue
         kept.append((sentence, gap))
-        after_drop = False
-    return "".join(s + g for s, g in kept).strip(), dropped
+    return _joined(kept).strip(), len(dropped_at)
+
+
+def _joined(kept: list[tuple[str, str]]) -> str:
+    return "".join(sentence + gap for sentence, gap in kept)
 
 
 def _salvaged(voice: BriefVoice | None, writing: Writing) -> tuple[BriefVoice, BriefVoice]:
@@ -251,12 +259,20 @@ def _salvaged(voice: BriefVoice | None, writing: Writing) -> tuple[BriefVoice, B
     and a message left empty gets the plain list.
     """
     plain = plain_voice(writing)
-    salvage = None if voice is None else _kept_voice(voice, writing, plain)
-    held = None if salvage is None else _held_to_facts(salvage, writing)
-    log.set_ns(f"brief_{_VOICE_CALL}", plain=not isinstance(held, BriefVoice))
-    if salvage is None or not isinstance(held, BriefVoice):
-        return plain, _draft(plain, writing.values)
-    return salvage, held
+    salvage = None if voice is None else _held_salvage(voice, writing, plain)
+    log.set_ns(f"brief_{_VOICE_CALL}", plain=salvage is None)
+    return salvage or (plain, _draft(plain, writing.values))
+
+
+def _held_salvage(
+    voice: BriefVoice, writing: Writing, plain: BriefVoice
+) -> tuple[BriefVoice, BriefVoice] | None:
+    """Return what holds of voice and its rendered draft; None when nothing that holds is left."""
+    kept = _kept_voice(voice, writing, plain)
+    if kept is None:
+        return None
+    held = _held_to_facts(kept, writing)
+    return (kept, held) if isinstance(held, BriefVoice) else None
 
 
 def _kept_text(

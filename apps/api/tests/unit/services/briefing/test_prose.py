@@ -718,3 +718,64 @@ class TestTheLinksAMessageMakes:
         mint.assert_awaited_once_with(
             _USER_ID, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t2")
         )
+
+
+class TestASalvageCountsAndKeepsByField:
+    """Each field drops what breaks or repeats, every drop is counted, and what is left must still hold."""
+
+    _VALUES = SlotValues(
+        facts={
+            1: BriefFact(title="LinkedIn connect attempt failed"),
+            2: BriefFact(title="Churned-subscriber email", app="Gmail"),
+        },
+        counts={},
+    )
+    _HEADLINE = "[The LinkedIn connect](fact:1) failed"
+    _KEPT_MESSAGE = "[The LinkedIn connect](fact:1) failed on an auth error."
+
+    def _last(self) -> BriefVoice:
+        return _voice(
+            headline=self._HEADLINE,
+            lede="It is a day. [The churn email](fact:2) is your goal work.",
+            caption="Reply to the churn email",
+            message=f"{self._KEPT_MESSAGE} [The churn email](fact:2) is a GAIA todo.",
+        )
+
+    async def _salvaged(
+        self, monkeypatch: pytest.MonkeyPatch, recent: RecentLines
+    ) -> tuple[BriefVoice, dict[str, object]]:
+        last = self._last()
+        monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[last] * 2))
+        async with captured_wide_event() as event:
+            voice, _ = await written_brief(
+                _USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1, recent=recent)
+            )
+        return voice, event["brief_voice"]
+
+    async def test_each_fields_drop_is_counted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        recent = RecentLines(
+            headlines=[render_slots(self._HEADLINE, self._VALUES, {})],
+            captions=["Reply to the churn email"],
+        )
+
+        voice, event = await self._salvaged(monkeypatch, recent)
+
+        assert voice == self._last().model_copy(
+            update={
+                "headline": "Your brief",
+                "lede": "It is a day.",
+                "caption": "",
+                "message": self._KEPT_MESSAGE,
+            }
+        )
+        assert (event["dropped_sentences"], event["plain"]) == (4, False)
+
+    async def test_a_message_kept_on_a_recent_opening_still_fails_its_check_and_goes_plain(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        recent = RecentLines(openings=[render_slots(self._KEPT_MESSAGE, self._VALUES, {})])
+
+        voice, event = await self._salvaged(monkeypatch, recent)
+
+        assert voice == prose.plain_voice(Writing(values=self._VALUES, lead=1))
+        assert event["plain"] is True
