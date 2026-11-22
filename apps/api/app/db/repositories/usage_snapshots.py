@@ -17,7 +17,6 @@ class UsageSnapshotsRepository(UserScopedRepository[UserUsageSnapshot, UsageSnap
     document_model = UserUsageSnapshot
     update_model = UsageSnapshotUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def upsert_hourly(self, snapshot: UserUsageSnapshot) -> str:
         """Merge usage into the user's current-hour snapshot, or insert a new one; returns the snapshot id."""
@@ -39,7 +38,6 @@ class UsageSnapshotsRepository(UserScopedRepository[UserUsageSnapshot, UsageSnap
                         "features": [feature.model_dump() for feature in snapshot.features],
                     }
                 },
-                scope=snapshot.user_id,
                 return_document=False,
             )
             return existing.id

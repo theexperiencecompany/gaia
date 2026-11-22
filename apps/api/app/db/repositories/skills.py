@@ -9,7 +9,6 @@ repository writes updated_at itself.
 from datetime import UTC, datetime
 
 from app.agents.skills.models import Skill, SkillUpdate
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.base import MongoRepository
 
@@ -19,7 +18,6 @@ class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
     document_model = Skill
     update_model = SkillUpdate
     uses_object_id = False
-    cache_policy = None
     auto_stamp_timestamps = False  # installed_at/updated_at are ISO strings, written by hand
 
     async def find_by_name(
@@ -34,9 +32,7 @@ class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
         return await self._find_one({"_id": skill_id, "user_id": user_id})
 
     async def delete_for_user(self, skill_id: str, user_id: str) -> bool:
-        deleted = await self._delete_many(
-            {"_id": skill_id, "user_id": user_id}, scope=REPO_GLOBAL_SCOPE
-        )
+        deleted = await self._delete_many({"_id": skill_id, "user_id": user_id})
         return deleted > 0
 
     async def list_for_user(
@@ -66,7 +62,6 @@ class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
         matched = await self._apply_raw_update_unfetched(
             {"_id": skill_id, "user_id": user_id, "enabled": {"$ne": enabled}},
             {"$set": {"enabled": enabled, "updated_at": datetime.now(UTC).isoformat()}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return matched > 0
 
@@ -77,7 +72,6 @@ class SkillsRepository(MongoRepository[Skill, SkillUpdate]):
         return await self._apply_raw_update(
             {"_id": skill_id, "user_id": user_id},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
 

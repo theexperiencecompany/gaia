@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.subscriptions import SubscriptionsRepository
 from app.models.payment_models import SubscriptionUpdate
 
@@ -14,7 +13,7 @@ class TestDeleteAllForUser:
         with patch.object(repo, "_delete_many", new=AsyncMock(return_value=3)) as delete_many:
             deleted = await repo.delete_all_for_user("user-1")
 
-        delete_many.assert_awaited_once_with({"user_id": "user-1"}, scope=REPO_GLOBAL_SCOPE)
+        delete_many.assert_awaited_once_with({"user_id": "user-1"})
         assert deleted == 3
 
 
@@ -35,7 +34,6 @@ class TestApplyUpdateByDodoId:
             {"dodo_subscription_id": "sub_1"},
             {"$set": {"status": "expired"}},
             extra_filter={"$or": [{"last_event_at": None}, {"last_event_at": {"$lte": seen_at}}]},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 

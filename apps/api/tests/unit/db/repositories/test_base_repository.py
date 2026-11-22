@@ -127,7 +127,7 @@ async def _set_written(repo: _BaseRepository, *, touch: bool = True) -> dict[str
     collection = MagicMock()
     collection.find_one_and_update = AsyncMock(return_value=None)
     with patch("app.db.repositories.base.get_async_collection", return_value=collection):
-        await repo._apply_update("abc", "u1", {}, _Update(name="x"), touch=touch)
+        await repo._apply_update("abc", {}, _Update(name="x"), touch=touch)
     (_filter, operations), _ = collection.find_one_and_update.await_args
     return operations["$set"]
 
@@ -151,6 +151,27 @@ async def test_a_repository_that_stamps_nothing_writes_no_updated_at() -> None:
 
 async def test_a_document_without_updated_at_is_not_stamped() -> None:
     assert await _set_written(_concrete()()) == {"name": "x"}
+
+
+async def test_an_unfetched_update_applies_its_gate_and_array_filters() -> None:
+    collection = MagicMock()
+    collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    array_filters = [{"item.id": "a"}]
+    with patch("app.db.repositories.base.get_async_collection", return_value=collection):
+        matched = await _concrete()()._apply_raw_update_unfetched(
+            {"name": "x"},
+            {"$set": {"items.$[item].done": True}},
+            extra_filter={"owner": "u1"},
+            array_filters=array_filters,
+        )
+
+    assert matched == 1
+    collection.update_one.assert_awaited_once_with(
+        {"name": "x", "owner": "u1"},
+        {"$set": {"items.$[item].done": True}},
+        array_filters=array_filters,
+        upsert=False,
+    )
 
 
 async def test_find_one_asks_its_own_collection_with_the_filter_and_order() -> None:
@@ -350,10 +371,15 @@ def test_a_public_sync_method_and_a_private_coroutine_are_left_unwrapped() -> No
     async def _helper(self: object) -> None:
         return None
 
-    repo_class = _concrete(label=label, _helper=_helper)
+    async def twin(self: object) -> None:
+        return None
+
+    twin_name = "xǁThingRepositoryǁ_helper__mutmut_orig"
+    repo_class = _concrete(label=label, _helper=_helper, **{twin_name: twin})
 
     assert repo_class.__dict__["label"] is label
     assert repo_class.__dict__["_helper"] is _helper
+    assert repo_class.__dict__[twin_name] is twin
 
 
 async def test_a_repository_that_skips_the_read_back_returns_the_insert_under_its_new_id() -> None:

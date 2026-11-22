@@ -13,7 +13,6 @@ neither benefits from an id-keyed entity cache. Matches the workflows repository
 from datetime import UTC, datetime
 from typing import Any
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.reminder_models import (
     ACTIVE_REMINDER_STATUSES,
@@ -31,7 +30,6 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
     document_model = ReminderDocument
     update_model = ReminderUpdate
     uses_object_id = True
-    cache_policy = None
 
     # ------------------------------------------------------------------ reads
 
@@ -133,7 +131,6 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         result = await self._apply_raw_update(
             filter_,
             {"$set": {"status": ReminderStatus.EXECUTING.value, "updated_at": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return result is not None
 
@@ -141,9 +138,7 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         self, reminder_id: str, user_id: str, update: ReminderUpdate
     ) -> ReminderDocument | None:
         """Apply a flat $set update to the user's reminder; None when no matching reminder exists."""
-        return await self._apply_update(
-            reminder_id, REPO_GLOBAL_SCOPE, {"user_id": user_id}, update
-        )
+        return await self._apply_update(reminder_id, {"user_id": user_id}, update)
 
     async def set_status(
         self,
@@ -170,9 +165,7 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
             set_fields["scheduled_at"] = scheduled_at
         if pause_reason is not None:
             set_fields["pause_reason"] = pause_reason.value
-        result = await self._apply_raw_update(
-            filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
-        )
+        result = await self._apply_raw_update(filter_, {"$set": set_fields})
         return result is not None
 
     async def delete_finished_before(self, cutoff: datetime) -> int:
@@ -182,7 +175,6 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
                 "status": {"$in": [ReminderStatus.COMPLETED.value, ReminderStatus.CANCELLED.value]},
                 "updated_at": {"$lt": cutoff},
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
 

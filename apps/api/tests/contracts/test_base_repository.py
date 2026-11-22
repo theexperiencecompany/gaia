@@ -9,8 +9,11 @@ throwaway collection) drives the whole base:
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+import os
+import time
 
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict
@@ -18,10 +21,16 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
 from app.constants.cache import REPO_ENTITY_TTL, REPO_QUERY_TTL
-from app.db.repositories.base import MongoRepository, UserScopedRepository, cached_query
+from app.db.repositories.base import MongoRepository
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import (
+    CachedMongoRepository,
+    CachedUserScopedRepository,
+    cached_query,
+)
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.models.document_models import MongoDocument, UserScopedDocument
+from app.utils.errors import EmptyUpdateError
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 
@@ -45,7 +54,7 @@ class _CountResult(BaseModel):
     total: int
 
 
-class _FixtureRepository(UserScopedRepository[_FixtureDocument, _FixtureUpdate]):
+class _FixtureRepository(CachedUserScopedRepository[_FixtureDocument, _FixtureUpdate]):
     collection_name = "contract_fixture"
     document_model = _FixtureDocument
     update_model = _FixtureUpdate
@@ -62,7 +71,7 @@ class _FixtureRepository(UserScopedRepository[_FixtureDocument, _FixtureUpdate])
     async def retitle_all(self, user_id: str, titles: dict[str, str]) -> int:
         return await self._bulk_set(
             [(doc_id, _FixtureUpdate(title=title)) for doc_id, title in titles.items()],
-            scope=user_id,
+            user_id=user_id,
         )
 
     async def try_create(self, doc: _FixtureDocument) -> bool:
@@ -124,9 +133,7 @@ class TestBasePrimitives:
         created = await repo.create(make_doc(user_id="u", count=5))
         gen_key = repo.cache_policy.generation_key("u")
         gen_before = int(await redis.get(gen_key))
-        updated = await repo._increment(
-            created.id, "count", 3, scope="u", extra_filter={"user_id": "u"}
-        )
+        updated = await repo._increment(created.id, "count", 3, extra_filter={"user_id": "u"})
         assert updated is not None
         assert updated.count == 8
         assert int(await redis.get(gen_key)) == gen_before + 1
@@ -136,13 +143,64 @@ class TestBasePrimitives:
         b = await repo.create(make_doc(user_id="u", title="b"))
         modified = await repo._bulk_set(
             [(a.id, _FixtureUpdate(title="A")), (b.id, _FixtureUpdate(title="B"))],
-            scope="u",
+            user_id="u",
         )
         assert modified == 2
         after_a = await repo.get(a.id, user_id="u")
         after_b = await repo.get(b.id, user_id="u")
         assert after_a is not None and after_a.title == "A"
         assert after_b is not None and after_b.title == "B"
+
+    async def test_bulk_set_stamps_updated_at_on_every_document(self, repo, make_doc):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await asyncio.sleep(0.01)  # Mongo keeps milliseconds; the stamp must land in a later one
+        await repo._bulk_set(
+            [(a.id, _FixtureUpdate(title="A")), (b.id, _FixtureUpdate(title="B"))], user_id="u"
+        )
+        for created in (a, b):
+            after = await repo.get(created.id, user_id="u")
+            assert after is not None and after.updated_at is not None
+            assert created.updated_at is not None
+            assert after.updated_at.replace(tzinfo=UTC) > created.updated_at.replace(tzinfo=UTC)
+
+    async def test_bulk_set_stamps_utc_whatever_the_host_timezone(self, repo, make_doc):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        original_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Asia/Kolkata"
+        time.tzset()
+        try:
+            await repo._bulk_set([(a.id, _FixtureUpdate(title="A"))], user_id="u")
+        finally:
+            if original_tz is None:
+                del os.environ["TZ"]
+            else:
+                os.environ["TZ"] = original_tz
+            time.tzset()
+        after = await repo.get(a.id, user_id="u")
+        assert after is not None and after.updated_at is not None
+        skew = datetime.now(UTC) - after.updated_at.replace(tzinfo=UTC)
+        assert abs(skew) < timedelta(minutes=1)
+
+    async def test_bulk_set_with_no_updates_modifies_nothing(self, repo):
+        assert await repo._bulk_set([], user_id="u") == 0
+
+    async def test_bulk_set_leaves_updated_at_alone_when_stamping_is_off(
+        self, repo, make_doc, monkeypatch
+    ):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        monkeypatch.setattr(type(repo), "auto_stamp_timestamps", False)
+        await asyncio.sleep(0.01)
+        await repo._bulk_set([(a.id, _FixtureUpdate(title="A"))], user_id="u")
+        after = await repo.get(a.id, user_id="u")
+        assert after is not None and after.updated_at == a.updated_at
+
+    async def test_bulk_set_rejects_an_update_with_no_fields_naming_the_document(
+        self, repo, make_doc
+    ):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        with pytest.raises(EmptyUpdateError, match=f"bulk update for {a.id} has no fields to set"):
+            await repo._bulk_set([(a.id, _FixtureUpdate())], user_id="u")
 
     async def test_a_bulk_set_that_fails_partway_leaves_no_stale_cache(
         self, repo, make_doc, raw_collection
@@ -157,7 +215,7 @@ class TestBasePrimitives:
         with pytest.raises(BulkWriteError):
             await repo._bulk_set(
                 [(a.id, _FixtureUpdate(title="A")), (b.id, _FixtureUpdate(title="A"))],
-                scope="u",
+                user_id="u",
             )
 
         after_a = await repo.get(a.id, user_id="u")
@@ -187,7 +245,7 @@ class TestBasePrimitives:
         await repo.get(b.id, user_id="u")
         assert await redis.get(repo.cache_policy.entity_key("u", a.id)) is not None
 
-        deleted = await repo._delete_many({"user_id": "u"}, scope="u")
+        deleted = await repo._delete_many({"user_id": "u"})
         assert deleted == 2
         # Entity keys evicted — a by-id read can't be served the deleted doc.
         assert await redis.get(repo.cache_policy.entity_key("u", a.id)) is None
@@ -212,7 +270,7 @@ class TestBasePrimitives:
         gen_key = repo.cache_policy.generation_key("u")
         gen_before = int(await redis.get(gen_key))
         updated = await repo._apply_raw_update(
-            {"_id": repo._id_value(created.id)}, {"$set": {"count": 9}}, scope="u"
+            {"_id": repo._id_value(created.id), "user_id": "u"}, {"$set": {"count": 9}}
         )
         assert updated is not None and updated.count == 9
         ent = await redis.get(repo.cache_policy.entity_key("u", created.id))
@@ -222,13 +280,12 @@ class TestBasePrimitives:
     async def test_apply_raw_update_unset_and_gate_miss(self, repo, make_doc):
         created = await repo.create(make_doc(user_id="u", count=5))
         unset = await repo._apply_raw_update(
-            {"_id": repo._id_value(created.id)}, {"$unset": {"count": ""}}, scope="u"
+            {"_id": repo._id_value(created.id), "user_id": "u"}, {"$unset": {"count": ""}}
         )
         assert unset is not None and unset.count == 0  # field removed → model default
         missed = await repo._apply_raw_update(
-            {"_id": repo._id_value(created.id)},
+            {"_id": repo._id_value(created.id), "user_id": "u"},
             {"$set": {"count": 1}},
-            scope="u",
             extra_filter={"count": 999},
         )
         assert missed is None  # extra_filter gate did not match
@@ -239,14 +296,11 @@ class TestBasePrimitives:
         await repo.get(created.id, user_id="u")  # populate the entity cache
 
         refused = await repo._apply_update(
-            created.id, "u", {"user_id": "u", "count": 999}, _FixtureUpdate(title="edited")
+            created.id, {"user_id": "u", "count": 999}, _FixtureUpdate(title="edited")
         )
 
         assert refused is None
         assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is None
-
-
-_DOUBLE_COUNT = [{"$set": {"count": {"$multiply": ["$count", 2]}}}]
 
 
 class TestDriverErrorTranslation:
@@ -310,7 +364,7 @@ class _GlobalUpdate(BaseModel):
     tag: str | None = None
 
 
-class _GlobalRepository(MongoRepository[_GlobalDocument, _GlobalUpdate]):
+class _GlobalRepository(CachedMongoRepository[_GlobalDocument, _GlobalUpdate]):
     collection_name = "contract_fixture"
     document_model = _GlobalDocument
     update_model = _GlobalUpdate
@@ -335,6 +389,19 @@ class TestGlobalRepository:
         assert updated is not None and updated.name == "after"
         assert await global_repo.delete(created.id) is True
         assert await global_repo.get(created.id) is None
+
+    async def test_a_write_refreshes_the_entry_and_bumps_the_global_generation(
+        self, global_repo, redis
+    ):
+        created = await global_repo.create(_GlobalDocument(name="before"))
+        gen_key = global_repo.cache_policy.generation_key("global")
+        gen_before = int(await redis.get(gen_key))
+
+        await global_repo.update(created.id, _GlobalUpdate(name="after"))
+
+        cached = await redis.get(global_repo.cache_policy.entity_key("global", created.id))
+        assert _GlobalDocument.model_validate_json(cached).name == "after"
+        assert int(await redis.get(gen_key)) == gen_before + 1
 
     async def test_count(self, global_repo):
         await global_repo.create(_GlobalDocument(name="a"))
@@ -373,7 +440,6 @@ class _KeyedRepository(MongoRepository[_KeyedDocument, _KeyedUpdate]):
     update_model = _KeyedUpdate
     uses_object_id = True
     identity_field = "ref"
-    cache_policy = None
 
 
 @pytest.fixture
