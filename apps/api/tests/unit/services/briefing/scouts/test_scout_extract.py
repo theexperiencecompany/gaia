@@ -425,6 +425,10 @@ class TestAMovedShape:
                 {"reviews": {"items": [_pr(1, title={"text": "x"})]}},
                 "title is a dict, not the value the scout learned",
             ),
+            (
+                {"reviews": {"items": ["PR 1", 2]}},
+                "$steps.reviews is not in the current for_each element",
+            ),
         ],
         ids=[
             "no list",
@@ -433,6 +437,7 @@ class TestAMovedShape:
             "no title",
             "id not text",
             "title not text",
+            "items not objects",
         ],
     )
     def test_a_result_where_no_item_reads_raises(

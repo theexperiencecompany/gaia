@@ -347,6 +347,13 @@ class TestLearnFreezeReplay:
         assert [s.people_you for s in learned.signals] == [["Priya"]]
         assert [s.people_you for s in replayed] == [["Priya"]]
 
+    async def test_a_reported_page_link_is_kept(self) -> None:
+        app = _App([_ISSUE])
+        with _seams(app, _report(steps=[], sources=[])):
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+
+        assert [s.url for s in learned.signals] == ["https://linear.app/acme/issue/ENG-12"]
+
     async def test_a_reported_api_endpoint_is_no_link(self) -> None:
         """GitHub's learn reported api.github.com PR links, which open as JSON, not the PR (2026-11-22)."""
         signals = [
