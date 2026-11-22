@@ -154,7 +154,7 @@ def internal_machinery(run: CaseRun) -> tuple[float, str]:
 def internal_tags(run: CaseRun) -> tuple[float, str]:
     """Fail if any internal channel tag appears in a user-facing reply.
 
-    Matched open OR closed: a model that echoes only </executor_result> at
+    Matched open OR closed: a model that echoes only </server_restart> at
     the end of an otherwise clean reply has still leaked the plumbing.
     """
     said = _assistant_text(run)

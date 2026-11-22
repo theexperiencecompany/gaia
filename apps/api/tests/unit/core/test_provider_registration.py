@@ -29,6 +29,7 @@ from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import StartupService
 from app.services.todos.desk_mail_buckets import desk_bucketed_views
 from app.utils.concurrency import reset_captured_loop
+from app.utils.errors import UnmigratedConversationError
 
 _MOD = "app.core.provider_registration"
 
@@ -42,6 +43,7 @@ _EAGER_ENTRYPOINTS = (
     "init_system_subtree",
     "declare_outbound_topology_on_startup",
     "warmup_tools_cache",
+    "refuse_unmigrated_conversations",
 )
 
 
@@ -205,3 +207,19 @@ class TestMainAppRegistersTheBroadcastListener:
         await unified_startup("arq_worker")
 
         assert [entry for entry in seen if entry[0] is listener] == []
+
+
+@pytest.mark.parametrize("context", ["main_app", "arq_worker"])
+async def test_a_conversation_still_in_the_old_shape_stops_the_boot_before_anything_serves(
+    auto_init_spy: AsyncMock, context: Literal["main_app", "arq_worker"]
+) -> None:
+    refusal = UnmigratedConversationError(message="conversation c1 still holds messages")
+    with (
+        patch.object(
+            provider_registration, "refuse_unmigrated_conversations", AsyncMock(side_effect=refusal)
+        ),
+        pytest.raises(UnmigratedConversationError),
+    ):
+        await unified_startup(context)
+
+    auto_init_spy.assert_not_awaited()

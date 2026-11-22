@@ -1,7 +1,7 @@
 """Ledger branch of the approval gate (flag on: register, never interrupt)."""
 
-from datetime import UTC, datetime
-from typing import Any, Literal
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware.types import ToolCallRequest
@@ -9,29 +9,35 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 import pytest
+import time_machine
 
-from app.constants.hil import HIL_STATUS_KWARG
+from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants.hil import AUTO_ASK_NOTE, HIL_APPROVAL_TIMEOUT_SECONDS, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
+from app.models.conversation_log_models import ApprovalRequested
 from app.models.hil_models import (
+    ApprovalDetail,
     ApprovalLedgerDocument,
     ApprovalProposal,
-    HILApprovalStatus,
-    LedgerState,
 )
 from app.services.hil import gate
-from app.services.hil.bridge import ApprovalOutcome, GatedApproval
+from app.services.hil.describe import describe_call
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
-from app.services.hil.prompts import AUTO_REJECT_TEMPLATE, DENIED_TEMPLATE, GATE_ERROR_TEMPLATE
-from app.services.hil.utils import GatedCall
+from app.services.hil.prompts import GATE_ERROR_TEMPLATE
+from app.services.hil.utils import GatedApproval, GatedCall
+from app.services.hil.when import UserClock
 from app.utils.general_utils import ELLIPSIS
+from app.utils.timezone import Timezone
+from shared.py.approvals import ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
     GATED_ACCOUNT,
     GATED_ACCOUNT_SUMMARY,
     GATED_ARGS,
+    GATED_QUESTION,
     GATED_SUMMARY,
     GATED_TOOL,
     STREAM_ID,
@@ -57,6 +63,7 @@ def _ledger(
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=live)
     ledger.find_latest_denied = AsyncMock(return_value=denied)
+    ledger.find_amended = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value=registered_id)
     return ledger
 
@@ -80,17 +87,14 @@ class TestLedgerBranch:
     async def test_registers_pending_and_never_interrupts(self) -> None:
         ledger = _ledger()
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt") as intr,
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_awaited_once()
-        intr.assert_not_called()
         assert result is not None
         assert "PENDING ap_abc1234567" in str(result.content)
         assert "needs the user's explicit approval" in str(result.content)
@@ -98,23 +102,101 @@ class TestLedgerBranch:
         assert "approve ticket" in str(result.content)
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
 
-    async def test_background_pending_points_at_the_approvals_tab(self) -> None:
-        """A background run has no watcher: the approval lives in the Approvals tab, so the guidance must say so instead of "when this run ends"."""
+    async def test_the_approval_is_logged_on_the_work_its_run_belongs_to(
+        self, logged_work: AsyncMock
+    ) -> None:
         ledger = _ledger()
-        request = _gated_request(execution_mode="background")
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt") as intr,
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
+        ):
+            await gate.decide_tool_call(_gated_request())
+
+        assert ledger.register.await_args.args[0].task_id == "t1"
+        (_, _, request), _ = logged_work.await_args
+        assert (request.task_id, request.approval_id) == ("t1", "ap_abc1234567")
+
+    async def test_a_request_the_log_refuses_leaves_no_ledger_row(
+        self, logged_work: AsyncMock
+    ) -> None:
+        """Regression for review finding 8: the row was registered first, so a failed log append left a live row with no card."""
+        ledger = _ledger()
+        logged_work.side_effect = ConnectionError("mongo blip")
+        with (
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
+        ):
+            result = await gate.decide_tool_call(_gated_request())
+
+        ledger.register.assert_not_awaited()
+        assert result is not None and "NOT performed" in str(result.content)
+
+    async def test_a_request_that_loses_the_register_race_withdraws_and_points_at_the_winner(
+        self,
+    ) -> None:
+        winner = ApprovalLedgerDocument(
+            approval_id="ap_winner00001",
+            conversation_id=CONVERSATION_ID,
+            user_id=USER_ID,
+            fingerprint="fp",
+            tool_name="GMAIL_SEND_EMAIL",
+            summary="Send it",
+            owner_agent="executor",
+        )
+        ledger = _ledger(registered_id="ap_winner00001")
+        ledger.get_by_approval_id = AsyncMock(
+            side_effect=lambda approval_id: winner if approval_id == "ap_winner00001" else None
+        )
+        withdrawn = AsyncMock()
+        with (
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()) as announced,
+            patch(f"{MODULE}.record_approval_decided", new=withdrawn),
+        ):
+            result = await gate.decide_tool_call(_gated_request())
+
+        withdrawn.assert_awaited_once_with(
+            CONVERSATION_ID, USER_ID, "ap_abc1234567", ApprovalOutcome.WITHDRAWN, None
+        )
+        announced.assert_not_awaited()
+        assert result is not None and "ap_winner00001" in str(result.content)
+        assert "ap_abc1234567" not in str(result.content)
+
+    async def test_a_call_from_no_logged_work_is_refused_and_never_registered(self) -> None:
+        ledger = _ledger()
+        unlogged = AsyncMock(side_effect=LookupError("run s1 is no logged work"))
+        with (
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
+            patch(f"{MODULE}.work_of_run", new=unlogged),
+        ):
+            result = await gate.decide_tool_call(_gated_request())
+
+        ledger.register.assert_not_awaited()
+        assert result is not None and "NOT performed" in str(result.content)
+
+    async def test_background_pending_points_at_its_conversation(self) -> None:
+        """A background run has no watcher: the card waits in its conversation, so the guidance must say so instead of "when this run ends"."""
+        ledger = _ledger()
+        request = _gated_request(execution_mode="background")
+        with (
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
         ):
             result = await gate.decide_tool_call(request)
-
-        intr.assert_not_called()
         assert result is not None
-        assert "Approvals tab" in str(result.content)
+        assert "this conversation, which shows in their chat list" in str(result.content)
+        assert "Approvals tab" not in str(result.content)
         assert "when this run ends" not in str(result.content)
 
     async def test_background_workflow_run_tags_the_ledger_owner(self) -> None:
@@ -122,61 +204,24 @@ class TestLedgerBranch:
         ledger = _ledger()
         request = _gated_request(execution_mode="background", workflow_id="wf-1")
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt"),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
         ):
             await gate.decide_tool_call(request)
 
         assert ledger.register.await_args.args[0].owner_run_type == "workflow"
         assert ledger.register.await_args.args[0].owner_id == "wf-1"
 
-    async def test_background_run_threads_the_owner_to_publish(self) -> None:
-        """Publish is what raises the sidebar flag — it must receive the same owner the row carries, or background cards never surface."""
-        ledger = _ledger()
-        request = _gated_request(execution_mode="background", active_todo_id="todo-9")
-        with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
-            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()) as pub,
-            patch(f"{MODULE}.interrupt"),
-        ):
-            await gate.decide_tool_call(request)
-
-        assert pub.await_args.kwargs["owner_run_type"] == "todo"
-        assert pub.await_args.kwargs["owner_id"] == "todo-9"
-
-    async def test_live_run_publishes_with_no_owner(self) -> None:
-        """Live runs resume through the inbox — an owner here would wrongly surface (and re-enqueue) them."""
-        ledger = _ledger()
-        with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
-            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()) as pub,
-            patch(f"{MODULE}.interrupt"),
-        ):
-            await gate.decide_tool_call(_gated_request())
-
-        assert pub.await_args.kwargs["owner_run_type"] == ""
-        assert pub.await_args.kwargs["owner_id"] == ""
-
     async def test_background_todo_run_tags_the_ledger_owner(self) -> None:
         ledger = _ledger()
         request = _gated_request(execution_mode="background", active_todo_id="todo-9")
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt"),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
         ):
             await gate.decide_tool_call(request)
 
@@ -188,66 +233,44 @@ class TestLedgerBranch:
         ledger = _ledger()
         request = _gated_request(workflow_id="wf-1", active_todo_id="todo-9")
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt"),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
         ):
             await gate.decide_tool_call(request)
 
         assert ledger.register.await_args.args[0].owner_run_type == ""
         assert ledger.register.await_args.args[0].owner_id == ""
 
-    async def test_flag_off_takes_the_old_interrupt_path(self) -> None:
-        with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=False)),
-            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.approval_ledger_repository", new=_ledger()) as ledger,
-            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)),
-            patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
-            patch(f"{MODULE}.publish_approval_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt") as intr,
-        ):
-            await gate.decide_tool_call(_gated_request())
-
-        ledger.find_live.assert_not_awaited()
-        intr.assert_called_once()
-
     async def test_live_duplicate_returns_existing_id_without_register(self) -> None:
         live = MagicMock(approval_id="ap_live", summary="Send it")
-        live.state = LedgerState.PENDING
+        live.outcome = None
+        live.action = None
         ledger = _ledger(live=live)
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}.interrupt") as intr,
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_not_awaited()
-        intr.assert_not_called()
         assert result is not None
         assert "PENDING ap_live" in str(result.content)
         assert "already requested" in str(result.content)
 
     async def test_live_approved_row_is_not_called_awaiting_decision(self) -> None:
         live = MagicMock(approval_id="ap_live", summary="Send it")
-        live.state = LedgerState.APPROVED
+        live.outcome = ApprovalOutcome.APPROVED
+        live.action = None
         ledger = _ledger(live=live)
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}.interrupt") as intr,
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_not_awaited()
-        intr.assert_not_called()
         assert result is not None
         assert "APPROVED ap_live" in str(result.content)
         assert "awaiting redeem" in str(result.content)
@@ -256,15 +279,12 @@ class TestLedgerBranch:
         denied = MagicMock(proposing_run_id=STREAM_ID, feedback="too broad", decided_at=None)
         ledger = _ledger(denied=denied)
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}.interrupt") as intr,
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_not_awaited()
-        intr.assert_not_called()
         assert result is not None
         assert "REFUSED" in str(result.content)
         assert "DO NOT re-request" in str(result.content)
@@ -274,17 +294,14 @@ class TestLedgerBranch:
         denied = MagicMock(proposing_run_id="other-stream", feedback="wrong day", decided_at=None)
         ledger = _ledger(denied=denied)
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt") as intr,
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_awaited_once()
-        intr.assert_not_called()
         assert result is not None
         assert "PENDING ap_abc1234567" in str(result.content)
         assert "wrong day" in str(result.content)
@@ -293,14 +310,10 @@ class TestLedgerBranch:
         ledger = _ledger()
         ledger.find_live = AsyncMock(side_effect=ConnectionError("mongo down"))
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}.interrupt") as intr,
         ):
             result = await gate.decide_tool_call(_gated_request())
-
-        intr.assert_not_called()
         assert result is not None
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
 
@@ -311,7 +324,6 @@ class TestLedgerAutoParity:
         """Auto mode keeps its intent judge on the ledger path: an aligned call clears to run with no card and no ledger row, exactly like the barrier path."""
         ledger = _ledger()
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="auto")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
@@ -319,20 +331,17 @@ class TestLedgerAutoParity:
                 f"{MODULE}._judge",
                 new=AsyncMock(return_value=IntentDecision(outcome="accept", reason="asked")),
             ),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()) as pub,
-            patch(f"{MODULE}.interrupt") as intr,
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()) as pub,
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         assert result is None
         ledger.register.assert_not_awaited()
         pub.assert_not_awaited()
-        intr.assert_not_called()
 
     async def test_auto_misaligned_call_still_registers(self) -> None:
         ledger = _ledger()
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="auto")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
@@ -340,13 +349,11 @@ class TestLedgerAutoParity:
                 f"{MODULE}._judge",
                 new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="unclear")),
             ),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
-            patch(f"{MODULE}.interrupt") as intr,
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_awaited_once()
-        intr.assert_not_called()
         assert result is not None
         assert "PENDING ap_abc1234567" in str(result.content)
         assert "auto-approve did not cover" in str(result.content)
@@ -372,19 +379,16 @@ class TestLedgerBranchValidatesArgs:
         """No card for malformed args: the user must never approve a call the model will have to retry."""
         ledger = _ledger()
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}.gated_tool_object", new=AsyncMock(return_value=_strict_tool())),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()) as pub,
-            patch(f"{MODULE}.interrupt") as intr,
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()) as pub,
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_not_awaited()
         pub.assert_not_awaited()
-        intr.assert_not_called()
         assert result is not None
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
         assert "subject" in str(result.content)
@@ -394,19 +398,16 @@ class TestLedgerBranchValidatesArgs:
         """Resolution failure must not gate: execution validates authoritatively, the gate only pre-filters what it can read."""
         ledger = _ledger()
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}.gated_tool_object", new=AsyncMock(return_value=None)),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()) as pub,
-            patch(f"{MODULE}.interrupt") as intr,
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()) as pub,
         ):
             result = await gate.decide_tool_call(_gated_request())
 
         ledger.register.assert_awaited_once()
         pub.assert_awaited_once()
-        intr.assert_not_called()
         assert result is not None
         assert "PENDING ap_abc1234567" in str(result.content)
 
@@ -438,7 +439,6 @@ class TestLedgerRegistration:
         result = await gate.decide_tool_call(gated_request(thread_id="gmail_conv-1"))
 
         fingerprint = approval_fingerprint(GATED_TOOL, GATED_ARGS)
-        gate_seams.recall.assert_awaited_once_with(STREAM_ID, GATED_TOOL, GATED_ARGS)
         gate_seams.ledger.find_live.assert_awaited_once_with(fingerprint, CONVERSATION_ID)
         gate_seams.ledger.find_latest_denied.assert_awaited_once_with(fingerprint, CONVERSATION_ID)
         gate_seams.ledger.register.assert_awaited_once_with(
@@ -453,9 +453,11 @@ class TestLedgerRegistration:
                 preview='{"to": "b@x"}',
                 owner_agent="gmail_conv-1",
                 proposing_run_id=STREAM_ID,
-            )
+                task_id="t1",
+            ),
+            "ap_abc1234567",
         )
-        gate_seams.publish_ledger.assert_awaited_once_with(
+        gate_seams.announce.assert_awaited_once_with(
             GatedApproval(
                 approval_id="ap_abc1234567",
                 stream_id=STREAM_ID,
@@ -463,16 +465,86 @@ class TestLedgerRegistration:
                 conversation_id=CONVERSATION_ID,
                 tool_call=GatedCall(name=GATED_TOOL, id="call-1", args=GATED_ARGS),
                 summary=GATED_SUMMARY,
+                question=GATED_QUESTION,
                 integration_name="Gmail",
             ),
-            auto_reason=None,
-            owner_run_type="",
-            owner_id="",
-            live=True,
+            background=False,
         )
         _assert_pending(result)
         assert (result.name, result.tool_call_id) == (GATED_TOOL, "call-1")
-        gate_seams.interrupt.assert_not_called()
+
+    @time_machine.travel(datetime(2026, 11, 14, 12, 0, tzinfo=UTC), tick=False)
+    async def test_the_log_records_the_request_with_everything_its_card_shows(
+        self, gate_seams: GateSeams
+    ) -> None:
+        with (
+            patch(f"{MODULE}.asks_every_time", new=AsyncMock(return_value=True)) as asks,
+            patch(f"{MODULE}.work_of_run", new=AsyncMock(return_value="t1")) as work,
+        ):
+            result = await gate.decide_tool_call(gated_request())
+
+        work.assert_awaited_once_with(CONVERSATION_ID, USER_ID, STREAM_ID)
+        asks.assert_awaited_once_with(GATED_TOOL, GATED_ARGS)
+        gate_seams.requested.assert_awaited_once_with(
+            CONVERSATION_ID,
+            USER_ID,
+            ApprovalRequested(
+                id="approval:ap_abc1234567",
+                task_id="t1",
+                approval_id="ap_abc1234567",
+                description=describe_call(
+                    GATED_TOOL, GATED_ARGS, "Gmail", clock=UserClock.current(Timezone.utc())
+                ),
+                expires_at=datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+                + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
+                tool_call_id="call-1",
+                gated_tool_name=GATED_TOOL,
+                integration_name="Gmail",
+                args_preview=GATED_ARGS,
+                always_asks=True,
+            ),
+        )
+        assert result is not None
+        assert 'execute(tool_name="revoke", data={"id": "ap_abc1234567"})' in str(result.content)
+
+    async def test_only_the_call_carrying_the_amendment_id_is_the_re_ask(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """Two calls of the amended tool follow a yes with a change; only the one naming it is its redo."""
+        todo = "create_todo"
+        amended = _row(
+            outcome=ApprovalOutcome.APPROVED,
+            tool_name=todo,
+            approval_id="ap_before",
+            args={"title": "Pay rent", "priority": None},
+            feedback="yes but make it high priority",
+        )
+
+        async def find_amended(
+            approval_id: str, conversation_id: str
+        ) -> ApprovalLedgerDocument | None:
+            linked = (approval_id, conversation_id) == ("ap_before", CONVERSATION_ID)
+            return amended if linked else None
+
+        gate_seams.ledger.find_amended.side_effect = find_amended
+        redo = {
+            "task_description": "Create the todo",
+            "tool_name": todo,
+            "data": {"title": "Pay rent", "priority": "high"},
+            "amends": "ap_before",
+        }
+        await gate.decide_tool_call(
+            gated_request(name=todo, args={"title": "Pay rent", "priority": "low"})
+        )
+        await gate.decide_tool_call(gated_request(name=EXECUTE_TOOL_NAME, args=redo))
+
+        unrelated, redone = (
+            call.args[2].description for call in gate_seams.requested.await_args_list
+        )
+        assert unrelated.changes == []
+        assert redone.changes == [ApprovalDetail(label="Priority", value="high")]
+        assert redone.details[0] == ApprovalDetail(label="Priority", value="high")
+        gate_seams.ledger.find_amended.assert_awaited_once_with("ap_before", CONVERSATION_ID)
 
     async def test_a_call_on_a_named_account_is_its_own_approval(
         self, gate_seams: GateSeams
@@ -489,7 +561,7 @@ class TestLedgerRegistration:
             GATED_ACCOUNT,
             GATED_ACCOUNT_SUMMARY,
         )
-        assert gate_seams.publish_ledger.await_args.args[0].summary == GATED_ACCOUNT_SUMMARY
+        assert gate_seams.announce.await_args.args[0].summary == GATED_ACCOUNT_SUMMARY
 
     async def test_a_worker_with_no_thread_is_recorded_as_unknown(
         self, gate_seams: GateSeams
@@ -503,7 +575,7 @@ class TestLedgerRegistration:
 
         proposal = gate_seams.ledger.register.await_args.args[0]
         assert (proposal.owner_run_type, proposal.owner_id) == ("", "")
-        assert gate_seams.publish_ledger.await_args.kwargs["live"] is False
+        assert gate_seams.announce.await_args.kwargs["background"] is True
         _assert_pending(result)
 
     async def test_a_long_or_non_json_argument_still_previews(self, gate_seams: GateSeams) -> None:
@@ -520,7 +592,8 @@ class TestLedgerRegistration:
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.ledger.find_latest_denied.return_value = _row(
-            state=LedgerState.DENIED,
+            outcome=ApprovalOutcome.DENIED,
+            action=None,
             proposing_run_id="other-stream",
             feedback="wrong day",
             decided_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
@@ -536,7 +609,7 @@ class TestLedgerRegistration:
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.ledger.find_latest_denied.return_value = _row(
-            state=LedgerState.DENIED, proposing_run_id="other-stream"
+            outcome=ApprovalOutcome.DENIED, action=None, proposing_run_id="other-stream"
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -566,7 +639,7 @@ class TestLedgerRegistration:
 class TestLedgerCollapsesIntoExistingRows:
     async def test_an_approved_twin_points_at_its_redeem(self, gate_seams: GateSeams) -> None:
         gate_seams.ledger.find_live.return_value = _row(
-            approval_id="ap_live", state=LedgerState.APPROVED
+            approval_id="ap_live", outcome=ApprovalOutcome.APPROVED, action=None
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -590,12 +663,20 @@ class TestLedgerCollapsesIntoExistingRows:
         result = await gate.decide_tool_call(gated_request(**extra))
 
         expected_destination = (
-            gate.ApprovalDestination.APPROVALS_TAB if background else gate.ApprovalDestination.CHAT
+            gate.ApprovalDestination.CONVERSATION if background else gate.ApprovalDestination.CHAT
         )
         assert gate._approval_destination(background=background) is expected_destination
         _assert_pending(result)
+        assert result is not None
+        content = str(result.content)
+        where = gate._DESTINATION_WORDING[expected_destination]
+        assert content.startswith(
+            "PENDING ap_live: Send the old one already requested and awaiting the user's "
+            f"decision. The approval request appears to the user in {where}, "
+        )
+        assert 'execute(tool_name="revoke", data={"id": "ap_live"})' in content
         gate_seams.ledger.register.assert_not_awaited()
-        gate_seams.publish_ledger.assert_not_awaited()
+        gate_seams.announce.assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("feedback", "said"),
@@ -606,7 +687,10 @@ class TestLedgerCollapsesIntoExistingRows:
         self, gate_seams: GateSeams, feedback: str | None, said: str
     ) -> None:
         gate_seams.ledger.find_latest_denied.return_value = _row(
-            state=LedgerState.DENIED, proposing_run_id=STREAM_ID, feedback=feedback
+            outcome=ApprovalOutcome.DENIED,
+            action=None,
+            proposing_run_id=STREAM_ID,
+            feedback=feedback,
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -616,36 +700,6 @@ class TestLedgerCollapsesIntoExistingRows:
             f"REFUSED ap_old: the user denied Send the old one in this run.{said} "
             "DO NOT re-request it. State what you skipped and continue without it."
         )
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-
-
-@pytest.mark.unit
-class TestLedgerDeclineMemory:
-    async def test_a_users_decline_this_turn_is_repeated_back(self, gate_seams: GateSeams) -> None:
-        gate_seams.recall.return_value = ApprovalOutcome(
-            status=HILApprovalStatus.DENIED, feedback="wrong person"
-        )
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == DENIED_TEMPLATE.format(
-            tool=GATED_TOOL, feedback=" The user said: 'wrong person'."
-        )
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-        gate_seams.ledger.register.assert_not_awaited()
-
-    async def test_an_auto_refusal_without_words_is_repeated_as_auto(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.recall.return_value = ApprovalOutcome(
-            status=HILApprovalStatus.DENIED, feedback=None, auto=True
-        )
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="")
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
 
 
@@ -687,7 +741,14 @@ class TestLedgerAutoMode:
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
-        rows = [_row(state=LedgerState.DENIED, feedback="no", decided_at=datetime(2026, 9, 1))]
+        rows = [
+            _row(
+                outcome=ApprovalOutcome.DENIED,
+                action=None,
+                feedback="no",
+                decided_at=datetime(2026, 9, 1),
+            )
+        ]
         gate_seams.ledger.recent_tool_outcomes.side_effect = lambda uid, tool: (
             rows if (uid, tool) == (USER_ID, GATED_TOOL) else []
         )
@@ -707,8 +768,38 @@ class TestLedgerAutoMode:
             tool_schema=gate_seams.tool.args,
         )
         assert kwargs["assistant_turns"] == ["Your draft to b@x is ready."]
-        assert kwargs["judge"] is None
+        assert isinstance(kwargs["judge"], JevIntentJudge)
         assert kwargs["user_messages"] == ["send it to b@x"]
+
+    async def test_a_tool_the_user_never_lets_auto_mode_run_reaches_the_judge_as_never_auto(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+
+        await gate.decide_tool_call(gated_request(name="DROP_TABLE"))
+
+        (context,) = gate_seams.judge.await_args.args
+        assert context.never_auto is True
+
+    # 20:00 UTC on the 14th is already the 15th in Kolkata.
+    @time_machine.travel(datetime(2026, 11, 14, 20, 0, tzinfo=UTC), tick=False)
+    async def test_the_card_and_the_judge_name_a_date_on_the_users_own_calendar(
+        self, gate_seams: GateSeams
+    ) -> None:
+        todo = gated_request(
+            name="create_todo",
+            args={"title": "Pay rent", "due_date": "2026-11-15"},
+            user_timezone="Asia/Kolkata",
+        )
+
+        await gate.decide_tool_call(todo)
+        gate_seams.policy.return_value = "auto"
+        await gate.decide_tool_call(todo)
+
+        asked = gate_seams.requested.await_args.args[2].description.headline
+        judged = gate_seams.judge.await_args.kwargs["call"].summary
+        assert asked.endswith("for today")
+        assert judged.endswith("for today")
 
     async def test_the_judge_is_told_which_account_the_call_acts_as(
         self, gate_seams: GateSeams
@@ -719,16 +810,6 @@ class TestLedgerAutoMode:
 
         assert gate_seams.judge.await_args.kwargs["call"].summary == GATED_ACCOUNT_SUMMARY
 
-    async def test_the_jev_judge_is_used_only_for_its_enrolled_user(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.jev_enabled.add(USER_ID)
-
-        await gate.decide_tool_call(gated_request())
-
-        assert isinstance(gate_seams.judge.await_args.kwargs["judge"], JevIntentJudge)
-
     async def test_an_accepted_call_runs_with_no_row(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.judge.return_value = IntentDecision("accept", "asked")
@@ -736,15 +817,11 @@ class TestLedgerAutoMode:
         assert await gate.decide_tool_call(gated_request()) is None
         gate_seams.ledger.register.assert_not_awaited()
 
-    @pytest.mark.regression
-    @pytest.mark.parametrize(
-        ("outcome", "decision"), [("accept", "approved"), ("reject", "denied")]
-    )
-    async def test_an_auto_decision_is_counted_as_a_decision_made_by_auto(
-        self, gate_seams: GateSeams, outcome: Literal["accept", "reject"], decision: str
+    async def test_an_auto_run_is_counted_as_a_decision_made_by_auto(
+        self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision(outcome, "asked")
+        gate_seams.judge.return_value = IntentDecision("accept", "asked")
         posthog = MagicMock()
 
         with patch("app.services.analytics_service._get_posthog_client", return_value=posthog):
@@ -753,7 +830,7 @@ class TestLedgerAutoMode:
         [sent] = [c.kwargs for c in posthog.capture.call_args_list]
         assert (sent["event"], sent["distinct_id"]) == ("hil:decision_submitted", USER_ID)
         decided = {key: sent["properties"].get(key) for key in ("decision", "tool_name", "via")}
-        assert decided == {"decision": decision, "tool_name": GATED_TOOL, "via": "auto"}
+        assert decided == {"decision": "approved", "tool_name": GATED_TOOL, "via": "auto"}
 
     async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
@@ -767,78 +844,43 @@ class TestLedgerAutoMode:
             c.kwargs["event"] for c in posthog.capture.call_args_list
         ]
 
-    async def test_a_pausing_sibling_withholds_auto_approval(self, gate_seams: GateSeams) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.pausing_sibling.return_value = True
-        gate_seams.judge.return_value = IntentDecision("accept", "asked")
-
-        result = await gate.decide_tool_call(gated_request())
-
-        _assert_pending(result)
-        gate_seams.judge.assert_not_awaited()
-
-    async def test_an_unsure_judge_explains_itself_on_the_card(self, gate_seams: GateSeams) -> None:
+    async def test_an_unsure_judge_tells_the_user_in_plain_words_and_the_model_why(
+        self, gate_seams: GateSeams
+    ) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.judge.return_value = IntentDecision("ask", "the recipient is new")
 
         result = await gate.decide_tool_call(gated_request())
 
         _assert_pending(result)
-        assert (
-            gate_seams.publish_ledger.await_args.kwargs["auto_reason"]
-            == "Auto mode wasn't sure: the recipient is new"
-        )
+        assert gate_seams.requested.await_args.args[2].auto_reason == AUTO_ASK_NOTE
+        assert "Auto mode wasn't sure: the recipient is new" in str(result.content)
 
-    async def test_an_unsure_judge_with_no_reason_adds_nothing(self, gate_seams: GateSeams) -> None:
+    async def test_an_unsure_judge_with_no_reason_still_says_why_it_asks(
+        self, gate_seams: GateSeams
+    ) -> None:
         gate_seams.policy.return_value = "auto"
 
         result = await gate.decide_tool_call(gated_request())
 
         _assert_pending(result)
-        assert gate_seams.publish_ledger.await_args.kwargs["auto_reason"] is None
+        assert gate_seams.requested.await_args.args[2].auto_reason == AUTO_ASK_NOTE
+        # With no reason to quote, nothing trails the guidance the model reads.
+        assert str(result.content).endswith(
+            "after approval you run it once via the approve ticket."
+        )
 
-    async def test_a_rejected_call_is_refused_and_remembered_as_auto(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision("reject", "you said never email b@x")
-
+    async def test_an_ask_policy_card_carries_no_auto_note(self, gate_seams: GateSeams) -> None:
         result = await gate.decide_tool_call(gated_request())
 
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(
-            tool=GATED_TOOL, reason="you said never email b@x"
-        )
-        gate_seams.remember.assert_awaited_once_with(
-            STREAM_ID, GATED_TOOL, GATED_ARGS, "you said never email b@x", auto=True
-        )
-        gate_seams.ledger.register.assert_not_awaited()
+        _assert_pending(result)
+        assert gate_seams.requested.await_args.args[2].auto_reason is None
 
-    async def test_a_lost_decline_memory_is_reported_but_still_refuses(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision("reject", "no")
-        gate_seams.remember.side_effect = RuntimeError("redis down")
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="no")
-        gate_seams.log.warning.assert_called_once()
-        assert "decline memory write failed" in gate_seams.log.warning.call_args.args[0]
-        assert gate_seams.log.warning.call_args.kwargs == {
-            "tool_name": GATED_TOOL,
-            "error": "redis down",
-            "error_type": "RuntimeError",
-        }
-
-    async def test_unreadable_memory_and_prefs_are_reported_and_judged_without(
+    async def test_unreadable_memory_is_reported_and_judged_without(
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.ledger.recent_tool_outcomes.side_effect = RuntimeError("mongo down")
-        gate_seams.prefs.side_effect = ConnectionError("prefs down")
 
         await gate.decide_tool_call(gated_request())
 
@@ -850,22 +892,33 @@ class TestLedgerAutoMode:
                 "error": "mongo down",
                 "error_type": "RuntimeError",
             },
-            f"{LogTag.HIL} never-auto list unreadable; judging without it": {
-                "error": "prefs down",
-                "error_type": "ConnectionError",
-            },
         }
+
+    async def test_an_unreadable_deny_rule_list_denies_the_call_instead_of_judging_it(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """Regression for review finding 23: the judge ran without the deny rules, so a never-auto tool could be auto-approved."""
+        gate_seams.policy.return_value = "auto"
+        gate_seams.prefs.side_effect = ConnectionError("prefs down")
+
+        result = await gate.decide_tool_call(gated_request())
+
+        gate_seams.judge.assert_not_awaited()
+        gate_seams.ledger.register.assert_not_awaited()
+        assert result is not None and "NOT performed" in str(result.content)
 
 
 @pytest.mark.unit
 class TestTheGateBeforeAnyPolicy:
-    async def test_an_identity_less_call_is_reported_as_skipped(
+    async def test_an_identity_less_call_is_refused_and_reported(
         self, gate_seams: GateSeams
     ) -> None:
         request = make_request(name=GATED_TOOL, args=GATED_ARGS, configurable={})
 
-        assert await gate.decide_tool_call(request) is None
-        gate_seams.log.warning.assert_called_once()
-        assert "Gate skipped: no run identity" in gate_seams.log.warning.call_args.args[0]
-        assert gate_seams.log.warning.call_args.kwargs == {"tool_name": GATED_TOOL}
+        refused = await gate.decide_tool_call(request)
+        assert refused is not None
+        assert refused.additional_kwargs[HIL_STATUS_KWARG] == "error"
+        gate_seams.log.error.assert_called_once()
+        assert "no run identity" in gate_seams.log.error.call_args.args[0]
+        assert gate_seams.log.error.call_args.kwargs == {"tool_name": GATED_TOOL}
         gate_seams.policy.assert_not_awaited()

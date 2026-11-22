@@ -125,7 +125,6 @@ def mock_scheduler_base():
 def scheduler():
     with patch("app.services.reminder_service.BaseSchedulerService.__init__"):
         s = ReminderScheduler.__new__(ReminderScheduler)
-        s.redis_settings = None
         s.arq_pool = None
         return s
 

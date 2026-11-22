@@ -105,27 +105,14 @@ export default function RightSide({
     hasSelectedCalendarEvent ||
     hasFiles;
 
-  // Mirror the send button's state so the tooltip matches what the button shows
-  // (Stop while streaming with an empty composer, Queue while streaming with
-  // typed content, send hints otherwise).
-  const { showStop, showQueue } = useComposerSendMode(hasContent);
+  // Mirror the send button's state so the tooltip matches what the button shows.
+  const { showStop } = useComposerSendMode(hasContent);
 
   const getTooltipContent = () => {
     if (showStop) return "Stop generation";
 
     if (isUploading) {
       return `Uploading file${uploadedFiles.length > 1 ? "s" : ""}...`;
-    }
-
-    if (showQueue) {
-      return (
-        <div className="flex items-center gap-2">
-          Queue message
-          <Kbd>
-            <Kbd.Abbr keyValue="enter" />
-          </Kbd>
-        </div>
-      );
     }
 
     const sendWithHint = resolveSendWithHint({
@@ -181,24 +168,12 @@ export default function RightSide({
         </Tooltip>
       )}
 
-      <Tooltip>
-        <Tooltip.Trigger>
-          <SendStopButton
-            hasContent={hasContent}
-            isUploading={isUploading}
-            onSend={handleFormSubmit}
-          />
-        </Tooltip.Trigger>
-        <Tooltip.Content
-          className={overlayVariants({
-            surface: showStop ? "danger" : "accent",
-          })}
-          placement="right"
-          showArrow
-        >
-          {getTooltipContent()}
-        </Tooltip.Content>
-      </Tooltip>
+      <SendStopButton
+        hasContent={hasContent}
+        isUploading={isUploading}
+        onSend={handleFormSubmit}
+        tooltip={getTooltipContent()}
+      />
     </div>
   );
 }

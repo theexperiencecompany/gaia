@@ -41,7 +41,7 @@ def _integration_name_map() -> dict[str, str]:
 
 def compute_required_integrations(
     steps: list[WorkflowStep],
-    trigger_config: TriggerConfig | None = None,
+    trigger_config: TriggerConfig,
 ) -> set[str]:
     """Return integration IDs a workflow requires.
 
@@ -56,11 +56,7 @@ def compute_required_integrations(
         integration_id = cat_map.get(step.category.lower())
         if integration_id:
             required.add(integration_id)
-    if (
-        trigger_config is not None
-        and trigger_config.type == TriggerType.INTEGRATION
-        and trigger_config.trigger_name
-    ):
+    if trigger_config.type == TriggerType.INTEGRATION and trigger_config.trigger_name:
         trigger_integration = get_integration_for_trigger(trigger_config.trigger_name)
         if trigger_integration:
             required.add(trigger_integration)
@@ -117,7 +113,7 @@ async def confirm_disconnected(user_id: str, integration_ids: Sequence[str]) -> 
 
 async def compute_integration_refs(
     steps: list[WorkflowStep],
-    trigger_config: TriggerConfig | None,
+    trigger_config: TriggerConfig,
     user_id: str,
 ) -> tuple[list[IntegrationRef], list[IntegrationRef]]:
     """Resolve (required, missing) refs for one workflow in a single status fetch.

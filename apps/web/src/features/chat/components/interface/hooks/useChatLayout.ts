@@ -1,9 +1,10 @@
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useRef } from "react";
 
-import { useConversation } from "@/features/chat/hooks/useConversation";
+import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { rowShows } from "@/features/chat/components/interface/rows/rows";
+import { useChatRows } from "@/features/chat/hooks/useChatRows";
 import { useConversationRow } from "@/features/chat/hooks/useConversationList";
-import { filterEmptyMessagePairs } from "@/features/chat/utils/messageContentUtils";
 
 interface UseChatLayoutReturn {
   hasMessages: boolean;
@@ -19,7 +20,7 @@ interface UseChatLayoutReturn {
 
 export const useChatLayout = (): UseChatLayoutReturn => {
   const router = useRouter();
-  const { convoMessages } = useConversation();
+  const rows = useChatRows();
   const { id: convoIdParam } = useParams<{ id: string }>();
   const conversation = useConversationRow(convoIdParam);
 
@@ -30,22 +31,14 @@ export const useChatLayout = (): UseChatLayoutReturn => {
     attachFiles: (files: File[]) => Promise<void>;
   } | null>(null);
 
-  // Check if there are any messages to determine layout
-  const hasMessages = useMemo(() => {
-    if (!convoMessages) return false;
-
-    const filteredMessages = filterEmptyMessagePairs(
-      convoMessages,
-      conversation?.is_system_generated || false,
-      conversation?.system_purpose || undefined,
-    );
-
-    return filteredMessages.length > 0;
-  }, [
-    convoMessages,
-    conversation?.is_system_generated,
-    conversation?.system_purpose,
-  ]);
+  // The chat layout shows once a row draws something.
+  const alwaysShowsGaia =
+    conversation?.is_system_generated === true &&
+    conversation.system_purpose === SystemPurpose.EMAIL_PROCESSING;
+  const hasMessages = useMemo(
+    () => rows.some((row) => rowShows(row, alwaysShowsGaia)),
+    [rows, alwaysShowsGaia],
+  );
 
   return {
     hasMessages,

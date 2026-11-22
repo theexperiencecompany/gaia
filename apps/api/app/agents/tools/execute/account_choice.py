@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableConfig
 
 from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.integrations import ConnectMode
+from app.constants.log_tags import LogTag
 from app.models.agent_config import ComposioAccountSelection
 from app.models.execute_models import AccountChoice, DispatchError, DispatchErrorKind
 from app.models.integration_models import UserIntegrationDocument
@@ -14,6 +15,7 @@ from app.services.integrations.integration_accounts import (
 )
 from app.utils.integration_checker import request_integration_connection
 from shared.py.analytics.catalog.agents import ToolUsed
+from shared.py.wide_events import log
 
 
 def _account_names(record: UserIntegrationDocument) -> str:
@@ -28,12 +30,20 @@ async def choose_account(
 ) -> AccountChoice | DispatchError | None:
     """The connected account a Composio tool call acts as; None leaves the call unpinned.
 
-    Unpinned covers non-Composio tools and integrations with no accounts on
-    record, where the tool's own not-connected path (the connect card) answers.
+    Unpinned covers non-Composio tools (an `account` passed for one is ignored)
+    and integrations with no accounts on record, where the tool's own
+    not-connected path (the connect card) answers.
     """
     integration = get_integration_by_tool_slug(tool_name)
     composio_config = integration.composio_config if integration else None
-    if integration is None or composio_config is None or not user_id:
+    if integration is None or composio_config is None:
+        if account:
+            # The model is never offered `account` for these tools, so refusing would punish a guess.
+            log.warning(
+                f"{LogTag.TOOL} execute: account ignored, tool has no accounts", tool_name=tool_name
+            )
+        return None
+    if not user_id:
         if account:
             return DispatchError(
                 kind=DispatchErrorKind.UNKNOWN_ACCOUNT,

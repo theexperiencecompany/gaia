@@ -18,6 +18,7 @@ from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
+from app.agents.middleware.interrupted_lookups import InterruptedLookupsMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
@@ -35,6 +36,8 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.constants.summarization import (
+    COMMS_SUMMARIZATION_CEILING_TOKENS,
+    COMMS_SUMMARIZATION_KEEP_TOKENS,
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
@@ -246,11 +249,14 @@ def create_executor_middleware(
     )
 
 
-def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentMiddlewareStack:
+def create_comms_middleware(
+    lookup_tools: frozenset[str], chat_llm: LanguageModelLike | None = None
+) -> AgentMiddlewareStack:
     """Create the middleware stack for the comms agent.
 
     It delegates all work to the executor, so it gets summarization but not
     compaction; its archive pointer asks the executor to read missed details.
+    lookup_tools close once the user interrupts the run, so the new message is answered now.
     """
     stack = create_middleware_stack(
         agent_name=COMMS_AGENT_NAME,
@@ -259,15 +265,30 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
         context=ContextOptions(
             compact=False,
             archive="executor",
-            summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+            # Settled turns fold in the background at the trigger; inline only past the ceiling.
+            summarization_trigger=("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS),
+            summarization_keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
         ),
     )
+    stack.append(InterruptedLookupsMiddleware(lookup_tools))
     # Innermost of all: the retry has to happen before anything reads the
     # completion, so what the turn delivers is the model's real reply rather
     # than the silence that preceded it.
     stack.append(EmptyCompletionRetryMiddleware())
     log.debug(f"{LogTag.AGENT} EmptyCompletionRetryMiddleware enabled", agent_name=COMMS_AGENT_NAME)
     return stack
+
+
+def create_comms_history_fold(
+    chat_llm: LanguageModelLike,
+) -> WorkspaceArchivingSummarizationMiddleware:
+    """Return the summarizer that folds a settled comms thread past its budget, off any reply's path."""
+    return WorkspaceArchivingSummarizationMiddleware(
+        model=cast("BaseChatModel", chat_llm),
+        trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+        keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
+        archive="executor",
+    )
 
 
 def create_subagent_middleware(

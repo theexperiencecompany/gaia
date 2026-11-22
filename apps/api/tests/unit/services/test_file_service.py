@@ -10,7 +10,6 @@ from collections.abc import Iterator
 import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -1196,21 +1195,22 @@ class TestFileServiceUpdate:
 
 
 class TestLogUploadContext:
-    def _ctx(self, **overrides: Any) -> FileContext:
-        kwargs: dict[str, Any] = {
+    def _ctx(self, *, has_summary: bool = False, page_count: int = 0) -> FileContext:
+        return {
             "operation": "upload",
             "file_id": "f1",
             "content_type": "application/pdf",
             "size_bytes": 1,  # len(b"x") -- both tests below upload single-byte content
             "conversation_id": "",
-            "has_summary": False,
-            "page_count": 0,
+            "has_summary": has_summary,
+            "page_count": page_count,
         }
-        kwargs.update(overrides)
-        return FileContext(**kwargs)
 
     def test_context_fields_are_exact(self) -> None:
-        summary = _UploadSummary(description="desc", page_wise_summary=["p1", "p2"])
+        summary = _UploadSummary(
+            description="desc",
+            page_wise_summary=[{"page": 1, "summary": "p1"}, {"page": 2, "summary": "p2"}],
+        )
         with patch("app.services.files.service.log") as log:
             _log_upload_context(
                 _PreparedUpload(
