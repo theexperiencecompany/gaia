@@ -8,6 +8,7 @@ from typing import Any
 import uuid
 
 from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 from scripts.migrate_approval_vocabulary import rewrite
 from scripts.migrate_conversation_entries import __main__ as script
@@ -338,15 +339,20 @@ def _todo_chat() -> list[dict[str, object]]:
     ]
 
 
-async def _old_build_trims(raw_collection: Any, ref: HeadRef, keep: list[str]) -> None:
+async def _old_build_trims(
+    raw_collection: AsyncIOMotorCollection, ref: HeadRef, keep: list[str]
+) -> None:
     """Cut the array to the messages a todo chat's append keeps: the pinned ones and the newest."""
     head = await _head(raw_collection, ref)
     kept = [m for m in head["messages"] if m["message_id"] in keep]
     await raw_collection.update_one({"_id": ObjectId(ref.head_id)}, {"$set": {"messages": kept}})
 
 
+@pytest.mark.regression
 async def test_messages_the_old_build_trims_after_a_pass_leave_the_log_and_verify_passes(
-    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+    migration: ConversationEntriesMigration,
+    raw_collection: AsyncIOMotorCollection,
+    entries_collection: AsyncIOMotorCollection,
 ) -> None:
     ref = await _legacy(raw_collection, _todo_chat())
     await migration.migrate(ref, apply=True)
@@ -411,10 +417,11 @@ async def test_each_in_place_edit_the_old_build_makes_after_a_pass_is_rewritten_
     assert report.ok, report.mismatches
 
 
+@pytest.mark.regression
 async def test_a_trim_after_the_new_build_wrote_leaves_every_live_entry_as_it_was(
     migration: ConversationEntriesMigration,
-    raw_collection: Any,
-    entries_collection: Any,
+    raw_collection: AsyncIOMotorCollection,
+    entries_collection: AsyncIOMotorCollection,
     held: HeldFlushes,
 ) -> None:
     ref = await _legacy(raw_collection, _todo_chat())
@@ -864,6 +871,35 @@ async def test_a_head_too_full_for_the_log_pointer_moves_its_array_aside_and_sti
     await entries_collection.update_one({**entry_of, "id": "m3"}, {"$set": {"text": "lost"}})
     code, out = await _cli(capsys, "--verify")
     assert code == 1 and any(f"MISMATCH {full.conversation_id}: history" in line for line in out)
+
+
+async def test_an_archived_head_the_catch_up_plans_again_keeps_every_archived_message(
+    migration: ConversationEntriesMigration,
+    raw_collection: AsyncIOMotorCollection,
+    entries_collection: AsyncIOMotorCollection,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    full = await _at_the_size_limit(raw_collection, spare=70)
+    assert (await migration.migrate(full, apply=True)).relocated
+    archived = await _entries(entries_collection, full)
+    # A retry of a recorded failure plans the head again with no array on it.
+    await migration.mark_failed(full, "verify: 1 mismatches")
+
+    assert await script.catch_up() == 0
+
+    assert await _entries(entries_collection, full) == archived
+    # The old build appends to the head whose array the pass moved aside.
+    await raw_collection.update_one(
+        {"_id": ObjectId(full.head_id)},
+        {"$push": {"messages": {"$each": [_message(65), _message(66, "bot")]}}},
+    )
+    assert await script.catch_up() == 0
+    entries = await _entries(entries_collection, full)
+    assert entries[: len(archived)] == archived
+    assert [e["id"] for e in entries[len(archived) :]] == ["m65", "m66", "m66:settled"]
+    assert (await migration.verify(full)).ok
+    await refuse_unmigrated_conversations()
+    capsys.readouterr()
 
 
 async def test_a_head_with_room_keeps_its_array_and_is_only_marked(

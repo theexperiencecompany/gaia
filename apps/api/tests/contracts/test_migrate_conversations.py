@@ -211,6 +211,7 @@ async def test_the_catch_up_after_a_full_pass_visits_only_the_heads_written_sinc
     assert elapsed < _CATCH_UP_SECONDS
 
 
+@pytest.mark.regression
 async def test_a_trim_that_failed_an_earlier_catch_up_verifies_and_clears_its_failure(
     raw_collection: AsyncIOMotorCollection,
     db: AsyncIOMotorDatabase,
