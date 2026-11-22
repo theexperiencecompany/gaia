@@ -445,22 +445,6 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         )
         return None if raw is None else self._to_model(raw)
 
-    async def _apply_pipeline_update_unfetched(
-        self,
-        filter_: Mapping[str, object],
-        pipeline: Sequence[Mapping[str, object]],
-        *,
-        extra_filter: Mapping[str, object] | None = None,
-    ) -> int:
-        """Apply an aggregation-pipeline update via update_one, without reading it back.
-
-        For a write that must read the document it changes in the same atomic update.
-        """
-        result = await get_async_collection(self.collection_name).update_one(
-            {**dict(filter_), **(extra_filter or {})}, [dict(stage) for stage in pipeline]
-        )
-        return result.matched_count
-
     async def _find_one_projected(
         self,
         filter_: Mapping[str, object],

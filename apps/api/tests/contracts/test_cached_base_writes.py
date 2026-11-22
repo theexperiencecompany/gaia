@@ -447,31 +447,6 @@ async def test_a_pipeline_update_that_misses_evicts_the_targeted_copy(repo, redi
     assert await generation(redis, USER_POLICY, "u1") == 0
 
 
-async def test_an_unfetched_pipeline_update_evicts_the_copy_and_bumps(repo, redis) -> None:
-    created = await repo.create(make_item(name="hey"))
-
-    matched = await repo._apply_pipeline_update_unfetched(by_id(created.id), _APPEND_BANG)
-
-    assert matched == 1
-    assert await cached_entity(repo, "u1", created.id) is None
-    assert await generation(redis, USER_POLICY, "u1") == 2
-
-
-async def test_an_unfetched_pipeline_update_honours_its_extra_filter(repo, redis) -> None:
-    created = await repo.create(make_item(name="hey"))
-
-    refused = await repo._apply_pipeline_update_unfetched(
-        by_id(created.id), _APPEND_BANG, extra_filter={"name": "other"}
-    )
-    scoped = await repo._apply_pipeline_update_unfetched(
-        {"_id": ObjectId(created.id)}, _APPEND_BANG, extra_filter={"user_id": "u1"}
-    )
-
-    assert refused == 0
-    assert scoped == 1
-    assert (await repo.get(created.id, user_id="u1")).name == "hey!"
-
-
 # --- increment / no-invalidate ----------------------------------------------
 
 

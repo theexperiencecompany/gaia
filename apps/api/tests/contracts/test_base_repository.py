@@ -303,9 +303,6 @@ class TestBasePrimitives:
         assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is None
 
 
-_DOUBLE_COUNT = [{"$set": {"count": {"$multiply": ["$count", 2]}}}]
-
-
 class TestDriverErrorTranslation:
     """A public call surfaces the driver's failures as the repository's own error types."""
 
@@ -353,61 +350,6 @@ class TestDriverErrorTranslation:
 
         assert await repo.try_create(make_doc(title="once")) is True
         assert await repo.try_create(make_doc(title="once")) is False
-
-
-class TestPipelineUpdate:
-    """A field computed from the document it is written to, in one atomic update."""
-
-    async def test_it_writes_from_the_document_and_keeps_the_cache_coherent(
-        self, repo, make_doc, redis
-    ):
-        created = await repo.create(make_doc(user_id="u", count=4))
-        await repo.get(created.id, user_id="u")  # populate the entity cache
-        gen_key = repo.cache_policy.generation_key("u")
-        gen_before = int(await redis.get(gen_key))
-
-        matched = await repo._apply_pipeline_update_unfetched(
-            {"_id": repo._id_value(created.id), "user_id": "u"}, _DOUBLE_COUNT
-        )
-
-        assert matched == 1
-        assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is None
-        assert int(await redis.get(gen_key)) == gen_before + 1
-        fetched = await repo.get(created.id, user_id="u")
-        assert fetched is not None and fetched.count == 8
-
-    async def test_it_writes_to_its_own_collection(
-        self, repo, make_doc, raw_collection, monkeypatch
-    ):
-        created = await repo.create(make_doc(user_id="u", count=4))
-        named: list[str] = []
-
-        def _named(name: str) -> object:
-            named.append(name)
-            return raw_collection
-
-        monkeypatch.setattr("app.db.repositories.base.get_async_collection", _named)
-        await repo._apply_pipeline_update_unfetched(
-            {"_id": repo._id_value(created.id), "user_id": "u"}, _DOUBLE_COUNT
-        )
-
-        assert named == [repo.collection_name]
-
-    async def test_a_gate_that_misses_writes_nothing(self, repo, make_doc, redis, raw_collection):
-        created = await repo.create(make_doc(user_id="u", count=4))
-        gen_key = repo.cache_policy.generation_key("u")
-        gen_before = int(await redis.get(gen_key))
-
-        matched = await repo._apply_pipeline_update_unfetched(
-            {"_id": repo._id_value(created.id), "user_id": "u"},
-            _DOUBLE_COUNT,
-            extra_filter={"count": 999},
-        )
-
-        assert matched == 0
-        assert int(await redis.get(gen_key)) == gen_before
-        stored = await raw_collection.find_one({"_id": repo._id_value(created.id)})
-        assert stored["count"] == 4
 
 
 class _GlobalDocument(MongoDocument):

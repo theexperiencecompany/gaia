@@ -191,22 +191,6 @@ class _CachedRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
             return None
         return await self._stored(scope, doc)
 
-    async def _apply_pipeline_update_unfetched(
-        self,
-        filter_: Mapping[str, object],
-        pipeline: Sequence[Mapping[str, object]],
-        *,
-        extra_filter: Mapping[str, object] | None = None,
-    ) -> int:
-        matched = await super()._apply_pipeline_update_unfetched(
-            filter_, pipeline, extra_filter=extra_filter
-        )
-        if matched:
-            await self._evict_filtered(
-                self._filter_scope({**filter_, **(extra_filter or {})}), filter_
-            )
-        return matched
-
     async def _increment(
         self,
         doc_id: str,
