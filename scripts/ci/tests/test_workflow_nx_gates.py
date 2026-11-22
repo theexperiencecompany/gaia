@@ -200,6 +200,27 @@ def test_detect_leaves_out(path: str, task: str) -> None:
     assert task not in nx_affected.select([f"--files={path}"]).tasks
 
 
+@pytest.mark.parametrize(
+    ("path", "event", "packages"),
+    [
+        # ts-build-test builds desktop:build on the PR; packaging what web reaches is the queue's.
+        ("apps/web/src/app/page.tsx", "pull_request", False),
+        ("apps/web/src/app/page.tsx", "merge_group", True),
+        ("libs/shared/ts/src/index.ts", "pull_request", False),
+        ("libs/shared/ts/src/index.ts", "merge_group", True),
+        ("apps/desktop/src/main/index.ts", "pull_request", True),
+        ("apps/desktop/package.json", "pull_request", True),
+        (".github/workflows/desktop-pr-build.yml", "pull_request", True),
+        ("apps/api/app/main.py", "merge_group", False),
+    ],
+)
+def test_a_pr_packages_desktop_only_when_the_desktop_app_changed(
+    path: str, event: str, packages: bool
+) -> None:
+    selection = nx_affected.select([f"--files={path}"])
+    assert ("desktop-build" in nx_affected.job_tasks(selection, event, None)) is packages
+
+
 @pytest.mark.parametrize("path", ["README.md", "docs/introduction.mdx", "apps/api/CLAUDE.md"])
 def test_detect_selects_only_repo_wide_checks_for_prose(path: str) -> None:
     # Prose is where the bot handle copies live, and a secret can land in any

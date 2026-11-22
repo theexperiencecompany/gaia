@@ -11,6 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 WEB_BUILD = ROOT / ".github" / "workflows" / "web-build.yml"
 NEXT_CONFIG = ROOT / "apps" / "web" / "next.config.mjs"
+WORKFLOWS = ROOT / ".github" / "workflows"
 
 
 def _steps() -> list[dict[str, object]]:
@@ -43,3 +44,29 @@ def test_only_a_master_build_takes_the_production_environment() -> None:
         "${{ (github.ref == 'refs/heads/master' && (github.event_name == 'push' || "
         "github.event_name == 'workflow_dispatch')) && 'production' || '' }}"
     )
+
+
+def test_the_post_deploy_seo_run_audits_the_commit_that_was_deployed() -> None:
+    # deploy-web dispatches seo-crawl.yml on master; master's tip may already carry
+    # a newer squirrel baseline than the site it crawls serves.
+    seo = yaml.safe_load((WORKFLOWS / "seo-crawl.yml").read_text())
+    for job in ("crawl", "audit"):
+        (checkout,) = [
+            s for s in seo["jobs"][job]["steps"] if "actions/checkout" in s.get("uses", "")
+        ]
+        assert "inputs.deployed_sha" in checkout["with"]["ref"], job
+    deploy = yaml.safe_load((WORKFLOWS / "deploy-web.yml").read_text())
+    (dispatch,) = deploy["jobs"]["post-deploy-seo"]["steps"]
+    assert '-f deployed_sha="$GITHUB_SHA"' in dispatch["run"]
+
+
+def test_the_post_deploy_audit_never_queues_behind_a_crawl() -> None:
+    # A run-level group made a deploy's audit wait out a 90-minute crawl, and a
+    # third dispatch replaced the pending run, audit and all.
+    seo = yaml.safe_load((WORKFLOWS / "seo-crawl.yml").read_text())
+    assert "concurrency" not in seo
+    assert "concurrency" not in seo["jobs"]["audit"]
+    assert seo["jobs"]["crawl"]["concurrency"] == {
+        "group": "seo-crawl",
+        "cancel-in-progress": False,
+    }

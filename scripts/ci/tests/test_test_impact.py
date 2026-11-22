@@ -251,16 +251,50 @@ def _with_runs(api: FakeGitHub, runs: list[dict[str, Any]]) -> list[Request]:
     return api.requests
 
 
-def test_the_run_query_asks_for_successful_pushes_to_master(api: FakeGitHub) -> None:
-    asked = _with_runs(api, [_run(id=7)])
+def _by_event(api: FakeGitHub, runs: list[dict[str, Any]]) -> list[Request]:
+    """Serve each listing the runs of the event it asked for, as the API filters them."""
+
+    def listing(req: Request) -> Reply:
+        return Reply(body={"workflow_runs": [r for r in runs if r["event"] == req.query["event"]]})
+
+    api.on("GET", r"/actions/workflows/ci\.yml/runs$", responder=listing)
+    return api.requests
+
+
+def test_the_run_query_asks_for_successful_master_pushes_and_merge_queue_runs(
+    api: FakeGitHub,
+) -> None:
+    # The queue runs the full suite on the SHA master then fast-forwards to, so
+    # its map is master's; a verified master push records none of its own.
+    asked = _by_event(api, [_run(id=7)])
     assert ti._trusted_runs(REPO) == [(7, "2026-08-30T00:00:00Z")]
-    (request,) = asked
-    assert request.path == f"/repos/{REPO}/actions/workflows/ci.yml/runs"
-    assert {
-        "branch": "master",
-        "event": "push",
-        "status": "success",
-    }.items() <= request.query.items()
+    push, queue = asked
+    assert push.path == queue.path == f"/repos/{REPO}/actions/workflows/ci.yml/runs"
+    assert {"branch": "master", "event": "push", "status": "success"}.items() <= push.query.items()
+    assert {"event": "merge_group", "status": "success"}.items() <= queue.query.items()
+
+
+def test_a_merge_queue_map_newer_than_the_last_master_push_is_tried_first(
+    api: FakeGitHub,
+) -> None:
+    _by_event(
+        api,
+        [
+            _run(id=7, created_at="2026-08-28T00:00:00Z"),
+            _run(id=9, created_at="2026-08-30T00:00:00Z", event="merge_group"),
+            _run(id=8, created_at="2026-08-29T00:00:00Z", event="merge_group"),
+        ],
+    )
+    assert ti._trusted_runs(REPO) == [
+        (9, "2026-08-30T00:00:00Z"),
+        (8, "2026-08-29T00:00:00Z"),
+        (7, "2026-08-28T00:00:00Z"),
+    ]
+
+
+def test_a_merge_queue_run_from_a_fork_is_rejected(api: FakeGitHub) -> None:
+    _by_event(api, [_run(id=7, event="merge_group", head_repository={"full_name": "x/gaia"})])
+    assert ti._trusted_runs(REPO) == []
 
 
 def test_a_pull_request_run_is_rejected(api: FakeGitHub) -> None:
@@ -332,8 +366,8 @@ def test_fetch_walks_trusted_runs_until_a_map_lands(
     _with_runs(
         api,
         [
-            _run(id=newest, created_at="2026-08-28T00:00:00Z"),
-            _run(id=older, created_at="2026-09-16T04:33:18Z"),
+            _run(id=newest, created_at="2026-09-16T04:33:18Z"),
+            _run(id=older, created_at="2026-08-28T00:00:00Z"),
         ],
     )
     tried: list[int] = []
@@ -359,8 +393,8 @@ def test_fetch_warns_only_when_every_trusted_run_lacks_a_map(
     _with_runs(
         api,
         [
-            _run(id=newest, created_at="2026-08-28T00:00:00Z"),
-            _run(id=older, created_at="2026-09-16T04:33:18Z"),
+            _run(id=newest, created_at="2026-09-16T04:33:18Z"),
+            _run(id=older, created_at="2026-08-28T00:00:00Z"),
         ],
     )
     monkeypatch.setattr(ti, "_download_map", lambda *_args: False)

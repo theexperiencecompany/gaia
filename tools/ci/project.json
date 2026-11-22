@@ -584,6 +584,28 @@
         }
       }
     },
+    "regression-proof": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/pytest.sh regression-proof --services false --lane lint-python/regression-proof \"$(bash scripts/ci/changes.sh base-rev)\""
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/tests/**/test_*.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "regression-proof",
+          "area": "tests",
+          "events": ["pull_request", "merge_group"]
+        }
+      }
+    },
     "api-schema": {
       "executor": "nx:run-commands",
       "options": {
@@ -943,7 +965,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "suppression-hygiene",
           "area": "python"
         }
@@ -966,7 +988,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "baseline-growth",
           "area": "contracts",
           "events": ["pull_request", "merge_group"]
@@ -990,7 +1012,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "tool-pins",
           "area": "python"
         }
@@ -1182,6 +1204,10 @@
     "desktop-package": {
       "executor": "nx:noop",
       "inputs": [
+        {
+          "input": "default",
+          "projects": "desktop"
+        },
         "{workspaceRoot}/.github/workflows/desktop-pr-build.yml",
         "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
         "{workspaceRoot}/.github/actions/restore-nextjs-cache/**/*",
@@ -1192,6 +1218,25 @@
       "metadata": {
         "ci": {
           "job": "desktop-build"
+        }
+      }
+    },
+    "desktop-package-deps": {
+      "executor": "nx:noop",
+      "inputs": [
+        {
+          "input": "production",
+          "projects": "desktop",
+          "dependencies": true
+        },
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "desktop-build",
+          "events": ["merge_group", "push", "workflow_dispatch"]
         }
       }
     },
@@ -1235,15 +1280,24 @@
       }
     },
     "gitleaks": {
-      "executor": "nx:noop",
-      "inputs": ["{workspaceRoot}/**/*"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh secrets --lane lint-node/gitleaks"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "gitleaks",
           "area": "security",
-          "events": ["pull_request", "push"],
-          "runner": "action"
+          "events": ["pull_request", "merge_group", "push"]
         }
       }
     },
@@ -1262,7 +1316,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "bot-handles",
           "area": "contracts"
         }
@@ -1284,7 +1338,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "skills-symlink",
           "area": "contracts"
         }
