@@ -52,7 +52,7 @@ work behind a runner's setup.
   posts each as a `ci / <area> / <check>` commit status linked to the job
   (skipped on a dispatch, fork and Dependabot PRs, whose token cannot write
   statuses), writes a `<job>/<check>` verdict for each failed one and fails the
-  job. Only a check an action runs (gitleaks, semgrep, trivy) or that needs a
+  job. Only a check an action runs (semgrep, trivy) or that needs a
   secret (the PostHog ones) is a step, `runner: action`/`step` in its metadata.
 - **Never add a check twice.** One check, one nx target, one job.
 

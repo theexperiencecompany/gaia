@@ -21,7 +21,7 @@ lane without grepping the workflow first.
 | What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | The sim stack (API, worker, web, LLM stub) a browser e2e lane boots and drives | `sim-stack.sh` | `up` |
-| Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
+| Standing dependency, pin and secret gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog`, `uv-lock`, `secrets` |
 | The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-scope`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan`, `queue-verified` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
@@ -407,7 +407,7 @@ its output (file:line, paths prefixed by the target's `cwd`) and fails the
 job: a task detect planned that has no result is a failure, never a skip. The
 `tools/nx-ci-status` plugin's `postTasksExecution` hands the run-many tasks'
 results back; it fires once per run, which is why only build chains share one.
-An action check (gitleaks, semgrep, trivy) or a step check (the PostHog ones)
+An action check (semgrep, trivy) or a step check (the PostHog ones)
 is a target with `runner` `action`/`step`; its step's outcome reaches
 post-statuses as `--step <check>=<outcome>`.
 
@@ -425,7 +425,7 @@ with what is there so far and clears the flag. Artifacts are readable mid-run
 and job logs are not, so `mise ci:remote` prints the finding under the still
 running job. A step that is not a check (a setup) keeps its plain shell: `check` reads its command's output to EOF, so a
 command that leaves a child holding stdout would hold the step open. Scanners
-that are actions (gitleaks, semgrep) cannot take a shell, so the step after
+that are actions (semgrep) cannot take a shell, so the step after
 them is `verdict.py sarif` over the report they wrote. The gate writes its own
 `quality-gate` verdict too — one finding per lane that did not pass.
 

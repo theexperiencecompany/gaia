@@ -1280,15 +1280,24 @@
       }
     },
     "gitleaks": {
-      "executor": "nx:noop",
-      "inputs": ["{workspaceRoot}/**/*"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh secrets --lane lint-node/gitleaks"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
       "metadata": {
         "ci": {
           "job": "lint-node",
           "check": "gitleaks",
           "area": "security",
-          "events": ["pull_request", "push"],
-          "runner": "action"
+          "events": ["pull_request", "merge_group", "push"]
         }
       }
     },

@@ -773,7 +773,7 @@ REUSE_CHECKS = {
         # Only gates its job; it posts no status, so there is no pass to reuse.
         _reuse_check("api:test", None, None),
         _reuse_check("ci:knip", "knip", "node", reuse=False),
-        _reuse_check("ci:gitleaks", "gitleaks", "security", runner="action"),
+        _reuse_check("ci:semgrep", "semgrep", "security", runner="action"),
     ]
 }
 AREAS = {c.check: c.area for c in REUSE_CHECKS.values() if c.check and c.area}
@@ -1149,7 +1149,7 @@ def test_a_status_another_run_posted_is_not_this_runs_proof(
 def test_a_check_that_opts_out_of_reuse_or_no_nx_task_decides_always_runs(
     reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # knip is reuse: false and gitleaks is an action nx cannot diff; both passed and nothing changed.
+    # knip is reuse: false and semgrep is an action nx cannot diff; both passed and nothing changed.
     head = _push(reuse_pr, "docs/a.md", "x")
     _stub_runs(
         api,
@@ -1159,7 +1159,7 @@ def test_a_check_that_opts_out_of_reuse_or_no_nx_task_decides_always_runs(
                 reuse_pr.head,
                 "master",
                 reuse_pr.base,
-                {**PASSED, "knip": "passed", "gitleaks": "passed"},
+                {**PASSED, "knip": "passed", "semgrep": "passed"},
             )
         ],
     )

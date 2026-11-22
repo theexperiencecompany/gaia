@@ -175,20 +175,20 @@ def test_only_a_master_push_the_queue_passed_skips_the_check_lanes(workflow: Wor
     assert affected["env"]["CI_TIER"] == "${{ steps.tier.outputs.tier }}"
 
 
-def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Workflow) -> None:
-    """Regression for run 40050150344: on a dispatch the action scans ALL history and fails on old findings."""
-    steps = [
-        mapping(step)
+def test_the_secret_scan_runs_on_every_event_that_brings_commits_and_no_other(
+    workflow: Workflow,
+) -> None:
+    """Regression for master run 44961262551: the merge queue skipped gitleaks, and a verified push now runs none."""
+    uses = [
+        str(mapping(step).get("uses", ""))
         for job in mapping(workflow["jobs"]).values()
         for step in mapping(job).get("steps", [])
-        if "gitleaks/gitleaks-action" in str(mapping(step).get("uses", ""))
     ]
-    assert len(steps) == 1
-    assert "'ci:gitleaks'" in str(steps[0]["if"])
+    assert not [u for u in uses if "gitleaks" in u], "the action scans first-parent commits only"
     gitleaks = nx_affected.checks()["ci:gitleaks"]
-    assert gitleaks.events == ("pull_request", "push"), (
-        "an exclusion list lets workflow_dispatch through"
-    )
+    assert gitleaks.job == "lint-node"
+    # workflow_dispatch scans ALL history and fails on old findings (run 40050150344).
+    assert gitleaks.events == ("pull_request", "merge_group", "push")
 
 
 REPO = "theexperiencecompany/gaia"

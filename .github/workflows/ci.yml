@@ -377,6 +377,8 @@ jobs:
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      # gitleaks scans the pushed commits on a push (audit.sh secrets).
+      PUSH_BEFORE_SHA: ${{ github.event.before }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -399,25 +401,6 @@ jobs:
           JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job lint-node
-      # Only the events that bring new commits, scanned as a range (ci:gitleaks's
-      # metadata.ci.events). A merge group's commits are the PR's, which the PR run
-      # scanned; a dispatch makes the action scan ALL history (4,747 old findings,
-      # run 40050150344). Dependabot runs get Dependabot secrets, so GITLEAKS_LICENSE is empty.
-      - name: gitleaks — secret scanning
-        id: gitleaks
-        continue-on-error: true
-        if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-node'], 'ci:gitleaks') && github.actor != 'dependabot[bot]'
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-          # The default per-finding summary blows GitHub's 1024k step-summary
-          # cap on a history-touching diff; full results are in the sarif.
-          GITLEAKS_ENABLE_SUMMARY: false
-      # The action writes results.sarif in the workspace; each leak is a finding.
-      - name: gitleaks — read its findings into the verdict
-        if: always() && steps.gitleaks.outcome == 'failure'
-        run: python3 scripts/ci/verdict.py sarif --lane lint-node/gitleaks results.sarif
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
@@ -425,7 +408,7 @@ jobs:
         env:
           JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
