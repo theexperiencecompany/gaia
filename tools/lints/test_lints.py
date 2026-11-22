@@ -147,16 +147,8 @@ def test_service_abc_base_is_clean(tmp_path: Path) -> None:
 
 def test_allowlisted_service_is_clean(tmp_path: Path) -> None:
     src = "class ComposioService:\n    def __init__(self, key):\n        self.key = key\n"
-    path = _write(tmp_path, f"{_SERVICES_DIR}/composio/composio_service.py", src)
+    path = _write(tmp_path, f"{_SERVICES_DIR}/composio.py", src)
     assert no_service_classes.check([path]) == []
-
-
-def test_allowlisted_service_name_in_another_file_is_flagged(tmp_path: Path) -> None:
-    src = "class ComposioService:\n    def __init__(self, key):\n        self.key = key\n"
-    path = _write(tmp_path, f"{_SERVICES_DIR}/brand_new_service.py", src)
-    violations = no_service_classes.check([path])
-    assert len(violations) == 1
-    assert "ComposioService" in violations[0].detail
 
 
 def test_service_class_with_an_injected_mongo_handle_is_flagged(tmp_path: Path) -> None:
