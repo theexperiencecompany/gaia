@@ -4,9 +4,8 @@ Live runs resume through the executor inbox (ticket redeem). Background runs
 have no live run to wake, so an approval must RE-ENQUEUE the owning work and a
 denial must leave a trace where the owner actually looks:
 
-- Tracked todos: log the grant on the todo's activity and re-enqueue the todo
-  in its parked conversation; a denial is recorded on the same log, which its
-  next run reads.
+- GAIA tasks and tracked todos: log the grant on the owner's log and continue the
+  run in its own chat; a denial goes on the same log, which its next run reads.
 - Workflows: re-queue with the receipt in the trigger context, so the run
   continues with the approval in context and the trace in its conversation.
 
@@ -15,10 +14,13 @@ here is best-effort: a resume failure must never fail the tap that approved.
 """
 
 from app.constants.log_tags import LogTag
+from app.constants.tasks import RESUME_TASK_JOB, TaskLogEvent
 from app.constants.todos import TodoActivityEvent
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.tasks import task_repository
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.analytics_service import capture
+from app.services.tasks.run_records import record_event
 from app.services.todo_activity import record_activity
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -31,7 +33,7 @@ from shared.py.wide_events import log
 
 async def resume_owner_after_approval(row: ApprovalLedgerDocument) -> None:
     """Re-enqueue the background owner parked on this approved row. Never raises."""
-    if not row.owner_run_type or not row.owner_id:
+    if not row.owner_task_id and not (row.owner_run_type and row.owner_id):
         return
     try:
         if not await approval_ledger_repository.claim_resume(row.approval_id):
@@ -45,7 +47,9 @@ async def resume_owner_after_approval(row: ApprovalLedgerDocument) -> None:
         )
         return
     try:
-        if row.owner_run_type == "todo":
+        if row.owner_task_id:
+            await _resume_task(row, row.owner_task_id)
+        elif row.owner_run_type == "todo":
             await _resume_todo(row)
         elif row.owner_run_type == "workflow":
             await _resume_workflow(row)
@@ -68,15 +72,44 @@ async def resume_owner_after_approval(row: ApprovalLedgerDocument) -> None:
 
 async def record_owner_deny(row: ApprovalLedgerDocument, feedback: str | None) -> None:
     """Leave a denial trace where a background owner looks. Never raises."""
+    what = f" ({feedback!r})" if feedback else ""
+    if row.owner_task_id:
+        if task := await task_repository.get(row.owner_task_id, user_id=row.user_id):
+            await record_event(
+                task,
+                TaskLogEvent.APPROVAL_DENIED,
+                f"{row.approval_id}{what}: skipped {row.summary}",
+            )
+        return
     if row.owner_run_type != "todo" or not row.owner_id:
         return
-    what = f" ({feedback!r})" if feedback else ""
     await record_activity(
         row.owner_id,
         row.user_id,
         TodoActivityEvent.APPROVAL_DENIED,
         f"{row.approval_id}{what}: skipped {row.summary}",
     )
+
+
+async def _resume_task(row: ApprovalLedgerDocument, task_id: str) -> None:
+    """Continue the task's run in its own chat; the grant is logged here, under the resume claim."""
+    task = await task_repository.get(task_id, user_id=row.user_id)
+    if task is None:
+        return
+    await record_event(
+        task,
+        TaskLogEvent.APPROVAL_GRANTED,
+        f"{row.approval_id}: {row.summary}; continuing the run in its own chat",
+    )
+    await enqueue_worker_job(
+        await RedisPoolManager.get_pool(),
+        RESUME_TASK_JOB,
+        task_id,
+        row.conversation_id,
+        row.approval_id,
+        row.summary,
+    )
+    capture(UserId(row.user_id), HilResumed(approval_id=row.approval_id, owner_run_type="task"))
 
 
 async def _resume_todo(row: ApprovalLedgerDocument) -> None:

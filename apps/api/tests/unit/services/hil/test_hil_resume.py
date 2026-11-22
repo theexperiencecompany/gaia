@@ -40,6 +40,7 @@ def _row(**overrides: Any) -> MagicMock:
     row.state = LedgerState.APPROVED
     row.owner_run_type = ""
     row.owner_id = ""
+    row.owner_task_id = None
     for key, value in overrides.items():
         setattr(row, key, value)
     return row

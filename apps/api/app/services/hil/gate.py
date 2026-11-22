@@ -122,10 +122,17 @@ class GateContext:
     # which resume through the executor inbox instead of re-enqueueing.
     owner_run_type: str = ""
     owner_id: str = ""
+    # The GAIA task a background run works, which a decision on its approval wakes.
+    owner_task_id: str | None = None
     # A background subagent's own run: its thread and the recipe that resumes it,
     # filed on every approval it raises so a decision can resume it from anywhere.
     subagent_thread_id: str | None = None
     subagent_resume: SubagentResumeItem | None = None
+
+    @property
+    def parks_an_owner(self) -> bool:
+        """Whether a background owner parks on this run's approvals, needing a whole owner."""
+        return bool(self.owner_run_type and self.owner_id) or self.owner_task_id is not None
 
 
 @dataclass(frozen=True)
@@ -290,6 +297,7 @@ async def _decide_ledger(
                 proposing_run_id=context.stream_id,
                 owner_run_type=context.owner_run_type,
                 owner_id=context.owner_id,
+                owner_task_id=context.owner_task_id,
             )
         )
         log.info(
@@ -308,8 +316,7 @@ async def _decide_ledger(
                 integration_name=integration_name,
             ),
             auto_reason=auto_note.strip() or None,
-            owner_run_type=context.owner_run_type,
-            owner_id=context.owner_id,
+            parked_owner=context.parks_an_owner,
             # Live runs hold the card until the run ends (a mid-run revoke is
             # never shown); background runs have no watcher, so publish now.
             live=context.pausable,
@@ -367,6 +374,7 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     # registers so the verdict can wake the right unit of work. Live runs leave
     # it empty — they resume through the executor inbox, never re-enqueueing.
     owner_run_type, owner_id = "", ""
+    owner_task_id = None if pausable else configurable.get("active_task_id")
     if not pausable:
         workflow_id = configurable.get("workflow_id") or ""
         todo_id = configurable.get("active_todo_id") or ""
@@ -383,6 +391,7 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
         pausable,
         owner_run_type,
         owner_id,
+        owner_task_id=owner_task_id,
         subagent_thread_id=configurable.get("thread_id") if subagent_resume else None,
         subagent_resume=subagent_resume,
     )

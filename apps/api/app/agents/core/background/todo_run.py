@@ -213,6 +213,9 @@ async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> Age
             active_todo_id=request.todo_run.todo_id
             if isinstance(request.todo_run, TodoRun)
             else None,
+            active_task_id=request.todo_run.task_id
+            if isinstance(request.todo_run, TaskRun)
+            else None,
             execution_mode="background",
             # The todo's own title authorizes its gated calls the way a live
             # turn's words would; the run brief is generated and never does.

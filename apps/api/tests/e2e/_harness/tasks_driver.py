@@ -143,7 +143,15 @@ _JOBS: Mapping[str, Callable[..., Awaitable[object]]] = {
     **{f.name: f.coroutine for f in TASK_FUNCTIONS if isinstance(f, Function)},
     **{f.__name__: f for f in TASK_FUNCTIONS if not isinstance(f, Function)},
 }
-_RUN_JOBS = ("run_task", "execute_tracked_todo", "resume_tracked_todo", "execute_workflow_by_id")
+_RUN_JOBS = (
+    "run_task",
+    "resume_task",
+    "execute_tracked_todo",
+    "resume_tracked_todo",
+    "execute_workflow_by_id",
+)
+#: The jobs that continue a GAIA task's run once its approval is decided.
+_RESUME_JOBS = ("resume_task", "resume_tracked_todo")
 USER_SETTINGS = "/api/v1/user"
 
 
@@ -177,6 +185,7 @@ def _task_view(body: dict[str, Any]) -> TaskView:
         failed="failed" in body["status_flags"],
         parent_id=body["parent_id"],
         open_children=body["open_subtask_count"],
+        pending_approval=body["pending_approval"] is not None,
         next_run=datetime.fromisoformat(body["next_check_at"]) if body["next_check_at"] else None,
     )
 
@@ -509,6 +518,19 @@ class TasksDriver:
                     ]
                 )
                 tell(report)
+            case NeedsApproval(asking):
+                self._executor.then(
+                    [
+                        call(
+                            "retrieve_tools",
+                            {"exact_tool_names": [GATED_ACTION]},
+                            call_id="tc_find",
+                        ),
+                        call(GATED_ACTION, GATED_ACTION_ARGS, call_id="tc_gated"),
+                        *([asking, asking] if one_off else [asking]),
+                    ]
+                )
+                tell(asking)
             case Breaks():
                 pass
             case _:
@@ -931,10 +953,10 @@ class TasksDriver:
     async def _decide(
         self, task_id: str, verdict: dict[str, str], report: str, *, runs: int
     ) -> None:
-        todo = _ok(await self._client.get(f"{TODOS}/{task_id}"))
-        pending = todo["pending_approval"]
+        task = _ok(await self._client.get(f"{_base(task_id)}/{task_id}"))
+        pending = task["pending_approval"]
         assert pending is not None, "the task waits on no approval"
-        if todo["notify_on_run"]:
+        if task["notify" if _is_task(task_id) else "notify_on_run"]:
             self._comms.then([report] * runs)
         _ok(
             await self._client.post(
@@ -943,7 +965,7 @@ class TasksDriver:
         )
         await drain_background_runs()
         for job in await self._armed(task_id):
-            if job.function == "resume_tracked_todo":
+            if job.function in _RESUME_JOBS:
                 await self._run(job)
         await drain_background_runs()
         self._all_turns_taken()

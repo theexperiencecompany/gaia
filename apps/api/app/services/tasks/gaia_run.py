@@ -18,6 +18,8 @@ from app.agents.core.background.todo_run import (
     TodoRunRequest,
     run_todo_on_executor,
 )
+from app.agents.prompts.task_prompts import APPROVAL_RESUME_BRIEF
+from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.tasks import (
     EXECUTOR_BUSY_RECHECK,
@@ -33,10 +35,12 @@ from app.constants.todos import (
     OPEN_STATE_REPAIR_CHECK,
     PAUSED_RUN_RECHECK,
     RETRY_BACKOFF,
+    TRIGGER_TODO_FEATURE_KEY,
     TodoWakeKind,
     WaitingOn,
 )
 from app.db.repositories.tasks import task_repository
+from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
@@ -100,6 +104,88 @@ async def run_gaia_task(task: TaskDocument, armed_for: datetime) -> str:
         return outcome
     finally:
         await task_repository.finish_run(claimed.id, user_id=claimed.user_id, ran=ran)
+
+
+async def resume_gaia_task(
+    task_id: str, conversation_id: str, approval_id: str, receipt: str
+) -> str | None:
+    """Continue the run parked on approval_id in its own chat; None while another run holds the task.
+
+    The resume inherits the parked run's executor thread, so unlike a new run it does not
+    reset it, and it is not settled: the task keeps the next step it had when it parked.
+    """
+    task = await task_repository.get_any(task_id)
+    if task is None:
+        return f"not_found:{task_id}"
+    if task.completed or not task.active:
+        return f"{'completed' if task.completed else 'paused'}:{task_id}"
+    try:
+        user = await require_owner(task.user_id)
+    except OwnerNotFoundError as missing:
+        log.error("task.owner_not_a_user", task_id=task.id, error=str(missing))
+        await complete_task(task, "closed: its owner is not a GAIA user")
+        return f"no_owner:{task.id}"
+    claimed = await task_repository.claim_run(task.id, armed_for=None)
+    if claimed is None:
+        return None
+    ran: TaskRunStatus | None = None
+    try:
+        ran, outcome = await _resume_claimed(claimed, user, conversation_id, approval_id, receipt)
+        return outcome
+    finally:
+        await task_repository.finish_run(claimed.id, user_id=claimed.user_id, ran=ran)
+
+
+async def _resume_claimed(
+    task: TaskDocument,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    approval_id: str,
+    receipt: str,
+) -> tuple[TaskRunStatus | None, str | None]:
+    try:
+        await enforce_cost_budget(task.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+    except CostBudgetExceededException as walled:
+        await record_skipped_run(task, TaskRunTrigger.APPROVAL, f"skipped: {walled.message}")
+        return None, f"walled:{task.id}"
+    task_run = TaskRun(
+        task_id=task.id,
+        run_id=str(uuid4()),
+        trigger_type=TaskRunTrigger.APPROVAL.value,
+        runs_once=not isinstance(task.when, RepeatWhen) and not task.subscriptions,
+    )
+
+    async def opened() -> None:
+        await open_run(task, task_run, conversation_id)
+
+    try:
+        await run_todo_on_executor(
+            TodoRunRequest(
+                user=user,
+                todo_run=task_run,
+                todo_title=task.title,
+                task=APPROVAL_RESUME_BRIEF.format(approval_id=approval_id, receipt=receipt),
+                conversation_id=conversation_id,
+                fresh_thread=False,
+                wake=TodoRunWake(
+                    kind=TodoWakeKind.APPROVAL, trigger_names=[], approval_summary=receipt
+                ),
+                on_started=opened,
+            )
+        )
+    except ExecutorBusyError:
+        return None, None
+    except TodoRunCancelledError:
+        await close_run(
+            task, task_run, TaskRunStatus.CANCELLED, "approval resume stopped by the user"
+        )
+        return TaskRunStatus.CANCELLED, f"cancelled:{task.id}"
+    except Exception as exc:
+        await close_run(
+            task, task_run, TaskRunStatus.FAILED, f"{type(exc).__name__}: {str(exc)[:160]}"
+        )
+        raise
+    return TaskRunStatus.SUCCESS, f"resumed:{task.id}"
 
 
 async def _skip_reason(task: TaskDocument) -> str | None:

@@ -18,7 +18,7 @@ from app.models.task_models import (
     When,
 )
 from app.models.task_run_models import TaskRunDocument
-from app.models.todo_models import ExternalRef, Priority, SubTask
+from app.models.todo_models import ExternalRef, PendingApprovalRef, Priority, SubTask
 from app.models.trigger_subscription_models import TriggerSubscriptionView
 from app.schemas.common import ResponseModel
 
@@ -122,6 +122,9 @@ class TaskResponse(ResponseModel):
     )
     run_state: TaskRunState
     waiting: Waiting | None
+    pending_approval: PendingApprovalRef | None = Field(
+        description="The oldest live approval a run of this GAIA task waits on"
+    )
     status_flags: list[TaskFlag]
     notify: bool
     external_ref: ExternalRef | None
@@ -140,19 +143,25 @@ class TaskResponse(ResponseModel):
 
     @classmethod
     def from_document(
-        cls, task: TaskDocument, *, open_subtask_count: int, connected: set[str]
+        cls,
+        task: TaskDocument,
+        *,
+        open_subtask_count: int,
+        connected: set[str],
+        pending_approval: PendingApprovalRef | None,
     ) -> "TaskResponse":
         return cls(
             **task.model_dump(
                 include=set(cls.model_fields)
                 - {"subscriptions", "missing_integrations"}
-                - {"open_subtask_count"}
+                - {"open_subtask_count", "pending_approval"}
             ),
             subscriptions=[
                 TriggerSubscriptionView.model_validate(sub.model_dump())
                 for sub in task.subscriptions
             ],
             open_subtask_count=open_subtask_count,
+            pending_approval=pending_approval,
             missing_integrations=[i for i in task.integration_ids if i not in connected],
         )
 

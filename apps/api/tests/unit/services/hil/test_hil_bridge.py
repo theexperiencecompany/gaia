@@ -724,8 +724,7 @@ class TestBackgroundFlagSync:
                     summary="Send it",
                     integration_name="Gmail",
                 ),
-                owner_run_type="todo",
-                owner_id="todo-9",
+                parked_owner=True,
             )
 
         mark.assert_awaited_once_with(CONVERSATION_ID, user_id=USER_ID)
@@ -873,18 +872,6 @@ class TestLedgerCardPublish:
         bridge["log"].set.assert_any_call(
             hil={"approval_id": "ap_1", "tool": "send_email", "stream_id": STREAM_ID}
         )
-
-    @pytest.mark.parametrize(
-        "owner", [{"owner_run_type": "todo"}, {"owner_id": "todo-9"}], ids=["type", "id"]
-    )
-    async def test_half_an_owner_never_marks_the_conversation(
-        self, bridge: dict, owner: dict[str, str]
-    ) -> None:
-        bridge["conversations"].mark_background_with_live_approval = AsyncMock()
-
-        await publish_ledger(**owner)
-
-        bridge["conversations"].mark_background_with_live_approval.assert_not_awaited()
 
 
 class TestApprovalFlagSyncScope:

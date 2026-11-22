@@ -761,7 +761,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "approval_id": string;
-    "owner_run_type": "todo" | "workflow";
+    "owner_run_type": "todo" | "workflow" | "task";
   };
   "hil:revoked": {
     "actor": "user" | "agent";

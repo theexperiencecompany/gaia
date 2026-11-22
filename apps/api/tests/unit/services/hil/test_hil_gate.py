@@ -595,3 +595,30 @@ class TestTheApprovalCardNamesTheIntegration:
         ):
             assert await _integration_name_for(make_request(), USER_ID, "send_email") is None
         resolve.assert_not_awaited()
+
+
+class TestParkedOwner:
+    @pytest.mark.parametrize(
+        ("owner", "parks"),
+        [
+            ({"owner_run_type": "todo", "owner_id": "todo-9"}, True),
+            ({"owner_task_id": "task_0123456789ab"}, True),
+            ({"owner_run_type": "todo"}, False),
+            ({"owner_id": "todo-9"}, False),
+            ({}, False),
+        ],
+        ids=["todo", "task", "half-type", "half-id", "live"],
+    )
+    def test_only_a_whole_owner_parks_on_the_approval(
+        self, owner: dict[str, str], parks: bool
+    ) -> None:
+        context = GateContext(
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            user_messages=[],
+            pausable=False,
+            **owner,
+        )
+
+        assert context.parks_an_owner is parks

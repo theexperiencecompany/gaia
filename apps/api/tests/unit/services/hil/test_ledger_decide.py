@@ -77,6 +77,7 @@ def _row(**overrides: Any) -> MagicMock:
     row.feedback = None
     row.owner_run_type = ""
     row.owner_id = ""
+    row.owner_task_id = None
     # Real datetime: the decision path computes card age from it, and a
     # MagicMock would TypeError on the subtraction, hiding real type errors.
     row.created_at = datetime.now(UTC)

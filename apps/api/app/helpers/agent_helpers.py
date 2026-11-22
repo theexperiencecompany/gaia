@@ -251,6 +251,7 @@ class _TurnScope:
     subagent_id: str | None
     vfs_session_id: str | None
     active_todo_id: str | None
+    active_task_id: str | None
     conversation_source: str | None
     user_messages: list[str] | None
     user_request: str | None
@@ -301,6 +302,7 @@ def _inherit_from_parent_configurable(
         subagent_id=current.subagent_id or parent.subagent_id,
         vfs_session_id=current.vfs_session_id or parent.vfs_session_id,
         active_todo_id=current.active_todo_id or parent.active_todo_id,
+        active_task_id=current.active_task_id or parent.active_task_id,
         conversation_source=current.conversation_source or parent.conversation_source,
         execution_mode=current.execution_mode or parent.execution_mode,
         presence=current.presence or parent.presence,
@@ -443,6 +445,9 @@ class AgentTurn:
 
     active_todo_id: str | None = None
     """The tracked todo this turn is working, when there is one."""
+
+    active_task_id: str | None = None
+    """The GAIA task a background run is working, when there is one."""
 
     execution_mode: ExecutionMode | None = None
     """interactive vs the background modes; inherited when omitted."""
@@ -615,6 +620,7 @@ async def build_agent_config(
         subagent_id=subagent_id,
         vfs_session_id=vfs_session_id,
         active_todo_id=active_todo_id,
+        active_task_id=turn.active_task_id,
         conversation_source=source,
         user_messages=user_messages,
         user_request=user_request,
@@ -695,6 +701,7 @@ async def build_agent_config(
         "vfs_session_id": resolved.vfs_session_id,
         "stream_id": resolved.stream_id,
         "active_todo_id": resolved.active_todo_id,
+        "active_task_id": resolved.active_task_id,
         "execution_mode": resolved.execution_mode or "interactive",
         "conversation_source": resolved_source,
         "source_category": source_category,

@@ -3636,14 +3636,14 @@
       "class": "HilResumed",
       "owner": "server",
       "domain": "hil",
-      "description": "A parked todo or workflow run was re-queued after its approval was granted.",
+      "description": "A parked todo, workflow or GAIA task run was re-queued after its approval was granted.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A parked todo or workflow run was re-queued after its approval was granted.",
+        "description": "A parked todo, workflow or GAIA task run was re-queued after its approval was granted.",
         "properties": {
           "approval_id": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
@@ -3653,7 +3653,8 @@
           "owner_run_type": {
             "enum": [
               "todo",
-              "workflow"
+              "workflow",
+              "task"
             ],
             "title": "Owner Run Type",
             "type": "string"

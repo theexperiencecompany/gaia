@@ -648,8 +648,14 @@ def _check_conversations(check: _Checker, data: _Data) -> None:
 def _check_approvals_and_waits(check: _Checker, data: _Data) -> None:
     for row in data.approvals:
         owner = row.get("owner_id")
+        # A row a task's own run parked carries no legacy owner, only the task it parked on.
+        native = None if row.get("owner_run_type") else row.get("owner_task_id")
         expected = (
-            owner if row.get("owner_run_type") in LEGACY_WAITERS and owner in data.tasks else None
+            owner
+            if row.get("owner_run_type") in LEGACY_WAITERS and owner in data.tasks
+            else native
+            if native in data.tasks
+            else None
         )
         check.eq(
             "approval_ledger",

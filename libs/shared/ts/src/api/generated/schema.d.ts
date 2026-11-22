@@ -14976,6 +14976,8 @@ export interface components {
             parent_id: string | null;
             /** @description Why the system switched it off; none when the user stopped it */
             pause_reason: components["schemas"]["DeactivationReason"] | null;
+            /** @description The oldest live approval a run of this GAIA task waits on */
+            pending_approval: components["schemas"]["PendingApprovalRef"] | null;
             priority: components["schemas"]["Priority"];
             run_state: components["schemas"]["TaskRunState"];
             /** Source Integration */

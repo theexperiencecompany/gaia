@@ -184,8 +184,7 @@ async def publish_ledger_request(
     rationale: str | None = None,
     auto_reason: str | None = None,
     live: bool = True,
-    owner_run_type: str = "",
-    owner_id: str = "",
+    parked_owner: bool = False,
 ) -> None:
     """Surface a ledger PENDING card exactly once per registration.
 
@@ -220,7 +219,7 @@ async def publish_ledger_request(
     )
     session = get_session(stream_id)
     held = live and session is not None and session.kind is RunKind.LIVE
-    if owner_run_type and owner_id:
+    if parked_owner:
         # Background owner parked here: surface its conversation in the
         # sidebar while the approval lives (hidden otherwise).
         await conversation_repository.mark_background_with_live_approval(

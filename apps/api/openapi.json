@@ -18748,6 +18748,17 @@
             ],
             "description": "Why the system switched it off; none when the user stopped it"
           },
+          "pending_approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingApprovalRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The oldest live approval a run of this GAIA task waits on"
+          },
           "priority": {
             "$ref": "#/components/schemas/Priority"
           },
@@ -18880,6 +18891,7 @@
           "pause_reason",
           "run_state",
           "waiting",
+          "pending_approval",
           "status_flags",
           "notify",
           "external_ref",

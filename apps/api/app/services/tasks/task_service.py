@@ -7,6 +7,7 @@ its notify switch) recomputes the nudge it owes and arms the task's next time.
 import uuid
 
 from app.constants.tasks import Assignee
+from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
 from app.models.task_models import (
@@ -20,7 +21,7 @@ from app.models.task_models import (
     When,
 )
 from app.models.task_run_models import TaskRunDocument
-from app.models.todo_models import SubTask
+from app.models.todo_models import PendingApprovalRef, SubTask
 from app.schemas.tasks import TaskCreateRequest, TaskResponse, TaskUpdateRequest
 from app.services.analytics_service import capture
 from app.services.conversation_service import (
@@ -52,14 +53,30 @@ from shared.py.analytics.catalog.tasks import (
 from shared.py.wide_events import log
 
 
+async def _pending_approvals(tasks: list[TaskDocument]) -> dict[str, PendingApprovalRef]:
+    """Find the oldest live approval each GAIA task's runs wait on, for the jump to its card."""
+    gaia_ids = [task.id for task in tasks if task.assignee is Assignee.GAIA]
+    refs: dict[str, PendingApprovalRef] = {}
+    for row in await approval_ledger_repository.list_live_by_tasks(gaia_ids):
+        if row.owner_task_id is not None and row.owner_task_id not in refs:
+            refs[row.owner_task_id] = PendingApprovalRef(
+                approval_id=row.approval_id, conversation_id=row.conversation_id
+            )
+    return refs
+
+
 async def task_responses(user_id: str, tasks: list[TaskDocument]) -> list[TaskResponse]:
-    """Project tasks onto TaskResponse with their open subtask counts and missing apps."""
+    """Project tasks onto TaskResponse with their open subtask counts, approvals and missing apps."""
     counts = await task_repository.count_open_subtasks(user_id, [task.id for task in tasks])
+    pending = await _pending_approvals(tasks)
     needs_apps = any(task.integration_ids for task in tasks)
     connected = await get_connected_integration_ids(user_id) if needs_apps else set()
     return [
         TaskResponse.from_document(
-            task, open_subtask_count=counts.get(task.id, 0), connected=connected
+            task,
+            open_subtask_count=counts.get(task.id, 0),
+            connected=connected,
+            pending_approval=pending.get(task.id),
         )
         for task in tasks
     ]

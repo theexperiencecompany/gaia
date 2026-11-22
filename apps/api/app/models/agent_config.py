@@ -156,6 +156,8 @@ class AgentConfigurable(TypedDict, total=False):
     session_id: str | None
     stream_id: str | None
     active_todo_id: str | None
+    #: The GAIA task a background run is working; its approvals park on it.
+    active_task_id: str | None
     execution_mode: ExecutionMode
     #: The specific channel (``ConversationSource`` value) and its generalized
     #: category (``SourceCategory`` value).
@@ -253,6 +255,7 @@ class AgentConfigurableView(BaseModel):
     vfs_session_id: str | None = None
     stream_id: str | None = None
     active_todo_id: str | None = None
+    active_task_id: str | None = None
     execution_mode: ExecutionMode | None = None
     conversation_source: str | None = None
     source_category: str | None = None

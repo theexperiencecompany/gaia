@@ -1,5 +1,8 @@
 """The task engine's jobs: run_task brings one task round, recover_tasks re-arms lost ones.
 
+resume_task continues a run parked on an approval once the user approved it; while
+another run holds the task it waits on the lock backoff, then gives up loudly.
+
 run_task(task_id, stamp) is the one job every task time is armed with. A stamp that no
 longer names one of the task's stored times is a job a reschedule left behind, and is
 dropped. To-dos come round here (a repeat reopens, a nudge goes out); they never run.
@@ -20,20 +23,26 @@ from app.agents.core.background.task_run_delivery import (
 from app.constants.tasks import (
     RECOVER_TASKS_BATCH,
     RECOVER_TASKS_JITTER_SECONDS,
+    RESUME_TASK_JOB,
     STALE_RUN_AFTER,
     Assignee,
+    TaskLogEvent,
 )
 from app.constants.todos import (
+    LOCK_DEFER_BACKOFF,
     MAX_RETRY_ATTEMPTS,
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_RETRY_DELAY,
 )
 from app.db.repositories.tasks import task_repository
 from app.services.tasks.arming import arm_at, armed_for_current_time, come_round_times
-from app.services.tasks.gaia_run import run_gaia_task
+from app.services.tasks.gaia_run import resume_gaia_task, run_gaia_task
+from app.services.tasks.run_records import record_event
 from app.services.tasks.todo_rounds import bring_todo_round
 from app.utils.auth_utils import require_owner
 from app.utils.occurrence import parse_occurrence_stamp
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.context import analytics_context, worker_context
@@ -61,6 +70,42 @@ async def run_task(
             outcome = await run_gaia_task(task, armed_for)
     log.set_ns("task", outcome=outcome.split(":", 1)[0])
     return outcome
+
+
+async def resume_task(
+    _ctx: Mapping[str, object],
+    task_id: str,
+    conversation_id: str,
+    approval_id: str,
+    receipt: str,
+    attempt: int = 0,
+) -> str:
+    """Continue the task's run parked on approval_id, waiting its turn while another run holds it."""
+    log.set(task={"id": task_id, "approval_id": approval_id, "resume_attempt": attempt})
+    outcome = await resume_gaia_task(task_id, conversation_id, approval_id, receipt)
+    if outcome is not None:
+        return outcome
+    if attempt >= len(LOCK_DEFER_BACKOFF):
+        log.warning("task.resume_dropped", task_id=task_id, approval_id=approval_id)
+        # The grant entry said the run continues; the task's log must say it did not.
+        if task := await task_repository.get_any(task_id):
+            await record_event(
+                task,
+                TaskLogEvent.RESUME_DROPPED,
+                f"{approval_id}: the run was not continued after the approval (the task stayed busy)",
+            )
+        return f"resume_dropped:{task_id}"
+    await enqueue_worker_job(
+        await RedisPoolManager.get_pool(),
+        RESUME_TASK_JOB,
+        task_id,
+        conversation_id,
+        approval_id,
+        receipt,
+        attempt + 1,
+        _defer_until=datetime.now(UTC) + LOCK_DEFER_BACKOFF[attempt],
+    )
+    return f"resume_deferred:{task_id}"
 
 
 async def recover_tasks(_ctx: Mapping[str, object]) -> str:

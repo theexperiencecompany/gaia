@@ -235,6 +235,8 @@ class ApprovalProposal(BaseModel):
     # resume through the executor inbox; set once at registration.
     owner_run_type: str = ""
     owner_id: str = ""
+    # The GAIA task whose background run parked on this approval; a decision wakes it.
+    owner_task_id: str | None = None
     proposing_run_id: str | None = None
 
 

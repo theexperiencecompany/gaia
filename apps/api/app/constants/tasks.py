@@ -173,6 +173,8 @@ class TemplateOrigin(StrEnum):
 
 #: The ARQ job that brings a task round; also the prefix of its per-occurrence job id.
 RUN_TASK_JOB: Final = "run_task"
+#: The ARQ job that continues a GAIA task's run parked on an approval the user decided.
+RESUME_TASK_JOB: Final = "resume_task"
 #: How many due tasks one recovery pass re-arms; the next pass takes the rest.
 RECOVER_TASKS_BATCH: Final = 100
 #: The most a re-armed job is spread out, so one recovery pass does not fire everything at once.

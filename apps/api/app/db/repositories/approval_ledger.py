@@ -228,6 +228,24 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
             ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
         ]
 
+    async def list_live_by_tasks(self, task_ids: list[str]) -> list[ApprovalLedgerDocument]:
+        """Live (PENDING/APPROVED) rows parked by these GAIA tasks' runs, oldest first."""
+        if not task_ids:
+            return []
+        cursor = (
+            self._raw_collection()
+            .find(
+                {
+                    "owner_task_id": {"$in": task_ids},
+                    "state": {"$in": sorted(str(s) for s in LIVE_LEDGER_STATES)},
+                }
+            )
+            .sort("created_at", 1)
+        )
+        return [
+            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
+        ]
+
     async def recent_tool_outcomes(
         self, user_id: str, tool_name: str, *, limit: int = 10, since_days: int = 30
     ) -> list[ApprovalLedgerDocument]:
