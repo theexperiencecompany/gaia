@@ -1179,7 +1179,7 @@ async def test_a_flag_reading_off_never_kills_a_cached_agent_lab_sandbox() -> No
 
 
 # --------------------------------------------------------------------------
-# The agents' home on agent-lab sandboxes, and telling todos about a replacement
+# The agents' home on agent-lab sandboxes, and telling tasks about a replacement
 # --------------------------------------------------------------------------
 
 
@@ -1231,8 +1231,8 @@ async def test_a_first_sandbox_is_not_reported_as_a_replacement() -> None:
     report.assert_not_awaited()
 
 
-async def test_a_replacement_tells_the_watching_todos_which_save_came_back() -> None:
-    # The old sandbox took the agents' processes with it; without this the todo
+async def test_a_replacement_tells_the_watching_tasks_which_save_came_back() -> None:
+    # The old sandbox took the agents' processes with it; without this the task
     # waits forever for an event no process is left to send.
     sbx = _fake_sandbox("sbx-new")
     sbx.commands.run = AsyncMock(
@@ -1248,7 +1248,7 @@ async def test_a_replacement_tells_the_watching_todos_which_save_came_back() -> 
 
 
 @pytest.mark.regression
-async def test_a_failed_agents_home_setup_still_records_the_sandbox_and_tells_the_todo() -> None:
+async def test_a_failed_agents_home_setup_still_records_the_sandbox_and_tells_the_task() -> None:
     # Regression: setup ran before the sandbox was recorded, so a failure left
     # it orphaned and every later acquire created (and orphaned) another.
     uid = _uid()
@@ -1290,7 +1290,7 @@ async def test_the_agents_home_setup_runs_under_its_own_deadline() -> None:
     )
 
 
-async def test_a_replacement_with_no_save_tells_the_todo_nothing_was_restored() -> None:
+async def test_a_replacement_with_no_save_tells_the_task_nothing_was_restored() -> None:
     report = AsyncMock()
     with patch.object(lifecycle, "report_sandbox_event", report):
         await lifecycle._set_up_agents_home("u1", _fake_sandbox("sbx-new"), replaced=True)
@@ -1302,7 +1302,7 @@ async def test_a_replacement_with_no_save_tells_the_todo_nothing_was_restored() 
     )
 
 
-async def test_a_failed_agents_home_setup_is_logged_and_its_error_capped_for_the_todo() -> None:
+async def test_a_failed_agents_home_setup_is_logged_and_its_error_capped_for_the_task() -> None:
     error = "x" * 400
     sbx = _fake_sandbox("sbx-new")
     sbx.commands.run = AsyncMock(side_effect=TimeoutError(error))

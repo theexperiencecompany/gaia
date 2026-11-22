@@ -140,25 +140,25 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
     "token), then note in the task's Context what you tightened and why."
 )
 
-# Shown to a todo woken by its own sandbox run (bash run_todo_id). The event is the
+# Shown to a task woken by its own sandbox run (bash run_task_id). The event is the
 # coding agent's raw hook payload: it finished a turn, wants input, or failed.
 SANDBOX_RUN_EVENT_GUIDANCE = (
-    "This event came from the coding agent (Claude Code or OpenCode) this todo "
+    "This event came from the coding agent (Claude Code or OpenCode) this task "
     "launched in the sandbox, or from GAIA about that sandbox. It is never noise: do "
     "not unsubscribe or tighten anything. The subscription already matched it to "
     "this run; a session_id in the payload is the CLI's own id, not the run id. The "
     "agent works under ~/agents/work on the sandbox's local disk, outside /workspace, "
     "so read its work with bash there; its home is saved to an archive before every "
     "event it sends. Read the event, then tail the run's log with bash (pid "
-    "and log path are on the canvas) and decide which one it is. The agent asked a "
-    "question or needs permission: tell the user plainly what it needs and record it "
-    "in activity.md. It finished: check the done-checks on the canvas, report the "
-    "outcome, and complete the todo. It stopped short of the goal: resume its session "
+    "and log path are in the task's notes) and decide which one it is. The agent asked "
+    "a question or needs permission: tell the user plainly what it needs and note it "
+    "in the task's notes. It finished: check the notes' Done when, report the "
+    "outcome, and complete_task. It stopped short of the goal: resume its session "
     "with a nudge via bash background=True (claude-code-run-task / opencode-run-task "
     "skills; source the run's lab-env first), then end your turn, since its next event "
     "wakes you. It failed: say what broke. sandbox_replaced: the sandbox was replaced "
     "and the agent's process stopped; its home came back from the save the event "
-    "names, so relaunch with bash background=True and run_todo_id set, resuming its "
+    "names, so relaunch with bash background=True and run_task_id set, resuming its "
     "session by id, and tell the user that work after that save is lost. save_failed: "
     "the agent's latest work is not saved; tell the user what failed. A question, "
     "completion, failure, replacement or failed save of this run is a result the user "

@@ -24,9 +24,9 @@ from app.config.settings import settings
 from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.tasks import Assignee, TaskLogEvent
 from app.db.redis import redis_cache
-from app.models.todo_models import TodoDocument
+from app.models.task_models import TaskDocument
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionResolution,
@@ -69,21 +69,21 @@ def _subscription(trigger_name: str, started_ago_hours: float, run_id: str) -> T
     )
 
 
-def _lab_todo(
+def _lab_task(
     started_ago_hours: float,
     *,
-    todo_id: str = "todo-lab",
+    task_id: str = "task-lab",
     run_ids: tuple[str, ...] = ("run-1",),
     other_watches: tuple[str, ...] = (),
-) -> TodoDocument:
-    """Build a todo whose run subscriptions started started_ago_hours ago; written to just now."""
+) -> TaskDocument:
+    """Build a task whose run subscriptions started started_ago_hours ago; written to just now."""
     now = datetime.now(UTC)
-    return TodoDocument(
-        id=todo_id,
+    return TaskDocument(
+        id=task_id,
         user_id="lab",
         title="Lab run",
-        labels=[GAIA_TRACKED_LABEL],
-        trigger_subscriptions=[
+        assignee=Assignee.GAIA,
+        subscriptions=[
             *(_subscription(name, started_ago_hours, "") for name in other_watches),
             *(
                 _subscription(lab_runs.SANDBOX_RUN_TRIGGER, started_ago_hours, run_id)
@@ -112,22 +112,22 @@ class TestSweep:
 
 
 class TestRunCapStatus:
-    def test_cap_counts_from_run_start_not_the_todos_last_write(self) -> None:
-        """Every run event writes to the todo; a busy run must still hit the cap."""
-        status = lab_runs.run_cap_status([_lab_todo(13)])
-        assert status == lab_runs.RunCapStatus(live=False, capped_todo_ids=["todo-lab"])
+    def test_cap_counts_from_run_start_not_the_tasks_last_write(self) -> None:
+        """Every run event writes to the task; a busy run must still hit the cap."""
+        status = lab_runs.run_cap_status([_lab_task(13)])
+        assert status == lab_runs.RunCapStatus(live=False, capped_task_ids=["task-lab"])
 
-    def test_other_watches_on_the_todo_are_not_runs(self) -> None:
+    def test_other_watches_on_the_task_are_not_runs(self) -> None:
         """An old email watch with no run beside it never counts as a run."""
-        status = lab_runs.run_cap_status([_lab_todo(48, run_ids=(), other_watches=("gmail",))])
-        assert status == lab_runs.RunCapStatus(live=False, capped_todo_ids=[])
+        status = lab_runs.run_cap_status([_lab_task(48, run_ids=(), other_watches=("gmail",))])
+        assert status == lab_runs.RunCapStatus(live=False, capped_task_ids=[])
 
     def test_one_fresh_run_keeps_the_user_live(self) -> None:
         status = lab_runs.run_cap_status(
-            [_lab_todo(13, todo_id="old"), _lab_todo(1, todo_id="fresh")]
+            [_lab_task(13, task_id="old"), _lab_task(1, task_id="fresh")]
         )
         assert status.live
-        assert status.capped_todo_ids == []
+        assert status.capped_task_ids == []
 
 
 class _FakeAcquire:
@@ -185,12 +185,12 @@ class _Tick:
     @contextmanager
     def world(
         self,
-        todos_by_user: dict[str, list[TodoDocument]],
+        tasks_by_user: dict[str, list[TaskDocument]],
         *,
         minutes_left: float = 50,
         broken: frozenset[str] = frozenset(),
     ) -> Iterator[None]:
-        self.lookup.return_value = list(todos_by_user)
+        self.lookup.return_value = list(tasks_by_user)
 
         def acquire(user_id: str) -> _FakeAcquire:
             if user_id in broken:
@@ -203,8 +203,8 @@ class _Tick:
             self.saved.append((user_id, sbx))
             return True
 
-        async def todos(user_id: str, _trigger: str) -> list[TodoDocument]:
-            return todos_by_user.get(user_id, [])
+        async def tasks(user_id: str, _triggers: list[str]) -> list[TaskDocument]:
+            return tasks_by_user.get(user_id, [])
 
         with ExitStack() as stack:
             for target, value in (
@@ -222,8 +222,8 @@ class _Tick:
             stack.enter_context(patch.object(notification_service, "notify", self.notify))
             stack.enter_context(
                 patch(
-                    "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
-                    todos,
+                    "app.db.repositories.tasks.task_repository.find_listening_by_user_and_trigger",
+                    tasks,
                 )
             )
             yield
@@ -235,7 +235,7 @@ class _Tick:
 class TestKeepWarmTick:
     async def test_candidates_are_the_agent_lab_template_sandboxes(self) -> None:
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(1)]}):
+        with tick.world({"lab": [_lab_task(1)]}):
             await tick.run()
         tick.lookup.assert_awaited_once_with(LAB_TEMPLATE)
 
@@ -246,7 +246,7 @@ class TestKeepWarmTick:
 
     async def test_a_live_run_is_kept_warm_and_saved_not_paused(self) -> None:
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(1)]}):
+        with tick.world({"lab": [_lab_task(1)]}):
             result = await tick.run()
         assert tick.acquired == ["lab"]
         assert tick.saved == [("lab", tick.sandboxes[0])]
@@ -257,7 +257,7 @@ class TestKeepWarmTick:
         # keep-warm stopped and left it to the idle pause, which
         # skipped lab users, so the sandbox ran until E2B killed it.
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(13)]}):
+        with tick.world({"lab": [_lab_task(13)]}):
             result = await tick.run()
         assert tick.acquired == []
         tick.pause.assert_awaited_once_with("lab")
@@ -265,7 +265,7 @@ class TestKeepWarmTick:
 
     async def test_the_tick_records_how_many_sandboxes_it_paused(self) -> None:
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(13)], "idle": []}):
+        with tick.world({"lab": [_lab_task(13)], "idle": []}):
             async with captured_wide_event() as event:
                 await tick.run()
         assert event["sandbox"] == {"operation": "lab_refresh", "evicted_count": 2}
@@ -282,7 +282,7 @@ class TestKeepWarmTick:
         # keep-warm then froze every running coding agent.
         tick = _Tick()
         with (
-            tick.world({"lab": [_lab_todo(1)]}),
+            tick.world({"lab": [_lab_task(1)]}),
             patch.object(settings, "ENABLE_AGENT_LAB", False),
         ):
             await tick.run()
@@ -296,14 +296,14 @@ class TestKeepWarmTick:
         # the cap used to reach the user as an infrastructure notice
         # ("stopped keeping its sandbox warm") they could do nothing with.
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(13)]}):
+        with tick.world({"lab": [_lab_task(13)]}):
             await tick.run()
             await tick.run()
         tick.notify.assert_not_awaited()
         assert tick.cap_logs() == [
             {
                 "user_id": "lab",
-                "todo_ids": ["todo-lab"],
+                "task_ids": ["task-lab"],
                 "cap_seconds": SANDBOX_LAB_MAX_RUN_SECONDS,
                 "outcome": LabTickOutcome.PAUSED.value,
             }
@@ -315,13 +315,13 @@ class TestKeepWarmTick:
     async def test_the_cap_log_records_a_sandbox_left_running_when_it_was_not_idle(self) -> None:
         tick = _Tick()
         tick.pause.return_value = False
-        with tick.world({"lab": [_lab_todo(13)]}):
+        with tick.world({"lab": [_lab_task(13)]}):
             await tick.run()
         assert [log["outcome"] for log in tick.cap_logs()] == [LabTickOutcome.LEFT.value]
 
     async def test_a_live_run_logs_no_cap(self) -> None:
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(1)]}):
+        with tick.world({"lab": [_lab_task(1)]}):
             await tick.run()
         assert tick.cap_logs() == []
         tick.notify.assert_not_awaited()
@@ -329,7 +329,7 @@ class TestKeepWarmTick:
     async def test_a_failed_dedup_still_logs_the_cap(self) -> None:
         tick = _Tick()
         with (
-            tick.world({"lab": [_lab_todo(13)]}),
+            tick.world({"lab": [_lab_task(13)]}),
             patch.object(tick.pool, "set", AsyncMock(side_effect=RuntimeError("redis down"))),
         ):
             async with captured_wide_event() as event:
@@ -348,8 +348,8 @@ class TestKeepWarmTick:
 
     async def test_one_users_failure_does_not_stop_the_others(self) -> None:
         tick = _Tick()
-        todos = {"bad": [_lab_todo(1)], "lab": [_lab_todo(1)]}
-        with tick.world(todos, broken=frozenset({"bad"})):
+        tasks = {"bad": [_lab_task(1)], "lab": [_lab_task(1)]}
+        with tick.world(tasks, broken=frozenset({"bad"})):
             async with captured_wide_event() as event:
                 result = await tick.run()
         assert tick.acquired == ["lab"]
@@ -364,9 +364,9 @@ class TestKeepWarmTick:
         ]
 
     @time_machine.travel(FROZEN_NOW, tick=False)
-    async def test_a_sandbox_near_its_cap_is_renewed_and_the_todos_hear_it(self) -> None:
+    async def test_a_sandbox_near_its_cap_is_renewed_and_the_tasks_hear_it(self) -> None:
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(1)]}, minutes_left=12):
+        with tick.world({"lab": [_lab_task(1)]}, minutes_left=12):
             await tick.run()
         tick.renew.assert_awaited_once_with("lab")
         tick.report.assert_awaited_once_with(
@@ -379,13 +379,13 @@ class TestKeepWarmTick:
     @time_machine.travel(FROZEN_NOW, tick=False)
     async def test_a_sandbox_exactly_at_the_renew_margin_is_renewed(self) -> None:
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(1)]}, minutes_left=20):
+        with tick.world({"lab": [_lab_task(1)]}, minutes_left=20):
             await tick.run()
         tick.renew.assert_awaited_once_with("lab")
 
     async def test_a_sandbox_far_from_its_cap_is_not_renewed(self) -> None:
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(1)]}, minutes_left=50):
+        with tick.world({"lab": [_lab_task(1)]}, minutes_left=50):
             await tick.run()
         tick.renew.assert_not_awaited()
 
@@ -415,7 +415,7 @@ class TestSaveAgentsHome:
 
     async def test_a_home_whose_setup_failed_is_not_reported_as_a_failed_save(self) -> None:
         # with setup failed there is no gaia-save, and the pause woke
-        # the todos with "saving failed" though there was nothing to save.
+        # the tasks with "saving failed" though there was nothing to save.
         set_up_never = SimpleNamespace(
             exit_code=0, stdout=f"{agents_home.HOME_NOT_SET_UP}\n", stderr=""
         )
@@ -453,7 +453,7 @@ class TestSaveAgentsHome:
             }
         ]
 
-    async def test_a_failed_save_wakes_the_todos_once_until_a_save_succeeds(self) -> None:
+    async def test_a_failed_save_wakes_the_tasks_once_until_a_save_succeeds(self) -> None:
         failing = AsyncMock(side_effect=RuntimeError("tar: write failed"))
         _, first = await self._save(failing)
         _, second = await self._save(failing)
@@ -485,40 +485,41 @@ class TestRefreshTimeout:
 
 class TestReportSandboxEvent:
     @contextmanager
-    def _world(self, todos: list[TodoDocument]) -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
+    def _world(self, tasks: list[TaskDocument]) -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
         with (
             patch(
-                f"{EVENTS_MODULE}.todo_repository.find_active_by_user_and_trigger",
-                AsyncMock(return_value=todos),
+                "app.db.repositories.tasks.task_repository.find_listening_by_user_and_trigger",
+                AsyncMock(return_value=tasks),
             ) as find,
-            patch(f"{EVENTS_MODULE}.record_activity", AsyncMock()) as activity,
-            patch(f"{EVENTS_MODULE}.fire_subscription", AsyncMock()) as fire,
+            patch(f"{EVENTS_MODULE}.record_event", AsyncMock()) as activity,
+            patch(f"{EVENTS_MODULE}.take_event", AsyncMock()) as fire,
         ):
             yield activity, fire, find
 
     async def test_a_waking_event_is_logged_and_runs_the_newest_run_once(self) -> None:
-        todo = _lab_todo(1, run_ids=("run-1", "run-2", "run-3"), other_watches=("gmail",))
-        unwatched = _lab_todo(1, todo_id="no-runs", run_ids=(), other_watches=("gmail",))
-        with self._world([unwatched, todo]) as (activity, fire, find):
+        task = _lab_task(1, run_ids=("run-1", "run-2", "run-3"), other_watches=("gmail",))
+        unwatched = _lab_task(1, task_id="no-runs", run_ids=(), other_watches=("gmail",))
+        with self._world([unwatched, task]) as (activity, fire, find):
             seen = await report_sandbox_event("lab", SandboxEventKind.SAVE_FAILED, "tar failed")
-        find.assert_awaited_once_with("lab", lab_runs.SANDBOX_RUN_TRIGGER)
+        find.assert_awaited_once_with("lab", [lab_runs.SANDBOX_RUN_TRIGGER])
         assert seen == 1
         activity.assert_awaited_once_with(
-            "todo-lab", "lab", TodoActivityEvent.SANDBOX_EVENT, "save_failed: tar failed"
+            task, TaskLogEvent.SANDBOX_EVENT, "save_failed: tar failed"
         )
         fire.assert_awaited_once_with(
-            todo,
-            todo.trigger_subscriptions[-1],
+            task,
+            task.subscriptions[-1],
             {"kind": "save_failed", "event": {"detail": "tar failed"}},
+            None,
         )
 
-    async def test_a_renewal_is_logged_on_every_watching_todo_without_a_wake(self) -> None:
-        todos = [_lab_todo(1, todo_id="a"), _lab_todo(1, todo_id="b")]
-        with self._world(todos) as (activity, fire, _find):
+    async def test_a_renewal_is_logged_on_every_watching_task_without_a_wake(self) -> None:
+        tasks = [_lab_task(1, task_id="a"), _lab_task(1, task_id="b")]
+        with self._world(tasks) as (activity, fire, _find):
             seen = await report_sandbox_event("lab", SandboxEventKind.RENEWED, "12 min left")
         assert seen == 2
-        assert [call.args for call in activity.await_args_list] == [
-            ("a", "lab", TodoActivityEvent.SANDBOX_EVENT, "sandbox_renewed: 12 min left"),
-            ("b", "lab", TodoActivityEvent.SANDBOX_EVENT, "sandbox_renewed: 12 min left"),
+        assert [(c.args[0].id, *c.args[1:]) for c in activity.await_args_list] == [
+            ("a", TaskLogEvent.SANDBOX_EVENT, "sandbox_renewed: 12 min left"),
+            ("b", TaskLogEvent.SANDBOX_EVENT, "sandbox_renewed: 12 min left"),
         ]
         fire.assert_not_awaited()

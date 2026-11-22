@@ -19,7 +19,7 @@ import pytest
 
 from app.config.settings import settings
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
-from app.models.todo_models import TodoDocument
+from app.models.task_models import TaskDocument
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
@@ -70,7 +70,7 @@ def _idle_timer_world(
     entry: PooledSandbox,
     record: E2bSandboxDocument | None,
     *,
-    todos: list[TodoDocument] | None = None,
+    tasks: list[TaskDocument] | None = None,
 ) -> Iterator[tuple[str, AsyncMock]]:
     """Pool the entry under a fresh user with a zero idle window; yields (user_id, repo)."""
     user_id = f"u-{uuid.uuid4().hex}"
@@ -84,8 +84,8 @@ def _idle_timer_world(
             patch.object(lifecycle, "e2b_sandbox_repository", repo),
             patch.object(lifecycle, "save_agents_home", AsyncMock(return_value=True)),
             patch(
-                "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
-                AsyncMock(return_value=todos or []),
+                "app.db.repositories.tasks.task_repository.find_listening_by_user_and_trigger",
+                AsyncMock(return_value=tasks or []),
             ),
         ):
             yield user_id, repo

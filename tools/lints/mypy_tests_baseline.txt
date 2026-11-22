@@ -21,7 +21,6 @@ apps/api/tests/contracts/test_browser_profiles_repository.py	misc
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
 apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
 apps/api/tests/contracts/test_workflows_repository_reset_schedule.py	attr-defined
-apps/api/tests/e2e/_harness/agent_lab.py	attr-defined
 apps/api/tests/e2e/test_executor_channel_matrix.py	arg-type
 apps/api/tests/e2e/test_executor_channel_matrix.py	return-value
 apps/api/tests/e2e/test_executor_interaction_scale.py	return-value
@@ -244,8 +243,6 @@ apps/api/tests/unit/services/test_device_server_lifecycle.py	attr-defined
 apps/api/tests/unit/services/test_device_server_lifecycle.py	misc
 apps/api/tests/unit/services/test_device_server_lifecycle.py	valid-type
 apps/api/tests/unit/services/test_email_delivery.py	arg-type
-apps/api/tests/unit/services/test_lab_hooks.py	attr-defined
-apps/api/tests/unit/services/test_lab_hooks.py	list-item
 apps/api/tests/unit/services/test_llm_metering_ledger.py	attr-defined
 apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
@@ -285,8 +282,6 @@ apps/api/tests/unit/storage/test_vfs_common.py	typeddict-unknown-key
 apps/api/tests/unit/test_wide_event_isolation.py	attr-defined
 apps/api/tests/unit/tools/coding/test_account_write_refusal.py	arg-type
 apps/api/tests/unit/tools/coding/test_bash_exit.py	attr-defined
-apps/api/tests/unit/tools/coding/test_bash_lab_run.py	arg-type
-apps/api/tests/unit/tools/coding/test_bash_lab_run.py	attr-defined
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	index
 apps/api/tests/unit/tools/coding/test_read_fallback.py	arg-type

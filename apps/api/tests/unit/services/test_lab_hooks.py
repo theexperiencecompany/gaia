@@ -24,6 +24,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.config.settings import settings
 from app.services.agent_lab import agents_home, sandbox_setup
 from app.services.agent_lab.agents_home import (
     AGENTS_HOME,
@@ -474,7 +475,7 @@ class TestGaiaHook:
         return result.returncode, log.read_text().splitlines() if log.exists() else []
 
     def test_the_save_finishes_before_the_event_is_relayed(self, tmp_path: Path) -> None:
-        """The woken todo reads the saved copy, so it must be current when the event lands."""
+        """The woken task reads the saved copy, so it must be current when the event lands."""
         code, calls = self._fire(tmp_path, '{"hook_event_name":"Stop"}')
         assert code == 0
         assert calls == ["SAVE", 'POST Authorization: Bearer tok-1 {"hook_event_name":"Stop"}']
@@ -655,20 +656,23 @@ class TestNotifyPlugin:
         return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
     def test_a_turn_end_is_piped_to_gaia_hook_once(self, tmp_path: Path) -> None:
-        """1.18 fires session.idle twice per turn end; each relay runs the todo, so once."""
-        idle = {"type": "session.idle", "properties": {"sessionID": "ses_1"}}
+        """1.18 fires session.idle twice per turn end; each relay runs the task, so once."""
+        idle: dict[str, object] = {"type": "session.idle", "properties": {"sessionID": "ses_1"}}
         piped = self._run_plugin(tmp_path, [idle, idle])
         assert piped == [{"kind": "idle", "raw": idle}]
 
     def test_streaming_chatter_is_never_piped(self, tmp_path: Path) -> None:
-        chatter = {"type": "message.part.updated", "properties": {"sessionID": "ses_1"}}
+        chatter: dict[str, object] = {
+            "type": "message.part.updated",
+            "properties": {"sessionID": "ses_1"},
+        }
         assert self._run_plugin(tmp_path, [chatter]) == []
 
 
 @pytest.mark.unit
 class TestLabHooksToken:
     def test_hooks_token_carries_an_empty_tool_scope(self) -> None:
-        with patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET):
+        with patch.object(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET):
             token = mint_lab_hooks_token("u1", "lab-1")
             claims = execute_token.verify_execute_token(token)
 
@@ -677,7 +681,7 @@ class TestLabHooksToken:
         assert claims.scoped_tool_names == []
 
     def test_unconfigured_events_url_fails_loud(self) -> None:
-        with patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", None):
+        with patch.object(settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", None):
             with pytest.raises(AppError) as err:
                 sandbox_setup.lab_events_url(object())
         assert err.value.status_code == 503

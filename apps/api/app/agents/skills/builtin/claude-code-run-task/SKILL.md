@@ -47,14 +47,14 @@ Background: `claude agents --json` lists (`--json` is REQUIRED headless; bare
 
 ## Continue a session (after pause/resume or sandbox recreate)
 
-Find the session id in the run's events or stream-json output (`session_id`) and write it on the todo's canvas. A later bash call gets no env injected, so source the run env first. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own Stop event is what wakes the todo next:
+Find the session id in the run's events or stream-json output (`session_id`) and write it in the task's notes. A later bash call gets no env injected, so source the run env first. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own Stop event is what wakes the task next:
 
 ```bash
 set -a; . ~/agents/runs/<run>/lab-env; set +a
 cd ~/agents/work/<project> && claude -p --resume <uuid> "<follow-up>" --output-format stream-json --verbose --settings "$GAIA_LAB_CLAUDE_SETTINGS"
 ```
 
-`-p` is REQUIRED: bare `claude --resume` opens an interactive session that hangs headless, and `--continue` is interactive-only the same way. Prefer explicit `--resume <uuid>` over `-p --continue` whenever several runs exist. Session transcripts live in `~/agents/state/claude`: a pause keeps them, and a replaced sandbox restores them from the last save (the `sandbox_replaced` event says which). After a replacement the old run's env file came back too, but its process is gone: relaunch the resume through `bash(..., background=True, run_todo_id=<todo>)` (fresh run env and subscription) instead of sourcing. Verify with `claude agents --json` before resuming; if the session is gone, start a fresh run with the todo's log tail pasted as context.
+`-p` is REQUIRED: bare `claude --resume` opens an interactive session that hangs headless, and `--continue` is interactive-only the same way. Prefer explicit `--resume <uuid>` over `-p --continue` whenever several runs exist. Session transcripts live in `~/agents/state/claude`: a pause keeps them, and a replaced sandbox restores them from the last save (the `sandbox_replaced` event says which). After a replacement the old run's env file came back too, but its process is gone: relaunch the resume through `bash(..., background=True, run_task_id=<task id>)` (fresh run env and subscription) instead of sourcing. Verify with `claude agents --json` before resuming; if the session is gone, start a fresh run with the task's notes and the log tail pasted as context.
 
 ## Stop
 

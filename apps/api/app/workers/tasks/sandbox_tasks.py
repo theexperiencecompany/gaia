@@ -114,8 +114,8 @@ async def _tick_lab_sandbox(ctx: ArqJobContext, user_id: str) -> LabTickOutcome:
             return LabTickOutcome.KEPT
         paused = await pause_idle_sandbox(user_id)
         outcome = LabTickOutcome.PAUSED if paused else LabTickOutcome.LEFT
-        if status.capped_todo_ids:
-            await _log_lab_cap_hit(ctx, user_id, status.capped_todo_ids, outcome)
+        if status.capped_task_ids:
+            await _log_lab_cap_hit(ctx, user_id, status.capped_task_ids, outcome)
         return outcome
     except Exception as e:
         log.warning(
@@ -150,7 +150,7 @@ def _lab_cap_logged_key(user_id: str) -> str:
 
 
 async def _log_lab_cap_hit(
-    ctx: ArqJobContext, user_id: str, todo_ids: list[str], outcome: LabTickOutcome
+    ctx: ArqJobContext, user_id: str, task_ids: list[str], outcome: LabTickOutcome
 ) -> None:
     """Log once per cap window that keep-warm stopped. Ops-only: users are never notified of it."""
     pool = ctx.get("redis")
@@ -172,7 +172,7 @@ async def _log_lab_cap_hit(
     log.info(
         f"{LogTag.SANDBOX} lab run hit the run cap; keep-warm stopped",
         user_id=user_id,
-        todo_ids=todo_ids,
+        task_ids=task_ids,
         cap_seconds=SANDBOX_LAB_MAX_RUN_SECONDS,
         outcome=outcome.value,
     )

@@ -82,7 +82,7 @@ async def dispatch_event_to_tasks(
             if not _reaches(task, subscription, trigger_names, trigger_id, payload):
                 continue
             try:
-                taken += await _take(task, subscription, payload, occurrence)
+                taken += await take_event(task, subscription, payload, occurrence)
             except Exception as e:
                 log.error(
                     "task_event.dispatch_failed",
@@ -159,13 +159,13 @@ def _tracked_threads(task: TaskDocument, subscription: TriggerSubscription) -> f
     return frozenset(pinned)
 
 
-async def _take(
+async def take_event(
     task: TaskDocument,
     subscription: TriggerSubscription,
     payload: dict[str, object],
     occurrence: str | None,
 ) -> int:
-    """Gate one matched event, claim its occurrence, then act on it; 1 when taken.
+    """Gate one event already matched to the subscription, claim its occurrence, then act on it; 1 when taken.
 
     A run subscription runs, coalesces, holds or keeps the event; any other acts at once,
     once per cooldown. The gate goes first: a skipped event must not burn the occurrence or

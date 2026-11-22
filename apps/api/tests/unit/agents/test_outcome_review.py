@@ -262,7 +262,7 @@ class TestATodoIsNeverLeftAsleep:
         "not_a_next_check",
         [
             ("subscribe_task", {"task_id": "t", "trigger_name": "x"}),
-            ("bash", {"command": "run", "run_todo_id": "t"}),
+            ("bash", {"command": "run", "run_task_id": "t"}),
             ("update_task", {"task_id": "t", "priority": "high"}),
         ],
     )

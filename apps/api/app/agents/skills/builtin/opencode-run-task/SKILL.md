@@ -31,7 +31,7 @@ UNVERIFIED: whether Zen auth has a browser-callback step or is pure key-paste. P
 
 ## Drive
 
-Run from the project's folder under `~/agents/work` (local disk: fast; saved with every event). `OPENCODE_CONFIG_DIR` (injected by `bash run_todo_id`) loads the sandbox's notify plugin, which saves the agents' home and then reports to GAIA, so OpenCode reports back from any working directory:
+Run from the project's folder under `~/agents/work` (local disk: fast; saved with every event). `OPENCODE_CONFIG_DIR` (injected by `bash run_task_id`) loads the sandbox's notify plugin, which saves the agents' home and then reports to GAIA, so OpenCode reports back from any working directory:
 
 ```bash
 mkdir -p ~/agents/work/<project> && cd ~/agents/work/<project> && opencode run --format json -m <provider/model> "<message>"
@@ -43,14 +43,14 @@ Optional long-running mode: `opencode serve` (headless HTTP API; `OPENCODE_SERVE
 
 ## Continue a session (after pause/resume or sandbox recreate)
 
-Find the session id in the run's output (`opencode session list` also shows saved ones; all `ses_`-prefixed, and `-s` REJECTS ids without the prefix) and write it on the todo's canvas. A later bash call gets no env injected, so source the run env first or the plugin stays silent. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own idle event is what wakes the todo next:
+Find the session id in the run's output (`opencode session list` also shows saved ones; all `ses_`-prefixed, and `-s` REJECTS ids without the prefix) and write it in the task's notes. A later bash call gets no env injected, so source the run env first or the plugin stays silent. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own idle event is what wakes the task next:
 
 ```bash
 set -a; . ~/agents/runs/<run>/lab-env; set +a
 cd ~/agents/work/<project> && opencode run --format json -s <ses_id> "<follow-up>"
 ```
 
-`--format json` is required; bare `run -c` opens the interactive TUI. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist. Session data (`opencode.db`) lives in `~/agents/state/opencode`: a pause keeps it, and a replaced sandbox restores it from the last save (the `sandbox_replaced` event says which). After a replacement the old run's process is gone: relaunch the resume through `bash(..., background=True, run_todo_id=<todo>)` (fresh run env and subscription) instead of sourcing. Run `opencode session list` first; if the session is gone, start a fresh run seeded from the todo's log tail.
+`--format json` is required; bare `run -c` opens the interactive TUI. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist. Session data (`opencode.db`) lives in `~/agents/state/opencode`: a pause keeps it, and a replaced sandbox restores it from the last save (the `sandbox_replaced` event says which). After a replacement the old run's process is gone: relaunch the resume through `bash(..., background=True, run_task_id=<task id>)` (fresh run env and subscription) instead of sourcing. Run `opencode session list` first; if the session is gone, start a fresh run seeded from the task's notes and the log tail.
 
 ## Stop
 

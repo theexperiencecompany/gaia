@@ -1,8 +1,8 @@
-"""Sandbox run events: fire the owning todo's run subscription with the raw event.
+"""Sandbox run events: hand the raw event to the owning task's run subscription.
 
 Dumb pipe. The run's token already names the run, so the body is never trusted
-for identity and never interpreted: it rides along verbatim as the trigger
-payload, and the todo run it wakes reads it and decides what to tell the user.
+for identity and never interpreted: it rides along verbatim as the event payload,
+and the task run it wakes reads it and decides what to tell the user.
 """
 
 import json
@@ -11,10 +11,9 @@ from typing import Final
 from pydantic import BaseModel
 
 from app.constants.execute import LAB_EVENT_MAX_RAW_BYTES
-from app.db.repositories.todos import todo_repository
 from app.decorators.entitlements import SubscriptionRequiredException
-from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, LabAccess, find_run, lab_access
-from app.services.triggers.subscription_dispatch import fire_subscription
+from app.services.agent_lab.lab_runs import LabAccess, find_run, lab_access, watching_tasks
+from app.services.tasks.event_dispatch import take_event
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -25,7 +24,7 @@ UNNAMED_EVENT_KIND: Final[str] = "event"
 class LabEventReceipt(BaseModel):
     """Where one accepted event was filed."""
 
-    todo_id: str
+    task_id: str
     kind: str
 
 
@@ -51,7 +50,7 @@ def lab_event_kind(body: dict[str, object]) -> str:
 async def record_lab_event(
     run_id: str, *, user_id: str, body: dict[str, object]
 ) -> LabEventReceipt:
-    """Wake the todo subscribed to run_id with body attached; fails loud on misuse."""
+    """Wake the task subscribed to run_id with body attached; fails loud on misuse."""
     access = await lab_access(user_id)
     if access == LabAccess.NOT_PAID:
         raise SubscriptionRequiredException()
@@ -63,17 +62,16 @@ async def record_lab_event(
             status_code=403,
             code="agent_lab_disabled",
         )
-    candidates = await todo_repository.find_active_by_user_and_trigger(user_id, SANDBOX_RUN_TRIGGER)
-    match = find_run(candidates, run_id)
+    match = find_run(await watching_tasks(user_id), run_id)
     if match is None:
         raise AppError(
-            message="no open tracked todo is watching this sandbox run",
-            why=f"run {run_id} has no active subscription; its todo ended or never subscribed",
-            fix="launch the run with bash run_todo_id so its todo subscribes to it",
+            message="no open task is watching this sandbox run",
+            why=f"run {run_id} has no active subscription; its task ended or never subscribed",
+            fix="launch the run with bash run_task_id so its task subscribes to it",
             status_code=404,
             code="agent_lab_run_unknown",
         )
-    todo, subscription = match
+    task, subscription = match
     kind = lab_event_kind(body)
-    await fire_subscription(todo, subscription, {"kind": kind, "event": _bounded(body)})
-    return LabEventReceipt(todo_id=todo.id, kind=kind)
+    await take_event(task, subscription, {"kind": kind, "event": _bounded(body)}, None)
+    return LabEventReceipt(task_id=task.id, kind=kind)

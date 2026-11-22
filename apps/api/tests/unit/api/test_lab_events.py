@@ -1,4 +1,4 @@
-"""/api/v1/lab/events: token-only identity, the body wakes the todo watching the run."""
+"""/api/v1/lab/events: token-only identity, the body wakes the task watching the run."""
 
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
@@ -16,8 +16,8 @@ from app.api.v1.routes import router as v1_router
 from app.config.settings import settings
 from app.constants import execute
 from app.constants.execute import SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
-from app.constants.todos import TodoActivityEvent
-from app.models.todo_models import TodoDocument
+from app.constants.tasks import RUN_TASK_JOB, Assignee, TaskLogEvent
+from app.models.task_models import TaskDocument
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionResolution,
@@ -29,7 +29,7 @@ from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
 from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosTriggerFired
+from shared.py.analytics.catalog.tasks import TaskEventFired
 from tests.helpers import captured_wide_event
 
 # A real ObjectId: analytics refuses anything that is not a GAIA user id.
@@ -37,7 +37,7 @@ USER_ID = "507f1f77bcf86cd799439011"
 
 MODULE = "app.api.v1.endpoints.lab_events"
 SVC = "app.services.agent_lab.lab_events"
-DISPATCH = "app.services.triggers.subscription_dispatch"
+DISPATCH = "app.services.tasks.event_dispatch"
 BUDGET = "app.services.sandbox.token_budget"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
@@ -69,8 +69,8 @@ def _raw_request(payload: bytes) -> Request:
     return Request({"type": "http", "method": "POST", "headers": []}, receive)
 
 
-def _receipt(todo_id: str = "t1", kind: str = "Stop") -> AsyncMock:
-    return AsyncMock(return_value=lab_events.LabEventReceipt(todo_id=todo_id, kind=kind))
+def _receipt(task_id: str = "t1", kind: str = "Stop") -> AsyncMock:
+    return AsyncMock(return_value=lab_events.LabEventReceipt(task_id=task_id, kind=kind))
 
 
 def _redis(*counts: int) -> MagicMock:
@@ -92,12 +92,13 @@ def _run_subscription(run_id: str) -> TriggerSubscription:
     )
 
 
-def _todo(todo_id: str = "t1", *run_ids: str) -> TodoDocument:
-    return TodoDocument(
-        id=todo_id,
+def _task(task_id: str = "t1", *run_ids: str) -> TaskDocument:
+    return TaskDocument(
+        id=task_id,
         user_id=USER_ID,
         title="Fix flaky test",
-        trigger_subscriptions=[_run_subscription(r) for r in run_ids or ("run-1",)],
+        assignee=Assignee.GAIA,
+        subscriptions=[_run_subscription(r) for r in run_ids or ("run-1",)],
     )
 
 
@@ -114,20 +115,20 @@ class _Seams:
 
 @contextmanager
 def _service_seams(
-    todos: list[TodoDocument], *, paid: bool = True, lab_on: bool = True
+    tasks: list[TaskDocument], *, paid: bool = True, lab_on: bool = True
 ) -> Iterator[_Seams]:
-    """Mock the receiver's seams one layer down; fire_subscription itself runs for real."""
+    """Mock the receiver's seams one layer down; take_event itself runs for real."""
     seams = _Seams(paid=paid, lab_on=lab_on)
-    seams.repo.find_active_by_user_and_trigger = AsyncMock(return_value=todos)
+    seams.repo.find_listening_by_user_and_trigger = AsyncMock(return_value=tasks)
     with ExitStack() as stack:
         access_seams = "app.services.agent_lab.lab_runs"
         stack.enter_context(patch(f"{access_seams}.is_paid", seams.is_paid))
         stack.enter_context(
             patch(f"{access_seams}.is_agent_lab_enabled", seams.is_agent_lab_enabled)
         )
-        stack.enter_context(patch(f"{SVC}.todo_repository", seams.repo))
+        stack.enter_context(patch(f"{access_seams}.task_repository", seams.repo))
         stack.enter_context(patch(f"{SVC}.log", seams.log))
-        stack.enter_context(patch(f"{DISPATCH}.record_activity", seams.activity))
+        stack.enter_context(patch(f"{DISPATCH}.record_event", seams.activity))
         stack.enter_context(patch(f"{DISPATCH}.enqueue_worker_job", seams.enqueue))
         stack.enter_context(patch(f"{DISPATCH}.capture", seams.capture))
         stack.enter_context(
@@ -250,7 +251,7 @@ class TestLabEventsBudgetAndAudit:
     ) -> None:
         # the receiver reused /sandbox/execute's 300-call budget, sized
         # for a 1h token, on a 13h run token; a long run with many turns hit 429
-        # and gaia-hook swallowed it, so the todo silently stopped hearing.
+        # and gaia-hook swallowed it, so the task silently stopped hearing.
         await fake_redis.set("lab_events:calls:run-1", 300)
         with patch(f"{MODULE}.record_lab_event", _receipt()) as record:
             await report_lab_event(_request({"kind": "idle"}), authorization=_bearer())
@@ -268,7 +269,7 @@ class TestLabEventsBudgetAndAudit:
 
     async def test_every_accepted_call_is_audited_on_the_wide_event(self) -> None:
         with (
-            patch(f"{MODULE}.record_lab_event", _receipt(todo_id="t9", kind="Stop")),
+            patch(f"{MODULE}.record_lab_event", _receipt(task_id="t9", kind="Stop")),
             patch(f"{BUDGET}.redis_cache", _redis()),
         ):
             async with captured_wide_event() as event:
@@ -281,7 +282,7 @@ class TestLabEventsBudgetAndAudit:
                 "actor": USER_ID,
                 "kind": "Stop",
                 "run_id": "run-1",
-                "todo_id": "t9",
+                "task_id": "t9",
                 "ok": True,
             }
         ]
@@ -289,7 +290,7 @@ class TestLabEventsBudgetAndAudit:
         assert event["lab_event"] == {
             "operation": "report",
             "run_id": "run-1",
-            "todo_id": "t9",
+            "task_id": "t9",
             "kind": "Stop",
         }
 
@@ -316,7 +317,7 @@ class TestLabEventsBudgetAndAudit:
 @pytest.mark.unit
 class TestRecordLabEventGates:
     async def test_lapsed_subscription_is_402(self) -> None:
-        with _service_seams([_todo()], paid=False) as seams:
+        with _service_seams([_task()], paid=False) as seams:
             with pytest.raises(HTTPException) as err:
                 await lab_events.record_lab_event("run-1", user_id=USER_ID, body={})
         assert err.value.status_code == 402
@@ -324,7 +325,7 @@ class TestRecordLabEventGates:
         seams.enqueue.assert_not_awaited()
 
     async def test_revoked_flag_is_403(self) -> None:
-        with _service_seams([_todo()], lab_on=False) as seams:
+        with _service_seams([_task()], lab_on=False) as seams:
             with pytest.raises(AppError) as err:
                 await lab_events.record_lab_event("run-1", user_id=USER_ID, body={})
         assert err.value == AppError(
@@ -337,64 +338,65 @@ class TestRecordLabEventGates:
         seams.is_agent_lab_enabled.assert_awaited_once_with(USER_ID)
         seams.enqueue.assert_not_awaited()
 
-    async def test_run_no_open_todo_watches_is_404(self) -> None:
-        with _service_seams([_todo("t1", "run-other")]) as seams:
+    async def test_run_no_open_task_watches_is_404(self) -> None:
+        with _service_seams([_task("t1", "run-other")]) as seams:
             with pytest.raises(AppError) as err:
                 await lab_events.record_lab_event("run-9", user_id=USER_ID, body={})
         assert err.value == AppError(
-            message="no open tracked todo is watching this sandbox run",
-            why="run run-9 has no active subscription; its todo ended or never subscribed",
-            fix="launch the run with bash run_todo_id so its todo subscribes to it",
+            message="no open task is watching this sandbox run",
+            why="run run-9 has no active subscription; its task ended or never subscribed",
+            fix="launch the run with bash run_task_id so its task subscribes to it",
             status_code=404,
             code="agent_lab_run_unknown",
         )
-        seams.repo.find_active_by_user_and_trigger.assert_awaited_once_with(
-            USER_ID, lab_runs.SANDBOX_RUN_TRIGGER
+        seams.repo.find_listening_by_user_and_trigger.assert_awaited_once_with(
+            USER_ID, [lab_runs.SANDBOX_RUN_TRIGGER]
         )
         seams.enqueue.assert_not_awaited()
 
 
 @pytest.mark.unit
-class TestRecordLabEventWakesTheTodo:
-    async def test_event_queues_the_watching_todo_with_the_raw_body(self) -> None:
+class TestRecordLabEventWakesTheTask:
+    async def test_event_queues_the_watching_task_with_the_raw_body(self) -> None:
         body: dict[str, object] = {"session_id": "claude-uuid", "hook_event_name": "Stop"}
-        todos = [_todo("t1", "run-other"), _todo("t2", "run-1")]
-        with _service_seams(todos) as seams:
+        tasks = [_task("t1", "run-other"), _task("t2", "run-1")]
+        with _service_seams(tasks) as seams:
             receipt = await lab_events.record_lab_event("run-1", user_id=USER_ID, body=body)
 
-        assert receipt == lab_events.LabEventReceipt(todo_id="t2", kind="Stop")
-        _, job, todo_id, origin = seams.enqueue.await_args.args
-        assert (job, todo_id) == ("execute_tracked_todo", "t2")
+        assert receipt == lab_events.LabEventReceipt(task_id="t2", kind="Stop")
+        _, job, task_id, stamp = seams.enqueue.await_args.args
+        assert (job, task_id, stamp) == (RUN_TASK_JOB, "t2", None)
+        (origin,) = seams.enqueue.await_args.kwargs["events"]
         assert isinstance(origin, TriggerOrigin)
         assert origin.trigger_name == lab_runs.SANDBOX_RUN_TRIGGER
-        assert origin.subscription_id == todos[1].trigger_subscriptions[0].id
+        assert origin.subscription_id == tasks[1].subscriptions[0].id
         assert origin.payload == {"kind": "Stop", "event": body}
 
-    async def test_event_lands_on_the_todo_timeline(self) -> None:
-        with _service_seams([_todo()]) as seams:
+    async def test_event_lands_on_the_task_log(self) -> None:
+        with _service_seams([_task()]) as seams:
             await lab_events.record_lab_event("run-1", user_id=USER_ID, body={"kind": "idle"})
-        todo_id, user_id, event, _ = seams.activity.await_args.args
-        assert (todo_id, user_id, event) == ("t1", USER_ID, TodoActivityEvent.TRIGGER_FIRED)
+        task, event, _ = seams.activity.await_args.args
+        assert (task.id, event) == ("t1", TaskLogEvent.APP_EVENT)
 
     async def test_fire_is_counted_for_the_owning_user(self) -> None:
-        with _service_seams([_todo()]) as seams:
+        with _service_seams([_task()]) as seams:
             await lab_events.record_lab_event("run-1", user_id=USER_ID, body={"kind": "idle"})
         distinct_id, event = seams.capture.call_args.args
         assert distinct_id == UserId(USER_ID)
-        assert isinstance(event, TodosTriggerFired)
+        assert isinstance(event, TaskEventFired)
         assert event.trigger_name == lab_runs.SANDBOX_RUN_TRIGGER
 
-    async def test_oversize_body_still_wakes_the_todo_cut_down_with_a_marker(self) -> None:
+    async def test_oversize_body_still_wakes_the_task_cut_down_with_a_marker(self) -> None:
         """A long final answer must not cost the completion wake; the cut is explicit."""
         body: dict[str, object] = {
             "hook_event_name": "Stop",
             "last_assistant_message": "é" * (200 * 1024),
         }
         encoded = json.dumps(body)
-        with _service_seams([_todo()]) as seams:
+        with _service_seams([_task()]) as seams:
             await lab_events.record_lab_event("run-1", user_id=USER_ID, body=body)
 
-        payload = seams.enqueue.await_args.args[3].payload
+        payload = seams.enqueue.await_args.kwargs["events"][0].payload
         assert payload == {
             "kind": "Stop",
             "event": {
@@ -409,11 +411,14 @@ class TestRecordLabEventWakesTheTodo:
     async def test_body_exactly_at_the_cap_rides_along_whole(self) -> None:
         padding = execute.LAB_EVENT_MAX_RAW_BYTES - len(json.dumps({"k": ""}))
         body: dict[str, object] = {"k": "x" * padding}
-        with _service_seams([_todo()]) as seams:
+        with _service_seams([_task()]) as seams:
             await lab_events.record_lab_event("run-1", user_id=USER_ID, body=body)
 
         assert len(json.dumps(body).encode()) == execute.LAB_EVENT_MAX_RAW_BYTES
-        assert seams.enqueue.await_args.args[3].payload == {"kind": "event", "event": body}
+        assert seams.enqueue.await_args.kwargs["events"][0].payload == {
+            "kind": "event",
+            "event": body,
+        }
         seams.log.warning.assert_not_called()
 
     def test_kind_falls_back_from_plugin_kind_to_hook_name_to_generic(self) -> None:

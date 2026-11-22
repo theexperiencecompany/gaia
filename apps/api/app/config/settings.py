@@ -401,7 +401,7 @@ class Settings(BrowserHostSettings):
     SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
     # Sandbox run events (hooks POSTing to /api/v1/lab/events); must be reachable
     # from the E2B sandbox, so the public API base in prod. Unset = bash
-    # run_todo_id refuses to launch, since the run could never report back.
+    # run_task_id refuses to launch, since the run could never report back.
     SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
     # The same receiver as a self-host local sandbox container reaches it: the
     # proxy's published port on the host gateway. Set by docker-compose.sandbox.yml.

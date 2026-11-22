@@ -37,15 +37,16 @@ from app.constants.sandbox import (
     BASH_MAX_TIMEOUT_SECONDS,
     WORKSPACE_TMP_SUFFIX,
 )
-from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.decorators import with_doc, with_rate_limiting
-from app.models.todo_models import TodoDocument
+from app.models.task_models import TaskDocument
 from app.services.agent_lab.lab_runs import (
     LAB_SEED_TIMEOUT_SECONDS,
     LabAccess,
     lab_access,
-    subscribe_todo_to_run,
+    run_refusal,
+    stop_watching_run,
+    subscribe_task_to_run,
 )
 from app.services.agent_lab.sandbox_setup import (
     build_seed_command,
@@ -66,7 +67,6 @@ from app.services.sandbox.execute_client import (
 )
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
-from app.services.triggers.subscription_service import unregister_subscription
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.wide_events import log
@@ -191,9 +191,9 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
             int, "Seconds before kill"
         ] = BASH_DEFAULT_TIMEOUT_SECONDS,  # NOSONAR python:S7483
         background: Annotated[bool, "Run detached; returns pid + log path"] = False,
-        run_todo_id: Annotated[
+        run_task_id: Annotated[
             str | None,
-            "Tracked todo id: seed a sandbox run and subscribe the todo to its "
+            "GAIA task id: seed a sandbox run and subscribe the task to its "
             "events before running. See SANDBOX RUNS in the description.",
         ] = None,
     ) -> str:
@@ -203,7 +203,7 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
             cwd=cwd,
             timeout=timeout,
             background=background,
-            run_todo_id=run_todo_id,
+            run_task_id=run_task_id,
         )
         return await _run_bash(config=config, request=request, scoped_tools=scoped_tools)
 
@@ -223,7 +223,7 @@ class _BashRequest:
     cwd: str
     timeout: int
     background: bool
-    run_todo_id: str | None
+    run_task_id: str | None
 
 
 @dataclass(frozen=True)
@@ -263,7 +263,7 @@ async def _build_execute_env(run: _BashInvocation, sbx: object) -> dict[str, str
 
 @dataclass(frozen=True)
 class _LabRun:
-    """A seeded agent-lab run: its id, the todo's subscription to it, and the GAIA_LAB_* env."""
+    """A seeded agent-lab run: its id, the task's subscription to it, and the GAIA_LAB_* env."""
 
     run_id: str
     subscription_id: str
@@ -284,22 +284,18 @@ class CommandTimeoutError(RuntimeError):
         )
 
 
-async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument | str:
-    """Fetch the tracked todo the run attaches to, or the loud error for the tool."""
+async def _resolve_lab_task(*, user_id: str, run_task_id: str) -> TaskDocument | str:
+    """Fetch the GAIA task the run attaches to, or the loud error for the tool."""
     try:
-        todo = await todo_repository.get(run_todo_id, user_id=user_id)
+        task = await task_repository.get(run_task_id, user_id=user_id)
     except Exception as e:
-        return f"Error: cannot resolve tracked todo {run_todo_id} ({e}), ran nothing"
-    if todo is None:
-        return f"Error: tracked todo {run_todo_id} not found, ran nothing"
-    # Events for any of these 404 or get skipped, so the run would work on unheard.
-    if GAIA_TRACKED_LABEL not in todo.labels:
-        return f"Error: todo {run_todo_id} is not a tracked todo, ran nothing"
-    if todo.completed:
-        return f"Error: tracked todo {run_todo_id} is completed; create a new one, ran nothing"
-    if FAILED_LABEL in todo.labels:
-        return f"Error: tracked todo {run_todo_id} is marked failed; reset it first, ran nothing"
-    return todo
+        return f"Error: cannot resolve task {run_task_id} ({e}), ran nothing"
+    if task is None:
+        return f"Error: task {run_task_id} not found, ran nothing"
+    refusal = run_refusal(task)
+    if refusal is not None:
+        return f"Error: {refusal}, ran nothing"
+    return task
 
 
 async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tuple[str, str] | str:
@@ -319,29 +315,29 @@ async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tu
     return url, token
 
 
-async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
-    """Mint the run token, stage the seed, and subscribe the todo; or return the loud error.
+async def _setup_lab_run(*, user_id: str, run_task_id: str, sbx: object) -> _LabRun | str:
+    """Mint the run token, stage the seed, and subscribe the task; or return the loud error.
 
     On any failure the caller runs nothing. The error is a plain string (the
     tool's contract), not a raise — the command must never execute unseeded.
     """
     access = await lab_access(user_id)
     if access == LabAccess.NOT_PAID:
-        return "Error: sandbox agent runs need a paid plan (run_todo_id), ran nothing"
+        return "Error: sandbox agent runs need a paid plan (run_task_id), ran nothing"
     if access == LabAccess.FLAG_OFF:
-        return "Error: agent lab is disabled for this user (run_todo_id needs the AGENT_LAB flag)"
-    todo = await _resolve_lab_todo(user_id=user_id, run_todo_id=run_todo_id)
-    if isinstance(todo, str):
-        return todo
+        return "Error: agent lab is disabled for this user (run_task_id needs the AGENT_LAB flag)"
+    task = await _resolve_lab_task(user_id=user_id, run_task_id=run_task_id)
+    if isinstance(task, str):
+        return task
     sandbox_run_id = uuid.uuid4().hex
     seed = await _seed_lab_run(user_id=user_id, sandbox_run_id=sandbox_run_id, sbx=sbx)
     if isinstance(seed, str):
         return seed
     url, token = seed
     try:
-        subscription = await subscribe_todo_to_run(todo, sandbox_run_id)
+        subscription = await subscribe_task_to_run(task, sandbox_run_id)
     except Exception as e:
-        return f"Error: subscribing todo {run_todo_id} to the run failed ({e}), ran nothing"
+        return f"Error: subscribing task {run_task_id} to the run failed ({e}), ran nothing"
     return _LabRun(
         run_id=sandbox_run_id,
         subscription_id=subscription.id,
@@ -349,24 +345,24 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
     )
 
 
-def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
+def _lab_footer(lab: _LabRun, run_task_id: str) -> str:
     """Tell the model what the run parameter did and the one record it still owes."""
     return (
         f"sandbox_run_id: {lab.run_id} (GAIA_LAB_* and OPENCODE_CONFIG_DIR injected; a later "
         f"resume sources {lab_env_path(lab.run_id)}). "
-        f"Todo {run_todo_id} is now subscribed to this run: every event the agent "
-        "reports (finished, needs input, error) runs the todo with that event.\n"
-        "Record the pid and log path on the todo's canvas so later runs can find the log."
+        f"Task {run_task_id} is now subscribed to this run: every event the agent "
+        "reports (finished, needs input, error) runs the task with that event.\n"
+        "Record the pid and log path in the task's notes so later runs can find the log."
     )
 
 
 async def _lab_run_and_env(
-    *, user_id: str, run_todo_id: str | None, sbx: object, base_env: dict[str, str] | None
+    *, user_id: str, run_task_id: str | None, sbx: object, base_env: dict[str, str] | None
 ) -> tuple[_LabRun | None, dict[str, str] | None] | str:
-    """Set up the lab run for run_todo_id and merge its env over base_env; error as string."""
-    if run_todo_id is None:
+    """Set up the lab run for run_task_id and merge its env over base_env; error as string."""
+    if run_task_id is None:
         return None, base_env
-    setup = await _setup_lab_run(user_id=user_id, run_todo_id=run_todo_id, sbx=sbx)
+    setup = await _setup_lab_run(user_id=user_id, run_task_id=run_task_id, sbx=sbx)
     if isinstance(setup, str):
         return setup
     return setup, {**(base_env or {}), **setup.env}
@@ -379,7 +375,7 @@ async def _run_sandbox_command(
     command_env: dict[str, str] | None,
     background: bool,
     lab: _LabRun | None,
-    run_todo_id: str | None,
+    run_task_id: str | None,
 ) -> str:
     """Run the command detached or in the foreground; a run that never started unsubscribes."""
     try:
@@ -388,10 +384,10 @@ async def _run_sandbox_command(
         return await _run_foreground(sbx, run, command_env)
     except Exception:
         # A run that never started must not stay subscribed and count as live.
-        # Equivalent under mutation: lab is set exactly when run_todo_id is
-        # (_lab_run_and_env); the second test only narrows run_todo_id's type.
-        if lab is not None and run_todo_id is not None:  # pragma: no mutate
-            await unregister_subscription(run_todo_id, run.user_id, lab.subscription_id)
+        # Equivalent under mutation: lab is set exactly when run_task_id is
+        # (_lab_run_and_env); the second test only narrows run_task_id's type.
+        if lab is not None and run_task_id is not None:  # pragma: no mutate
+            await stop_watching_run(run_task_id, run.user_id, lab.subscription_id)
         raise
 
 
@@ -430,7 +426,7 @@ async def _prepare_invocation(
     )
 
 
-async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) -> str:
+async def _execute_invocation(*, run: _BashInvocation, run_task_id: str | None) -> str:
     """Run one prepared invocation in the sandbox: env, lab setup, dispatch, artifacts."""
     try:
         async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(run.user_id) as sbx:
@@ -442,7 +438,7 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
                     await sbx.files.make_dir(run.cwd)
             execute_env = await _build_execute_env(run, sbx)
             lab_result = await _lab_run_and_env(
-                user_id=run.user_id, run_todo_id=run_todo_id, sbx=sbx, base_env=execute_env
+                user_id=run.user_id, run_task_id=run_task_id, sbx=sbx, base_env=execute_env
             )
             if isinstance(lab_result, str):
                 return _emit_bash_error(run.run_id, lab_result, lab_result, run.session_id)
@@ -454,7 +450,7 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
                     command_env=command_env,
                     background=run.background,
                     lab=lab,
-                    run_todo_id=run_todo_id,
+                    run_task_id=run_task_id,
                 )
             except BackgroundStartError as e:
                 return _emit_bash_error(run.run_id, str(e), f"Error: {e}", run.session_id)
@@ -464,10 +460,10 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
                 # artifacts/ from the sandbox itself (no cross-mount race) in real time.
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
                     await _publish_artifacts(sbx, run.session_id)
-            # Equivalent under mutation: lab is set exactly when run_todo_id is
-            # (_lab_run_and_env); the second test only narrows run_todo_id's type.
-            if lab is not None and run_todo_id is not None:  # pragma: no mutate
-                result = f"{result}\n{_lab_footer(lab, run_todo_id)}"
+            # Equivalent under mutation: lab is set exactly when run_task_id is
+            # (_lab_run_and_env); the second test only narrows run_task_id's type.
+            if lab is not None and run_task_id is not None:  # pragma: no mutate
+                result = f"{result}\n{_lab_footer(lab, run_task_id)}"
             return result
     except SandboxAcquisitionError as e:
         return _emit_bash_error(
@@ -505,7 +501,7 @@ async def _run_bash(
         session_id=run.session_id,
     )
 
-    return await _execute_invocation(run=run, run_todo_id=request.run_todo_id)
+    return await _execute_invocation(run=run, run_task_id=request.run_task_id)
 
 
 async def _publish_artifacts(sbx: object, session_id: str) -> None:

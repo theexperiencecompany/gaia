@@ -242,6 +242,8 @@ class TaskLogEvent(StrEnum):
     #: An app event reached the task and was lost: it could not be kept for a run.
     APP_EVENT_DROPPED = "app_event_dropped"
     RESUMED = "resumed"
+    #: Something happened to the sandbox a task's coding-agent run lives in.
+    SANDBOX_EVENT = "sandbox_event"
 
 
 class TaskRunDeliveryOutcome(StrEnum):

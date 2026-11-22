@@ -2,7 +2,7 @@
 
 Dumb pipe: the run's HMAC token alone names the run (the path is excluded from
 WorkOS auth like /sandbox/execute), and the body, any JSON object, is handed on
-verbatim to wake the todo watching that run. Claude's raw hook POST and the
+verbatim to wake the task watching that run. Claude's raw hook POST and the
 OpenCode plugin's {kind, raw} land the same way.
 """
 
@@ -45,14 +45,14 @@ LAB_EVENTS_BUDGET = TokenBudget(
 
 
 def _audit(claims: SandboxExecuteClaims, receipt: LabEventReceipt) -> None:
-    # Every push from sandbox code runs one of the user's todos with no
+    # Every push from sandbox code runs one of the user's tasks with no
     # per-action approval — the audit trail is the record.
     log.audit(
         "lab_event call",
         actor=claims.user_id,
         kind=receipt.kind,
         run_id=claims.run_id,
-        todo_id=receipt.todo_id,
+        task_id=receipt.task_id,
         ok=True,
     )
 
@@ -113,5 +113,5 @@ async def report_lab_event(
 
     receipt = await record_lab_event(claims.run_id, user_id=claims.user_id, body=body)
     _audit(claims, receipt)
-    log.set_ns("lab_event", todo_id=receipt.todo_id, kind=receipt.kind)
+    log.set_ns("lab_event", task_id=receipt.task_id, kind=receipt.kind)
     return LabEventResponse(ok=True, run_id=claims.run_id)
