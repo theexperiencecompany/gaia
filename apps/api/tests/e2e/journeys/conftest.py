@@ -18,9 +18,10 @@ from app.api.v1.middleware.tiered_rate_limiter import TieredRateLimiter, tiered_
 from app.config.settings import settings
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.mongodb import indexes
+from app.models.user_models import AuthenticatedUser
 from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
-from tests.conftest import FAKE_USER
+from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.app_events import WEBHOOK_SECRET, BotOutbox, composio_double
 from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
 from tests.e2e._harness.tasks_driver import TasksDriver
@@ -45,6 +46,8 @@ OWNED_COLLECTIONS = (
 )
 PLAYBOOK_RUNNER = "app.services.workflow.playbook.runner"
 OUTBOUND = "app.services.outbound_delivery"
+#: The signed-in user, and another whose tasks they must never see.
+USERS = (FAKE_USER, FAKE_USER_2)
 #: The modules an app connect reaches Composio from; the double answers every call.
 COMPOSIO_USERS = (
     "app.services.oauth.oauth_service",
@@ -61,18 +64,16 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     mark_real_services(item for item in items if item.path.is_relative_to(here))
 
 
-@pytest.fixture
-async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
-    """Seed the signed-in user, with nothing of theirs left from an earlier run."""
-    user_id = FAKE_USER.user_id
+async def _seed(mongo_db: AsyncIOMotorDatabase, user: AuthenticatedUser) -> None:
+    """Seed a signed-in user, with nothing of theirs left from an earlier run."""
     for collection in OWNED_COLLECTIONS:
-        await mongo_db[collection].delete_many({"user_id": user_id})
+        await mongo_db[collection].delete_many({"user_id": user.user_id})
     await mongo_db["users"].update_one(
-        {"_id": ObjectId(user_id)},
+        {"_id": ObjectId(user.user_id)},
         {
             "$set": {
-                "email": FAKE_USER.email,
-                "name": FAKE_USER.name,
+                "email": user.email,
+                "name": user.name,
                 "timezone": "UTC",
                 "onboarding.completed": True,
                 # Off unless a journey turns them on, so a nudge's time decides when it lands.
@@ -86,6 +87,13 @@ async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
         },
         upsert=True,
     )
+
+
+@pytest.fixture
+async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
+    """Seed the signed-in user, and another whose tasks they must never see."""
+    for user in USERS:
+        await _seed(mongo_db, user)
     # The test database outlives a run: an index from an older spec would stand in for this one.
     conversations = mongo_db["conversations"]
     for spec in await conversations.list_indexes().to_list(None):
@@ -97,8 +105,9 @@ async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
     for keys, options in indexes.CONVERSATION_ENTRY_INDEXES:
         await mongo_db[CONVERSATION_ENTRIES_COLLECTION].create_index(keys, **options)
     yield
-    for collection in OWNED_COLLECTIONS:
-        await mongo_db[collection].delete_many({"user_id": user_id})
+    for user in USERS:
+        for collection in OWNED_COLLECTIONS:
+            await mongo_db[collection].delete_many({"user_id": user.user_id})
 
 
 @pytest.fixture

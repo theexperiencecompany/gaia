@@ -52,6 +52,7 @@ from app.override.langgraph_bigtool.hooks import HookType
 from app.services.conversation.composition import build_runtime_ports
 from app.services.conversation.runtime import install_runtime_ports
 from tests.conftest import FAKE_USER
+from tests.e2e._harness import live_stack
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import StreamingScriptedModel, streaming_model
 from tests.e2e._harness.step_stack import (
@@ -298,16 +299,7 @@ async def conversation_indexes(mongo_db: AsyncIOMotorDatabase) -> None:
 
 @pytest.fixture
 def offline_todo_seams() -> Iterator[None]:
-    """Double the todo's ChromaDB embeddings and VFS projection: off this path, never asserted on."""
-    with (
-        patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.schedule_user_todos_sync"),
-        patch("app.services.tracked_todo_service.store_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.tracked_todo_service.schedule_gaia_tasks_sync"),
-    ):
+    with live_stack.offline_todo_seams():
         yield
 
 

@@ -51,9 +51,11 @@ from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.oauth_models import OAuthIntegration
 from app.models.payment_models import PlanType
+from app.schemas.tasks import TaskCreateRequest
 from app.services.conversation.send import submit_message
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.platform_link_service import PlatformLinkService
+from app.services.tasks import task_service
 from app.services.workflow.conversation_service import get_or_create_workflow_conversation
 from app.services.workflow.playbook.record import CALL_ID_SEPARATOR
 from app.utils.auth_utils import require_owner
@@ -61,6 +63,7 @@ from app.worker import TASK_FUNCTIONS
 from app.workers.tasks.workflow_tasks import REPLAY_SUMMARY
 from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import spawn_logged_task
+from tests.conftest import FAKE_USER_2
 from tests.e2e._harness.app_events import BotOutbox, gate_judge, signed_webhook_headers
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
@@ -145,6 +148,8 @@ _DECLINE_PLAYBOOK = call(
 ON_IT = "On it."
 #: When GAIA checks back on a question it asked.
 QUESTION_EXPIRES = "1d"
+#: A task tool's list line names its task as "(id <task id>)".
+_TASK_ID_IN_LINE = re.compile(r"\(id ([^)\s]+)\)")
 _ACTIVITY_LINE = re.compile(r"^- .*?\[(?P<event>[a-z_]+)\] ?(?P<detail>.*)$")
 _WORKFLOW_RUN_STATUS = {
     "success": RunOutcome.SUCCEEDED,
@@ -434,6 +439,19 @@ class TasksDriver:
         return str(
             await task_tool.ainvoke(args, config={"configurable": {"user_id": self._user_id}})
         )
+
+    async def search(self, query: str, **narrowing: object) -> list[str]:
+        """Have GAIA search the user's tasks by meaning; returns the ids it found, nearest first."""
+        return _TASK_ID_IN_LINE.findall(
+            await self.gaia_uses("search_tasks", query=query, **narrowing)
+        )
+
+    async def someone_elses_todo(self, title: str, *, body: str = "") -> str:
+        """Put a to-do on another user's list; returns its id."""
+        created = await task_service.create_task(
+            FAKE_USER_2.user_id, TaskCreateRequest(title=title, body=body)
+        )
+        return created.id
 
     async def gaia_files_under(self, task_id: str, parent_id: str) -> str:
         """Have GAIA move one of its tasks under another as its subtask; returns what the tool said."""
