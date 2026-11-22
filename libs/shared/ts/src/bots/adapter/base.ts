@@ -942,6 +942,8 @@ export abstract class BaseBotAdapter {
             path: file.path,
             filename: file.path.split("/").pop() ?? file.path,
             content_type: file.content_type,
+            // The bot user never sees the web card, so the file carries its link.
+            caption: file.short_url,
           },
           isChannel,
           retryTransientPlatformCall,

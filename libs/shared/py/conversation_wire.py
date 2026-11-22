@@ -192,6 +192,8 @@ class ReplyFile(BaseModel):
     content_type: str | None
     #: The web page the file opens on: where a platform that refuses the upload points the user.
     opens_at: str = Field(min_length=1)
+    #: The file's heygaia.link when the tool that wrote it attached one; a platform captions the upload with it.
+    short_url: str | None = None
 
 
 class ReplyItem(ScreenItemBase):

@@ -18944,6 +18944,17 @@
             "minLength": 1,
             "title": "Path",
             "type": "string"
+          },
+          "short_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Url"
           }
         },
         "required": [

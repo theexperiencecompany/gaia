@@ -27,3 +27,26 @@ def test_each_written_file_is_listed_once_with_its_type_past_other_cards() -> No
         ReplyFile(path="/a/report.pdf", content_type="application/pdf", opens_at=page),
         ReplyFile(path="/a/chart.png", content_type="image/png", opens_at=page),
     )
+
+
+def test_a_file_carries_the_link_its_writing_tool_attached() -> None:
+    """Regression: the runtime merge dropped the short link a bot captions a file message with."""
+    linked: ToolDataEntry = {
+        "tool_name": ARTIFACT_CARD,
+        "data": {
+            "event": "upsert",
+            "path": "report.pdf",
+            "content_type": "application/pdf",
+            "short_url": "https://heygaia.link/ab12cd",
+        },
+    }
+    page = "https://app.test/c/c1"
+
+    assert reply_files([_artifact("upsert", "report.pdf", "application/pdf"), linked], page) == (
+        ReplyFile(
+            path="report.pdf",
+            content_type="application/pdf",
+            opens_at=page,
+            short_url="https://heygaia.link/ab12cd",
+        ),
+    )

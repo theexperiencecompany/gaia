@@ -15046,6 +15046,8 @@ export interface components {
             opens_at: string;
             /** Path */
             path: string;
+            /** Short Url */
+            short_url?: string | null;
         };
         /**
          * ReplyItem

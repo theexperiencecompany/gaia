@@ -323,6 +323,7 @@ const ReplyItemSchema = z.object({
       path: z.string().min(1),
       content_type: z.string().nullable(),
       opens_at: z.string().min(1),
+      short_url: z.string().nullish(),
     }),
   ),
 }) satisfies z.ZodType<ReplyItem>;
