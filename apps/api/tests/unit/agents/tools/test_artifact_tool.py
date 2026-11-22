@@ -1,5 +1,6 @@
-"""create_artifact: the real tool writes one artifact_done card per run and reports in prose."""
+"""create_artifact: the real tool streams batched draft deltas, then one done frame, and reports in prose."""
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from typing import Any
@@ -11,8 +12,18 @@ import pytest
 import time_machine
 
 from app.agents.tools import artifact_tool
-from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
-from app.models.openui_artifact_models import ArtifactFailureReason, ArtifactKind
+from app.agents.tools.artifact_tool import _DeltaBatcher
+from app.constants.openui_artifacts import (
+    ARTIFACT_DELTA_FLUSH_CHARS,
+    ARTIFACT_DELTA_FLUSH_SECONDS,
+    ARTIFACT_DONE_EVENT,
+)
+from app.models.conversation_frame_models import StreamPayloadType
+from app.models.openui_artifact_models import (
+    ArtifactFailureReason,
+    ArtifactKind,
+    ArtifactStreamHeader,
+)
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.openui_artifacts.create import ArtifactCreationError
@@ -23,9 +34,107 @@ CONFIG = RunnableConfig(
     metadata={"user_id": "user-1"},
     configurable={"user_id": "user-1", "vfs_session_id": "conv-1", "user_timezone": "+05:30"},
 )
+HEADER = ArtifactStreamHeader(stream_id="s1", kind=ArtifactKind.REPORT, title="Q3 plan")
 ARGS: dict[str, Any] = {"kind": "report", "title": "Q3 plan", "brief": "revenue is up 12%"}
 
 INTERACTIVE_ARGS: dict[str, Any] = {**ARGS, "interactive": True}
+
+
+class TestDeltaBatcher:
+    def _batcher(self) -> tuple[_DeltaBatcher, MagicMock]:
+        writer = MagicMock()
+        return _DeltaBatcher(writer, HEADER), writer
+
+    async def test_small_deltas_wait_and_leave_as_one_frame_carrying_the_header(self) -> None:
+        batcher, writer = self._batcher()
+
+        await batcher.push("root = ")
+        await batcher.push("Artifact(")
+        writer.assert_not_called()
+        batcher.flush()
+
+        writer.assert_called_once_with(
+            {
+                StreamPayloadType.ARTIFACT_DELTA: {
+                    "stream_id": "s1",
+                    "kind": "report",
+                    "title": "Q3 plan",
+                    "delta": "root = Artifact(",
+                }
+            }
+        )
+
+    async def test_a_large_delta_flushes_at_once(self) -> None:
+        batcher, writer = self._batcher()
+
+        await batcher.push("x" * ARTIFACT_DELTA_FLUSH_CHARS)
+
+        writer.assert_called_once()
+
+    async def test_a_slow_delta_flushes_even_when_small(self) -> None:
+        writer = MagicMock()
+        with patch(f"{_TOOL}.time.monotonic", side_effect=[100.0, 101.0, 101.0]):
+            batcher = _DeltaBatcher(writer, HEADER)
+            await batcher.push("a")
+
+        writer.assert_called_once()
+
+    async def test_the_wait_is_over_exactly_at_the_flush_interval(self) -> None:
+        writer = MagicMock()
+        with patch(f"{_TOOL}.time.monotonic", side_effect=[0.0, ARTIFACT_DELTA_FLUSH_SECONDS, 0.0]):
+            batcher = _DeltaBatcher(writer, HEADER)
+            await batcher.push("a")
+
+        writer.assert_called_once()
+
+    async def test_deltas_add_up_to_the_size_that_flushes(self) -> None:
+        batcher, writer = self._batcher()
+
+        await batcher.push("x" * (ARTIFACT_DELTA_FLUSH_CHARS - 1))
+        writer.assert_not_called()
+        await batcher.push("x")
+
+        writer.assert_called_once()
+
+    async def test_a_flush_starts_the_size_count_over(self) -> None:
+        batcher, writer = self._batcher()
+        await batcher.push("x" * ARTIFACT_DELTA_FLUSH_CHARS)
+        writer.reset_mock()
+
+        await batcher.push("x" * (ARTIFACT_DELTA_FLUSH_CHARS - 1))
+
+        writer.assert_not_called()
+
+    async def test_a_quick_small_delta_waits(self) -> None:
+        writer = MagicMock()
+        with patch(f"{_TOOL}.time.monotonic", side_effect=[100.0, 100.01]):
+            batcher = _DeltaBatcher(writer, HEADER)
+            await batcher.push("a")
+
+        writer.assert_not_called()
+
+    async def test_flushing_twice_sends_nothing_new(self) -> None:
+        batcher, writer = self._batcher()
+        await batcher.push("a")
+        batcher.flush()
+        batcher.flush()
+
+        assert writer.call_count == 1
+
+    async def test_after_a_flush_the_next_frame_carries_only_the_new_text(self) -> None:
+        batcher, writer = self._batcher()
+        await batcher.push("a" * ARTIFACT_DELTA_FLUSH_CHARS)
+        await batcher.push("b")
+        batcher.flush()
+
+        assert [
+            call.args[0][StreamPayloadType.ARTIFACT_DELTA]["delta"][:1]
+            for call in writer.call_args_list
+        ] == [
+            "a",
+            "b",
+        ]
+        assert writer.call_args_list[1].args[0][StreamPayloadType.ARTIFACT_DELTA]["delta"] == "b"
 
 
 @pytest.fixture
@@ -150,34 +259,61 @@ class TestCreateArtifact:
         assert lines[0] == "The report could not be made (validation)."
         assert lines[1:] == [f"- problem {i}" for i in range(10)]
 
+    async def test_a_stopped_run_ends_its_streaming_card_as_stopped(
+        self, writer: MagicMock
+    ) -> None:
+        async def stopped(request: ArtifactRequest, title: str, sink) -> None:
+            await sink("root = Art")
+            raise asyncio.CancelledError
+
+        with (
+            patch(f"{_TOOL}.create_openui_artifact", stopped),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
+
+        delta, done = (c.args[0] for c in writer.call_args_list)
+        assert delta[StreamPayloadType.ARTIFACT_DELTA]["delta"] == "root = Art"
+        assert done[ARTIFACT_DONE_EVENT]["status"] == "stopped"
+
     async def test_an_unexpected_failure_closes_the_card_and_still_surfaces(
         self, writer: MagicMock
     ) -> None:
+        async def broken(request: ArtifactRequest, title: str, sink) -> None:
+            await sink("root = Art")
+            raise ConnectionError("provider down")
+
         with (
-            patch(
-                f"{_TOOL}.create_openui_artifact",
-                AsyncMock(side_effect=ConnectionError("provider down")),
-            ),
+            patch(f"{_TOOL}.create_openui_artifact", broken),
             patch(f"{_TOOL}.attach_link", AsyncMock()) as link,
             pytest.raises(ConnectionError, match="provider down"),
         ):
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 
-        [done] = (c.args[0] for c in writer.call_args_list)
+        delta, done = (c.args[0] for c in writer.call_args_list)
+        assert delta[StreamPayloadType.ARTIFACT_DELTA]["delta"] == "root = Art"
         assert done[ARTIFACT_DONE_EVENT]["status"] == "failed"
         assert "artifact_id" not in done[ARTIFACT_DONE_EVENT]
         link.assert_not_awaited()
 
-    async def test_a_run_writes_only_its_done_card(self, writer: MagicMock) -> None:
+    async def test_deltas_are_flushed_before_the_outcome_frame(self, writer: MagicMock) -> None:
+        async def streaming(request: ArtifactRequest, title: str, sink) -> MagicMock:
+            await sink("root = Artifact()")
+            return MagicMock(id="a1")
+
         with (
-            patch(f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))),
+            patch(f"{_TOOL}.create_openui_artifact", streaming),
             patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 
-        [done] = (c.args[0] for c in writer.call_args_list)
+        delta, done = (c.args[0] for c in writer.call_args_list)
+        assert list(delta) == [StreamPayloadType.ARTIFACT_DELTA]
         assert list(done) == [ARTIFACT_DONE_EVENT]
-        assert (done[ARTIFACT_DONE_EVENT]["kind"], done[ARTIFACT_DONE_EVENT]["title"]) == (
-            "report",
-            "Q3 plan",
-        )
+        header = {k: v for k, v in delta[StreamPayloadType.ARTIFACT_DELTA].items() if k != "delta"}
+        assert header == {
+            k: v
+            for k, v in done[ARTIFACT_DONE_EVENT].items()
+            if k in ("stream_id", "kind", "title")
+        }
+        assert (header["kind"], header["title"]) == ("report", "Q3 plan")

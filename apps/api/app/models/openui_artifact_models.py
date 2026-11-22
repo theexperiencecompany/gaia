@@ -27,10 +27,12 @@ class ArtifactKind(StrEnum):
 
 
 class ArtifactStatus(StrEnum):
-    """Where a create_artifact run ended, as the chat card shows it."""
+    """Where a create_artifact run stands, as the chat card shows it."""
 
+    STREAMING = "streaming"
     READY = "ready"
     FAILED = "failed"
+    STOPPED = "stopped"
 
 
 class ArtifactFailureReason(StrEnum):
@@ -48,10 +50,18 @@ class ArtifactStreamHeader(BaseModel):
     title: str
 
 
+class ArtifactDelta(ArtifactStreamHeader):
+    """A chunk of the first draft's program; the run's card appends it while it streams."""
+
+    delta: str
+
+
 class ArtifactCard(ArtifactStreamHeader):
-    """Where a create_artifact run ended: the artifact_done tool_data entry's data."""
+    """Where a create_artifact run stands: the artifact_done tool_data entry's data."""
 
     status: ArtifactStatus
+    #: The first draft so far, while status is streaming; a ready card's program is fetched by artifact_id.
+    program: str | None = None
     #: The stored artifact, once status is ready.
     artifact_id: str | None = None
     #: Why it gave up, on a failure the tool caught.

@@ -8,11 +8,13 @@ import pytest
 
 from app.constants.conversation import WORK_DELTAS_TTL_SECONDS
 from app.models.conversation_frame_models import (
+    ArtifactDeltaEvent,
     OutputFrame,
     ReasoningEvent,
     ToolDataEvent,
     WorkDeltaFrame,
 )
+from app.models.openui_artifact_models import ArtifactDelta, ArtifactKind
 from app.models.stream_events import ReasoningPayload
 from app.services.conversation import work_deltas
 from app.services.conversation.work_deltas import WorkDeltas, work_payloads
@@ -98,3 +100,15 @@ async def test_a_card_ends_the_open_thinking_block_before_it(announced: _Announc
         ReasoningEvent(reasoning=ReasoningPayload(content="plan")),
         ToolDataEvent(tool_data=_card("a")),
     ]
+
+
+async def test_an_artifacts_draft_chunk_is_recorded_for_the_running_work(
+    announced: _Announced,
+) -> None:
+    """Regression: the runtime merge recorded no draft chunk, so a running artifact showed nothing."""
+    chunk = ArtifactDelta(stream_id="s1", kind=ArtifactKind.REPORT, title="Q3", delta="root = ")
+    deltas = WorkDeltas(CONVERSATION, TASK)
+    deltas({"artifact_delta": chunk.model_dump(mode="json")})
+    await deltas.drain()
+
+    assert await work_payloads(CONVERSATION, TASK) == [ArtifactDeltaEvent(artifact_delta=chunk)]

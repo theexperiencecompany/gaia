@@ -1,4 +1,4 @@
-"""Constants for OpenUI artifacts: create_artifact's generation, validation and export."""
+"""Constants for OpenUI artifacts: create_artifact's generation, validation, streaming and export."""
 
 from pathlib import Path
 
@@ -25,6 +25,10 @@ ARTIFACT_MAX_REPAIRS = 1
 ARTIFACT_CREATION_DAILY_CAP = 200
 # The daily cap every day of the longest month: the cap is per day, never a monthly quota.
 ARTIFACT_CREATION_MONTHLY_CAP = 31 * ARTIFACT_CREATION_DAILY_CAP
+
+# Model deltas are token-sized; batch them so one artifact is tens of card updates, not hundreds.
+ARTIFACT_DELTA_FLUSH_SECONDS = 0.12
+ARTIFACT_DELTA_FLUSH_CHARS = 400
 
 ARTIFACT_REPAIR_INSTRUCTION = "Return only the corrected program, starting with root ="
 

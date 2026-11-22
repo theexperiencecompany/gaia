@@ -24,9 +24,19 @@ describe("an artifact_done card", () => {
     ).toThrow(/kind/);
   });
 
-  it("with a status the API no longer sends fails loudly", () => {
+  it("reads a streaming card with its draft so far", () => {
+    expect(
+      ArtifactCardDataSchema.parse({
+        ...header,
+        status: "streaming",
+        program: "root = ",
+      }),
+    ).toEqual({ ...header, status: "streaming", program: "root = " });
+  });
+
+  it("with a status the API never sends fails loudly", () => {
     expect(() =>
-      ArtifactCardDataSchema.parse({ ...header, status: "streaming" }),
+      ArtifactCardDataSchema.parse({ ...header, status: "pending" }),
     ).toThrow(/status/);
   });
 });

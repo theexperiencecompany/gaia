@@ -90,4 +90,22 @@ describe("ArtifactCard", () => {
     expect(await screen.findByLabelText("Loading report")).toBeTruthy();
     expect(fetchArtifact).toHaveBeenCalledTimes(2);
   });
+
+  it("shows an artifact's draft while it streams, with a spinner and no fetch", () => {
+    // Regression: the runtime merge dropped draft streaming; the card only appeared once ready.
+    renderCard({ ...base, status: "streaming", program: "root = " });
+
+    expect(screen.getByLabelText("Writing")).toBeTruthy();
+    expect(screen.queryByLabelText("Loading report")).toBeNull();
+    expect(fetchArtifact).not.toHaveBeenCalled();
+  });
+
+  it("ends an artifact the user stopped without a spinner", () => {
+    renderCard({ ...base, status: "stopped", program: "root = " });
+
+    expect(
+      screen.getByText("Stopped before this report was finished."),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Writing")).toBeNull();
+  });
 });

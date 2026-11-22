@@ -33,6 +33,7 @@ _WORK_PAYLOADS = frozenset(
         StreamPayloadType.SUBAGENT_END,
         StreamPayloadType.TODO_PROGRESS,
         StreamPayloadType.IMAGE_DATA,
+        StreamPayloadType.ARTIFACT_DELTA,
     }
 )
 _PUBLISH_TASK_NAME = "work-delta-publish"

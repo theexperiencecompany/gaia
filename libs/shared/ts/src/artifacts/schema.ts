@@ -30,8 +30,10 @@ const ARTIFACT_FAILURE_REASONS = {
 } as const satisfies EveryValue<ArtifactFailureReason>;
 
 const ARTIFACT_CARD_STATUSES = {
+  streaming: "streaming",
   ready: "ready",
   failed: "failed",
+  stopped: "stopped",
 } as const satisfies EveryValue<ArtifactCardStatus>;
 
 export const ArtifactCardDataSchema = z.object({
@@ -41,4 +43,5 @@ export const ArtifactCardDataSchema = z.object({
   status: z.enum(ARTIFACT_CARD_STATUSES),
   artifact_id: z.string().nullish(),
   reason: z.enum(ARTIFACT_FAILURE_REASONS).nullish(),
+  program: z.string().nullish(),
 }) satisfies z.ZodType<ArtifactCardData>;
