@@ -31,6 +31,7 @@ from pydantic import BaseModel
 import time_machine
 
 from app.agents.tools import task_edit_tools, task_list_tools, task_tools
+from app.agents.tools.coding.bash_tool import bash
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.task_tools import create_task, subscribe_task, update_task
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
@@ -53,6 +54,7 @@ from app.models.conversation_send_models import SendMessageRequest
 from app.models.oauth_models import OAuthIntegration
 from app.models.payment_models import PlanType
 from app.schemas.tasks import TaskCreateRequest
+from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.conversation.send import submit_message
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.payments.subscription_events import queue_inbox_desk_safely
@@ -66,8 +68,10 @@ from app.workers.tasks.workflow_tasks import REPLAY_SUMMARY
 from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import spawn_logged_task
 from tests.conftest import FAKE_USER_2
+from tests.e2e._harness.agent_lab import lab_sandbox, token_from_seeded_env
 from tests.e2e._harness.app_events import BotOutbox, gate_judge, signed_webhook_headers
 from tests.e2e._harness.background import drain_background_runs
+from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 from tests.e2e._harness.graph_run import ToolCall, call
 from tests.e2e._harness.step_stack import replayed
 from tests.e2e._harness.tasks_views import (
@@ -159,6 +163,9 @@ REPLY_TASK_NOTES = (
 )
 #: A task tool's list line names its task as "(id <task id>)".
 _TASK_ID_IN_LINE = re.compile(r"\(id ([^)\s]+)\)")
+#: The bash tool names a sandbox run it started as "sandbox_run_id: <run id>".
+_SANDBOX_RUN_ID = re.compile(r"sandbox_run_id: ([0-9a-f]+)")
+LAB_EVENTS = "/api/v1/lab/events"
 _ACTIVITY_LINE = re.compile(r"^- .*?\[(?P<event>[a-z_]+)\] ?(?P<detail>.*)$")
 _WORKFLOW_RUN_STATUS = {
     "success": RunOutcome.SUCCEEDED,
@@ -330,6 +337,8 @@ class TasksDriver:
         #: The results scripted for playbook replays' write-ups, in order.
         self._narrations: deque[str] = deque()
         self._unscripted_narrations: list[str] = []
+        #: The user's coding sandbox, real bash in a temp dir.
+        self._sandbox = FakeAsyncSandbox()
 
     # The account.
 
@@ -516,6 +525,34 @@ class TasksDriver:
                 {"task_id": task_id, "parent_id": parent_id},
                 config={"configurable": {"user_id": self._user_id}},
             )
+        )
+
+    async def gaia_starts_sandbox_run(self, task_id: str) -> str:
+        """Have GAIA launch a coding agent in the sandbox for the task, as its bash tool does; returns the run's id."""
+        with lab_sandbox(self._sandbox):
+            said = str(
+                await bash.ainvoke(
+                    {"command": "true", "background": True, "run_task_id": task_id},
+                    config={"configurable": {"user_id": self._user_id}},
+                )
+            )
+        started = _SANDBOX_RUN_ID.search(said)
+        assert started is not None, f"no sandbox run started: {said}"
+        return started[1]
+
+    async def sandbox_run_reports(self, run_id: str, event: Mapping[str, object]) -> int:
+        """Have the run's coding agent push one hook event to GAIA; returns the status GAIA answered."""
+        token = await token_from_seeded_env(self._sandbox, run_id)
+        with lab_sandbox(self._sandbox):
+            response = await self._client.post(
+                LAB_EVENTS, json=dict(event), headers={"Authorization": f"Bearer {token}"}
+            )
+        return response.status_code
+
+    async def sandbox_is_replaced(self) -> None:
+        """Have the user's sandbox replaced under its running agents, as the sandbox lifecycle reports it."""
+        await report_sandbox_event(
+            self._user_id, SandboxEventKind.REPLACED, "the sandbox was replaced"
         )
 
     async def run_due(self, task_id: str, run: GaiaRun | None = None) -> str:
