@@ -10,9 +10,9 @@ _is_grounded and the no-turns guard are the production code under test and run f
 
 import pytest
 
-from app.services.hil.intent import (
-    ungrounded_targets,
-)
+from app.constants.hil import HIL_JUDGE_MAX_ASSISTANT_TURNS
+from app.services.hil import intent
+from app.services.hil.intent import ungrounded_targets
 from app.services.hil.utils import (
     PriorCall,
 )
@@ -82,3 +82,127 @@ class TestWhatCountsAsATarget:
         target = "sarah@x.com@evil.com"
 
         assert ungrounded_targets({"to": target}, ["reply yes to sarah's thread"], []) == [target]
+
+
+class TestTheAssistantsWordsTheJudgeReads:
+    def test_a_runs_own_messages_never_push_out_what_the_user_saw(self) -> None:
+        shown = "Drafted the reply to Simonne with the invoice attached."
+        internal = tuple(f"step {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS))
+
+        turns = intent.AssistantTurns(shown=(shown,), run=internal).context()
+
+        assert turns == [shown, *internal[-(HIL_JUDGE_MAX_ASSISTANT_TURNS - 1) :]]
+
+    def test_with_nothing_shown_the_runs_latest_messages_fill_it(self) -> None:
+        internal = tuple(f"step {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS + 2))
+
+        assert intent.AssistantTurns(run=internal).context() == list(
+            internal[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
+        )
+
+    def test_a_full_set_of_shown_replies_leaves_no_room_for_the_run(self) -> None:
+        shown = tuple(f"reply {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS + 1))
+
+        assert intent.AssistantTurns(shown=shown, run=("step",)).context() == list(
+            shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
+        )
+
+
+# The real shape: Composio's GMAIL_LIST_DRAFTS compacted into one line per draft.
+_DRAFT_LIST = (
+    "[GMAIL_LIST_DRAFTS compacted: large_output] Visible drafts (id | to | subject | gist):\n\n"
+    '1. r-486793596744144676 | t.h@bookhopscotchlabs.info | "Re: Aryan?" | offer\n'
+    "2. r8807310570127663349 | simonne@intrinsicurlyme.co.za, lisa@intrinsicurlyme.co.za "
+    '| "Re: October Invoice" | invoice attached\n'
+    '3. r2569937965309608501 | boardy@x.com | "Intro: Dhruv + Vee" | intro'
+)
+_LISTED = [PriorCall(name="GMAIL_LIST_DRAFTS", args={"max_results": 25}, output=_DRAFT_LIST)]
+
+
+class TestAPickFromAList:
+    """A listed result traces to the user only when its entry is the one they were pointed at."""
+
+    @pytest.mark.regression
+    def test_the_entry_the_user_was_shown_grounds_the_pick(self) -> None:
+        """Prod 2026-11-15: "Send" after "drafted the reply to Simonne and Lisa" asked again."""
+        shown = ["I drafted the reply to Simonne and Lisa with the October invoice attached."]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r8807310570127663349"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == []
+
+    def test_a_blind_pick_still_needs_the_user(self) -> None:
+        missing = ungrounded_targets({"draft_id": "r8807310570127663349"}, ["Send"], _LISTED)
+
+        assert missing == ["r8807310570127663349"]
+
+    def test_an_entry_the_user_was_not_pointed_at_stays_ungrounded(self) -> None:
+        shown = ["I drafted the reply to Simonne and Lisa with the October invoice attached."]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r2569937965309608501"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == ["r2569937965309608501"]
+
+    def test_the_name_closing_one_turn_still_points_at_its_entry(self) -> None:
+        shown = ["I drafted the reply to simonne", "Want me to send it?"]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r8807310570127663349"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == []
+
+    def test_an_id_is_matched_whole_never_as_part_of_a_longer_one(self) -> None:
+        listed = [
+            PriorCall(name="LIST", args={}, output="1. d-10 | simonne@x.com\n2. d-2 | bob@x.com")
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]
+        assert ungrounded_targets({"id": "d-10"}, ["send simonne's"], listed) == []
+
+    def test_a_record_nested_in_a_draft_is_not_the_drafts_recipient(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '{"drafts": [{"id": "d-1", "to": "bob@x.com", '
+                    '"forwarded": {"from": "simonne@x.com"}}, {"id": "d-2", "to": "lisa@x.com"}]}'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]
+
+    def test_a_wrapped_list_grounds_by_the_record_holding_the_id(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '{"drafts": [{"id": "d-1", "cc": ["bob@x.com"], "labels": ["DRAFT"]}, '
+                    '{"id": "d-2"}]}'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send bob's"], listed) == []
+
+    def test_a_json_list_grounds_by_the_record_holding_the_id(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '[{"id": "d-1", "to": "bob@x.com"}, '
+                    '{"id": "d-2", "to": "simonne@intrinsicurlyme.co.za"}]'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-2"}, ["send simonne's"], listed) == []
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]

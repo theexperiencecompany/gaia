@@ -26,7 +26,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from app.constants.hil import JEV_DECISION_QUESTION_KEY, JevChoice
+from app.constants.hil import JEV_CONTAINED_QUESTION_KEY, JEV_DECISION_QUESTION_KEY, JevChoice
 from app.constants.reactions import (
     REACTION_EMOJI_QUESTION_KEY,
     REACTION_KIND_QUESTION_KEY,
@@ -144,12 +144,14 @@ def _answered(answers: dict[str, Any]) -> JSONResponse:
 
 def _approval_judge_answer() -> dict[str, Any]:
     """Authorize every gated call: the user's scripted message names the run it starts."""
-    choices = [choice.value for choice in JevChoice]
+    choices = [c.value for c in (JevChoice.AUTHORIZED, JevChoice.FORBIDDEN, JevChoice.UNCLEAR)]
     return {
         JEV_DECISION_QUESTION_KEY: {
             **_choice(choices, JevChoice.AUTHORIZED),
             "confidence": 1.0,
-        }
+        },
+        # Asked in the same call; an authorized call runs on its words, not on containment.
+        JEV_CONTAINED_QUESTION_KEY: {"type": "noul", "noul": 0.0},
     }
 
 

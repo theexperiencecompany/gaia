@@ -20,10 +20,15 @@ from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
 )
-from app.services.hil import gate
+from app.services.hil import gate, intent
 from app.services.hil.describe import describe_call
 from app.services.hil.fingerprint import approval_fingerprint
-from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
+from app.services.hil.intent import (
+    AutoContext,
+    IntentDecision,
+    JudgedCall,
+    summarize_history,
+)
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.prompts import GATE_ERROR_TEMPLATE
 from app.services.hil.utils import GatedApproval, GatedCall
@@ -767,9 +772,30 @@ class TestLedgerAutoMode:
             summary=GATED_SUMMARY,
             tool_schema=gate_seams.tool.args,
         )
-        assert kwargs["assistant_turns"] == ["Your draft to b@x is ready."]
+        assert kwargs["assistant"] == intent.AssistantTurns(run=("Your draft to b@x is ready.",))
         assert isinstance(kwargs["judge"], JevIntentJudge)
         assert kwargs["user_messages"] == ["send it to b@x"]
+
+    @pytest.mark.regression
+    async def test_what_the_user_was_shown_reaches_the_judge_apart_from_the_runs_own_words(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """A bare "Send" refers to what the user was last shown, which a fresh run never said."""
+        gate_seams.policy.return_value = "auto"
+        messages = [AIMessage(content="Fetched both drafts.")]
+
+        await gate.decide_tool_call(
+            gated_request(
+                messages=messages,
+                assistant_turns=["Drafted the reply to Simonne with the invoice attached."],
+            )
+        )
+
+        # Kept apart: only what the user saw may ground a pick from a listed result.
+        assert gate_seams.judge.await_args.kwargs["assistant"] == intent.AssistantTurns(
+            shown=("Drafted the reply to Simonne with the invoice attached.",),
+            run=("Fetched both drafts.",),
+        )
 
     async def test_a_tool_the_user_never_lets_auto_mode_run_reaches_the_judge_as_never_auto(
         self, gate_seams: GateSeams

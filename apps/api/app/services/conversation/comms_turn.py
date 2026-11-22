@@ -19,6 +19,8 @@ from app.helpers.agent_helpers import (
     AgentTurn,
     background_authorization,
     build_agent_config,
+    recent_assistant_replies,
+    recent_user_messages,
 )
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_user_context
@@ -36,6 +38,7 @@ from app.services.conversation.mongo_log_base import not_found
 from app.services.conversation.reply_analytics import UNPROMPTED, spoken_context
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
+from app.services.conversation.turns_before import turns_before
 from app.services.conversation.workspace import schedule_last_active_touch
 from app.services.delivery.chat_channel import proactive_surface, resolve_proactive_target
 from app.services.delivery.presence import presence_before
@@ -83,6 +86,16 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         ),
     )
     user_preferences, writing_style = onboarding_preferences(user.onboarding)
+    # What the HIL judge reads the batch in: the user's earlier turns ("draft it" before
+    # "send it") and the replies they were shown. A workflow fire is authorized by its
+    # own title and description instead.
+    before = (
+        []
+        if fired
+        else await turns_before(
+            runtime_ports().log, claim.conversation_id, claim.user_id, batch.start
+        )
+    )
     config = await build_agent_config(
         identity=AgentIdentity(
             conversation_id=claim.conversation_id,
@@ -96,7 +109,10 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             active_todo_id=todo_id,
             execution_mode=mode,
             source=source.value,
-            user_messages=_workflow_authorization(fired) if fired else texts,
+            user_messages=(
+                _workflow_authorization(fired) if fired else recent_user_messages(before, texts)
+            ),
+            assistant_turns=recent_assistant_replies(before),
             user_request=query,
             user_preferences=user_preferences,
             writing_style=writing_style,

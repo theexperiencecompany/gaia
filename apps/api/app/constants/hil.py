@@ -26,6 +26,9 @@ DECISION_OUTCOME: Final[dict[ApprovalDecision, DecidedOutcome]] = {
 # The default mode is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (a
 # HILPreferences field default, so it lives with the model).
 
+# The user's own recent turns the judge grounds against: intent spans turns ("draft
+# an email to Bob" … "send it"), so the live message alone can't be judged.
+HIL_JUDGE_MAX_USER_TURNS = 6
 HIL_JUDGE_MAX_TURN_CHARS = 800
 
 # The pending call's arguments, and the run's earlier tool calls (provenance for
@@ -35,8 +38,9 @@ HIL_JUDGE_MAX_ARGS_CHARS = 1500
 HIL_JUDGE_MAX_PRIOR_CALLS = 8
 HIL_JUDGE_MAX_PRIOR_OUTPUT_CHARS = 300
 
-# The run's recent assistant messages: provenance for JEV, never authorization (the
-# assistant's words say what it told the user). Bounded — prompts are not free.
+# The assistant's recent words: the replies the user saw before their turn, then the
+# run's own messages. Context for a shorthand, never authorization. Bounded — prompts
+# are not free.
 HIL_JUDGE_MAX_ASSISTANT_TURNS = 3
 HIL_JUDGE_MAX_ASSISTANT_CHARS = 500
 
@@ -54,13 +58,16 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # tool-execution timeout does not cover. Unbounded, a hung provider holds the executor's busy lock forever.
 HIL_LLM_TIMEOUT_SECONDS = 30
 
-# JEV choice judge (auto mode v2): model, timeout, decision lines. Lines come
-# from the offline sweep (scripts/evals/sweep_hil_judge.py) — the 0.50 plateau
-# scored 49/50 with zero dangerous accepts. Retune via the eval, never by hand.
+# JEV choice judge (auto mode v2): model, timeout, decision lines. The trigger gates,
+# mail verdicts and the approval-reply classifier ask HIL_JEV_MODEL_NAME, the model
+# their lines were tuned on; auto mode's judge asks HIL_JEV_JUDGE_MODEL_NAME.
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
+HIL_JEV_JUDGE_MODEL_NAME = "typesafe/jev-1.14"
 HIL_JEV_TIMEOUT_SECONDS = 15
 #: The name auto mode's one Decisions question goes by, in the request and its answer.
 JEV_DECISION_QUESTION_KEY = "decision"
+#: ...and its containment question, asked in the same call.
+JEV_CONTAINED_QUESTION_KEY = "contained"
 
 
 class JevFailure(StrEnum):
@@ -74,7 +81,21 @@ class JevFailure(StrEnum):
     UNCONFIGURED = "jev_unconfigured"
 
 
-HIL_JEV_ACCEPT_LINE = 0.50
+# Judge lines from the hil-judge sweep (scripts/evals/sweep_hil_judge.py) on
+# HIL_JEV_JUDGE_MODEL_NAME: accept 0.80 was the lowest line with zero dangerous accepts
+# across runs of 161 cases. Retune via the eval, never by hand.
+HIL_JEV_ACCEPT_LINE = 0.80
+# P(contained) at or above which a call runs without the user's explicit words.
+HIL_JEV_CONTAINED_LINE = 0.80
+# ...and only while P(forbidden) stays under this: any real argument against the call
+# (quiet hours, "fetch it quietly") holds it, even when another choice wins.
+HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
+# The focused forbid check counts a forbid only at or past this confidence.
+HIL_JEV_FORBID_FLOOR = 0.50
+#: The name the focused forbid question goes by, asked when forbid words may block a run.
+JEV_FORBID_QUESTION_KEY = "forbid"
+#: The forbid verdict recorded when the focused check itself failed (the call asks).
+JEV_FORBID_CHECK_FAILED = "unclear-forbid"
 
 # The note on a card auto mode raised instead of running the call. The judge's own
 # reason names tool slugs and scores, so it stays model-facing; the user reads this.
@@ -87,6 +108,8 @@ class JevChoice(StrEnum):
     AUTHORIZED = "authorized"
     FORBIDDEN = "forbidden"
     UNCLEAR = "unclear"
+    # The focused forbid question's other answer.
+    PERMITTED = "permitted"
 
 
 # JEV reply classifier: an approve under the line leaves the action pending.

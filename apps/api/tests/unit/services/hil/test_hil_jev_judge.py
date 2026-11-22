@@ -15,12 +15,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from app.constants.hil import (
-    HIL_JEV_MODEL_NAME,
-    HIL_JEV_TIMEOUT_SECONDS,
-)
+from app.constants import hil as hil_constants
+from app.constants.hil import HIL_JEV_TIMEOUT_SECONDS, JevChoice
 from app.constants.providers import CredentialProviderName
-from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall, ungrounded_targets
+from app.models.jev_models import JevDecisionsResponse
+from app.services.hil import intent, jev_judge, prompts
+from app.services.hil.intent import (
+    AutoHistory,
+    IntentDecision,
+    JudgedCall,
+    ungrounded_targets,
+)
 from app.services.hil.jev_client import decisions_url, jev_http_client
 from app.services.hil.jev_judge import (
     JevCase,
@@ -31,6 +36,7 @@ from app.services.hil.jev_judge import (
     forbid_tripwire,
     map_jev_choice,
 )
+from app.services.hil.prompts import JEV_QUESTION
 from app.services.hil.utils import PriorCall
 from app.services.providers.provider_credentials_service import ProviderConfig
 
@@ -52,7 +58,10 @@ def _call(**overrides: Any) -> JudgedCall:
 
 
 def _answer(
-    choice: str, confidence: float, probs: dict[str, float] | None = None
+    choice: str,
+    confidence: float,
+    probs: dict[str, float] | None = None,
+    contained: float = 0.05,
 ) -> dict[str, Any]:
     return {
         "answers": {
@@ -61,7 +70,8 @@ def _answer(
                 "choice": choice,
                 "confidence": confidence,
                 "probabilities": probs if probs is not None else {choice: confidence},
-            }
+            },
+            "contained": {"type": "noul", "noul": contained},
         },
         "usage": {"input_tokens": 300, "output_tokens": 20},
     }
@@ -371,15 +381,16 @@ class TestWire:
     async def test_usage_is_reported(self) -> None:
         with patch(f"{CLIENT_MODULE}.jev_http_client", _client(_answer("unclear", 0.5))):
             with _openrouter_key("or-key"):
-                choice, conf, probs, tokens_in, tokens_out = await ask_jev(
+                verdict, tokens_in, tokens_out = await ask_jev(
                     user_messages=["send it"],
                     call=_call(),
                     prior_calls=[],
                     history=AutoHistory(),
                 )
-        assert (choice, conf) == ("unclear", 0.5)
+        assert verdict == JevVerdict(
+            choice="unclear", confidence=0.5, probabilities={"unclear": 0.5}, contained=0.05
+        )
         assert (tokens_in, tokens_out) == (300, 20)
-        assert probs == {"unclear": 0.5}
 
 
 def _sequence_client(*answers: dict[str, Any] | Exception) -> AsyncMock:
@@ -446,7 +457,13 @@ class TestTheDecisionsWire:
         assert post.args == (decisions_url(None),)
         assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}
         posted = post.kwargs["json"]
-        assert posted["model"] == HIL_JEV_MODEL_NAME
+        # The judge asks the model its lines were tuned on; other JEV callers keep theirs.
+        assert posted["model"] == hil_constants.HIL_JEV_JUDGE_MODEL_NAME
+        # Authorization and containment are asked together, in one request.
+        assert posted["questions"] == {
+            "decision": JEV_QUESTION,
+            "contained": prompts.JEV_CONTAINED_QUESTION,
+        }
         assert posted["state"]["recent_history"] == "No recent decisions on send_email."
         assert datetime.fromisoformat(posted["state"]["now"]).tzinfo == UTC
 
@@ -482,13 +499,22 @@ class TestTheDecisionsWire:
         assert str(caught.value) == "unknown JEV choice: 'maybe'"
 
     async def test_missing_confidence_and_usage_read_as_zero(self) -> None:
-        answer = {"answers": {"decision": {"type": "choice", "choice": "authorized"}}}
+        answer = {
+            "answers": {
+                "decision": {"type": "choice", "choice": "authorized"},
+                "contained": {"type": "noul", "noul": 0.1},
+            }
+        }
         with _jev(_sequence_client(answer)):
             result = await ask_jev(
                 user_messages=["send it"], call=_call(), prior_calls=[], history=AutoHistory()
             )
 
-        assert result == ("authorized", 0.0, {}, 0, 0)
+        assert result == (
+            JevVerdict(choice="authorized", confidence=0.0, probabilities={}, contained=0.1),
+            0,
+            0,
+        )
 
 
 class TestTheJudgeAroundTheWire:
@@ -501,7 +527,7 @@ class TestTheJudgeAroundTheWire:
                 call=_call(),
                 prior_calls=[],
                 history=AutoHistory(),
-                assistant_turns=["Your draft is ready."],
+                assistant=intent.AssistantTurns(shown=("Your draft is ready.",)),
             )
 
         state = client.post.await_args.kwargs["json"]["state"]
@@ -588,5 +614,350 @@ class TestWhatTheUserIsTold:
 
     async def test_a_target_split_across_two_turns_traces_to_neither(self) -> None:
         decision = _verdict_case({"ref": "order-77"}, ["cancel order", "77 please"])
+
+        assert decision.outcome == "ask"
+
+
+def _forbid_answer(choice: str, confidence: float | None) -> dict[str, Any]:
+    return {"answers": {"forbid": {"type": "choice", "choice": choice, "confidence": confidence}}}
+
+
+class TestSettleForbid:
+    def test_forbidden_at_the_floor_forbids(self) -> None:
+        assert (
+            jev_judge.settle_forbid("forbidden", hil_constants.HIL_JEV_FORBID_FLOOR)
+            is JevChoice.FORBIDDEN
+        )
+
+    def test_forbidden_below_the_floor_permits(self) -> None:
+        assert (
+            jev_judge.settle_forbid("forbidden", hil_constants.HIL_JEV_FORBID_FLOOR - 0.01)
+            is JevChoice.PERMITTED
+        )
+
+    def test_any_other_answer_permits_however_confident(self) -> None:
+        assert jev_judge.settle_forbid("unclear", 0.99) is JevChoice.PERMITTED
+
+    def test_the_sweep_can_move_the_floor(self) -> None:
+        assert jev_judge.settle_forbid("forbidden", 0.6, floor=0.7) is JevChoice.PERMITTED
+        assert jev_judge.settle_forbid("forbidden", 0.6, floor=0.5) is JevChoice.FORBIDDEN
+
+
+class TestTheForbidWire:
+    async def test_the_focused_question_sees_earlier_and_latest_turns_apart(self) -> None:
+        turns = ["never email bob", "hold on", "email bob the deck"]
+        client = _sequence_client(_forbid_answer("forbidden", 0.8))
+        with _jev(client):
+            result = await jev_judge.ask_jev_forbid(user_messages=turns, call=_call())
+
+        assert result == ("forbidden", 0.8, 0, 0)
+        assert client.post.await_args.kwargs["json"] == {
+            "model": hil_constants.HIL_JEV_JUDGE_MODEL_NAME,
+            "state": {
+                "earlier_turns": ["never email bob", "hold on"],
+                "latest_turns": ["email bob the deck"],
+                "pending_action": {"tool": "send_email", "args": _call().args},
+            },
+            "questions": {"forbid": prompts.JEV_FORBID_QUESTION},
+        }
+
+    async def test_an_unknown_choice_is_refused_by_name(self) -> None:
+        with (
+            _jev(_sequence_client(_forbid_answer("authorized", 0.9))),
+            pytest.raises(ValueError, match="^unknown JEV forbid choice: 'authorized'$"),
+        ):
+            await jev_judge.ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())
+
+
+_FULL_PROBS = {"unclear": 0.6, "authorized": 0.4, "forbidden": 0.0}
+
+
+def _transport(*bodies: dict[str, Any]) -> AsyncMock:
+    return AsyncMock(side_effect=[JevDecisionsResponse.model_validate(body) for body in bodies])
+
+
+class TestAContainedCallWithForbidWords:
+    """An unclear call can still run on containment, so containment alone earns the forbid check."""
+
+    async def test_both_questions_go_through_the_transport_the_judge_was_given(self) -> None:
+        transport = _transport(
+            _answer("unclear", 0.6, _FULL_PROBS, contained=0.95),
+            _forbid_answer("permitted", 0.9),
+        )
+
+        decision = await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["don't worry about the formatting", "tidy my notes page"],
+            call=_call(tool_name="NOTION_INSERT_MARKDOWN", args={"page_id": "p1"}),
+            prior_calls=[],
+            history=AutoHistory(),
+        )
+
+        assert transport.await_count == 2
+        assert decision == IntentDecision(
+            "accept",
+            "Auto mode ran this: it stays in your account and can be undone (contained 0.95).",
+        )
+
+    async def test_a_failed_focused_check_asks(self) -> None:
+        transport = AsyncMock(
+            side_effect=[
+                JevDecisionsResponse.model_validate(
+                    _answer("unclear", 0.6, _FULL_PROBS, contained=0.95)
+                ),
+                httpx.ConnectError("down"),
+            ]
+        )
+
+        decision = await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["never share my notes", "tidy my notes page"],
+            call=_call(tool_name="NOTION_INSERT_MARKDOWN", args={"page_id": "p1"}),
+            prior_calls=[],
+            history=AutoHistory(),
+        )
+
+        assert decision.outcome == "ask"
+
+    async def test_an_uncontained_call_never_spends_the_focused_check(self) -> None:
+        transport = _transport(_answer("unclear", 0.6, _FULL_PROBS, contained=0.1))
+
+        await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=FORBID_TURNS,
+            call=_call(),
+            prior_calls=[],
+            history=AutoHistory(),
+        )
+
+        assert transport.await_count == 1
+
+
+def _verdict(
+    choice: str = "unclear",
+    confidence: float = 0.6,
+    contained: float | None = 0.95,
+    forbid: str | None = None,
+) -> JevVerdict:
+    return JevVerdict(
+        choice=choice,
+        confidence=confidence,
+        # Real answers carry all three choices; the rest goes to the non-forbidden side.
+        probabilities={
+            **dict.fromkeys(("authorized", "unclear"), (1 - confidence) / 2),
+            "forbidden": 0.0,
+            choice: confidence,
+        },
+        contained=contained,
+        forbid=forbid,
+    )
+
+
+def _contained_case(
+    verdict: JevVerdict | None = None,
+    *,
+    turns: list[str] | None = None,
+    history: AutoHistory | None = None,
+    args: dict[str, object] | None = None,
+) -> IntentDecision:
+    return decide_from_verdict(
+        verdict or _verdict(),
+        JevCase(
+            call=_call(tool_name="exec", args=args or {"command": "call query-run SELECT 1"}),
+            user_messages=turns or ["how many users signed up in the last 9 days?"],
+            prior_calls=[],
+            history=history or AutoHistory(),
+        ),
+    )
+
+
+class TestContainedActionsRunWithoutExplicitWords:
+    """An action that stays in the user's account and can be undone needs no authorizing words."""
+
+    @pytest.mark.regression
+    async def test_a_contained_call_the_judge_was_unsure_about_runs(self) -> None:
+        """Prod 2026-11-15: read-only queries the user asked for scored authorized 0.28-0.46."""
+        decision = _contained_case(_verdict(choice="authorized", confidence=0.28))
+
+        assert decision == IntentDecision(
+            "accept",
+            "Auto mode ran this: it stays in your account and can be undone (contained 0.95).",
+        )
+
+    async def test_an_unclear_contained_call_runs(self) -> None:
+        assert _contained_case(_verdict(choice="unclear")).outcome == "accept"
+
+    async def test_a_contained_call_with_an_untraced_target_runs(self) -> None:
+        decision = _contained_case(
+            _verdict(choice="authorized", confidence=0.9), args={"page_id": "4147df99-77ba"}
+        )
+
+        assert decision.outcome == "accept"
+
+    async def test_containment_just_under_the_line_still_asks(self) -> None:
+        assert (
+            _contained_case(_verdict(contained=hil_constants.HIL_JEV_CONTAINED_LINE - 0.01)).outcome
+            == "ask"
+        )
+
+    async def test_containment_at_the_line_runs(self) -> None:
+        assert (
+            _contained_case(_verdict(contained=hil_constants.HIL_JEV_CONTAINED_LINE)).outcome
+            == "accept"
+        )
+
+    async def test_no_containment_answer_changes_nothing(self) -> None:
+        assert _contained_case(_verdict(contained=None)).outcome == "ask"
+
+    async def test_any_argument_the_judge_sees_against_it_asks(self) -> None:
+        """A notification after "no notifications after 6pm" scored contained 0.96, P(forbidden) 0.25."""
+        decision = decide_from_verdict(
+            JevVerdict(
+                choice="authorized",
+                confidence=0.31,
+                probabilities={
+                    "authorized": 0.54,
+                    "forbidden": hil_constants.HIL_JEV_CONTAINED_MAX_FORBIDDEN,
+                    "unclear": 0.21,
+                },
+                contained=0.96,
+            ),
+            JevCase(
+                call=_call(),
+                user_messages=["notify me the deploy finished"],
+                prior_calls=[],
+                history=AutoHistory(),
+            ),
+        )
+
+        assert decision.outcome == "ask"
+
+    async def test_an_answer_without_a_forbidden_probability_never_runs(self) -> None:
+        decision = decide_from_verdict(
+            JevVerdict(choice="unclear", confidence=0.6, probabilities={}, contained=0.95),
+            JevCase(
+                call=_call(tool_name="exec"),
+                user_messages=["how many users signed up?"],
+                prior_calls=[],
+                history=AutoHistory(),
+            ),
+        )
+
+        assert decision.outcome == "ask"
+
+    async def test_a_forbidden_leaning_call_never_runs(self) -> None:
+        assert _contained_case(_verdict(choice="forbidden", confidence=0.4)).outcome == "ask"
+
+    async def test_a_confident_forbid_asks_never_refuses(self) -> None:
+        assert _contained_case(_verdict(choice="forbidden", confidence=0.9)).outcome == "ask"
+
+    async def test_forbid_language_without_the_focused_check_holds_it(self) -> None:
+        assert _contained_case(turns=["don't touch my notes", "tidy the notes"]).outcome == "ask"
+
+    @pytest.mark.regression
+    async def test_casual_forbid_words_cleared_by_the_focused_check_run(self) -> None:
+        """Prod 2026-11: "can't"/"never" in ordinary chat tripped 26 of 61 real asked calls."""
+        turns = ["for MCP we can't generate a link?", "ok check the flags in posthog"]
+
+        assert (
+            _contained_case(_verdict(forbid=JevChoice.PERMITTED), turns=turns).outcome == "accept"
+        )
+
+    async def test_a_focused_forbid_holds_it(self) -> None:
+        turns = ["never touch my notes", "tidy the notes page"]
+
+        assert _contained_case(_verdict(forbid=JevChoice.FORBIDDEN), turns=turns).outcome == "ask"
+
+    async def test_only_a_contained_call_with_forbid_words_earns_the_focused_check(self) -> None:
+        turns = ["we can't ship today", "check the flags"]
+
+        assert (
+            jev_judge.needs_forbid_check(turns, contained=hil_constants.HIL_JEV_CONTAINED_LINE)
+            is True
+        )
+        assert (
+            jev_judge.needs_forbid_check(
+                turns, contained=hil_constants.HIL_JEV_CONTAINED_LINE - 0.01
+            )
+            is False
+        )
+        assert jev_judge.needs_forbid_check(turns, contained=None) is False
+        assert jev_judge.needs_forbid_check(["check the flags"], contained=0.99) is False
+
+    @pytest.mark.parametrize(
+        "hold",
+        [
+            "hold off on my notes for now",
+            "wait for my approval before editing my notes",
+            "don't touch the notes page yet",
+            "anything on my notes needs my go-ahead",
+        ],
+    )
+    async def test_a_hold_the_user_set_keeps_it_asking(self, hold: str) -> None:
+        assert _contained_case(turns=[hold, "summarize the page"]).outcome == "ask"
+
+    @pytest.mark.parametrize(
+        "later",
+        ["actually, just summarize the page", "go ahead and summarize the page"],
+    )
+    async def test_a_go_ahead_for_something_else_does_not_lift_a_hold(self, later: str) -> None:
+        turns = ["check with me first before changing my notes", later]
+
+        assert _contained_case(turns=turns).outcome == "ask"
+
+    async def test_a_bare_go_ahead_lifts_a_hold(self) -> None:
+        turns = ["check with me first before changing my notes", "ok, go ahead"]
+
+        assert _contained_case(turns=turns).outcome == "accept"
+
+    @pytest.mark.parametrize(
+        ("history", "outcome"),
+        [
+            (AutoHistory(approved_recent=2, denied_recent=1), "ask"),
+            (AutoHistory(approved_recent=3), "accept"),
+            (AutoHistory(), "accept"),
+        ],
+    )
+    async def test_any_recent_denial_holds_it(self, history: AutoHistory, outcome: str) -> None:
+        assert _contained_case(history=history).outcome == outcome
+
+
+class TestAConfirmationOfWhatTheUserWasShown:
+    _LISTING = (
+        "Visible drafts (id | to | subject | gist):\n"
+        '1. r2569937965309608501 | boardy@x.com | "Intro" | intro\n'
+        '2. r8807310570127663349 | simonne@intrinsicurlyme.co.za | "Re: October Invoice" | pdf'
+    )
+
+    @pytest.mark.regression
+    async def test_send_after_the_drafted_reply_was_described_runs(self) -> None:
+        """Prod 2026-11-15: JEV said authorized 0.92, the list-pick backstop still asked."""
+        transport = _transport(_answer("authorized", 0.92))
+
+        decision = await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["Send"],
+            call=_call(tool_name="GMAIL_SEND_DRAFT", args={"draft_id": "r8807310570127663349"}),
+            prior_calls=[PriorCall(name="GMAIL_LIST_DRAFTS", args={}, output=self._LISTING)],
+            history=AutoHistory(),
+            assistant=intent.AssistantTurns(
+                shown=("I drafted the reply to Simonne with the October invoice attached.",)
+            ),
+        )
+
+        assert decision.outcome == "accept"
+
+    async def test_only_what_the_user_saw_grounds_the_pick(self) -> None:
+        """The judge's context may hold a run's internal messages; they never ground a pick."""
+        transport = _transport(_answer("authorized", 0.92))
+
+        decision = await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["Send"],
+            call=_call(tool_name="GMAIL_SEND_DRAFT", args={"draft_id": "r8807310570127663349"}),
+            prior_calls=[PriorCall(name="GMAIL_LIST_DRAFTS", args={}, output=self._LISTING)],
+            history=AutoHistory(),
+            assistant=intent.AssistantTurns(run=("Picked the draft for simonne.",)),
+        )
 
         assert decision.outcome == "ask"

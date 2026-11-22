@@ -11,7 +11,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 
 from app.constants.hil import AUTO_ASK_NOTE, HIL_STATUS_KWARG, JevChoice
 from app.models.hil_models import HILPreferences
-from app.services.hil import gate
+from app.services.hil import gate, intent
 from app.services.hil.intent import (
     AutoContext,
     AutoHistory,
@@ -42,7 +42,7 @@ class FakeJudge(IntentJudge):
         call: JudgedCall,
         prior_calls: list[PriorCall],
         history: AutoHistory,
-        assistant_turns: list[str] | None = None,
+        assistant: intent.AssistantTurns = intent.AssistantTurns(),
     ) -> IntentDecision:
         self.calls += 1
         return self._decision

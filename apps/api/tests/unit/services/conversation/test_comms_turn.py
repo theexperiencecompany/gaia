@@ -16,7 +16,7 @@ from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.chat import ConversationSource
 from app.constants.conversation import WORK_CARDS_NOTE
-from app.models.conversation_log_models import Batch, Entry, StepClaim, UserMessage
+from app.models.conversation_log_models import Batch, Entry, Reply, StepClaim, UserMessage
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.conversation.comms_turn import build_comms_turn
@@ -58,7 +58,7 @@ class Seams:
     reported: AsyncMock
     write_up: AsyncMock
     context: TurnContext
-    log: object
+    log: MagicMock
     owner: AsyncMock
     target: AsyncMock
 
@@ -78,7 +78,8 @@ def seams() -> Iterator[Seams]:
         presence=HumanMessage(content="presence"),
         clock=HumanMessage(content="clock"),
     )
-    log = object()
+    log = MagicMock()
+    log.read_after = AsyncMock(return_value=[])
     with (
         patch(f"{MODULE}.require_owner", AsyncMock(return_value=user)) as owner,
         patch(f"{MODULE}.presence_before", AsyncMock(return_value=PRESENCE)) as presence,
@@ -112,6 +113,27 @@ def seams() -> Iterator[Seams]:
             owner,
             target,
         )
+
+
+@pytest.mark.regression
+async def test_the_judge_reads_the_batch_in_the_turns_and_replies_before_it(
+    seams: Seams,
+) -> None:
+    """Prod 2026-11-15: "Send" after a drafted reply asked again, the draft unseen by the judge."""
+    seams.log.read_after.return_value = [
+        logged(1, _said("u0", ConversationSource.WEB)),
+        logged(
+            2, Reply(id="r1", reply_id="r1", attempt_id="a1", text="Drafted the reply to Simonne.")
+        ),
+    ]
+
+    await build_comms_turn(CLAIM, _batch(3, [_said("u1", ConversationSource.WEB)]))
+
+    # Read from this user's own conversation, from the start of the lookback up to the batch.
+    seams.log.read_after.assert_awaited_once_with(CONVERSATION, USER, 0)
+    agent_turn = seams.agent_config.await_args.kwargs["turn"]
+    assert agent_turn.user_messages == ["text u0", "text u1"]
+    assert agent_turn.assistant_turns == ["Drafted the reply to Simonne."]
 
 
 async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from(

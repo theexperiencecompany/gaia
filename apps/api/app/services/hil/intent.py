@@ -22,6 +22,7 @@ import math
 import re
 from typing import Literal, Protocol
 
+from app.constants.hil import HIL_JUDGE_MAX_ASSISTANT_TURNS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.utils import (
@@ -33,6 +34,8 @@ from shared.py.wide_events import log
 
 _NO_REQUEST_REASON = "Could not check this against anything you asked for."
 _JUDGE_FAILED_REASON = "The approval check could not run."
+#: Shown when a call ran on containment rather than on the user's explicit words.
+CONTAINED_RUN_REASON = "Auto mode ran this: it stays in your account and can be undone"
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,24 @@ def history_line(history: AutoHistory, tool_name: str) -> str:
     return line
 
 
+@dataclass(frozen=True)
+class AssistantTurns:
+    """The assistant's recent words: context for a shorthand, never authorization.
+
+    shown are the replies the user saw before their turn, the only ones that may
+    ground a pick from a listed result. run are this run's own messages, unseen.
+    """
+
+    shown: tuple[str, ...] = ()
+    run: tuple[str, ...] = ()
+
+    def context(self) -> list[str]:
+        """Return what the user saw first; this run's own messages fill only what is left."""
+        kept = list(self.shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
+        room = HIL_JUDGE_MAX_ASSISTANT_TURNS - len(kept)
+        return [*kept, *self.run[-room:]] if room else kept
+
+
 class IntentJudge(Protocol):
     """Decide one auto-mode call.
 
@@ -157,7 +178,7 @@ class IntentJudge(Protocol):
         call: JudgedCall,
         prior_calls: list[PriorCall],
         history: AutoHistory,
-        assistant_turns: list[str] | None = None,
+        assistant: AssistantTurns = AssistantTurns(),
     ) -> IntentDecision: ...
 
 
@@ -178,14 +199,13 @@ async def judge_intent(
     call: JudgedCall,
     prior_calls: list[PriorCall],
     judge: IntentJudge,
-    assistant_turns: list[str] | None = None,
+    assistant: AssistantTurns = AssistantTurns(),
 ) -> IntentDecision:
     """Decide whether the user's own words authorize this call; fails toward asking.
 
     No user turns and a tool on the never-auto list both ask without spending a
-    call. assistant_turns is recent assistant prose: context for what a shorthand
-    refers to ("send it" after "your draft to X is ready"), never authorization —
-    only user turns authorize.
+    call. assistant is recent assistant prose: context for what a shorthand refers
+    to ("send it" after "your draft to X is ready"), never authorization.
     """
     turns = [text for text in user_messages if text.strip()]
     if not turns:
@@ -208,7 +228,7 @@ async def judge_intent(
             call=call,
             prior_calls=prior_calls,
             history=auto.history,
-            assistant_turns=assistant_turns,
+            assistant=assistant,
         )
     except Exception as e:  # the one classifier failed: the call waits on the user instead
         log.error(
@@ -259,13 +279,14 @@ def ungrounded_targets(
     user_turns: list[str],
     prior_calls: list[PriorCall],
     known: frozenset[str] | None = None,
+    *,
+    shown_turns: list[str] | None = None,
 ) -> list[str]:
     """Return target-like arg values with no provenance in user words or priors.
 
-    Grounding backstop for judges with no authorizing quote (JEV): an email, id
-    or amount from nowhere blocks auto-accept. Prose bodies and targets from the
-    user's own approved runs (known) are provenance. A prior output grounds only
-    when it identifies: a single result returned the thing; a list needs the user.
+    Backstop for JEV: an email, id or amount from nowhere blocks auto-accept. A prior
+    output grounds when it identifies (one result), or when the listed entry holding
+    the target names an address the user wrote or was shown: not a blind pick.
     """
     provenance = [f"{call.name} {args_preview(call.args)}" for call in prior_calls]
     provenance += [
@@ -277,13 +298,63 @@ def ungrounded_targets(
     sources = [_normalize(text) for text in [*user_turns, *provenance]]
     normalized_known = {_normalize(target) for target in known or frozenset()}
     user_tokens = {token for turn in user_turns for token in _normalize(turn).split()}
+    pointed_at = [*user_turns, *(shown_turns or [])]
     return [
         target
         for target in _target_values(args)
         if not any(_normalize(target) in source for source in sources)
         and _normalize(target) not in normalized_known
         and _local_part(target) not in user_tokens
+        and not _listed_entry_pointed_at(target, prior_calls, pointed_at)
     ]
+
+
+_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def _listed_entry_pointed_at(target: str, prior_calls: list[PriorCall], context: list[str]) -> bool:
+    """Whether a listed result carries target on an entry naming an address in context."""
+    text = _normalize(" ".join(context))
+    tokens = set(text.split())
+    return any(
+        _normalize(address) in text or _local_part(address) in tokens
+        for call in prior_calls
+        for entry in _entries_holding(call.output, target)
+        for address in _ADDRESS.findall(entry)
+    )
+
+
+def _entries_holding(output: str, target: str) -> list[str]:
+    """Return the entries of a listed result that carry target: JSON objects, else lines."""
+    try:
+        parsed: object = json.loads(output)
+    except (json.JSONDecodeError, ValueError):
+        holds = re.compile(rf"(?<![\w-]){re.escape(target)}(?![\w-])")
+        return [line for line in output.splitlines() if holds.search(line)]
+    return [_own_fields(node) for node in _objects(parsed) if target in node.values()]
+
+
+def _own_fields(record: dict[str, object]) -> str:
+    """Render a record's own scalar fields; a nested record is a different entry.
+
+    A draft to bob@x.com quoting a mail from simonne@x.com is Bob's draft, not Simonne's.
+    """
+    values: list[object] = []
+    for value in record.values():
+        if isinstance(value, list):
+            values += [item for item in value if not isinstance(item, (dict, list))]
+        elif not isinstance(value, dict):
+            values.append(value)
+    return " ".join(str(value) for value in values)
+
+
+def _objects(value: object) -> list[dict[str, object]]:
+    """Every JSON object nested anywhere in value."""
+    if isinstance(value, dict):
+        return [value, *(found for child in value.values() for found in _objects(child))]
+    if isinstance(value, list):
+        return [found for child in value for found in _objects(child)]
+    return []
 
 
 def _local_part(target: str) -> str:
