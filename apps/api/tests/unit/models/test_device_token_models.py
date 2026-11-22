@@ -8,8 +8,12 @@ from app.models.device_token_models import DeviceTokenUpdate, PlatformType
 
 @pytest.mark.parametrize("field", ["platform", "is_active"])
 def test_an_explicit_null_for_a_required_field_is_rejected(field: str) -> None:
-    with pytest.raises(ValidationError, match=field):
+    with pytest.raises(ValidationError) as refused:
         DeviceTokenUpdate.model_validate({field: None})
+
+    assert [(e["loc"], e["msg"]) for e in refused.value.errors()] == [
+        ((field,), "Value error, cannot be null")
+    ]
 
 
 def test_a_null_device_id_is_allowed_to_clear_it() -> None:
