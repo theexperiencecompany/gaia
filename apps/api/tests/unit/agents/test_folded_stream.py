@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import Iterator
-import contextlib
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
@@ -100,6 +99,7 @@ async def test_closing_a_stream_with_nothing_beating_still_ends_it(opened: bool)
     assert get_session(STREAM) is None
 
 
+@pytest.mark.regression
 @pytest.mark.usefixtures("fake_redis")
 async def test_the_run_is_alive_to_the_sweep_before_its_work_is_logged() -> None:
     lost_when_logged: list[bool] = []
@@ -114,15 +114,8 @@ async def test_the_run_is_alive_to_the_sweep_before_its_work_is_logged() -> None
     assert lost_when_logged == [False]
 
 
-@pytest.mark.usefixtures("fake_redis")
-@pytest.mark.parametrize(
-    "logged",
-    [AsyncMock(return_value=False), AsyncMock(side_effect=ConnectionError("mongo down"))],
-    ids=["refused by a stop", "log failed"],
-)
-async def test_a_run_whose_work_is_not_logged_stops_its_beat_and_opens_no_session(
-    logged: AsyncMock,
-) -> None:
+@contextmanager
+def _beating(logged: AsyncMock) -> Iterator[list[asyncio.Task[None]]]:
     beats: list[asyncio.Task[None]] = []
 
     async def beat(conversation_id: str, lock_value: str) -> asyncio.Task[None]:
@@ -132,8 +125,13 @@ async def test_a_run_whose_work_is_not_logged_stops_its_beat_and_opens_no_sessio
     with (
         patch(f"{FOLDED}.keep_alive", new=beat),
         patch(f"{FOLDED}.record_work_carried", new=logged),
-        contextlib.suppress(ConnectionError),
     ):
+        yield beats
+
+
+@pytest.mark.regression
+async def test_a_run_a_stop_refuses_stops_its_beat_and_opens_no_session() -> None:
+    with _beating(AsyncMock(return_value=False)) as beats:
         assert not await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
     await asyncio.sleep(0)
 
@@ -141,6 +139,20 @@ async def test_a_run_whose_work_is_not_logged_stops_its_beat_and_opens_no_sessio
     assert get_session(STREAM) is None
 
 
+@pytest.mark.regression
+async def test_a_run_whose_work_log_fails_stops_its_beat_and_raises() -> None:
+    with (
+        _beating(AsyncMock(side_effect=ConnectionError("mongo down"))) as beats,
+        pytest.raises(ConnectionError, match="mongo down"),
+    ):
+        await open_folded_stream(STREAM, conversation_id="conv-1", user_id="u1")
+    await asyncio.sleep(0)
+
+    assert [task.cancelled() for task in beats] == [True]
+    assert get_session(STREAM) is None
+
+
+@pytest.mark.regression
 async def test_a_run_whose_liveness_cannot_be_held_logs_no_work_and_raises() -> None:
     logged = AsyncMock(return_value=True)
     with (
