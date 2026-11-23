@@ -593,6 +593,38 @@ class DevContext(TypedDict, total=False):
     subagent_id: str
 
 
+class ShortLinkContext(TypedDict, total=False):
+    """heygaia.link share, open and content-origin context; the slug only ever hashed."""
+
+    operation: str  # "create"|"share_state"|"stop_sharing"|"resolve"|"meta"|"serve"|"thumbnail"|…
+    slug_hash: str
+    target_type: str
+    access: str
+    viewer_kind: str
+    shared: bool
+    revoked: bool
+    fetch_dest: str | None
+    signed_url: str  # "stale" when a content URL's token no longer holds
+    render: str
+
+
+class BriefingContext(TypedDict, total=False):
+    """Daily/weekly brief run, delivery and read context."""
+
+    operation: str  # "list"|"postmarks"|"get"|"edition_image"
+    id: str
+    kind: str  # "daily"|"weekly"
+    limit: int
+    variant: str
+    outcome: str
+    form: str
+    channels: list[str]
+    pushed: bool
+    resumed: bool
+    pool_capped: int
+    postmarks_collected: int
+
+
 OUTCOME_FAILED = "failed"
 
 
@@ -636,6 +668,8 @@ class WideEventFields(TypedDict, total=False):
     device: DeviceContext
     desktop: DesktopContext
     dev: DevContext
+    short_link: ShortLinkContext
+    briefing: BriefingContext
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str

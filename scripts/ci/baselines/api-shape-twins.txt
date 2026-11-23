@@ -25,7 +25,6 @@ apps/mobile/src/features/chat/components/chat/email-compose-card.tsx:EmailCompos
 apps/mobile/src/features/chat/components/composer/composer.tsx:ReplyToData=ReplyToMessageData
 apps/mobile/src/features/chat/tool-data/cards/calendar-delete-card.tsx:CalendarDeleteOption=EventDeleteRequest
 apps/mobile/src/features/chat/tool-data/cards/calendar-edit-card.tsx:CalendarEditOption=EventDeleteRequest
-apps/mobile/src/features/chat/tool-data/cards/calendar-options-card.tsx:SameDayEvent=GoogleCalendarListEntry
 apps/mobile/src/features/chat/tool-data/cards/chart-card.tsx:ChartDisplayData=SupportRequestCreate
 apps/mobile/src/features/chat/tool-data/cards/connection-status-card.tsx:ConnectionStatusData=IntegrationSuccessResponse
 apps/mobile/src/features/chat/tool-data/cards/email-fetch-card.tsx:EmailFetchItem=GmailMessageSummary
@@ -69,7 +68,6 @@ apps/web/src/features/auth/utils/toCurrentUser.ts:CurrentUser=AuthenticatedUserR
 apps/web/src/features/blog/components/BlogMetadata.tsx:TeamMember=AuthorDetails
 apps/web/src/features/chat/components/bubbles/bot/ChartDisplay.tsx:ChartData=SupportRequestCreate
 apps/web/src/features/chat/components/composer/ComposerLeft.tsx:DropdownItemConfig=NotificationAction
-apps/web/src/features/chat/components/memory/MemoryIndicator.tsx:MemoryItem=NotificationRequest
 # One of the ten raw-apiauth feature files the concurrent migration is moving
 # onto the typed client; expected to go with it.
 apps/web/src/features/chat/types/enhancedTools.ts:EnhancedToolInfo=ToolInfo
@@ -93,7 +91,6 @@ apps/web/src/features/landing/data/featuresData.types.ts:FeatureData=Integration
 apps/web/src/features/mail/components/EmailComposeCard.tsx:EmailData=SendEmailForm
 apps/web/src/features/memory/components/MemoryEmptyState.tsx:MemoryEmptyStateProps=CreateWorkflowRequest
 apps/web/src/features/memory/components/MemoryManagement.tsx:OverviewStat=SkillTarget
-apps/web/src/features/settings/components/LinkedAccountsSettings.tsx:PlatformConfig=ProjectCreate
 apps/web/src/features/skills/api/types.ts:DiscoveredSkill=DiscoveredSkillInfo
 apps/web/src/features/skills/components/SkillPreviewModal.tsx:SkillPreview=BuiltinSkillInfo
 apps/web/src/features/support/hooks/useContactSupport.ts:ContactFormData=Body_support_submit_support_request_with_attachments
@@ -179,7 +176,6 @@ libs/shared/ts/src/types/integrations.ts:CommunityIntegration=CommunityIntegrati
 libs/shared/ts/src/types/integrations.ts:CommunityIntegrationsResponse=CommunityListResponse
 libs/shared/ts/src/types/integrations.ts:Integration=IntegrationConfigItem
 libs/shared/ts/src/types/integrations.ts:MarketplaceIntegration=CommunityIntegrationItem
-libs/shared/ts/src/types/memory.ts:MemoryCreate=NotificationRequest
 libs/shared/ts/src/types/notes.ts:Note=NoteResponse
 libs/shared/ts/src/types/notification.ts:InAppNotification=NotificationView
 libs/shared/ts/src/types/notification.ts:InAppNotificationContent=NotificationContent
@@ -193,7 +189,6 @@ libs/shared/ts/src/types/usage.ts:UsageActivity=UsageActivityResponse
 libs/shared/ts/src/types/usage.ts:UsagePeriod=FeaturePeriodUsage
 libs/shared/ts/src/types/workflow.ts:CommunityWorkflow=PersonalizationWorkflow
 libs/shared/ts/src/types/workflow.ts:ContentCreator=AuthorDetails
-libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload=SelectedWorkflowDataInput
 libs/shared/ts/src/workflows/triggers.ts:TriggerFieldSchema=TriggerConfigFieldSchema
 libs/shared/ts/src/workflows/triggers.ts:TriggerSchema=WorkflowTriggerResponse
 

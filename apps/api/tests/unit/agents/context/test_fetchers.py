@@ -21,7 +21,6 @@ from tests.integration_account_factories import make_integration_account, make_i
 
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
-    _ConnectedIntegration,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -58,6 +57,7 @@ from app.agents.prompts.new_user_prompts import (
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
@@ -73,6 +73,7 @@ from app.models.user_models import (
     OnboardingSubdocument,
 )
 from app.services.hil.pending import PendingApproval
+from app.services.integrations.user_integrations import ConnectedIntegration
 from app.utils.artifact_utils import FILE_LINKS
 
 
@@ -424,7 +425,7 @@ class TestConnectedIntegrationsManifest:
                         id="ca_2",
                         connected_account_id="ca_2",
                         label="me@gmail.com",
-                        status="expired",
+                        status=IntegrationStatus.EXPIRED,
                     ),
                 ],
                 primary_account_id="ca_1",
@@ -650,7 +651,7 @@ class TestDedupeByProvider:
         self,
     ) -> None:
         """A later id-only entry for the same provider must not clobber an earlier resolved display name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "Slack Workspace"},
             {"id": "sl_ack", "name": "sl_ack"},
         ]
@@ -658,7 +659,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
 
     def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "slack"},
             {"id": "sl_ack", "name": "Slack Workspace"},
         ]
@@ -667,7 +668,7 @@ class TestDedupeByProvider:
 
     def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
         """Once a provider has resolved to ANY display name, a second row for it must not overwrite it, even with another real name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "calendar", "name": "Calendar One"},
             {"id": "cal_endar", "name": "Calendar Two"},
         ]
@@ -675,7 +676,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
 
     def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "gmail", "name": "Gmail"},
             {"id": "slack", "name": "Slack"},
             {"id": "notion", "name": "Notion"},
@@ -710,7 +711,9 @@ class TestProviderMetadataBlock:
         record = self._record(
             make_integration_account("ca_1", label="work@acme.com"),
             make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
-            make_integration_account("ca_3", label="old@acme.com", status="expired"),
+            make_integration_account(
+                "ca_3", label="old@acme.com", status=IntegrationStatus.EXPIRED
+            ),
             primary="ca_2",
         )
         with patch(

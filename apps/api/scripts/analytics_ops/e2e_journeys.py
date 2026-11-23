@@ -11,8 +11,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http import HTTPStatus
+import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 from uuid import uuid4
@@ -21,6 +23,9 @@ import httpx
 from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
+from app.constants.briefing import BriefingFrequency
+from app.constants.workflows import WorkflowDelivery
+from app.models.brief_settings_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.conversation_send_models import (
     ConversationEvent,
     MessageAccepted,
@@ -72,6 +77,9 @@ WORKFLOW_RUN_TIMEOUT_S = 120.0
 WORKFLOW_POLL_INTERVAL_S = 1.0
 EXECUTION_RUNNING = "running"
 EXECUTION_SUCCEEDED = "success"
+# A schedule other than the default, so the PUT is a real change.
+BRIEFING_SCHEDULE = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
+BRIEFING_SCHEDULE_PATH = "/briefings/schedule"
 
 
 class JourneyError(RuntimeError):
@@ -163,9 +171,11 @@ def onboarding(stack: Stack) -> None:
         report(OnboardingStep.FIRST_CHAT_OPENED)
 
 
-def _send(api: httpx.Client, stack: Stack, conversation_id: str) -> httpx.Response:
-    """Send the scripted message into the conversation the way the web app does."""
-    body = SendMessageRequest(message_id=str(uuid4()), text=SIM_REPLY)
+def _send(
+    api: httpx.Client, stack: Stack, conversation_id: str, text: str = SIM_REPLY
+) -> httpx.Response:
+    """Send a scripted message into the conversation the way the web app does."""
+    body = SendMessageRequest(message_id=str(uuid4()), text=text)
     return api.post(
         f"/conversations/{conversation_id}/messages",
         json=body.model_dump(mode="json", exclude_none=True),
@@ -298,6 +308,177 @@ def await_reply(lines: Iterable[str], message_id: str, *, deadline: float) -> No
     raise JourneyError(f"the events stream ended before the reply to {message_id} settled")
 
 
+#: The program the sim stub's Responses route writes for the brief: grounded in its figures.
+ARTIFACT_PROGRAM = (
+    'root = Artifact("Analytics e2e launch", "Week one", [], [callout1])\n'
+    'callout1 = Callout("good", "Sign-ups beat the target", '
+    '"Sign-ups reached 1,840 against a target of 1,500.")'
+)
+#: A brief create_artifact's model turns into a small grounded dashboard, scripting its reply.
+ARTIFACT_BRIEF = (
+    "Sign-ups 1,840 in seven days against a target of 1,500. Daily sign-ups Tue to Mon: "
+    f"310, 420, 270, 230, 210, 190, 210. Paid: 96. [[say:{ARTIFACT_PROGRAM}]]"
+)
+#: Someone other than the owner opening the shared link: the owner's own opens never count.
+ARTIFACT_READER = "delivered+analytics-e2e-reader@resend.dev"
+ARTIFACT_ID_PATTERN = re.compile(r'"artifact_id":\s*"([0-9a-f]{24})"')
+#: The executor runs after comms replies; its card lands on the conversation.
+ARTIFACT_TIMEOUT_S = 180.0
+
+
+def _await_artifact_id(api: httpx.Client, conversation_id: str) -> str:
+    """Wait for the executor's artifact_done card on the conversation; return its artifact id."""
+    deadline = time.monotonic() + ARTIFACT_TIMEOUT_S
+    while True:
+        conversation = _expect(api.get(f"/conversations/{conversation_id}"), HTTPStatus.OK)
+        found = ARTIFACT_ID_PATTERN.search(conversation.text)
+        if found is not None:
+            return found.group(1)
+        if time.monotonic() >= deadline:
+            raise JourneyError(
+                f"no stored artifact on {conversation_id} after {ARTIFACT_TIMEOUT_S:.0f}s"
+            )
+        time.sleep(WORKFLOW_POLL_INTERVAL_S)
+
+
+def artifact(stack: Stack) -> None:
+    """Create an artifact in chat, open it in the viewer and through its link, export its PDF."""
+    tool = json.dumps(
+        {"kind": "dashboard", "title": "Analytics e2e launch", "brief": ARTIFACT_BRIEF}
+    )
+    conversation_id = str(uuid4())
+    with stack.client() as api:
+        _expect(
+            _send(api, stack, conversation_id, f"[[tool:create_artifact {tool}]] [[say:Done.]]"),
+            HTTPStatus.ACCEPTED,
+        )
+        artifact_id = _await_artifact_id(api, conversation_id)
+        _expect(
+            api.get(f"/artifacts/{artifact_id}", headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+        state = _expect(
+            api.post(
+                "/l/state",
+                json={"target": {"type": "openui_artifact", "id": artifact_id}},
+                headers=stack.browser(),
+            ),
+            HTTPStatus.OK,
+        )
+        link = state.json()["link"]
+        if not link:
+            raise JourneyError("create_artifact left the artifact without a link")
+        slug = link["slug"]
+        _expect(api.get(f"/l/{slug}"), HTTPStatus.OK)
+        # the page's open beacon, from a reader who is not the owner
+        _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)
+        _expect(
+            api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+            HTTPStatus.NO_CONTENT,
+        )
+        _expect(api.get(f"/l/{slug}/pdf"), HTTPStatus.OK)
+
+
+#: A chat-preview bot's user agent: its fetch builds an unfurl and never counts as an open.
+SLACKBOT_USER_AGENT = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"
+#: A signed-in viewer other than the shared todo's owner.
+LINK_STRANGER = "delivered+analytics-e2e-stranger@resend.dev"
+
+
+def link_share(stack: Stack) -> None:
+    """Share a todo, open it as a bot, a reader twice and a stranger, then narrow, rotate and revoke it."""
+    with stack.client() as api:
+        todo = _expect(
+            api.post(
+                "/todos", json={"title": "Analytics e2e shared todo"}, headers=stack.browser()
+            ),
+            HTTPStatus.CREATED,
+        ).json()
+        target = {"target": {"type": "todo_deliverable", "id": todo["id"]}}
+        link = _expect(api.post("/l", json=target, headers=stack.browser()), HTTPStatus.OK).json()
+        slug = link["slug"]
+        _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)
+        _expect(api.post("/dev/users", json={"email": LINK_STRANGER}), HTTPStatus.OK)
+        _expect(
+            api.post(
+                f"/l/{slug}/opened",
+                headers={DEV_USER_HEADER: ARTIFACT_READER, "User-Agent": SLACKBOT_USER_AGENT},
+            ),
+            HTTPStatus.NO_CONTENT,
+        )
+        for _ in range(2):
+            _expect(
+                api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+                HTTPStatus.NO_CONTENT,
+            )
+        _expect(
+            api.patch(
+                f"/l/{slug}",
+                json={"access": "owner"},
+                headers=stack.browser(),
+            ),
+            HTTPStatus.OK,
+        )
+        # A denial counts only from the browser's /opened, never from a server-side read.
+        _expect(
+            api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: LINK_STRANGER}),
+            HTTPStatus.FORBIDDEN,
+        )
+        rotated = _expect(
+            api.post(f"/l/{slug}/rotate", headers=stack.browser()), HTTPStatus.OK
+        ).json()
+        _expect(
+            api.get(f"/l/{rotated['slug']}", headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+        _expect(api.post("/l/unshare", json=target, headers=stack.browser()), HTTPStatus.OK)
+
+
+def briefing_schedule(stack: Stack) -> None:
+    """Change the briefing schedule from settings, as the browser does."""
+    with stack.client() as api:
+        _expect(
+            api.put(
+                BRIEFING_SCHEDULE_PATH,
+                json=BRIEFING_SCHEDULE.model_dump(mode="json"),
+                headers=stack.browser(),
+            ),
+            HTTPStatus.OK,
+        )
+
+
+def briefs_off_guard(stack: Stack) -> None:
+    """Turn briefs off with a workflow on the brief: refused, then done once it moves to now."""
+    request = CreateWorkflowRequest(
+        title="analytics e2e brief",
+        prompt=SIM_REPLY,
+        trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+        steps=[WorkflowStep(title="reply", description=SIM_REPLY)],
+        generate_immediately=False,
+        delivery=WorkflowDelivery.BRIEF,
+    )
+    off = BriefingScheduleUpdate(frequency=BriefingFrequency.OFF)
+    with stack.client() as api:
+        created = _expect(
+            api.post("/workflows", json=request.model_dump(mode="json"), headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+        workflow_id = created.json()["workflow"]["id"]
+        _expect(
+            api.put(
+                BRIEFING_SCHEDULE_PATH, json=off.model_dump(mode="json"), headers=stack.browser()
+            ),
+            HTTPStatus.CONFLICT,
+        )
+        moved = off.model_copy(update={"workflow_deliveries": {workflow_id: WorkflowDelivery.NOW}})
+        _expect(
+            api.put(
+                BRIEFING_SCHEDULE_PATH, json=moved.model_dump(mode="json"), headers=stack.browser()
+            ),
+            HTTPStatus.OK,
+        )
+
+
 def workflow(stack: Stack) -> None:
     """Create a manual workflow, then run it."""
     request = CreateWorkflowRequest(
@@ -306,6 +487,7 @@ def workflow(stack: Stack) -> None:
         trigger_config=TriggerConfig(type=TriggerType.MANUAL),
         steps=[WorkflowStep(title="reply", description=SIM_REPLY)],
         generate_immediately=False,
+        delivery=WorkflowDelivery.NOW,
     )
     with stack.client() as api:
         created = _expect(

@@ -159,6 +159,45 @@ describe("env-writer file permissions", () => {
     expect(publicEnv).toContain("GAIA_DOMAIN=gaia.example.com");
     expect(publicEnv).not.toContain("GAIA_CADDY_GLOBAL_OPTIONS");
   });
+  it("gives Caddy the share domains this run serves, and drops the rest", () => {
+    const repo = makeRepo();
+    const composeEnvPath = path.join(
+      repo,
+      "packages",
+      "cli",
+      "selfhost",
+      ".env",
+    );
+
+    writeDockerComposeEnv(repo, {}, "selfhost", {
+      dockerSocketGid: 999,
+      domain: "gaia.example.com",
+      shareDomains: {
+        link: "go.example.com",
+        usercontent: "files.example.com",
+      },
+    });
+    const both = readFileSync(composeEnvPath, "utf-8");
+    expect(both).toContain("GAIA_LINK_DOMAIN=go.example.com");
+    expect(both).toContain("GAIA_USERCONTENT_DOMAIN=files.example.com");
+
+    writeDockerComposeEnv(repo, {}, "selfhost", {
+      dockerSocketGid: 999,
+      shareDomains: { link: "go.example.com" },
+    });
+    const linkOnly = readFileSync(composeEnvPath, "utf-8");
+    expect(linkOnly).toContain("GAIA_LINK_DOMAIN=go.example.com");
+    expect(linkOnly).not.toContain("GAIA_USERCONTENT_DOMAIN");
+
+    // --no-domain: a share domain redirects to and frames GAIA's own domain.
+    writeDockerComposeEnv(repo, {}, "selfhost", {
+      dockerSocketGid: 999,
+      domain: false,
+    });
+    expect(readFileSync(composeEnvPath, "utf-8")).not.toContain(
+      "GAIA_LINK_DOMAIN",
+    );
+  });
 });
 
 describe("the compose env file each install reads", () => {

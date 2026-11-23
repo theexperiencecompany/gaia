@@ -10,6 +10,8 @@ import pytest
 import respx
 import time_machine
 
+from app.constants.notifications import NotificationKind
+from app.models.notification.details_models import ApprovalNotification
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContent,
@@ -25,7 +27,12 @@ MESSAGE = PushMessage(
     title="GAIA needs your approval",
     body="Send the deck",
     category_id="hil_approval",
-    data={"notification_id": "n1", "approval_id": "ap_1"},
+    data={
+        "notification_id": "n1",
+        "type": "hil_approval",
+        "conversation_id": "c1",
+        "approval_id": "ap_1",
+    },
 )
 
 
@@ -35,7 +42,9 @@ def _request(source: NotificationSourceEnum) -> NotificationRequest:
         user_id="u1",
         source=source,
         content=NotificationContent(title="GAIA needs your approval", body="Send the deck"),
-        metadata={"approval_id": "ap_1"},
+        details=ApprovalNotification(
+            kind=NotificationKind.APPROVAL, conversation_id="c1", approval_id="ap_1"
+        ),
     )
 
 
@@ -61,10 +70,17 @@ def test_only_an_approval_wakes_the_phone(source: NotificationSourceEnum, handle
     assert PushChannelAdapter().can_handle(_request(source)) is handled
 
 
-async def test_the_message_carries_the_notification_id_and_its_metadata() -> None:
+async def test_the_message_carries_the_notification_id_and_the_approval() -> None:
     message = await PushChannelAdapter().transform(_request(NotificationSourceEnum.APPROVAL))
 
     assert message == MESSAGE
+
+
+async def test_a_push_without_approval_details_fails_loudly() -> None:
+    request = _request(NotificationSourceEnum.APPROVAL).model_copy(update={"details": None})
+
+    with pytest.raises(TypeError, match="n1 carries no approval details"):
+        await PushChannelAdapter().transform(request)
 
 
 async def test_a_user_with_no_device_is_skipped(tokens: MagicMock) -> None:
@@ -117,7 +133,7 @@ async def test_every_device_is_sent_in_batches_and_gone_ones_are_retired(
             "title": "GAIA needs your approval",
             "body": "Send the deck",
             "categoryId": "hil_approval",
-            "data": {"notification_id": "n1", "approval_id": "ap_1"},
+            "data": MESSAGE.data,
         }
     ]
     assert [message["to"] for message in sent[0]] == devices[:100]

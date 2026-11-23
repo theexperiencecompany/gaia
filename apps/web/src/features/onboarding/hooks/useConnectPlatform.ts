@@ -24,13 +24,10 @@ import { type Dispatch, useCallback, useEffect, useState } from "react";
 import type { PhoneLinkTarget } from "@/components/shared/PhoneLinkModal";
 import { BOT_AUTH_COMMAND, type BotPlatform } from "@/config/botPlatforms";
 import { useBotLinks } from "@/features/bots/hooks/useBotLinks";
+import { platformLinksQuery } from "@/features/settings/api/platformLinksApi";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
-import {
-  fetchPlatformLinks,
-  type LinkCodeResponse,
-  mintLinkCode,
-} from "../api/onboardingApi";
+import { type LinkCodeResponse, mintLinkCode } from "../api/onboardingApi";
 import { PLATFORM_LINK_POLL_MS } from "../constants";
 import type { Action } from "../state/types";
 
@@ -66,7 +63,6 @@ function buildImessageHandoffLink(
  * the cached result survives a StrictMode remount.
  */
 const LINK_CODE_QUERY_KEY = ["onboarding", "platform-link-code"] as const;
-const PLATFORM_LINKS_QUERY_KEY = ["onboarding", "platform-links"] as const;
 
 export function useConnectPlatform(
   dispatch: Dispatch<Action>,
@@ -130,8 +126,7 @@ export function useConnectPlatform(
   useEffect(() => {
     if (attempted.length === 0) return;
     const observer = new QueryObserver(queryClient, {
-      queryKey: PLATFORM_LINKS_QUERY_KEY,
-      queryFn: fetchPlatformLinks,
+      ...platformLinksQuery(),
       refetchInterval: PLATFORM_LINK_POLL_MS,
       refetchOnWindowFocus: true,
       staleTime: 0,

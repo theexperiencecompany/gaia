@@ -1,3 +1,4 @@
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
@@ -30,7 +31,7 @@ const createInitialState = (): CalendarState => {
     createEventAction: null,
     selectedDate: now,
     daysToShow: 7,
-    visibleMonth: now.toLocaleDateString("en-US", { month: "long" }),
+    visibleMonth: formatDate(now, "month", { locale: FIXED_LOCALE }),
     visibleYear: now.getFullYear().toString(),
   };
 };

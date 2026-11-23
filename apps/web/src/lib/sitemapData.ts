@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-
+import { SITE_URL } from "@/config/site";
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import {
   comparisonCategoryGroups,
@@ -40,7 +40,6 @@ import {
   hubPagePath,
   laterHubPageParams,
 } from "@/lib/hubPagination";
-import { getSiteUrl } from "@/lib/seo";
 
 /**
  * Sitemap IDs for different content types.
@@ -392,7 +391,7 @@ async function getNativeIntegrationPages(
 export async function getSitemapEntries(
   id: number,
 ): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = getSiteUrl();
+  const baseUrl = SITE_URL;
 
   switch (id) {
     case SITEMAP_IDS.STATIC:

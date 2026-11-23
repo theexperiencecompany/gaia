@@ -41,6 +41,7 @@ tool_fields = [
     "deep_research_results",
     "notification_data",
     "send_notification_data",
+    "briefing_data",
     "memory_data",
     "todo_data",
     "code_data",
@@ -56,6 +57,7 @@ tool_fields = [
     "workflow_draft",
     "workflow_created",
     "artifact_data",
+    "artifact_done",
     "screenshot_data",
     "browser_task_data",
     "mcp_app",
@@ -77,6 +79,8 @@ class SystemPurpose(str, Enum):
     WORKFLOW_EXECUTION = "workflow_execution"
     #: The seeded Getting-started thread: the user's first screen after onboarding.
     GETTING_STARTED = "getting_started"
+    #: The thread GAIA delivers each in-app brief into, one folded card per message.
+    BRIEFING = "briefing"
     OTHER = "other"
 
 

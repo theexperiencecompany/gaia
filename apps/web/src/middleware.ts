@@ -1,10 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
+import { SITE_URL } from "./config/site";
 import { selfhostHomeRedirect } from "./features/auth/api/selfhostHomeRedirect";
 import { stripLocalePrefix } from "./i18n/config";
 import { routing } from "./i18n/routing";
 import { isTranslatedPath } from "./i18n/translatedRoutes";
+
+/**
+ * The deployment's link host (GAIA_LINK_HOST, read at runtime): its /<slug> paths are
+ * 307'd to SITE_URL's /l/<slug>. Unset on self-host, whose links already live on its own /l route.
+ */
+function linkHost(): string | undefined {
+  return process.env.GAIA_LINK_HOST || undefined;
+}
 
 // Renamed from proxy.ts to middleware.ts: Next 16's proxy.ts convention is hard-coded to Node
 // runtime, but OpenNext-CF only accepts edge middleware (opennextjs-cloudflare#972); classic
@@ -17,12 +26,19 @@ function isTranslatedRoute(pathname: string): boolean {
   return isTranslatedPath(stripLocalePrefix(pathname));
 }
 
+const SITE_HOST = new URL(SITE_URL).host;
+
 /** Only the production hosts are indexable; any other host the Worker is reached on (previews, aliases) is not. */
-const INDEXABLE_HOSTS = new Set(["heygaia.io", "www.heygaia.io"]);
+const INDEXABLE_HOSTS = new Set([SITE_HOST, `www.${SITE_HOST}`]);
 
 function isIndexableHost(host: string | null): boolean {
   return host !== null && INDEXABLE_HOSTS.has(host.split(":")[0].toLowerCase());
 }
+
+// Paths next-intl must never rewrite. Checked in code, after the short-link host
+// check: the matcher cannot see the host, so excluding them there also dropped
+// every heygaia.link slug that happens to start with one of these words.
+const INTL_BYPASS_PATH = /^\/(api|connect|feed|_vercel|sitemap|ingest)/;
 
 const intlMiddleware = createMiddleware(routing);
 
@@ -63,6 +79,24 @@ function localeResponse(request: NextRequest): NextResponse {
 }
 
 export default async function middleware(request: NextRequest) {
+  // Short-link alias host: bounce <link host>/<slug> to /l/<slug> before any
+  // locale handling.
+  const host = linkHost();
+  if (host && request.headers.get("host") === host) {
+    const target = new URL(
+      `/l${request.nextUrl.pathname}${request.nextUrl.search}`,
+      SITE_URL,
+    );
+    const redirect = NextResponse.redirect(target, 307);
+    // The page behind it can be revoked at any moment; no cache may keep pointing at it.
+    redirect.headers.set("Cache-Control", "no-store");
+    return redirect;
+  }
+
+  if (INTL_BYPASS_PATH.test(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
   // Next's config redirects match case-insensitively, so /pt-BR cannot be
   // distinguished from the canonical /pt-br there. Handle the legacy mixed-case
   // prefix here, where the comparison is case-sensitive.
@@ -85,10 +119,8 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // `connect` and `feed` are route handlers outside [locale]; next-intl must
-  // not rewrite them (feed.xml 301s to /feed, which must resolve).
-  matcher: [
-    "/((?!api|connect|feed|_next|_vercel|sitemap|ingest|.*\\..*).*)",
-    "/",
-  ],
+  // Only build assets and files are skipped here; INTL_BYPASS_PATH covers the
+  // rest in code. `connect` and `feed` are route handlers outside [locale]; next-intl
+  // must not rewrite them (feed.xml 301s to /feed, which must resolve).
+  matcher: ["/((?!_next|.*\\..*).*)", "/"],
 };

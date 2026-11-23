@@ -50,6 +50,7 @@ from app.models.payment_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.utils.concurrency import reset_captured_loop
+from app.utils.redis_utils import RedisPoolManager
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 
@@ -335,6 +336,22 @@ def _no_captured_loop_carryover() -> Iterator[None]:
     """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
     yield
     reset_captured_loop()
+
+
+@pytest.fixture(autouse=True)
+def _no_arq_pool_carryover() -> Iterator[None]:
+    """Forget the process ARQ pool a test built; its connections belong to that test's loop, which closes."""
+    yield
+    RedisPoolManager._pool = None
+
+
+@pytest.fixture
+def outside_quiet_hours() -> Iterator[AsyncMock]:
+    """Make post_to_platform_chat find the recipient outside their quiet hours, whatever time the suite runs."""
+    with patch(
+        "app.agents.core.background.platform_chat.quiet_hours_end", AsyncMock(return_value=None)
+    ) as end:
+        yield end
 
 
 @pytest.fixture

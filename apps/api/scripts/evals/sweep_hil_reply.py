@@ -6,14 +6,16 @@ Without run-id, sweeps the newest hil-reply run under scripts/evals/runs/.
 
 from __future__ import annotations
 
-import sys
+import argparse
 
 from scripts.evals.core.paths import RUNS_DIR, latest_suite_run
 from scripts.evals.suites.hil_reply import HilReplySuite, sweep_journal
 
 
 def main() -> None:
-    run_id = sys.argv[1] if len(sys.argv) > 1 else latest_suite_run(RUNS_DIR, HilReplySuite.name)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("run_id", nargs="?", help="the run to sweep (default: the newest)")
+    run_id = parser.parse_args().run_id or latest_suite_run(RUNS_DIR, HilReplySuite.name)
     print(f"sweeping run {run_id}")
     print(sweep_journal(RUNS_DIR / run_id))
 

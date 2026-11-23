@@ -29,6 +29,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingStatusResponse,
     OnboardingSubdocument,
+    OnboardingUser,
     UserDocument,
 )
 from shared.py.analytics import UserId
@@ -38,6 +39,19 @@ from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 BASE_URL = "/api/v1/onboarding"
 ANALYTICS_PATCH = "app.api.v1.endpoints.onboarding.capture"
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
+
+
+def _stored_user(preferences: OnboardingPreferences | None = None) -> OnboardingUser:
+    return OnboardingUser(
+        user_id=FAKE_USER_ID,
+        onboarding=OnboardingStatusResponse(
+            completed=False,
+            completed_at=None,
+            phase=None,
+            preferences=preferences or OnboardingPreferences(),
+            first_message_conversation_id=None,
+        ),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -124,10 +138,7 @@ class TestCompleteOnboarding:
             patch(
                 _COMPLETE_ONBOARDING,
                 new_callable=AsyncMock,
-                return_value={
-                    "user_id": "507f1f77bcf86cd799439011",
-                    "name": "Test User",
-                },
+                return_value=_stored_user(),
             ),
             patch(_COMPOSIO_SERVICE, return_value=mock_composio),
             patch(
@@ -154,7 +165,7 @@ class TestCompleteOnboarding:
             patch(
                 _COMPLETE_ONBOARDING,
                 new_callable=AsyncMock,
-                return_value={"user_id": FAKE_USER_ID},
+                return_value=_stored_user(),
             ) as mock_complete,
             patch("app.api.v1.endpoints.onboarding.log") as log,
         ):
@@ -178,10 +189,7 @@ class TestOnboardingAnalytics:
             patch(
                 _COMPLETE_ONBOARDING,
                 new_callable=AsyncMock,
-                return_value={
-                    "user_id": "507f1f77bcf86cd799439011",
-                    "name": "Test User",
-                },
+                return_value=_stored_user(),
             ),
             patch(
                 _REDIS_POOL_MANAGER + ".get_pool",
@@ -226,7 +234,7 @@ class TestOnboardingAnalytics:
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
-            return_value={"user_id": FAKE_USER_ID},
+            return_value=_stored_user(),
         ) as mock_complete:
             response = await client.post(
                 BASE_URL,
@@ -242,7 +250,7 @@ class TestOnboardingAnalytics:
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
-            return_value={"user_id": FAKE_USER_ID},
+            return_value=_stored_user(),
         ) as mock_complete:
             response = await client.post(BASE_URL, json={"profession": at_cap, "needs": ["inbox"]})
 
@@ -262,7 +270,7 @@ class TestOnboardingAnalytics:
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
-            return_value={"user_id": FAKE_USER_ID},
+            return_value=_stored_user(),
         ) as mock_complete:
             response = await client.post(
                 BASE_URL,
@@ -285,7 +293,7 @@ class TestOnboardingAnalytics:
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
-            return_value={"user_id": FAKE_USER_ID},
+            return_value=_stored_user(),
         ) as mock_complete:
             response = await client.post(
                 BASE_URL, json=_make_onboarding_request(name="Someone Else")
@@ -431,9 +439,7 @@ class TestSaveAnswers:
 
     async def test_saves_answers_and_never_reports_a_settings_change(self, client: AsyncClient):
         with (
-            patch(
-                _SAVE_ANSWERS, new_callable=AsyncMock, return_value={"user_id": FAKE_USER_ID}
-            ) as save,
+            patch(_SAVE_ANSWERS, new_callable=AsyncMock, return_value=_stored_user()) as save,
             patch("app.api.v1.endpoints.onboarding.schedule_account_sync"),
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
@@ -450,7 +456,7 @@ class TestSaveAnswers:
         )
 
     async def test_returns_the_stored_user_and_syncs_the_account(self, client: AsyncClient):
-        stored = {"user_id": FAKE_USER_ID, "onboarding": {"preferences": {"profession": "founder"}}}
+        stored = _stored_user(OnboardingPreferences(profession="founder"))
         with (
             patch(_SAVE_ANSWERS, new_callable=AsyncMock, return_value=stored),
             patch("app.api.v1.endpoints.onboarding.schedule_account_sync") as sync,
@@ -460,7 +466,11 @@ class TestSaveAnswers:
                 ANSWERS_URL, json={"profession": "founder", "needs": ["inbox"]}
             )
 
-        assert response.json() == {"success": True, "message": "Answers saved", "user": stored}
+        assert response.json() == {
+            "success": True,
+            "message": "Answers saved",
+            "user": stored.model_dump(mode="json"),
+        }
         sync.assert_called_once_with(FAKE_USER_ID)
         log.set.assert_called_once_with(
             user={"id": FAKE_USER_ID}, onboarding={"operation": "save_answers"}
@@ -487,7 +497,7 @@ class TestUpdatePreferences:
             patch(
                 _UPDATE_PREFERENCES,
                 new_callable=AsyncMock,
-                return_value={"user_id": "507f1f77bcf86cd799439011"},
+                return_value=_stored_user(),
             ) as mock_update,
             patch("app.api.v1.endpoints.onboarding.schedule_account_sync") as mock_schedule_sync,
             patch("app.api.v1.endpoints.onboarding.log") as log,
@@ -515,7 +525,7 @@ class TestUpdatePreferences:
             patch(
                 _UPDATE_PREFERENCES,
                 new_callable=AsyncMock,
-                return_value={"user_id": "507f1f77bcf86cd799439011"},
+                return_value=_stored_user(),
             ),
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
@@ -538,7 +548,7 @@ class TestUpdatePreferences:
         with patch(
             _UPDATE_PREFERENCES,
             new_callable=AsyncMock,
-            return_value={"user_id": "507f1f77bcf86cd799439011"},
+            return_value=_stored_user(),
         ):
             response = await client.patch(PREFERENCES_URL, json={})
 
@@ -556,7 +566,7 @@ class TestUpdatePreferences:
         with patch(
             _UPDATE_PREFERENCES,
             new_callable=AsyncMock,
-            return_value={"user_id": "507f1f77bcf86cd799439011"},
+            return_value=_stored_user(),
         ) as mock_update:
             response = await client.patch(
                 PREFERENCES_URL,

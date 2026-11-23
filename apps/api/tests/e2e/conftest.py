@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 from typing import Any, cast
@@ -260,14 +261,20 @@ async def checkpointer(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
 
 @pytest.fixture
 async def owner(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[AuthenticatedUser]:
-    """Yield the HTTP client's user as a real Mongo user, with nothing of theirs left from a previous run."""
+    """Yield the HTTP client's user as a just-signed-up Mongo user with nothing left from a previous run."""
     user_id = FAKE_USER.user_id
     for collection in OWNED_COLLECTIONS:
         await mongo_db[collection].delete_many({"user_id": user_id})
     await mongo_db["users"].update_one(
         {"_id": ObjectId(user_id)},
         {
-            "$set": {"email": FAKE_USER.email, "name": FAKE_USER.name, "timezone": "UTC"},
+            "$set": {
+                "email": FAKE_USER.email,
+                "name": FAKE_USER.name,
+                "timezone": "UTC",
+                # Signup writes it; without it the owner reads as dormant and every fire pauses.
+                "created_at": datetime.now(UTC),
+            },
             "$unset": {"hil_preferences": ""},
         },
         upsert=True,

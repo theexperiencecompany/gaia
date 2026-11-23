@@ -35,5 +35,9 @@ class EmailVerdictsRepository(UserScopedRepository[EmailVerdictDocument, EmailVe
         except DuplicateKeyError:
             await self._apply_raw_update(key, update, upsert=True)
 
+    async def list_since(self, user_id: str, *, since: datetime) -> list[EmailVerdictDocument]:
+        """Return the user's verdicts last asked at or after since (UTC)."""
+        return await self._find({"user_id": user_id, "created_at": {"$gte": since}})
+
 
 email_verdict_repository = EmailVerdictsRepository()

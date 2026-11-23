@@ -1,9 +1,7 @@
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
+
 function fallbackFormat(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDate(date, "medium", { locale: FIXED_LOCALE });
 }
 
 export function formatReleaseDate(iso: string): string {

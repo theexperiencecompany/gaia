@@ -21,7 +21,7 @@ from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
 from app.config.oauth_config import get_integration_by_toolkit
-from app.constants.integrations import INTEGRATION_STATUS_EXPIRED, ConnectMode
+from app.constants.integrations import ConnectMode, IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.models.agent_config import RunMetadata
 from app.services.composio.account_scope import account_scope
@@ -105,7 +105,7 @@ async def _expire_and_request_reconnect(
         integration_name,
         user_id,
         mode=ConnectMode.RECONNECT,
-        account=dead if dead is not None and dead.status == INTEGRATION_STATUS_EXPIRED else None,
+        account=dead if dead is not None and dead.status == IntegrationStatus.EXPIRED else None,
     )
 
 

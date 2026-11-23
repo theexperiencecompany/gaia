@@ -21,6 +21,7 @@ import {
   SafariIcon,
   Search01Icon,
 } from "@icons";
+import { formatRelativeDate } from "@shared/utils";
 import Image from "next/image";
 import { type ComponentType, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -30,7 +31,6 @@ import { toneVariants } from "@/components/shared/tone";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
 import type { SavedBrowserLogin } from "../types";
-import { formatRelativeDate } from "../utils";
 import { ConnectBrowserBanner } from "./ConnectBrowserBanner";
 import { ConnectBrowserModal } from "./ConnectBrowserModal";
 

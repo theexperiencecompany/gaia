@@ -54,6 +54,7 @@ const rateLimited = () =>
 function surface(sent: string[], refuse: (() => Error) | null): FollowSurface {
   return {
     sendNotice: async () => undefined,
+    sendPhoto: async () => undefined,
     windowClosed: async () => false,
     links: {
       pricing: "https://gaia.test/pricing",

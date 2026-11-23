@@ -44,11 +44,18 @@ os.environ.setdefault(
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
+# Signs brief edition URLs, which every brief view carries; env wins over the Mongo-held secret.
+os.environ.setdefault(
+    "INSTANCE_SECRET", "test-instance-secret-" + "x" * 32
+)  # pragma: allowlist secret
 # The self-host profile's infra-only required set (capability_requirements.py): the
 # schema export boots under ENV=selfhost, so these need hermetic values too.
 # setdefault-only — a test or export that sets them wins.
 os.environ.setdefault("CHROMADB_HOST", "localhost")
 os.environ.setdefault("CHROMADB_PORT", "8001")
+os.environ.setdefault(
+    "INTERNAL_API_TOKEN", "test-internal-token-" + "x" * 32
+)  # pragma: allowlist secret
 # One test database: the fixtures dial DATABASE_URL, the app's engine POSTGRES_URL.
 # Either one set names it for both (selfhost-smoke exports only POSTGRES_URL); neither
 # defaults to the CI test container's (scripts/ci/test-services.sh exports both equal).

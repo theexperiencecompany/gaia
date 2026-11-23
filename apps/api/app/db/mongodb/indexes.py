@@ -9,18 +9,32 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
 from app.constants.auth import InstanceRole
+from app.constants.briefing import PENDING_BRIEF_ITEM_RETENTION_SECONDS
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
+from app.constants.hil import TOOL_READ_ONLY_VERDICT_TTL
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
+from app.constants.scouts import SIGNAL_MEMORY_RETENTION
 from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.approval_ledger import LIVE_ROW_FILTER, LIVE_ROW_INDEX_NAME
 from app.db.repositories.conversation_migration_guard import RENAMED_ENTRY_FIELDS
 from app.db.repositories.conversation_sweep import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.link_reports import REPORTER_UNIQUE_INDEX
 from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.openui_artifacts import ARTIFACT_USER_CREATED_INDEX
+from app.db.repositories.short_links import (
+    CONTENT_ID_INDEX,
+    LIVE_TARGET_UNIQUE_INDEX,
+    SLUG_UNIQUE_INDEX,
+    TARGET_HISTORY_INDEX,
+    TARGET_INDEX_KEY,
+    WORKSPACE_FILE_CONVERSATION_INDEX,
+    WORKSPACE_FILE_LIVE_FILTER,
+)
 from app.db.repositories.users import user_repository
 from app.helpers.integration_helpers import dedup_server_url_key
 from shared.py.wide_events import log
@@ -42,6 +56,14 @@ SECURITY_CRITICAL_COLLECTIONS = frozenset(
 # name, or an ordered list of (field, direction | "text") pairs.
 IndexKeys = str | list[tuple[str, int | str]]
 
+# Mongo's IndexNotFound error code.
+_INDEX_NOT_FOUND = 27
+
+# Unique keys that enforce correctness, not speed: without them short_links mints duplicates
+# and a brief, scout, signal memory or briefing state write adds a second row instead of replacing the first.
+INTEGRITY_CRITICAL_COLLECTIONS = frozenset(
+    {"short_links", "briefings", "scouts", "signal_memory", "briefing_state"}
+)
 # The index helpers never read a document, so they take a collection of any document type.
 DocumentT = TypeVar("DocumentT", bound=Mapping[str, object])
 
@@ -124,8 +146,12 @@ async def create_all_indexes() -> None:
             create_instance_settings_indexes(),
             create_provider_credential_indexes(),
             create_workflow_execution_indexes(),
+            create_briefing_indexes(),
+            create_award_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_short_link_indexes(),
+            create_openui_artifact_indexes(),
             create_approval_ledger_indexes(),
             create_pending_platform_registration_indexes(),
             create_browser_profiles_indexes(),
@@ -133,8 +159,13 @@ async def create_all_indexes() -> None:
             create_llm_call_indexes(),
             create_playbook_indexes(),
             create_tool_output_shapes_indexes(),
+            create_pending_brief_item_indexes(),
+            create_scout_indexes(),
+            create_signal_memory_indexes(),
+            create_tool_read_only_verdict_indexes(),
             create_email_verdict_indexes(),
             create_wait_indexes(),
+            create_briefing_state_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -165,8 +196,12 @@ async def create_all_indexes() -> None:
             "instance_settings",
             "provider_credentials",
             "workflow_executions",
+            "briefings",
+            "awards",
             "bot_sessions",
             "e2b_sandboxes",
+            "short_links",
+            "artifacts",
             "approval_ledger",
             "pending_platform_registrations",
             "browser_profiles",
@@ -174,8 +209,13 @@ async def create_all_indexes() -> None:
             "llm_calls",
             "playbooks",
             "tool_output_shapes",
+            "pending_brief_items",
+            "scouts",
+            "signal_memory",
+            "tool_read_only_verdicts",
             "email_verdicts",
             "waits",
+            "briefing_state",
         ]
 
         index_results = {}
@@ -187,6 +227,8 @@ async def create_all_indexes() -> None:
                     collection_name=collection_name,
                     result=result,
                 )
+                if collection_name in INTEGRITY_CRITICAL_COLLECTIONS:
+                    raise result
                 index_results[collection_name] = f"FAILED: {result!s}"
                 if collection_name in SECURITY_CRITICAL_COLLECTIONS:
                     critical_failures.append((collection_name, result))
@@ -236,6 +278,15 @@ async def create_all_indexes() -> None:
         raise
 
 
+async def _drop_index_if_present(collection: AsyncIOMotorCollection[DocumentT], name: str) -> None:
+    """Drop an index an older spec created; an index already gone (code 27) is the goal."""
+    try:
+        await collection.drop_index(name)
+    except OperationFailure as e:
+        if e.code != _INDEX_NOT_FOUND:
+            raise
+
+
 async def create_user_indexes() -> None:
     """Create indexes for users collection."""
     users_collection = get_async_collection("users")
@@ -248,8 +299,11 @@ async def create_user_indexes() -> None:
             users_collection.create_index([("onboarding.completed", 1), ("created_at", -1)]),
             # Cache cleanup index (sparse since not all users have cached_at)
             users_collection.create_index("cached_at", sparse=True),
-            # Activity tracking index for inactive user queries
-            users_collection.create_index("last_active_at", sparse=True),
+            # Activity-status sweeps: every branch of the last-seen $or, the never-seen
+            # (null) ones included, which a sparse index cannot serve.
+            users_collection.create_index(
+                [("last_active_at", 1), ("created_at", 1)], name="last_seen"
+            ),
             # Inactive email tracking index (sparse since not all users have this field)
             users_collection.create_index("last_inactive_email_sent", sparse=True),
             # Platform links indexes for bot authentication (unique + sparse: only bot users have these,
@@ -259,6 +313,7 @@ async def create_user_indexes() -> None:
             users_collection.create_index("platform_links.telegram.id", unique=True, sparse=True),
             users_collection.create_index("platform_links.whatsapp.id", unique=True, sparse=True),
         )
+        await _drop_index_if_present(users_collection, "last_active_at_1")
 
     except Exception as e:
         log.error(
@@ -328,6 +383,8 @@ CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
     ),
     # has_sent_message
     ([("user_id", 1), ("kind", 1)], {"name": "user_entry_kind"}),
+    # list_bot_replies_since: the user's messages after a moment
+    ([("user_id", 1), ("kind", 1), ("at", 1)], {"name": "user_entry_kind_at"}),
     # list_pinned_messages
     (
         [("user_id", 1), ("at", 1)],
@@ -476,6 +533,21 @@ async def create_todo_indexes() -> None:
             ),
             todos_collection.create_index(
                 TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
+            ),
+            # The brief's look-back: a user's todos completed since a moment, newest first.
+            todos_collection.create_index(
+                [("user_id", 1), ("completed", 1), ("completed_at", 1)],
+                name="user_completed_at",
+            ),
+            # A user's todos about one kind of outside object opened or completed since a
+            # moment: one index per branch of that read's $or.
+            todos_collection.create_index(
+                [("user_id", 1), ("external_ref.source", 1), ("created_at", 1)],
+                name="user_external_ref_created",
+            ),
+            todos_collection.create_index(
+                [("user_id", 1), ("external_ref.source", 1), ("completed_at", 1)],
+                name="user_external_ref_completed",
             ),
             # A parent's sub-todos: listing, open counts, and completion/deletion cascades.
             todos_collection.create_index(
@@ -660,13 +732,8 @@ async def create_workflow_indexes() -> None:
     """Create indexes for workflows collection for optimal query performance."""
     workflows_collection = get_async_collection("workflows")
     try:
-        # Drop the old non-unique slug index if present so the partial-unique
-        # replacement below can take over. Mongo error code 27 = IndexNotFound.
-        try:
-            await workflows_collection.drop_index("slug_public_idx")
-        except OperationFailure as e:
-            if e.code != 27:
-                raise
+        # The old non-unique slug index goes so the partial-unique replacement below can take over.
+        await _drop_index_if_present(workflows_collection, "slug_public_idx")
 
         # Create all workflow indexes concurrently
         await asyncio.gather(
@@ -780,6 +847,48 @@ async def create_workflow_execution_indexes() -> None:
         raise
 
 
+async def create_briefing_indexes() -> None:
+    """Create indexes for briefings collection: one payload per user/date/kind, found by age to expire."""
+    briefings_collection = get_async_collection("briefings")
+    try:
+        await briefings_collection.create_index(
+            [("user_id", 1), ("date", 1), ("kind", 1)],
+            unique=True,
+            name="user_date_kind_unique",
+        )
+        # A signed edition URL names only its key: the image route finds the brief by it.
+        await briefings_collection.create_index(
+            [("edition.key", 1)], unique=True, sparse=True, name="edition_key_unique"
+        )
+        # Not a TTL index: the retention sweep deletes each brief's edition image with it.
+        await briefings_collection.create_index("created_at")
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating briefing indexes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise
+
+
+async def create_award_indexes() -> None:
+    """Create indexes for awards collection (each badge earnable once per user)."""
+    awards_collection = get_async_collection("awards")
+    try:
+        await awards_collection.create_index(
+            [("user_id", 1), ("key", 1)],
+            unique=True,
+            name="user_key_unique",
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating award indexes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise
+
+
 async def create_payment_indexes() -> None:
     """Create indexes for payment-related collections."""
     payments_collection = get_async_collection("payments")
@@ -852,6 +961,84 @@ async def create_processed_webhook_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating processed webhook indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_pending_brief_item_indexes() -> None:
+    """Index pending_brief_items for the brief's per-user, oldest-first read; drop a month-old one."""
+    try:
+        pending = get_async_collection("pending_brief_items")
+        await pending.create_index([("user_id", 1), ("created_at", 1)])
+        await pending.create_index(
+            "created_at", expireAfterSeconds=PENDING_BRIEF_ITEM_RETENTION_SECONDS
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating pending brief item indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_scout_indexes() -> None:
+    """Index scouts on their per-user business key, unique: one scout per user and integration."""
+    try:
+        await get_async_collection("scouts").create_index(
+            [("user_id", 1), ("integration_id", 1)], unique=True
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating scout indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_signal_memory_indexes() -> None:
+    """Index signal_memory on its unique per-user key, and expire what no brief has seen lately."""
+    signal_memory = get_async_collection("signal_memory")
+    try:
+        await asyncio.gather(
+            signal_memory.create_index(
+                [("user_id", 1), ("integration_id", 1), ("external_id", 1)], unique=True
+            ),
+            signal_memory.create_index(
+                "last_seen",
+                expireAfterSeconds=int(SIGNAL_MEMORY_RETENTION.total_seconds()),
+                name="last_seen_ttl",
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating signal memory indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_tool_read_only_verdict_indexes() -> None:
+    """Index tool_read_only_verdicts: one verdict per tool shape and classifier, each expiring."""
+    verdicts = get_async_collection("tool_read_only_verdicts")
+    try:
+        # The tool_hash-only key could hold one verdict per shape, whatever judged it.
+        await _drop_index_if_present(verdicts, "tool_hash_1")
+        await asyncio.gather(
+            verdicts.create_index([("tool_hash", 1), ("classifier", 1)], unique=True),
+            verdicts.create_index(
+                "classified_at",
+                expireAfterSeconds=int(TOOL_READ_ONLY_VERDICT_TTL.total_seconds()),
+                name="classified_at_ttl",
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating tool_read_only_verdicts indexes",
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -1034,6 +1221,10 @@ async def create_approval_ledger_indexes() -> None:
             approval_ledger_collection.create_index(
                 "delivering_since",
                 partialFilterExpression={"delivering_since": {"$type": "date"}},
+            ),
+            # A user's undecided approvals, oldest first: the brief's approval candidates.
+            approval_ledger_collection.create_index(
+                [("user_id", 1), ("outcome", 1), ("created_at", 1)]
             ),
         )
     except Exception as e:
@@ -1622,6 +1813,65 @@ async def create_e2b_sandbox_indexes() -> None:
         raise
 
 
+async def create_openui_artifact_indexes() -> None:
+    """Create the artifacts index serving an owner's newest-first reads."""
+    try:
+        await get_async_collection("artifacts").create_index(
+            [("user_id", 1), ("created_at", -1)], name=ARTIFACT_USER_CREATED_INDEX
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating artifact indexes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise
+
+
+async def create_short_link_indexes() -> None:
+    """Create the short_links and link_reports indexes: one slug namespace, one live link per owned target.
+
+    The live-target index is partial on revoked: False, so a revoked link never
+    blocks the next mint and the idempotency read is served by it. The history
+    index serves the newest-link read that tells whether the owner turned
+    sharing off; the others serve the content origin and a conversation's linked files.
+    """
+    short_links_collection = get_async_collection("short_links")
+    try:
+        await asyncio.gather(
+            short_links_collection.create_index([("slug", 1)], unique=True, name=SLUG_UNIQUE_INDEX),
+            short_links_collection.create_index(
+                [("user_id", 1), *TARGET_INDEX_KEY],
+                unique=True,
+                partialFilterExpression={"revoked": False},
+                name=LIVE_TARGET_UNIQUE_INDEX,
+            ),
+            short_links_collection.create_index(
+                [("user_id", 1), *TARGET_INDEX_KEY, ("created_at", -1)], name=TARGET_HISTORY_INDEX
+            ),
+            short_links_collection.create_index(
+                [("user_id", 1), ("target.conversation_id", 1)],
+                partialFilterExpression=WORKSPACE_FILE_LIVE_FILTER,
+                name=WORKSPACE_FILE_CONVERSATION_INDEX,
+            ),
+            short_links_collection.create_index(
+                [("snapshot.content_id", 1)],
+                partialFilterExpression={"snapshot.content_id": {"$type": "string"}},
+                name=CONTENT_ID_INDEX,
+            ),
+            get_async_collection("link_reports").create_index(
+                [("slug", 1), ("reporter_key", 1)], unique=True, name=REPORTER_UNIQUE_INDEX
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating short link indexes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise
+
+
 async def create_browser_profiles_indexes() -> None:
     """Create indexes for the browser_profiles collection.
 
@@ -1715,6 +1965,19 @@ async def create_llm_call_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Failed to create llm_calls indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_briefing_state_indexes() -> None:
+    """Index briefing_state on user_id, unique: every write upserts the user's one row."""
+    try:
+        await get_async_collection("briefing_state").create_index("user_id", unique=True)
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating briefing state indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

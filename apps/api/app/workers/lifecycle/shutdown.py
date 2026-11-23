@@ -10,9 +10,10 @@ from app.core.runtime_config_subscriber import stop_runtime_config_subscriber
 from app.services.conversation.composition import drain_conversation_steps
 from app.services.delivery_alerts.dead_letter_tap import stop_dead_letter_tap
 from app.services.device.up_listener import stop_up_listener
+from app.services.render.chromium import close_chromium
 from app.utils.browser_reaper import stop_browser_reaper
 from app.utils.crawl_obscura import shutdown_crawl_obscura
-from app.workers.browser_worker import stop_browser_worker
+from app.workers.queue_workers import stop_queue_workers
 from shared.py.wide_events import log, log_context
 
 
@@ -26,13 +27,14 @@ async def shutdown(ctx: MutableMapping[str, object]) -> None:
         log.info(f"{LogTag.WORKER} ARQ worker shutting down...")
 
         # First: its jobs' cancel paths still need the services torn down below.
-        await stop_browser_worker(ctx)
+        await stop_queue_workers(ctx)
         # Running conversation steps settle while Mongo and Redis are still up; none start.
         await drain_conversation_steps()
 
         await stop_dead_letter_tap(ctx)
         await stop_browser_reaper()
         await shutdown_crawl_obscura()
+        await close_chromium()
 
         # Stop the per-pod up-listener the warm-connect path relies on (started
         # in worker startup). Symmetric with core/lifespan on the API side.

@@ -13,7 +13,7 @@ from mcp_use.client.session import MCPSession
 from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
-from app.constants.integrations import ToolsSetup
+from app.constants.integrations import IntegrationStatus, ToolsSetup
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     COMPOSIO_MCP_HOST,
@@ -53,6 +53,7 @@ from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_errors import (
     MCPAuthorizationRequiredError,
+    MCPIntegrationNotFoundError,
     StepUpAuthRequiredError,
     is_terminal_auth_failure,
 )
@@ -445,7 +446,15 @@ class MCPClient:
         )
         return result
 
-    async def _reset_to_disconnected(self, integration_id: str) -> None:
+    async def _signed_out_status(self, integration_id: str) -> IntegrationStatus:
+        """Say how a credential that no longer works reads: expired once it ever connected, else never set up."""
+        if await user_integration_repository.has_connected_before(self.user_id, integration_id):
+            return IntegrationStatus.EXPIRED
+        return IntegrationStatus.CREATED
+
+    async def _reset_to_disconnected(
+        self, integration_id: str, *, status: IntegrationStatus = IntegrationStatus.CREATED
+    ) -> None:
         """Tear down a dead integration: Mongo status, PG creds, DCR client, Redis cache.
 
         Each step is swallowed so one failure doesn't block the rest.
@@ -464,7 +473,7 @@ class MCPClient:
                 )
 
         await _swallow(
-            update_user_integration_status(self.user_id, integration_id, "created"),
+            update_user_integration_status(self.user_id, integration_id, status),
             "mongo status reset",
         )
         await _swallow(
@@ -692,7 +701,9 @@ class MCPClient:
         labelled.append(
             (
                 "update_status_connected",
-                update_user_integration_status(self.user_id, integration_id, "connected"),
+                update_user_integration_status(
+                    self.user_id, integration_id, IntegrationStatus.CONNECTED
+                ),
             )
         )
         await self._await_logged(integration_id, labelled)
@@ -783,7 +794,9 @@ class MCPClient:
                     user_id=self.user_id,
                 )
                 return None
-            await update_user_integration_status(self.user_id, integration_id, "created")
+            await update_user_integration_status(
+                self.user_id, integration_id, await self._signed_out_status(integration_id)
+            )
             log.warning(
                 f"{LogTag.MCP} OAuth authorization required for",
                 integration_id=integration_id,
@@ -871,15 +884,17 @@ class MCPClient:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
-            await self._reset_to_disconnected(integration_id)
-        else:
-            log.warning(
-                f"{LogTag.MCP} Transient connection failure — keeping "
-                f"connected status so next attempt retries with current tokens",
-                integration_id=integration_id,
-                error=str(e),
-                error_type=type(e).__name__,
+            await self._reset_to_disconnected(
+                integration_id, status=await self._signed_out_status(integration_id)
             )
+            raise MCPAuthorizationRequiredError(integration_id) from e
+        log.warning(
+            f"{LogTag.MCP} Transient connection failure — keeping "
+            f"connected status so next attempt retries with current tokens",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
     async def _do_connect(self, integration_id: str) -> list[BaseTool]:
@@ -887,7 +902,7 @@ class MCPClient:
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
         if not resolved or not resolved.mcp_config:
-            raise ValueError(f"MCP integration {integration_id} not found")
+            raise MCPIntegrationNotFoundError(integration_id)
 
         mcp_config = resolved.mcp_config
         is_custom = resolved.source == "custom"

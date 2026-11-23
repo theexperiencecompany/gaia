@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 import pytest
 
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.reddit_hooks import RedditCommentThing, RedditPostThing
 from app.services.composio.custom_tools.context_tool import (
@@ -521,7 +522,7 @@ class TestUserIdExtractionHook:
         record = UserIntegrationDocument(
             user_id="user_abc123",
             integration_id="gmail",
-            status="connected",
+            status=IntegrationStatus.CONNECTED,
             accounts=[
                 IntegrationAccount(
                     id="ca_work", connected_account_id="ca_work", label="work@acme.com"

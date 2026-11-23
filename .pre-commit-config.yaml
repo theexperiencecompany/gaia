@@ -26,7 +26,11 @@ repos:
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/api/openapi\.json|libs/shared/ts/src/api/generated/schema\.d\.ts|apps/web/public/.*|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
+        # The edition-explorer asset bundle is one vendored file of base64
+        # fonts and public-domain artwork (~530KB). Same rationale as the
+        # lockfiles and i18n bundles already listed: generated/vendored bulk
+        # that is reviewed once, not edited by hand.
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/api/openapi\.json|libs/shared/ts/src/api/generated/schema\.d\.ts|apps/web/public/.*|apps/api/app/services/briefing/editions/explorer/assets/assets\.json|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
@@ -100,11 +104,11 @@ repos:
         files: '(^|/)(pyproject\.toml|uv\.lock)$'
         pass_filenames: false
 
-      - id: openui-gen-prompt
-        name: openui generated prompt up to date
-        entry: mise exec -- bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'
+      - id: openui-prompts
+        name: OpenUI prompts up to date
+        entry: mise exec -- node scripts/ci/checks.mjs openui-prompts
         language: system
-        files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
+        files: '^(scripts/openui/|scripts/ci/checks\.mjs|apps/web/src/config/openui/|libs/artifacts/src/|libs/shared/ts/src/artifacts/|apps/api/app/agents/prompts/(openui_generated\.txt|artifacts/)|pnpm-lock\.yaml)'
         pass_filenames: false
 
       # `files:` selects exactly what the ci:api-schema nx target's inputs do —

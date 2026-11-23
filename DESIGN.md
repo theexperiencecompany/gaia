@@ -502,7 +502,7 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 
 | Prop / option | Means | Values | Where |
 |---|---|---|---|
-| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`. Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
+| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`, `scrim` (a control laid over a picture). Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
 | `color` | semantic colour where HeroUI has a `color` prop | `accent`, `success`, `warning`, `danger`, `default` | `Chip color=`, `tabsVariants`, `sliderVariants` |
 | `size` | dimensions | `sm`, `md`, `lg`; Modal `xl`–`5xl` | the component's `size=`, `inputVariants`, `modalVariants` |
 | `shape` | corners | `default` (the size's radius), `sharp` 2px, `sm` 8px, `md` 12px, `xl` 16px, `pill` | `GaiaButton shape=`, `shapeVariants` |
@@ -511,7 +511,7 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 | `placeholder` | field placeholder colour | the tone scale, `dim` to `ghost` | `inputVariants` |
 | `tint` | strength of a soft fill | `default` (20%), `light` (15%) | `GaiaButton tint=`, `chipVariants` |
 | `inset` | a button's horizontal padding | `default`, `tight` (8px), `none` | `GaiaButton inset=` |
-| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a), and v2's coloured tooltips `accent`, `foreground`, `danger`; dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
+| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a), `bare` (no body, padding or shadow: the content is its own card), and v2's coloured tooltips `accent`, `foreground`, `danger`; dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
 | `density` | an accordion's vertical rhythm | `default`, `compact`, `flush` | `accordionVariants` |
 | `labelPlacement` | where a field's label sits | `outside`, `inside` (v2's 56px field) | `fieldVariants` |
 | `is*` | a boolean state | `isSelected`, `isBordered` | `chipVariants`, `avatarVariants` |
@@ -668,7 +668,7 @@ Every control and overlay. "How to write frontend code" above lists the wrappers
 | `Tabs` | Tabbed card content · `tabsVariants` |
 | `ProgressBar`, `Avatar`, `ScrollShadow` | Progress, contact avatars, overflowing lists |
 
-Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
+Chart palette (Recharts), cyan-led like the rest of the UI: `["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`; pie and radial charts use `["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]`. Both are `CHART_PALETTE` / `PIE_PALETTE` in `apps/web/src/config/openui/theme.ts`; import them rather than restating the colours.
 
 ### HeroUI control dimensions
 
@@ -831,6 +831,19 @@ Default transition: `transition-all duration-200`. Use this everywhere unless a 
 | Default | `ease` | Most transitions |
 | Exit / entrance | `ease-out` | Entrances, exits |
 | Bounce | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `scale-in`, `scale-in-blur` |
+
+### Letters
+
+A letter (the founder letter, a brief's sheet, the unfolding edition, the folded letter in chat) moves on its own curves, all in `apps/web/src/components/shared/letterMotion.ts`. Import them; never restate a curve.
+
+| Token | Duration | Easing | Use |
+|---|---|---|---|
+| `LETTER_OPEN_TRANSITION` | 0.4s | `[0.33, 1, 0.68, 1]` | A letter and its backdrop arriving |
+| `LETTER_CLOSE_TRANSITION` | 0.2s | `[0.4, 0, 1, 1]` | Leaving: fades and shrinks to `LETTER_EXIT_SCALE` (0.96) |
+| `LETTER_REDUCED_TRANSITION` | 0.15s | `easeOut` | Reduced motion: a plain fade both ways |
+| `LETTER_TRAVEL_TRANSITION` | 0.5s | `[0.32, 0.72, 0, 1]` | A chat letter travelling from where it lay |
+| `LETTER_CREASE_TRANSITION` | 0.42s | `[0.5, 0, 0.15, 1]` | Each crease of an unfolding edition |
+| `LETTER_HOVER_EASE` | 300ms | `cubic-bezier(0.23, 1, 0.32, 1)` | The folded chat letter lifting under the pointer |
 
 ### Framer Motion
 

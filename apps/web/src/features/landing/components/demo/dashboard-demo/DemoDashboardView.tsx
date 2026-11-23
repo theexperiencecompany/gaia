@@ -14,6 +14,7 @@ import {
   WorkflowSquare05Icon,
   ZapIcon,
 } from "@icons";
+import { FIXED_LOCALE, formatDay } from "@shared/utils";
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
@@ -110,14 +111,7 @@ function DemoEventsCard() {
       <div className="space-y-6 p-4">
         {Object.entries(eventsByDay).map(([dateString, events], index) => {
           const date = new Date(`${dateString}T12:00:00`);
-          const isToday = date.toDateString() === new Date().toDateString();
-          const label = isToday
-            ? "Today"
-            : date.toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-              });
+          const label = formatDay(date, "day", FIXED_LOCALE);
 
           return (
             <div key={dateString} className="flex gap-4">
@@ -222,13 +216,7 @@ function DemoTodosCard() {
                       className: toneVariants({ tone: "muted" }),
                     })}
                   >
-                    {new Date(todo.due_date).toDateString() ===
-                    new Date().toDateString()
-                      ? "Today"
-                      : new Date(todo.due_date).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                    {formatDay(todo.due_date, "short", FIXED_LOCALE)}
                   </Chip>
                 )}
               </div>

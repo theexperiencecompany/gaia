@@ -1,6 +1,8 @@
 """Reminder task handlers for static reminders only."""
 
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.decorators.entitlements import capture_paywall_block, is_paid
+from app.models.notification.details_models import ReminderNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -54,7 +56,9 @@ async def _execute_static_reminder(reminder: ReminderModel) -> ProactiveTarget |
             source=NotificationSourceEnum.AI_REMINDER,
             priority=1,
             content=NotificationContent(title=reminder.payload.title, body=reminder.payload.body),
-            metadata={"reminder_id": reminder.id},
+            details=ReminderNotification(kind=NotificationKind.REMINDER, reminder_id=reminder.id),
+            # The user set this reminder for now: quiet hours do not hold it.
+            message_class=ProactiveMessageClass.USER_TIMED,
             conversation_id=reminder.source_conversation_id,
             message=_reminder_result_text(reminder.payload),
         )

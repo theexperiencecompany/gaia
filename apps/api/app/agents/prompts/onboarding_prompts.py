@@ -2,14 +2,13 @@ INBOX_TRIAGE_PROMPT = """You are analyzing a user's inbox to surface what matter
 
 User context:
 - Profession: {profession}
-- Current focus: {focus}
 
 Here are their recent emails (sender, subject, snippet):
 {email_list}
 
 Your job:
 1. Write a 2-3 sentence summary of what this inbox looks like. What topics dominate, who the key people are, what the overall vibe is. Write directly to the user, conversationally.
-2. Identify the 5-10 most important emails that need this user's personal attention. For each, ask: "Would this specific person, given their profession and focus, need to personally act on this?" Skip newsletters, marketing, automated notifications, and anything not requiring a human decision.
+2. Identify the 5-10 most important emails that need this user's personal attention. For each, ask: "Would this specific person, given their profession, need to personally act on this?" Skip newsletters, marketing, automated notifications, and anything not requiring a human decision.
 3. For each, explain in one sentence why it matters to this specific user.
 4. Identify 2-5 patterns across the full inbox.
 

@@ -5,6 +5,7 @@ import {
   normalizeHouse,
 } from "@/components/ui/holo-card/houses";
 import type { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { siteConfig } from "@/lib/seo";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
@@ -40,6 +41,7 @@ export async function generateMetadata({
     const response = await fetch(`${apiBaseUrl}/user/holo-card/${cardId}`, {
       headers: {
         "Content-Type": "application/json",
+        ...internalApiHeaders(),
       },
     });
 

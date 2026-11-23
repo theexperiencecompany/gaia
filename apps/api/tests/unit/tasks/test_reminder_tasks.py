@@ -10,7 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.models.chat_models import ConversationSource
+from app.models.notification.details_models import ReminderNotification
 from app.models.notification.notification_models import notification_id
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
@@ -82,8 +84,12 @@ async def test_a_fired_reminder_is_one_notification_keyed_by_its_occurrence(
     # Routed by the pipeline, not pinned by the producer.
     assert request.channels == []
     # The client opens the reminder from this id; priority 1 is what a reminder's push ranks at.
-    assert request.metadata == {"reminder_id": REMINDER_ID}
+    assert request.details == ReminderNotification(
+        kind=NotificationKind.REMINDER, reminder_id=REMINDER_ID
+    )
     assert request.priority == 1
+    # The user set it for this time: quiet hours do not hold its chat-app copy.
+    assert request.message_class is ProactiveMessageClass.USER_TIMED
 
 
 @pytest.mark.parametrize(

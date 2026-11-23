@@ -38,6 +38,8 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
             "AGENT_SECRET",
             "BOT_SESSION_TOKEN_SECRET",
             "EMAIL_UNSUBSCRIBE_SECRET",
+            # Every real web server is told apart from viewers by it, not only the edge's.
+            "INTERNAL_API_TOKEN",
         ),
     ),
     CapabilityRequirement(
@@ -62,6 +64,12 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
         capability="blob_store=cloudinary",
         applies=lambda profile: profile.blob_store is BlobStoreKind.CLOUDINARY,
         keys=("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"),
+        unused_otherwise=True,
+    ),
+    CapabilityRequirement(
+        capability="blob_store=cloudinary: shared-link files live in R2 beside it",
+        applies=lambda profile: profile.blob_store is BlobStoreKind.CLOUDINARY,
+        keys=("LINK_CONTENT_BUCKET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY", "R2_SECRET_KEY"),
         unused_otherwise=True,
     ),
     CapabilityRequirement(

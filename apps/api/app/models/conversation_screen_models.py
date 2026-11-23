@@ -70,6 +70,8 @@ class NoticeItem(ScreenItemBase):
     tool_data: tuple[ToolDataEntry, ...]
     timeline: ToolTimeline
     follow_up_actions: tuple[str, ...]
+    # Shown as a photo on a chat platform, captioned with the first bubble.
+    image_url: str | None
 
 
 class WorkflowFiredItem(ScreenItemBase):

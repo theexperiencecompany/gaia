@@ -21,6 +21,7 @@ import { workflowKeys } from "../../api/queryKeys";
 import { type Workflow, workflowApi } from "../../api/workflowApi";
 import { REGENERATION_REASONS } from "../../constants/regeneration";
 import {
+  chosenDelivery,
   type WorkflowFormData,
   workflowFormSchema,
   workflowToFormData,
@@ -279,7 +280,7 @@ export function useWorkflowModalActions({
           }))
         : undefined,
       generate_immediately: !hasPredefinedSteps,
-      notify_on_completion: data.notify_on_completion,
+      delivery: chosenDelivery(data),
       integration_ids:
         selectedIntegrationSlugs.length > 0
           ? selectedIntegrationSlugs
@@ -397,7 +398,7 @@ export function useWorkflowModalActions({
         icon: data.icon,
         icon_color: data.icon_color,
         trigger_config: toTriggerConfig(data.trigger_config),
-        notify_on_completion: data.notify_on_completion,
+        delivery: chosenDelivery(data),
         integration_ids: selectedIntegrationSlugs,
       };
 
