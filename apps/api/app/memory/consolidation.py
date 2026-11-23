@@ -33,6 +33,7 @@ from app.constants.memory import (
     MemoryShelfLife,
 )
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.users import user_repository
 from app.memory import pg_store
 from app.memory.extraction import rewrite_core_document, verify_core_document
@@ -388,7 +389,13 @@ async def _get_user_name(user_id: str) -> str:
     """Return the user's display name, so prompts can tell the user apart from others."""
     try:
         user = await user_repository.get(user_id)
-    except Exception:
+    except RepositoryError as e:
+        log.warning(
+            "memory_consolidation_user_name_unavailable",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         user = None
     return (user.name if user else None) or "the user"
 
