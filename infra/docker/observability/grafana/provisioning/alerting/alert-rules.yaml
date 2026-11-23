@@ -603,6 +603,8 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ $labels.job }} is not responding{{ else }}A monitored service stopped responding{{ end }}
           summary: >-
             {{ if $values.B }}Prometheus can no longer scrape {{ $labels.job }} at
             {{ $labels.instance }}{{ else }}Unable to read scrape target health — this
@@ -754,6 +756,8 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ reReplaceAll "gaia-prod_" "" $labels.swarm_service }} keeps restarting{{ else }}A container is restarting repeatedly{{ end }}
           summary: >-
             {{ if $values.B }}{{ $labels.swarm_service }} has run as
             {{ printf "%.0f" $values.B.Value }} different containers in the last 15
@@ -809,6 +813,8 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ reReplaceAll "https?://([^:/]+).*" "$1" $labels.instance }} is down{{ else }}A bot or the embedding sidecar is down{{ end }}
           summary: >-
             {{ if $values.B }}{{ $labels.instance }} has been failing its health check
             for 2 minutes{{ else }}Unable to read the internal service health probes —
@@ -1275,6 +1281,8 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
+          headline: >-
+            {{ if $values.B }}Monitoring has lost sight of {{ $labels.job }}{{ else }}Monitoring has lost sight of part of the stack{{ end }}
           summary: >-
             {{ if $values.B }}Prometheus has not been able to scrape {{ $labels.job }}
             at {{ $labels.instance }} for 10 minutes (up is
@@ -1474,6 +1482,8 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
+          headline: >-
+            {{ if $values.B }}The {{ $labels.platform | title }} bot is disconnected from {{ $labels.platform | title }}{{ else }}A bot lost its connection to its chat platform{{ end }}
           summary: >-
             {{ if $values.B }}The {{ $labels.platform }} bot has been disconnected
             from {{ $labels.platform }} for 5 minutes{{ else }}Unable to read the bot
@@ -1529,6 +1539,8 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
+          headline: >-
+            {{ if $values.B }}The TLS certificate for {{ reReplaceAll "https?://([^:/]+).*" "$1" $labels.instance }} is expiring soon{{ else }}TLS certificate is expiring soon{{ end }}
           summary: >-
             {{ if $values.B }}The {{ $labels.instance }} TLS certificate expires in
             {{ $values.B.Value | humanizeDuration }} (threshold 14 days){{ else }}Unable
@@ -1623,6 +1635,8 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
+          headline: >-
+            {{ if $values.B }}Redis ({{ $labels.job }}) is close to its memory limit{{ else }}Redis is close to its memory limit{{ end }}
           summary: >-
             {{ if $values.B }}Redis ({{ $labels.job }}) is using
             {{ $values.B.Value | humanizePercentage }} of its memory limit
@@ -2346,6 +2360,8 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
+          headline: >-
+            {{ if $values.B }}The {{ $labels.provider }} model provider is failing or rate limiting us{{ else }}A model provider is failing or rate limiting us{{ end }}
           summary: >-
             {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
             model calls to {{ $labels.provider }} failed or were rate limited in
@@ -2448,6 +2464,8 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
+          headline: >-
+            {{ if $values.B }}Scheduled {{ $labels.kind }}s are running late{{ else }}Reminders and scheduled workflows are running late{{ end }}
           summary: >-
             {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} {{
             $labels.kind }} tasks started more than 5 minutes late in the last
@@ -2500,6 +2518,8 @@ groups:
         execErrState: Error
         for: 0m
         annotations:
+          headline: >-
+            {{ if $values.B }}Scheduled {{ $labels.kind }}s are failing{{ else }}Reminders or scheduled workflows are failing{{ end }}
           summary: >-
             {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
             $labels.kind }} tasks failed or were found stuck in the last hour
@@ -2863,6 +2883,8 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
+          headline: >-
+            {{ if $values.B }}The {{ $labels.tool_name }} tool is failing most of its calls{{ else }}An agent tool is failing most of its calls{{ end }}
           summary: >-
             {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
             $labels.tool_name }} calls failed in the last 30 minutes (threshold
@@ -2915,6 +2937,8 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
+          headline: >-
+            {{ if $values.B }}File storage {{ $labels.operation }} operations are failing{{ else }}File storage operations are failing{{ end }}
           summary: >-
             {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
             $labels.operation }} storage operations failed in the last 15
@@ -3026,6 +3050,8 @@ groups:
         execErrState: Error
         for: 0m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ $labels.platform | title }} bot replies are failing to deliver{{ else }}Bot replies are failing to deliver{{ end }}
           summary: >-
             {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of {{
             $labels.platform }} deliveries failed in the last 30 minutes
@@ -3080,6 +3106,8 @@ groups:
         execErrState: Error
         for: 0m
         annotations:
+          headline: >-
+            {{ if $values.B }}Messages to the {{ $labels.platform | title }} bot are getting no reply{{ else }}Messages sent to a bot are getting no reply{{ end }}
           summary: >-
             {{ if $values.B }}{{ $values.B.Value | humanizePercentage }} of
             messages sent to the {{ $labels.platform }} bot got no reply in the
@@ -3246,6 +3274,8 @@ groups:
         execErrState: Error
         for: 0m
         annotations:
+          headline: >-
+            {{ if $values.B }}{{ $labels.service_name }} keeps logging the same error{{ else }}A service keeps logging the same error{{ end }}
           summary: >-
             {{ if $values.B }}{{ $labels.service_name }} logged "{{ $labels.message }}"
             {{ printf "%.0f" $values.B.Value }} times in the last 24 hours (threshold:
