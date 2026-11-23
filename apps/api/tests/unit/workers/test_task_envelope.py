@@ -19,6 +19,7 @@ import pytest
 from sentry_sdk.types import Event
 
 from app.workers.config.worker_settings import ARQ_BACKSTOP_GRACE_SECONDS
+from app.workers.metrics import REGISTRY
 from app.workers.queue import TRACE_ID_KWARG, enqueue_worker_job
 from app.workers.task_envelope import arq_function, arq_task
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -29,6 +30,7 @@ from shared.py.analytics.context import (
     worker_context,
 )
 from shared.py.logging import env_context
+from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder
 
 pytestmark = pytest.mark.unit
@@ -284,3 +286,30 @@ async def test_a_failing_job_reaches_sentry_once_tagged_as_the_worker(
         (event["exception"]["values"][-1]["type"], event["tags"]["service"])
         for event in sentry_events
     ] == [("RuntimeError", "arq_worker")]
+
+
+def _task_count(task_name: str, status: str) -> float:
+    return (
+        REGISTRY.get_sample_value("arq_task_total", {"task_name": task_name, "status": status})
+        or 0.0
+    )
+
+
+@pytest.mark.unit
+async def test_a_task_that_caught_its_failure_and_logged_an_error_counts_as_an_error() -> None:
+    async def swallowed_failure(_ctx: Mapping[str, object]) -> None:
+        log.error("run_failed", error_type="ValueError")
+
+    before = _task_count("swallowed_failure", "error")
+    await arq_task(swallowed_failure, timeout_seconds=5)({})
+    assert _task_count("swallowed_failure", "error") == before + 1
+
+
+@pytest.mark.unit
+async def test_a_task_that_only_warned_counts_as_a_success() -> None:
+    async def warned(_ctx: Mapping[str, object]) -> None:
+        log.warning("skipped", reason="quota")
+
+    before = _task_count("warned", "success")
+    await arq_task(warned, timeout_seconds=5)({})
+    assert _task_count("warned", "success") == before + 1

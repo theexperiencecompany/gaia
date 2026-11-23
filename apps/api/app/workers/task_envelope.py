@@ -58,6 +58,7 @@ class ArqJobContext(TypedDict, total=False):
 
 #: The worker_task event's reason when the envelope's deadline cut the task off.
 REASON_TASK_TIMEOUT = "task_timeout"
+_FAILED_LEVELS = frozenset({"ERROR", "CRITICAL"})
 
 
 def arq_task(
@@ -90,7 +91,11 @@ def arq_task(
                     deadline = asyncio.timeout(timeout_seconds)
                     try:
                         async with deadline:
-                            return await func(ctx, *args, **kwargs)
+                            result = await func(ctx, *args, **kwargs)
+                        # A task that catches its own failure still logged it; a return is not a success.
+                        if log.get_max_level() in _FAILED_LEVELS:
+                            status = "error"
+                        return result
                     except TimeoutError:
                         # A TimeoutError the task raised itself is its own failure.
                         if deadline.expired():
