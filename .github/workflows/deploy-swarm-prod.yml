@@ -381,7 +381,7 @@ jobs:
           SUBJECT: deploy ${{ inputs.apps_image_tag || steps.verify.outputs.commit }} is live; the anonymous smoke could not decide
           IMPACT: unknown for visitors — the release converged and serves its commit; nothing was rolled back.
           CAUSE: ${{ steps.smoke.outputs.summary || 'the smoke crashed before writing a verdict' }}
-          ACTION: read the smoke step of this run, then check prod from outside (`bash scripts/ci/deploy.sh smoke`).
+          ACTION: read the smoke step of this run, then check prod from outside (`PROD_ORIGIN=https://api.heygaia.io PROD_WEB_ORIGIN=https://heygaia.io bash scripts/ci/deploy.sh smoke`).
           CLEARS_WHEN: a deploy whose anonymous smoke decides
         run: bash scripts/ci/deploy.sh notify
 

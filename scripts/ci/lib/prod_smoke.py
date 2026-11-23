@@ -307,7 +307,7 @@ class BurstPass:
 
     sent: int = 0
     refused: Reply | None = None
-    errors: list[str] = field(default_factory=list)
+    errors: list[tuple[Target, str, str]] = field(default_factory=list)
 
 
 def burst_pass(targets: Sequence[tuple[Target, str]], size: int, timeout: float) -> BurstPass:
@@ -322,7 +322,7 @@ def burst_pass(targets: Sequence[tuple[Target, str]], size: int, timeout: float)
             return result
         problem = problem_of(target, reply)
         if problem is not None:
-            result.errors.append(f"{target.name}: {problem}")
+            result.errors.append((target, url, problem))
     return result
 
 
@@ -338,32 +338,45 @@ class Report:
 def judge_burst(
     report: Report, targets: Sequence[tuple[Target, str]], size: int, pacing: Pacing
 ) -> None:
-    """Burst once; on a 429 wait the window out and burst again, which must then pass."""
+    """Burst once; on a 429 wait the window out and burst again, which must then pass.
+
+    A target that errs mid-burst warns, and is then read again with retries: its gate
+    applies when those fail too.
+    """
     first = burst_pass(targets, size, pacing.timeout)
-    report.warnings += [f"burst: {error}" for error in first.errors]
+    passes = [first]
     if first.refused is None:
         report.lines.append(f"burst: {first.sent} anonymous reads in a row, none refused")
-        return
-    refused = first.refused
-    named = refused.retry_after()
-    wait = MAX_RETRY_AFTER_SECONDS if named is None else named
-    report.lines.append(
-        f"burst: 429 after {first.sent - 1} reads ({refused.limit_text()}); waiting {wait}s for a fresh window"
-    )
-    time.sleep(wait + 1)
-    second = burst_pass(targets, size, pacing.timeout)
-    report.warnings += [f"burst: {error}" for error in second.errors]
-    if second.refused is None:
-        report.warnings.append(
-            f"burst: this address was already rate limited ({refused.limit_text()}); "
-            f"a fresh window took all {size} reads"
+    else:
+        refused = first.refused
+        named = refused.retry_after()
+        wait = MAX_RETRY_AFTER_SECONDS if named is None else named
+        report.lines.append(
+            f"burst: 429 after {first.sent - 1} reads ({refused.limit_text()}); waiting {wait}s for a fresh window"
         )
-        return
-    report.failures.append(
-        f"burst: 429 after {second.sent - 1} anonymous reads in a fresh window, under the {size} a web "
-        f"build's first seconds make (limit: {second.refused.limit_text() if second.refused else '?'}, "
-        f"{targets[(second.sent - 1) % len(targets)][1]})"
-    )
+        time.sleep(wait + 1)
+        second = burst_pass(targets, size, pacing.timeout)
+        passes.append(second)
+        if second.refused is None:
+            report.warnings.append(
+                f"burst: this address was already rate limited ({refused.limit_text()}); "
+                f"a fresh window took all {size} reads"
+            )
+        else:
+            report.failures.append(
+                f"burst: 429 after {second.sent - 1} anonymous reads in a fresh window, under the {size} a web "
+                f"build's first seconds make (limit: {second.refused.limit_text()}, "
+                f"{targets[(second.sent - 1) % len(targets)][1]})"
+            )
+    erred: dict[str, tuple[Target, str]] = {}
+    for burst in passes:
+        for target, url, problem in burst.errors:
+            report.warnings.append(f"burst: {target.name}: {problem}")
+            erred[target.name] = (target, url)
+    for target, url in erred.values():
+        outcome = check_target(target, url, pacing)
+        if not outcome.passed:
+            judge_target(report, outcome)
 
 
 def judge_target(report: Report, outcome: Outcome) -> None:

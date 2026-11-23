@@ -269,6 +269,30 @@ def test_a_burst_refused_again_in_a_fresh_window_fails(tmp_path: Path) -> None:
     assert LIMIT in run.outputs["summary"]
 
 
+def test_a_read_that_breaks_during_the_burst_and_stays_broken_fails(tmp_path: Path) -> None:
+    api = healthy_api() | {PLANS: [ok_json([{"id": "pro"}]), (503, {}, "upstream connect error")]}
+
+    run = smoke(tmp_path, api)
+
+    assert run.verdict == "fail"
+    assert "plans: 503 on 3/3 attempts" in run.proc.stderr
+
+
+def test_a_read_that_breaks_once_during_the_burst_and_recovers_warns(tmp_path: Path) -> None:
+    plans = [
+        ok_json([{"id": "pro"}]),
+        (503, {}, "upstream connect error"),
+        ok_json([{"id": "pro"}]),
+    ]
+    api = healthy_api() | {PLANS: plans}
+
+    run = smoke(tmp_path, api)
+
+    assert run.proc.returncode == 0, run.proc.stderr
+    assert run.verdict == "warn"
+    assert "::warning::smoke: burst: plans: 503" in run.proc.stderr
+
+
 def test_the_burst_is_a_quarter_of_the_anonymous_ceiling(tmp_path: Path) -> None:
     limits = tmp_path / "request_limits.py"
     limits.write_text("SIGNED_IN_USER_PER_MINUTE = 300\nANONYMOUS_VIEWER_PER_MINUTE = 40\n")
@@ -329,6 +353,21 @@ def test_latest_moves_once_prod_serves_the_release_whatever_the_smoke_says() -> 
     assert "smoke" not in str(steps[retag]["if"])
     assert steps[smoke]["run"] == "bash scripts/ci/deploy.sh smoke"
     assert "continue-on-error" not in steps[smoke]
+
+
+def test_the_advertised_smoke_command_runs_in_a_plain_shell() -> None:
+    document = yaml.safe_load(WORKFLOW.read_text())
+    origins = {key: document["env"][key] for key in ("PROD_ORIGIN", "PROD_WEB_ORIGIN")}
+    advertised = [
+        str(step["env"]["ACTION"])
+        for step in _deploy_steps()
+        if "deploy.sh smoke" in str(step.get("env", {}).get("ACTION", ""))
+    ]
+
+    assert advertised
+    for action in advertised:
+        for key, origin in origins.items():
+            assert f"{key}={origin}" in action
 
 
 def test_a_failed_smoke_alerts_once_and_changes_nothing_in_production() -> None:

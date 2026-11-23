@@ -1846,6 +1846,53 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
     assert "stopping at the first failure" not in capsys.readouterr().out
 
 
+class MasterMovesGh(SequencedGh):
+    """Master's head moves to a green commit once the watch has read the first one."""
+
+    NEXT_HEAD = "b0b"
+
+    def respond(self, req: Request) -> Reply:
+        if f"/commits/{self.NEXT_HEAD}/check-runs" in req.path:
+            return Reply(body={"check_runs": [*REQUIRED_GREEN, PASSED_CHECK]})
+        if req.path.endswith("/actions/runs") and self.NEXT_HEAD in str(req.query):
+            return Reply(body={"workflow_runs": [CI_RUN]})
+        reply = super().respond(req)
+        if req.path.endswith("/check-runs"):
+            self.branch_heads["master"] = self.NEXT_HEAD
+        return reply
+
+
+def test_ci_watch_master_returns_its_failed_deploy_after_master_moves_on(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A later green master commit must not replace the failed deploy the watch is waiting out."""
+    gate = REQUIRED_GREEN[0]
+    deploy_red = dict(
+        PASSED_CHECK,
+        name="trigger-build / trigger-deploy / deploy",
+        conclusion="failure",
+        html_url="https://github.com/o/r/actions/runs/99/job/1400",
+    )
+    rollback = dict(
+        PASSED_CHECK,
+        name="trigger-build / trigger-deploy / rollback",
+        html_url="https://github.com/o/r/actions/runs/99/job/1401",
+    )
+    rollback_running = dict(rollback, status="in_progress", conclusion=None)
+    fake = MasterMovesGh(
+        [[gate, deploy_red, rollback_running], [gate, deploy_red, rollback]],
+        run_polls=[[ci_run(99, "in_progress")], [CI_RUN]],
+        job_log="",
+    )
+    fake.branch_prs = []
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack", "master"]) == 1
+
+    assert "/repos/o/r/commits/b0b/check-runs" not in fake.calls
+    assert "trigger-build / trigger-deploy / deploy" in capsys.readouterr().out
+
+
 def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

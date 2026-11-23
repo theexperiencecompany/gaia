@@ -31,7 +31,7 @@ SonarCloud) are printed as not required for merge and the watch keeps going.
 It settles only once every check the base requires has reported: quality-gate
 is created after the last lane it needs, so "nothing pending" alone is not done.
 `mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
-A branch with no PR (master) is read at its head commit, gated by the
+A branch with no PR (master) is read at its head commit (a watch keeps the one it began on), gated by the
 required checks a push to it runs. Once they pass, a red job is the deploy's,
 and --fail-fast waits for its run (the rollback) instead of stopping. Under --json a failed read prints
 {"error", "exit_code"} on stdout, so a reader discarding stderr sees why.
@@ -283,6 +283,8 @@ class Target:
 
     branch: str
     pr_number: int | None
+    # A watch pins the branch head it started on, so master moving on cannot hide that commit's deploy.
+    sha: str | None = None
 
 
 def slug(text: str) -> str:
@@ -1506,7 +1508,9 @@ def render_stack_only(report: dict) -> None:
 def snapshot_once(repo: Repo, target: Target, with_stack: bool) -> tuple[dict, int]:
     t0 = time.monotonic()
     pr_meta = None if target.pr_number is None else fetch_pr_state(repo, target.pr_number)
-    head = pr_meta["headRefOid"] if pr_meta else fetch_branch_head(repo, target.branch)
+    head = (
+        pr_meta["headRefOid"] if pr_meta else target.sha or fetch_branch_head(repo, target.branch)
+    )
     if head is None:
         raise CiRemoteError(
             f"no PR and no branch '{target.branch}' on {repo.slug} — push first or check the name"
@@ -1819,6 +1823,8 @@ def watch(repo: Repo, target: Target, options: Options) -> tuple[dict, int]:
             eprint(f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: skipped — {err}")
             time.sleep(options.interval)
             continue
+        if target.pr_number is None:
+            target = replace(target, sha=report["head"]["sha"])
         pending = report["counts"]["pending"]
         if not options.as_json:
             elapsed = int(time.monotonic() - (deadline - options.max_wait))
