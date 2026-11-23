@@ -9,14 +9,18 @@ Covers:
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.db.mongodb import indexes as indexes_module
 from app.db.mongodb.indexes import (
     create_conversation_indexes,
     create_payment_indexes,
     create_playbook_indexes,
+    create_short_link_indexes,
 )
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
+from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX
 
 # ---------------------------------------------------------------------------
 # MongoDB class — __init__
@@ -364,46 +368,32 @@ class TestGetAsyncCollection:
 # Indexes — create_all_indexes
 # ---------------------------------------------------------------------------
 
-# Must mirror the tasks gathered by create_all_indexes(). Any creator missing
-# here is left unpatched and runs against the real MongoDB, which makes these
-# tests order- and environment-dependent.
+# Every creator create_all_indexes() gathers, read off the module so a new creator
+# can never be left unpatched here and run against the real MongoDB.
 _INDEX_CREATORS = [
-    "create_user_indexes",
-    "create_conversation_indexes",
-    "create_todo_indexes",
-    "create_project_indexes",
-    "create_note_indexes",
-    "create_file_indexes",
-    "create_mail_indexes",
-    "create_calendar_indexes",
-    "create_blog_indexes",
-    "create_notification_indexes",
-    "create_reminder_indexes",
-    "create_workflow_indexes",
-    "create_payment_indexes",
-    "create_processed_webhook_indexes",
-    "create_usage_indexes",
-    "create_integration_indexes",
-    "create_user_integration_indexes",
-    "create_user_instructions_indexes",
-    "create_device_token_indexes",
-    "create_installed_skills_indexes",
-    "create_workflow_execution_indexes",
-    "create_bot_session_indexes",
-    "create_e2b_sandbox_indexes",
-    "create_hil_approvals_indexes",
-    "create_approval_ledger_indexes",
-    "create_pending_platform_registration_indexes",
-    "create_browser_profiles_indexes",
-    "create_browser_tasks_indexes",
-    "create_llm_call_indexes",
-    "create_local_credential_indexes",
-    "create_local_invite_indexes",
-    "create_instance_settings_indexes",
-    "create_playbook_indexes",
-    "create_provider_credential_indexes",
-    "create_tool_output_shapes_indexes",
+    name
+    for name in dir(indexes_module)
+    if name.startswith("create_") and name.endswith("_indexes") and name != "create_all_indexes"
 ]
+
+
+class TestCreateWaitIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_one_wait_per_waiter_and_an_unanswered_ask_expires(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        collection = MagicMock()
+        collection.create_index = AsyncMock()
+        mock_get_collection.return_value = collection
+
+        await indexes_module.create_wait_indexes()
+
+        mock_get_collection.assert_called_once_with("waits")
+        collection.create_index.assert_any_await(
+            [("user_id", 1), ("condition", 1), ("subject_id", 1), ("waiter", 1), ("waiter_id", 1)],
+            unique=True,
+        )
+        collection.create_index.assert_any_await("created_at", expireAfterSeconds=7 * 24 * 3600)
 
 
 class TestCreatePlaybookIndexes:
@@ -424,25 +414,115 @@ class TestCreatePlaybookIndexes:
         )
 
 
+class TestCreateShortLinkIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_one_live_link_per_target_is_a_unique_index(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """Two overlapping mints for one owner's target must collide on the index."""
+        collection = MagicMock()
+        collection.create_index = AsyncMock()
+        mock_get_collection.return_value = collection
+
+        await create_short_link_indexes()
+
+        collection.create_index.assert_any_await(
+            [
+                ("user_id", 1),
+                ("target.type", 1),
+                ("target.id", 1),
+                ("target.conversation_id", 1),
+                ("target.path", 1),
+            ],
+            unique=True,
+            partialFilterExpression={"revoked": False},
+            name=LIVE_TARGET_UNIQUE_INDEX,
+        )
+
+
+def _collections_by_name(mock_get_collection: MagicMock) -> dict[str, MagicMock]:
+    """Give each collection name its own mock, recording every create_index await."""
+    collections: dict[str, MagicMock] = {}
+
+    def collection_for(name: str) -> MagicMock:
+        if name not in collections:
+            collection = MagicMock()
+            collection.create_index = AsyncMock()
+            collections[name] = collection
+        return collections[name]
+
+    mock_get_collection.side_effect = collection_for
+    return collections
+
+
 class TestCreateConversationIndexes:
     @patch("app.db.mongodb.indexes.get_async_collection")
     async def test_a_tracked_todo_has_at_most_one_chat(
         self, mock_get_collection: MagicMock
     ) -> None:
         """A run and an "Open chat" tap at once both create; the unique binding makes one of them lose."""
-        collection = MagicMock()
-        collection.create_index = AsyncMock()
-        mock_get_collection.return_value = collection
+        collections = _collections_by_name(mock_get_collection)
 
         await create_conversation_indexes()
 
-        mock_get_collection.assert_called_once_with("conversations")
-        collection.create_index.assert_any_await(
+        collections["conversations"].create_index.assert_any_await(
             [("user_id", 1), ("todo_id", 1)],
             unique=True,
             name="user_todo_conversation_unique",
             partialFilterExpression={"todo_id": {"$type": "string"}},
         )
+
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_entries_take_one_seq_and_one_id_each_per_conversation(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """The append protocol's duplicate-key handling relies on exactly these two unique indexes."""
+        collections = _collections_by_name(mock_get_collection)
+
+        await create_conversation_indexes()
+
+        assert sorted(collections) == ["conversation_entries", "conversations"]
+        calls = collections["conversation_entries"].create_index.await_args_list
+        assert [(call.args, call.kwargs) for call in calls] == [
+            (
+                ([("user_id", 1), ("conversation_id", 1), ("seq", 1)],),
+                {"unique": True, "name": "user_conversation_seq_unique"},
+            ),
+            (
+                ([("user_id", 1), ("conversation_id", 1), ("id", 1)],),
+                {"unique": True, "name": "user_conversation_id_unique"},
+            ),
+            (([("user_id", 1), ("id", 1)],), {"name": "user_entry_id"}),
+            (
+                ([("user_id", 1), ("reply_id", 1)],),
+                {
+                    "name": "user_entry_reply_id",
+                    "partialFilterExpression": {"reply_id": {"$type": "string"}},
+                },
+            ),
+            (([("user_id", 1), ("kind", 1)],), {"name": "user_entry_kind"}),
+            (([("user_id", 1), ("kind", 1), ("at", 1)],), {"name": "user_entry_kind_at"}),
+            (
+                ([("user_id", 1), ("at", 1)],),
+                {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
+            ),
+            (
+                ([("type", 1)],),
+                {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
+            ),
+            *[
+                (
+                    ([(field, 1)],),
+                    {
+                        "name": f"renamed_{field}",
+                        "partialFilterExpression": {field: {"$exists": True}},
+                    },
+                )
+                for field in ("summary", "decision", "heard_text", "run.reservation")
+            ],
+        ]
+        heads = [call.args[0] for call in collections["conversations"].create_index.await_args_list]
+        assert [("user_id", 1), ("messages.message_id", 1)] not in heads
 
 
 class TestCreatePaymentIndexes:
@@ -475,6 +555,52 @@ class TestCreatePaymentIndexes:
 
 class TestCreateAllIndexes:
     """Tests for create_all_indexes() and its error handling."""
+
+    @patch("app.db.mongodb.indexes.log")
+    async def test_a_failed_short_links_index_build_is_not_swallowed(
+        self, mock_log: MagicMock
+    ) -> None:
+        """A failed short_links index build must stop index creation, not become a log line."""
+        patches = {
+            name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
+            for name in _INDEX_CREATORS
+        }
+        mocks = {name: p.start() for name, p in patches.items()}
+        mocks["create_short_link_indexes"].side_effect = DuplicateKeyError("E11000 duplicate key")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(DuplicateKeyError):
+                await create_all_indexes()
+        finally:
+            for p in patches.values():
+                p.stop()
+
+    @pytest.mark.parametrize(
+        "creator",
+        ["create_briefing_indexes", "create_scout_indexes", "create_signal_memory_indexes"],
+    )
+    @patch("app.db.mongodb.indexes.log")
+    async def test_a_failed_brief_store_index_build_stops_startup(
+        self, mock_log: MagicMock, creator: str
+    ) -> None:
+        """Their unique keys are what make a rerun replace a brief, scout or memory, not add one."""
+        patches = {
+            name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
+            for name in _INDEX_CREATORS
+        }
+        mocks = {name: p.start() for name, p in patches.items()}
+        mocks[creator].side_effect = DuplicateKeyError("E11000 duplicate key")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(DuplicateKeyError):
+                await create_all_indexes()
+        finally:
+            for p in patches.values():
+                p.stop()
 
     @patch("app.db.mongodb.indexes.log")
     async def test_create_all_indexes_success(self, mock_log: MagicMock) -> None:
@@ -552,6 +678,7 @@ class TestCreateAllIndexes:
             ("create_local_invite_indexes", "auth_invites"),
             ("create_instance_settings_indexes", "instance_settings"),
             ("create_provider_credential_indexes", "provider_credentials"),
+            ("create_conversation_indexes", "conversations"),
         ],
     )
     async def test_create_all_indexes_security_critical_failure_raises(

@@ -1,0 +1,236 @@
+{
+ "run": "run_3d76620a1df8",
+ "captured_from": "2026-09-05",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 16,
+   "record_len": 6,
+   "written": {
+    "description": "KUBXGR Fptwjxnleo Xtdxm: evasii-ayvte uddeq bdeofk Uydwwg, Svdly, Aajy SD, qiq Zmlvvp Tvelkhjg, vtyc w 9-ahrojly yliivvuhen report. Zhhsg 95 rui hq lqirhkaw whtnfvqn nwlftemb, zubw 5 (Zmlvvp Ctvce) wbnz bg w critical gnpexffz uc qpxlxm.",
+    "steps": [
+     {
+      "id": "trello",
+      "handoff": "trello",
+      "steps": [
+       {
+        "id": "boards",
+        "tool": "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER",
+        "args": {
+         "idMember": "dv"
+        }
+       },
+       {
+        "id": "amine",
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "Ibaby Teglb",
+         "modelTypes": "cards",
+         "cards_limit": "20",
+         "card_board": "cnfu",
+         "card_fields": "gfqp,lm,cwf,kisu,bbg"
+        }
+       },
+       {
+        "id": "hafida",
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "Kmkiqj Pzewrtgx",
+         "modelTypes": "cards",
+         "cards_limit": "20",
+         "card_board": "cnfu",
+         "card_fields": "gfqp,lm,cwf,kisu,bbg"
+        }
+       },
+       {
+        "id": "vorpruefung",
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "50h Hygrkoopgx",
+         "modelTypes": "cards",
+         "cards_limit": "30",
+         "card_board": "cnfu",
+         "card_fields": "gfqp,lm,cwf,kisu,bbg"
+        }
+       },
+       {
+        "id": "vorabz",
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "Hzsqvfdyrrjiqmc PCP",
+         "modelTypes": "cards",
+         "cards_limit": "30",
+         "card_board": "cnfu",
+         "card_fields": "gfqp,lm,cwf,kisu,bbg"
+        }
+       }
+      ]
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "gather",
+        "tool": "GMAIL_CUSTOM_GATHER_CONTEXT",
+        "args": {}
+       },
+       {
+        "id": "nebgen",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "Sqbzcz",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "hafida_mail",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(Kmkiqj YU Pzewrtgx YU PCP YU \"Qrcqxjpihpyjfarb Whsq\")",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "apa300",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(XET YU XET-300 YU Wrcwsipzaa YU Mlveorrhbt)",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "franchise_mail",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(Gojxuhvvk YU JM-Gojxuhvvk YU Gsmcefrbsfjn YU Mdrkgzcga)",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "readai",
+      "handoff": "2hj21mp0-349152689j2n-iq34dhj01790",
+      "steps": [
+       {
+        "id": "list1",
+        "tool": "list_meetings",
+        "args": {
+         "limit": 10
+        }
+       },
+       {
+        "id": "meeting",
+        "tool": "get_meeting_by_id",
+        "args": {
+         "id": "$steps.readai.list1.result$??",
+         "expand": [
+          "summary",
+          "rxrpqy_emrwk",
+          "key_kbolcadua",
+          "neefxx"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "calendars",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "args": {}
+       },
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+        "args": {
+         "time_min": "2026-09-05T00:00:00Z",
+         "time_max": "$now + 60d",
+         "single_events": true
+        }
+       }
+      ]
+     },
+     {
+      "id": "drive",
+      "handoff": "yzxjrhuvzbo",
+      "steps": []
+     }
+    ],
+    "result_brief": "Uynahtp lar 9-ahrojly KUBXGR Fptwjxnleo Xtdxm report evvq lar ypyv whtnfvqn dfelpkeu. UXEQHUBSD DRAWT = lar 5 tffy ebfhkdrhx-ntieav emrwk (loo lar mwgsmemxsk vyscdtbc dvrpfu-yoj: XET 0390 QKQ lawqgqib fx lar 27vx, Sqbzcz drde jzne + lmkp xcxhd, Kmkiqj p12e-Zjc.3, Ibaby Teglb start). N6 HLBRMPMD = bvlumessw rxrpqy. JBMNCOPJAJ = overdue tasks/fpvwapd (vqpa xhuc [JBMNCOPJAJ], clfiwisum izb nujw mxpi qiq akqqn tcnn, wbnz evvq sulqxgef vyagigm). KESFMQBALZ AJCXVSFU = wkknppb yulbrbpn xhuc [HQYYMVMGOCAYPTBRH] qiq lar idgzpfva elsnh. PMIREK ZFBNTV ULL UKP qiq ZJJ ZFBNTV ULL = tqluf yqliee/vslvylljsbud, topic, akqqn tcnn. TKWG CIPB HFGBOINCQWG = mdiavwygm fx Isfg. YWMKZCAKPBUD = [XXEUJSIKVO] wbnz higci vyxrzx tktygii uc ga wzibpu rqwanitv, xhuc elsnh/xxcxdlw/zhirkprfguc/next zubw. VQP 5 DIOZUNVTLA = lbomgty-wlzrlgmm evyfcsq. Njhv [ZTTKQQFFDOA] higci vyagigm cqmlyzhg (c.q. Ibaby Teglb sztx vbthf, d45m ajkot zs p12e). Qqxotwoxzss 'eimxs jpskaqqifu' zs 'eimxs pstrhkkn'. Ctvce uc wbnz rorwprhon tcnn w critical gnpexffz uc qpxlxm; nfosudwsn gvrz ic eto hsuyioc udh uzku jfhykd. Indqt qcgqho snxardawb, pfqwdpztovs up ycgfouwjuevamqut; rakb jclijipresfl juqeqf [CQQGMOOXD] up [ZUXCVA VETBU EUBPYOGNUF]. Xw emails sent, ga tscekmvq kduvixh gqvl. Pypvv hx Bdbzna, fzdnbo qiq kexxgte."
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "yzxjrhuvzbo",
+   "expected": "unmappable"
+  }
+ ]
+}

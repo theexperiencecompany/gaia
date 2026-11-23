@@ -9,10 +9,17 @@ limit wall speak once per window, is what turns a message per occurrence into
 one message.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
+
+import pytest
+import time_machine
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants.notifications import NotificationKind
+from app.models.notification.details_models import WorkflowPausedNotification
 from app.models.notification.notification_models import (
     ActionStyle,
     ActionType,
@@ -25,6 +32,7 @@ from app.models.workflow_models import IntegrationRef
 from app.workers.tasks.workflow_tasks import (
     _notify_workflow_failed,
     _notify_workflow_paused_for_integrations,
+    _record_execution_failure,
     execute_workflow_by_id,
 )
 
@@ -59,10 +67,8 @@ async def _run_task(
         patch(
             f"{PAUSE_MODULE}.WorkflowService.deactivate_workflow", new_callable=AsyncMock
         ) as deactivate,
-        patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-        ) as notify,
-        patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock) as budget,
+        patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify,
+        patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
             f"{MODULE}.execute_workflow_as_chat",
@@ -82,6 +88,7 @@ async def _run_task(
 
 
 GMAIL = [IntegrationRef(id="gmail", name="Gmail")]
+FIRED_AT = datetime(2026, 11, 14, 9, 0, tzinfo=UTC)
 GMAIL_AND_NOTION = [*GMAIL, IntegrationRef(id="notion", name="Notion")]
 
 
@@ -153,12 +160,10 @@ class TestTheLimitNoticeSpeaksOncePerWindow:
                 new_callable=AsyncMock,
                 return_value=not already_sent,
             ),
-            patch(
-                f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-            ) as notify,
+            patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify,
         ):
             error = RateLimitExceededException(feature="trigger_workflow_executions")
-            await _notify_workflow_failed(error, _workflow())
+            await _notify_workflow_failed(error, _workflow(), "exec_1")
         return notify
 
     async def test_the_first_wall_of_the_day_is_reported(self) -> None:
@@ -181,10 +186,8 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
 
     @staticmethod
     async def _sent(missing: list[IntegrationRef]) -> Any:
-        with patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-        ) as notify:
-            await _notify_workflow_paused_for_integrations(_workflow(), missing)
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_paused_for_integrations(_workflow(), missing, FIRED_AT)
         return notify.await_args.args[0]
 
     async def test_it_names_the_workflow_and_every_integration_it_waits_on(self) -> None:
@@ -196,6 +199,7 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
             "It's paused and will run again once you reconnect."
         )
 
+    @pytest.mark.regression
     async def test_the_button_connects_the_first_missing_integration_in_place(self) -> None:
         request = await self._sent(GMAIL_AND_NOTION)
 
@@ -203,7 +207,8 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         assert action.label == "Connect Gmail"
         assert action.type == ActionType.REDIRECT
         assert action.style == ActionStyle.PRIMARY
-        assert action.config.redirect.url == "/integrations?id=gmail"
+        # ?connect= starts the connect flow; ?id= only opens the sidebar (useIntegrationDeepLink).
+        assert action.config.redirect.url == "/integrations?connect=gmail"
         assert action.config.redirect.open_in_new_tab is False
         assert action.config.redirect.close_notification is True
 
@@ -213,22 +218,23 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         assert request.user_id == "6812f0b3c9a14e2b7d5a91cc"
         assert request.source == NotificationSourceEnum.INTEGRATION_EXPIRED
         assert request.type == NotificationType.WARNING
-        assert request.metadata == {
-            "workflow_id": "wf-1",
-            "missing_integrations": "gmail,notion",
-        }
+        assert request.details == WorkflowPausedNotification(
+            kind=NotificationKind.WORKFLOW_PAUSED,
+            workflow_id="wf-1",
+            missing_integrations=["gmail", "notion"],
+        )
 
     async def test_a_notice_that_cannot_be_delivered_is_recorded_not_raised(self) -> None:
         """A notice that can't be delivered must not become a worker error, or the whole fire retries for nothing."""
         with (
             patch(
-                f"{MODULE}.notification_service.create_notification",
+                f"{MODULE}.notification_service.notify",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("mongo down"),
             ),
             patch(f"{MODULE}.log") as mock_log,
         ):
-            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL)
+            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL, FIRED_AT)
 
         mock_log.warning.assert_called_once()
         assert mock_log.warning.call_args.args == (
@@ -250,11 +256,46 @@ class TestTheLimitNoticeIsClaimedPerWorkflow:
                 new_callable=AsyncMock,
                 return_value=True,
             ) as claim,
-            patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
+            patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock),
         ):
             await _notify_workflow_failed(
                 RateLimitExceededException(feature="trigger_workflow_executions"),
                 _workflow(user_id="6812f0b3c9a14e2b7d5a91c9"),
+                "exec_1",
             )
 
         claim.assert_awaited_once_with("6812f0b3c9a14e2b7d5a91c9", "wf-1")
+
+
+class TestEachNoticeHasTheOneIdItsFactHas:
+    """The id is the dedupe key: a retried fire must reproduce it exactly, or the user is told twice."""
+
+    async def test_a_pause_notice_is_keyed_by_the_workflow_and_the_fire(self) -> None:
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL, FIRED_AT)
+
+        assert notify.await_args.args[0].id == "0c283fdd-c262-5a7c-a6b2-ba1839d4f004"
+
+    async def test_a_failure_notice_is_keyed_by_its_execution(self) -> None:
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_failed(RuntimeError("boom"), _workflow(), "exec_1")
+
+        assert notify.await_args.args[0].id == "bbca019f-e409-551c-b121-e67c1ebd72f0"
+
+    # 02:00 in Kolkata is still 14 Nov in UTC: the day is UTC's, never the host's.
+    @time_machine.travel(datetime(2026, 11, 15, 2, 0, tzinfo=ZoneInfo("Asia/Kolkata")), tick=False)
+    async def test_a_failure_before_any_execution_record_is_one_notice_per_utc_day(self) -> None:
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_failed(RuntimeError("boom"), _workflow(), None)
+
+        assert notify.await_args.args[0].id == "d8b0529b-1aee-5758-9a1e-6d540d28c8c0"
+
+    async def test_closing_out_a_failed_run_notifies_under_that_run(self) -> None:
+        with (
+            patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
+            patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
+            patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify,
+        ):
+            await _record_execution_failure(RuntimeError("boom"), _workflow(), "wf-1", "exec_9")
+
+        assert notify.await_args.args[0].id == "05240ce1-6da4-5618-9eb9-3abf4289f6f2"

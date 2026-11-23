@@ -17,7 +17,8 @@ from app.agents.prompts.capability_prompts import (
 )
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.todos import INBOX_DESK_LEAD_HOURS, INBOX_DESK_TITLE
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -32,6 +33,7 @@ def _workflow(
     steps: list[str] | None = None,
 ) -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
+        delivery=WorkflowDelivery.NOW,
         title="Inbox Triage",
         description=description,
         prompt="Do the thing.",
@@ -134,10 +136,10 @@ class TestCapabilityBlock:
 
     def test_schedules_and_event_triggers_read_as_times_not_cron(self) -> None:
         block = build_capability_block()
-        assert "every day at 08:00 in their timezone" in block
+        assert "every day 1h before the daily brief" in block
         assert "60 minutes before any calendar event" in block
         assert "10 minutes before any calendar event" in block
-        assert "0 8 * * *" not in block
+        assert "0 7 * * *" not in block
 
     def test_every_trigger_type_is_explained(self) -> None:
         block = build_capability_block()
@@ -164,11 +166,13 @@ class TestCapabilityBlock:
         assert f"\n\n{_inbox_desk_line()}\n\n" in build_capability_block()
         assert _inbox_desk_line() == (
             f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the "
-            f"{INBOX_DESK_TITLE}, that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages "
-            "new mail, opens a tracked todo for every thread where the user owes a reply or is "
-            "waiting on one, saves reply drafts without sending them, puts personal events from "
-            "mail on the calendar, and ends with one briefing. The user changes when it runs or "
-            "what it does by telling GAIA, like any tracked todo."
+            f"{INBOX_DESK_TITLE}, that runs every day {INBOX_DESK_LEAD_HOURS}h before the daily "
+            "brief. It goes through every connected inbox, opens a tracked todo for every thread where the user "
+            "owes a reply or is waiting on one, saves reply drafts without sending them, puts "
+            "personal events from mail on the calendar, and what it finds goes into the daily "
+            "brief. It organizes their Gmail or adds mail's tasks to their todos only after they "
+            "say yes. The user changes when it runs or what it does by telling GAIA, like any "
+            "tracked todo."
         )
 
     def test_todos_cover_the_tracked_and_recurring_shape(self) -> None:
@@ -233,7 +237,11 @@ class TestGeneratedLines:
         assert tail == (
             "GAIA can search them for what the user needs and show a connect card in chat. Nothing "
             "runs on a service before it is connected; once it is, GAIA gets that service's tools, "
-            "and the built-in workflows below switch on by themselves."
+            "and the built-in workflows below switch on by themselves. Beyond the catalog, GAIA can "
+            "add any remote MCP server by its URL (a vendor's official server or the user's own; "
+            "no auth, OAuth, or a token entered in a secure form, never in chat) and use its tools "
+            "the same way, and custom servers can be published to a community marketplace that "
+            "integration search also covers."
         )
 
     def test_the_channels_line_names_every_bot_platform_in_display_order(self) -> None:

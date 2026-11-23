@@ -10,6 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict
 
+from app.agents.tools.invocation import invoke_tool
 from app.config.oauth_config import all_integrations
 from app.constants.integrations import (
     CONNECT_INTEGRATION_TOOL,
@@ -17,6 +18,7 @@ from app.constants.integrations import (
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
     ConnectMode,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
@@ -46,7 +48,6 @@ from app.services.device.device_service import (
 )
 from app.services.integrations.connect_steps import connect_step
 from app.services.integrations.custom_crud import (
-    CustomConnectionResult,
     create_and_connect_custom_integration,
     create_custom_integration,
 )
@@ -289,11 +290,11 @@ async def suggest_integrations(
     This tool will search the marketplace and display suggested integrations
     that the user can add with one click.
     """
-    # list_integrations itself declares this exact return type; .ainvoke() is the
-    # BaseTool framework boundary and always types its result `Any`.
+    # list_integrations itself declares this exact return type; the tool boundary
+    # always types its result `Any`.
     return cast(
         "ListIntegrationsResult | str",
-        await list_integrations.ainvoke({"search_public_query": query}, config=config),
+        await invoke_tool(list_integrations, {"search_public_query": query}, config),
     )
 
 
@@ -497,7 +498,6 @@ async def _create_and_report_custom_server(
     resolved_type = cast(
         AuthType | None, probed_type if probed_type in ("none", "oauth", "bearer") else None
     )
-    connection: CustomConnectionResult
     integration, connection = await create_and_connect_custom_integration(
         user_id,
         CreateCustomIntegrationRequest(
@@ -508,14 +508,14 @@ async def _create_and_report_custom_server(
         ),
         mcp_client,
     )
-    status = connection.get("status")
-    if status == "connected":
-        count = connection.get("tools_count") or 0
+    if connection.status == IntegrationStatus.CONNECTED:
+        count = connection.tools_count or 0
         return f"✅ Added and connected {integration.name} ({count} tools available)."
-    if status == "requires_oauth":
+    if connection.status == "requires_oauth":
         return await request_integration_connection(integration.integration_id, name, user_id)
+    error = "unknown error" if connection.error is None else connection.error
     return (
-        f"❌ Added {name} but couldn't connect: {connection.get('error', 'unknown error')}. "
+        f"❌ Added {name} but couldn't connect: {error}. "
         f"It's saved (id {integration.integration_id}); you can ask me to retry connecting it."
     )
 

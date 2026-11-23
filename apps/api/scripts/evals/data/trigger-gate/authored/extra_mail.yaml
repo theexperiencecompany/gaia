@@ -1,0 +1,49 @@
+# Pseudonymised emails for intents the corpus lacks; written for this eval, every address on .example.
+- id: extra-recruiter-1
+  message:
+    thread_id: extra-recruiter-1
+    message_id: extra-recruiter-1
+    label_ids: [UNREAD, CATEGORY_PERSONAL, INBOX]
+    attachment_list: []
+    sender: Mirela Voss <mirela.voss@talentbridge.example>
+    to: teciok@graliogior.example
+    subject: Staff AI Engineer role at Corvane - open to a chat?
+    message_text: Hi Teciok, I lead technical recruiting at Corvane and came across your work on RISTOK. We're hiring a Staff AI Engineer to build our agent platform, remote-friendly, strong equity. Would you be open to a 20 minute call next week to hear more? Best, Mirela
+    payload:
+      headers: []
+- id: extra-recruiter-2
+  message:
+    thread_id: extra-recruiter-2
+    message_id: extra-recruiter-2
+    label_ids: [UNREAD, CATEGORY_PERSONAL, INBOX]
+    attachment_list: []
+    sender: Dario Pent <dario@pentsearch.example>
+    to: teciok@graliogior.example
+    subject: Founding engineer opportunity (Series A, agents)
+    message_text: Hey Teciok, I'm a recruiter working with a Series A startup in the assistant space. They're looking for a founding engineer and your background is a close match. Happy to share the comp range and details if you're interested in exploring. Cheers, Dario
+    payload:
+      headers: []
+- id: extra-investor-1
+  message:
+    thread_id: extra-investor-1
+    message_id: extra-investor-1
+    label_ids: [UNREAD, IMPORTANT, CATEGORY_PERSONAL, INBOX]
+    attachment_list: []
+    sender: Hana Okafor <hana@northgate.vc.example>
+    to: teciok@graliogior.example
+    subject: Following up after our call - RISTOK seed round
+    message_text: Hi Teciok, thanks for walking me through RISTOK yesterday. The partnership discussed it this morning and we'd like to see your latest metrics and the data room before Thursday's meeting. Could you send those over? Best, Hana, Partner at Northgate Ventures
+    payload:
+      headers: []
+- id: extra-investor-2
+  message:
+    thread_id: extra-investor-2
+    message_id: extra-investor-2
+    label_ids: [UNREAD, CATEGORY_PERSONAL, INBOX]
+    attachment_list: []
+    sender: Tomasz Lind <tomasz@lindangels.example>
+    to: teciok@graliogior.example
+    subject: Intro via Giokra - angel interest in RISTOK
+    message_text: Hi Teciok, Giokra mentioned you're raising. I write angel checks into AI tools and would love to learn more about RISTOK and whether there's room in the round. Do you have 30 minutes this week? Tomasz
+    payload:
+      headers: []

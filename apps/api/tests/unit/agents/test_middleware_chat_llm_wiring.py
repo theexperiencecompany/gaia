@@ -8,33 +8,37 @@ tests pin that wiring so a separate resolution path can't creep back in.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.runnables import Runnable, RunnableBinding
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain_core.language_models import BaseChatModel, LanguageModelInput
+from langchain_core.messages import AIMessage, ToolCall, ToolMessage
+from langchain_core.runnables import Runnable, RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from pydantic import Field
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.factory import (
     CODING_TOOL_NAMES,
-    SELF_OFFLOADING_TOOL_NAMES,
+    RECORD_LIMITED_TOOLS,
     SPAWN_SUBAGENT_TOOL,
     AccountingOptions,
     ContextOptions,
     LoopGuardOptions,
     SubagentStackOptions,
+    create_comms_history_fold,
     create_comms_middleware,
     create_executor_middleware,
     create_middleware_stack,
     create_subagent_middleware,
 )
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
+from app.agents.middleware.interrupted_lookups import InterruptedLookupsMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
@@ -43,11 +47,15 @@ from app.agents.middleware.summarization import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
-from app.constants.summarization import COMMS_SUMMARIZATION_TRIGGER_TOKENS
+from app.constants.summarization import (
+    COMMS_SUMMARIZATION_CEILING_TOKENS,
+    COMMS_SUMMARIZATION_KEEP_TOKENS,
+    COMMS_SUMMARIZATION_TRIGGER_TOKENS,
+)
 from app.services.storage import JuiceFSUnavailable
-from tests.helpers import BindableToolsFakeModel
+from tests.helpers import BindableToolsFakeModel, tool_call_request
 
-COMPACTION_EXCLUSIONS = CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
+COMPACTION_EXCLUSIONS = CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL
 
 
 def _fake_llm() -> BaseChatModel:
@@ -71,7 +79,7 @@ def _spawnable_tool(query: str) -> str:
     return query
 
 
-def _types(stack: list) -> list[type]:
+def _types(stack: Sequence[object]) -> list[type]:
     return [type(mw) for mw in stack]
 
 
@@ -125,7 +133,7 @@ class TestChatLlmWiring:
 
     def test_comms_gets_summarization_on_the_chat_llm_and_never_compaction(self) -> None:
         llm = _fake_llm()
-        stack = create_comms_middleware(chat_llm=llm)
+        stack = create_comms_middleware(lookup_tools=frozenset(), chat_llm=llm)
 
         summarizer = next(
             mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)
@@ -135,15 +143,16 @@ class TestChatLlmWiring:
         # Comms has no read tool, so its archive pointer routes recovery through
         # the executor instead of naming a tool it cannot call.
         assert summarizer.archive == "executor"
-        # Past 272K input tokens OpenAI bills the whole request at 2x; a
-        # fraction of the 1M window crosses it.
-        stack = create_comms_middleware(chat_llm=_fake_llm())
-
-        summarizer = next(
-            mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)
-        )
-        assert summarizer.trigger == ("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS)
-        assert COMMS_SUMMARIZATION_TRIGGER_TOKENS < 272_000
+        # Settled turns fold in the background at the budget; the in-graph fold is the
+        # safety valve past twice it. Past 272K input tokens OpenAI bills the whole
+        # request at 2x, so even the valve stays under it.
+        assert summarizer.trigger == ("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS)
+        fold = create_comms_history_fold(llm)
+        assert fold.trigger == ("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS)
+        assert fold.keep == ("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS)
+        assert fold.archive == "executor"
+        assert COMMS_SUMMARIZATION_CEILING_TOKENS == 2 * COMMS_SUMMARIZATION_TRIGGER_TOKENS
+        assert COMMS_SUMMARIZATION_CEILING_TOKENS < 272_000
 
     def test_subagent_stack_rides_its_own_llm(self) -> None:
         llm = _fake_llm()
@@ -157,60 +166,44 @@ class TestCommsStackComposition:
 
     def test_the_empty_completion_retry_is_the_innermost_middleware(self) -> None:
         """It has to see the raw completion; anything above it reads a reply the retry may still replace."""
-        stack = create_comms_middleware(chat_llm=_fake_llm())
+        stack = create_comms_middleware(lookup_tools=frozenset(), chat_llm=_fake_llm())
 
         assert isinstance(stack[-1], EmptyCompletionRetryMiddleware)
         assert sum(isinstance(mw, EmptyCompletionRetryMiddleware) for mw in stack) == 1
 
     def test_comms_can_never_spawn_a_subagent(self) -> None:
         """Comms has no work tools by design — a spawn tool here would let the front door do the work."""
-        stack = create_comms_middleware(chat_llm=_fake_llm())
+        stack = create_comms_middleware(lookup_tools=frozenset(), chat_llm=_fake_llm())
 
         assert not any(isinstance(mw, SubagentMiddleware) for mw in stack)
 
 
-class ConfigCapturingModel:
-    """Records the configurable passed to with_config(), then delegates.
+class ConfigCapturingModel(BindableToolsFakeModel):
+    """Records the configurable with_config() binds, then answers as the fake it is."""
 
-    Composed (not subclassed) so there is no override to silence; __getattr__
-    forwards everything else — ainvoke included — to the wrapped fake.
-    """
+    captured: dict[str, object] = Field(default_factory=dict)
 
-    def __init__(self, inner: BaseChatModel) -> None:
-        self._inner = inner
-        self.captured: dict[str, object] = {}
-
-    def with_config(self, **kwargs: Any) -> BaseChatModel:
+    def with_config(
+        self, config: RunnableConfig | None = None, **kwargs: Any
+    ) -> Runnable[LanguageModelInput, AIMessage]:
         self.captured.update(kwargs.get("configurable") or {})
-        return self._inner
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._inner, name)
+        return self
 
 
 class TestRequestConfigBinding:
     async def test_digest_is_invoked_with_the_request_configurable(self) -> None:
         """awrap_tool_call must bind the request's configurable onto the digest call, same as the model node."""
-        inner = BindableToolsFakeModel(responses=[AIMessage(content="digest text")])
-        capturing = ConfigCapturingModel(inner)
+        capturing = ConfigCapturingModel(responses=[AIMessage(content="digest text")])
 
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=capturing)
 
-        request = SimpleNamespace(
-            tool_call={"name": "search", "id": "call_1", "args": {}},
-            runtime=SimpleNamespace(
-                config={
-                    "configurable": {
-                        "user_id": "u1",
-                        "vfs_session_id": "conv1",
-                        "provider": "custom",
-                    }
-                }
-            ),
+        request = tool_call_request(
+            ToolCall(name="search", args={}, id="call_1"),
+            configurable={"user_id": "u1", "vfs_session_id": "conv1", "provider": "custom"},
             state={"messages": []},
         )
 
-        async def handler(_req):
+        async def handler(_req: ToolCallRequest) -> ToolMessage:
             return ToolMessage(content="x" * 5000, tool_call_id="call_1", name="search")
 
         with patch(
@@ -308,24 +301,17 @@ class TestStackConfigurationPropagation:
         assert accounting.agent_name == "provider_subagent"
 
     def test_subagent_exclusions_are_the_union(self) -> None:
-        from app.agents.middleware.factory import (
-            CODING_TOOL_NAMES,
-            SELF_OFFLOADING_TOOL_NAMES,
-            SPAWN_SUBAGENT_TOOL,
-        )
-
         stack = create_subagent_middleware(
             subagent=SubagentStackOptions(enabled=False, llm=_fake_llm())
         )
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
-        assert compactor.excluded_tools == (
-            CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
-        )
+        assert compactor.excluded_tools == COMPACTION_EXCLUSIONS
+        assert compactor.max_output_records == RECORD_LIMITED_TOOLS
 
     def test_comms_accounting_name(self) -> None:
         from app.agents.middleware.accounting import LLMAccountingMiddleware
 
-        stack = create_comms_middleware(chat_llm=_fake_llm())
+        stack = create_comms_middleware(lookup_tools=frozenset(), chat_llm=_fake_llm())
         accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
         assert accounting.agent_name == "comms_agent"
 
@@ -345,11 +331,11 @@ class TestBuildGraphChatLlmPassThrough:
         from tests.e2e._harness.graph_run import scripted_model
 
         captured: dict = {}
-        real_create_comms = bg.create_comms_middleware
 
-        def spy(chat_llm=None):
+        def spy(lookup_tools, chat_llm=None):
             captured["chat_llm"] = chat_llm
-            return real_create_comms(chat_llm=chat_llm)
+            captured["lookup_tools"] = lookup_tools
+            return create_comms_middleware(lookup_tools=lookup_tools, chat_llm=chat_llm)
 
         def _capture(**kwargs):
             captured_mw = kwargs
@@ -374,6 +360,7 @@ class TestBuildGraphChatLlmPassThrough:
                 pass
 
         assert captured["chat_llm"] is llm
+        assert captured["lookup_tools"] == {"web_search_tool", "fetch_webpages", "get_weather"}
 
 
 class TestSpawnWiring:
@@ -577,7 +564,7 @@ class TestCommsAndSubagentDelegation:
         captured = _spy_on_stack(monkeypatch)
         llm = _fake_llm()
 
-        create_comms_middleware(chat_llm=llm)
+        create_comms_middleware(lookup_tools=frozenset(), chat_llm=llm)
 
         assert captured == {
             "agent_name": "comms_agent",
@@ -586,17 +573,19 @@ class TestCommsAndSubagentDelegation:
             "context": ContextOptions(
                 compact=False,
                 archive="executor",
-                summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+                summarization_trigger=("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS),
+                summarization_keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
             ),
         }
 
     def test_the_comms_stack_is_this_exact_sequence(self) -> None:
-        assert _types(create_comms_middleware(chat_llm=_fake_llm())) == [
+        assert _types(create_comms_middleware(lookup_tools=frozenset(), chat_llm=_fake_llm())) == [
             LLMAccountingMiddleware,
             HILApprovalMiddleware,
             WorkspaceArchivingSummarizationMiddleware,
             MediaDescriptionMiddleware,
             LoopGuardMiddleware,
+            InterruptedLookupsMiddleware,
             # Innermost: the empty-completion retry runs closest to the model,
             # so the turn delivers the reply the user will actually get.
             EmptyCompletionRetryMiddleware,

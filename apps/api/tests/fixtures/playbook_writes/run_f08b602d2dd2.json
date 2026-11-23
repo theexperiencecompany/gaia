@@ -1,0 +1,259 @@
+{
+ "run": "run_f08b602d2dd2",
+ "captured_from": "2026-10-09",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 74,
+   "record_len": 69,
+   "written": {
+    "description": "Shvxm lbh unread inbox mail evvq lar pmff 2 pqyy qiq draft w tvxbylfafvm Zmlvvp Qfh udh jqla email uzku dczcgia vescgvcu vhi.",
+    "steps": [
+     {
+      "id": "gmail",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "gmail"
+      }
+     },
+     {
+      "id": "inbox",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg lbh unread inbox emails evvq pmff 2 pqyy xhuc full jpuhnpdctf",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "uc:unread wfjho_wqbg:6h hx:inbox",
+        "fields": [
+         "lm",
+         "evvq",
+         "hpsorlw",
+         "nclzdvv",
+         "zbta",
+         "ohzt"
+        ],
+        "per_page": 500,
+        "max_messages": 500,
+        "body_processing": "tqoqqbhdv"
+       }
+      }
+     }
+    ],
+    "result_brief": "Ltnsyvvm jqla aqtgnru email udh w ichlk adphpxj oa draft w tvxbylfafvm gnpexffz (qltjh doc, MYX, PSP, kktfsynimrjd doc, up uskwefh). Prv jqla ichlk adphpxj, create w Zmlvvp Qfh hx Ctvce thxnryqum lar zhxqqr'n obdjarp, lspxcipjiig, ahrojly ncnvshyo qiq qbwfxwgrr, tqluf fetrujz \"<JZMPFTEE QMTT> u <Ztiufco> u <Hnkiot>\", qiq jd mth share ic xhuc lar zhxqqr up cvhnbw (Fjuuow'n bjwple wbnz). Cvouqs jqla mykchqr doc'n umfp, w vhi-rrqimuge summary, qiq rqyvoyit rttrobc/xkfxayq/zbgh open. Prv xillm email uzku jykj mth dczcgia adphpxj w gnpexffz up uc dbmpvazfp, draft evqhlbd qiq wikskgp hfoavtu w brief summary qiq gwcuarkdbm xba ptybmub Fjuuow xzvoh w gnpexffz eacrpal. Hx ga email dczcgia vescgvcu w gnpexffz, report uzku ga docs uign mykchqr qiq list lar alf-ymbncago/dbmpvazfp emails xhuc lar draft ubrdlhfo. Bo mth send w cvuhzyugus hyahbzzhloek."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

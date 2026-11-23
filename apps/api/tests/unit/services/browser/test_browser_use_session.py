@@ -1,4 +1,4 @@
-"""The run's Browser-Use session: stealth on every tab for its user, a capped load wait, and tabs titled from their documents."""
+"""The run's Browser-Use session: stealth on every tab for its user unless on Fortress, a capped load wait, and tabs titled from their documents."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.unit
 
 
-def _session(user_id: str | None = "user-1") -> GaiaBrowserSession:
-    return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id)
+def _session(user_id: str | None = "user-1", *, fortress: bool = False) -> GaiaBrowserSession:
+    return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id, fortress=fortress)
 
 
 def _tabs(
@@ -79,6 +79,21 @@ async def test_every_tab_gets_the_users_stealth_script_once(
         {"params": {"source": source, "runImmediately": True}, "session_id": "sess-t2"},
     ]
     assert focuses == [True, True, False]
+
+
+@pytest.mark.regression
+async def test_a_fortress_engines_tabs_get_no_stealth_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for #1610: Fortress spoofs in C++, and a page script on top contradicts its persona."""
+    add_script = AsyncMock(return_value={"identifier": "1"})
+    served, _ = _tabs(monkeypatch, add_script)
+    session = _session("user-1", fortress=True)
+
+    assert await session.get_or_create_cdp_session(target_id="t1") is served["t1"]
+    await session.get_or_create_cdp_session(target_id="t2", focus=False)
+
+    add_script.assert_not_awaited()
 
 
 async def test_a_script_that_did_not_register_is_tried_again_and_the_page_goes_on(

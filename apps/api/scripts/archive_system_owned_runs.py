@@ -26,6 +26,7 @@ from bson import ObjectId
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.constants.todos import TodoCompleter
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.todos import todo_repository
@@ -58,13 +59,13 @@ USER_OWNED_COLLECTIONS = (
     "browser_tasks",
     "calendar",
     "checkout_sessions",
+    "conversation_entries",
     "conversations",
     "device_tokens",
     "e2b_sandboxes",
     "files",
     "hil_approvals",
     "llm_calls",
-    "mail",
     "notes",
     "notifications",
     "pending_platform_registrations",
@@ -141,7 +142,9 @@ async def _archive_todo(todo_id: str) -> None:
         todo_id, user_id=SYSTEM_USER_ID, update=TodoUpdate(scheduled_at=None)
     )
     # Completing a tracked todo is its archive, and tears down its trigger subscriptions.
-    await tracked_todo_service.complete_tracked_todo(todo_id, SYSTEM_USER_ID, ARCHIVE_SUMMARY)
+    await tracked_todo_service.complete_tracked_todo(
+        todo_id, SYSTEM_USER_ID, ARCHIVE_SUMMARY, by=TodoCompleter.SYSTEM
+    )
 
 
 async def _archive_workflow(workflow_id: str) -> None:

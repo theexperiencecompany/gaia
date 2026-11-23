@@ -1,0 +1,134 @@
+# L0: clear and harmless. Act now, ask nothing, confirm in a line.
+# The follow-up/todo is read back from the API; the question and word budgets
+# are read from everything the user saw after their message.
+
+- id: own-l0-reminder-plumber
+  ticket: "Fully specified reminder: create it, no question, short confirmation."
+  prompt: "remind me tomorrow at 6pm to call the plumber"
+  tags: [ownership, L0, reminder]
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [plumber], min_criteria: 1}
+      followup: required
+      followup_contains: plumber
+      questions: {min: 0, max: 0}
+      max_words: 40
+    must_not_communicate: ["what time", "which day"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l0-reminder-expense
+  ticket: "Day and time given: create the reminder without confirming first."
+  prompt: "remind me on friday at 9am to submit the expense report"
+  tags: [ownership, L0, reminder]
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [expense], min_criteria: 1}
+      followup: required
+      followup_contains: expense
+      questions: {min: 0, max: 0}
+      max_words: 40
+    must_not_communicate: ["what time", "should i go ahead"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l0-todo-passport
+  ticket: "Plain todo: add it as a todo, not a tracked follow-up, no question."
+  prompt: "add renew passport to my todo list"
+  tags: [ownership, L0, todo]
+  setup:
+    verify: {todos_containing: passport}
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [passport], min_criteria: 1}
+      followup: forbidden
+      questions: {min: 0, max: 0}
+      max_words: 40
+    end_state: {todos_containing: 1}
+    score: {gates: [delegation, executor_brief, end_state, followup, question_budget, reply_brevity]}
+
+- id: own-l0-reminder-vitamins
+  ticket: "Recurring reminder fully specified: create it, ask nothing."
+  prompt: "set a reminder for 7:30am every weekday to take my vitamins"
+  tags: [ownership, L0, reminder, recurring]
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [vitamin], min_criteria: 1}
+      followup: required
+      followup_contains: vitamin
+      questions: {min: 0, max: 0}
+      max_words: 40
+    must_not_communicate: ["what time", "which days"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l0-todo-oat-milk
+  ticket: "Shopping item as a todo: add it, no ceremony."
+  prompt: "add buy oat milk to my todos"
+  tags: [ownership, L0, todo]
+  setup:
+    verify: {todos_containing: oat milk}
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [oat milk], min_criteria: 1}
+      followup: forbidden
+      questions: {min: 0, max: 0}
+      max_words: 40
+    end_state: {todos_containing: 1}
+    score: {gates: [delegation, executor_brief, end_state, followup, question_budget, reply_brevity]}
+
+- id: own-l0-reminder-laundry
+  ticket: "Relative time reminder: create it for two hours from now, no question."
+  prompt: "remind me in 2 hours to move the laundry to the dryer"
+  tags: [ownership, L0, reminder]
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [laundry], min_criteria: 1}
+      followup: required
+      followup_contains: laundry
+      questions: {min: 0, max: 0}
+      max_words: 40
+    must_not_communicate: ["what time", "when should"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l0-todo-taxes
+  ticket: "Todo with priority and due date: add it, no question."
+  prompt: "add a high priority todo: file the quarterly taxes by april 15"
+  tags: [ownership, L0, todo]
+  setup:
+    verify: {todos_containing: tax}
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [tax], min_criteria: 1}
+      followup: forbidden
+      questions: {min: 0, max: 0}
+      max_words: 40
+    end_state: {todos_containing: 1}
+    score: {gates: [delegation, executor_brief, end_state, followup, question_budget, reply_brevity]}
+
+- id: own-l0-reminder-rent
+  ticket: "Dated reminder: create it, confirm in a line."
+  prompt: "remind me on the 1st of next month at 10am to pay rent"
+  tags: [ownership, L0, reminder]
+  expected:
+    category: l0_act
+    delegation: required
+    ownership:
+      brief: {terms: [rent], min_criteria: 1}
+      followup: required
+      followup_contains: rent
+      questions: {min: 0, max: 0}
+      max_words: 40
+    must_not_communicate: ["what time", "which month"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}

@@ -3,39 +3,29 @@ from datetime import UTC, datetime
 from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
-from app.agents.prompts.onboarding_prompts import (
-    ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT,
-)
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
     TRIGGERED_ACCOUNT_SECTION,
-    WORKFLOW_AUTO_NOTIFY_SECTION,
+    WORKFLOW_DELIVERY_SECTIONS,
     WORKFLOW_EXECUTION_PROMPT,
-    WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
 from app.agents.workspace.paths import safe_upload_filename
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
-from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
-from app.db.repositories.users import user_repository
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
-from app.models.onboarding_models import PersistedTriageSummary
-from app.models.user_models import OnboardingPhase, OnboardingSubdocument
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS, ConversationSource
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
+from app.models.trigger_gate_models import QuietHoursBypass
 from app.models.webhook_models import TriggerEventAccount
+from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
+from shared.py.conversation_wire import ReplyToMessageData
 from shared.py.wide_events import log
 
 
@@ -43,7 +33,7 @@ def create_system_message(
     user_id: str | None = None,
     user_name: str | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
-    source: str | None = None,
+    source: ConversationSource | None = None,
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
@@ -55,6 +45,8 @@ def create_system_message(
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
         return SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE)
+    if source is None:
+        raise ValueError("a comms prompt needs the surface its reply is read on")
     return SystemMessage(content=get_comms_static_prompt(source))
 
 
@@ -63,9 +55,8 @@ def build_current_time_message(
 ) -> HumanMessage:
     """Return a tiny HumanMessage carrying the current UTC + local time.
 
-    Kept out of system_instruction and put in contents instead: Gemini's
-    implicit cache matches the longest common prefix, and a per-minute-ticking
-    byte in system_instruction would push the cache boundary back every call.
+    Written into the thread with the turn it dates and kept there, so a later
+    turn's request extends this one instead of rewriting a shared clock.
     """
     utc_now = datetime.now(UTC).strftime("%A, %B %d, %Y, %H:%M UTC")
     parts = [f"[Current UTC Time: {utc_now}]"]
@@ -118,16 +109,6 @@ Use call_executor to delegate this task. The executor should:
 Execute immediately without asking for clarification."""
 
 
-class TriggerEmailData(BaseModel):
-    """The ``email_data`` of a Gmail-triggered run, as the prompt reads it."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    sender: str = "Unknown"
-    subject: str = "No Subject"
-    message_text: str = ""
-
-
 class _BatchedTriggerPayload(TypedDict, total=False):
     """A batched run's payload: its events, unchecked, as providers send anything."""
 
@@ -149,29 +130,6 @@ def _event_accounts(payload: Mapping[str, object]) -> list[str]:
             tagged: TriggerEventAccount = cast(TriggerEventAccount, source)
             names.add(tagged.get("gaia_account"))
     return sorted(name for name in names if isinstance(name, str) and name)
-
-
-class WorkflowTriggerContext(BaseModel):
-    """The keys ``format_workflow_execution_message`` reads off a run's trigger context.
-
-    The bag itself is open by construction — schedulers spread arbitrary provider
-    trigger data through it alongside the agent's own keys — so this is a view of
-    it, parsed once here, not its full shape.
-    """
-
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-
-    tracked_todos_context: str = ""
-    workflow_id: str | None = None
-    workflow_notify_on_completion: bool = True
-    playbook_fallback: str | None = Field(
-        default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
-    )
-    type: str | None = None
-    email_data: TriggerEmailData = Field(default_factory=TriggerEmailData)
-    triggered_at: str = "Unknown"
-    # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
-    trigger_data: dict[str, object] = Field(default_factory=dict)
 
 
 async def format_workflow_execution_message(
@@ -225,17 +183,12 @@ async def format_workflow_execution_message(
             tracked_todos_context=tracked_todos_ctx
         )
 
-    # Background workflow runs send an automatic completion notification unless
-    # opted out; tell the agent which mode it's in so it neither double-notifies
-    # nor stays silent. Interactive runs get neither section.
+    # Tell a background workflow run how its result reaches the user so it
+    # neither double-notifies nor stays silent. Interactive runs get no section.
     notification_section = ""
     if trigger.workflow_id:
-        notify_on_completion = (
-            workflow.notify_on_completion if workflow else trigger.workflow_notify_on_completion
-        )
-        notification_section = (
-            WORKFLOW_AUTO_NOTIFY_SECTION if notify_on_completion else WORKFLOW_SILENT_NOTIFY_SECTION
-        )
+        delivery = workflow.delivery if workflow else trigger.workflow_delivery
+        notification_section = WORKFLOW_DELIVERY_SECTIONS[delivery]
 
     common_args = {
         "workflow_title": workflow_title,
@@ -251,6 +204,12 @@ async def format_workflow_execution_message(
     accounts = _event_accounts(trigger.trigger_data)
     if accounts:
         fallback_section += TRIGGERED_ACCOUNT_SECTION.format(accounts=", ".join(accounts))
+    if trigger.wait_met:
+        fallback_section += f"\n\n{trigger.wait_met}"
+    if isinstance(trigger.quiet_hours, QuietHoursBypass):
+        fallback_section += "\n\n" + QUIET_HOURS_BYPASS_NOTE.format(
+            reason=trigger.quiet_hours.reason
+        )
 
     # Email-triggered workflows get enhanced context
     if trigger.type == "gmail":
@@ -312,62 +271,6 @@ def format_reply_context(reply_to_message: ReplyToMessageData, existing_content:
     context = f"""[The user is responding to {role_label} earlier message: "{reply_to_message.content}"]"""
 
     return f"{context}\n\n{existing_content}" if existing_content else context
-
-
-# Must match the prefix the frontend's RevealTodos run-now demo sends.
-_RUN_NOW_DEMO_PREFIX = "Execute this todo for me:"
-
-
-async def get_onboarding_system_prompt_if_applicable(
-    user_id: str,
-    conversation_id: str,
-    latest_user_message: str | None = None,
-) -> str | None:
-    """Return the onboarding system prompt for a run-now demo turn, else None."""
-    try:
-        is_run_now_demo = bool(
-            latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
-        )
-        if not is_run_now_demo:
-            return None
-
-        user_doc = await user_repository.get(user_id)
-        if not user_doc:
-            return None
-
-        onboarding = user_doc.onboarding or OnboardingSubdocument()
-        if onboarding.phase == OnboardingPhase.COMPLETED:
-            return None
-
-        name = user_doc.name or "there"
-        profession = (onboarding.preferences.profession if onboarding.preferences else None) or ""
-        # Persisted as the triage model's dump; only its summary line belongs in a
-        # prompt. No default: the only consumer is the truthiness check below, so
-        # `""` and None were indistinguishable — two mutants no test could kill.
-        triage_summary = PersistedTriageSummary.model_validate(
-            onboarding.triage_summary or {}
-        ).summary
-
-        onboarding_context = (
-            f"Profession: {profession}" if profession else "Profession: not specified"
-        )
-        if triage_summary:
-            onboarding_context += f"\nInbox summary: {triage_summary}"
-
-        return ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
-            name=name,
-            onboarding_context=onboarding_context,
-        )
-
-    except Exception as e:
-        log.warning(
-            "[onboarding_prompt] Failed to check onboarding conversation",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-            conversation_id=conversation_id,
-        )
-        return None
 
 
 def _uploaded_file_lines(

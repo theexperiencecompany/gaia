@@ -9,7 +9,7 @@ _bulk_set / _bulk_delete; every read returns a typed model.
 """
 
 from collections.abc import Collection, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import re
 from typing import Literal
 
@@ -17,16 +17,25 @@ from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.cache import TODO_CACHE_PREFIX
-from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL, ONBOARDING_LABEL
-from app.db.repositories.base import UserScopedRepository, cached_query
+from app.constants.todos import (
+    BLOCKING_LABEL,
+    GAIA_TRACKED_LABEL,
+    ONBOARDING_LABEL,
+    TODO_STATS_LABEL_LIMIT,
+)
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedUserScopedRepository, cached_query
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
+    DueRange,
     ExternalRef,
+    ExternalRefSource,
     SearchMode,
     SubTask,
     SubTodoCount,
     TodoCounts,
+    TodoDayWindow,
     TodoDocument,
     TodoLabelCount,
     TodoPage,
@@ -34,10 +43,12 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdate,
 )
-from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionStatus
-
-# Top-N labels surfaced in the stats aggregation (mirrors the legacy pipeline).
-_STATS_LABEL_LIMIT = 50
+from app.models.trigger_gate_models import GateSkipRecord, TriggerGate
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    TriggerSubscription,
+    TriggerSubscriptionStatus,
+)
 
 
 class _FacetCount(BaseModel):
@@ -61,6 +72,7 @@ class _StatsFacet(BaseModel):
     overdue: list[_FacetCount] = Field(default_factory=list)
     by_priority: list[_GroupCount] = Field(default_factory=list)
     by_project: list[_GroupCount] = Field(default_factory=list)
+    pending_by_project: list[_GroupCount] = Field(default_factory=list)
     labels: list[_GroupCount] = Field(default_factory=list)
 
 
@@ -72,6 +84,15 @@ class _CountsFacet(BaseModel):
     completed: list[_FacetCount] = Field(default_factory=list)
 
 
+def _between(due: DueRange) -> dict[str, datetime]:
+    return {"$gte": due.start, "$lte": due.end}
+
+
+def _overdue_match(window: TodoDayWindow) -> dict[str, object]:
+    """Match open todos due before the user's local today: the overdue rule."""
+    return {"completed": False, "due_date": {"$lt": window.today_start}}
+
+
 def _external_ref_filter(ref: ExternalRef) -> dict[str, object]:
     # $type keeps the query inside the partial filter; a bare equality is not, and scans.
     return {
@@ -80,11 +101,15 @@ def _external_ref_filter(ref: ExternalRef) -> dict[str, object]:
     }
 
 
+def _own_open_query(user_id: str) -> dict[str, object]:
+    return {"user_id": user_id, "completed": False, "labels": {"$nin": [GAIA_TRACKED_LABEL]}}
+
+
 def _first_count(buckets: list[_FacetCount]) -> int:
     return buckets[0].count if buckets else 0
 
 
-class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
+class TodosRepository(CachedUserScopedRepository[TodoDocument, TodoUpdate]):
     """The todos collection repository (user-scoped, cached)."""
 
     collection_name = "todos"
@@ -145,13 +170,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
 
         if params.project_id is not None:
             query["project_id"] = params.project_id
-        elif inbox_project_id is not None and not (
-            params.q
-            or params.completed is not None
-            or params.priority
-            or params.labels
-            or params.parent_todo_id
-        ):
+        elif inbox_project_id is not None and params.defaults_to_inbox:
             query["project_id"] = inbox_project_id
 
         if params.completed is not None:
@@ -175,14 +194,15 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             if params.due_date_end:
                 date_query["$lte"] = params.due_date_end
             query["due_date"] = date_query
+        if params.completed_after:
+            query["completed_at"] = {"$gte": params.completed_after}
 
         if params.overdue is True:
-            query["due_date"] = {"$lt": datetime.now(UTC)}
-            query["completed"] = False
+            query.update(_overdue_match(params.required_day_window))
         elif params.overdue is False and params.has_due_date is not False:
             query["$or"] = [
                 {"due_date": None},
-                {"due_date": {"$gte": datetime.now(UTC)}},
+                {"due_date": {"$gte": params.required_day_window.today_start}},
             ]
 
         return query
@@ -203,27 +223,27 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return TodoPage(items=items, total=total)
 
     @cached_query(TodoStats)
-    async def compute_stats(self, *, user_id: str) -> TodoStats:
+    async def compute_stats(self, *, user_id: str, window: TodoDayWindow) -> TodoStats:
         """Aggregate todo statistics for a user (totals, buckets, top labels)."""
-        now = datetime.now(UTC)
         pipeline: list[dict[str, object]] = [
             {"$match": {"user_id": user_id}},
             {
                 "$facet": {
                     "total": [{"$count": "count"}],
                     "completed": [{"$match": {"completed": True}}, {"$count": "count"}],
-                    "overdue": [
-                        {"$match": {"completed": False, "due_date": {"$lt": now}}},
-                        {"$count": "count"},
-                    ],
+                    "overdue": [{"$match": _overdue_match(window)}, {"$count": "count"}],
                     "by_priority": [{"$group": {"_id": "$priority", "count": {"$sum": 1}}}],
                     "by_project": [{"$group": {"_id": "$project_id", "count": {"$sum": 1}}}],
+                    "pending_by_project": [
+                        {"$match": {"completed": False}},
+                        {"$group": {"_id": "$project_id", "count": {"$sum": 1}}},
+                    ],
                     "labels": [
                         {"$match": {"completed": False}},
                         {"$unwind": "$labels"},
                         {"$group": {"_id": "$labels", "count": {"$sum": 1}}},
                         {"$sort": {"count": -1}},
-                        {"$limit": _STATS_LABEL_LIMIT},
+                        {"$limit": TODO_STATS_LABEL_LIMIT},
                     ],
                 }
             },
@@ -241,6 +261,9 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             overdue=_first_count(facet.overdue),
             by_priority={g.key: g.count for g in facet.by_priority if g.key is not None},
             by_project={g.key: g.count for g in facet.by_project if g.key is not None},
+            pending_by_project={
+                g.key: g.count for g in facet.pending_by_project if g.key is not None
+            },
             completion_rate=round((completed / total * 100) if total > 0 else 0, 2),
             labels=[
                 TodoLabelCount(name=g.key, count=g.count) for g in facet.labels if g.key is not None
@@ -248,13 +271,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         )
 
     @cached_query(TodoCounts)
-    async def compute_counts(self, *, user_id: str, inbox_project_id: str) -> TodoCounts:
+    async def compute_counts(
+        self, *, user_id: str, inbox_project_id: str, window: TodoDayWindow
+    ) -> TodoCounts:
         """Dashboard/sidebar counts (inbox, today, upcoming, overdue, completed)."""
-        now = datetime.now(UTC)
-        today = now.date()
-        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
-        today_end = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
-        upcoming_end = now + timedelta(days=7)
         pipeline: list[dict[str, object]] = [
             {"$match": {"user_id": user_id}},
             {
@@ -264,27 +284,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                         {"$count": "count"},
                     ],
                     "today": [
-                        {
-                            "$match": {
-                                "due_date": {"$gte": today_start, "$lte": today_end},
-                                "completed": False,
-                            }
-                        },
+                        {"$match": {"due_date": _between(window.today), "completed": False}},
                         {"$count": "count"},
                     ],
                     "upcoming": [
-                        {
-                            "$match": {
-                                "due_date": {"$gt": today_end, "$lte": upcoming_end},
-                                "completed": False,
-                            }
-                        },
+                        {"$match": {"due_date": _between(window.upcoming), "completed": False}},
                         {"$count": "count"},
                     ],
-                    "overdue": [
-                        {"$match": {"due_date": {"$lt": now}, "completed": False}},
-                        {"$count": "count"},
-                    ],
+                    "overdue": [{"$match": _overdue_match(window)}, {"$count": "count"}],
                     "completed": [{"$match": {"completed": True}}, {"$count": "count"}],
                 }
             },
@@ -299,6 +306,13 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             upcoming=_first_count(facet.upcoming),
             overdue=_first_count(facet.overdue),
             completed=_first_count(facet.completed),
+        )
+
+    async def next_due(self, user_id: str, *, after: datetime) -> TodoDocument | None:
+        """Return the open todo with the soonest due date after the given instant."""
+        return await self._find_one(
+            {"user_id": user_id, "completed": False, "due_date": {"$gt": after}},
+            sort=[("due_date", 1)],
         )
 
     @cached_query(list[TodoLabelCount])
@@ -397,6 +411,32 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             }
         )
 
+    async def list_completed_since(self, user_id: str, *, since: datetime) -> list[TodoDocument]:
+        """Return todos completed at or after since (UTC), newest completion first.
+
+        Used as the briefing's look-back set.
+        """
+        return await self._find(
+            {"user_id": user_id, "completed": True, "completed_at": {"$gte": since}},
+            sort=[("completed_at", -1)],
+        )
+
+    async def list_external_ref_activity_since(
+        self, user_id: str, source: ExternalRefSource, *, since: datetime
+    ) -> list[TodoDocument]:
+        """Return the user's todos about one kind of outside object opened or completed since (UTC)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "external_ref.source": source.value,
+                "$or": [{"created_at": {"$gte": since}}, {"completed_at": {"$gte": since}}],
+            }
+        )
+
+    async def list_open_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """Return the user's own (non-tracked) open todos, most-recently-updated first."""
+        return await self._find(_own_open_query(user_id), sort=[("updated_at", -1)], limit=limit)
+
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.
 
@@ -432,6 +472,12 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._find_one(
             {"user_id": user_id, **_external_ref_filter(ref)}, sort=[("created_at", -1)]
         )
+
+    async def list_open_by_external_ref_source(
+        self, source: ExternalRefSource
+    ) -> list[TodoDocument]:
+        """Every user's open todos about one kind of outside object, for one-off migrations."""
+        return await self._find({"completed": False, "external_ref.source": source.value})
 
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
         """Every user's active tracked todos — the maintenance sweep's scan set."""
@@ -563,21 +609,19 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
 
         One generation bump invalidates the whole scope.
         """
-        return await self._bulk_set([(tid, update) for tid in todo_ids], scope=user_id)
+        return await self._bulk_set([(tid, update) for tid in todo_ids], user_id=user_id)
 
     async def bulk_delete(self, user_id: str, todo_ids: list[str]) -> int:
         """Delete many of the user's todos in one round trip, returning the count deleted."""
-        return await self._bulk_delete(todo_ids, scope=user_id)
+        return await self._bulk_delete(todo_ids, user_id=user_id)
 
     async def delete_all_for_user(self, user_id: str) -> int:
         """Delete every todo owned by user_id (dev-data reset); returns the count."""
-        return await self._delete_many({"user_id": user_id}, scope=user_id)
+        return await self._delete_many({"user_id": user_id})
 
     async def delete_onboarding_todos(self, user_id: str) -> int:
         """Delete the user's onboarding-seeded todos; returns the count deleted."""
-        return await self._delete_many(
-            {"user_id": user_id, "labels": ONBOARDING_LABEL}, scope=user_id
-        )
+        return await self._delete_many({"user_id": user_id, "labels": ONBOARDING_LABEL})
 
     async def move_todos_to_project(
         self, user_id: str, from_project_id: str, to_project_id: str
@@ -597,7 +641,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$addToSet": {"labels": {"$each": labels}}},
-            scope=user_id,
         )
 
     async def add_references(
@@ -607,7 +650,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$addToSet": {"references": {"$each": references}}},
-            scope=user_id,
         )
 
     async def add_subtask(
@@ -617,7 +659,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$push": {"subtasks": subtask.model_dump()}},
-            scope=user_id,
         )
 
     async def remove_subtask(
@@ -627,7 +668,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$pull": {"subtasks": {"id": subtask_id}}},
-            scope=user_id,
         )
 
     async def set_subtask_fields(
@@ -648,7 +688,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": fields},
-            scope=user_id,
             array_filters=[{"elem.id": subtask_id}],
         )
 
@@ -663,7 +702,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": {"workflow_id": workflow_id}},
-            scope=user_id,
             extra_filter={"labels": {"$ne": GAIA_TRACKED_LABEL}},
         )
 
@@ -672,7 +710,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$unset": {"workflow_id": ""}},
-            scope=user_id,
         )
 
     async def replace_note_fields(
@@ -692,7 +729,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         extra: dict[str, object] = {"user_id": user_id}
         if expected_updated_at is not None:
             extra["updated_at"] = expected_updated_at
-        return await self._apply_update(todo_id, user_id, extra, update, touch=touch)
+        return await self._apply_update(todo_id, extra, update, touch=touch)
 
     async def add_trigger_subscription(
         self, todo_id: str, *, user_id: str, subscription: TriggerSubscription
@@ -727,9 +764,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 }
             }
         ]
-        return await self._apply_pipeline_update(
-            self._scoped_filter(todo_id, user_id), pipeline, scope=user_id
-        )
+        return await self._apply_pipeline_update(self._scoped_filter(todo_id, user_id), pipeline)
 
     async def remove_trigger_subscriptions(
         self, todo_id: str, *, user_id: str, subscription_ids: Collection[str]
@@ -743,7 +778,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$pull": {"trigger_subscriptions": {"id": {"$in": ids}}}},
-            scope=user_id,
             extra_filter={"trigger_subscriptions.id": {"$in": ids}},
             return_document=False,
         )
@@ -759,7 +793,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": {"trigger_subscriptions": []}},
-            scope=user_id,
             extra_filter={"trigger_subscriptions.0": {"$exists": True}},
             return_document=False,
         )
@@ -776,8 +809,47 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 },
                 "$addToSet": {"labels": BLOCKING_LABEL},
             },
-            scope=user_id,
             array_filters=[{"watch.id": {"$in": list(subscription_ids)}}],
+        )
+
+    async def set_subscription_gate(
+        self, todo_id: str, *, user_id: str, subscription_id: str, gate: TriggerGate
+    ) -> TodoDocument | None:
+        """Store gate on one run watch of the user's todo.
+
+        Returns the todo after the write, or None when the todo is not the user's or
+        has no execute watch with that id: only a watch that starts a run takes a gate.
+        """
+        watch = {"id": subscription_id, "action": SubscriptionAction.EXECUTE.value}
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$set": {"trigger_subscriptions.$[watch].gate": gate.model_dump()}},
+            extra_filter={"trigger_subscriptions": {"$elemMatch": watch}},
+            array_filters=[{f"watch.{field}": value for field, value in watch.items()}],
+        )
+
+    async def remember_subscription_gate_skip(
+        self, *, user_id: str, subscription_id: str, skip: GateSkipRecord
+    ) -> None:
+        """Count skip on the gate of the user's run watch and keep it among the newest few."""
+        await self._apply_raw_update(
+            {"user_id": user_id},
+            {
+                "$push": {
+                    "trigger_subscriptions.$[watch].gate.recent_skips": {
+                        "$each": [skip.model_dump()],
+                        "$slice": -GATE_RECENT_SKIPS_KEPT,
+                    }
+                },
+                "$inc": {"trigger_subscriptions.$[watch].gate.skipped_count": 1},
+            },
+            extra_filter={
+                "trigger_subscriptions": {
+                    "$elemMatch": {"id": subscription_id, "gate": {"$ne": None}}
+                }
+            },
+            array_filters=[{"watch.id": subscription_id}],
+            return_document=False,
         )
 
     async def resume_trigger_subscriptions(
@@ -800,7 +872,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         resumed = await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": fields},
-            scope=user_id,
             array_filters=array_filters,
         )
         if resumed is None:
@@ -808,7 +879,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         unblocked = await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$pull": {"labels": BLOCKING_LABEL}},
-            scope=user_id,
             extra_filter={
                 "labels": BLOCKING_LABEL,
                 "trigger_subscriptions": {
@@ -818,12 +888,18 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         )
         return unblocked or resumed
 
+    async def update_if_completed(
+        self, todo_id: str, user_id: str, *, update: TodoUpdate
+    ) -> TodoDocument | None:
+        """Apply update only while the todo is still completed (compare-and-set); None otherwise."""
+        return await self._apply_update(todo_id, {"user_id": user_id, "completed": True}, update)
+
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
     ) -> TodoDocument | None:
         """Apply update only while scheduled_at is still expected (compare-and-set); None otherwise."""
         return await self._apply_update(
-            todo_id, user_id, {"user_id": user_id, "scheduled_at": expected}, update
+            todo_id, {"user_id": user_id, "scheduled_at": expected}, update
         )
 
     async def append_text_field(
@@ -853,9 +929,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         pipeline: list[dict[str, object]] = [
             {"$set": {field: value, "updated_at": datetime.now(UTC)}}
         ]
-        return await self._apply_pipeline_update(
-            self._scoped_filter(todo_id, user_id), pipeline, scope=user_id
-        )
+        return await self._apply_pipeline_update(self._scoped_filter(todo_id, user_id), pipeline)
 
 
 def _same_active_watch(watch: str, subscription: TriggerSubscription) -> dict[str, object]:

@@ -41,7 +41,7 @@ def _todo_doc(**overrides: object) -> TodoDocument:
         "updated_at": datetime.now(UTC),
     }
     data.update(overrides)
-    return TodoDocument(**data)
+    return TodoDocument.model_validate(data)
 
 
 @pytest.fixture
@@ -111,11 +111,6 @@ class TestBuildVfsLabel:
 
     def test_label_never_contains_user_id(self) -> None:
         assert USER_ID not in build_vfs_label(TODO_ID)
-
-    def test_archive_label_format(self) -> None:
-        assert build_vfs_label(TODO_ID, archived=True) == (
-            f"/workspace/gaia-tasks/archive/{TODO_ID}"
-        )
 
 
 class TestReadCanvas:

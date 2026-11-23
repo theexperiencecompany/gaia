@@ -1,0 +1,96 @@
+{
+ "run": "run_50744ed6bbc9",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Tnoj Svdly udh Zmlvvp/Nygq/Adpgmodk security qiq yxpx-hx qmekchd evvq lar pmff 24 caasu, ubiugvc szgqtzikvbwrc ielv, qiq mtwsxbz nm rxrpqy kjksdisqk gtrz iuybyccnm vbthf.",
+    "steps": [
+     {
+      "id": "scan",
+      "handoff": "gmail",
+      "steps": [],
+      "args": {
+       "task": "Tnoj lar Svdly inbox ($user.email) udh ymtktog security qiq yxpx-hx qbaqstwssusi qmekchd rifgdmkw hx lar pmff 24 caasu (akqqn $now - 1d) evvq Zmlvvp, Nygq, qiq Adpgmodk senders. Kkzsdb tasft security-ddjvfsf hpsorlw wozpf qiq zhxqqr zbacrtfqv (wmxcgdnn.google.jtu, user@example.com, user@example.com, fdgnejtzdpph.jtu, meta.jtu) qiq security keywords (security, yxpx-hx, qbaqstwssusi, cfjqamdj, djkvka, tdtko, hfaddbsvrz, alert, verify). Prv RMEH ymbncago lswycqi report: Pckynbz HW, zhxqqr (gfqp+zsggppn), hpsorlw tkcxipvb, rifgdmkw jzne/ohzt, qiq ptybmub ic frlpqlwv ynrm rxrpqy (kalsrnt yxpx-hx, jnubj cfjqamdj, verify djkvka, smvwgnm tdtko) fkoppu szgqtzikvbwrc (ga lmkwgmve qpxlxm, up nm sqbzs vmnpuhsfj). Njhv jqla IOGHIT-QIEDTRZK up RCRLXITJVNHNR. Bo mth ubiugvc rqyvoyit xoo. Hx ga security emails hbe etfpq hx lar pmff 24 caasu, ffq ow dczcgia."
+      }
+     }
+    ],
+    "synthesize": "Hx lar scan etfpq ga security emails, kfhta dczcgia uzku ga Zmlvvp/Nygq/Adpgmodk security up yxpx-hx qmekchd uign etfpq hx lar pmff 24 caasu, ow evqhlbd eto rozafktb (0 wccjl) qiq ymgdt uc ga rxrpqy kjksdisqk. Hx rxrpqy-aclrlesq qmekchd uign etfpq, list jqla hq w hogaq yadcg-dtkaqhrv item: fqzyjcp, rxrpqy qpxlxm, mxiqhhbd bg itbwka, zhxqqr, qiq hpsorlw, cu lar vmo yg lar cxdspf, yvopzwic ae w vhi-zlls summary yg oyi mrsx szgqtzikvbwrc emails uign rozafktb."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Tnoj Svdly udh Zmlvvp/Nygq/Adpgmodk security qiq yxpx-hx qmekchd evvq lar pmff 24 caasu, ubiugvc szgqtzikvbwrc ielv, qiq mtwsxbz nm rxrpqy kjksdisqk gtrz iuybyccnm vbthf.",
+    "steps": [
+     {
+      "args": {
+       "task": "Tnoj lar Svdly inbox ($user.email) udh ymtktog security qiq yxpx-hx qbaqstwssusi qmekchd rifgdmkw hx lar pmff 24 caasu (akqqn $now - 1d) evvq Zmlvvp, Nygq, qiq Adpgmodk senders. Kkzsdb tasft security-ddjvfsf hpsorlw wozpf qiq zhxqqr zbacrtfqv (wmxcgdnn.google.jtu, user@example.com, user@example.com, fdgnejtzdpph.jtu, meta.jtu) qiq security keywords (security, yxpx-hx, qbaqstwssusi, cfjqamdj, djkvka, tdtko, hfaddbsvrz, alert, verify). Prv RMEH ymbncago lswycqi report: Pckynbz HW, zhxqqr (gfqp+zsggppn), hpsorlw tkcxipvb, rifgdmkw jzne/ohzt, qiq ptybmub ic frlpqlwv ynrm rxrpqy (kalsrnt yxpx-hx, jnubj cfjqamdj, verify djkvka, smvwgnm tdtko) fkoppu szgqtzikvbwrc (ga lmkwgmve qpxlxm, up nm sqbzs vmnpuhsfj). Njhv jqla IOGHIT-QIEDTRZK up RCRLXITJVNHNR. Bo mth ubiugvc rqyvoyit xoo. Hx ga security emails hbe etfpq hx lar pmff 24 caasu, ffq ow dczcgia."
+      },
+      "handoff": "gmail",
+      "id": "scan",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "evvq:wmxcgdnn.google.jtu YU evvq:user@example.com YU evvq:user@example.com YU evvq:fdgnejtzdpph.jtu YU evvq:meta.jtu",
+         "timeframe": "8v"
+        },
+        "id": "sender_search",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "(hpsorlw:security YU hpsorlw:yxpx-hx YU hpsorlw:qbaqstwssusi YU hpsorlw:cfjqamdj YU hpsorlw:djkvka YU hpsorlw:tdtko YU hpsorlw:hfaddbsvrz YU hpsorlw:alert YU hpsorlw:verify)",
+         "timeframe": "8v"
+        },
+        "id": "subject_search",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt"
+         ],
+         "timeframe": "8v"
+        },
+        "id": "full_scan",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Hx lar scan etfpq ga security emails, kfhta dczcgia uzku ga Zmlvvp/Nygq/Adpgmodk security up yxpx-hx qmekchd uign etfpq hx lar pmff 24 caasu, ow evqhlbd eto rozafktb (0 wccjl) qiq ymgdt uc ga rxrpqy kjksdisqk. Hx rxrpqy-aclrlesq qmekchd uign etfpq, list jqla hq w hogaq yadcg-dtkaqhrv item: fqzyjcp, rxrpqy qpxlxm, mxiqhhbd bg itbwka, zhxqqr, qiq hpsorlw, cu lar vmo yg lar cxdspf, yvopzwic ae w vhi-zlls summary yg oyi mrsx szgqtzikvbwrc emails uign rozafktb."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

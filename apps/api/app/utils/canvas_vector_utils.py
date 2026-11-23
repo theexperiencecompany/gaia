@@ -21,7 +21,7 @@ COLLECTION_NAME = CHROMA_CANVAS_COLLECTION
 class CanvasIndexMetadata(BaseModel):
     """The Chroma metadata stored with a canvas embedding.
 
-    ``extra="allow"`` because :func:`mark_canvas_completed` reads a stored row
+    ``extra="allow"`` because :func:`set_canvas_completed` reads a stored row
     and writes it back whole — a key this model does not declare must survive
     the round trip rather than be stripped.
     """
@@ -132,7 +132,7 @@ async def update_canvas_embedding(
     # Restore completed status if the todo was previously completed
     if result and was_completed:
         try:
-            await mark_canvas_completed(todo_id)
+            await set_canvas_completed(todo_id, completed=True)
         except Exception as e:
             log.debug("canvas.restore_completed_status_failed", todo_id=todo_id, error=str(e))
 
@@ -157,11 +157,11 @@ async def delete_canvas_embedding(todo_id: str) -> bool:
         return False
 
 
-async def mark_canvas_completed(todo_id: str) -> bool:
-    """Mark a canvas embedding as completed without deleting it.
+async def set_canvas_completed(todo_id: str, *, completed: bool) -> bool:
+    """Tag a canvas embedding as completed or open again, without deleting it.
 
-    The embedding remains searchable but is tagged as completed
-    so active-only searches can filter it out.
+    A completed embedding stays searchable; active-only searches filter it out.
+    Reopening keeps completed_at, which then names the last completion.
     """
     try:
         doc_id = f"canvas_{todo_id}"
@@ -176,16 +176,19 @@ async def mark_canvas_completed(todo_id: str) -> bool:
         stored = metadatas[0]
         if stored is None:
             return False
-        metadata = stored.model_copy(
-            update={"completed": True, "completed_at": datetime.now(UTC).isoformat()}
-        )
+        stamps: dict[str, bool | str] = {"completed": completed}
+        if completed:
+            stamps["completed_at"] = datetime.now(UTC).isoformat()
+        metadata = stored.model_copy(update=stamps)
 
-        # exclude_unset: the row goes back exactly as stored plus the two stamps
+        # exclude_unset: the row goes back exactly as stored plus the stamps
         # — a key the stored row never had must not be invented as a default.
         await collection.update(ids=[doc_id], metadatas=[metadata.model_dump(exclude_unset=True)])
         return True
     except Exception as e:
-        log.warning("canvas.mark_completed_failed", todo_id=todo_id, error=str(e))
+        log.warning(
+            "canvas.set_completed_failed", todo_id=todo_id, completed=completed, error=str(e)
+        )
         return False
 
 

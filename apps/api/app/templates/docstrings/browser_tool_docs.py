@@ -14,9 +14,9 @@ The browser runs on isolated, self-hosted infrastructure. The user sees every
 step live (goal + screenshot).
 
 In a live conversation this tool STARTS the run and returns at once, without a
-result: the run goes on in the background, and its result arrives in your inbox
-as a <browser_result> message when it ends (waking you if you have finished).
-Never claim an outcome before that message. In a workflow or scheduled run it
+result: the run goes on in the background, and you end your turn without waiting
+for it. When it ends, its result starts a new run of yours as a <browser_result>
+message. Never claim an outcome before that message, and never poll for it. In a workflow or scheduled run it
 instead returns only once the run has ended, with its result. Call it once per
 turn: never a second time to retry or to also check something else. Never claim
 the browser is unavailable, busy or rate limited unless a browser tool result

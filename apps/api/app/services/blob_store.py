@@ -44,6 +44,7 @@ from app.constants.files import (
     S3_WRITE_PROBE_KEY,
     BlobAudience,
     BlobKind,
+    S3AddressingStyle,
 )
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.models.integrations.cloudinary import CloudinaryDestroyResult, CloudinaryUploadResult
@@ -480,34 +481,81 @@ def local_blob_store() -> LocalVolumeBlobStore:
     return LocalVolumeBlobStore(Path(settings.LOCAL_FILE_STORAGE_PATH))
 
 
+def _s3_client(
+    endpoint_url: str,
+    access_key_id: str,
+    secret_access_key: str,
+    *,
+    region: str | None,
+    addressing_style: S3AddressingStyle,
+) -> S3Client:
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        region_name=region,
+        config=Config(
+            s3={"addressing_style": addressing_style.value},
+            connect_timeout=S3_TIMEOUT_SECONDS,
+            read_timeout=S3_TIMEOUT_SECONDS,
+            retries={"max_attempts": S3_MAX_ATTEMPTS},
+        ),
+    )
+    return cast(S3Client, client)
+
+
 @lru_cache(maxsize=1)
 def s3_blob_store() -> S3BlobStore:
     """Build the BLOB_STORE=s3 store; raise an AppError when an S3 setting is missing."""
     endpoint_url = settings.S3_ENDPOINT_URL
     bucket = settings.S3_BUCKET
-    if not (
-        endpoint_url and bucket and settings.S3_ACCESS_KEY_ID and settings.S3_SECRET_ACCESS_KEY
-    ):
+    access_key_id = settings.S3_ACCESS_KEY_ID
+    secret_access_key = settings.S3_SECRET_ACCESS_KEY
+    if not (endpoint_url and bucket and access_key_id and secret_access_key):
         raise AppError(
             message="File uploads are not set up: BLOB_STORE=s3 is missing its bucket settings.",
             fix="Set S3_ENDPOINT_URL, S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY.",
             status_code=503,
             code="s3_not_configured",
         )
-    client = boto3.client(
-        "s3",
-        endpoint_url=endpoint_url,
-        aws_access_key_id=settings.S3_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
-        region_name=settings.S3_REGION,
-        config=Config(
-            s3={"addressing_style": settings.S3_ADDRESSING_STYLE.value},
-            connect_timeout=S3_TIMEOUT_SECONDS,
-            read_timeout=S3_TIMEOUT_SECONDS,
-            retries={"max_attempts": S3_MAX_ATTEMPTS},
-        ),
+    client = _s3_client(
+        endpoint_url,
+        access_key_id,
+        secret_access_key,
+        region=settings.S3_REGION,
+        addressing_style=settings.S3_ADDRESSING_STYLE,
     )
-    return S3BlobStore(cast(S3Client, client), bucket, endpoint_url)
+    return S3BlobStore(client, bucket, endpoint_url)
+
+
+@lru_cache(maxsize=1)
+def _r2_link_content_store() -> S3BlobStore:
+    account_id = settings.R2_ACCOUNT_ID
+    bucket = settings.LINK_CONTENT_BUCKET
+    access_key_id = settings.R2_ACCESS_KEY
+    secret_access_key = settings.R2_SECRET_KEY
+    if not (account_id and bucket and access_key_id and secret_access_key):
+        raise AppError(
+            message="Shared files are not set up: the link content bucket is not configured.",
+            fix="Set LINK_CONTENT_BUCKET, R2_ACCOUNT_ID, R2_ACCESS_KEY and R2_SECRET_KEY.",
+            status_code=503,
+            code="link_content_not_configured",
+        )
+    endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+    client = _s3_client(
+        endpoint_url,
+        access_key_id,
+        secret_access_key,
+        region="auto",
+        addressing_style=S3AddressingStyle.VIRTUAL,
+    )
+    return S3BlobStore(client, bucket, endpoint_url)
+
+
+def link_content_store() -> ServedBlobStore:
+    """Return where shared-link snapshots live: the instance's own blob store, or R2 beside Cloudinary."""
+    return _served_blob_store() or _r2_link_content_store()
 
 
 def _served_blob_store() -> ServedBlobStore | None:

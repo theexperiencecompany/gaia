@@ -16,7 +16,7 @@ import asyncio
 from datetime import UTC, datetime
 import functools
 import re
-from typing import TypedDict, cast
+from typing import cast
 
 from app.agents.context.section_context import SectionContext
 from app.agents.context.text import (
@@ -29,36 +29,42 @@ from app.agents.context.text import (
     MEMORY_RECALL_HEADER,
     MULTI_ACCOUNT_INSTRUCTION,
 )
-from app.agents.prompts.new_user_prompts import build_new_user_guidance
+from app.agents.prompts.new_user_prompts import NewUserFacts, build_new_user_guidance
 from app.agents.workspace.paths import session_dir
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
 from app.constants.tool_labels import humanize_tool_name
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
+from app.memory import fast_recall
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.memory_models import MemorySearchResult
+from app.models.onboarding_models import PersistedTriageSummary
 from app.models.todo_models import TodoDocument
-from app.models.user_models import OnboardingNeed, OnboardingPreferences
+from app.models.user_models import BioStatus, OnboardingNeed, OnboardingSubdocument
 from app.services.device.device_service import (
     get_device_manifest,
 )
 from app.services.gaia_knowledge_service import gaia_knowledge_service
+from app.services.hil.pending import pending_approvals
 from app.services.integrations.integration_accounts import (
     describe_account,
     get_account_record,
     list_account_records,
 )
-from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.integrations.user_integrations import (
+    ConnectedIntegration,
+    get_connected_integrations_named,
+)
 from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
 from app.services.tracked_todo_service import tracked_todo_service
-from app.utils.artifact_utils import artifact_url_base
+from app.utils.artifact_utils import FILE_LINKS
+from app.utils.request_coalescing import coalesce_request
 from app.utils.user_preferences_utils import OnboardingPreferencesRecord
 from shared.py.wide_events import log
 
@@ -97,41 +103,17 @@ async def _fetch_core_context(user_id: str) -> str:
         return ""
 
 
-#: One in-flight core fetch per (event loop, user): the two core-memory sections
-#: share the task instead of each paying the fetch. Keyed by loop so a task bound
-#: to a closed loop (tests, reloads) is never awaited from another.
-_inflight_core: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[str]] = {}
-
-
-def _forget_inflight(key: tuple[asyncio.AbstractEventLoop, str], task: asyncio.Task[str]) -> None:
-    """Drop the finished fetch, if it is still the registered one.
-
-    Eviction is load-bearing: without it the registry would retain every user's
-    core context for the process's life. The task never holds an exception to
-    retrieve, because _fetch_core_context catches and returns an empty string.
-    """
-    if _inflight_core.get(key) is task:
-        del _inflight_core[key]
-
-
 async def _core_context(user_id: str | None) -> str:
     """Return the memory core as the engine renders it, or an empty string.
 
-    A singleflight over the two sections built from it: an assembly pays the core
-    read once, and the fetch is evicted on completion so a later assembly reads
-    afresh — sharing, not TTL caching.
+    Coalesced over the two sections built from it: an assembly pays the core read
+    once, and a later assembly reads afresh — sharing, not TTL caching.
     """
     if not user_id:
         return ""
-    key = (asyncio.get_running_loop(), user_id)
-    task = _inflight_core.get(key)
-    if task is None:
-        task = asyncio.ensure_future(_fetch_core_context(user_id))
-        _inflight_core[key] = task
-        task.add_done_callback(functools.partial(_forget_inflight, key))
-    # Shielded: cancelling one waiter (a client that disconnected mid-turn)
-    # must not cancel the shared task under the sibling still waiting on it.
-    return await asyncio.shield(task)
+    return await coalesce_request(
+        f"context_core_memory:{user_id}", functools.partial(_fetch_core_context, user_id)
+    )
 
 
 def _split_core_context(core_context: str) -> tuple[str, str, str]:
@@ -223,6 +205,31 @@ async def build_memory_recall_block(ctx: SectionContext) -> str:
     return f"{MEMORY_RECALL_HEADER}\n{notes}"
 
 
+async def build_fast_recall_block(ctx: SectionContext) -> str:
+    """Comms memories from the fast lane, dated.
+
+    Its section's budget is the explicit trade: the reply never waits on memory,
+    and search_memory still reaches every memory the lane missed.
+    """
+    if not (ctx.user_id and ctx.query):
+        return ""
+    try:
+        entries = await fast_recall.fast_recall(
+            ctx.user_id, ctx.query, conversation_id=ctx.conversation_id
+        )
+    except Exception:
+        # The section contract: one failing source costs only its own section.
+        # The logger stamps the handled exception's type and message.
+        log.error("Memory fast lane failed", user_id=ctx.user_id)
+        return ""
+    # Its time is the section's own context_assemble_seconds{stage="section:..."}.
+    log.set_ns("memory_fast_recall", count=len(entries))
+    if not entries:
+        return ""
+    notes = "\n".join(f"- {entry_to_note(entry)}" for entry in entries)
+    return f"{MEMORY_RECALL_HEADER}\n{notes}"
+
+
 async def build_gaia_knowledge_block(ctx: SectionContext) -> str:
     if not ctx.query:
         return ""
@@ -285,6 +292,37 @@ def _selected_needs(preferences: OnboardingPreferencesRecord) -> list[Onboarding
     return selected
 
 
+async def _welcome_chips(ctx: SectionContext) -> tuple[str, ...]:
+    """Return the jobs the welcome thread offered, when this turn is in that thread."""
+    onboarding = ctx.onboarding
+    if not (
+        ctx.user_id
+        and onboarding
+        and onboarding.preferences
+        and ctx.conversation_id
+        and ctx.conversation_id == onboarding.getting_started_conversation_id
+    ):
+        return ()
+    try:
+        return tuple(await seeded_chips(ctx.user_id, onboarding.preferences))
+    except Exception as e:
+        log.warning(
+            "Error reading the welcome chips for new-user guidance",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=ctx.user_id,
+        )
+        return ()
+
+
+def _mail_facts(onboarding: OnboardingSubdocument | None) -> tuple[str | None, str | None]:
+    """(inbox summary, sent-mail portrait) once the Gmail pipeline has finished, else Nones."""
+    if onboarding is None or onboarding.bio_status is not BioStatus.COMPLETED:
+        return None, None
+    summary = PersistedTriageSummary.model_validate(onboarding.triage_summary or {}).summary
+    return summary or None, onboarding.user_bio.strip() or None
+
+
 async def build_new_user_guidance_block(ctx: SectionContext) -> str:
     """Per-need first-conversation playbooks, while the user is still new.
 
@@ -315,22 +353,16 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
     if conversations > NEW_USER_CONVERSATION_LIMIT:
         return ""
     profession = preferences.get("profession")
-    # The chips GAIA itself offered at the end of the seeded conversation. Their
-    # first message is usually one of them, and without this the model treats a
-    # one-word choice as a fragment it has to ask about.
-    chips = await seeded_chips(
-        ctx.user_id,
-        OnboardingPreferences(
-            profession=str(profession) if profession else None,
+    inbox_summary, mail_portrait = _mail_facts(ctx.onboarding)
+    return build_new_user_guidance(
+        NewUserFacts(
+            profession=str(profession) if profession else "",
             needs=needs,
             other_need=other_need,
-        ),
-    )
-    return build_new_user_guidance(
-        str(profession) if profession else "",
-        needs,
-        other_need,
-        chips,
+            seeded_chips=await _welcome_chips(ctx),
+            inbox_summary=inbox_summary,
+            mail_portrait=mail_portrait,
+        )
     )
 
 
@@ -353,7 +385,7 @@ async def build_workspace_session_banner(ctx: SectionContext) -> str:
     return (
         f"Session directory: {session_dir(ctx.vfs_session_id)}\n"
         f"Public artifact URL: a file at `artifacts/<name>` is served at "
-        f"{artifact_url_base(ctx.vfs_session_id)}/<name>"
+        f"{FILE_LINKS.artifact_base(ctx.vfs_session_id)}/<name>"
     )
 
 
@@ -390,30 +422,23 @@ async def build_active_todo_banner(ctx: SectionContext) -> str:
     return format_active_todo_banner(doc) if doc else ""
 
 
-class _ConnectedIntegration(TypedDict):
-    """One row of get_connected_integrations_named: an integration id and its display name."""
-
-    id: str
-    name: str
-
-
-def _dedupe_by_provider(items: list[_ConnectedIntegration]) -> list[_ConnectedIntegration]:
+def _dedupe_by_provider(items: list[ConnectedIntegration]) -> list[ConnectedIntegration]:
     """One row per provider, keeping whichever row resolved to a display name.
 
     A connected set can hold two ids for the same account (a legacy
     google_calendar beside today's googlecalendar) — rendering both once gave
     the agent two activation targets, one resolving to no integration.
     """
-    by_provider: dict[str, _ConnectedIntegration] = {}
+    by_provider: dict[str, ConnectedIntegration] = {}
     for item in items:
         key = re.sub(r"[^a-z0-9]", "", item["id"].lower())
-        held: _ConnectedIntegration | None = by_provider.get(key)
+        held: ConnectedIntegration | None = by_provider.get(key)
         if held is None or (held["name"] == held["id"] and item["name"] != item["id"]):
             by_provider[key] = item
     return list(by_provider.values())
 
 
-def _builtin_overlap_lines(items: list[_ConnectedIntegration]) -> list[str]:
+def _builtin_overlap_lines(items: list[ConnectedIntegration]) -> list[str]:
     """Rows spelling out the built-ins a connected provider would otherwise mask."""
     names = {item["id"]: item["name"] for item in items}
     lines: list[str] = []
@@ -440,7 +465,9 @@ async def build_connected_integrations_manifest(
     account_guidance follows the rows whenever an integration lists its accounts.
     """
     try:
-        items = cast(list[_ConnectedIntegration], await get_connected_integrations_named(user_id))
+        named, accounts = await asyncio.gather(
+            get_connected_integrations_named(user_id), _account_rows(user_id)
+        )
     except Exception as e:
         log.warning(
             "Error building connected-integrations manifest",
@@ -449,18 +476,21 @@ async def build_connected_integrations_manifest(
             user_id=user_id,
         )
         return ""
-    if not items:
+    if not named:
         return ""
-    connected: list[_ConnectedIntegration] = _dedupe_by_provider(items)
-    accounts = await _account_rows(user_id)
-    lines = [header, *_builtin_overlap_lines(connected)]
-    for item in connected:
-        iid, name = item["id"], item["name"]
-        row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
-        lines.append(f"{row}{accounts.get(iid, '')}{await _tool_summary(iid)}")
+    connected: list[ConnectedIntegration] = _dedupe_by_provider(named)
+    rows = await asyncio.gather(*(_manifest_row(item, accounts) for item in connected))
+    lines = [header, *_builtin_overlap_lines(connected), *rows]
     if accounts:
         lines.append(account_guidance)
     return "\n".join(lines)
+
+
+async def _manifest_row(item: ConnectedIntegration, accounts: dict[str, str]) -> str:
+    """One manifest line: the integration, its accounts on record, and its tool summary."""
+    iid, name = item["id"], item["name"]
+    row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
+    return f"{row}{accounts.get(iid, '')}{await _tool_summary(iid)}"
 
 
 async def _account_rows(user_id: str) -> dict[str, str]:
@@ -578,17 +608,16 @@ async def build_provider_metadata_block(integration_id: str, user_id: str) -> st
 
 
 async def build_open_pendings_block(ctx: SectionContext) -> str:
-    """Open approval pendings for this conversation, oldest first.
+    """Approvals this conversation's log has waiting on the user, oldest first.
 
-    Ledger state, not per-run state: without this a future turn never sees
-    what past turns left undecided, and "revoke anything stale" never fires.
-    Degrades to nothing (with a warning) rather than failing the turn over an
-    enrichment block. Cap keeps a hoarding conversation out of the cache prefix.
+    Without this a future turn never sees what past turns left undecided, and "revoke
+    anything stale" never fires. Degrades to nothing (with a warning) rather than failing
+    the turn over an enrichment block. Cap keeps a hoarding conversation out of the cache prefix.
     """
-    if not ctx.conversation_id:
+    if not ctx.conversation_id or not ctx.user_id:
         return ""
     try:
-        pendings = await approval_ledger_repository.list_open(ctx.conversation_id)
+        pendings = await pending_approvals(ctx.conversation_id, ctx.user_id)
     except Exception as e:
         log.warning(
             "open_pendings_fetch_failed",
@@ -597,17 +626,10 @@ async def build_open_pendings_block(ctx: SectionContext) -> str:
         return ""
     if not pendings:
         return ""
-    # Belt-and-suspenders behind the conversation scoping: a foreign row must
-    # never render into this user's agent context. Legacy rows without an
-    # owner stay visible rather than silently dropping legit pendings.
-    if ctx.user_id:
-        pendings = [doc for doc in pendings if not doc.user_id or doc.user_id == ctx.user_id]
-        if not pendings:
-            return ""
     shown = pendings[:10]
     lines = [
-        f"- {doc.approval_id} | {doc.tool_name} | {_pending_age(doc.created_at)} | {doc.summary}"
-        for doc in shown
+        f"- {row.approval_id} | {row.tool_name} | {_pending_age(row.created_at)} | {row.summary}"
+        for row in (pending.row for pending in shown)
     ]
     if len(pendings) > len(shown):
         lines.append(f"(+{len(pendings) - len(shown)} more open)")

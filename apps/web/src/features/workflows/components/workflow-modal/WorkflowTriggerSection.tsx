@@ -1,12 +1,19 @@
-import { Tab, Tabs } from "@heroui/tabs";
+import { Tabs } from "@heroui/react";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
-import type { ReactElement } from "react";
+import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { getUserHomeTimezone } from "@/lib/timezone";
+import type { Workflow } from "../../api/workflowApi";
+import { MAIL_TRIGGER_NAMES } from "../../constants/gates";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { GateRow } from "../../triggers/components/GateRow";
 import { createDefaultTriggerConfig } from "../../triggers/registry";
+import { isIntegrationTrigger } from "../../triggers/types";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 import WorkflowSection from "./WorkflowSection";
+
+const tabsStyles = tabsVariants({ variant: "solid" });
 
 interface WorkflowTriggerSectionProps {
   activeTab: WorkflowFormData["activeTab"];
@@ -17,6 +24,10 @@ interface WorkflowTriggerSectionProps {
     trigger: WorkflowFormData["selectedTrigger"],
   ) => void;
   onTriggerConfigChange: (config: WorkflowFormData["trigger_config"]) => void;
+  gate: WorkflowFormData["gate"];
+  /** The gate as last saved; a new workflow has none. */
+  savedGate: Workflow["gate"];
+  onGateChange: (gate: WorkflowFormData["gate"]) => void;
   isPreview?: boolean;
 }
 
@@ -33,6 +44,9 @@ export default function WorkflowTriggerSection({
   onActiveTabChange,
   onSelectedTriggerChange,
   onTriggerConfigChange,
+  gate,
+  savedGate,
+  onGateChange,
   isPreview = false,
 }: WorkflowTriggerSectionProps) {
   const handleTabChange = (tabKey: "manual" | "schedule" | "trigger") => {
@@ -110,12 +124,30 @@ export default function WorkflowTriggerSection({
     }
 
     return (
-      <TriggerConfigForm
-        selectedTrigger={selectedTrigger}
-        triggerConfig={triggerConfig}
-        onTriggerChange={onSelectedTriggerChange}
-        onConfigChange={onTriggerConfigChange}
-      />
+      <div className="flex flex-col gap-5">
+        <TriggerConfigForm
+          selectedTrigger={selectedTrigger}
+          triggerConfig={triggerConfig}
+          onTriggerChange={onSelectedTriggerChange}
+          onConfigChange={onTriggerConfigChange}
+        />
+        {isIntegrationTrigger(triggerConfig) && gate.condition.trim() && (
+          <PanelRowGroup>
+            <GateRow
+              condition={gate.condition}
+              enabled={gate.enabled}
+              saved={savedGate ?? null}
+              editable={savedGate?.kind !== "system"}
+              watchesMail={MAIL_TRIGGER_NAMES.has(selectedTrigger)}
+              onConditionSave={(condition) =>
+                onGateChange({ ...gate, condition })
+              }
+              onEnabledChange={(enabled) => onGateChange({ ...gate, enabled })}
+              isDisabled={isPreview}
+            />
+          </PanelRowGroup>
+        )}
+      </div>
     );
   };
 
@@ -127,36 +159,41 @@ export default function WorkflowTriggerSection({
   return (
     <WorkflowSection label="When should this run?">
       <Tabs
-        aria-label="Trigger type"
         selectedKey={activeTab}
         onSelectionChange={(key) =>
           handleTabChange(key as "manual" | "schedule" | "trigger")
         }
-        fullWidth
-        radius="lg"
-        classNames={{
-          tabList: "rounded-xl bg-zinc-800/60 p-1",
-          cursor: "rounded-lg bg-zinc-700 shadow-sm",
-          tab: "h-9",
-          tabContent:
-            "text-zinc-400 group-data-[selected=true]:text-zinc-100 font-medium",
-        }}
+        className={tabsStyles.base({ className: "w-full" })}
       >
-        {
-          visibleTabs.map((tab) => (
-            <Tab
+        <Tabs.List
+          aria-label="Trigger type"
+          className="w-full rounded-xl bg-zinc-800/60 p-1"
+        >
+          {visibleTabs.map((tab) => (
+            <Tabs.Tab
               key={tab.key}
-              title={
-                <span className="flex items-center gap-1.5">
-                  <tab.icon className="h-4 w-4" />
-                  {tab.label}
-                </span>
-              }
+              id={tab.key}
+              className={tabsStyles.tab({
+                className: "h-9 font-medium data-[selected=true]:text-zinc-100",
+              })}
             >
-              <div className="pt-1.5">{renderTabBody(tab.key)}</div>
-            </Tab>
-          )) as ReactElement[]
-        }
+              <span className="flex items-center gap-1.5">
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </span>
+              <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+        {visibleTabs.map((tab) => (
+          <Tabs.Panel
+            key={tab.key}
+            id={tab.key}
+            className={tabsStyles.tabPanel()}
+          >
+            <div className="pt-1.5">{renderTabBody(tab.key)}</div>
+          </Tabs.Panel>
+        ))}
       </Tabs>
     </WorkflowSection>
   );

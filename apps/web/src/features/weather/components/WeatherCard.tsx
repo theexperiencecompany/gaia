@@ -1,5 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Switch } from "@heroui/switch";
+import { Accordion, Switch } from "@heroui/react";
 import {
   CloudAngledRainIcon,
   CloudAngledZapIcon,
@@ -17,9 +16,16 @@ import {
   Tornado02Icon,
   VisionIcon,
 } from "@icons";
+import {
+  FIXED_LOCALE,
+  formatTime as formatTimeOfDay,
+  formatWeekday,
+} from "@shared/utils";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { CloudFogIcon } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,8 +34,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { WeatherData } from "@/types/features/convoTypes";
-
 import { WeatherDetailItem } from "./WeatherDetailItem";
+
+const accordionStyles = accordionVariants({
+  variant: "light",
+  density: "compact",
+});
 
 interface WeatherCardProps {
   weatherData: WeatherData;
@@ -38,7 +48,7 @@ interface WeatherCardProps {
 // Helper function to convert timestamp to readable time, taking into account timezone
 const formatTime = (timestamp: number, timezone: number): string => {
   const date = new Date((timestamp + timezone) * 1000);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatTimeOfDay(date);
 };
 
 // Helper function to convert celsius to fahrenheit
@@ -49,7 +59,7 @@ const celsiusToFahrenheit = (celsius: number): number => {
 // Helper function to get day of week from date string
 const getDayOfWeek = (dateStr: string): string => {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", { weekday: "long" });
+  return formatWeekday(date, "long", FIXED_LOCALE);
 };
 
 // Helper function to get weather icon component based on weather condition
@@ -328,55 +338,77 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
 
       {/* weather Details Accordion */}
       <Accordion
-        className="mt-2"
-        isCompact
-        selectionMode="multiple"
-        itemClasses={{ indicator: "text-white", trigger: "cursor-pointer" }}
+        className={accordionStyles.base({ className: "mt-2" })}
+        allowsMultipleExpanded
         defaultExpandedKeys={["weekly-forecast"]}
       >
         {weatherData.forecast && weatherData.forecast.length > 0 ? (
-          <AccordionItem
-            key="weekly-forecast"
-            aria-label="Weekly Forecast"
-            title={
-              <div className="flex items-center">
-                <span className="text-sm font-normal text-white">
-                  Weekly Forecast
-                </span>
-              </div>
-            }
-          >
-            <div className="space-y-2 pb-2">
-              {weatherData.forecast.map((day) => (
-                <WeeklyForecastRow
-                  key={`${day.temp_max}-${day.temp_min}`}
-                  day={day}
-                  useFahrenheit={useFahrenheit}
-                  weatherTheme={weatherTheme}
+          <Accordion.Item id="weekly-forecast">
+            <Accordion.Heading>
+              <Accordion.Trigger
+                className={accordionStyles.trigger({
+                  className: "cursor-pointer",
+                })}
+              >
+                <div className="flex items-center">
+                  <span className="text-sm font-normal text-white">
+                    Weekly Forecast
+                  </span>
+                </div>
+                <Accordion.Indicator
+                  className={accordionStyles.indicator({
+                    className: toneVariants({ tone: "white" }),
+                  })}
                 />
-              ))}
-            </div>
-          </AccordionItem>
+              </Accordion.Trigger>
+            </Accordion.Heading>
+            <Accordion.Panel>
+              <div className={accordionStyles.content()}>
+                <div className="space-y-2 pb-2">
+                  {weatherData.forecast.map((day) => (
+                    <WeeklyForecastRow
+                      key={`${day.temp_max}-${day.temp_min}`}
+                      day={day}
+                      useFahrenheit={useFahrenheit}
+                      weatherTheme={weatherTheme}
+                    />
+                  ))}
+                </div>
+              </div>
+            </Accordion.Panel>
+          </Accordion.Item>
         ) : null}
 
-        <AccordionItem
-          key="weather-details"
-          aria-label="Weather Details"
-          title={
-            <div className="flex items-center">
-              <span className="text-sm font-normal text-white">
-                Additional Information
-              </span>
+        <Accordion.Item id="weather-details">
+          <Accordion.Heading>
+            <Accordion.Trigger
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
+            >
+              <div className="flex items-center">
+                <span className="text-sm font-normal text-white">
+                  Additional Information
+                </span>
+              </div>
+              <Accordion.Indicator
+                className={accordionStyles.indicator({
+                  className: toneVariants({ tone: "white" }),
+                })}
+              />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <WeatherDetailsGrid
+                weatherData={weatherData}
+                weatherTheme={weatherTheme}
+                sunriseTime={sunriseTime}
+                sunsetTime={sunsetTime}
+              />
             </div>
-          }
-        >
-          <WeatherDetailsGrid
-            weatherData={weatherData}
-            weatherTheme={weatherTheme}
-            sunriseTime={sunriseTime}
-            sunsetTime={sunsetTime}
-          />
-        </AccordionItem>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
       {/*
       <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/80">
@@ -480,10 +512,15 @@ function WeatherLocationHeader({
               <div className="flex items-center justify-between">
                 <span className="text-sm">°F</span>
                 <Switch
-                  checked={useFahrenheit}
-                  onValueChange={onUseFahrenheitChange}
-                  color="default"
-                />
+                  isSelected={useFahrenheit}
+                  onChange={onUseFahrenheitChange}
+                >
+                  <Switch.Content>
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Content>
+                </Switch>
                 <span className="text-sm">°C</span>
               </div>
             </div>

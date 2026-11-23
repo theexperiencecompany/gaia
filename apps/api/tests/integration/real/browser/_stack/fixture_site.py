@@ -33,6 +33,9 @@ from tests.integration.real.browser._stack.tls import FixtureTls
 LOGIN_USER = "tomsmith"
 LOGIN_PASSWORD = "SuperSecretPassword!"  # pragma: allowlist secret
 LOGIN_FLASH = "You logged into a secure area!"
+#: Where the login's fields sit on screen (CSS pixels), for a person clicking into them in the live view.
+LOGIN_USERNAME_AT = (200, 120)
+LOGIN_PASSWORD_AT = (200, 180)
 SECURE_HEADING = "Secure Area"
 #: The text that appears once the late-loading page has loaded.
 DYNAMIC_TEXT = "Hello World!"
@@ -69,6 +72,8 @@ class FixtureSite:
     a: str = ""
     b: str = ""
     posts: list[FormPost] = field(default_factory=list)
+    #: Where the running scenario's posts start: a rerun never reads its failed attempt's.
+    _scenario_start: int = 0
     _servers: list[LocalServer] = field(default_factory=list)
     _sessions: set[str] = field(default_factory=set)
     #: Set at stop, so a held /hang request lets the server shut down.
@@ -95,8 +100,13 @@ class FixtureSite:
         for server in self._servers:
             await server.stop()
 
+    def begin_scenario(self) -> None:
+        """Start a scenario: posts_to reads only what its forms receive from here."""
+        self._scenario_start = len(self.posts)
+
     def posts_to(self, path: str) -> list[FormPost]:
-        return [post for post in self.posts if post.path == path]
+        """Return what path received in this scenario, in order."""
+        return [post for post in self.posts[self._scenario_start :] if post.path == path]
 
     # --- origin A -----------------------------------------------------------
 
@@ -215,9 +225,11 @@ function go() {{
             "The Internet",
             """<h2>Login Page</h2>
 <form id="login" method="post" action="/authenticate">
-<label for="username">Username</label><input type="text" name="username" id="username">
-<label for="password">Password</label><input type="password" name="password" id="password">
-<button type="submit">Login</button></form>""",
+<label for="username">Username</label><input type="text" name="username" id="username"
+ style="position:fixed;left:50px;top:105px;width:300px;height:30px">
+<label for="password">Password</label><input type="password" name="password" id="password"
+ style="position:fixed;left:50px;top:165px;width:300px;height:30px">
+<button type="submit" style="position:fixed;left:50px;top:225px">Login</button></form>""",
         )
 
     async def _authenticate(self, request: Request) -> Response:

@@ -18,14 +18,17 @@ from app.agents.prompts.todo_prompts import INBOX_DESK_DESCRIPTION
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
-    INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
-    INBOX_DESK_WATCH_WINDOW_SECONDS,
 )
-from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.workflows import WorkflowDelivery
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.todo_models import TodoDocument
+from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.todos.inbox_desk import INBOX_DESK_REF, provision_inbox_desk
 from app.utils.redis_utils import RedisPoolManager
+
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
 pytestmark = pytest.mark.service
 
@@ -65,15 +68,12 @@ async def test_connecting_gmail_twice_at_once_makes_one_armed_desk(
     assert desk.title == INBOX_DESK_TITLE
     assert desk.description == INBOX_DESK_DESCRIPTION
     assert desk.external_ref == INBOX_DESK_REF
-    assert GAIA_TRACKED_LABEL in desk.labels and desk.notify_on_run
-    assert desk.recurrence == INBOX_DESK_RECURRENCE
+    assert GAIA_TRACKED_LABEL in desk.labels and desk.delivery is WorkflowDelivery.BRIEF
+    assert desk.recurrence == _DEFAULT_DESK_RECURRENCE
     assert desk.scheduled_at is not None
     assert before < desk.scheduled_at.replace(tzinfo=UTC) <= before + timedelta(days=1)
-    # The desk also watches the mailbox: one hourly mail-wake subscription, not two.
-    assert len(desk.trigger_subscriptions) == 1
-    (watch,) = desk.trigger_subscriptions
-    assert watch.trigger_name == GMAIL_NEW_MESSAGE_TRIGGER_NAME
-    assert watch.cooldown_seconds == INBOX_DESK_WATCH_WINDOW_SECONDS
+    # New mail never wakes the desk: it runs on its schedule, its thread todos watch their threads.
+    assert desk.trigger_subscriptions == []
     _offline_seams.assert_called_once()
 
 

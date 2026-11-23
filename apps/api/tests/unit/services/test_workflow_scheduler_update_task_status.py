@@ -4,7 +4,7 @@ Threads update_data into the typed TaskRearm set_status expects (app/models/work
 commit 58a9f12fa5). test_scheduler_service.py's base-class tests exercise a double, never this real method.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -18,13 +18,9 @@ from app.services.workflow.scheduler import WorkflowScheduler
 
 @pytest.fixture
 def scheduler() -> WorkflowScheduler:
-    with patch(
-        "app.services.scheduler_service.settings",
-        MagicMock(REDIS_URL="redis://localhost:6379/0"),
-    ):
-        svc = WorkflowScheduler(redis_settings=MagicMock())
-        svc.arq_pool = AsyncMock()
-        return svc
+    svc = WorkflowScheduler()
+    svc.arq_pool = AsyncMock()
+    return svc
 
 
 class TestUpdateTaskStatusRejectsNonRunStatuses:

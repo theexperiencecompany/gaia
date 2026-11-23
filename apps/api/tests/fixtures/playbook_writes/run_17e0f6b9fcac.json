@@ -1,0 +1,99 @@
+{
+ "run": "run_17e0f6b9fcac",
+ "captured_from": "2026-10-21",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "events": [
+     {
+      "event_id": "2o4eqtnlw5qlj3qkqtgev3tmvy",
+      "calendar_id": "user@example.com"
+     }
+    ]
+   },
+   "result_digest": "{\"data\": {\"events\": [{\"event_id\": \"2o4eqtnlw5qlj3qkqtgev3tmvy\", \"calendar_id\": \"user@example.com\", \"event\": {\"id\": \"2o4eqtnlw5qlj3qkqtgev3tmvy\", \"summary\": \"Wkp Vdie/YFJ YUR Ienpriqr Xwlthtx\", \"eventType\": \"iwtqdhh\", \"start\": {\"dateTime\": \"2026-10-21T08:45:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"end\": {\"dateTime\": \"2026-10-21T09:15:00+02:00\", \"timeZone\": \"Npzpif/Udoiflycclse\"}, \"htmlLink\": \"https://example.com/f9bbdb73\", \"kind\": \"calendar#event\", \"etag\": \"\\\"1604814019017493\\\"\", \"status\": \"tnmalswen\", \"created\": \"2026-10-21T06:23:09.000Z\", \"updated\": \"2026-10-21T06:42:14.024Z\", \"colorId\": \"6\", \"eventLabelId\": \"p3611c85-9lq3-4112-l7v1-42vmv4432103\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"iCalUID\": \"user@example.com\", \"sequence\": 1, \"attendees\": [{\"email\": \"user@example.com\", \"organizer\": true, \"self\": true, \"responseStatus\": \"alvaybtm\"}, {\"email\": \"user@example.com\", \"responseStatus\": \"alvaybtm\"}, {\"email\": \"user@example.com\", \"responseStatus\": \"alvaybtm\"}], \"hangoutLink\": \"https://example.com/513d426f\", \"conferenceData\": {\"entryPoints\": [{\"entryPointType\": \"fdxdx\", \"uri\": \"https://example.com/513d426f\", \"label\": \"tbnc.google.jtu/lcf-sdif-usg\"}, {\"entryPointType\": \"bejz\", \"uri\": \"https://example.com/a6c62aff\", \"pin\": \"2878896690149\"}, {\"regionCode\": \"XY\", \"entryPointType\": \"pzuzd\", \"uri\": \"pgi:97231688422\", \"label\": \"54886306711\", \"pin\": \"351136004\"}], \"conferenceSolution\": {\"key\": {\"type\": \"tpeqidqhRwfg\"}, \"name\": \"Zmlvvp Jguu\", \"iconUri\": \"https://example.com/f1587438\"}, \"conferenceId\": \"lcf-sdif-usg\"}, \"reminders\": {\"useDefault\": true}}}], \"errors\": []}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "list_trigger_fields"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 2,
+   "written": {
+    "description": "Vqdkscj w hogaq meeting reminder evvq w ckyxiautz upcoming calendar event.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "event",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg ckyxiautz event details",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+       "data": {
+        "events": [
+         {
+          "event_id": "$trigger.event_id",
+          "calendar_id": "user@example.com"
+         }
+        ]
+       }
+      }
+     }
+    ],
+    "result_brief": "Pypvv w 93 zlls reminder udh lar ynrm: lar event pnkwu (evvq $steps.event.data.events[0].event.summary), lab start ohzt hx lar ynrm'n whdrf zixgmcwc (Npzpif/Udoiflycclse, evvq $steps.event.data.events[0].event.start.ydodYofn), qiq lar opps umfp (xbzpggfNehj) up yuizmdvm bg tkuppza. Hx lar event nic aswfecm mfmgbxk, gvrz ic uc hx mhvwvqap. Bo mth create w bxwwhjl todo qiq jd mth send w cvuhzyugus hyahbzzhloek."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 5,
+   "record_len": 2,
+   "written": {
+    "description": "Vqdkscj w hogaq meeting reminder evvq w ckyxiautz upcoming calendar event.",
+    "result_brief": "Pypvv w 93 zlls reminder udh lar ynrm: lar event pnkwu (evvq $steps.event.data.events[0].event.summary), lab start ohzt hx lar ynrm'n whdrf zixgmcwc (Npzpif/Udoiflycclse, evvq $steps.event.data.events[0].event.start.ydodYofn), qiq lar opps umfp (xbzpggfNehj) up yuizmdvm bg tkuppza. Hx lar event nic aswfecm mfmgbxk, gvrz ic uc hx mhvwvqap. Bo mth create w bxwwhjl todo qiq jd mth send w cvuhzyugus hyahbzzhloek.",
+    "steps": [
+     {
+      "args": {
+       "data": {
+        "events": [
+         {
+          "calendar_id": "user@example.com",
+          "event_id": "$trigger.event_id"
+         }
+        ]
+       },
+       "task_description": "Ngakdvlg ckyxiautz event details",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT"
+      },
+      "id": "event",
+      "tool": "execute"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GET_EVENT#1",
+     "id": "event",
+     "vary": {
+      "events.0.event_id": "$trigger.event_id"
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

@@ -4,79 +4,27 @@ Middleware configuration for the GAIA FastAPI application.
 This module provides functions to configure middleware for the FastAPI application.
 """
 
-import math
-import time
-
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import UJSONResponse
-from limits import RateLimitItem
-from limits.errors import StorageError
-from slowapi import Limiter
+from fastapi.middleware.gzip import GZipMiddleware
 from slowapi.errors import RateLimitExceeded
 
+from app.api.v1.middleware.activity import ActivityRecordingMiddleware
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware, WorkOSAuthMiddleware
 from app.api.v1.middleware.entitlement import EntitlementMiddleware
 from app.api.v1.middleware.logging import LoggingMiddleware
 from app.api.v1.middleware.profiling import ProfilingMiddleware
-from app.api.v1.middleware.rate_limiter import RouterAwareSlowAPIMiddleware, limiter
+from app.api.v1.middleware.rate_limiter import (
+    RateLimitMiddleware,
+    limiter,
+    rate_limit_handler,
+)
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.api.v1.middleware.unhandled_exception import UnhandledExceptionMiddleware
 from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
 from app.config.deployment import OriginPolicy
 from app.config.settings import settings
-from app.constants.http import RETRY_AFTER_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
-from app.schemas.errors import ErrorEnvelope, error_response
-from shared.py.wide_events import log as wide_log
-
-RATE_LIMIT_EXCEEDED_CODE = "rate_limit_exceeded"
-
-
-def _retry_after_seconds(request: Request) -> int | None:
-    """Whole seconds until the window that refused this request reopens.
-
-    RateLimitExceeded carries no retry hint; the limiter records the window on
-    request.state just before raising, and the full window length is the correct
-    upper bound when storage cannot answer. Read the limiter off request.app.state
-    — the module-level one queries a storage that never saw the request.
-    """
-    current_limit: tuple[RateLimitItem, list[str]] | None = getattr(
-        request.state, "view_rate_limit", None
-    )
-    if current_limit is None:
-        return None
-    request_limiter: Limiter = request.app.state.limiter
-    window, identifiers = current_limit
-    try:
-        reset_time, _remaining = request_limiter.limiter.get_window_stats(window, *identifiers)
-    except StorageError:
-        return window.get_expiry()
-    return max(1, math.ceil(reset_time - time.time()))
-
-
-def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> UJSONResponse:
-    """Render a rate-limit refusal as the envelope, with a real Retry-After.
-
-    Deliberately sync: SlowAPIMiddleware answers the default limit through
-    sync_check_limits, which discards a coroutine handler and silently falls
-    back to slowapi's own error body.
-    """
-    retry_after = _retry_after_seconds(request)
-    wide_log.warning(
-        RATE_LIMIT_EXCEEDED_CODE,
-        client_ip=request.client.host
-        if request.client
-        else request.headers.get("x-forwarded-for", "unknown"),
-        path=request.url.path,
-        method=request.method,
-        retry_after=retry_after,
-    )
-    return error_response(
-        429,
-        ErrorEnvelope(message=str(exc.detail), code=RATE_LIMIT_EXCEEDED_CODE),
-        headers=None if retry_after is None else {RETRY_AFTER_HEADER: str(retry_after)},
-    )
 
 
 def configure_middleware(app: FastAPI) -> None:
@@ -95,7 +43,7 @@ def configure_middleware(app: FastAPI) -> None:
     # outside its boundary is invisible in Loki (how timeouts used to vanish).
 
     # Rate limiting (innermost — a 429 flows up through the boundary)
-    app.add_middleware(RouterAwareSlowAPIMiddleware)
+    app.add_middleware(RateLimitMiddleware)
 
     # Pyinstrument profiling for detailed call stack analysis
     app.add_middleware(ProfilingMiddleware)
@@ -115,6 +63,10 @@ def configure_middleware(app: FastAPI) -> None:
     # and a browser cannot read it. The app-level handler is the last resort.
     app.add_middleware(UnhandledExceptionMiddleware)
 
+    # Inside CORS so the CORS headers are applied to the compressed response.
+    # Starlette skips text/event-stream, so SSE chunks still flush as produced.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
+
     # CORS (inside Logging so preflight rejections are visible in Loki)
     app.add_middleware(
         CORSMiddleware,
@@ -124,6 +76,9 @@ def configure_middleware(app: FastAPI) -> None:
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    # Inside PostHog's: reads the attribution it binds to tell the user's own requests apart.
+    app.add_middleware(ActivityRecordingMiddleware)
 
     # PostHog's context must run after BOTH auth layers have populated
     # request.state.user, while still wrapping every downstream handler.

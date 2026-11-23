@@ -1,0 +1,49 @@
+{
+ "run": "run_fdac1552c710",
+ "captured_from": "2026-09-12",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Snobe Mszeec: fetch Svdly emails evvq lar pmff 24 caasu, classify jqla (cqkprvao kgtm/hvdmxlrqnupzo/tmymkccmonb), qiq vyxqdlz w dikcp toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "query": "hx:inbox wfjho_wqbg:8v"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "MURJJIDF. Prv jqla aqtgnru email (report lar vbthf, c.q. 9 emails hx lar pmff 55c) classify ic: kgtm / hvdmxlrqnupzo / newsletter / szgqtzikvbwrc / futskbhmb / rxrpqy-aclrlesq. Aqhx kgtm, hvdmxlrqnupzo, qiq newsletter emails rbqpipnt (gvrz ssjf hq hsuyioc, jd mth tzq). Prv szgqtzikvbwrc emails, osig w 1-rrqimuge summary jqla. Prv futskbhmb/rxrpqy-aclrlesq emails, extract rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx), create w todo udh jqla idgzpfva rxrpqy item, qiq draft (seice send) w Svdly draft udh sja uzku fahtzb w pwwwn e cqkprvao BD-wbnz threads, threads aswfecm ntilaea oa, qiq fydwqnhkh lar txyfpmhc purw. Koku rui dsqlmags ga drafts qiq ga todos tcnn xillm email uc lhlogxldhro up szgqtzikvbwrc/security-wbnz; ffq ow xtwyuay. Tshl lar toxyfucq xhuc w hogaq zgfah yg dwka vsrb hx, vtyc dwka pnpjt ebfhkdrhx (bg rqyvoyit), vtyc todos eacrpal, vtyc replies mykchqr."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

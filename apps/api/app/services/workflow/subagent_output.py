@@ -6,17 +6,18 @@ The workflow subagent can respond in two modes:
 2. Finalized workflow - ready to create the workflow draft
 
 The expected JSON block format lives in the subagent prompt
-(app/agents/prompts/workflow_prompts.py); this module validates it.
+(app/agents/prompts/subagent_prompts.py); this module validates it.
 """
 
-import json
-import re
-from typing import Any, Literal
+from typing import Literal, Self, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
+from app.models.trigger_gate_models import GateCondition
 from app.models.workflow_models import TriggerType
+from app.utils.markdown_utils import json_blocks
 from shared.py.wide_events import log
 
 # The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
@@ -33,11 +34,34 @@ TRIGGER_TYPE_BY_DRAFT_TYPE: dict[str, TriggerType] = {
 # =============================================================================
 
 
+class _TaggedOutput(BaseModel):
+    """The kind a structured reply names, read before the model that kind selects."""
+
+    type: str
+
+
 class ClarifyingOutput(BaseModel):
     """Output when subagent needs to ask clarifying questions."""
 
     type: Literal["clarifying"] = Field(description="Must be 'clarifying' when asking questions")
     message: str = Field(description="The clarifying question to ask the user")
+
+
+class WorkflowDraftPayload(TypedDict):
+    """The workflow_draft stream frame the chat's draft card renders."""
+
+    suggested_title: str
+    suggested_description: str
+    prompt: str
+    trigger_type: str
+    trigger_slug: str | None
+    integration_ids: list[str]
+    cron_expression: str | None
+    runs_only_when: str | None
+    direct_create: bool
+    delivery: str
+    #: Sent back on create, so whatever waited on the user setting it up is picked back up.
+    draft_id: str
 
 
 class FinalizedOutput(BaseModel):
@@ -61,6 +85,10 @@ class FinalizedOutput(BaseModel):
     trigger_slug: str | None = Field(
         default=None, description="Trigger slug for integration triggers"
     )
+    runs_only_when: GateCondition | None = Field(
+        default=None,
+        description="Integration triggers only: which events are worth a run; None when every event is",
+    )
     integration_ids: list[str] = Field(
         default_factory=list,
         description=(
@@ -74,13 +102,28 @@ class FinalizedOutput(BaseModel):
         description="True only for simple, unambiguous workflows where no user feedback is needed",
     )
 
+    @model_validator(mode="after")
+    def _runs_only_when_needs_an_event(self) -> Self:
+        if self.runs_only_when is not None and self.trigger_type != "integration":
+            raise ValueError(
+                "runs_only_when is only for integration triggers; omit it for "
+                f"a {self.trigger_type} workflow"
+            )
+        return self
+
     @property
     def backend_trigger_type(self) -> TriggerType:
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self) -> dict[str, Any]:
-        """Convert to the format expected by frontend stream handler."""
+    def to_stream_payload(
+        self, delivery: WorkflowDelivery, draft_id: str
+    ) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
+        """Convert to the format expected by frontend stream handler.
+
+        delivery is not the assistant's to choose: the calling agent sets it from
+        the user's intent, and the draft carries it to the confirming modal.
+        """
         return {
             "workflow_draft": {
                 "suggested_title": self.title,
@@ -90,7 +133,10 @@ class FinalizedOutput(BaseModel):
                 "trigger_slug": self.trigger_slug,
                 "integration_ids": self.integration_ids,
                 "cron_expression": self.cron_expression,
+                "runs_only_when": self.runs_only_when,
                 "direct_create": self.direct_create,
+                "delivery": delivery.value,
+                "draft_id": draft_id,
             }
         }
 
@@ -123,14 +169,17 @@ class ParseResult:
 # =============================================================================
 
 
-def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | None:
-    """Turn one decoded JSON object into a ParseResult, or None if it isn't ours."""
-    output_type = data.get("type")
+def _result_from_payload(candidate: str, response: str) -> ParseResult | None:
+    """Turn one JSON candidate into a ParseResult, or None if it isn't ours."""
+    try:
+        output_type = _TaggedOutput.model_validate_json(candidate).type
+    except ValidationError:
+        return None
 
     if output_type == "finalized":
         try:
-            draft = FinalizedOutput(**data)
-        except Exception as e:
+            draft = FinalizedOutput.model_validate_json(candidate)
+        except ValidationError as e:
             log.warning(
                 f"{LogTag.WORKFLOW} Failed to parse finalized output",
                 error=str(e),
@@ -161,28 +210,17 @@ def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | N
 
     if output_type == "clarifying":
         try:
-            clarifying = ClarifyingOutput(**data)
+            clarifying = ClarifyingOutput.model_validate_json(candidate)
             log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
             return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
-        except Exception:
+        except ValidationError:
             return ParseResult(
                 mode="clarifying",
-                message=data.get("message", response),
+                message=response,
                 raw_response=response,
             )
 
     return None
-
-
-def _json_candidates(response: str) -> list[str]:
-    """Every substring of the reply that might be the structured output.
-
-    Fenced blocks first (what the prompt asks for), then the whole reply: the
-    model sometimes emits a bare JSON object with no fence, and without this
-    fallback that raw JSON is handed to the user verbatim as the "question".
-    """
-    fenced = re.findall(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL)
-    return [*fenced, response]
 
 
 def parse_subagent_response(response: str) -> ParseResult:
@@ -191,17 +229,8 @@ def parse_subagent_response(response: str) -> ParseResult:
     Falls back to treating the whole reply as a clarifying message when it
     carries no recognizable JSON payload.
     """
-    for candidate in _json_candidates(response):
-        candidate = candidate.strip()
-        if not candidate:
-            continue
-        try:
-            data = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict) or "type" not in data:
-            continue
-        result = _result_from_payload(data, response)
+    for candidate in json_blocks(response):
+        result = _result_from_payload(candidate, response)
         if result is not None:
             return result
 
@@ -213,8 +242,3 @@ def parse_subagent_response(response: str) -> ParseResult:
         message=response,
         raw_response=response,
     )
-
-
-# Legacy aliases for backwards compatibility
-WorkflowDraft = FinalizedOutput
-WorkflowSubagentOutput = ParseResult

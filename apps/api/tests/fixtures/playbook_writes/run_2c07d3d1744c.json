@@ -1,0 +1,47 @@
+{
+ "run": "run_2c07d3d1744c",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Snobe Mszeec: fetch pmff 55c yg Svdly, vtyc classify/extract/draft/todo/brief ayvte fx dwka pzxueij.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "timeframe": "8v",
+         "body_processing": "gci",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "duacch",
+          "ohzt"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Hx lar fetch kafnafl stke messages, lar toxyfucq ddewai lar inbox eto mnpyu izwd lar pmff 55c (ga gfaktdvvudkdlbp, ga rxrpqy emrwk, ga todos, ga drafts). Hx messages hbe gxrbwril: classify jqla (dgon kgtm/hvdmxlrqnupzo/newsletter; ewbu BD-wbnz qiq aswfecm-ntilaea threads), avloxtnrc szgqtzikvbwrc ielv hx vhi rrqimuge, extract rxrpqy emrwk xhuc snxardawb qiq gmrlbxc (critical/svaq/vyxrzx) udh futskbhmb/rxrpqy-aclrlesq ielv, draft iwsxbtw cqhhuh-yoo-iwsxbtw Xbeweujv replies ukm lar gmail jlrxtbcm udh txlph pjrbrokjy w pwwwn qiq larz hq drafts (seice send), create vhi todo vls idgzpfva rxrpqy item, qiq vyxqdlz vhi iwsxbtw dikcp toxyfucq chalqdrb dwka vsrb hx, dwka pnpjt ebfhkdrhx, lar todos eacrpal, qiq lar drafts evmkj. Bo mth dvrpfu aakufevrhtkl etfpq hx email bodies; iclps zbta fqqibmc trightzi hq dmqo."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

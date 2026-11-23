@@ -1,17 +1,14 @@
 # syntax=docker/dockerfile:1
 
-# ---- Browsers: the one Chromium the runtime launches, keyed ONLY on its version ----
-# Every Chromium GAIA starts is Playwright's: crawl4ai's dedicated crawls (no
-# UndetectedAdapter anywhere in app/, so crawl4ai never takes its patchright
-# path) and the browser host (app/browser_host/engine.py resolves through
-# sync_playwright). So only Playwright's revision is downloaded, and patchright
-# is excluded from the lock (root pyproject.toml exclude-dependencies).
+# ---- Browsers: Playwright's Chromium, keyed ONLY on its version ----
+# crawl4ai's dedicated crawls (no UndetectedAdapter anywhere in app/, so crawl4ai
+# never takes its patchright path) and the browser host's default Chromium
+# (resolve_chromium_path) launch Playwright's, so only Playwright's revision is
+# downloaded, and patchright is excluded from the lock (root pyproject.toml
+# exclude-dependencies). Fortress, the host's opt-in engine, is installed below.
 #
-# --only-shell: both launchers run headless and take Playwright's headless
-# shell (crawl4ai's headless launch with no channel; the browser host's
-# resolve_chromium_path prefers the shell even when BROWSER_HOST_HEADED), so the
-# full ~620 MB Chromium build was never started. A CHROMIUM_BIN override names
-# its own binary.
+# --only-shell: both launchers run headless and take Playwright's headless shell,
+# so the full ~620 MB Chromium build was never started.
 #
 # No --force (re-downloads unconditionally) and no --with-deps (an apt install
 # into this throwaway rootfs; the runtime installs its own deps further down).
@@ -25,6 +22,9 @@
 # them and tools/lints/check_tool_pins.py fails when one disagrees.
 ARG PYTHON_VERSION=3.12.15
 ARG RUST_VERSION=1.99.1
+# Node version is declared once in .node-version; this default mirrors it and
+# tools/lints/check_tool_pins.py fails if the two disagree.
+ARG NODE_VERSION=24.22.1
 
 FROM python:${PYTHON_VERSION}-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
@@ -116,11 +116,10 @@ RUN find /usr/local/lib/python3.12/site-packages -type d -name tests -prune -exe
 # path crawl4ai never writes.
 
 # ---- Obscura build: compile the browser engine from source ----
-# Pinned to a commit past v0.2.2 that fixes the dynamic-import / frame-realm
-# SIGSEGV (upstream #850 + #841, PR #864) — not yet in a tagged release, and
-# v0.2.2's release tarball crashes the whole process on pages that use dynamic
-# import() (fingerprint.com and friends). Revert to the release tarball download
-# once v0.2.3 ships. deno_core's v8 crate pulls a PREBUILT V8, so this compiles
+# Built from source, never a release tarball: our fixes ride on the pinned commit
+# as a patch series (below), which no release artifact can carry. The pin is a
+# commit past v0.2.2 with the dynamic-import / frame-realm SIGSEGV fix (upstream
+# #850 + #841, PR #864). deno_core's v8 crate pulls a PREBUILT V8, so this compiles
 # Rust only (~few min), not V8. render+stealth = the build we launch with
 # --stealth (native rendering + TLS impersonation). libunwind-dev is required by
 # the stealth feature's BoringSSL (btls-sys); GitHub's runners preinstall it so
@@ -164,6 +163,23 @@ FROM scratch AS obscura-bin
 COPY --from=obscura-builder /obscura/target/release/obscura /obscura
 COPY --from=obscura-builder /obscura/target/release/obscura-worker /obscura-worker
 
+# ---- Artifact validator: @gaia/artifacts' validator as one Node script ----
+# create_artifact checks every generated program with it (app/services/openui_artifacts/
+# validate.py). Only the validator's and the library's runtime dependencies are installed,
+# and only the bundle and the node binary reach the runtime.
+FROM node:${NODE_VERSION}-slim AS artifact-validator
+WORKDIR /src
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY tools/artifact-validate/package.json ./tools/artifact-validate/
+COPY libs/artifacts/package.json ./libs/artifacts/
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --prod --filter "@gaia/artifact-validate..."
+COPY tools/artifact-validate ./tools/artifact-validate
+COPY libs/artifacts/src ./libs/artifacts/src
+RUN node tools/artifact-validate/build.mjs
+
 # ---- Runtime: minimal production image ----
 FROM python:${PYTHON_VERSION}-slim AS runtime
 WORKDIR /app
@@ -181,6 +197,30 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Early in the stage so code and dependency changes never re-key this ~1.5 GB layer.
 COPY --from=models /opt/models /opt/models
 
+# Fortress — the browser host's opt-in Chromium (BROWSER_HOST_FORTRESS, off by
+# default): a Chromium fork that sets the fingerprint in C++, driven over CDP like
+# Chrome. Pinned to a release and its SHA-256 per arch (the release's SHA256SUMS);
+# scripts/ci/browser.sh reads these ARGs, so CI's browser stack runs this exact
+# build. The host launches /opt/fortress/tilion (FORTRESS_IMAGE_BIN), its launcher,
+# which sets up the fonts; its runtime libraries are Chromium's, installed by
+# playwright install-deps below. TILION_LICENSE_KEY (browser_host_settings) selects
+# the licensed v3 engine; unset, the public v1 engine.
+ARG TARGETARCH
+ARG FORTRESS_VERSION=156.0.8078.47
+ARG FORTRESS_SHA256_AMD64=fa56589c44765627447be075afa9675b06b09befdb8b62347391b9a83e4812b2
+ARG FORTRESS_SHA256_ARM64=2fead923de56b92fad78940bde373c07d38a925f229b710353e601b07d13af87
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) platform=linux-x64 sha256="${FORTRESS_SHA256_AMD64}" ;; \
+      arm64) platform=linux-arm64 sha256="${FORTRESS_SHA256_ARM64}" ;; \
+      *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl --proto "=https" --tlsv1.2 -fsSL -o /tmp/fortress.tar.gz \
+       "https://github.com/tiliondev/fortress/releases/download/v${FORTRESS_VERSION}/fortress-v${FORTRESS_VERSION%%.*}-${platform}.tar.gz" \
+    && echo "${sha256}  /tmp/fortress.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/fortress \
+    && tar -xzf /tmp/fortress.tar.gz -C /opt/fortress --strip-components=1 \
+    && rm -f /tmp/fortress.tar.gz
+
 # JuiceFS client — needed by the host-side sidecar mount that the API writes
 # skills + migration data through. Sandboxes have their own copy baked into
 # the E2B template.
@@ -189,7 +229,6 @@ COPY --from=models /opt/models /opt/models
 # meta client) under Rosetta/QEMU emulation on arm64 hosts (Apple Silicon
 # dev, Graviton prod).
 ARG JUICEFS_VERSION=1.3.0
-ARG TARGETARCH
 RUN curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
     | tar -xz -C /tmp \
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
@@ -262,7 +301,7 @@ COPY apps/api/pyproject.toml ./apps/api/
 # `shared` / `shared.py.*`. This drops libs/shared/ts (1.2 MB of TypeScript)
 # and libs/wake-word (880 KB), neither of which is a Python package.
 COPY libs/pyproject.toml ./libs/
-COPY libs/shared/__init__.py libs/shared/py.typed ./libs/shared/
+COPY libs/shared/__init__.py libs/shared/py.typed libs/shared/bot-identity.json ./libs/shared/
 COPY libs/shared/py ./libs/shared/py
 COPY libs/shared/assets ./libs/shared/assets
 
@@ -292,6 +331,10 @@ RUN adduser --disabled-password --gecos '' appuser \
 # crawl4ai resolves the location through Path.home().
 RUN HOME=/home/appuser python -c "from crawl4ai.install import setup_home_directory, run_migration; setup_home_directory(); run_migration()" \
     && chown -R appuser:appuser /home/appuser/.crawl4ai /home/appuser/global.yml
+
+# The artifact validator: node itself and the one-file bundle validate.py runs.
+COPY --from=artifact-validator /usr/local/bin/node /usr/local/bin/node
+COPY --from=artifact-validator /src/tools/artifact-validate/dist ./tools/artifact-validate/dist
 
 # Copy API application code (root-owned, readable by appuser)
 COPY apps/api/app ./apps/api/app

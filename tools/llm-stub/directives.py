@@ -4,14 +4,29 @@ Pure stdlib — no third-party imports — so the parser and turn-counter can be
 unit-tested without booting the HTTP server or resolving the stub's runtime deps.
 
 A test authors its script inline, in the message it sends GAIA. The stub reads
-the LATEST user message in each chat-completions request and parses ordered
-directives out of it:
+the LATEST user message in each chat-completions request (or a Responses API
+request's input) and parses ordered directives out of it:
 
     [[tool:<name> <json-args>]]   one scripted tool call (repeatable, ordered)
     [[say:<text>]]                the final assistant reply (at most one, terminal)
     [[fail:<message>]]            fault injection: the final call breaks after
                                   streaming the say text (if any) — a mid-stream
                                   provider failure, deterministic for sim tests
+    [[wait:<ms>]]                 hold the next step this long before answering
+    [[pace:<ms>]]                 stream the say text one word per chunk, this
+                                  far apart
+    [[narrate:<text>]]            text the front door streams with its hand-off
+                                  call, a preamble that stays above the reply
+    [[react:<emoji>]]             the front door answers the newest message with
+                                  this reaction instead of words
+
+Timing: a wait belongs to the next tool directive after it, or to the final
+reply when no tool follows; consecutive waits add up. Each tier waits only on
+the steps it emits itself: the front door forwards executor tools at once (the
+executor waits on them), and the say is emitted, and waited on, by the tier that
+reaches it. After a hand-off the front door stays silent; the say reaches the
+user once, when it re-voices the finished work. A script whose closing has a
+fail scripts the front door's own turn, so it says the reply there.
 
 The stub is stateless. On every invocation it re-derives where in the script it
 is by counting the tool-call turns already present in the request's message list
@@ -57,11 +72,30 @@ import re
 from typing import Any
 
 DEFAULT_REPLY = "ok (llm-stub)"
+# The front door's turn right after a hand-off: the result arrives on its own, so
+# comms stays silent (STAY_SILENT_TOOL_NAME, apps/api/app/constants/comms.py) rather
+# than saying the script's reply, which the result then says a second time.
+STAY_SILENT_TOOL = "stay_silent"
+# Comms names the user's messages each reply answers by their [#n] handle.
+ANSWERED_TOOL = "answered"
+# Comms answers a message with a reaction instead of words (REACT_TOOL_NAME).
+REACT_TOOL = "react"
+_MESSAGE_HANDLE = r"^\[#(\d+)\] "
+_HANDLE_RE = re.compile(_MESSAGE_HANDLE + r'|^#(\d+) "', re.MULTILINE)
+# A hand-off's task is the request as the user wrote it, which is what the brief quotes.
+_LEADING_HANDLE_RE = re.compile(_MESSAGE_HANDLE)
+HAND_OFF_SILENCE_ARGS = {"reason": "the result arrives on its own"}
 CALL_EXECUTOR_TOOL = "call_executor"
-# call_executor requires acceptance_criteria, so a scripted hand-off has to send
-# something. Exported rather than inlined so the stub's tests pin the real value
-# instead of a copy that can drift.
+# call_executor's required args beyond the task, so a scripted hand-off is a call
+# the real tool accepts. Exported rather than inlined so the stub's tests pin the
+# real value instead of a copy that can drift; the API suite validates the whole
+# hand-off against call_executor's own schema.
 SCRIPTED_CRITERIA = ["scripted directives executed"]
+SCRIPTED_HAND_OFF_ARGS: dict[str, Any] = {
+    "acceptance_criteria": SCRIPTED_CRITERIA,
+    "desired_outcome": "the scripted directives run",
+    "time_horizon": "one_shot",
+}
 # The bigtool executor binds tools at inference: when a scripted tool is not yet
 # bound, the stub first emits retrieve_tools(exact_tool_names=[name]) so the
 # graph binds it, then emits the tool itself on the next invocation.
@@ -70,8 +104,23 @@ RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 # their schema docs instead), so a tool still unbound after one retrieval routes
 # through execute — retrieving it again would loop forever.
 EXECUTE_TOOL = "execute"
+# An approval's wake (app/services/hil/ticket.py): the work redeems a plain yes with
+# execute(tool_name="approve", data={"id": ...}), and redoes a yes with a change as
+# execute(<the tool>, <the changed args>, amends=<id>). A real model follows the
+# ticket; the stub does the same, or no approved call would ever run under sim.
+_APPROVAL_TICKET_RE = re.compile(r"APPROVAL_READY (?P<id>[^\s:]+):")
+_PLAIN_REDEEM_MARK = 'execute(tool_name="approve"'
+APPROVE_TOOL = "approve"
+# A gated call's result while the user decides (app/services/hil/gate.py). A real model
+# leaves it pending and ends its run asking; its closing waits for the approval's wake.
+_PENDING_RESULT_RE = re.compile(r"^PENDING (?P<id>[^\s:]+):")
+# Any wake that answers a pending approval: the yes ticket, or the verdict of a no, an
+# expiry or a withdrawal (app/services/hil/ledger_decide.py), after which the run reports.
+_APPROVAL_WAKE_RE = re.compile(r"APPROVAL_READY (?P<id>[^\s:]+):|DECISION (?P<verdict>[^\s=]+)=")
+FINISH_TASK_TOOL = "finish_task"
+ASK_FOR_APPROVAL_ARGS = {"result": "Waiting for your approval.", "outcome": "ask"}
 
-_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail):")
+_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail|wait|pace|narrate|react):")
 _CLOSE = "]]"
 # Consumes exactly one JSON value and reports where it ended, so a ``]]`` inside
 # the value (a nested directive) cannot be mistaken for the closing delimiter.
@@ -89,10 +138,11 @@ _ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTAL
 
 
 # compose_executor_brief lays the brief out as sections joined by a blank line:
-# the user's request under this header, the task, then the definition of done.
-# The front door forwards that request as the task word for word, so a quote the
-# task restates is a second copy of the script the task already carries.
+# the user's request under this header, the task, the intent, then the definition
+# of done. The front door forwards that request as the task word for word, so a
+# quote the task restates is a second copy of the script the task already carries.
 VERBATIM_REQUEST_HEADER = "Original request (verbatim):"
+INTENT_SECTION_HEAD = "Outcome the user actually wants:"
 DONE_SECTION_HEAD = "Definition of done"
 _SECTION_BREAK = "\n\n"
 
@@ -108,24 +158,43 @@ def _strip_echoed_payloads(text: str) -> str:
 def _strip_restated_request(text: str) -> str:
     """Drop the brief's request quote when the task section is that same request.
 
-    Quote and task fill the span from the header to the definition of done (the
-    last_run and playbook sections are tag blocks, gone before this runs), so the
-    quote is restated only when that span is one text twice.
+    Quote and task fill the span from the header to a section the brief appends after
+    the task (the intent, else the definition of done; last_run and playbook are tag
+    blocks, gone before this runs). The request may itself contain those section
+    heads, so each head after the header is tried as the span's end, nearest first.
     """
     header_at = text.find(VERBATIM_REQUEST_HEADER)
     if header_at < 0:
         return text
     span_at = header_at + len(VERBATIM_REQUEST_HEADER)
-    done_at = text.find(_SECTION_BREAK + DONE_SECTION_HEAD, span_at)
-    span_end = len(text) if done_at < 0 else done_at
-    span = text[span_at:span_end]
+    ends = sorted(
+        {
+            found
+            for head in (INTENT_SECTION_HEAD, DONE_SECTION_HEAD)
+            for found in _find_all(text, _SECTION_BREAK + head, span_at)
+        }
+    )
+    for end in [*ends, len(text)]:
+        cut = _restated_cut(text[span_at:end])
+        if cut is not None:
+            return text[:header_at] + text[span_at + cut :].lstrip()
+    return text
+
+
+def _find_all(text: str, needle: str, start: int) -> list[int]:
+    found = text.find(needle, start)
+    return [] if found < 0 else [found, *_find_all(text, needle, found + 1)]
+
+
+def _restated_cut(span: str) -> int | None:
+    """Return where the task starts when the span is one text twice, else None."""
     cut = span.find(_SECTION_BREAK)
     while cut >= 0:
         quote, task = span[:cut].strip(), span[cut:].strip()
         if quote and quote == task:
-            return text[:header_at] + text[span_at + cut :].lstrip()
+            return cut
         cut = span.find(_SECTION_BREAK, cut + len(_SECTION_BREAK))
-    return text
+    return None
 
 
 def _is_interjection(text: str) -> bool:
@@ -158,15 +227,54 @@ class FailDirective:
     message: str
 
 
-Directive = ToolDirective | SayDirective | FailDirective
+@dataclass(frozen=True)
+class WaitDirective:
+    """A [[wait:...]] hold on the step that follows it."""
+
+    ms: int
+
+
+@dataclass(frozen=True)
+class PaceDirective:
+    """A [[pace:...]] gap between the streamed words of the say text."""
+
+    ms: int
+
+
+@dataclass(frozen=True)
+class NarrateDirective:
+    """A [[narrate:...]] preamble the front door streams alongside its hand-off call."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class ReactDirective:
+    """A [[react:...]] reaction the front door answers the newest message with, instead of words."""
+
+    emoji: str
+
+
+Directive = (
+    ToolDirective
+    | SayDirective
+    | FailDirective
+    | WaitDirective
+    | PaceDirective
+    | NarrateDirective
+    | ReactDirective
+)
 
 
 @dataclass(frozen=True)
 class ToolCallResponse:
-    """A tool call as the answer to one invocation."""
+    """A tool call as the answer to one invocation, sent after ``delay_ms``, after any ``text``."""
 
     name: str
     args: dict[str, Any]
+    delay_ms: int = 0
+    text: str = ""
+    pace_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -175,6 +283,8 @@ class SayResponse:
 
     text: str
     fail: str | None = None
+    delay_ms: int = 0
+    pace_ms: int = 0
 
 
 Response = ToolCallResponse | SayResponse
@@ -196,6 +306,18 @@ def parse_directives(text: str) -> list[Directive]:
         elif opener.group(1) == "fail":
             say, pos = _scan_say(text, opener.end())
             directive = FailDirective(message=say.text)
+        elif opener.group(1) == "wait":
+            ms, pos = _scan_ms(text, opener.end(), "wait")
+            directive = WaitDirective(ms=ms)
+        elif opener.group(1) == "pace":
+            ms, pos = _scan_ms(text, opener.end(), "pace")
+            directive = PaceDirective(ms=ms)
+        elif opener.group(1) == "narrate":
+            say, pos = _scan_say(text, opener.end())
+            directive = NarrateDirective(text=say.text)
+        elif opener.group(1) == "react":
+            say, pos = _scan_say(text, opener.end())
+            directive = ReactDirective(emoji=say.text.strip())
         else:
             directive, pos = _scan_tool(text, opener.end())
         if directive is None:
@@ -231,6 +353,16 @@ def _scan_say(text: str, start: int) -> tuple[SayDirective, int]:
     if end < 0:
         raise DirectiveError(f"unterminated say directive: [[say:{text[start : start + 60]}")
     return SayDirective(text=text[start:end].strip()), end + len(_CLOSE)
+
+
+def _scan_ms(text: str, start: int, kind: str) -> tuple[int, int]:
+    """Read a timing directive's body: a whole, non-negative millisecond count."""
+    body, end = _scan_say(text, start)
+    if not body.text.isdigit():
+        raise DirectiveError(
+            f"{kind} directive needs whole milliseconds, got [[{kind}:{body.text}]]"
+        )
+    return int(body.text), end
 
 
 #: How a directive looks once it has been embedded in a JSON string: its quotes
@@ -296,6 +428,23 @@ def message_text(message: dict[str, Any]) -> str:
     return ""
 
 
+def unanswered_tool_calls(messages: Sequence[dict[str, Any]]) -> list[str]:
+    """Ids of assistant tool calls no tool message answers: a thread a real provider rejects.
+
+    OpenAI and OpenRouter refuse such a request (400 "No tool output found for
+    function call"), so the stub refuses it too, or a run that leaves a call open
+    would pass under sim and break every later turn in production.
+    """
+    answered = {m.get("tool_call_id") for m in messages if m.get("role") == "tool"}
+    return [
+        call["id"]
+        for message in messages
+        if message.get("role") == "assistant"
+        for call in message.get("tool_calls") or []
+        if isinstance(call, dict) and call.get("id") and call["id"] not in answered
+    ]
+
+
 def _last_user_index(messages: Sequence[dict[str, Any]]) -> int | None:
     for idx in range(len(messages) - 1, -1, -1):
         if messages[idx].get("role") == "user":
@@ -319,16 +468,25 @@ def _script_message_index(messages: Sequence[dict[str, Any]]) -> int | None:
 
 
 def _emitted_tool_names(messages: Sequence[dict[str, Any]]) -> list[str]:
-    """Ordered tool-call names from assistant messages, flattened."""
+    """Ordered tool-call names from assistant messages, flattened; the stub's own approval asks are left out."""
     names: list[str] = []
     for message in messages:
         if message.get("role") != "assistant":
             continue
         for call in message.get("tool_calls") or []:
-            name = (call.get("function") or {}).get("name")
-            if name:
+            function = call.get("function") or {}
+            name = function.get("name")
+            if name and not _is_stub_ask(name, function.get("arguments")):
                 names.append(name)
     return names
+
+
+def _is_stub_ask(name: str, arguments: str | None) -> bool:
+    """Whether a call is the ask the stub ends a run with while an approval waits: no scripted step."""
+    args = json.loads(arguments or "{}")
+    if name == EXECUTE_TOOL:
+        name, args = args.get("tool_name"), args.get("data")
+    return name == FINISH_TASK_TOOL and args == ASK_FOR_APPROVAL_ARGS
 
 
 def _retrieved_tool_names(messages: Sequence[dict[str, Any]]) -> set[str]:
@@ -385,16 +543,43 @@ def _work_primary_index(messages: Sequence[dict[str, Any]]) -> int | None:
         if message.get("role") != "user":
             continue
         text = message_text(message)
-        if _is_interjection(text):
+        if _is_interjection(text) or _APPROVAL_TICKET_RE.search(text):
             continue
         if parse_directives(_strip_echoed_payloads(text)):
             return idx
     return None
 
 
+@dataclass(frozen=True)
+class _Script:
+    """A script split into its tool steps and its closing, each step with the wait before it."""
+
+    tools: list[ToolDirective]
+    tool_waits: list[int]
+    closing: list[Directive]
+    final_wait: int
+
+
+def _script(directives: Sequence[Directive]) -> _Script:
+    tools: list[ToolDirective] = []
+    tool_waits: list[int] = []
+    closing: list[Directive] = []
+    pending_wait = 0
+    for directive in directives:
+        if isinstance(directive, WaitDirective):
+            pending_wait += directive.ms
+        elif isinstance(directive, ToolDirective):
+            tools.append(directive)
+            tool_waits.append(pending_wait)
+            pending_wait = 0
+        else:
+            closing.append(directive)
+    return _Script(tools, tool_waits, closing, pending_wait)
+
+
 def _collect_work_directives(
     messages: Sequence[dict[str, Any]],
-) -> tuple[list[ToolDirective], list[Directive], int | None]:
+) -> tuple[_Script, int | None]:
     """Collect the current task's directives PLUS every steer folded into its run.
 
     A run works through the whole plan — the original tool directives and each
@@ -404,7 +589,7 @@ def _collect_work_directives(
     "newest scripted message wins" made the stub drop it)."""
     primary_idx = _work_primary_index(messages)
     if primary_idx is None:
-        return [], None, None
+        return _script([]), None
     genuine: list[Directive] = list(
         parse_directives(_strip_echoed_payloads(message_text(messages[primary_idx])))
     )
@@ -412,32 +597,106 @@ def _collect_work_directives(
         if message.get("role") != "user":
             continue
         text = message_text(message)
-        if _is_interjection(text):
+        # An approval's wake reaches a live run as an interjection and an ended one as its own message.
+        ticket = _APPROVAL_TICKET_RE.search(text)
+        if ticket is not None:
+            genuine.extend(
+                _redeemed(ticket["id"], text, parse_directives(_strip_echoed_payloads(text)))
+            )
+        elif _is_interjection(text):
             genuine.extend(parse_directives(_strip_echoed_payloads(text)))
-    tool_dirs = [d for d in genuine if isinstance(d, ToolDirective)]
-    closing = [d for d in genuine if not isinstance(d, ToolDirective)]
-    return tool_dirs, closing, primary_idx
+    return _script(genuine), primary_idx
 
 
-def _terminal(directives: Sequence[Directive]) -> SayResponse:
+def _redeemed(approval_id: str, ticket: str, change: list[Directive]) -> list[Directive]:
+    """Redeem an approval's wake: run the approved call, or redo it with the change.
+
+    A plain yes runs the stored call through execute(approve). A yes with a change
+    carries the user's words, which script the redone calls: each runs through
+    execute with amends naming the approval, as the ticket asks.
+    """
+    if _PLAIN_REDEEM_MARK in ticket:
+        return [
+            ToolDirective(
+                name=EXECUTE_TOOL,
+                args={
+                    "task_description": "Run the approved call",
+                    "tool_name": APPROVE_TOOL,
+                    "data": {"id": approval_id},
+                },
+            )
+        ]
+    return [
+        ToolDirective(
+            name=EXECUTE_TOOL,
+            args={
+                "task_description": f"Run {d.name} with the change",
+                "tool_name": d.name,
+                "data": d.args,
+                "amends": approval_id,
+            },
+        )
+        if isinstance(d, ToolDirective)
+        else d
+        for d in change
+    ]
+
+
+def _terminal(script: _Script) -> SayResponse:
     """Resolve the script's last word: its say text, broken by its fail directive if it has one."""
-    say = next((d for d in reversed(directives) if isinstance(d, SayDirective)), None)
-    fail = next((d for d in reversed(directives) if isinstance(d, FailDirective)), None)
+    closing = script.closing
+    say = next((d for d in reversed(closing) if isinstance(d, SayDirective)), None)
+    fail = next((d for d in reversed(closing) if isinstance(d, FailDirective)), None)
+    pace = next((d for d in reversed(closing) if isinstance(d, PaceDirective)), None)
+    timing = {"delay_ms": script.final_wait, "pace_ms": pace.ms if pace is not None else 0}
     if fail is not None:
-        return SayResponse(say.text if say is not None else "", fail=fail.message)
-    return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+        return SayResponse(say.text if say is not None else "", fail=fail.message, **timing)
+    return SayResponse(say.text if say is not None else DEFAULT_REPLY, **timing)
+
+
+def _scripts_front_door(script: _Script) -> bool:
+    """Whether the closing scripts the front door's own turn: a reply it breaks."""
+    return any(isinstance(d, FailDirective) for d in script.closing)
+
+
+def _narration(script: _Script) -> dict[str, Any]:
+    """Return the preamble a front-door hand-off streams, paced like the reply; empty without one."""
+    narrate = next((d for d in script.closing if isinstance(d, NarrateDirective)), None)
+    if narrate is None:
+        return {}
+    pace = next((d for d in reversed(script.closing) if isinstance(d, PaceDirective)), None)
+    return {"text": narrate.text, "pace_ms": pace.ms if pace is not None else 0}
+
+
+def _awaiting_approval(tail: Sequence[dict[str, Any]]) -> bool:
+    """Whether a call this run made waits on the user's decision with no wake for it yet."""
+    pending = {
+        found["id"]
+        for message in tail
+        if message.get("role") == "tool"
+        and (found := _PENDING_RESULT_RE.match(message_text(message))) is not None
+    }
+    woken = {
+        found["id"] or found["verdict"]
+        for message in tail
+        if message.get("role") == "user"
+        for found in _APPROVAL_WAKE_RE.finditer(message_text(message))
+    }
+    return bool(pending - woken)
 
 
 def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
     """Executor/subagent tier: aggregate the task + its steers, emit the next step."""
-    tool_dirs, closing, primary_idx = _collect_work_directives(messages)
-    if not tool_dirs and not closing:
-        return SayResponse(DEFAULT_REPLY)
-
+    script, primary_idx = _collect_work_directives(messages)
     tail = messages[primary_idx + 1 :] if primary_idx is not None else messages
+    tool_dirs, tool_waits = script.tools, script.tool_waits
+    if _awaiting_approval(tail):
+        ask = ToolDirective(name=FINISH_TASK_TOOL, args=ASK_FOR_APPROVAL_ARGS)
+        tool_dirs, tool_waits = [*tool_dirs, ask], [*tool_waits, 0]
     di = _cursor(tool_dirs, _emitted_tool_names(tail), available_tools)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
+        wait = tool_waits[di]
         if nxt.name not in available_tools:
             # retrieve_tools decides: internal tools bind, integration tools come
             # back as schema docs and stay unbound — those run through execute.
@@ -455,9 +714,10 @@ def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset
                         "tool_name": nxt.name,
                         "data": nxt.args,
                     },
+                    delay_ms=wait,
                 )
-        return ToolCallResponse(name=nxt.name, args=nxt.args)
-    return _terminal(closing)
+        return ToolCallResponse(name=nxt.name, args=nxt.args, delay_ms=wait)
+    return _terminal(script)
 
 
 def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
@@ -470,26 +730,99 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
     if latest is None:
         return SayResponse(DEFAULT_REPLY)
 
-    task_text = _strip_echoed_payloads(message_text(messages[latest]))
-    directives = parse_directives(task_text)
-    tool_dirs = [d for d in directives if isinstance(d, ToolDirective)]
-    closing = [d for d in directives if not isinstance(d, ToolDirective)]
-    if not tool_dirs and not closing:
-        return SayResponse(DEFAULT_REPLY)
+    task_text = _LEADING_HANDLE_RE.sub(
+        "", _strip_echoed_payloads(message_text(messages[latest])), count=1
+    )
+    script = _script(parse_directives(task_text))
+    tool_dirs = script.tools
 
-    di = _cursor(tool_dirs, _emitted_tool_names(messages[latest + 1 :]), available_tools)
+    emitted = _emitted_tool_names(messages[latest + 1 :])
+    di = _cursor(tool_dirs, emitted, available_tools)
+    handles = _open_handles(messages)
+    if di >= len(tool_dirs) and CALL_EXECUTOR_TOOL in emitted and not _scripts_front_door(script):
+        return ToolCallResponse(name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
         # Only the executor tier runs a tool itself, so the execute/retrieve
         # fallbacks live in _resolve_work. Comms forwards and is done.
         if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
-            # acceptance_criteria became required with the structured handoff.
             return ToolCallResponse(
                 name=CALL_EXECUTOR_TOOL,
-                args={"task": task_text, "acceptance_criteria": SCRIPTED_CRITERIA},
+                args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS, "for_messages": handles},
+                **_narration(script),
             )
-        return ToolCallResponse(name=nxt.name, args=nxt.args)
-    return _terminal(closing)
+        args = nxt.args
+        if nxt.name == CALL_EXECUTOR_TOOL and "for_messages" not in args:
+            # A scripted hand-off names the messages it takes, as comms is told to.
+            args = {**args, "for_messages": handles}
+        return ToolCallResponse(name=nxt.name, args=args, delay_ms=script.tool_waits[di])
+    reaction = next((d for d in script.closing if isinstance(d, ReactDirective)), None)
+    if reaction is not None and handles and REACT_TOOL in available_tools:
+        return ToolCallResponse(
+            name=REACT_TOOL,
+            args={"emoji": reaction.emoji, "message_id": handles[-1]},
+            delay_ms=script.final_wait,
+        )
+    return _naming(_terminal(script), handles, available_tools)
+
+
+def _open_handles(messages: Sequence[dict[str, Any]]) -> list[int]:
+    """Return the handles of the user's messages since the model last spoke, oldest first."""
+    last_assistant = max(
+        (i for i, message in enumerate(messages) if message.get("role") == "assistant"),
+        default=-1,
+    )
+    return [
+        int(first or second)
+        for message in messages[last_assistant + 1 :]
+        if message.get("role") == "user"
+        for first, second in _HANDLE_RE.findall(message_text(message))
+    ]
+
+
+def _naming(reply: SayResponse, handles: list[int], available_tools: frozenset[str]) -> Response:
+    """Return the reply as words beside an answered call naming handles, as comms is told to."""
+    if reply.fail is not None or not handles or ANSWERED_TOOL not in available_tools:
+        return reply
+    return ToolCallResponse(
+        name=ANSWERED_TOOL,
+        args={"message_ids": handles},
+        delay_ms=reply.delay_ms,
+        text=reply.text,
+        pace_ms=reply.pace_ms,
+    )
+
+
+# Payloads a tier hands the next one to re-voice: a run's result, never a context slot.
+_RESULT_PAYLOAD_RE = re.compile(
+    r"<(?P<tag>executor_result|executor_error|browser_[a-z_]+)(?:\s[^>]*)?>\n?(?P<body>.*?)\n?</(?P=tag)>",
+    re.DOTALL,
+)
+
+
+# The conversation step's note for finished work (WORK_DONE_NOTE / WORK_UNFINISHED_NOTE in
+# apps/api/app/constants/conversation.py): its report is the result to re-voice.
+_WORK_NOTE_RE = re.compile(
+    r"^\[Background work (?:finished|ended \w+)\. The user has not seen this(?: result)? yet, "
+    r"so (?:report it|tell them) in your reply: (?P<body>.*)\]$",
+    re.DOTALL,
+)
+
+
+def _result_echo(messages: Sequence[dict[str, Any]]) -> SayResponse | None:
+    """Return the newest result payload handed over after the newest script, as the reply."""
+    scripted = _script_message_index(messages)
+    for idx in range(len(messages) - 1, -1, -1):
+        if scripted is not None and idx <= scripted:
+            return None
+        message = messages[idx]
+        if message.get("role") != "user":
+            continue
+        text = message_text(message)
+        found = _RESULT_PAYLOAD_RE.search(text) or _WORK_NOTE_RE.match(text.strip())
+        if found is not None:
+            return SayResponse(found.group("body").strip())
+    return None
 
 
 def resolve_response(
@@ -498,9 +831,13 @@ def resolve_response(
 ) -> Response:
     """Pick the next scripted action for this invocation (stateless).
 
-    The front door (``call_executor`` bound) forwards/cancels the newest
+    A result handed to this tier after its script is re-voiced word for word.
+    Otherwise the front door (``call_executor`` bound) forwards/cancels the newest
     instruction; the tier that runs work aggregates the task and every steer
     folded into its run."""
+    echoed = _result_echo(messages)
+    if echoed is not None:
+        return echoed
     if CALL_EXECUTOR_TOOL in available_tools:
         return _resolve_comms(messages, available_tools)
     return _resolve_work(messages, available_tools)
@@ -529,3 +866,53 @@ def parse_request(body: dict[str, Any]) -> ChatRequest:
         stream=bool(body.get("stream")),
         available_tools=frozenset(name for name in tool_names if name),
     )
+
+
+#: The Responses API's text content parts; an image or a file carries no script.
+_RESPONSES_TEXT_PARTS = frozenset({"input_text", "output_text"})
+
+
+def _responses_message(item: object) -> dict[str, Any]:
+    """One Responses input item as a chat message: its role and its text parts joined."""
+    if not isinstance(item, dict):
+        raise DirectiveError(f"unsupported Responses input item: {item!r}")
+    content = item.get("content")
+    if isinstance(content, list):
+        content = "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") in _RESPONSES_TEXT_PARTS
+        )
+    return {"role": item.get("role", "user"), "content": content or ""}
+
+
+def parse_responses_request(body: dict[str, Any]) -> ChatRequest:
+    """Read a Responses API body as the chat request it scripts; instructions are never a script."""
+    raw_input = body.get("input")
+    if isinstance(raw_input, str):
+        messages = [{"role": "user", "content": raw_input}]
+    else:
+        messages = [_responses_message(item) for item in raw_input or []]
+    tool_names = {tool.get("name") for tool in body.get("tools") or [] if isinstance(tool, dict)}
+    return ChatRequest(
+        model=body.get("model") or "llm-stub",
+        messages=messages,
+        stream=bool(body.get("stream")),
+        available_tools=frozenset(name for name in tool_names if name),
+    )
+
+
+def resolve_text_response(
+    messages: Sequence[dict[str, Any]], available_tools: frozenset[str] = frozenset()
+) -> SayResponse:
+    """Resolve a Responses API call, which the stub answers with text alone.
+
+    Nothing in GAIA calls a Responses model with tools, so a scripted tool call
+    there is an authoring error the stub refuses rather than invent a wire shape for.
+    """
+    response = resolve_response(messages, available_tools)
+    if isinstance(response, ToolCallResponse):
+        raise DirectiveError(
+            f"the Responses route scripts say/fail only, got a call to {response.name!r}"
+        )
+    return response

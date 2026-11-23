@@ -31,7 +31,7 @@ interface UserProperties {
  * The SDK is imported and initialised at browser idle (`instrumentation-client.ts`)
  * and handed over through `connectPostHog`; it is never imported here, so it stays
  * out of every page's eager bundle. A capture before init would be *dropped* —
- * `onboarding:started` on mount missed the head of the funnel this way for quick users.
+ * an event fired on mount missed the head of the funnel this way for quick users.
  *
  * Calls made before that are buffered here and replayed in order by
  * `flushPendingAnalytics`; capped, since no project token (local dev) means the queue never flushes and would grow for the tab's life.

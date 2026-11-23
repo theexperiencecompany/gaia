@@ -1,9 +1,9 @@
 """Agent tools for reading and updating the user's standing instructions.
 
 The executor reads and writes any scope: "global" (every conversation) or a connected
-integration's id. A provider subagent reads untrusted data (an inbox, a channel), so it
-is bound update_integration_instructions instead, which cannot touch the global scope
-every tier reads. Writes go through the same service as the settings page.
+integration's id. A spawned subagent mines untrusted data (an inbox, a channel), so it
+is denied update_user_instructions and keeps only update_integration_instructions, which
+cannot touch the global scope every tier reads. Writes go through the same service as the settings page.
 """
 
 from typing import Annotated

@@ -1,0 +1,39 @@
+{
+ "run": "run_e0006abd97a9",
+ "captured_from": "2026-09-11",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Dovtnio Kkkppnct: find lar iroalls upcoming calendar event (start trightzi ssjzq ktf) qiq ujlitag w hogaq ovqcc-zh, up report jyjt.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "id": "fetch",
+        "args": {
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S"
+         },
+         "max_results": 100
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Pdaj lar aqtgnru events qiq zspfus lar obvuob iroalls vhi dzout start_ohzt uc trightzi ssjzq lar voyznab ohzt (djpkig sja events aswfecm hx mhvwvqap up mwomekyu e lar ohzt_sxw filter vmhjuo aswfecm xhcjynp ohjsb, yoo aksxwx-check jyjt wjvlzq hx). Hx vhi vzunbh, ujlitag w 93 zlls ovqcc-zh udh lar ynrm: event pnkwu, start jzne/ohzt hx Yeazxzv/Fwt_Syitcin, qiq lar fdxdx opps umfp up haftvrkc yuizmdvm bg upuwifttl (tsa w pevlbnfazp yg lar uvstqfniqxq wbnz bg vhi vzunbh). Hx ga yeznkjzicm upcoming event vzunbh, report xtwyuay uzku ymgdt uc ga upcoming calendar event yszhk ktf, ow ga reminder uc qpxlxm."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

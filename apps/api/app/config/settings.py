@@ -9,6 +9,7 @@ app/config/capability_requirements.py.
 from functools import lru_cache
 import time
 from typing import Literal, Self, TypedDict, cast
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from pydantic import Field, ValidationInfo, computed_field, field_validator, model_validator
@@ -20,12 +21,19 @@ from app.config.deployment import (
     BlobStoreKind,
     DeploymentKind,
     DeploymentProfile,
+    LinkBase,
     deployment_profile,
 )
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
-from app.constants.bot import GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+from app.constants.bot import (
+    GAIA_CLOUD_DISCORD_CLIENT_ID,
+    GAIA_CLOUD_SLACK_CLIENT_ID,
+    GAIA_CLOUD_TELEGRAM_BOT_USERNAME,
+    GAIA_CLOUD_WHATSAPP_NUMBER,
+)
 from app.constants.browser import BrowserAgentEffort
+from app.constants.email import BRIEF_SENDER, BRIEF_SENDER_MAILBOX
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.files import S3AddressingStyle
 from app.constants.llm import DevLLMApi
@@ -34,7 +42,10 @@ from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
+from app.constants.short_links import SHORTLINK_WEB_ROUTE
 from shared.py.wide_events import log
+
+MIN_LINK_CONTENT_SIGNING_KEY_LENGTH = 32
 
 load_dotenv()
 
@@ -67,10 +78,6 @@ class Settings(BrowserHostSettings):
     OPENROUTER_BASE_URL: str | None = None
     # Every request authenticates as this Mongo user with no WorkOS session.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
-    # Comma-separated OpenRouter provider slugs to PREFER for the default-model
-    # lane — fallbacks stay enabled. Set from the per-provider cache-hit table;
-    # see _provider_order_kwargs in agents/llm/client.py.
-    OPENROUTER_PROVIDER_ORDER: str | None = None
     # Dev-only: lift every per-user rate limit. Eval harnesses drive thousands
     # of requests/day against a free-plan dev user, which 429s at 200/day
     # otherwise. get_settings() refuses production boot when set.
@@ -93,6 +100,18 @@ class Settings(BrowserHostSettings):
     # Unset signs requests for us-east-1, which MinIO and most S3-compatible services accept.
     S3_REGION: str | None = None
     S3_ADDRESSING_STYLE: S3AddressingStyle = S3AddressingStyle.VIRTUAL
+    # Shared-link file snapshots. Under BLOB_STORE=local or s3 they share the
+    # blob store; under cloudinary they go to this R2 bucket (R2_ACCOUNT_ID's keys).
+    LINK_CONTENT_BUCKET: str | None = None
+    # The content origin that serves snapshot bytes, with a {content_id}
+    # placeholder: https://{content_id}.heygaia.link on GAIA Cloud. Unset, HTML
+    # shows as source and other files as downloads (no active link content).
+    LINK_CONTENT_URL_TEMPLATE: str | None = None
+    # Signs the short-lived content tokens that origin checks (min 32 chars).
+    LINK_CONTENT_SIGNING_KEY: str | None = None
+    # Shared with GAIA Cloud's usercontent Worker, the only caller whose named content
+    # host is believed. Unset (any self-host: its proxy keeps the Host), none is.
+    LINK_CONTENT_EDGE_TOKEN: str | None = None
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None
@@ -138,6 +157,12 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Short-link base (heygaia.link/<slug> on GAIA Cloud). Unset elsewhere, it is
+    # FRONTEND_URL/l, the instance's own route. No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.link"
+    # Sender of notification and brief email. Unset on a self-host, it is
+    # brief@<FRONTEND_URL's host>: a domain its own Resend account must verify.
+    EMAIL_FROM: str = BRIEF_SENDER
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
@@ -149,24 +174,15 @@ class Settings(BrowserHostSettings):
     # script can be written without a get_tool_schema call. App-wide, not per user.
     # Off by default: discovery docs carry args only and never read the observed-shape store.
     ENABLE_INLINE_TOOL_RETURNS: bool = False
-    # Executor-free HIL ledger — gated calls register PENDING and return
-    # instead of parking the run on an interrupt. On by default; off keeps the
-    # interrupt-and-resume barrier.
-    ENABLE_HIL_LEDGER: bool = True
-    # JEV choice judge for auto mode — a structured decision call classifies first
-    # (49/50 on the calibration set, zero dangerous accepts), LLM intent judge as
-    # the transport-failure fallback. On by default; a JEV outage never opens the gate.
-    ENABLE_HIL_JEV_JUDGE: bool = True
-    # JEV reply classifier for bot users' chat answers to pending approvals —
-    # one structured decision call per reply (hil-reply calibration: 0 dangerous
-    # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
-    ENABLE_HIL_JEV_REPLY: bool = True
+    # Trigger gates skip a run JEV is sure its event does not need. The kill switch:
+    # off still evaluates and records every gate, but every run goes ahead.
+    ENABLE_TRIGGER_GATES: bool = True
     # Private agent lab — Claude Code / OpenCode CLIs inside the
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
 
-    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
@@ -184,10 +200,8 @@ class Settings(BrowserHostSettings):
 
     @property
     def telegram_bot_username(self) -> str | None:
-        """Return this instance's Telegram bot, GAIA Cloud's own when the deployment runs on it."""
-        if self.TELEGRAM_BOT_USERNAME:
-            return self.TELEGRAM_BOT_USERNAME
-        return GAIA_CLOUD_TELEGRAM_BOT_USERNAME if self.deployment.hosted_bots else None
+        """The Telegram bot for this instance, from env or the shared identity file."""
+        return self.TELEGRAM_BOT_USERNAME
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
     # app/services/email/providers.
@@ -271,8 +285,10 @@ class Settings(BrowserHostSettings):
     # steers and signs off while Jev does the stepping. Served by OpenRouter.
     BROWSER_AGENT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
     BROWSER_AGENT_REASONING_EFFORT: BrowserAgentEffort = "low"
-    # Browser-Use's flash mode: the agent writes only its memory and actions, no thinking.
-    BROWSER_AGENT_FLASH_MODE: bool = True
+    # Browser-Use's flash mode: the agent writes only its memory and actions, no evaluation of
+    # its last step and no next goal or plan. Browser-Use turns it on only for its own trained
+    # model; on ours the agent stopped noticing it was looping (38 steps on GitHub's code page).
+    BROWSER_AGENT_FLASH_MODE: bool = False
 
     # Hard limits — everything is bounded so no browser task can run away. The
     # agent's step count is only Browser-Use's required backstop: a run ends on
@@ -315,10 +331,6 @@ class Settings(BrowserHostSettings):
     # When false, a session's login is never persisted or restored (per-deployment
     # opt-out of "log in once, reuse next time").
     BROWSER_PERSIST_LOGINS: bool = True
-    # Public base URL for the recap and step-screenshot links a user is sent, e.g.
-    # https://browser.heygaia.io where a vhost reverse-proxies to this api service.
-    # When unset, those links fall back to HOST.
-    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
 
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
     # All three must be set; the "custom" provider is registered exclusively in
@@ -468,6 +480,9 @@ class Settings(BrowserHostSettings):
     OPENAI_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
     OPENROUTER_API_KEY: str | None = None
+    # Cloudflare Workers AI; set together, they put every LLM role on it (see OVERRIDE_PROVIDER).
+    CLOUDFLARE_AI_ACCOUNT_ID: str | None = None
+    CLOUDFLARE_AI_API_TOKEN: str | None = None
 
     # Weather Services
     OPENWEATHER_API_KEY: str | None = None
@@ -537,10 +552,6 @@ class Settings(BrowserHostSettings):
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
-    # Artifact detection mechanism — decided empirically by
-    # scripts/probe_artifact_detection.py (Phase 0). "watch_dir" uses E2B
-    # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
-    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
     ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
 
     # ----------------------------------------------
@@ -604,6 +615,11 @@ class Settings(BrowserHostSettings):
     # Bot Configuration
     # ----------------------------------------------
     GAIA_BOT_API_KEY: str | None = None
+    # Shared with the web app's server. Only rate limiting reads it: its requests count
+    # against the token's ceiling and the viewer they name. Never grants auth.
+    INTERNAL_API_TOKEN: str | None = None
+    # The value being rotated out, still accepted until every web server sends the new one.
+    INTERNAL_API_TOKEN_PREVIOUS: str | None = None
     DISCORD_BOT_TOKEN: str | None = None
     DISCORD_CLIENT_ID: str | None = None
     SLACK_BOT_TOKEN: str | None = None
@@ -640,6 +656,78 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     BOT_SESSION_TOKEN_SECRET: str | None = None  # min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
+
+    @model_validator(mode="after")
+    def _default_hosted_bot_identity(self) -> Self:
+        """Fill the hosted handles from the shared identity file when env leaves them unset."""
+        if not self.deployment.hosted_bots:
+            return self
+        self.WHATSAPP_PHONE_NUMBER = self.WHATSAPP_PHONE_NUMBER or GAIA_CLOUD_WHATSAPP_NUMBER
+        self.DISCORD_OAUTH_CLIENT_ID = self.DISCORD_OAUTH_CLIENT_ID or GAIA_CLOUD_DISCORD_CLIENT_ID
+        self.SLACK_OAUTH_CLIENT_ID = self.SLACK_OAUTH_CLIENT_ID or GAIA_CLOUD_SLACK_CLIENT_ID
+        self.TELEGRAM_BOT_USERNAME = self.TELEGRAM_BOT_USERNAME or GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+        return self
+
+    @model_validator(mode="after")
+    def _short_links_on_the_instances_web_app(self) -> Self:
+        """Point minted links at this instance's web app /l route unless it resolves heygaia.link."""
+        if (
+            self.deployment.link_base is LinkBase.INSTANCE_WEB_ROUTE
+            and "SHORTLINK_BASE_URL" not in self.model_fields_set
+        ):
+            self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
+        return self
+
+    @model_validator(mode="after")
+    def _email_from_the_instances_domain(self) -> Self:
+        """Send from the instance's own web domain unless it is GAIA Cloud's or EMAIL_FROM is set."""
+        if not self.deployment.gaia_mail_domain and "EMAIL_FROM" not in self.model_fields_set:
+            self.EMAIL_FROM = f"{BRIEF_SENDER_MAILBOX}@{urlsplit(self.FRONTEND_URL).hostname}"
+        return self
+
+    @field_validator(
+        "LINK_CONTENT_URL_TEMPLATE",
+        "LINK_CONTENT_SIGNING_KEY",
+        "LINK_CONTENT_EDGE_TOKEN",
+        mode="after",
+    )
+    @classmethod
+    def _blank_link_content_setting_is_unset(cls, v: str | None) -> str | None:
+        # A templated deploy spells "unset" as blank; failing on "" once took the whole API down.
+        return v or None
+
+    @model_validator(mode="after")
+    def _link_content_origin_is_complete(self) -> Self:
+        """Turn off a content origin that cannot name a snapshot's host or sign its tokens.
+
+        A self-host refuses to boot (its .env is CLI-written); GAIA Cloud logs the
+        error and serves shared files as text or downloads until it is fixed.
+        """
+        template = self.LINK_CONTENT_URL_TEMPLATE
+        if template is None:
+            return self
+        key = self.LINK_CONTENT_SIGNING_KEY
+        problem = None
+        if "{content_id}" not in template:
+            problem = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
+        elif urlsplit(template).netloc.lower() in {
+            urlsplit(self.HOST).netloc.lower(),
+            urlsplit(self.FRONTEND_URL).netloc.lower(),
+        }:
+            # The API and app hosts carry the session; user bytes there are the stored XSS this origin exists to stop.
+            problem = "LINK_CONTENT_URL_TEMPLATE must name a host other than HOST and FRONTEND_URL"
+        elif key is None or len(key) < MIN_LINK_CONTENT_SIGNING_KEY_LENGTH:
+            problem = (
+                "LINK_CONTENT_URL_TEMPLATE is set but LINK_CONTENT_SIGNING_KEY is missing or "
+                f"shorter than {MIN_LINK_CONTENT_SIGNING_KEY_LENGTH} characters"
+            )
+        if problem is None:
+            return self
+        if self.deployment.requires_complete_config:
+            raise RuntimeError(problem)
+        log.error(f"{LogTag.STARTUP} link content origin turned off", problem=problem)
+        self.LINK_CONTENT_URL_TEMPLATE = None
+        return self
 
     @model_validator(mode="before")
     @classmethod

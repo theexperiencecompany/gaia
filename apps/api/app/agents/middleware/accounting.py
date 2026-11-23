@@ -4,8 +4,8 @@ Emits a structured llm_call wide event after every model invocation
 (tokens, credits, step index, agent name), and recursion_high_water_mark
 at ≥80% of the recursion limit. Also the budget enforcement seam: every
 call records USD cost into the user's day/month budget windows, and
-awrap_model_call short-circuits with a stop message when the daily budget
-or per-request token ceiling is exhausted — self-sufficient on every path
+awrap_model_call short-circuits with a stop message when the daily budget,
+the pro monthly allowance or the per-request token ceiling is exhausted — self-sufficient on every path
 (chat, workflows, bots, voice, subagents) since get_budget_stop_reason
 derives plan_type from the cached tier if a path never stamped it.
 
@@ -13,8 +13,9 @@ Runs as a LangChain AgentMiddleware via create_agent(middleware=...).
 """
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 import time
-from typing import Any
+from typing import Any, Protocol
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -27,32 +28,36 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from app.agents.llm.lane import ModelLane
-from app.config.rate_limits import (
-    PRIMARY_METERED_FEATURE,
-    RateLimitPeriod,
-    get_daily_cost_budget_usd,
-    get_reset_time,
-)
+from app.config.rate_limits import PRIMARY_METERED_FEATURE, get_daily_cost_budget_usd
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_STOP_METADATA_KEY,
     FALLBACK_MODEL_METADATA_KEY,
     FELL_BACK_METADATA_KEY,
     LANE_FIELD_ID,
+    LEDGER_WRAPUP_NOTICE,
     RECURSION_HWM_FRACTION,
     UNKNOWN_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.decorators.rate_limiting import build_rate_limit_card
-from app.models.agent_models import agent_configurable, current_run_config, current_stream_writer
+from app.models.agent_models import (
+    AgentConfigurable,
+    agent_configurable,
+    current_run_config,
+    current_stream_writer,
+)
 from app.models.payment_models import PlanType
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
     BudgetCheck,
+    BudgetWall,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
+    is_monthly_heads_up_due,
 )
 from app.services.latency_metrics import observe_llm_call
+from app.services.limit_upsell import capture_limit_hit, current_limit_origin
 from app.services.llm_metering import (
     LLMCallContext,
     extract_finish_reason,
@@ -64,7 +69,20 @@ from app.services.llm_metering import (
     record_llm_call,
     resolve_channel,
 )
+from app.services.usage_heads_up import notify_monthly_heads_up_once
+from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
 from shared.py.wide_events import ModelContext, log
+
+
+class SpendLedger(Protocol):
+    """Where a run's spend is booked instead of the user's allowance (a brief scout's tally)."""
+
+    async def book(self, cost_usd: float) -> None: ...
+
+    def winding_down(self) -> bool:
+        """Whether the next call would spend out what the run may: it is sent with no tools, so it answers."""
+        ...
 
 
 def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
@@ -95,10 +113,16 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     get_budget_stop_reason) and injecting a wrap-up notice near the limit.
     """
 
-    def __init__(self, agent_name: str, recursion_limit: int = AGENT_RECURSION_LIMIT) -> None:
+    def __init__(
+        self,
+        agent_name: str,
+        recursion_limit: int = AGENT_RECURSION_LIMIT,
+        ledger: SpendLedger | None = None,
+    ) -> None:
         super().__init__()
         self.agent_name = agent_name
         self.recursion_limit = recursion_limit
+        self.ledger = ledger
         # Thread-local, keyed by thread_id. In-memory not Redis: a single run
         # is bounded to ONE worker, and Redis round-trips would add overhead
         # to every model step without improving correctness.
@@ -141,13 +165,16 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             del stamps[thread_id]
         return value
 
-    def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
-        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text."""
+    def _emit_budget_stop_card(
+        self, wall: BudgetWall, stop_reason: str, plan_type: PlanType, reset_at: datetime | None
+    ) -> None:
+        """Stream a rate_limit_data frame naming the wall that bound, so every surface tells the real cause."""
+        # The task-size ceiling is per run: nothing resets, the next request starts fresh.
         current_stream_writer()(
             build_rate_limit_card(
-                feature=PRIMARY_METERED_FEATURE,
+                feature=wall.value,
                 plan_required="pro" if plan_type == PlanType.FREE else None,
-                reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                reset_time=reset_at.isoformat() if reset_at is not None else None,
                 current_plan=plan_type.value,
                 message=stop_reason,
             )
@@ -178,7 +205,40 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
-        """Budget wall: stop the run BEFORE the model is invoked when a limit binds.
+        """Run the call behind the user's budget wall, or a ledger run behind its own ledger's."""
+        if self.ledger is not None:
+            if self.ledger.winding_down():
+                # No tools to call, so this reply is the run's last: it answers from what it read.
+                log.info("ledger_final_call", agent_name=self.agent_name)
+                # ModelRequest stores tools=None as [], so mutating the empty list is equivalent.
+                request = request.override(  # pragma: no mutate
+                    tools=[],
+                    messages=[*request.messages, HumanMessage(content=LEDGER_WRAPUP_NOTICE)],
+                )
+        else:
+            walled = await self._budget_wall(request)
+            if isinstance(walled, ModelResponse):
+                return walled
+            request = walled
+        # The one seam that sees the provider call start and finish, across
+        # the retry/fallback chain — stashed for the ``aafter_model`` that meters it.
+        thread_id = self._thread_id(current_run_config())
+        invoke_start = time.monotonic()
+        try:
+            response = await handler(request)
+        except BaseException:
+            # The graph aborts on a raised call, so the ``aafter_model`` that
+            # would consume this call's stamps never runs. Drop them here or
+            # the next call on this thread meters the failed one's timing.
+            self._pop_stamp(self._start_ts, thread_id)
+            raise
+        self._invoke_ms.setdefault(thread_id, []).append(
+            round((time.monotonic() - invoke_start) * 1000, 2)
+        )
+        return response
+
+    async def _budget_wall(self, request: ModelRequest) -> ModelRequest | ModelResponse:
+        """Stop the run BEFORE the model is invoked when a limit binds; else the request to send.
 
         Checks daily USD cost budget then per-request token ceiling; on a
         hit, returns the stop text as the final AIMessage. Fail-open on
@@ -212,7 +272,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             )
             check = BudgetCheck(None, None, None)
 
-        if check.stop_reason is not None:
+        wall = check.wall
+        if wall is not None:
+            stop_reason = wall.stop_text(check.plan_type, check.reset_at)
             log.warning(
                 "budget_stop",
                 event_name="budget_stop",
@@ -220,20 +282,37 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 user_id=user_id,
                 plan_type=plan_raw,
                 root_request_id=root_request_id,
+                budget_wall=wall.value,
             )
-            # check.plan_type is always resolved alongside stop_reason (see
-            # get_budget_stop_reason: every return that sets stop_reason also
-            # sets plan_type), so the card always has a real plan to render.
+            # check.plan_type is always resolved alongside the wall (see
+            # get_budget_stop_reason: every return that sets a wall also sets
+            # plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
-                self._emit_budget_stop_card(check.stop_reason, check.plan_type)
+                self._emit_budget_stop_card(wall, stop_reason, check.plan_type, check.reset_at)
+            if user_id:
+                capture_limit_hit(
+                    UserId(str(user_id)),
+                    PRIMARY_METERED_FEATURE,
+                    check.plan_type,
+                    origin=current_limit_origin(),
+                    window=wall.limit_window,
+                )
             return ModelResponse(
                 result=[
                     AIMessage(
-                        content=check.stop_reason,
+                        content=stop_reason,
                         response_metadata={BUDGET_STOP_METADATA_KEY: True},
                     )
                 ]
             )
+
+        if (
+            user_id
+            and check.month_spent_usd is not None
+            and check.plan_type is not None
+            and is_monthly_heads_up_due(check.month_spent_usd, check.plan_type)
+        ):
+            spawn_background_task(notify_monthly_heads_up_once(str(user_id)))
 
         thread_id = self._thread_id(config)
         if (
@@ -255,22 +334,23 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             request = request.override(
                 messages=[*request.messages, HumanMessage(content=BUDGET_WRAPUP_NOTICE)]
             )
+        return request
 
-        # The one seam that sees the provider call start and finish, across
-        # the retry/fallback chain — stashed for the ``aafter_model`` that meters it.
-        invoke_start = time.monotonic()
-        try:
-            response = await handler(request)
-        except BaseException:
-            # The graph aborts on a raised call, so the ``aafter_model`` that
-            # would consume this call's stamps never runs. Drop them here or
-            # the next call on this thread meters the failed one's timing.
-            self._pop_stamp(self._start_ts, thread_id)
-            raise
-        self._invoke_ms.setdefault(thread_id, []).append(
-            round((time.monotonic() - invoke_start) * 1000, 2)
-        )
-        return response
+    def _priced_as(
+        self, ai_msg: AIMessage, configurable: AgentConfigurable, thread_id: str
+    ) -> tuple[str, str]:
+        """Return the model and provider this call is priced as, read off the run's lane."""
+        lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
+        if lane is None:
+            # Priced as "unknown", which undercharges the budget — loud
+            # rather than silent, matching cost_budget's fail-open convention.
+            log.warning(
+                f"{LogTag.AGENT} No lane on the configurable — the call is priced as "
+                "'unknown' and undercharges the budget (pre-lane queue item or HIL resume?)",
+                agent_name=self.agent_name,
+                thread_id=thread_id,
+            )
+        return _serving_model(ai_msg, lane), lane.provider if lane else UNKNOWN_MODEL_NAME
 
     async def aafter_model(
         self,
@@ -293,18 +373,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             # The wall answered instead of a model, so there is no call to meter.
             self._pop_stamp(self._start_ts, thread_id)
             return None
-        lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
-        model_name = _serving_model(ai_msg, lane)
-        provider = lane.provider if lane else UNKNOWN_MODEL_NAME
-        if lane is None:
-            # Priced as "unknown", which undercharges the budget — loud
-            # rather than silent, matching cost_budget's fail-open convention.
-            log.warning(
-                f"{LogTag.AGENT} No lane on the configurable — the call is priced as "
-                "'unknown' and undercharges the budget (pre-lane queue item or HIL resume?)",
-                agent_name=self.agent_name,
-                thread_id=thread_id,
-            )
+        model_name, provider = self._priced_as(ai_msg, configurable, thread_id)
         user_id = configurable.get("user_id")
 
         # Price the call into the day/month budget windows plus the request
@@ -330,8 +399,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             provider_cost=provider_cost,
             context=LLMCallContext(
                 agent_name=self.agent_name,
-                background=False,
-                charge_to_budget=True,
+                background=self.ledger is not None,
+                charge_to_budget=self.ledger is None,
                 model_served=extract_message_model(ai_msg),
                 provider=extract_message_provider(ai_msg),
                 generation_id=generation_id,
@@ -352,6 +421,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 finish_reason=extract_finish_reason(ai_msg),
             ),
         )
+        if self.ledger is not None:
+            await self.ledger.book(total_cost)
         if invoke_ms is not None:
             observe_llm_call(invoke_ms / 1000.0, model=str(model_name), agent=self.agent_name)
 

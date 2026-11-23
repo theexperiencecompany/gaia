@@ -8,6 +8,8 @@ from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
     "AccountSettingChanged",
+    "BriefingFrequencyName",
+    "BriefingScheduleChangedVia",
     "FeatureDiscovered",
     "FeatureFlagEvaluated",
     "FeatureToggled",
@@ -17,10 +19,15 @@ __all__ = [
     "InstructionsUpdated",
     "ProfileLinkCopied",
     "ProfileUpdated",
+    "SettingsBriefingEditionsUpdated",
+    "SettingsBriefingScheduleUpdated",
+    "SettingsBriefsOffBlocked",
+    "SettingsBriefsOffResolved",
     "SettingsChatChannelPriorityUpdated",
     "SettingsDesktopPreferenceChanged",
     "SettingsNotificationsToggled",
     "SettingsPreferencesChanged",
+    "SettingsQuietHoursUpdated",
 ]
 
 #: Which kind of scope a set of standing instructions covers; never the integration's own id.
@@ -41,6 +48,17 @@ class SettingsChatChannelPriorityUpdated(ServerEvent):
     count: int
 
 
+class SettingsQuietHoursUpdated(ServerEvent):
+    """A user changed their quiet hours: whether they are on and the local hours they span."""
+
+    event: ClassVar[str] = "settings:quiet_hours_updated"
+    budget_per_user_day: ClassVar[int] = 50
+
+    enabled: bool
+    start_hour: int
+    end_hour: int
+
+
 class SettingsNotificationsToggled(ServerEvent):
     """A user changed which notification channels are on."""
 
@@ -50,6 +68,54 @@ class SettingsNotificationsToggled(ServerEvent):
     changed_channel_count: int
     channels_enabled: list[Identifier]
     channels_disabled: list[Identifier]
+
+
+BriefingScheduleChangedVia = Literal["settings", "agent"]
+#: How often briefs come: BriefingFrequency's values, kept equal by a test in apps/api.
+BriefingFrequencyName = Literal["daily", "weekdays", "weekly_only", "off"]
+
+
+class SettingsBriefingScheduleUpdated(ServerEvent):
+    """A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA."""
+
+    event: ClassVar[str] = "settings:briefing_schedule_updated"
+    budget_per_user_day: ClassVar[int] = 20
+
+    frequency: BriefingFrequencyName
+    hour: int
+    via: BriefingScheduleChangedVia
+
+
+class SettingsBriefingEditionsUpdated(ServerEvent):
+    """A user chose which daily edition families their brief draws: how many off and favourited."""
+
+    event: ClassVar[str] = "settings:briefing_editions_updated"
+    budget_per_user_day: ClassVar[int] = 50
+
+    editions_off: int
+    editions_favourited: int
+    editions_total: int
+
+
+class SettingsBriefsOffBlocked(ServerEvent):
+    """Turning briefs off was refused because workflows still deliver their results to the brief."""
+
+    event: ClassVar[str] = "settings:briefs_off_blocked"
+    budget_per_user_day: ClassVar[int] = 20
+
+    workflow_count: int
+    via: BriefingScheduleChangedVia
+
+
+class SettingsBriefsOffResolved(ServerEvent):
+    """Briefs were turned off after the user moved every brief-delivery workflow elsewhere."""
+
+    event: ClassVar[str] = "settings:briefs_off_resolved"
+    budget_per_user_day: ClassVar[int] = 20
+
+    moved_to_now: int
+    moved_to_silent: int
+    via: BriefingScheduleChangedVia
 
 
 class SettingsPreferencesChanged(ServerEvent):

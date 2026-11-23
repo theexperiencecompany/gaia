@@ -155,3 +155,15 @@ async def test_provider_catalog_skips_unavailable_integrations() -> None:
     composio_service.get_raw_tools_metadata.assert_awaited_once_with(
         tool_kit="LIVE", specific_tools=None
     )
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "tool", ["GMAIL_CREATE_FILTER", "GMAIL_DELETE_FILTER", "GMAIL_GET_FILTER", "GMAIL_LIST_FILTERS"]
+)
+def test_gmail_filter_tools_stay_out_of_the_agents_reach(tool: str) -> None:
+    """Regression: the toolkit bump exposed filter tools the Gmail connection cannot use (403)."""
+    gmail = get_integration_by_id("gmail")
+
+    assert gmail is not None and gmail.subagent_config is not None
+    assert tool in (gmail.subagent_config.exclude_tools or [])

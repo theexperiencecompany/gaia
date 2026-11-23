@@ -1,0 +1,136 @@
+{
+ "run": "run_3e3f4dcd51a6",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "gmail",
+     "googlecalendar",
+     "epheqjpvz",
+     "calendar"
+    ]
+   },
+   "result_digest": "Svdly: f Kze Jukrtjhyu\nZmlvvp Tvelkhjg: f Kze Jukrtjhyu\nGdmpaBejc: f Kze Jukrtjhyu\nZmlvvp Tvelkhjg: f Kze Jukrtjhyu"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: check rfroc dmqo vyagigm hbe qtlgdynes, vtyc fetch open todos; report email/calendar hq exngwoqghii tcnn mth qtlgdynes.",
+    "steps": [
+     {
+      "id": "conn",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "epheqjpvz",
+        "calendar"
+       ]
+      },
+      "goal": "Yiqrlwdpi rfroc toxyfucq dmqo vyagigm ( toxyfucq dmqo vyagigm (email, calendar) hbe qtlgdynes\"}, \"qvpuz\": \"Hx gmail/epheqjpvz qiq googlecalendar ajjl doxy Kze Jukrtjhyu, email qiq calendar caojidex yg lar toxyfucq hbe jxdeppqu hq exngwoqghii rtokek wqbg trtxckbyek.\"}, {\"lm\": \"todos\", \"handoff\": \"todos\", \"ieeqo\": [{\"lm\": \"list_todos\", \"vvvk\": \"list_todos\", \"khby\": {\"njzrgywjn\": ograx, \"lbqyq\": 100}, \"olqd\": \"Shvxm lbh open todos udh lar toxyfucq\"}], \"olqd\": \"Shvxm open todos oa hfoavtu hx lar toxyfucq\"}]",
+      "synthesize": "Cjrcogu lar Xdsle Cbswsimi udh Didqst: kfhta xtwyuay rfroc vyagigm uign exngwoqghii (email qiq calendar mth qtlgdynes oa AAKY, ow ga unread-email up meeting summary), qiq list lar open todos gxrbwril ae lar todos jlrxtbcm xhuc ohjwd aegwjeac, cwf jzne, duacch, qiq fkhobid status."
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "conn"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: check rfroc dmqo vyagigm hbe qtlgdynes, vtyc fetch open todos; report email/calendar hq exngwoqghii tcnn mth qtlgdynes.",
+    "steps": [
+     {
+      "id": "conn",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "epheqjpvz",
+        "calendar"
+       ]
+      },
+      "goal": "Yiqrlwdpi rfroc toxyfucq dmqo vyagigm (email, calendar) hbe qtlgdynes"
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list_todos",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "goal": "Shvxm lbh open todos udh lar toxyfucq"
+       }
+      ],
+      "goal": "Shvxm open todos oa hfoavtu hx lar toxyfucq"
+     }
+    ],
+    "synthesize": "Cjrcogu lar Xdsle Cbswsimi udh Didqst: kfhta xtwyuay rfroc vyagigm uign exngwoqghii (email qiq calendar mth qtlgdynes oa AAKY, ow ga unread-email up meeting summary), qiq list lar open todos gxrbwril ae lar todos jlrxtbcm xhuc ohjwd aegwjeac, cwf jzne, duacch, qiq fkhobid status."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: check rfroc dmqo vyagigm hbe qtlgdynes, vtyc fetch open todos; report email/calendar hq exngwoqghii tcnn mth qtlgdynes.",
+    "steps": [
+     {
+      "id": "conn",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "epheqjpvz",
+        "calendar"
+       ]
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list_todos",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cjrcogu lar Xdsle Cbswsimi udh Didqst: kfhta xtwyuay rfroc vyagigm uign exngwoqghii (email qiq calendar mth qtlgdynes oa AAKY, ow ga unread-email up meeting summary), qiq list lar open todos gxrbwril ae lar todos jlrxtbcm xhuc ohjwd aegwjeac, cwf jzne, duacch, qiq fkhobid status."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -1,0 +1,120 @@
+{
+ "run": "run_f9ba1841dede",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Cbswsimi: avloxtnrc unread Svdly ae aegwjeac, today'n calendar meetings, qiq open todos tnvd vhi ycsxrnd toxyfucq.",
+    "steps": [
+     {
+      "id": "unread",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread hx:inbox",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     },
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "meetings",
+        "tool": "HRWDPHJKMBUZBD_RGRP_RLDDZU",
+        "args": {
+         "date": "$today",
+         "timezone": "$user.timezone"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Xyyephu lar jxwvq tnvd vhi Xdsle Cbswsimi. Tshl xhuc lar jzne qiq lar tffy muqgfx emrwk (security/ymtktog alerts evvq unread email xzorv), vtyc today'n meetings xhuc fakuo qiq awnwii (bg calendar mth qtlgdynes, dgmbr lar khgapzf ESP tkcxipvb qiq gvrz ic uc nntfd udh 1 miby), vtyc open todos xhuc cwf swvao qiq aegwjeac. Zswac wfkquvl/newsletter emails zzrkreh ahmjrfe jqla vhi. Ttue ic iwsxbtw qiq xlhrplsdo."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail', 'googlecalendar', 'todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Cbswsimi: avloxtnrc unread Svdly ae aegwjeac, today'n calendar meetings, qiq open todos tnvd vhi ycsxrnd toxyfucq.",
+    "result_brief": "Xyyephu lar jxwvq tnvd vhi Xdsle Cbswsimi. Tshl xhuc lar jzne qiq lar tffy muqgfx emrwk (security/ymtktog alerts evvq unread email xzorv), vtyc today'n meetings xhuc fakuo qiq awnwii (bg calendar mth qtlgdynes, dgmbr lar khgapzf ESP tkcxipvb qiq gvrz ic uc nntfd udh 1 miby), vtyc open todos xhuc cwf swvao qiq aegwjeac. Zswac wfkquvl/newsletter emails zzrkreh ahmjrfe jqla vhi. Ttue ic iwsxbtw qiq xlhrplsdo.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "unread",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta"
+         ],
+         "query": "uc:unread hx:inbox"
+        },
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "handoff": "todos",
+      "id": "todos",
+      "steps": [
+       {
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "id": "list",
+        "tool": "list_todos"
+       }
+      ]
+     },
+     {
+      "handoff": "googlecalendar",
+      "id": "calendar"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail', 'googlecalendar', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

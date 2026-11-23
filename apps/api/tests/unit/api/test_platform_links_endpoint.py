@@ -29,6 +29,8 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected, IntegrationDisconnected
 from tests.conftest import FAKE_USER
 
+pytestmark = pytest.mark.usefixtures("onboarding_finish_on_link")
+
 BASE = "/api/v1/platform-links"
 FAKE_USER_ID = FAKE_USER.user_id
 

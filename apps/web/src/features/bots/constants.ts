@@ -1,15 +1,23 @@
+import { BOT_URLS, TELEGRAM_BOT_USERNAME } from "@shared/constants/bots";
 import { BOT_PLATFORM_ICONS, type BotPlatform } from "@/config/botPlatforms";
-import { siteConfig } from "@/lib/seo";
+import { signupCtaHref } from "@/features/auth/utils/signupCta";
+import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
 
 export type { BotPlatform };
 
 /** GAIA Cloud's bots; a self-hosted instance reaches its own through useBotLinks. */
 export const BOT_LINKS: Record<BotPlatform, string> = {
-  discord: `${siteConfig.url}/discord-bot`,
-  telegram: "https://t.me/heygaia_bot",
-  slack: "/slack-bot",
-  whatsapp: "https://wa.me/12762088737",
-  imessage: "/settings/linked-accounts",
+  discord: BOT_URLS.discordInstall,
+  telegram: BOT_URLS.telegram,
+  slack: BOT_URLS.slackInstall,
+  whatsapp: BOT_URLS.whatsapp,
+  imessage: LINKED_ACCOUNTS_SETTINGS_PATH,
+};
+
+/** iMessage is connected from a signed-in page, so a signed-out visitor signs up first; onboarding offers the connect step. */
+export const SIGNED_OUT_BOT_LINKS: Record<BotPlatform, string> = {
+  ...BOT_LINKS,
+  imessage: signupCtaHref(),
 };
 
 export interface BotAction {
@@ -43,7 +51,7 @@ export const BOTS: BotConfig[] = [
     },
     secondaryAction: {
       label: "Join Discord server",
-      href: "https://discord.heygaia.io",
+      href: BOT_URLS.discord,
       external: true,
     },
   },
@@ -51,8 +59,7 @@ export const BOTS: BotConfig[] = [
     id: "telegram",
     icon: BOT_PLATFORM_ICONS.telegram,
     name: "Telegram",
-    description:
-      "Just open a chat with @heygaia_bot and start talking. No setup, no group required. It's just you and GAIA.",
+    description: `Just open a chat with @${TELEGRAM_BOT_USERNAME} and start talking. No setup, no group required. It's just you and GAIA.`,
     primaryAction: {
       label: "Open in Telegram",
       href: BOT_LINKS.telegram,

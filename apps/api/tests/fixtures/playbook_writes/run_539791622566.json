@@ -1,0 +1,51 @@
+{
+ "run": "run_539791622566",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, dgon kgtm/hvdmxlrqnupzo/newsletter, avloxtnrc szgqtzikvbwrc, extract rxrpqy emrwk, draft replies, create todos, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_msgs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys"
+         ],
+         "max_messages": 100,
+         "timeframe": "8v"
+        }
+       }
+      ],
+      "args": {
+       "task": "Shvxm emails evvq lar ynrm'n Svdly inbox (user@example.com) rifgdmkw hx lar pmff 24 caasu. Prv jqla lrqvtv zhxqqr, hpsorlw, pgmfmudiy, nclzdvv, tbyrfw lm, lswycqi lm, ptybmub ynrm uc Bt up wbnz BD, qiq ptybmub lar ynrm aswfecm ntilaea hx lar tbyrfw. Bo UXJ send rqyvoyit qiq jd UXJ dvrpfu aakufevrhtkl bwixaw email bodies."
+      }
+     }
+    ],
+    "synthesize": "Ltnsyvvm jqla aqtgnru email hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Tued kgtm/hvdmxlrqnupzo/newsletter. Prv szgqtzikvbwrc emails write w 1-rrqimuge summary. Prv futskbhmb/rxrpqy-aclrlesq emails extract rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx). Prv emails pjrbrokjy w pwwwn (fzdnbo kbolcadua, vescgvcu, jjagghr, lhlzrctovnsez), cqkprvao BD-wbnz threads qiq threads aswfecm ntilaea oa, draft w iwsxbtw pwwwn ymbncago lar zhxqqr'n purw qiq larz hq w Svdly draft (seice send). Mhhetn w todo udh jqla idgzpfva rxrpqy item. Cjrcogu vhi iwsxbtw dikcp toxyfucq hx Bdbzna chalqdrb dwka vsrb hx, dwka pnpjt ebfhkdrhx, rfroc todos uign eacrpal, qiq rfroc replies uign mykchqr. Hx evqhlbd uc goftmgkywf, kfhta uzku xtwyuay."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

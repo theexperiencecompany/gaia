@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 from typing import cast
 
@@ -154,6 +155,12 @@ def _asked(jev: _Jev) -> JevEvaluationRequest:
     return jev.request
 
 
+def _offered_labels(jev: _Jev) -> list[str]:
+    elements = _asked(jev).state["elements"]
+    assert isinstance(elements, list)
+    return [element["label"] for element in elements]
+
+
 def test_each_element_gets_one_index_and_each_operation_its_own_targets() -> None:
     space = action_space([SEARCH, OPEN_SEARCH, BUY, SIZE, LIST, LIST_UP, SCROLL, WAIT, ENTER])
 
@@ -181,6 +188,17 @@ def test_a_page_with_more_elements_than_one_request_carries_counts_the_ones_left
     assert len(space.elements) == JEV_MAX_ELEMENTS
     assert space.left_out == 5
     assert space.controls == {JevOperation.WAIT: WAIT}
+
+
+@pytest.mark.regression
+async def test_jev_is_told_which_controls_the_page_shows_but_has_disabled() -> None:
+    """Regression for GAIA-715: unseen, a disabled Authorize read as no way forward, and the run clicked Cancel."""
+    jev = _Jev(operation="WAIT")
+    page = replace(_page(BUY, WAIT), disabled=("Authorize github",))
+
+    await decide(jev, Situation(page, "authorize", "done", [], _unmasked))
+
+    assert _asked(jev).state["disabled_elements"] == ["Authorize github"]
 
 
 async def test_jev_is_asked_about_the_page_its_elements_and_what_it_did(
@@ -244,7 +262,7 @@ async def test_a_link_whose_href_is_no_address_is_offered_as_a_link(href: str) -
         Situation(_page(broken), "go", "done", [], _unmasked, left=frozenset({"https://x.test/"})),
     )
 
-    assert [e["label"] for e in _asked(jev).state["elements"]] == ["Broken"]
+    assert _offered_labels(jev) == ["Broken"]
 
 
 async def test_a_link_to_a_page_this_burst_left_is_not_offered_to_click() -> None:
@@ -267,7 +285,7 @@ async def test_a_link_to_a_page_this_burst_left_is_not_offered_to_click() -> Non
         ),
     )
 
-    assert [e["label"] for e in _asked(jev).state["elements"]] == ["Frog"]
+    assert _offered_labels(jev) == ["Frog"]
 
 
 async def test_the_operation_question_offers_only_what_this_page_and_the_run_allow() -> None:

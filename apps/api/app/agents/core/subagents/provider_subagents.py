@@ -1,20 +1,10 @@
-"""
-Provider-specific sub-agent implementations.
+"""Load a platform integration's tools into the process-wide tool registry.
 
-This module contains the factory methods for creating specialized sub-agent graphs
-for different providers (Gmail, Notion, Twitter, LinkedIn, etc.) with full tool
-registry and retrieval capabilities.
-
-Subagents are built on-demand each turn. Per-user MCP integrations have no graph
-here: their tools live in the user's MCPClient and run through execute.
+activate_integration calls this to make an integration's tools retrievable and
+execute-routable. Per-user (auth-required) MCP integrations never come here:
+their tools live in the user's MCPClient.
 """
 
-from collections.abc import Awaitable, Callable
-
-from langgraph.graph.state import CompiledStateGraph
-
-from app.agents.core.subagents.registry import all_subagents
-from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import (
     CategoryOptions,
     CategoryRisk,
@@ -24,12 +14,9 @@ from app.agents.tools.core.registry import (
 )
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.models.subagent_models import Subagent
 from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import log
-
-from .base_subagent import SubAgentFactory, SubAgentToolConfig
 
 
 async def register_composio_subagent_tools(subagent: Subagent, tool_registry: ToolRegistry) -> str:
@@ -99,91 +86,3 @@ async def register_integration_tools(subagent: Subagent) -> str | None:
         return await register_composio_subagent_tools(subagent, tool_registry)
 
     return None
-
-
-async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
-    """Create a provider subagent graph on-demand, registering its tools if absent."""
-    config = subagent.config
-    await register_integration_tools(subagent)
-
-    llm = init_llm()
-
-    log.set(subagent={"name": config.agent_name, "provider": subagent.provider})
-    log.info(
-        f"{LogTag.AGENT} Creating subagent on-demand",
-        agent_name=config.agent_name,
-        tool_space=config.tool_space,
-    )
-
-    graph = await SubAgentFactory.create_provider_subagent(
-        provider=subagent.provider,
-        llm=llm,
-        name=config.agent_name,
-        config=SubAgentToolConfig(
-            tool_space=config.tool_space,
-            use_direct_tools=config.use_direct_tools,
-            disable_retrieve_tools=config.disable_retrieve_tools,
-            auto_bind_tools=config.auto_bind_tools,
-            extra_initial_tools=config.extra_initial_tools,
-            include_finish_task=config.include_finish_task,
-            source_label=subagent.name,
-        ),
-    )
-
-    log.info(f"{LogTag.AGENT} Subagent created successfully", agent_name=config.agent_name)
-    return graph
-
-
-def _make_subagent_loader(
-    subagent: Subagent,
-) -> Callable[[], Awaitable[CompiledStateGraph]]:
-    """Bind the subagent into a zero-arg async loader for providers.register."""
-
-    async def _loader() -> CompiledStateGraph:
-        return await create_subagent(subagent)
-
-    return _loader
-
-
-def register_subagent_providers(integration_ids: list[str] | None = None) -> int:
-    """Register lazy providers for all subagents (OAuth-derived + builtins).
-
-    Subagents are created on-demand when first accessed via providers.
-    Auth-required MCP integrations are not registered: they have no shared
-    graph, and activate_integration loads their per-user tools instead.
-    """
-    registered_count = 0
-
-    for subagent in all_subagents():
-        # Skip if not in the requested list (when list is provided)
-        if integration_ids is not None and subagent.id not in integration_ids:
-            continue
-
-        # An unavailable integration is listed but not dialable; registering it
-        # makes startup connect to an endpoint that cannot answer.
-        if not subagent.available:
-            continue
-
-        if (
-            subagent.managed_by == "mcp"
-            and subagent.mcp_config
-            and subagent.mcp_config.requires_auth
-        ):
-            continue
-
-        agent_name = subagent.config.agent_name
-
-        # mypy can't solve TypeVar T on the Union loader signature
-        # against a concrete async function; cast keeps the loader's
-        # actual return type while satisfying the registry overload.
-        providers.register(
-            name=agent_name,
-            loader_func=_make_subagent_loader(subagent),  # type: ignore[arg-type]  # register()'s TypeVar'd loader signature won't unify against a concrete async callable
-            required_keys=[],
-        )
-        registered_count += 1
-
-    log.info(
-        f"{LogTag.AGENT} Registered subagent lazy providers", registered_count=registered_count
-    )
-    return registered_count

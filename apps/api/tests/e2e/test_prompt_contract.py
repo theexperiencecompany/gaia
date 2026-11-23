@@ -1,8 +1,8 @@
 """Pin the prompt layer at the model boundary, downstream of every pre-model hook.
 
-construct_langchain_messages assembles the conversation -- static system prompt, dynamic context,
+comms_turn_messages assembles the conversation -- static system prompt, dynamic context,
 the user's turn, the clock -- and the graph's pre-model hooks (filter_messages_node,
-executor_status_hook, manage_system_prompts_node) are free to rewrite it before the model sees it.
+manage_system_prompts_node) are free to rewrite it before the model sees it.
 The recording model captures the message list right before it produces output, so these tests pin
 the bytes that actually reach the model: a prompt change that looks right in the builder but gets
 mangled by a hook fails here.
@@ -19,8 +19,10 @@ from datetime import UTC, datetime
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 import pytest
 
-from app.agents.core.messages import MessageScope, construct_langchain_messages
+from app.agents.core.messages import MessageScope
 from app.agents.templates.agent_template import get_comms_static_prompt
+from app.constants.chat import ConversationSource
+from tests._harness.context_chain import comms_turn_messages
 from tests.e2e._harness.graph_run import comms_graph, run_graph, scripted_model_of
 
 pytestmark = pytest.mark.e2e
@@ -30,9 +32,9 @@ USER_TURN = "Do I have any meetings tomorrow?"
 
 async def _construct_web_prompt(user_turn: str) -> list[AnyMessage]:
     """Assemble the message list the production prompt builder produces for a web turn."""
-    return await construct_langchain_messages(
+    return await comms_turn_messages(
         query=user_turn,
-        scope=MessageScope(source="web"),
+        scope=MessageScope(source=ConversationSource.WEB),
     )
 
 
@@ -59,7 +61,7 @@ class TestPromptContract:
 
         first = run.last_prompt()[0]
         assert isinstance(first, SystemMessage)
-        assert str(first.content) == get_comms_static_prompt("web")
+        assert str(first.content) == get_comms_static_prompt(ConversationSource.WEB)
 
     async def test_the_prompt_carries_todays_date(self):
         """The clock rides a HumanMessage tagged time_context, kept out of system_instruction so minute ticks never invalidate the cache prefix."""

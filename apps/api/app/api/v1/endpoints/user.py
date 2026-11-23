@@ -1,6 +1,7 @@
+import asyncio
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
-from bson import ObjectId
 from fastapi import (
     APIRouter,
     Depends,
@@ -12,13 +13,18 @@ from fastapi import (
     UploadFile,
 )
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.api.v1.dependencies.oauth_dependencies import (
+    get_current_user,
+    get_user_id,
+    get_user_timezone_from_preferences,
+)
 from app.config.settings import settings
-from app.config.workos import get_workos_client
+from app.config.workos import get_workos_client, with_shared_signing_keys
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import ChannelPriorityList
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
@@ -28,7 +34,6 @@ from app.models.user_models import (
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
-    UserUpdate,
     UserUpdateResponse,
 )
 from app.services.account_fs import schedule_account_sync
@@ -37,9 +42,14 @@ from app.services.delivery.chat_channel import (
     get_chat_channel_priority,
     set_chat_channel_priority,
 )
+from app.services.oauth.oauth_state_service import is_safe_redirect_path
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
+from app.services.quiet_hours import get_quiet_hours
+from app.services.user_quiet_hours import set_quiet_hours
 from app.services.user_service import update_user_profile
+from app.services.user_timezone import set_user_timezone
 from app.utils.auth_utils import clear_session_cookie
+from app.utils.errors import AppError
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics import UserId
@@ -60,11 +70,9 @@ _AUTH_PATH_FLAGS = ("impersonated", "bot_authenticated", "dev_bypass")
 @router.get("/me", response_model_exclude_none=True)
 async def get_me(
     user: AuthenticatedUser = Depends(get_current_user),
+    home_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> AuthenticatedUserResponse:
-    """
-    Returns the current authenticated user's details.
-    Uses the dependency injection to fetch user data.
-    """
+    """Return the signed-in user; the app's session load also stores the browser's zone when none is saved."""
     onboarding_status = await get_user_onboarding_status(user.user_id)
 
     log.set(
@@ -87,6 +95,7 @@ async def get_me(
     response = AuthenticatedUserResponse.model_validate(
         {
             **user.model_dump(exclude=set(_AUTH_PATH_FLAGS)),
+            "timezone": home_timezone,
             **flags,
             "message": "User retrieved successfully",
             "onboarding": onboarding_status,
@@ -215,10 +224,7 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        updated = await user_repository.update(user_id, UserUpdate(timezone=user_timezone.strip()))
-
-        if updated is None:
-            raise HTTPException(status_code=404, detail="User not found")
+        await set_user_timezone(user_id, user_timezone.strip())
 
         schedule_account_sync(user_id)
         log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
@@ -229,7 +235,7 @@ async def update_user_timezone(
             message="Timezone updated successfully",
             timezone=user_timezone.strip(),
         )
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except Exception as e:
         log.error(
@@ -254,7 +260,7 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     try:
         log.set(operation="get_public_holo_card", card_id=card_id)
 
-        if not ObjectId.is_valid(card_id):
+        if not user_repository.is_valid_id(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")
 
         user_doc = await user_repository.get(card_id)
@@ -371,10 +377,19 @@ async def logout(
     request: Request,
     response: Response,
     user: AuthenticatedUser = Depends(get_current_user),
+    return_url: str | None = None,
 ) -> LogoutResponse:
+    """Log the user out and return where the browser goes next.
+
+    return_url, a path on this site, is for switching accounts: the identity
+    provider's logout lands on the sign-in page, which then returns there.
     """
-    Logout user and return logout URL for frontend redirection.
-    """
+    if return_url is not None and not is_safe_redirect_path(return_url):
+        raise AppError(
+            message="return_url must be a path on this site",
+            status_code=422,
+            code="invalid_return_url",
+        )
     # Local mode: no hosted session to revoke; the JWT dies with the cookie.
     # This route still passes the auth middleware, so a valid session is
     # required to reach this point.
@@ -395,9 +410,11 @@ async def logout(
     try:
         log.set(operation="logout")
 
-        session = get_workos_client().user_management.load_sealed_session(
-            sealed_session=wos_session,
-            cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+        session = with_shared_signing_keys(
+            get_workos_client().user_management.load_sealed_session(
+                sealed_session=wos_session,
+                cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+            )
         )
 
         if not session:
@@ -412,7 +429,15 @@ async def logout(
         if user_email and user_id:  # pragma: no mutate
             capture(UserId(user_id), UserLoggedOut())
 
-        logout_url = session.get_logout_url()
+        # Verifies the session's JWT synchronously (a key fetch on a cache miss): off the loop.
+        logout_url = (
+            await asyncio.to_thread(
+                session.get_logout_url,
+                return_to=f"{settings.FRONTEND_URL}/login?{urlencode({'return_url': return_url})}",
+            )
+            if return_url
+            else await asyncio.to_thread(session.get_logout_url)
+        )
 
         log.audit("logged out", actor=user_id)
 
@@ -459,3 +484,20 @@ async def update_chat_channel_priority(
     await set_chat_channel_priority(user_id, body.priority)
     log.audit("chat channel priority updated", actor=user_id, priority=body.priority)
     return body
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/quiet-hours")
+async def read_quiet_hours(user_id: str = Depends(get_user_id)) -> QuietHours:
+    """The local hours in which GAIA holds what can wait for the morning."""
+    log.set(user={"id": user_id}, operation="read_quiet_hours")
+    return await get_quiet_hours(user_id)
+
+
+@router.patch("/quiet-hours")
+async def update_quiet_hours(body: QuietHours, user_id: str = Depends(get_user_id)) -> QuietHours:
+    """Store the user's quiet hours and echo what was saved."""
+    log.set(user={"id": user_id}, operation="update_quiet_hours")
+    saved = await set_quiet_hours(user_id, body)
+    log.audit("quiet hours updated", actor=user_id, quiet_hours=saved.model_dump())
+    return saved

@@ -15,6 +15,7 @@ from sentry_sdk.types import Event, Hint
 
 from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
+from app.config.sentry_scrub import scrub_request
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.logging import (
@@ -217,10 +218,11 @@ def _attribute_user(event: Event) -> None:
 
 
 def _before_send(event: Event, hint: Hint) -> Event | None:
-    """Decide every event's fate: drop retried LLM attempts, then group and attribute it."""
+    """Decide every event's fate: drop retried LLM attempts, then scrub, group and attribute it."""
     event = _drop_llm_attempt_errors(event, hint)
     if event is None:
         return None
+    event = scrub_request(event)
     try:
         _attribute_user(event)
         fingerprint = _stable_fingerprint(event)
@@ -231,6 +233,11 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
     if fingerprint is not None and "fingerprint" not in event:
         event["fingerprint"] = fingerprint
     return event
+
+
+def _before_send_transaction(event: Event, _hint: Hint) -> Event:
+    """Scrub a trace's request the way an error's is: a sampled trace carries the same URL."""
+    return scrub_request(event)
 
 
 def _record_is_skipped(record: _Record, logger_name: str | None) -> bool:
@@ -310,6 +317,7 @@ def init_sentry() -> None:
         # Both re-send every log record the sink below already forwards, unfiltered and unscrubbed.
         disabled_integrations=[LoguruIntegration(), LoggingIntegration()],
         before_send=_before_send,
+        before_send_transaction=_before_send_transaction,
     )
     # The API and the ARQ worker share one project; the Promtail service name tells them apart.
     sentry_sdk.get_global_scope().set_tag("service", env_context().service)

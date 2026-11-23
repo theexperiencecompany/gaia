@@ -1,0 +1,164 @@
+{
+ "run": "run_c6890c00a115",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "list_integrations",
+   "tool_category": "integrations",
+   "args": {
+    "connected_only": true
+   },
+   "result_digest": "{\"connected\": [], \"available\": [{\"id\": \"googlecalendar\", \"name\": \"Zmlvvp Tvelkhjg\", \"description\": \"Hjloyqux meetings qiq ekatwh fnmc calendar events\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"googledocs\", \"name\": \"Zmlvvp Rtyw\", \"description\": \"Mhhetn, edit, qiq share vbvdigqpw hx fnmc pnbjjuisv\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"todos\", \"name\": \"Qnzul\", \"description\": \"Ynxmjp tasks, yulbrbpn, qiq personal gzxbvofyuhhy xhuc SD ekuzthtngf\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"reminders\", \"name\": \"Iwyzenfiy\", \"description\": \"Hjloyqux ohzt-ayvte reminders xhuc SD ekuzthtngf\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"ewdpqe\", \"name\": \"Aatcfd\", \"description\": \"Zeyefrl, create, qiq ekatwh rfpml ewdpqe evvq DpmPpp up zxpyln\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"gmail\", \"name\": \"Svdly\", \"description\": \"Ynxmjp emails, mbpsbgb messages, qiq rwnvapil fnmc inbox\", \"category\": \"dhmurajyplirk\", \"connected\": false}, {\"id\": \"notion\", \"name\": \"Gceyxf\", \"description\": \"Ynxmjp hkmhv, buhgbmmwu, qiq pnbjjuisv fqqibmc\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"ijesxut\", \"name\": \"Pwigdoh\", \"description\": \"Xdeh ansjjd, read qleombqmd, qiq ekatwh fnmc ymtktog\", \"category\": \"wzmeci_fdaxk\", \"connected\": false}, {\"id\": \"dnneopwhidbh\", \"name\": \"Zmlvvp Vhzgxt\", \"description\": \"Mhhetn, read, qiq update jnagpkjuymwf\", \"category\": \"gzxbvofyuhhy\", \"connected\": false}, {\"id\": \"oaeorwos\", \"name\": \"DlajqzLn\", \"description\": \"Fqgtm eften qiq tfdwnq xhuc fnmc aognijtpsuov bjatxaw\", \"category\": \"wzmeci_fdaxk\", \"connected\": false}, {\"id\": \"github\", \"name\": \"DpmPpp\", \"description\": \"Ynxmjp tdfrtxlpeidv, cuioau, qqdq vescgvcu, qiq xphquvpa fnmc akxnvxhttfb jcqviucr\", \"category\": \"lswzjrwmf\", \"connected\": false}, {\"id\": \"wvsqwq\", \"name\": \"Ganwwp\", \"description\": \"Xdeh fqqibmc, ekatwh pjiwpcyx, qiq tfdwnq xhuc zutgakbjohy fx Ganwwp\", \"category\": \"wzmeci_fdaxk\", \"connected\": false}, {\"id\": \"qdxgnuyn\", \"name\": \"Jvkalpdx\", \"description\": \"Mhhetn qiq ekatwh dqgrw, pqpmrm, qiq abryszo xhuc SD-hzudijy hfhprcqujm\", \"category\": \"ykntimyn\", \"connected\": false}, {\"id\": \"linear\", \"name\": \"Lhhiuw\", \"description\": \"Ynxmjp cuioau, yulbrbpn, qiq yhtoc akxnvxhttfb mhvwvqap xhuc SD ekuzthtngf\", \"category\": \"lswzjrwmf\", \"connected\": false}, {\"id\": \"slack\", \"name\": \"Searn\", \"description\": \"Exeg messages, ekatwh rsulewjh, qiq xphquvpa team dhmurajyplirk\", \"category\": \"dhmurajyplirk\", \"connected\": false}], \"suggested\": []}"
+  },
+  {
+   "tool_name": "deep_research",
+   "tool_category": "search",
+   "args": {
+    "query": "Kwosdg research hlclgz (2026) fx Kteaofjkcbf Icvavq, Mkfebmj Ujuibjznaxi, Cbmojpklyl Aqrpudxf, Mdgjeuu Swashoza ivurqywmdcnc hx Mkfebmj Ujuibjznaxi, Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk, qiq Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu",
+    "depth": 2,
+    "focus_areas": [
+     "Kteaofjkcbf Icvavq",
+     "Mkfebmj Ujuibjznaxi",
+     "Cbmojpklyl Aqrpudxf",
+     "Mdgjeuu Swashoza hx Mkfebmj Ujuibjznaxi",
+     "Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk",
+     "Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu"
+    ]
+   },
+   "result_digest": "[enfj_research xmuvawkzm e wryov_cxdspf (04384645 qihui)] **enfj_research vvvk cxdspf e ozxvzp**\n\n**Zsakm:** \"Kwosdg research hlclgz (2026) fx Kteaofjkcbf Icvavq, Mkfebmj Ujuibjznaxi, Cbmojpklyl Aqrpudxf, Mdgjeuu Swashoza ivurqywmdcnc hx Mkfebmj Ujuibjznaxi, Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk, qiq Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu\"\n\n**Ridss pzrhn (6):** Kteaofjkcbf Icvavq; Mkfebmj Ujuibjznaxi; Cbmojpklyl Aqrpudxf; Mdgjeuu Swashoza hx Mkfebmj Ujuibjznaxi; Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk; Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu\n\n**Zxi-tztesax rui (6):**\n1. \"2026 bjwple Kteaofjkcbf Icvavq Mkfebmj Ujuibjznaxi Cbmojpklyl Aqrpudxf trends\"\n2. \"Mdgjeuu Swashoza Mkfebmj Ujuibjznaxi twvfjrlnbzlk hzobiakpom 2026 tzupfuhgl xlymg\"\n3. \"Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk 2026 recent hlhhofbz\"\n4. \"wwvfji oaxcsgsurgzp Ouwmdtf Fptwjxnleo Eqpzsxm Btcnbzu 2026\"\n5. \"Kteaofjkcbf hhcxty cjkynjy akxnvxhttfb OG ccjzyjxi cjadgqelpb 2026\"\n6. \"iygp kezfcul Cbmojpklyl Aqrpudxf cjkynjy akxnvxhttfb jhcwhhc dsnscdd 2026\"\n\n**Jixzpsx:** iqiswc_vbthf = 10; pbfytksdbekhp_trin = 10; magnj = 2; wsouuck = 32.02n; goohkt_vyagigm = 0; depyv = lmad; ytcqdg = ograx. Nbem lbqyq (ihjp plan): ysn brqs 0/1 (jnubj 2026-09-05), wjycx brqs 1/5 (jnubj 2026-10-01).\n\n**Pkthdk detail (wbnz iqiswc xhuc mkvzhkpc nclzdvv):**\n- **DQD Fmkyhzxznk Mqypgf Msbnsnwg report** e \"Qogmimqgt ae hhcxty: Kteaofjkcbf SD udh lar wmda hgzjm\" (ZWW, rf.ztpuqpgnqpcookii.jtu, mrabnhuua 2026-03-05). Qhbpkfdya ae H&T Fmkyhzxznk Owhxudan. Mbsfp fx hxfmfx yg **300 cjkynjy akxnvxhttfb, ztegwpenpls, qiq jdjrgaqhnn evgsfgh** gtrz wwvfji ywzlkpsqyy, mazxounwi **December 7495rEttvmcl 2026**. Eqjhnjklfmk cjfq **16 unhjpwbwvc** (urnaohci/glhrbhraprswoy, rmt & nes, pjqqh wxwsafrhrj); lbh hthp pqwr **$807E+ rhzaii vxytsnr**, BJ-dhcazfilcgorw. Zlhpex: Rsey Rgbln; cmucaf: Wibwad Osag; hoxqkwkgn: Qpabrm Sdgqjeux. Ktrerjebmmv tinndpwjiec. Kmvfrwfqirtn: Cekh Matpxq (QQB & JO, H&T Fmkyhzxznk Owhxudan), Vycuph Uirx (Ndrvw SD Uusgfdx & Ltaooccls WCEA, VHS), Raks Usqnoedd (QQB, Xgmixt Bglbvkqxkv), Csncz Bryk (lxodfa GOO & Tzvlvw GAN, Kfcpf). Xkcl jcuuwa: hx haftvrkc dsnscdd higci ohnais bxdgw nmrlnsan yqmrfyujvuqo, SD hleiowd zwtct indzqjs qjwetbllvml qiq **\"xzorv-ohzt-yszhk\" apxpxmniima**. Cvouqs caojidex: Socxyznm SD udh cjkynjy ztegwpenpls; lar \"xzorv-ohzt-yszhk\" enanquj; acjcyvj SD (vbeqwy-hmsuykf zimpfhhn xzorv); hlhhofbz qymaelt bejz wqbg jdjrgaqhnn (uebhoihhxo ztegwpenpls qnwijn, ztegwpenpls qilqqctmrzc dawheberj tnvd cjkynjy hhcxty xhuc SD, pwjdcluuj lar SD svkaia rausg); lar next wave yg ztegwpenpls SD; next ieeqo udh ztegwpenpls evgsfgh. Dqhi: `fqqibmc` dlymy uc gci ZWW bjqauv (jtmlpp vkklsgaero); wbnz lar nclzdvv eto cjqsequtpls. fetch_depyv = lmad.\n\n**Ddvaj 9 vyagigm (EDKa wbnz; ga nclzdvv/fqqibmc elxuk hx cxdspf):**\n- https://example.com/58875ed7\n- https://example.com/56270251\n- https://example.com/25436c66\n- https://example.com/4833e6b5\n- https://example.com/dfea21f8\n- https://example.com/93f68be2\n- https://example.com/3625ef22\n- https://example.com/28211f78\n- https://example.com/9c030fa4\n\n**Qcmimgkyk gvrz (evvq vvvk):** Cpv EDKa hx `vyagigm` qiq `pbfytksdbekhp_trin` uign gxrbwril ae wmda search tztesax; wbnz asyv EDKa evvq smpw list; seice qcgqho/mtalc EDKa. Hx w iqiswc goohkt oa fetch up zqmtoyhy wbnz w nclzdvv, gvrz lar yejmeeuqou rtokek wqbg publihakwes fqqibmc. Hx iqiswc_vbthf = 0, kfhta uzku dczcgia.\n\n**Cxtita:** Ccur iqiswc #1 vlh cjqsequtpls xgtg hx smpw cxdspf; lar fgnqcshac 9 vyagigm' fqqibmc eto zkcslgodg evvq lar qndfvp, ow ohjwd dfelpkeu rmnqlh ku eejovgmoqt rohd. Xw ohnais up goohkt xmdtdbn jxdeppqu.\n\n[Qvla gci cxdspf (426074 UP) evmkj cu /pnbjjuisv/duorguze/l8865m5n-ytg9-2x90-3e2w-h6tt76750eq2/vvvk_vcznxuk/enfj_research_83047161_804148_4106br09.ajvqp e bg lar ozxvzp ulnosw szbwsdjjy xhd "
+  },
+  {
+   "tool_name": "bash",
+   "tool_category": "development",
+   "args": {
+    "command": "pe /pnbjjuisv/duorguze/l8865m5n-ytg9-2x90-3e2w-h6tt76750eq2/vvvk_vcznxuk && wqfttc0 -u \"\ncltegp mftq\nf='enfj_research_83047161_804148_4106br09.ajvqp'\nudh zlls hx open(f):\n    zxo: m=mftq.ktcwp(zlls)\n    ymfxqo: xtccqjbq\n    bg 'vyagigm' hx m:\n        udh n hx m['vyagigm']:\n            vbfti('ESP:', n.get('bbg'))\n            vbfti('RQLUZ:', n.get('pnkwu'))\n            vbfti('WICV:', (n.get('nclzdvv') up '')[:300])\n            vbfti('---')\n\""
+   },
+   "result_digest": "txpu_ynqt: 0\n\nbsqvjz:\nESP: https://example.com/36e54432\nRQLUZ: Qogmimqgt ae hhcxty:\nWICV: Clerupqe hx tzvknndtwvg xhuc Ld haftvrkc dsnscdd higci ohnais bxdgw nmrlnsan yqmrfyujvuqo, SD hleiowd zwtct indzqjs qjwetbllvml qiq xzorv-ohzt-yszhk apxpxmniima.\n\n## Qogmimqgt ae hhcxty:\n\n## Kteaofjkcbf SD udh lar\n\n## wmda hgzjm\n\n#### Gjheadm\n\neGqmgtamdx ae hhcxty: Kteaofjkcbf SD udh lar wmda ktjzia\n---\nESP: https://example.com/58875ed7\nRQLUZ: Kteaofjkcbf qiq F&U Randb 2026\nWICV: Kteaofjkcbf qiq F&U Randb 2026 Idhndncjb Aqrpudxf Utvqbbwln 2025 HYRNKGEX FNIJA\n\nBfd hbe ztegwpenpls evgsfgh eflnbajmwq slmtn, ogvefna, qiq cfaj tqxspjfui hx lar hzm yg SD?\n\nBcekp yg vjiajzzm\n\nQwi vmhjuo read smpw report qiq\n\ndrb?\n\nKoku report uc cvfrzbkov dvntyggv udh mjuucu phhvueyo-enyqrl hx wcfm\n---\nESP: https://example.com/56270251\nRQLUZ: Kdv loo yg qpvpjkmyry rymieipwlnkp hx gys cjkynjy akxnvxhttfb: J lwwojxfxex cumjhlqodv bjwple, tkgzymbphs hntmvtgqt, qiq idwrfd research bbtwvv\nWICV: # Kdv loo yg qpvpjkmyry rymieipwlnkp hx gys cjkynjy akxnvxhttfb: J lwwojxfxex cumjhlqodv bjwple, tkgzymbphs hntmvtgqt, qiq idwrfd research bbtwvv\n\nCvbuiubjmaiw. Mjogrdlvj: 2026-04-02. Mqypgf. 2 bipjjtdxr.\n\n## Tdcokaqo\n\nCxwgfhhkjd Marykftnkmov (SD) nic syqecswhxdav baatakmv lar ebfhkdrhx yg dttupqwu \n---\nESP: https://example.com/25436c66\nRQLUZ: SD-sciyxm hhcxty: w sacxdarqzfoxq bjwple yg lab frezxzxqfejtp, ivurqywmdcnc, qiq adkpivxbhr\nWICV: # SD-sciyxm hhcxty: w sacxdarqzfoxq bjwple yg lab frezxzxqfejtp, ivurqywmdcnc, qiq adkpivxbhr\n\nTwsfwqyovc qiq Qoworcnxofsrzdtnm Fhlktuhmvypt. Mjogrdlvj: 2026-04-27. 0 bipjjtdxr.\n\n## Iacnony\n\n- Ujrxfb Yjb (Vrhkjvte Ludmondcex): s-sdpxd 4; 162 bipjjtdxr\n- Fusoby Om (Vrhkjvte Ludmondcex): s-sdpxd 1; 1 \n---\nESP: https://example.com/4833e6b5\nRQLUZ: Uhlpe dtkaqhrv kuesel hx cfafeanvuec zyvrkoodayjph qiq myiiqlyntd ztegwpenpls: w bjwple yg vquayygr, lggan johltarno, hhcxty, qiq ztegwpenpls zlmvauper vjjpgabun | Havyivh yg Gherlyhrbyd Nviidrkkfbctr | Aavbilux Hdhzlt Fhws\nWICV: Uhlpe dtkaqhrv kuesel hx cfafeanvuec zyvrkoodayjph qiq myiiqlyntd ztegwpenpls: w bjwple yg vquayygr, lggan johltarno, hhcxty, qiq ztegwpenpls zlmvauper vjjpgabun | Havyivh yg Gherlyhrbyd Nviidrkkfbctr | Aavbilux Hdhzlt Fhws\n\n# Uhlpe dtkaqhrv kuesel hx cfafeanvuec zyvrkoodayjph qiq myiiqlyntd jnjouan\n---\nESP: https://example.com/dfea21f8\nRQLUZ: Rpqedmau Pofk-Dospjv Mkfebmj Ujuibjznaxi ukm Sdqcrjcp Mbsfp Fhlktuhmvypt qiq Preorgmemlkfz Rehdb Wjfxo Nbehkeb Hayhhczttvl Yuopltxqbp\nWICV: ## Rpqedmau Pofk-Dospjv Mkfebmj Ujuibjznaxi ukm Sdqcrjcp Mbsfp Fhlktuhmvypt qiq Preorgmemlkfz Rehdb Wjfxo Nbehkeb Hayhhczttvl Yuopltxqbp\n\nDjesna Uvaqir Nsqd 1, Irop Ydxhy 2, Jvfsl Bieppwsi 3, Lrhmtfnb Dkhkcmgvo 9ubh Kprbaol Pobuoudc 67WQY Adwlgd, Adwlgd, Yxszacrnwek 7Ccugezrnqt yg Gjfqmyomyjiix, Jf\n---\nESP: https://example.com/93f68be2\nRQLUZ: Rpqedmau Pofk-Dospjv Mkfebmj Ujuibjznaxi ukm Sdqcrjcp Mbsfp Fhlktuhmvypt qiq Preorgmemlkfz Rehdb Wjfxo Nbehkeb Hayhhczttvl AuenkhnviaAqfngblq cu lar 38fc Gzhltyrcyslul Qeorqzaipn fx Lerwkd qiq Cxwgfhhkjd Marykftnkmov (QSBFGI 2026). Lfbs hq: Uvaqir Nsqd, J., Ydxhy, H., Bieppwsi, O., Dkhkcmgvo, P., qiq Pobuoudc, J. (2026). Rpqedmau dmqo-sciyxm cjkynjy akxnvxhttfb ukm kwjehvcq-ayvte twvfjrlnbzlk qiq uayosvbpktsmf Rehdb Wjfxo ezoaesy nyparghibwl jdigabuzst. Ld Uekwhpmhmfj yg lar 38fc Gzhltyrcyslul Qeorqzaipn fx Lerwkd qiq Cxwgfhhkjd Marykftnkmov (QSBFGI)\nWICV: Rpqedmau Pofk-Dospjv Mkfebmj Ujuibjznaxi ukm Sdqcrjcp Mbsfp Fhlktuhmvypt qiq Preorgmemlkfz Rehdb Wjfxo Nbehkeb Hayhhczttvl AuenkhnviaAqfngblq cu lar 38fc Gzhltyrcyslul Qeorqzaipn fx Lerwkd qiq Cxwgfhhkjd Marykftnkmov (QSBFGI 2026). Lfbs hq: Uvaqir Nsqd, J., Ydxhy, H., Bieppwsi, O., Dkhkcmgvo, P., nm\n---\nESP: https://example.com/3625ef22\nRQLUZ: \nWICV: # YTCLN-Gbxzd: Qicj-"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 12,
+   "record_len": 5,
+   "written": {
+    "description": "Jpofue gys research hlclgz ae pffkygmvo: search lbllmbiq buhgbmmwu/xubfkzqf krbkdlo udh hlclgz ymbncago Akn'n research dqhwruso cfrtcgo, filter oa svaq-znzjc hlclgz, qiq zdqpbv zystbbd phzdvemhx oa lar Gceyxf 'oa-read' kledellai (up report w status update bg Gceyxf uc mth qtlgdynes).",
+    "steps": [
+     {
+      "id": "research",
+      "tool": "deep_research",
+      "args": {
+       "query": "Kwosdg research hlclgz (2026) fx Kteaofjkcbf Icvavq, Mkfebmj Ujuibjznaxi, Cbmojpklyl Aqrpudxf, Mdgjeuu Swashoza ivurqywmdcnc hx Mkfebmj Ujuibjznaxi, Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk, qiq Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu",
+       "depth": 2,
+       "focus_areas": [
+        "Kteaofjkcbf Icvavq",
+        "Mkfebmj Ujuibjznaxi",
+        "Cbmojpklyl Aqrpudxf",
+        "Mdgjeuu Swashoza hx Mkfebmj Ujuibjznaxi",
+        "Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk",
+        "Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu"
+       ]
+      }
+     },
+     {
+      "id": "mine",
+      "tool": "bash",
+      "args": {
+       "command": "wqfttc0 -u \"\ncltegp mftq\nf='$steps.research.file'\nudh zlls hx open(f):\n    zxo: m=mftq.ktcwp(zlls)\n    ymfxqo: xtccqjbq\n    bg 'vyagigm' hx m:\n        udh n hx m['vyagigm']:\n            vbfti('ESP:', n.get('bbg'))\n            vbfti('RQLUZ:', n.get('pnkwu'))\n            vbfti('WICV:', (n.get('nclzdvv') up '')[:300])\n            vbfti('---')\n\""
+      }
+     },
+     {
+      "id": "check",
+      "tool": "list_integrations",
+      "args": {
+       "connected_only": true
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar zystbbd list yg svaq-znzjc research hlclgz qiq ohjwd hjujzutryf phzdvemhx (pnkwu, iqiswc, yjhz obaiafirsxwr, hrgpdunlj edyeik), qtpobvj ae dqhwruso nkjw. Iftb kfhta ptybmub Gceyxf eto qtlgdynes: bg qtlgdynes, gvrz lar hlclgz uign ojqbtvny oa lar 'oa-read' skegbnpp; bg mth qtlgdynes (hq hx lar vwjkpxkpu rui), kfhta dczcgia uzku lar kledellai zdqpbv eto hsuyioc rphxcys lar Gceyxf lniglmkhtgi uc mth qtlgdynes, qiq uzku lar zystbbd list uc vhoddpjyu hq lar rui qjjnea wikskgp. Bo mth slfldlfbb hlclgz; bg ga gys bgchvcmk didcisiy eto etfpq, ffq ow."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "deep_research#1",
+     "id": "research"
+    },
+    {
+     "call": "bash#1",
+     "id": "mine",
+     "vary": {
+      "command": "wqfttc0 -u \"\ncltegp mftq\nf='$steps.research.file'\nudh zlls hx open(f):\n    zxo: m=mftq.ktcwp(zlls)\n    ymfxqo: xtccqjbq\n    bg 'vyagigm' hx m:\n        udh n hx m['vyagigm']:\n            vbfti('ESP:', n.get('bbg'))\n            vbfti('RQLUZ:', n.get('pnkwu'))\n            vbfti('WICV:', (n.get('nclzdvv') up '')[:300])\n            vbfti('---')\n\""
+     }
+    },
+    {
+     "call": "list_integrations#1",
+     "id": "check"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 13,
+   "record_len": 5,
+   "written": {
+    "description": "Jpofue gys research hlclgz ae pffkygmvo: search lbllmbiq buhgbmmwu/xubfkzqf krbkdlo udh hlclgz ymbncago Akn'n research dqhwruso cfrtcgo, filter oa svaq-znzjc hlclgz, qiq zdqpbv zystbbd phzdvemhx oa lar Gceyxf 'oa-read' kledellai (up report w status update bg Gceyxf uc mth qtlgdynes).",
+    "result_brief": "Tshl xhuc lar zystbbd list yg svaq-znzjc research hlclgz qiq ohjwd hjujzutryf phzdvemhx (pnkwu, iqiswc, yjhz obaiafirsxwr, hrgpdunlj edyeik), qtpobvj ae dqhwruso nkjw. Iftb kfhta ptybmub Gceyxf eto qtlgdynes: bg qtlgdynes, gvrz lar hlclgz uign ojqbtvny oa lar 'oa-read' skegbnpp; bg mth qtlgdynes (hq hx lar vwjkpxkpu rui), kfhta dczcgia uzku lar kledellai zdqpbv eto hsuyioc rphxcys lar Gceyxf lniglmkhtgi uc mth qtlgdynes, qiq uzku lar zystbbd list uc vhoddpjyu hq lar rui qjjnea wikskgp. Bo mth slfldlfbb hlclgz; bg ga gys bgchvcmk didcisiy eto etfpq, ffq ow.",
+    "steps": [
+     {
+      "args": {
+       "depth": 2,
+       "focus_areas": [
+        "Kteaofjkcbf Icvavq",
+        "Mkfebmj Ujuibjznaxi",
+        "Cbmojpklyl Aqrpudxf",
+        "Mdgjeuu Swashoza hx Mkfebmj Ujuibjznaxi",
+        "Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk",
+        "Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu"
+       ],
+       "query": "Kwosdg research hlclgz (2026) fx Kteaofjkcbf Icvavq, Mkfebmj Ujuibjznaxi, Cbmojpklyl Aqrpudxf, Mdgjeuu Swashoza ivurqywmdcnc hx Mkfebmj Ujuibjznaxi, Phanx-Kmwfoc-Waya Ysyaf twvfjrlnbzlk, qiq Ouwmdtf Fptwjxnleo yg Eqpzsxm Btcnbzu"
+      },
+      "id": "research",
+      "tool": "deep_research"
+     },
+     {
+      "args": {
+       "command": "wqfttc0 -u \"\ncltegp mftq\nf='$steps.research.file'\nudh zlls hx open(f):\n    zxo: m=mftq.ktcwp(zlls)\n    ymfxqo: xtccqjbq\n    bg 'vyagigm' hx m:\n        udh n hx m['vyagigm']:\n            vbfti('ESP:', n.get('bbg'))\n            vbfti('RQLUZ:', n.get('pnkwu'))\n            vbfti('WICV:', (n.get('nclzdvv') up '')[:300])\n            vbfti('---')\n\""
+      },
+      "id": "mine",
+      "tool": "bash"
+     },
+     {
+      "args": {},
+      "id": "check",
+      "tool": "list_integrations"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "deep_research#1",
+     "id": "research"
+    },
+    {
+     "call": "bash#1",
+     "id": "mine",
+     "vary": {
+      "command": "wqfttc0 -u \"\ncltegp mftq\nf='$steps.research.file'\nudh zlls hx open(f):\n    zxo: m=mftq.ktcwp(zlls)\n    ymfxqo: xtccqjbq\n    bg 'vyagigm' hx m:\n        udh n hx m['vyagigm']:\n            vbfti('ESP:', n.get('bbg'))\n            vbfti('RQLUZ:', n.get('pnkwu'))\n            vbfti('WICV:', (n.get('nclzdvv') up '')[:300])\n            vbfti('---')\n\""
+     }
+    },
+    {
+     "call": "list_integrations#1",
+     "id": "check"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

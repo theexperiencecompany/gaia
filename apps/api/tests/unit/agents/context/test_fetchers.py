@@ -9,6 +9,7 @@ so no caller can forget it.
 
 import asyncio
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
@@ -18,10 +19,8 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
-from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
-    _ConnectedIntegration,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -30,6 +29,7 @@ from app.agents.context.fetchers import (
     build_background_banner,
     build_connected_integrations_manifest,
     build_core_memory_block,
+    build_fast_recall_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
     build_new_user_guidance_block,
@@ -53,9 +53,11 @@ from app.agents.prompts.new_user_prompts import (
     NEW_USER_GUIDANCE_TEMPLATE,
     SEEDED_CHIPS_RULE,
     TARGET_REPLY_EXAMPLE,
+    NewUserFacts,
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
@@ -63,9 +65,16 @@ from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
-from app.models.user_models import NEEDS_MAX_SELECTION, OnboardingNeed, OnboardingPreferences
-from app.services.onboarding.first_question import FirstQuestion, first_question_cache_key
-from app.utils.artifact_utils import artifact_url_base
+from app.models.user_models import (
+    NEEDS_MAX_SELECTION,
+    BioStatus,
+    OnboardingNeed,
+    OnboardingPreferences,
+    OnboardingSubdocument,
+)
+from app.services.hil.pending import PendingApproval
+from app.services.integrations.user_integrations import ConnectedIntegration
+from app.utils.artifact_utils import FILE_LINKS
 
 
 def ctx(
@@ -87,6 +96,65 @@ def ctx(
         user_preferences=user_preferences,
         source=source,
     )
+
+
+_FAST_RECALL = "app.memory.fast_recall.fast_recall"
+
+
+@pytest.mark.unit
+class TestFastRecallBlock:
+    async def test_renders_the_turns_memories_recalled_for_this_user_and_conversation(
+        self,
+    ) -> None:
+        recall = AsyncMock(
+            return_value=[
+                memory("User likes coffee", mentioned="2026-01-05"),
+                memory("User prefers dark mode", mentioned="2026-02-11"),
+            ]
+        )
+        turn = replace(ctx(user_id="user-7", query="coffee?"), conversation_id="conv-1")
+        with patch(_FAST_RECALL, recall):
+            async with captured_wide_event() as event:
+                block = await build_fast_recall_block(turn)
+
+        assert block == (
+            f"{MEMORY_RECALL_HEADER}\n"
+            "- User likes coffee [mentioned 2026-01-05]\n"
+            "- User prefers dark mode [mentioned 2026-02-11]"
+        )
+        recall.assert_awaited_once_with("user-7", "coffee?", conversation_id="conv-1")
+        assert event["memory_fast_recall"] == {"count": 2}
+
+    @pytest.mark.parametrize("turn", [ctx(query=None), ctx(user_id=None)])
+    async def test_renders_nothing_without_both_a_user_and_a_query(
+        self, turn: SectionContext
+    ) -> None:
+        recall = AsyncMock(return_value=[memory("never shown")])
+        with patch(_FAST_RECALL, recall):
+            assert await build_fast_recall_block(turn) == ""
+
+        recall.assert_not_awaited()
+
+    async def test_renders_nothing_when_nothing_matched(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(return_value=[])):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx()) == ""
+
+        assert event["memory_fast_recall"] == {"count": 0}
+
+    async def test_a_failed_lane_costs_only_its_section_and_is_logged(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(side_effect=RuntimeError("pg down"))):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx(user_id="user-7")) == ""
+
+        assert event["errors"] == [
+            {
+                "msg": "Memory fast lane failed",
+                "user_id": "user-7",
+                "error_type": "RuntimeError",
+                "error": "pg down",
+            }
+        ]
 
 
 @pytest.mark.unit
@@ -357,7 +425,7 @@ class TestConnectedIntegrationsManifest:
                         id="ca_2",
                         connected_account_id="ca_2",
                         label="me@gmail.com",
-                        status="expired",
+                        status=IntegrationStatus.EXPIRED,
                     ),
                 ],
                 primary_account_id="ca_1",
@@ -583,7 +651,7 @@ class TestDedupeByProvider:
         self,
     ) -> None:
         """A later id-only entry for the same provider must not clobber an earlier resolved display name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "Slack Workspace"},
             {"id": "sl_ack", "name": "sl_ack"},
         ]
@@ -591,7 +659,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
 
     def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "slack"},
             {"id": "sl_ack", "name": "Slack Workspace"},
         ]
@@ -600,7 +668,7 @@ class TestDedupeByProvider:
 
     def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
         """Once a provider has resolved to ANY display name, a second row for it must not overwrite it, even with another real name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "calendar", "name": "Calendar One"},
             {"id": "cal_endar", "name": "Calendar Two"},
         ]
@@ -608,7 +676,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
 
     def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "gmail", "name": "Gmail"},
             {"id": "slack", "name": "Slack"},
             {"id": "notion", "name": "Notion"},
@@ -643,7 +711,9 @@ class TestProviderMetadataBlock:
         record = self._record(
             make_integration_account("ca_1", label="work@acme.com"),
             make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
-            make_integration_account("ca_3", label="old@acme.com", status="expired"),
+            make_integration_account(
+                "ca_3", label="old@acme.com", status=IntegrationStatus.EXPIRED
+            ),
             primary="ca_2",
         )
         with patch(
@@ -769,10 +839,10 @@ def repo_reads() -> Iterator[AsyncMock]:
         patch.object(todo_repository, "_find", find),
         # The open sub-todo counts are an aggregation: no sub-todos here.
         patch.object(todo_repository, "_aggregate", AsyncMock(return_value=[])),
-        patch("app.db.repositories.base.read_generation", _read_generation),
-        patch("app.db.repositories.base.get_cache", _get),
-        patch("app.db.repositories.base.set_cache", _set),
-        patch("app.db.repositories.base.bump_generation", _bump),
+        patch("app.db.repositories.cached_base.read_generation", _read_generation),
+        patch("app.db.repositories.cached_base.get_cache", _get),
+        patch("app.db.repositories.cached_base.set_cache", _set),
+        patch("app.db.repositories.cached_base.bump_generation", _bump),
     ):
         yield find
 
@@ -817,17 +887,12 @@ class TestTrackedTodosListIsTheCachedRead:
         assert repo_reads.await_count == 2
 
 
-async def _never_finishes() -> str:
-    await asyncio.sleep(3600)
-    return ""
-
-
 @pytest.mark.unit
 class TestCoreContextSingleFlight:
     """Pin that the two core-memory sections share one in-flight core fetch.
 
-    They run in the same asyncio.gather, so they share rather than race; a task
-    bound to a dead loop is never awaited cross-loop.
+    They run in the same asyncio.gather, so they share rather than race; the
+    registry's own eviction and loop-binding are pinned in test_request_coalescing.
     """
 
     async def test_both_core_sections_share_one_fetch(self) -> None:
@@ -902,39 +967,6 @@ class TestCoreContextSingleFlight:
                 await first
             assert await second == f"{CORE_MEMORY_HEADER}\nDocs."
 
-    async def test_the_inflight_entry_is_evicted_on_completion(self) -> None:
-        """Eviction bounds the registry; a leak would keep every user's core context forever."""
-
-        async def _core(user_id: str) -> str:
-            return "Docs."
-
-        with patch("app.memory.engine.memory_engine.get_core_context", _core):
-            await build_core_memory_block(ctx())
-
-        assert fetchers._inflight_core == {}
-
-    def test_a_task_from_a_previous_loop_is_never_awaited(self) -> None:
-        """A pending task left by a dead loop is ignored, never awaited cross-loop."""
-        other_loop = asyncio.new_event_loop()
-        stale = other_loop.create_task(_never_finishes())
-        fetchers._inflight_core[(other_loop, "user1")] = stale
-        fetched: list[str] = []
-
-        async def _core(user_id: str) -> str:
-            fetched.append(user_id)
-            return "Docs."
-
-        try:
-            with patch("app.memory.engine.memory_engine.get_core_context", _core):
-                block = asyncio.run(build_core_memory_block(ctx()))
-            assert fetched == ["user1"]
-            assert block == f"{CORE_MEMORY_HEADER}\nDocs."
-        finally:
-            fetchers._inflight_core.pop((other_loop, "user1"), None)
-            stale.cancel()
-            other_loop.run_until_complete(asyncio.sleep(0))
-            other_loop.close()
-
 
 @pytest.mark.unit
 class TestNewUserGuidanceBlock:
@@ -996,14 +1028,14 @@ class TestNewUserGuidanceBlock:
             block = await build_new_user_guidance_block(
                 ctx(user_preferences={"profession": "Founder", "other_need": "chasing invoices"})
             )
-        assert block == build_new_user_guidance("Founder", [], "chasing invoices")
+        assert block == build_new_user_guidance(NewUserFacts("Founder", [], "chasing invoices"))
 
     async def test_a_non_string_typed_need_is_ignored(self) -> None:
         with self._patch_count(self._count(1)):
             block = await build_new_user_guidance_block(
                 ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
             )
-        assert block == build_new_user_guidance("Founder", [OnboardingNeed.INBOX])
+        assert block == build_new_user_guidance(NewUserFacts("Founder", [OnboardingNeed.INBOX]))
 
     async def test_a_non_string_typed_need_is_passed_as_none_not_empty(self) -> None:
         """The playbook builder gets None, so it never renders an empty quote."""
@@ -1016,7 +1048,7 @@ class TestNewUserGuidanceBlock:
             await build_new_user_guidance_block(
                 ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
             )
-        build.assert_called_once_with("Founder", [OnboardingNeed.INBOX], None, [])
+        build.assert_called_once_with(NewUserFacts("Founder", [OnboardingNeed.INBOX], None))
 
     async def test_the_block_stops_once_the_user_is_no_longer_new(self) -> None:
         with self._patch_count(self._count(NEW_USER_CONVERSATION_LIMIT + 1)):
@@ -1080,7 +1112,7 @@ class TestNewUserGuidanceBlock:
         """The profession is optional; its absence must not leak a placeholder into the prompt."""
         with self._patch_count(self._count(1)):
             block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
-        assert block == build_new_user_guidance("", [OnboardingNeed.INBOX])
+        assert block == build_new_user_guidance(NewUserFacts("", [OnboardingNeed.INBOX]))
 
     async def test_a_failed_count_yields_no_block(self) -> None:
         with self._patch_count(AsyncMock(side_effect=RuntimeError("mongo down"))):
@@ -1136,124 +1168,166 @@ class TestNewUserGuidanceBlock:
         )
 
     async def test_a_user_who_skipped_the_profession_is_addressed_as_a_person(self) -> None:
-        """The template interpolates the profession three times; an unset Q1 must render a plain noun, not an empty hole."""
+        """The template interpolates the profession twice; an unset Q1 must render a plain noun, not an empty hole."""
         with self._patch_count(self._count(1)):
             block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
         assert block.startswith("FIRST CONVERSATIONS (you just met this person)")
-        assert "do for a person" in block
         assert "the way a person talks" in block
 
     async def test_no_needs_renders_nothing_rather_than_a_headerless_block(self) -> None:
         """A block with an empty playbook list is the generic coaching this section exists to replace, so it must be empty string."""
-        assert build_new_user_guidance("Founder", []) == ""
+        assert build_new_user_guidance(NewUserFacts("Founder", [])) == ""
 
-    async def test_the_chips_rule_names_the_chips_that_were_offered(self) -> None:
-        """The model has to see the exact words it offered, or a one-word first message reads as a fragment."""
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, ["My mornings"])
-        assert '"My mornings"' in block
+    CHIPS = ("Find investors", "Hire someone")
 
-    async def test_no_chips_renders_no_chips_rule(self) -> None:
-        """An expired cache must not tell the model a choice was offered."""
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, [])
-        assert "You already asked them a question" not in block
+    def _patch_seeded(self, chips: tuple[str, ...] | None = None) -> Any:
+        return patch(
+            "app.agents.context.fetchers.seeded_chips",
+            AsyncMock(return_value=list(chips or ())),
+        )
 
-    async def test_the_chips_are_looked_up_under_this_user_and_these_exact_answers(
-        self,
-    ) -> None:
-        """The chips live under a key built from the user id and the three answers; any going astray silently loses the chips rule."""
-        with (
-            self._patch_count(self._count(1)),
-            patch("app.agents.context.fetchers.seeded_chips", AsyncMock(return_value=[])) as chips,
-        ):
-            await build_new_user_guidance_block(
-                ctx(
-                    user_id="user-9",
-                    user_preferences={
-                        "profession": "Founder",
-                        "needs": ["inbox"],
-                        "other_need": "chasing invoices",
-                    },
-                )
-            )
-
-        chips.assert_awaited_once_with(
-            "user-9",
-            OnboardingPreferences(
-                profession="Founder",
-                needs=[OnboardingNeed.INBOX],
-                other_need="chasing invoices",
+    @staticmethod
+    def _in_thread(**overrides: Any) -> SectionContext:
+        """Build a comms turn inside the user's welcome thread, conv-1."""
+        prefs = {"profession": "Founder", "needs": ["inbox"]}
+        onboarding = overrides.pop(
+            "onboarding",
+            OnboardingSubdocument(
+                getting_started_conversation_id="conv-1",
+                preferences=OnboardingPreferences(
+                    profession="Founder", needs=[OnboardingNeed.INBOX]
+                ),
             ),
         )
+        base = ctx(user_id="user-9", user_preferences=prefs)
+        return replace(base, **{"conversation_id": "conv-1", "onboarding": onboarding, **overrides})
 
-    async def test_the_chips_the_seeded_turn_offered_reach_the_model(self) -> None:
-        """End to end through the real cache-key derivation: what the seeded conversation wrote is what the block quotes back."""
-        cached = FirstQuestion(chips=["My mornings"])
-        preferences = OnboardingPreferences(
-            profession="Founder",
-            needs=[OnboardingNeed.INBOX],
-            other_need="chasing invoices",
+    async def test_the_welcome_thread_quotes_back_the_jobs_it_offered(self) -> None:
+        """Read through the one reader the paywall uses too, with the stored answers."""
+        with self._patch_count(self._count(1)), self._patch_seeded(self.CHIPS) as read:
+            turn = self._in_thread()
+            block = await build_new_user_guidance_block(turn)
+
+        assert turn.onboarding is not None
+        read.assert_awaited_once_with("user-9", turn.onboarding.preferences)
+        assert 'offering these jobs as chips: "Find investors", "Hire someone"' in block
+
+    async def test_any_other_thread_carries_no_chips_rule_and_reads_nothing(self) -> None:
+        with self._patch_count(self._count(2)), self._patch_seeded(self.CHIPS) as read:
+            block = await build_new_user_guidance_block(self._in_thread(conversation_id="conv-2"))
+
+        assert block
+        assert "offering these jobs as chips" not in block
+        read.assert_not_awaited()
+
+    async def test_a_failed_chips_read_keeps_the_block_and_names_the_cause(self) -> None:
+        async with captured_wide_event() as event:
+            with (
+                self._patch_count(self._count(1)),
+                patch(
+                    "app.agents.context.fetchers.seeded_chips",
+                    AsyncMock(side_effect=RuntimeError("mongo down")),
+                ),
+            ):
+                block = await build_new_user_guidance_block(self._in_thread())
+
+        assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
+        assert event["warnings"] == [
+            {
+                "msg": "Error reading the welcome chips for new-user guidance",
+                "error": "mongo down",
+                "error_type": "RuntimeError",
+                "user_id": "user-9",
+            }
+        ]
+
+    async def test_what_their_mail_said_reaches_the_prompt_once_the_pipeline_finished(
+        self,
+    ) -> None:
+        onboarding = OnboardingSubdocument(
+            bio_status=BioStatus.COMPLETED,
+            user_bio="  Runs his inbox like a control tower.  ",
+            triage_summary={"summary": "Mostly vendor alerts and two investor threads."},
         )
-        with (
-            self._patch_count(self._count(1)),
-            patch(
-                "app.services.onboarding.first_question.redis_cache.get",
-                AsyncMock(return_value=cached),
-            ) as cache_get,
-        ):
-            block = await build_new_user_guidance_block(
-                ctx(
-                    user_id="user-9",
-                    user_preferences={
-                        "profession": "Founder",
-                        "needs": ["inbox"],
-                        "other_need": "chasing invoices",
-                    },
-                )
-            )
+        with self._patch_count(self._count(1)), self._patch_seeded():
+            block = await build_new_user_guidance_block(self._in_thread(onboarding=onboarding))
 
-        assert cache_get.await_args.args[0] == first_question_cache_key("user-9", preferences)
-        assert '"My mornings"' in block
+        assert block.endswith(
+            "never recite it:\n"
+            "- Their inbox: Mostly vendor alerts and two investor threads.\n"
+            "- How they work, from their sent mail: Runs his inbox like a control tower."
+        )
+
+    async def test_a_portrait_alone_still_renders_under_the_header(self) -> None:
+        """An inbox the pipeline could not summarise must not take the portrait down with it."""
+        block = build_new_user_guidance(
+            NewUserFacts(
+                "Founder", [OnboardingNeed.INBOX], mail_portrait="Answers in numbered steps."
+            )
+        )
+
+        assert block.endswith(
+            "What their mail already told you (read when they connected Gmail). Use it to make "
+            "offers specific to them; never recite it:\n"
+            "- How they work, from their sent mail: Answers in numbered steps."
+        )
+
+    @pytest.mark.parametrize("status", [BioStatus.PENDING, BioStatus.NO_GMAIL, None])
+    async def test_mail_facts_wait_for_the_pipeline_to_finish(
+        self, status: BioStatus | None
+    ) -> None:
+        """A pending or placeholder bio is not something their mail said."""
+        onboarding = OnboardingSubdocument(
+            bio_status=status, user_bio="placeholder", triage_summary={"summary": "partial"}
+        )
+        with self._patch_count(self._count(1)), self._patch_seeded():
+            block = await build_new_user_guidance_block(self._in_thread(onboarding=onboarding))
+
+        assert "What their mail already told you" not in block
 
     async def test_the_block_is_the_template_filled_with_every_one_of_its_slots(self) -> None:
         """Asserted whole rather than by substring: a slot filled with the wrong value still renders a plausible-looking block."""
         block = build_new_user_guidance(
-            "Founder", [OnboardingNeed.INBOX], None, ["My mornings", "Growth"]
+            NewUserFacts("Founder", [OnboardingNeed.INBOX], seeded_chips=self.CHIPS)
         )
 
         assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
             profession="Founder",
             playbooks=f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}",
             target=TARGET_REPLY_EXAMPLE,
-            chips_rule=SEEDED_CHIPS_RULE.format(chips='"My mornings", "Growth"'),
+            mail="",
+            seeded=SEEDED_CHIPS_RULE.format(chips='"Find investors", "Hire someone"'),
         )
 
-    async def test_two_chips_are_quoted_and_comma_separated(self) -> None:
-        """The model has to read them as two distinct offers, not one nonsense phrase run together."""
-        block = build_new_user_guidance(
-            "Founder", [OnboardingNeed.INBOX], None, ["My mornings", "Late payers"]
-        )
-
-        assert '"My mornings", "Late payers"' in block
-
-    async def test_a_user_offered_no_chips_gets_the_slot_closed_up_entirely(self) -> None:
-        """The empty case is a slot filled with nothing, not a placeholder — any residue reads to the model as an instruction."""
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, [])
+    async def test_no_chips_closes_the_slot_up_entirely(self) -> None:
+        """Any residue of the rule reads to the model as a choice it offered."""
+        block = build_new_user_guidance(NewUserFacts("Founder", [OnboardingNeed.INBOX]))
 
         assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
             profession="Founder",
             playbooks=f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}",
             target=TARGET_REPLY_EXAMPLE,
-            chips_rule="",
+            mail="",
+            seeded="",
         )
 
     async def test_the_worst_case_block_stays_within_budget(self) -> None:
-        """The two longest playbooks (the API caps picks at two), plus four seeded chips and a typed need, is the largest case."""
+        """The longest playbooks at the pick cap, a typed need, four chips and both mail facts."""
         longest = sorted(OnboardingNeed, key=lambda n: len(NEED_PLAYBOOKS[n]), reverse=True)
         block = build_new_user_guidance(
-            "Founder",
-            longest[:NEEDS_MAX_SELECTION],
-            "chasing invoices",
-            ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"],
+            NewUserFacts(
+                "Founder",
+                longest[:NEEDS_MAX_SELECTION],
+                "chasing invoices",
+                seeded_chips=(
+                    "Find investors",
+                    "Fix my marketing",
+                    "Hire someone",
+                    "Write my pitch",
+                ),
+                inbox_summary="x" * 300,
+                mail_portrait="y" * 300,
+            )
         )
         assert len(block) <= self.MAX_BLOCK_CHARS, f"guidance block grew to {len(block)} chars"
 
@@ -1269,7 +1343,7 @@ class TestWorkspaceSessionBanner:
         assert banner == (
             f"Session directory: {session_dir('sess-1')}\n"
             "Public artifact URL: a file at `artifacts/<name>` is served at "
-            f"{artifact_url_base('sess-1')}/<name>"
+            f"{FILE_LINKS.artifact_base('sess-1')}/<name>"
         )
 
     async def test_no_vfs_session_id_never_guesses_a_directory(self) -> None:
@@ -1603,12 +1677,12 @@ class TestOpenPendingsBlock:
         )
 
     async def _render(self, docs: list[MagicMock]) -> str:
+        numbered = [PendingApproval(number=number, row=doc) for number, doc in enumerate(docs, 1)]
         with patch(
-            "app.agents.context.fetchers.approval_ledger_repository",
-        ) as ledger:
-            ledger.list_open = AsyncMock(return_value=docs)
+            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=numbered)
+        ) as pending:
             text = await build_open_pendings_block(self._ctx())
-        ledger.list_open.assert_awaited_once_with("c1")
+        pending.assert_awaited_once_with("c1", "u1")
         return text
 
     async def test_renders_each_pending_with_age_and_revoke_rule(self) -> None:
@@ -1657,40 +1731,21 @@ class TestOpenPendingsBlock:
 
     async def test_empty_and_missing_conversation_render_empty(self) -> None:
         with patch(
-            "app.agents.context.fetchers.approval_ledger_repository",
-        ) as ledger:
-            ledger.list_open = AsyncMock(return_value=[])
+            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=[])
+        ) as pending:
             assert await build_open_pendings_block(self._ctx()) == ""
             assert await build_open_pendings_block(self._ctx(None)) == ""
-            ledger.list_open.assert_awaited_once()
+            pending.assert_awaited_once()
 
     async def test_ledger_failure_degrades_to_empty_and_is_logged(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.agents.context.fetchers.approval_ledger_repository",
-            ) as ledger:
-                ledger.list_open = AsyncMock(side_effect=ConnectionError("mongo down"))
+                "app.agents.context.fetchers.pending_approvals",
+                new=AsyncMock(side_effect=ConnectionError("mongo down")),
+            ):
                 text = await build_open_pendings_block(self._ctx())
 
         assert text == ""
         assert event["warnings"] == [
             {"msg": "open_pendings_fetch_failed", "error_type": "ConnectionError"}
         ]
-
-    async def test_foreign_rows_never_render_into_this_users_context(self) -> None:
-        text = await self._render(
-            [
-                self._doc("ap_mine", "Mine"),
-                self._doc("ap_theirs", "Theirs", user_id="u2"),
-                self._doc("ap_legacy", "Legacy", user_id=""),
-            ]
-        )
-
-        assert "ap_mine" in text
-        assert "ap_theirs" not in text
-        assert "ap_legacy" in text
-
-    async def test_only_foreign_rows_render_nothing(self) -> None:
-        text = await self._render([self._doc("ap_theirs", "Theirs", user_id="u2")])
-
-        assert text == ""

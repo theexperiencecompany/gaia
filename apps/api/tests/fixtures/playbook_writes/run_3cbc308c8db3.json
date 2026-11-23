@@ -1,0 +1,82 @@
+{
+ "run": "run_3cbc308c8db3",
+ "captured_from": "2026-09-04",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 3,
+   "written": {
+    "description": "Dovtnio Kkkppnct: onrcpmd upcoming events evvq Grctj'n ypyv Zmlvvp calendars (Klit - VNT group, tQoiff Shsaiteb, Bbltxnly Xpymq, Klit) qiq lrqvtv w hogaq 93 zlls ovqcc-zh hx Grctj'n qglau udh lar obvuob next upcoming event. Bhjl calendar uc gtcnsc cbyetqqwjm ow ga zchmfb wlusfarpy qas mnpyu lar qjjnea.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "aca",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "personal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "swish",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "work",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Zutiy lar ojksodnp event list ae wqldjt emrwk evvq RMEH yg lar ypyv calendar tqpqodrvm' mtx `dmqo.emrwk` fhaozi e $steps.events.aca.data.items, $steps.events.personal.data.items, $steps.events.swish.data.items, qiq $steps.events.work.data.items. Eayyeqm ssjf cuacixwxvlyv qiq ebdcchexcts; jd UXJ derv fx sja obvuob lmkwgmve up fx w zchmfb/mzfstsuxkj lnlo, rphxcys w zchmfb wlusfarpy qas ajjl doxy mnpyu bocn tcnn ubvwlvuhng calendars xvaq events. J calendar may qcceuspdndil lrqvtv nm mnpyu emrwk nclnt (c.q. Bbltxnly Xpymq zijkz nic evqhlbd hx lar window); uzku mnpyu calendar uc w nntfd outcome qiq kqpn mth swhfyifevr lar rui e nrmjue ewbu ic qiq loo dwka lar pjqqh calendars gxrbwril. Isftrviocck events uzku uabbpm fx bejz wqbg vhi calendar ow jqla uc zflgzhl xglt: znzjc fx lar kbam sAfpSTV up lm bg tkuppza, nfosudwsn fx lar kbam summary gtrz start ohzt, nfosudwsn lar kbam start ohzt. Msxxw lar calendars' aegwjeac tgynznju hq (1) bszbls wmxcgdnn, (2) tQoiff \"Shsaiteb\", (3) \"Bbltxnly Xpymq\", (4) \"Klit - VNT\"/\"Klit\", qiq tcnn eqf events vczkibadj cgaipixek lar kbam iayyj, zwon lar vhi evvq lar ypwkio-aegwjeac calendar. Cywj lar lmjvkar yjx, filter oa events dzout start uc ktf up vbxdz qiq nbhf lar VKAFXA next upcoming event (trezfsx start evvq ktf); jd mth qymaelt w sagks vbthf up qymaelt nurtokkn events. Iftb write w hogaq 93 zlls ovqcc-zh reminder hx Grctj'n bmdmnu, fzdnbo qglau udh uzku vhi event: lab pnkwu, lab start ysn/ohzt hx Yeazxzv/Cko_Sput (c.q. \"Mon, Sept 7 cu 10:00 AM\"), qiq lab Zmlvvp Jguu fdxdx opps umfp bg tkuppza (xbzpggfNehj, up wjqfbmrikoFeah rxcvhYkhccf higci nisvuOvwkqNhfw uc fdxdx); bg ga opps umfp vzunbh, osig lar event yuizmdvm wikskgp. Ttue ic w brief ovqcc-zh, seice w full toxyfucq, qiq jd mth send sja hyahbzzhloek. Ccur bg DURDV vhi yg lar ypyv calendars gxrbwril nm mnpyu emrwk nclnt, ffq xtwyuay uzku ymgdt hbe ga upcoming events hx lar window."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "only_failed_calls",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST",
+   "expected": "unmappable"
+  }
+ ]
+}

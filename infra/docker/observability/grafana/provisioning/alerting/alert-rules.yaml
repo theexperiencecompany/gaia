@@ -1009,8 +1009,7 @@ groups:
             One chat turn in twenty takes over thirty seconds to complete its
             comms reply. Split delegated vs direct via the delegated label, then
             executor_active_seconds (executor work) vs HIL wait
-            (hil_user_wait_seconds) vs delivery (delivery_narration_seconds,
-            delivery_persist_seconds). No latency dashboard panel exists for
+            (hil_user_wait_seconds). No latency dashboard panel exists for
             these metrics yet — query /metrics histograms directly.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
         labels:
@@ -1651,3 +1650,396 @@ groups:
         labels:
           severity: critical
           service: redis
+
+      # 26. Trigger gates cannot get an answer from JEV. Gates fail open by day and
+      # hold for the morning in quiet hours, so no run is lost; every unanswered gate
+      # costs a run it might have skipped, and urgent mail at night waits until 08:00.
+      # The denominator is every decision that asked JEV: free runs never call it, and
+      # jev_unconfigured (a self-host with no OpenRouter key) is not an outage. Both
+      # the API (workflows) and the worker (tracked todos) export the counter. No
+      # dashboard link: nothing charts trigger gates yet.
+      - uid: gaia-trigger-gate-jev-errors
+        title: Trigger gates cannot reach JEV
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                100 * (
+                  sum(rate(trigger_gate_decision_total{job=~"gaia-api|arq_worker", reason=~"jev_error|jev_timeout|jev_malformed"}[5m]))
+                  /
+                  clamp_min(sum(rate(trigger_gate_decision_total{job=~"gaia-api|arq_worker", reason=~"jev_run|jev_skip|jev_urgent|jev_can_wait|jev_error|jev_timeout|jev_malformed"}[5m])), 0.0001)
+                )
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [20] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}% of trigger gate checks got
+            no usable answer from JEV over the last 5 minutes (threshold
+            20%){{ else }}Unable to read the trigger gate JEV error rate — this rule could
+            not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Gated workflows and tracked todos still run when JEV fails, or wait
+            for 08:00 inside the user's quiet hours, so users lose nothing, but
+            every gate that cannot be answered pays for a full agent run it might
+            have skipped and an urgent email at night waits for the morning
+            instead of waking the user. Check OpenRouter's status and the
+            OpenRouter key's credits, then the trigger_gate.jev_failed warnings
+            in the API and worker logs, whose reason says whether JEV errored,
+            timed out or sent an answer the gate could not read.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-trigger-gate-jev-errors
+        labels:
+          severity: warning
+          service: api
+
+      # 27. A write_playbook call was refused or raised. The pick flow is built
+      # so a write cannot misstate the run (the prod corpus in CI holds it), so
+      # one refusal is already a regression worth a look: the threshold is the
+      # first one. Every write refusal series is created at 0 when the worker
+      # imports the counter, so increase() sees the first one after a restart.
+      # noDataState OK: no workflow traffic is not an incident. No dashboard
+      # link: no panel charts playbook decisions yet.
+      - uid: gaia-playbook-write-refused
+        title: A workflow playbook write was refused
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_playbook_decision_total{tool="write",outcome!="accepted"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} write_playbook
+            calls were refused or failed in the last hour (threshold: the first
+            one){{ else }}Unable to read the playbook decision count — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            A workflow run asked to freeze its calls as a playbook was told no, so
+            that workflow keeps reasoning every fire from scratch at full model
+            cost instead of replaying. Users see nothing: the run's own result is
+            delivered either way. The reason label says why (not_in_record,
+            empty_result, time_layout, malformed, ... or outcome="error" for a
+            crash); the runbook has the query and how to pull the attempt.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-playbook-write-refused
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 28. A playbook replay stopped partway. The agent finishes that fire, so
+      # the user still gets one result, but the frozen sequence no longer holds
+      # for that workflow and its runs cost a full agent run until it heals.
+      # Same first-event threshold and zero-created series as rule 26.
+      - uid: gaia-playbook-replay-failed
+        title: A workflow playbook replay failed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_playbook_replay_total{status="failed"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} playbook replays
+            stopped partway in the last hour (threshold: the first one){{ else }}Unable
+            to read the playbook replay count — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            A stored playbook stopped at a step during replay (a tool error, a
+            missing $steps field, a disconnected integration). The agent took over
+            and delivered that fire, so the user got a result, but the workflow is
+            now healing and costs a full agent run per fire. Find the workflow in
+            the worker's wide events (playbook.reason=replay_stopped) and read the
+            failure it logged.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-playbook-replay-failed
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 29. Brief runs are failing. gaia_brief_run_total{kind,outcome} counts every
+      # daily and weekly run by how it ended; a run that raised counts outcome="failed".
+      # A failed run is a user's brief that never arrived, so a tenth of an hour's runs
+      # failing is a real outage, not noise. clamp_min keeps an hour with no runs at a
+      # ratio of 0 instead of NoData. No dashboard link: no panel charts briefs yet.
+      - uid: gaia-brief-run-failures
+        title: Morning briefs are failing to send
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(gaia_brief_run_total{outcome="failed"}[1h]))
+                / clamp_min(sum(increase(gaia_brief_run_total[1h])), 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ humanizePercentage $values.B.Value }} of brief runs
+            failed in the last hour (threshold: 10%){{ else }}Unable to read the brief
+            run counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Users whose brief run failed got no brief this morning. The kind label
+            says daily or weekly. Find the failed runs in the worker's wide events
+            (workflow.briefing_outcome is absent, errors[] holds the cause) and fix
+            what they share: a model provider, the edition renderer, Mongo.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-run-failures
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 30. No brief has been sent for six hours. Briefs land at each user's own
+      # morning hour, so across time zones some are sent in every six-hour window;
+      # none at all means the schedule, the queue or delivery stopped, which the
+      # failure ratio above cannot see when runs stop being attempted. The sent
+      # series exists at 0 from worker start, so a restart reads as 0, not NoData:
+      # for 30m keeps a deploy from tripping it.
+      - uid: gaia-brief-none-sent
+        title: No briefs have been sent in six hours
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 21600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_brief_run_total{outcome="sent"}[6h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} briefs sent in the
+            last six hours (threshold: at least one){{ else }}Unable to read the
+            brief run counts — this rule could not be evaluated, which almost always
+            means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Nobody has received a brief for six hours. Check that the worker is
+            consuming the briefing queue, that brief workflows are still scheduled
+            (the scheduler re-arms them after each run), and the outcome label of
+            gaia_brief_run_total: runs that end skipped rather than failed point at
+            the dormancy or quiet-note rules.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-none-sent
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 31. Scouts are failing. gaia_brief_scout_total{outcome,skip_reason} counts
+      # every scout's turn in a brief; skip_reason="failed" is a scout that raised
+      # (an app down, a bad report, a timeout). One app failing is expected; a fifth
+      # of all turns failing means scouts as a whole broke and briefs have gone
+      # quiet about every connected app.
+      - uid: gaia-brief-scout-failures
+        title: Brief scouts are failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(gaia_brief_scout_total{skip_reason="failed"}[1h]))
+                / clamp_min(sum(increase(gaia_brief_scout_total[1h])), 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ humanizePercentage $values.B.Value }} of scout turns
+            failed in the last hour (threshold: 20%){{ else }}Unable to read the scout
+            turn counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Briefs still send, but say nothing about the apps whose scouts failed.
+            The briefing.scout_failed errors in the worker's wide events carry the
+            integration_id and error_type: one integration dominating is that app's
+            outage; every integration failing is the scout model or the MCP client.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-scout-failures
+        labels:
+          severity: warning
+          service: arq_worker
+
+      # 32. Share links cannot be minted. gaia_link_mint_total{outcome} counts every
+      # short-link mint; a failed one leaves a brief, artifact or file without the
+      # link the user was promised. Mints touch only Mongo and the blob store, so a
+      # few failing in an hour is already a dependency problem.
+      - uid: gaia-link-mint-failures
+        title: Share links are failing to mint
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_link_mint_total{outcome="failed"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} share links failed
+            to mint in the last hour (threshold: more than 2){{ else }}Unable to read
+            the link mint count — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Briefs, artifacts and files went out without the link that opens them.
+            The mint failures in the API and worker wide events carry error_type:
+            a storage error is the blob store, a duplicate key is the short_links
+            unique index.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-link-mint-failures
+        labels:
+          severity: warning
+          service: api
+
+      # 33. A comms model call ran over a minute. A chat reply that long is a
+      # runaway: the 3,998-break replies of October ran ~100 s to the output
+      # limit. Counted per call, not as a p95, so a single one shows up. The slow-call
+      # counter is derived before increase(), which extrapolates two counters apart.
+      - uid: gaia-comms-reply-runaway
+        title: A chat reply ran to an abnormal length
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase((llm_call_seconds_count{agent="comms_agent"} - ignoring(le) llm_call_seconds_bucket{agent="comms_agent",le="60.0"})[15m:1m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        # Rides out the counter reset of a Prometheus restart; one slow call
+        # stays in the 15m window long past it.
+        for: 2m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} chat model calls
+            ran over 60s in the last 15 minutes (threshold: the first one){{ else }}Unable
+            to read the comms model call durations — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            The front chat model took over a minute on one reply, which in practice
+            means it generated to its output limit (a loop of repeated text or bubble
+            breaks) while the user waited. Find the call in the llm_calls ledger
+            (comms_agent, duration_ms over 60000) and read its output tokens and
+            finish reason.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-comms-reply-runaway
+        labels:
+          severity: warning
+          service: api

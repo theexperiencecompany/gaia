@@ -140,12 +140,12 @@ class TestSendEmailFlow:
         )
 
         response = await client.post(
-            f"{MAIL_BASE}/gmail/send-json",
-            json={
-                "to": ["alice@example.com", "bob@example.com"],
+            f"{MAIL_BASE}/gmail/send",
+            data={
+                "to": "alice@example.com, bob@example.com",
                 "subject": "Q3 numbers",
                 "body": "Attached below.",
-                "cc": ["carol@example.com"],
+                "cc": "carol@example.com",
             },
         )
 
@@ -153,6 +153,7 @@ class TestSendEmailFlow:
         assert response.json() == {
             "message_id": "gmail-msg-9001",
             "status": "Email sent successfully",
+            "attachments_count": 0,
         }
 
         slug, params = fake.calls[0]
@@ -163,30 +164,6 @@ class TestSendEmailFlow:
         assert params["subject"] == "Q3 numbers"
         assert params["body"] == "Attached below."
 
-    async def test_send_reports_failure_instead_of_claiming_success(self, client, gmail_boundary):
-        """A Gmail rejection (successful: False, error set) must not come back as "Email sent successfully" — the composer would tell the user mail went out when nothing was delivered."""
-        gmail_boundary(
-            {
-                "data": {},
-                "error": "Request had insufficient authentication scopes.",
-                "successful": False,
-            }
-        )
-
-        response = await client.post(
-            f"{MAIL_BASE}/gmail/send-json",
-            json={"to": ["alice@example.com"], "subject": "Q3 numbers", "body": "Attached."},
-        )
-
-        assert response.status_code == 500, response.text
-        body = response.json()
-        assert "successfully" not in str(body).lower(), (
-            f"Gmail rejected the send but the API reported success: {body}"
-        )
-        assert "insufficient authentication scopes" in str(body), (
-            f"The Gmail error must reach the user, got: {body}"
-        )
-
     async def test_send_reports_failure_when_gmail_tool_is_unavailable(
         self, client, gmail_boundary
     ):
@@ -194,8 +171,8 @@ class TestSendEmailFlow:
         gmail_boundary(None, known_tools=set())
 
         response = await client.post(
-            f"{MAIL_BASE}/gmail/send-json",
-            json={"to": ["alice@example.com"], "subject": "Hi", "body": "There."},
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "alice@example.com", "subject": "Hi", "body": "There."},
         )
 
         assert response.status_code == 500, response.text
@@ -205,7 +182,7 @@ class TestSendEmailFlow:
     async def test_form_send_route_reports_failure_instead_of_claiming_success(
         self, client, gmail_boundary
     ):
-        """The multipart send route (attachments path) must fail loud too."""
+        """A Gmail rejection must not come back as "Email sent successfully"; the composer would tell the user mail went out."""
         gmail_boundary(
             {"data": {}, "error": "Recipient address rejected", "successful": False},
         )

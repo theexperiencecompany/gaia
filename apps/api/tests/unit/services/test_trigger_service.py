@@ -22,6 +22,7 @@ import pytest
 from redis.exceptions import RedisError
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.models.trigger_config import TriggerOptionsQuery
 
@@ -127,6 +128,7 @@ def _make_workflow(
 ) -> Workflow:
     """Build a minimal valid Workflow for testing."""
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=user_id,
         title="Test Trigger Workflow",
@@ -429,6 +431,7 @@ class TestTriggerHandlerBase:
                 "trigger_data": payload,
                 "trigger_type": TriggerType.INTEGRATION.value,
             },
+            defer_until=None,
         )
 
     @patch("app.services.triggers.base.get_signal_matching_context")

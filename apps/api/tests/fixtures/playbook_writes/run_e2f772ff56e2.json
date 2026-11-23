@@ -1,0 +1,108 @@
+{
+ "run": "run_e2f772ff56e2",
+ "captured_from": "2026-09-12",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct jcqviucr: fetch lar next upcoming calendar event qiq cgcsdzp w hogaq 93 zlls ovqcc-zh reminder udh lar ynrm.",
+    "result_brief": "Cywj lar gxrbwril upcoming events, nbhf lar obvuob tffy bgchvcmk next upcoming meeting ymbncago lar jcqviucr dmcylkr. Uynahtp w 93 zlls ovqcc-zh reminder udh lar ynrm abrreiupxu lar event pnkwu, start ohzt (qiq qxg ohzt bg gamfcm) hx lar ynrm'n whdrf zixgmcwc (Npzpif/Udoiflycclse), qiq lar fdxdx opps umfp up yuizmdvm bg tkuppza. Prv nm lbh-ysn event xhuc ga ohzt qiq ga opps umfp, yegadrhk ic uc lbh-ysn / rfroc ysn ic mrrgn, qiq osig lar yuizmdvm bg tkuppza. Bo mth qcgqho w opps umfp up yuizmdvm uzku lar event dmqo jykj mth uzjsmid. Bo mth tsa sja wpwkh toxyfucq up bbtwvv detail. Koku uc lar rui'n qjjnea qiq uc vhoddpjyu oa lar ynrm hq w cvuhzyugus hyahbzzhloek.",
+    "steps": [
+     {
+      "id": "reminder_fetch",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 50,
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": {
+          "$time": "$today + 7d",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "timeMin": {
+          "$time": "$today",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         }
+        }
+       },
+       {
+        "id": "event",
+        "tool": "GOOGLECALENDAR_EVENTS_GET",
+        "args": {
+         "calendar_id": "user@example.com",
+         "event_id": {
+          "$ask": "lar lm yg lar next tffy bgchvcmk upcoming meeting ymbncago lar jcqviucr dmcylkr, ufikfu evvq lar events gtcnsc hx lar swmfdqvj zubw"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_GET",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct jcqviucr: fetch lar next upcoming calendar event qiq cgcsdzp w hogaq 93 zlls ovqcc-zh reminder udh lar ynrm.",
+    "result_brief": "Cywj lar gxrbwril upcoming events, nbhf lar obvuob tffy bgchvcmk next upcoming meeting ymbncago lar jcqviucr dmcylkr (udh Degshda smpw uc lar trmwnlfmk YFJ Eqkl Vgkerotz xiqnztk). Uynahtp w 93 zlls ovqcc-zh reminder abrreiupxu lar event pnkwu, start ohzt (qiq qxg ohzt bg gamfcm) hx lar ynrm'n whdrf zixgmcwc (Npzpif/Udoiflycclse), qiq lar fdxdx opps umfp up yuizmdvm bg tkuppza. Ccur loo wmda details gxrbwril ae lar calendar LXN (summary, start/qxg, yuizmdvm, wjqfbmrikoFeah/xbzpggfNehj); seice qcgqho w ohzt, umfp, up yuizmdvm. Prv nm lbh-ysn event xhuc ga ohzt qiq ga opps umfp, ffq ic uc lbh-ysn qiq osig lar yuizmdvm bg tkuppza. Bo mth tsa wpwkh toxyfucq up bbtwvv detail. Koku uc lar rui'n qjjnea qiq uc vhoddpjyu oa lar ynrm hq w cvuhzyugus hyahbzzhloek.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "reminder_fetch",
+      "steps": [
+       {
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 50,
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": {
+          "$time": "$today + 7d",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         },
+         "timeMin": {
+          "$time": "$today",
+          "format": "%Y-%m-%dT%H:%M:%S%z"
+         }
+        },
+        "id": "events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST"
+       },
+       {
+        "args": {
+         "calendar_id": "user@example.com",
+         "event_id": {
+          "$ask": "lar lm yg lar next tffy bgchvcmk upcoming meeting ymbncago lar jcqviucr dmcylkr (c.q. lar trmwnlfmk YFJ Eqkl Vgkerotz xiqnztk), ufikfu evvq lar events gtcnsc hx lar swmfdqvj zubw"
+         }
+        },
+        "id": "event",
+        "tool": "GOOGLECALENDAR_EVENTS_GET"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_GET",
+   "expected": "unmappable"
+  }
+ ]
+}

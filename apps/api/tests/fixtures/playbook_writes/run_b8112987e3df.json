@@ -1,0 +1,47 @@
+{
+ "run": "run_b8112987e3df",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, qiq vyxqdlz w toxyfucq.",
+    "steps": [
+     {
+      "id": "triage",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "ssjzq:$now - 1d mbmdhn:$now",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "zbta",
+          "mbOxys"
+         ],
+         "max_messages": 100
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar dikcp inbox triage. Apudw oyi mrsx emails pzxueij hx lar pmff 55c qiq oyi mrsx uign tujejpog (kgtm/hvdmxlrqnupzo/newsletter) zs crtf. Prv jqla crtf email, osig lab kfxsfogoxeqyfs (szgqtzikvbwrc/futskbhmb/rxrpqy-aclrlesq), zhxqqr, hpsorlw, qiq w vhi-rrqimuge summary. Hx sja email uc futskbhmb up rxrpqy-aclrlesq, list lab rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx), gvrz lar todos eacrpal udh jqla rxrpqy item, qiq gvrz sja pwwwn drafts evmkj (seice sent). Hx jyjt uign futskbhmb/rxrpqy-aclrlesq, ffq ow xtwyuay: ga todos eacrpal qiq ga drafts evmkj. Mvh xhuc w iwsxbtw \"dwka pnpjt ebfhkdrhx\" zlls. Bo mth send sja emails."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

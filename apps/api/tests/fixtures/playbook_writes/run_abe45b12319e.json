@@ -1,0 +1,42 @@
+{
+ "run": "run_abe45b12319e",
+ "captured_from": "2026-09-17",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 2,
+   "record_len": 0,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar next upcoming Zmlvvp Tvelkhjg event qiq send w hogaq ovqcc-zh.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "ehxfmae"
+         ],
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S"
+         },
+         "max_results": 5
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Hx lar fetch gxrbwril nm upcoming event, write w 93 zlls ovqcc-zh reminder xhuc lar event pnkwu, start ohzt, qiq opps umfp up yuizmdvm bg upuwifttl. Hx ic gxrbwril ga events, kfhta xtwyuay uzku ymgdt hbe ga upcoming calendar events udh lar ynrm, ow ymgdt uc evqhlbd oa remind hndfq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -259,7 +259,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories(set()) == (
                 ["todos"],
-                ["todos (subagent): creating todos"],
+                ["todos (integration): creating todos"],
             )
 
     def test_a_provider_subagent_is_offered_only_once_its_integration_is_active(self):
@@ -268,7 +268,7 @@ class TestCollectSubagentCategories:
         with _catalog(gmail):
             assert _collect_subagent_categories({"gmail"}) == (
                 ["gmail"],
-                ["gmail (subagent): sending mail"],
+                ["gmail (integration): sending mail"],
             )
             assert _collect_subagent_categories(set()) == ([], [])
             assert _collect_subagent_categories({"notion"}) == ([], [])
@@ -280,7 +280,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories({"github"}) == (
                 ["GitHub"],
-                ["GitHub (subagent): opening PRs"],
+                ["GitHub (integration): opening PRs"],
             )
 
     def test_an_integration_with_no_subagent_is_skipped_without_reading_its_config(self):
@@ -292,7 +292,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories({"dropbox", "figma", "gmail"}) == (
                 ["gmail"],
-                ["gmail (subagent): sending mail"],
+                ["gmail (integration): sending mail"],
             )
 
     def test_one_unconnected_provider_does_not_hide_the_subagents_after_it(self):
@@ -303,7 +303,7 @@ class TestCollectSubagentCategories:
         ):
             assert _collect_subagent_categories(set()) == (
                 ["todos"],
-                ["todos (subagent): todos"],
+                ["todos (integration): todos"],
             )
 
     def test_the_catalog_order_is_preserved(self):
@@ -316,9 +316,9 @@ class TestCollectSubagentCategories:
 
         assert names == ["todos", "gmail", "skills"]
         assert lines == [
-            "todos (subagent): a",
-            "gmail (subagent): b",
-            "skills (subagent): c",
+            "todos (integration): a",
+            "gmail (integration): b",
+            "skills (integration): c",
         ]
 
 
@@ -856,10 +856,10 @@ class TestGenerateStepsWithLlm:
 
         prompt = mock_llm.await_args.args[1]
         assert "productivity, todos, gmail, gaia" in prompt
-        assert "gmail (subagent): mail" in prompt
+        assert "gmail (integration): mail" in prompt
         assert "notion (subagent)" not in prompt
         assert "productivity: create_todo" in prompt
-        assert "todos (subagent): todos" in prompt
+        assert "todos (integration): todos" in prompt
         assert "Always Available: web_search" in prompt
 
     async def test_a_core_tool_without_a_name_is_still_offered_by_its_string_form(self):

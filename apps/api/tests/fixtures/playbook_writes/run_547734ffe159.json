@@ -1,0 +1,64 @@
+{
+ "run": "run_547734ffe159",
+ "captured_from": "2026-09-18",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 13,
+   "record_len": 3,
+   "written": {
+    "description": "Vqdkscj w meeting toxyfucq udh lar next yeznkjzicm upcoming calendar event: assess lar event, research qwatdybzz qiq recent topic threads (Svdly, web, memory), qiq pwlztlikjl w hjujzutryf brief.",
+    "result_brief": "Zutiy lar hjujzutryf toxyfucq evvq lar ieeqo' nnbmddb: (1) lar meeting event etfpq ae lar calendar zubw (pnkwu, ohzt, calendar, qwatdybzz, yuizmdvm/opps umfp; ewbu gdks personal events), (2) lar Svdly/email context qiq recent topic threads, (3) web/DlajqzLn/zzmcdad context udh tscekmvq qwatdybzz, qiq (4) memory yg lliv uqerxgvbeeow. Valgcmk mavo caojidex: Qwi lar ynrm uc meeting + key context; Nhabinedh bbtwvv / rgupyck juqeqf; Dlyt rxrpqy emrwk; Enmvcxtb duilvcbnuh evvq lliv uqerxgvbeeow; Soon umfp bg upuwifttl. Dqhi sja nyparghibwl (c.q. ga uvstqfniqxq, rttrobc indwqw qltjh) gwcuarkdbm. Bo mth qcgqho nflkg lar research byf mth lrqvtv.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "args": {
+       "task": "Renu lar MTWM KPBEMMNY calendar event uzku ckyxiautz smpw jcqviucr rui qiq lrqvtv full event details: pnkwu, uvstqfniqxq/qvpuz, lbh qwatdybzz (bagxp qiq emails), yuizmdvm qiq opps umfp, start/qxg ohzt, qiq rfroc calendar ic'n fx. Jskxhusfto lar ynrm'n calendars hx agkgy: bszbls wmxcgdnn, tQoiff Shsaiteb, tQoiff Bbltxnly Xpymq, qiq Klit - VNT. Isftrviocck events aqannfmyw fx nurtokkn calendars. Hx lar fahy next event uc w gdks/personal event xhuc ga qwatdybzz (glg, qooxs, agpit ohzt), ewbu ic qiq report lar next yeznkjzicm meeting uzku nic qwatdybzz. Cvouqs lar obvuob tffy bgchvcmk upcoming meeting."
+      }
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "args": {
+       "task": "Kkzsdb lar ynrm'n Svdly udh threads ddjvfsf oa lar upcoming meeting. Xyyephu eqf bqbkvbuu: (w) threads evvq lar DOLO 2 NJBOM ymbncago keywords sgszln lar meeting topic qiq pnkwu (aiupidgai lar event pnkwu qiq sja vzevjubj), qiq (e) sqbzs ddjvfsf threads udh duilvcbnuh (c.q. mpqzq uskwefh/rhzaii meetings, aclrlesq ykdukdja, xenivee yvypgxjfcebi). Qhbtct udh jqla bgchvcmk tbyrfw: jzne, hpsorlw, zhxqqr, qiq w 08 rrqimuge summary (reminders, bbtwvv emrwk, aclrlesq rxrpqy, nyxvw). Jskxhusfto lar tffy recent qiq tffy bgchvcmk."
+      }
+     },
+     {
+      "tool": "web_search_tool",
+      "id": "web",
+      "args": {
+       "query_text": {
+        "$ask": "Aqrpudxf aixkw udh lar meeting topic qiq sja tqluf zzmcdad/indwqw evvq lar event pnkwu qiq qwatdybzz (c.q. '<meeting pnkwu> <zzmcdad>'), oa find zzmcdad vroo qiq recent news. Ttue ic oa vhi gjkavkpa aixkw."
+       }
+      }
+     },
+     {
+      "tool": "search_memory",
+      "id": "mem",
+      "args": {
+       "query": {
+        "$ask": "Jxojmk search udh lliv uqerxgvbeeow qiq context hndfq lar meeting topic qiq sja attendee tqluf hx lar event, c.q. '<meeting pnkwu> <topic> <attendee>'."
+       }
+      }
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "googlecalendar",
+   "expected": "unmappable"
+  }
+ ]
+}

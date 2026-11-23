@@ -19,13 +19,13 @@ FIVE_MINUTES_TTL = 300
 
 # TTL Aliases
 DEFAULT_CACHE_TTL = ONE_HOUR_TTL
-STATS_CACHE_TTL = THIRTY_MINUTES_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
-SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # Subscription plan tier, cached for hot paths (rate limiting, per-request model
 # routing). Eventually consistent: a plan change takes effect within the TTL.
 SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
 SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
+# The day of month a subscription bills on: anchors the Pro allowance month. Same TTL.
+SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX = "subscription_billing_day:"
 # The plan catalogue itself, keyed by whether inactive plans are included. Seeded
 # by scripts/payment_setup.py, which drops every key after writing.
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
@@ -36,16 +36,6 @@ PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
 # doesn't re-ask Dodo about every session. Minting a new session drops the key.
 CHECKOUT_SCAN_MISS_CACHE_PREFIX = "checkout_scan_miss:"
 CHECKOUT_SCAN_MISS_TTL = 60
-# The tracked-todo summary injected into comms context. Deliberately short: the
-# list changes as the agent works, and a stale pin is worse than the lookup it
-# saves. Keyed by user alone, so only the unpinned summary may use it.
-TRACKED_TODOS_SUMMARY_CACHE_KEY = "tracked_todos:summary:{user_id}"
-TRACKED_TODOS_SUMMARY_CACHE_TTL = 60
-# A minted Dodo checkout session, per user and billing cycle. Reused rather than
-# re-minted so a user who asks to upgrade twice — or hits a limit repeatedly —
-# doesn't leave a trail of abandoned sessions in Dodo.
-UPGRADE_LINK_CACHE_PREFIX = "upgrade_link:"
-UPGRADE_LINK_CACHE_TTL = ONE_HOUR_TTL
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -54,26 +44,15 @@ SKILLS_TEXT_CACHE_TTL = TWELVE_HOUR_TTL
 USER_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
 COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
-SEARCH_CACHE_TTL = ONE_DAY_TTL
-STREAM_TTL = FIVE_MINUTES_TTL
-# A streaming turn refreshes its progress/resume keys once they drop below this,
-# so the refresh costs one TTL read per frame instead of a read-plus-two-writes.
-STREAM_LIVENESS_REFRESH_AFTER = STREAM_TTL // 2
+RUN_STOP_TTL = FIVE_MINUTES_TTL
 STATE_TOKEN_TTL = TEN_MINUTES_TTL
 MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 
 # Long TTLs with event-driven invalidation — short TTLs are a symptom of
 # missing invalidation, not a safety net.
-INTEGRATION_STATUS_CACHE_TTL = ONE_DAY_TTL
-SUBAGENT_PROMPT_CACHE_TTL = ONE_DAY_TTL
 WEB_SEARCH_CACHE_TTL = TEN_MINUTES_TTL
 WEBPAGE_FETCH_CACHE_TTL = THIRTY_MINUTES_TTL
-WORKFLOW_GENERATION_CACHE_TTL = ONE_DAY_TTL
 
-# Bounded in-process LRU+TTL cache for per-(integration, user) compiled
-# subagent graphs. Caps RSS growth that scales with MAU × MCP integrations.
-SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
-SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
 SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 
 # Repository layer aliases: entity rows are hot/long-lived; query caches are
@@ -83,29 +62,29 @@ REPO_ENTITY_TTL = ONE_DAY_TTL
 REPO_QUERY_TTL = ONE_HOUR_TTL
 # Scope segment for non-user-scoped (global) repositories.
 REPO_GLOBAL_SCOPE = "global"
-# Debounce window for UserRepository.touch_last_active — one write per user per
-# minute (Redis SET NX EX gate), so per-request auth never storms Mongo.
+# Debounce window for mark_user_seen — one last_active_at write per user per
+# minute, so per-request recording never storms Mongo.
 LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 
 # Per-repository cache-key prefixes (one namespace per domain).
 NOTE_CACHE_PREFIX = "note"
 TODO_CACHE_PREFIX = "todo"
 USER_INTEGRATION_CACHE_PREFIX = "user_integration"
+INTEGRATION_CACHE_PREFIX = "integration"
 PROJECT_CACHE_PREFIX = "project"
 USER_CACHE_PREFIX = "user"
+BOT_USER_CACHE_PREFIX = "bot_user"
 # A user's paired devices and the servers they expose. Generation scoped (see
 # CachePolicy): every structural device/server write orphans the old query key.
 # Mutable status (online, sync state, last-seen) is deliberately not part of it.
 DEVICE_MANIFEST_CACHE_PREFIX = "device_manifest"
-# Redis SET NX EX gate that debounces UserRepository.touch_last_active.
+# Redis gate key that debounces mark_user_seen.
 LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 # Redis hash per user: surface -> epoch seconds of the user's last inbound message there.
 USER_PRESENCE_PREFIX = "user_presence"
 
 # Cache key prefixes
-TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
-SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
 # v2: discovery is now cached as the OAuthDiscovery model (model_dump) rather
@@ -133,24 +112,10 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 USER_INSTRUCTIONS_CACHE_KEY = "user_instructions:{user_id}"
-# Conversation-level artifact registry; long TTL with event-driven invalidation
-# on every upsert/remove — a chat turn reads it once instead of re-scanning the costly JuiceFS dir.
-CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
 # A user's uploaded-file listings; busted on every file upload/update/delete.
 FILES_CACHE_PATTERN = "files:{user_id}:*"
-STREAM_SIGNAL_PREFIX = "stream:signal:"
-STREAM_PROGRESS_PREFIX = "stream:progress:"
-# Replayable per-stream event log (Redis Stream). Entry ids double as SSE ids,
-# so any subscriber can attach late or reconnect with Last-Event-ID and replay.
-STREAM_EVENTS_PREFIX = "stream:events:"
-STREAM_EVENTS_MAXLEN = 4096
-# Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
-# turn, so a reloaded client can rediscover and re-attach to a live stream.
-STREAM_ACTIVE_PREFIX = "stream:active:"
-# Turn-send dedup: {user_id}:{turn_id} -> stream_id, claimed atomically (SETNX)
-# so a retried POST can't persist the same turn twice.
-STREAM_TURN_DEDUP_PREFIX = "stream:turn:"
-STREAM_TURN_DEDUP_TTL = TEN_MINUTES_TTL
+# A run's stop mark, keyed by the run's stream id: run_stop.py.
+RUN_STOP_PREFIX = "run:stop:"
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"
@@ -185,22 +150,27 @@ DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
 # plus this grace, so it always outlives the wait. The tool deletes the key as
 # soon as it resolves, so this only bounds the orphaned-on-crash case.
 DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
-# Remembers a declined call for the rest of the turn (keyed by stream_id) so a
-# retrying agent is auto-denied instead of re-prompting the user for the same
-# action.
-HIL_DECLINED_PREFIX = "hil:declined:"
 # One workflow's "out of runs / budget" notice, keyed by user+workflow. The
 # daily wall it reports is worth exactly one message, not one per fire (a production thread ran to six).
 WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"
 WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 
-# One bot user's personalised Dodo upgrade link; gates the MINT, not the
-# message, so a lapsed user's blocked turns don't each cost a get_plans call
-# and a checkout_sessions insert. An hour, not a day, since a Dodo session is single-use.
-BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
-BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
+# Every tool call one run made, in order, keyed by the run's stream id. Outlives
+# the longest run (a parked approval) so the trace and a playbook write read it whole.
+RUN_RECORD_PREFIX = "run_record:"
+RUN_RECORD_TTL = ONE_DAY_TTL * 2
+# The integrations a run already showed a connect card for; calls to them are refused.
+RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
 
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
+# A workflow fire's admission to its conversation: taken before the fire spends quota, given back
+# when it ends. Short on purpose: the conversation log keeps the fire's run apart from other work.
+WORKFLOW_FIRE_ADMISSION_PREFIX = "workflow:fire_admission:"
+WORKFLOW_FIRE_ADMISSION_TTL = 120
+# Set when an executor run ends asking the user to confirm; only then may the
+# next call_executor carry irreversible_approved (confirmation_gate.py).
+AWAITING_CONFIRMATION_PREFIX = "executor:awaiting_confirmation:"
+AWAITING_CONFIRMATION_TTL = ONE_HOUR_TTL
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 # Keyed by holder: whatever holds the busy lock renews this while its process lives (a parked
 # run for as long as its park); a lock without it is a dead holder, reclaimable by anyone.
@@ -241,10 +211,6 @@ RUNNING_SUBAGENTS_TTL = ONE_HOUR_TTL
 # One live run per subagent checkpoint thread (SET NX, value = subagent_id): two
 # runs on one LangGraph thread corrupt its checkpoint. Held for the run's lifetime.
 RUNNING_SUBAGENT_THREAD_PREFIX = "subagents:thread:"
-# Max time a caller waits for a detached executor to finish before draining
-# whatever tool events were collected. Matches the busy lock TTL — the executor
-# cannot outlive its lock, so waiting longer would be pointless.
-EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
 #: Shorter than the worker's job timeout on purpose: waiting as long as the job
 #: means the job gets cut first mid-bookkeeping. Seen live: a stopped-mid-run
 #: executor left a record stuck 'running'.
@@ -252,20 +218,11 @@ BACKGROUND_EXECUTOR_WAIT_TIMEOUT = 25 * 60
 # ElevenLabs voice lists (account + shared library) cached for the voice picker.
 ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"
 ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
-# Upper bound a voice-mode stream waits for a delegated executor's narrated
-# answer before sending [DONE] anyway. Real action turns resolve in a few
-# seconds; on timeout the answer still reaches the user via the WebSocket push.
-VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 
-# One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
-# so a degraded pro user is told once per month, not once per turn.
-COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
+# One-shot gate (SET NX) for the heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of
+# the month, so a pro user is told once per month, not once per request.
+COST_BUDGET_NEAR_NOTIFIED_KEY = "cost_budget_near_notified:{user_id}:{window}"
 
-# Keyed by user plus a hash of the answers it was written from, so a changed
-# Q1/Q2 answer reads a never-written key rather than a stale question. Two
-# hours covers a wizard someone walked away from before pressing completion.
-FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
-FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.
 #: Named so a dev tool can clear one user's counters without knowing the rest of the key.
 RATE_LIMIT_KEY_PREFIX = "rate_limit"

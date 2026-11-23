@@ -6,11 +6,18 @@ gets created on connect is exactly what GAIA describes to the user.
 
 from collections.abc import Callable
 
+from app.models.playbook_models import PlaybookBody
 from app.models.workflow_models import CreateWorkflowRequest
-from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
+from app.services.system_workflows.definitions.calendar import (
+    CALENDAR_SYSTEM_RECIPES,
+    CALENDAR_SYSTEM_WORKFLOWS,
+)
 
 SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[
     str, list[tuple[str, Callable[[], CreateWorkflowRequest]]]
 ] = {
     "googlecalendar": CALENDAR_SYSTEM_WORKFLOWS,
 }
+
+#: The playbook each system workflow ships with, by system_workflow_key.
+SYSTEM_RECIPES: dict[str, Callable[[], PlaybookBody]] = {**CALENDAR_SYSTEM_RECIPES}

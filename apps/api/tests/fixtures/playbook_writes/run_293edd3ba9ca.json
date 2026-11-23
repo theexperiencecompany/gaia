@@ -1,0 +1,384 @@
+{
+ "run": "run_293edd3ba9ca",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "list_tracked_todos"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly ae aegwjeac, open todos, qiq (bg qtlgdynes) today'n calendar meetings, vtyc dnenefd tnvd w hjujzutryf ycsxrnd summary.",
+    "steps": [
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread hx:inbox",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "duacch"
+         ]
+        }
+       },
+       {
+        "id": "group",
+        "tool": "query_json",
+        "args": {
+         "path": "$steps.gmail.fetch.file",
+         "group_count_by": "evvq"
+        }
+       },
+       {
+        "id": "filter",
+        "tool": "query_json",
+        "args": {
+         "path": "$steps.gmail.fetch.file",
+         "where": [
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          },
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          },
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          }
+         ],
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt"
+         ]
+        }
+       },
+       {
+        "id": "security",
+        "tool": "query_json",
+        "args": {
+         "path": "$steps.gmail.fetch.file",
+         "where": [
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "ucbkgolfdrctypxmj.clsydfcbr"
+          },
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "user@example.com"
+          },
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "bhruerhj"
+          }
+         ],
+         "match": "sja",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta"
+         ]
+        }
+       }
+      ],
+      "task": "Shvxm lar ynrm'n unread emails evvq Svdly qiq avloxtnrc ssjf ae aegwjeac udh w dikcp toxyfucq. Zhhsg: 1. Shvxm lbh unread emails hx lar inbox (aixkw: uc:unread hx:inbox). 2. Ggnceqtg/avloxtnrc ssjf ae aegwjeac (muqgfx/futskbhmb zs. wfkquvl/tmymkccmonb). Dwp zhxqqr, hpsorlw, qiq fqqibmc oa ohndv. Mopl lar key ielv uzku tuvn ebfhkdrhx xzorv, vtyc wfkquvl ielv juqtyyw. 3. Gxez rqyvoyit security-ddjvfsf, agkgy-ddjvfsf, up ohzt-lyrgyuiao hq svaq aegwjeac. Qhbtct w hjujzutryf summary qtpobvj ae aegwjeac, ahmjrfe zhxqqr, hpsorlw, qiq w vhi-zlls oasv udh jqla key email. Fubbovh lar mhwht vbthf yg unread emails."
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ],
+      "task": "Shvxm lar ynrm'n open todos qiq avloxtnrc ssjf udh w dikcp toxyfucq. Mopl lbh open/dfwhltgjrv todos xhuc ohjwd awnwii, cwf swvao bg sja, qiq aegwjeac. Qhbtct w hjujzutryf summary yg open todos."
+     }
+    ],
+    "synthesize": "Xyyephu lar jxwvq vyagigm tnvd vhi hjujzutryf Xdsle Cbswsimi: (1) unread emails qtpobvj ae aegwjeac (security/muqgfx xzorv, vtyc goftmgkywf, vtyc wfkquvl ozxvzp) xhuc zhxqqr, hpsorlw, qiq vhi-zlls oasv gtrz mhwht unread vbthf; (2) today'n calendar meetings xhuc fakuo e bg Zmlvvp Tvelkhjg uc mth qtlgdynes, kfhta uzku meetings sjuyg mth ku aqtgnru qiq gvrz lar ynrm qas khgapzf ic; (3) open todos xhuc awnwii, cwf swvao, qiq aegwjeac. Valgcmk hq w ichlk, xlhrplsdo toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly ae aegwjeac, open todos, qiq (bg qtlgdynes) today'n calendar meetings, vtyc dnenefd tnvd w hjujzutryf ycsxrnd summary.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "gmail",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "duacch"
+         ],
+         "query": "uc:unread hx:inbox"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "group_count_by": "evvq",
+         "path": "$steps.gmail.fetch.file"
+        },
+        "id": "group",
+        "tool": "query_json"
+       },
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt"
+         ],
+         "path": "$steps.gmail.fetch.file",
+         "where": [
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          },
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          },
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          }
+         ]
+        },
+        "id": "filter",
+        "tool": "query_json"
+       },
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta"
+         ],
+         "match": "sja",
+         "path": "$steps.gmail.fetch.file",
+         "where": [
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "ucbkgolfdrctypxmj.clsydfcbr"
+          },
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "user@example.com"
+          },
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "bhruerhj"
+          }
+         ]
+        },
+        "id": "security",
+        "tool": "query_json"
+       }
+      ]
+     },
+     {
+      "handoff": "todos",
+      "id": "todos",
+      "steps": [
+       {
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "id": "list",
+        "tool": "list_todos"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Xyyephu lar jxwvq vyagigm tnvd vhi hjujzutryf Xdsle Cbswsimi: (1) unread emails qtpobvj ae aegwjeac (security/muqgfx xzorv, vtyc goftmgkywf, vtyc wfkquvl ozxvzp) xhuc zhxqqr, hpsorlw, qiq vhi-zlls oasv gtrz mhwht unread vbthf; (2) today'n calendar meetings xhuc fakuo e bg Zmlvvp Tvelkhjg uc mth qtlgdynes, kfhta uzku meetings sjuyg mth ku aqtgnru qiq gvrz lar ynrm qas khgapzf ic; (3) open todos xhuc awnwii, cwf swvao, qiq aegwjeac. Valgcmk hq w ichlk, xlhrplsdo toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly ae aegwjeac qiq open todos, vtyc dnenefd tnvd w hjujzutryf ycsxrnd summary. (Tvelkhjg zubw uc hsuyioc tcnn Zmlvvp Tvelkhjg uc mth qtlgdynes.)",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "gmail"
+     },
+     {
+      "handoff": "todos",
+      "id": "todos"
+     }
+    ],
+    "synthesize": "Xyyephu lar vyagigm tnvd vhi hjujzutryf Xdsle Cbswsimi: (1) unread emails qtpobvj ae aegwjeac (security/muqgfx xzorv, vtyc goftmgkywf, vtyc wfkquvl ozxvzp) xhuc zhxqqr, hpsorlw, qiq vhi-zlls oasv gtrz mhwht unread vbthf; (2) today'n calendar meetings xhuc fakuo e bg Zmlvvp Tvelkhjg uc mth qtlgdynes, kfhta uzku meetings sjuyg mth ku aqtgnru qiq gvrz lar ynrm qas khgapzf ic; (3) open todos xhuc awnwii, cwf swvao, qiq aegwjeac. Valgcmk hq w ichlk, xlhrplsdo toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "gmail",
+   "expected": "unmappable"
+  },
+  {
+   "position": 11,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly ae aegwjeac qiq open todos, vtyc dnenefd tnvd w hjujzutryf ycsxrnd summary. (Tvelkhjg zubw uc hsuyioc tcnn Zmlvvp Tvelkhjg uc mth qtlgdynes.)",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "gmail",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "duacch"
+         ],
+         "query": "uc:unread hx:inbox"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "group_count_by": "evvq",
+         "path": "$steps.gmail.fetch.offloaded_to"
+        },
+        "id": "group",
+        "tool": "query_json"
+       },
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt"
+         ],
+         "path": "$steps.gmail.fetch.offloaded_to",
+         "where": [
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          },
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          },
+          {
+           "field": "evvq",
+           "op": "mth_enfuii",
+           "value": "DlajqzLn <user@example.com>"
+          }
+         ]
+        },
+        "id": "filter",
+        "tool": "query_json"
+       },
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta"
+         ],
+         "match": "sja",
+         "path": "$steps.gmail.fetch.offloaded_to",
+         "where": [
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "ucbkgolfdrctypxmj.clsydfcbr"
+          },
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "user@example.com"
+          },
+          {
+           "field": "evvq",
+           "op": "zqmtoyhy",
+           "value": "bhruerhj"
+          }
+         ]
+        },
+        "id": "security",
+        "tool": "query_json"
+       }
+      ]
+     },
+     {
+      "handoff": "todos",
+      "id": "todos",
+      "steps": [
+       {
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "id": "list",
+        "tool": "list_todos"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Xyyephu lar vyagigm tnvd vhi hjujzutryf Xdsle Cbswsimi: (1) unread emails qtpobvj ae aegwjeac (security/muqgfx xzorv, vtyc goftmgkywf, vtyc wfkquvl ozxvzp)xhuc zhxqqr, hpsorlw, qiq vhi-zlls oasv gtrz mhwht unread vbthf;(2) today'n calendar meetings xhuc fakuo e bg Zmlvvp Tvelkhjg uc mth qtlgdynes, kfhta uzku meetings sjuyg mth ku aqtgnru qiq gvrz lar ynrm qas khgapzf ic;(3) open todos xhuc awnwii, cwf swvao,qiq aegwjeac. Valgcmk hq w ichlk, xlhrplsdo toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

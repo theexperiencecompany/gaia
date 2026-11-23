@@ -2,7 +2,7 @@ import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -15,8 +15,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
 import { API_ORIGIN } from "@/lib/constants";
-import { updateOnboardingPhase } from "../api/onboarding-api";
-import type { OnboardingStep } from "../types";
+import { reportOnboardingStep } from "../api/onboarding-api";
+import type { TourStep } from "../types";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -600,7 +600,7 @@ function ProgressDots({ total, current }: ProgressDotsProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-const STEPS: OnboardingStep[] = [
+const STEPS: TourStep[] = [
   "welcome",
   "connect_integration",
   "create_workflow",
@@ -608,7 +608,7 @@ const STEPS: OnboardingStep[] = [
   "complete",
 ];
 
-const STEP_LABELS: Record<OnboardingStep, string> = {
+const STEP_LABELS: Record<TourStep, string> = {
   welcome: "Get Started",
   connect_integration: "Next",
   create_workflow: "Next",
@@ -616,7 +616,7 @@ const STEP_LABELS: Record<OnboardingStep, string> = {
   complete: "Let's go!",
 };
 
-const SKIPPABLE_STEPS: Set<OnboardingStep> = new Set([
+const SKIPPABLE_STEPS: Set<TourStep> = new Set([
   "connect_integration",
   "create_workflow",
   "enable_notifications",
@@ -625,9 +625,8 @@ const SKIPPABLE_STEPS: Set<OnboardingStep> = new Set([
 export function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const flatListRef = useRef<FlatList<OnboardingStep>>(null);
+  const flatListRef = useRef<FlatList<TourStep>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
 
   const currentStep = STEPS[currentIndex];
 
@@ -636,44 +635,15 @@ export function OnboardingScreen() {
     setCurrentIndex(index);
   }, []);
 
-  const handleNext = useCallback(async () => {
-    const step = STEPS[currentIndex];
-    setIsLoading(true);
+  // The tour's screens are not wizard steps; the server counts only that
+  // onboarding started here, once per run however often the tour opens.
+  useEffect(() => {
+    reportOnboardingStep("started").catch((err: unknown) => {
+      console.error("Failed to report onboarding start:", err);
+    });
+  }, []);
 
-    try {
-      await updateOnboardingPhase(step, true);
-    } catch (err) {
-      // Non-blocking: onboarding phase is recoverable server-side bookkeeping,
-      // so we log the failure rather than trapping the user in onboarding.
-      console.error(`Failed to persist onboarding phase "${step}":`, err);
-    } finally {
-      setIsLoading(false);
-    }
-
-    if (currentIndex < STEPS.length - 1) {
-      scrollToIndex(currentIndex + 1);
-    } else {
-      // Mark complete and navigate
-      try {
-        await updateOnboardingPhase("complete", true);
-      } catch (err) {
-        console.error("Failed to persist onboarding completion:", err);
-      } finally {
-        router.replace("/(app)/(tabs)");
-      }
-    }
-  }, [currentIndex, router, scrollToIndex]);
-
-  const handleSkip = useCallback(async () => {
-    const step = STEPS[currentIndex];
-    try {
-      await updateOnboardingPhase(step, false);
-    } catch (err) {
-      console.error(
-        `Failed to persist skipped onboarding phase "${step}":`,
-        err,
-      );
-    }
+  const advance = useCallback(() => {
     if (currentIndex < STEPS.length - 1) {
       scrollToIndex(currentIndex + 1);
     } else {
@@ -682,17 +652,6 @@ export function OnboardingScreen() {
   }, [currentIndex, router, scrollToIndex]);
 
   const handleNavigateToWorkflows = useCallback(() => {
-    // Mark workflow step complete then navigate. Fire-and-forget: navigation
-    // must not wait on recoverable bookkeeping, but failures are surfaced.
-    updateOnboardingPhase("create_workflow", true).catch((err) => {
-      console.error(
-        'Failed to persist onboarding phase "create_workflow":',
-        err,
-      );
-    });
-    updateOnboardingPhase("complete", true).catch((err) => {
-      console.error("Failed to persist onboarding completion:", err);
-    });
     router.replace("/(app)/(tabs)/workflows");
   }, [router]);
 
@@ -708,7 +667,7 @@ export function OnboardingScreen() {
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 });
 
   const renderItem = useCallback(
-    ({ item }: { item: OnboardingStep }) => {
+    ({ item }: { item: TourStep }) => {
       return (
         <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
           {item === "welcome" && <WelcomeStep />}
@@ -784,26 +743,20 @@ export function OnboardingScreen() {
           <ProgressDots total={STEPS.length} current={currentIndex} />
         </View>
         <Pressable
-          onPress={handleNext}
-          disabled={isLoading}
+          onPress={advance}
           style={{
             backgroundColor: C.primary,
             borderRadius: 14,
             paddingVertical: 15,
             alignItems: "center",
-            opacity: isLoading ? 0.7 : 1,
           }}
         >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#000" />
-          ) : (
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#000" }}>
-              {isLastStep ? "Let's go!" : STEP_LABELS[currentStep]}
-            </Text>
-          )}
+          <Text style={{ fontSize: 16, fontWeight: "700", color: "#000" }}>
+            {isLastStep ? "Let's go!" : STEP_LABELS[currentStep]}
+          </Text>
         </Pressable>
         {isSkippable && !isLastStep && (
-          <Pressable onPress={handleSkip} style={{ alignItems: "center" }}>
+          <Pressable onPress={advance} style={{ alignItems: "center" }}>
             <Text
               style={{ fontSize: 14, color: C.textMuted, fontWeight: "500" }}
             >

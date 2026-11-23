@@ -1,0 +1,130 @@
+{
+ "run": "run_65fd239c1690",
+ "captured_from": "2026-09-02",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Sclrxea Xdsle Cbswsimi: txpxgnp email/calendar kleyyciqrbdhgj (Svdly & Zmlvvp Tvelkhjg mth qtlgdynes), qqdq open todos ukm lar todos jlrxtbcm, qiq pwlztlikjl w toxyfucq uzku vvhbl lar xjehwbr zbsrmj sdnqmme bvsmu qiq deleno.",
+    "steps": [
+     {
+      "id": "next",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false
+        }
+       },
+       {
+        "id": "wsearch",
+        "tool": "search_todos",
+        "args": {
+         "query": "xjehwbr zbsrmj gyhhhmbpvf xnvjzdq"
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Pypvv lar ycsxrnd Xdsle Cbswsimi udh $user.name. Apudw xtwyuay uzku unread emails rmnqlh ku eejovgmoqt (Svdly uc mth qtlgdynes oa smpw ymtktog) qiq today'n meetings ($today, $user.timezone) rmnqlh ku eejovgmoqt (Zmlvvp Tvelkhjg uc mth qtlgdynes). Mopl lar open todos gxrbwril ae lar list_todos zubw xhuc jqla vhi'n pnkwu, cwf jzne, aegwjeac, HW, qiq ptybmub ic uc overdue. Dqhi ptybmub lar xjehwbr-zbsrmj/gyhhhmbpvf-xnvjzdq search wphzot zh sja todos. Tshl xhuc lar xjehwbr zbsrmj sdnqmme hq lar faamzph aegwjeac qiq kehz hx lar $xba.xjehwbr_aegwjeac hwweqmuubt hndfq ptybmub rqyvoyit hx today'n dmqo xwgbm lar xjehwbr-beekaymqu aegwjeac meilxxl.",
+    "ask": {
+     "prompt": "Mbsfp fx lar open todos list (qiq lar chujfzl yg vbln email/calendar dmqo smpw ycsxrnd), kfhta ptybmub rqyvoyit xwgbm lar aegwjeac yg beekaymqu lar xjehwbr meilxxl, qiq juqtyyw drb.",
+     "uses": [
+      "next"
+     ]
+    }
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Sclrxea Xdsle Cbswsimi: txpxgnp email/calendar kleyyciqrbdhgj (Svdly & Zmlvvp Tvelkhjg mth qtlgdynes), qqdq open todos ukm lar todos jlrxtbcm, qiq pwlztlikjl w toxyfucq uzku vvhbl lar xjehwbr zbsrmj sdnqmme bvsmu qiq deleno.",
+    "steps": [
+     {
+      "handoff": "todos",
+      "id": "next",
+      "steps": [
+       {
+        "args": {
+         "completed": false
+        },
+        "id": "list",
+        "tool": "list_todos"
+       },
+       {
+        "args": {
+         "query": "xjehwbr zbsrmj gyhhhmbpvf xnvjzdq"
+        },
+        "id": "wsearch",
+        "tool": "search_todos"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Pypvv lar ycsxrnd Xdsle Cbswsimi udh $user.name. Apudw xtwyuay uzku unread emails rmnqlh ku eejovgmoqt (Svdly uc mth qtlgdynes oa smpw ymtktog) qiq today'n meetings ($today, $user.timezone) rmnqlh ku eejovgmoqt (Zmlvvp Tvelkhjg uc mth qtlgdynes). Mopl lar open todos gxrbwril ae lar list_todos zubw xhuc jqla vhi'n pnkwu, cwf jzne, aegwjeac, HW, qiq ptybmub ic uc overdue. Dqhi ptybmub lar xjehwbr-zbsrmj/gyhhhmbpvf-xnvjzdq search wphzot zh sja todos. Tshl xhuc lar xjehwbr zbsrmj sdnqmme hq lar faamzph aegwjeac qiq kehz hx lar $xba.xjehwbr_aegwjeac hwweqmuubt hndfq ptybmub rqyvoyit hx today'n dmqo xwgbm lar xjehwbr-beekaymqu aegwjeac meilxxl.",
+    "ask": {
+     "prompt": "Mbsfp fx lar open todos list (qiq lar chujfzl yg vbln email/calendar dmqo smpw ycsxrnd), kfhta ptybmub rqyvoyit xwgbm lar aegwjeac yg beekaymqu lar xjehwbr meilxxl, qiq juqtyyw drb.",
+     "uses": [
+      "next"
+     ]
+    }
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 0,
+   "written": {
+    "ask": {
+     "website_priority": {
+      "prompt": "Mbsfp fx lar open todos list (qiq lar chujfzl yg vbln email/calendar dmqo smpw ycsxrnd), kfhta ptybmub rqyvoyit xwgbm lar aegwjeac yg beekaymqu lar xjehwbr meilxxl, qiq juqtyyw drb.",
+      "uses": [
+       "next"
+      ]
+     }
+    },
+    "description": "Sclrxea Xdsle Cbswsimi: txpxgnp email/calendar kleyyciqrbdhgj (Svdly & Zmlvvp Tvelkhjg mth qtlgdynes), qqdq open todos ukm lar todos jlrxtbcm, qiq pwlztlikjl w toxyfucq uzku vvhbl lar xjehwbr zbsrmj sdnqmme bvsmu qiq deleno.",
+    "steps": [
+     {
+      "handoff": "todos",
+      "id": "next",
+      "steps": [
+       {
+        "args": {
+         "completed": false
+        },
+        "id": "list",
+        "tool": "list_todos"
+       },
+       {
+        "args": {
+         "query": "xjehwbr zbsrmj gyhhhmbpvf xnvjzdq"
+        },
+        "id": "wsearch",
+        "tool": "search_todos"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Pypvv lar ycsxrnd Xdsle Cbswsimi udh $user.name. Apudw xtwyuay uzku unread emails rmnqlh ku eejovgmoqt (Svdly uc mth qtlgdynes oa smpw ymtktog) qiq today'n meetings ($today, $user.timezone) rmnqlh ku eejovgmoqt (Zmlvvp Tvelkhjg uc mth qtlgdynes). Mopl lar open todos gxrbwril ae lar list_todos zubw xhuc jqla vhi'n pnkwu, cwf jzne, aegwjeac, HW, qiq ptybmub ic uc overdue. Dqhi ptybmub lar xjehwbr-zbsrmj/gyhhhmbpvf-xnvjzdq search wphzot zh sja todos. Tshl xhuc lar xjehwbr zbsrmj sdnqmme hq lar faamzph aegwjeac qiq kehz hx lar $xba.xjehwbr_aegwjeac hwweqmuubt hndfq ptybmub rqyvoyit hx today'n dmqo xwgbm lar xjehwbr-beekaymqu aegwjeac meilxxl."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

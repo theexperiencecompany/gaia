@@ -11,12 +11,23 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from pydantic import BaseModel
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
 from app.agents.tools.executor_tool import call_executor
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
+from app.constants.agents import (
+    DONE_EVIDENCE_RULE,
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    TIME_HORIZON_BRIEF,
+    AgentTag,
+    TimeHorizon,
+    wrap_agent_payload,
+)
+from app.models.agent_config import StepTurnRef
+from app.models.ownership_models import ExecutorIntent
 from tests.helpers import load_llm_stub_module
 
 
@@ -80,16 +91,92 @@ class TestComposeTaskBrief:
         )
 
 
+class TestIntentInTheBrief:
+    def test_the_intent_sits_between_the_task_and_the_definition_of_done(self):
+        out = compose_executor_brief(
+            "remind me friday about the visa documents",
+            ["a reminder fires friday"],
+            intent=ExecutorIntent(
+                desired_outcome="never misses the visa filing",
+                time_horizon=TimeHorizon.DEADLINE,
+                defaults_assumed=("9am for friday",),
+            ),
+        )
+
+        assert out == (
+            "remind me friday about the visa documents"
+            "\n\n"
+            "Outcome the user actually wants: never misses the visa filing\n"
+            f"Time horizon: {TIME_HORIZON_BRIEF[TimeHorizon.DEADLINE]}\n"
+            "Defaults assumed (name them in your report):\n- 9am for friday\n"
+            f"{IRREVERSIBLE_UNAPPROVED_BRIEF}"
+            "\n\n"
+            "Definition of done (every item must be true before you finish):\n"
+            f"- a reminder fires friday\n{DONE_EVIDENCE_RULE}"
+        )
+
+    def test_an_approved_irreversible_action_says_so(self):
+        out = compose_executor_brief(
+            "delete all 4 todos",
+            ["no todos remain"],
+            intent=ExecutorIntent(
+                desired_outcome="a clean todo list",
+                time_horizon=TimeHorizon.ONE_SHOT,
+                irreversible_approved=True,
+            ),
+        )
+
+        assert IRREVERSIBLE_APPROVED_BRIEF in out
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF not in out
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_call_executor_carries_the_intent_into_the_dispatched_brief(self):
+        dispatched = await _dispatched_brief(
+            {
+                "task": "check back tomorrow on the lisbon flights",
+                "acceptance_criteria": ["a check-in fires tomorrow evening"],
+                "desired_outcome": "the lisbon flights get booked",
+                "time_horizon": "ongoing",
+                "defaults_assumed": ["6pm for evening"],
+            },
+            {"thread_id": "conv-1"},
+        )
+
+        assert "Outcome the user actually wants: the lisbon flights get booked" in dispatched
+        assert TIME_HORIZON_BRIEF[TimeHorizon.ONGOING] in dispatched
+        assert "- 6pm for evening" in dispatched
+
+
+#: An attempt that answers a request, so call_executor dispatches instead of refusing.
+_ASKING_STEP = StepTurnRef(epoch=1, batch_start=1, cause_through=1, answers=["m1"], asked=True)
+
+
 async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     """Invoke call_executor and return the brief it handed to _dispatch_executor."""
+    tool_args = {
+        "desired_outcome": "it is done",
+        "time_horizon": "one_shot",
+        "for_messages": [1],
+        **tool_args,
+    }
     with patch(
         "app.agents.tools.executor_tool._dispatch_executor",
         new=AsyncMock(return_value="Task accepted"),
     ) as mock_dispatch:
-        await call_executor.ainvoke(tool_args, config={"configurable": configurable})
+        await call_executor.ainvoke(
+            {"type": "tool_call", "id": "call_1", "name": call_executor.name, "args": tool_args},
+            config={
+                "configurable": {
+                    "conversation_step": _ASKING_STEP,
+                    "user_id": "u-1",
+                    **configurable,
+                }
+            },
+        )
     return mock_dispatch.call_args.kwargs["task"]
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestCallExecutorComposition:
     async def test_acceptance_criteria_reach_the_dispatched_task(self):
         """call_executor must dispatch the COMPOSED brief (task + criteria)."""
@@ -108,6 +195,7 @@ class TestCallExecutorComposition:
         assert "please triage my inbox" in dispatched_task
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestVerbatimRequestComesFromTheServer:
     """The verbatim ask is read off configurable, never re-typed by the comms model.
 
@@ -155,6 +243,7 @@ class TestVerbatimRequestComesFromTheServer:
         assert dispatched_task.startswith("triage inbox")
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestPreviousRunReachesTheExecutor:
     """A workflow run's checkpoint threads are dropped before it starts.
 
@@ -217,6 +306,8 @@ class TestPreviousRunReachesTheExecutor:
 _SCRIPT = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
 _LAST_RUN = wrap_agent_payload(AgentTag.LAST_RUN, "status: completed\ncreate_reminder({})")
 _FALLBACK_NOTE = wrap_agent_payload(AgentTag.PLAYBOOK_FALLBACK, "Replay stopped at step 2.")
+# Every call_executor hand-off carries one, so it sits between the task and the definition of done.
+_INTENT = ExecutorIntent(desired_outcome="a reminder to stretch", time_horizon=TimeHorizon.ONE_SHOT)
 
 
 class TestTheSimStubRunsABriefsScriptOnce:
@@ -232,20 +323,30 @@ class TestTheSimStubRunsABriefsScriptOnce:
                 "acceptance_criteria": [],
                 "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
             },
+            {"acceptance_criteria": ["done"], "intent": _INTENT},
+            {"acceptance_criteria": [], "intent": _INTENT},
             {
                 "acceptance_criteria": ["done"],
                 "last_run": _LAST_RUN,
+                "intent": _INTENT,
                 "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
             },
         ],
-        ids=["criteria", "last-run", "last-run-no-criteria", "playbook-note", "every-section"],
+        ids=[
+            "criteria",
+            "last-run",
+            "last-run-no-criteria",
+            "playbook-note",
+            "intent",
+            "intent-no-criteria",
+            "every-section",
+        ],
     )
     def test_a_brief_quoting_the_request_yields_one_tool_call(
         self, sections: dict[str, Any]
     ) -> None:
         stub = load_llm_stub_module("directives")
-        criteria = sections.pop("acceptance_criteria")
-        brief = compose_executor_brief(_SCRIPT, criteria, verbatim_request=_SCRIPT, **sections)
+        brief = compose_executor_brief(_SCRIPT, verbatim_request=_SCRIPT, **sections)
         tools = frozenset({"create_reminder"})
         turn: list[dict[str, object]] = [{"role": "user", "content": brief}]
         after_one: list[dict[str, object]] = [
@@ -268,6 +369,22 @@ class TestTheSimStubRunsABriefsScriptOnce:
             name="create_reminder", args={"title": "stretch"}
         )
         assert stub.resolve_response(after_one, tools) == stub.SayResponse(text="Reminder set!")
+
+
+@pytest.mark.regression
+def test_the_stubs_scripted_hand_off_is_a_call_the_real_tool_accepts() -> None:
+    """Regression: call_executor gained required args the stub never sent, so --sim and the browser stack started nothing."""
+    stub = load_llm_stub_module("directives")
+    script = '[[tool:create_reminder {"title": "x"}]] [[say:ok]]'
+
+    hand_off = stub.resolve_response(
+        [{"role": "user", "content": script}], frozenset({stub.CALL_EXECUTOR_TOOL})
+    )
+
+    schema = call_executor.tool_call_schema
+    assert isinstance(schema, type) and issubclass(schema, BaseModel)
+    assert hand_off.name == call_executor.name
+    schema.model_validate(hand_off.args)
 
 
 if __name__ == "__main__":

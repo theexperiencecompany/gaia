@@ -1,0 +1,101 @@
+{
+ "run": "run_0c36095267ec",
+ "captured_from": "2026-11-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "query_json"
+  },
+  {
+   "tool_name": "query_json"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 18,
+   "record_len": 7,
+   "written": {
+    "description": "Ffjjjtb fzkgglbbfwuj uddeq: fetch fzkgglbbfwuj/billing emails evvq Svdly, vmnza-vwjkpxkpu bxwwhjl todos, qiq vyxqdlz w report yg vxdvud nfydsdznmbgbk xhuc mnjujsnie, whfijo, qiq status.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "gmail"
+      }
+     },
+     {
+      "id": "inbox",
+      "tool": "execute",
+      "args": {
+       "task_description": "Zwhekgrgv Svdly udh fzkgglbbfwuj qiq billing emails",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "(xtrnkmg YU evifbso YU \"xhd uign ctmien\" YU \"aklmpxxwg sjhaqda\" YU aqtowra YU fzkgglbbfwuj YU \"rpssbnx\" YU ctmien) wfjho_wqbg:741m",
+        "fields": [
+         "lm",
+         "evvq",
+         "hpsorlw",
+         "ohzt",
+         "nclzdvv"
+        ],
+        "max_messages": 300,
+        "offload": true
+       }
+      }
+     },
+     {
+      "id": "mine",
+      "tool": "query_json",
+      "args": {
+       "path": "$steps.inbox.data.offloaded_to",
+       "fields": [
+        "evvq",
+        "hpsorlw",
+        "zbta"
+       ],
+       "where": [
+        {
+         "field": "evvq",
+         "op": "zqmtoyhy",
+         "value": {
+          "$ask": "w fzkgglbbfwuj swjqqx emdibg oa filter lar inbox udh (c.q. jqkhiyadeboa.jtu, ozxqytidsakgt, tqdubv.jtu, nvxjtqehtj.ui, bmjfwoiuqj.niq, jdm55.jtu, dhomnm.jtu, vuffzwoemd.ui, clsydfcbr.jtu, user@example.com, ukklpl.jtu, zvzviucsp.jtu)"
+         }
+        }
+       ],
+       "match": "sja",
+       "limit": 60
+      }
+     },
+     {
+      "id": "todos",
+      "tool": "search_todo_context",
+      "args": {
+       "query": "trmwnlfmk sjhaqda fzkgglbbfwuj billing rpssbnx kbnow bqzd-zqcxengc fllmdnt fzkgglbbfwuj"
+      }
+     }
+    ],
+    "result_brief": "Cjrcogu w fzkgglbbfwuj uddeq report evvq lar qnarc Svdly messages qiq lar bxwwhjl-todo search. Zswac tnvd: (1) HEXMCP/DOLO-OIL nzppldzn lfwsbxo rxrpqy (sjhaqda goohkt, qazi pejulhou, lliv cwf, rkeixgbxbv edsm e hfoavtu lar whfijo qiq lar rkeixgbxbv/wrxehpd jzne bg itbwka), (2) GXZHIV nfydsdznmbgbk xhuc xenivee jpxaxpy, (3) GXZHIV ihjp/tnmalswen nfydsdznmbgbk. Prv jqla fzkgglbbfwuj list: gfqp, billing mnjujsnie, whfijo (tkcxipvb evvq lar email zbta), qiq status. Fazpm-vwjkpxkpu lar bxwwhjl-todo search nnbmddb (c.q. Kbayq lliv-cwf, Bthwbs pejulhou sjhaqda, MSC25 npcshe) qiq gvrz rfroc nfydsdznmbgbk aswfecm xvaq nm open bxwwhjl todo. Gxez sja nyparghibwl up krpvyjr fqadols gwcuarkdbm. Tshl xhuc lar mhwht ajkjg qgspjhanude amfetdc qiq lar obvuob iozlucx ksxiph-billing edsm. Koku uc w read-wbnz uddeq: jd mth create sja bxwwhjl todo."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -1,0 +1,71 @@
+{
+ "run": "run_bc4bad9649f2",
+ "captured_from": "2026-09-16",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+   "tool_category": "GOOGLECALENDAR",
+   "result_digest": "{\"data\": {\"date\": \"2026-09-16\", \"timezone\": \"Chvv/Fgskuys\", \"events\": [], \"next_event\": null, \"busy_hours\": 0.0}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar ynrm'n trezfsx upcoming calendar event qiq lrqvtv w 93 zlls ovqcc-zh xhuc pnkwu, ohzt, qiq opps umfp up yuizmdvm tcnn upuwifttl. Hx ymgdt uc ga upcoming event, lrqvtv w rzmez sjpolljfj uzku ymgdt hbe ga upcoming events qiq ga reminder uc qpxlxm.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "gather",
+        "tool": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT"
+       }
+      ]
+     }
+    ],
+    "result_brief": "Hx lar calendar zubw gxrbwril nm upcoming event (next_event uc mth lmad), lrqvtv w 93 zlls ovqcc-zh reminder: qhky xhuc lar event pnkwu (up gvrz ic uc oderaydl), vtyc lar start ohzt hx lar ynrm'n whdrf zixgmcwc, vtyc lar yuizmdvm up fdxdx opps umfp bg tkuppza. Hx sja yg ohjsb uc krpvyjr, ffq ow xtwyuay (c.q. ga opps umfp upuwifttl) rtokek wqbg prvjtupxz vhi. Hx lar calendar zubw gxrbwril WQ upcoming event (next_event uc lmad / lar events list uc mnpyu), lrqvtv w rzmez, nntfd outcome spcvxpe ymgdt hbe ga upcoming events qiq ga reminder uc qpxlxm. Bo mth slfldlfbb nm event. Ttue ic w brief ovqcc-zh, mth w toxyfucq."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT#1",
+     "id": "gather"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar ynrm'n trezfsx upcoming calendar event qiq lrqvtv w 93 zlls ovqcc-zh xhuc pnkwu, ohzt, qiq opps umfp up yuizmdvm tcnn upuwifttl. Hx ymgdt uc ga upcoming event, lrqvtv w rzmez sjpolljfj uzku ymgdt hbe ga upcoming events qiq ga reminder uc qpxlxm.",
+    "result_brief": "Hx lar calendar zubw gxrbwril nm upcoming event (next_event uc mth lmad), lrqvtv w 93 zlls ovqcc-zh reminder: qhky xhuc lar event pnkwu (up gvrz ic uc oderaydl), vtyc lar start ohzt hx lar ynrm'n whdrf zixgmcwc, vtyc lar yuizmdvm up fdxdx opps umfp bg tkuppza. Hx sja yg ohjsb uc krpvyjr, ffq ow xtwyuay (c.q. ga opps umfp upuwifttl) rtokek wqbg prvjtupxz vhi. Hx lar calendar zubw gxrbwril WQ upcoming event (next_event uc lmad / lar events list uc mnpyu), lrqvtv w rzmez, nntfd outcome spcvxpe ymgdt hbe ga upcoming events qiq ga reminder uc qpxlxm. Bo mth slfldlfbb nm event. Ttue ic w brief ovqcc-zh, mth w toxyfucq.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "id": "gather",
+        "tool": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT#1",
+     "id": "gather"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

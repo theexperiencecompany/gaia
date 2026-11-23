@@ -111,8 +111,8 @@ def _subagent_id_by_agent_name() -> dict[str, str]:
     """Map each subagent's agent_name to its canonical id.
 
     agent_name is the one handle the skill catalog is keyed on. Built from
-    all_subagents(), covering OAuth-derived AND builtin subagents; it is
-    also the LangGraph graph-registration key, so it is unique by construction.
+    all_subagents(), covering OAuth-derived AND builtin subagents. Uniqueness
+    is pinned by test_oauth_catalog.test_every_subagent_agent_name_is_unique.
     """
     return {sa.config.agent_name: sa.id for sa in all_subagents()}
 

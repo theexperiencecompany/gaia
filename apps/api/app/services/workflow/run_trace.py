@@ -3,36 +3,19 @@
 A workflow reuses one conversation forever, so its LangGraph checkpoints used to
 be what carried "what happened last time" — at the cost of re-sending every
 previous run as a full transcript. The threads are reset before each run
-(:mod:app.services.workflow.thread_reset); these helpers are what replaces
-them: the run's own tool events become a compact :class:RecordedCall list, and
-the previous run's list is rendered into the next run's executor brief.
+(:mod:app.services.workflow.thread_reset); the run record
+(app.agents.tools.run_record) replaces them, and the previous run's record is
+rendered here into the next run's executor brief.
 
-Pure by design — no I/O, so the mapping and the rendering stay unit-testable
-against plain dicts. The reads live in execution_service.
+Pure by design: no I/O, so the rendering stays unit-testable. The reads live in
+execution_service.
 """
 
 import json
 import re
 
-from pydantic import BaseModel, ConfigDict
-
 from app.constants.agents import PLAYBOOK_TOOL_NAMES, AgentTag, wrap_agent_payload
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
-from app.models.chat_models import ToolDataEntry
-from app.models.workflow_execution_models import (
-    RecordedCall,
-    WorkflowExecution,
-    build_result_digest,
-)
-
-#: The two ``tool_data`` kinds that carry tool calls. Everything else in the list
-#: (per-tool card payloads like ``email_fetch_data``) is render material, not a call.
-TOOL_CALLS_ENTRY = "tool_calls_data"
-
-#: Reasoning deltas ride the tool-call channel as ``tool_calls_data`` entries
-#: named ``reasoning`` — not invocations; counting them once made a 6-call
-#: run record 206 entries. Matched on the inner name so a real call is kept.
-NON_CALL_ENTRY_NAMES = frozenset({"reasoning"})
+from app.models.workflow_execution_models import WorkflowExecution
 
 #: Bounds on the rendered block. The trace itself is stored whole — this caps only
 #: what a single run pays to read the previous one, so a 300-call run can't
@@ -58,26 +41,6 @@ LAST_RUN_DATA_BOUNDARY = (
 #: result carrying ``</last_run>`` would otherwise end the block early and let
 #: the rest of the result pose as the executor's own framing.
 _LAST_RUN_TAG_OPEN = re.compile(rf"<(?=/?\s*{AgentTag.LAST_RUN}\b)", re.IGNORECASE)
-
-
-def build_trace(tool_data: list[ToolDataEntry]) -> list[RecordedCall]:
-    """Return the run's tool calls, in the order they were emitted.
-
-    Descends into subagent_group entries because
-    reconstruct_subagent_groups folds a delegated subagent's calls out of the
-    flat list and into its group — a trace read only at the top level would be
-    one handoff call and nothing else.
-    """
-    trace: list[RecordedCall] = []
-    for entry in tool_data:
-        name = entry.get("tool_name")
-        if name == TOOL_CALLS_ENTRY:
-            call = _recorded_call(entry.get("data"), entry.get("subagent_id"))
-            if call is not None:
-                trace.append(call)
-        elif name == SUBAGENT_GROUP_TOOL_NAME:
-            trace.extend(_group_calls(entry.get("data")))
-    return trace
 
 
 def render_last_run(execution: WorkflowExecution) -> str:
@@ -111,65 +74,3 @@ def neutralise_last_run_tags(text: str) -> str:
     body, so a cut cannot re-form a tag.
     """
     return _LAST_RUN_TAG_OPEN.sub("&lt;", text)
-
-
-class _TracedGroup(BaseModel):
-    """The parts of a subagent_group entry's data a trace reads, each narrowed where it is used."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    subagent_id: object = None
-    subagent: object = None
-    tool_calls: object = None
-    nested_subagents: object = None
-
-
-class _TracedCall(BaseModel):
-    """The parts of a tool_calls_data payload a trace records, each narrowed where it is used."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    tool_name: object = None
-    tool_category: object = None
-    inputs: object = None
-    output: object = None
-
-
-def _group_calls(group: object) -> list[RecordedCall]:
-    """One subagent group's calls, then its nested subagents', depth-first."""
-    if not isinstance(group, dict):
-        return []
-    traced = _TracedGroup.model_validate(group)
-    calls: list[RecordedCall] = []
-    if isinstance(traced.tool_calls, list):
-        for data in traced.tool_calls:
-            call = _recorded_call(data, traced.subagent_id, traced.subagent)
-            if call is not None:
-                calls.append(call)
-    if isinstance(traced.nested_subagents, list):
-        for child in traced.nested_subagents:
-            calls.extend(_group_calls(child))
-    return calls
-
-
-def _recorded_call(
-    data: object, subagent_id: object, subagent: object = None
-) -> RecordedCall | None:
-    """One tool_calls_data payload as a recorded call, or None if it isn't one.
-
-    data is deliberately open on ToolDataEntry (each tool owns its shape),
-    so this is the boundary that validates it into a real model.
-    """
-    if not isinstance(data, dict):
-        return None
-    traced = _TracedCall.model_validate(data)
-    if not traced.tool_name or traced.tool_name in NON_CALL_ENTRY_NAMES:
-        return None
-    return RecordedCall(
-        tool_name=str(traced.tool_name),
-        tool_category=str(traced.tool_category or ""),
-        subagent_id=str(subagent_id) if subagent_id else None,
-        subagent=str(subagent) if subagent else None,
-        args=dict(traced.inputs) if isinstance(traced.inputs, dict) else {},
-        result_digest=build_result_digest(traced.output),
-    )

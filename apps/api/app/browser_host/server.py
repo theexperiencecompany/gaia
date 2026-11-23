@@ -226,6 +226,7 @@ async def create_session(request: Request, payload: CreateSessionRequest) -> Cre
         cdp_ws=_ws_url(f"/cdp/{session.session_id}", session.token),
         live_ws=_ws_url(f"/live/{session.session_id}", session.token),
         engine=session.engine.kind,
+        fortress=session.engine.fortress,
     )
 
 

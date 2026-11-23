@@ -14,10 +14,11 @@ from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 
-from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.middleware.accounting import LLMAccountingMiddleware, SpendLedger
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
+from app.agents.middleware.interrupted_lookups import InterruptedLookupsMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
@@ -26,13 +27,17 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_MAX_TOKENS,
     EXECUTOR_RECURSION_LIMIT,
 )
 from app.constants.log_tags import LogTag
+from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.constants.summarization import (
+    COMMS_SUMMARIZATION_CEILING_TOKENS,
+    COMMS_SUMMARIZATION_KEEP_TOKENS,
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
@@ -47,9 +52,12 @@ from shared.py.wide_events import log
 CODING_TOOL_NAMES = {"bash", "read", "write", "edit", "query_json", "grep"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
-# Tools that already perform their own context-safe offload (small digest +
-# clean file). Generic compaction must leave their output alone.
-SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"}
+# Gmail fetches spill to a mineable JSONL file once they carry more messages than
+# this, however few chars they are, so a metadata-only scan stays out of context.
+RECORD_LIMITED_TOOLS: Mapping[str, int] = {
+    "GMAIL_FETCH_MESSAGES": OFFLOAD_MIN_MESSAGES,
+    "GMAIL_FETCH_THREAD": OFFLOAD_MIN_MESSAGES,
+}
 
 
 @dataclass(frozen=True)
@@ -58,6 +66,8 @@ class AccountingOptions:
 
     enabled: bool = True
     recursion_limit: int = AGENT_RECURSION_LIMIT
+    #: Books the run's spend here instead of the user's allowance, with no budget wall.
+    ledger: SpendLedger | None = None
 
 
 @dataclass(frozen=True)
@@ -129,7 +139,9 @@ def create_middleware_stack(
     if accounting.enabled:
         middleware.append(
             LLMAccountingMiddleware(
-                agent_name=agent_name, recursion_limit=accounting.recursion_limit
+                agent_name=agent_name,
+                recursion_limit=accounting.recursion_limit,
+                ledger=accounting.ledger,
             )
         )
         log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled", agent_name=agent_name)
@@ -195,6 +207,7 @@ def create_middleware_stack(
             max_output_chars=context.max_output_chars,
             context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=context.compaction_excluded_tools,
+            max_output_records=RECORD_LIMITED_TOOLS,
             summary_llm=chat_llm,  # same model as the conversation; None keeps deterministic tiers
         )
         middleware.append(compaction)
@@ -235,35 +248,51 @@ def create_executor_middleware(
         # The executor is the tier that spawns, so enablement is not the caller's to choose.
         subagent=replace(subagent or SubagentStackOptions(), enabled=True),
         context=ContextOptions(
-            compaction_excluded_tools=CODING_TOOL_NAMES
-            | SPAWN_SUBAGENT_TOOL
-            | SELF_OFFLOADING_TOOL_NAMES,
+            compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
         ),
     )
 
 
-def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentMiddlewareStack:
+def create_comms_middleware(
+    lookup_tools: frozenset[str], chat_llm: LanguageModelLike | None = None
+) -> AgentMiddlewareStack:
     """Create the middleware stack for the comms agent.
 
     It delegates all work to the executor, so it gets summarization but not
     compaction; its archive pointer asks the executor to read missed details.
+    lookup_tools close once the user interrupts the run, so the new message is answered now.
     """
     stack = create_middleware_stack(
-        agent_name="comms_agent",
+        agent_name=COMMS_AGENT_NAME,
         chat_llm=chat_llm,
         subagent=SubagentStackOptions(enabled=False),
         context=ContextOptions(
             compact=False,
             archive="executor",
-            summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+            # Settled turns fold in the background at the trigger; inline only past the ceiling.
+            summarization_trigger=("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS),
+            summarization_keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
         ),
     )
+    stack.append(InterruptedLookupsMiddleware(lookup_tools))
     # Innermost of all: the retry has to happen before anything reads the
     # completion, so what the turn delivers is the model's real reply rather
     # than the silence that preceded it.
     stack.append(EmptyCompletionRetryMiddleware())
-    log.debug(f"{LogTag.AGENT} EmptyCompletionRetryMiddleware enabled", agent_name="comms_agent")
+    log.debug(f"{LogTag.AGENT} EmptyCompletionRetryMiddleware enabled", agent_name=COMMS_AGENT_NAME)
     return stack
+
+
+def create_comms_history_fold(
+    chat_llm: LanguageModelLike,
+) -> WorkspaceArchivingSummarizationMiddleware:
+    """Return the summarizer that folds a settled comms thread past its budget, off any reply's path."""
+    return WorkspaceArchivingSummarizationMiddleware(
+        model=cast("BaseChatModel", chat_llm),
+        trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+        keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
+        archive="executor",
+    )
 
 
 def create_subagent_middleware(
@@ -290,8 +319,6 @@ def create_subagent_middleware(
             # Summarization and compaction stay on (the ContextOptions defaults):
             # without summarization a subagent run grows unbounded, averaging 91k
             # input tokens per call in production against 43k for comms/executor.
-            compaction_excluded_tools=CODING_TOOL_NAMES
-            | SPAWN_SUBAGENT_TOOL
-            | SELF_OFFLOADING_TOOL_NAMES,
+            compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
         ),
     )

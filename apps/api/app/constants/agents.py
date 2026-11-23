@@ -10,20 +10,19 @@ and a tag reads as machine framing rather than text worth copying, which is
 exactly how [EXECUTOR_RESULT] kept surfacing in user-facing replies.
 
 This module owns the vocabulary AND the framing, so the site that writes a tag
-and the site that strips one (strip_internal_agent_tags) can never disagree.
+and the site that strips one (app/services/conversation/reply_text.py) can never
+disagree.
 """
 
 from enum import StrEnum
 import re
 
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+
 
 class AgentTag(StrEnum):
     """Tag names framing an internal payload passed between agent tiers."""
 
-    EXECUTOR_RESULT = "executor_result"
-    EXECUTOR_ERROR = "executor_error"
-    EXECUTOR_CANCELLED = "executor_cancelled"
-    RETURNED_TO_FRONTEND = "returned_to_frontend"
     PLATFORM_DELIVERY = "platform_delivery"
     DELIVERY_INSTRUCTIONS = "delivery_instructions"
     SUBAGENT_RESULT = "subagent_result"
@@ -46,6 +45,8 @@ class AgentTag(StrEnum):
     BROWSER_RESULT = "browser_result"
     #: A browser job a stop ended: the thread learns it ended, and no run wakes for it.
     BROWSER_STOPPED = "browser_stopped"
+    #: Something the user was asked to do is done, told to the chat that asked.
+    WAIT_MET = "wait_met"
 
 
 #: Entries that only inform: they wait for the next run's drain and never start one.
@@ -64,14 +65,6 @@ def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> st
     return f"<{tag}{attribution}>\n{body.strip()}\n</{tag}>\n"
 
 
-# Every internal tag, open or close, with or without attributes. Stripped
-# deterministically before delivery (see ``strip_internal_agent_tags``) as the
-# hard backstop for a weak model echoing its context into the reply.
-INTERNAL_AGENT_TAG_PATTERN = re.compile(
-    rf"</?(?:{'|'.join(tag.value for tag in AgentTag)})(?:\s[^>]*)?>",
-    flags=re.IGNORECASE,
-)
-
 #: Tags that frame someone actually asking for something. Every other internal
 #: tag frames a result, instruction or status the graph wrote, so it must never
 #: be mistaken for the request the turn is working on.
@@ -79,9 +72,10 @@ REQUEST_AGENT_TAGS: frozenset[AgentTag] = frozenset(
     {AgentTag.USER_INTERJECTION, AgentTag.SUBAGENT_INTERJECTION}
 )
 
-_LEADING_AGENT_TAG_PATTERN = re.compile(
-    rf"<(?:{'|'.join(tag.value for tag in AgentTag)})(?=[\s>])", re.IGNORECASE
-)
+#: Every internal tag name as one regex alternation, for the patterns that find them.
+AGENT_TAG_NAMES_PATTERN = "|".join(tag.value for tag in AgentTag)
+
+_LEADING_AGENT_TAG_PATTERN = re.compile(rf"<(?:{AGENT_TAG_NAMES_PATTERN})(?=[\s>])", re.IGNORECASE)
 
 
 def leading_agent_tag(text: str) -> AgentTag | None:
@@ -94,15 +88,36 @@ def leading_agent_tag(text: str) -> AgentTag | None:
 # agent run that takes over. Named once here because a drift between the
 # writer (workflow worker) and reader (format_workflow_execution_message) is silent.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
-#: The calls a replay made before it stopped, so a rewrite may freeze them —
-#: without this the write validator refused every rewrite that kept one
-#: ("did not run in this run").
-PLAYBOOK_REPLAYED_CALLS_KEY = "playbook_replayed_calls"
+# A replay's stream id, which is also the task id its logged work carries, so a Stop can name it.
+PLAYBOOK_REPLAY_STREAM_ID_PREFIX = "playbook_"
+#: Calls a playbook never replays: delegation, whose children are in the run
+#: record themselves, and tool discovery and binding, which do no work.
+PLAYBOOK_UNPICKABLE_TOOLS = frozenset(
+    {
+        "call_executor",
+        "cancel_executor",
+        "spawn_subagent",
+        "retrieve_tools",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
+    }
+)
 
-# The trigger-context key carrying the busy-lock value a workflow fire reserved.
-# Written by the workflow worker, read by call_executor so the dispatched
-# executor takes the reservation over instead of queueing behind a stale lock.
-WORKFLOW_LOCK_CONTEXT_KEY = "executor_lock_reservation"
+#: Executor tools a spawned subagent never gets: steering other subagents, and global
+#: instructions (a spawn mines untrusted output). activate_integration stays: a spawn
+#: loads the integration its own slice needs.
+EXECUTOR_SPAWN_EXCLUDED_TOOLS = frozenset(
+    {
+        "list_running_subagents",
+        "message_subagent",
+        "cancel_subagent",
+        "update_user_instructions",
+    }
+)
+
+#: A tool result at least this long (about 7k tokens) is re-read on every later
+#: model call of the turn, so the agent that can spawn is pointed at spawns for
+#: any further reading of that size.
+LARGE_TOOL_RESULT_CHARS = 25_000
 
 # After this many consecutive suspect replays the worker disables the playbook.
 PLAYBOOK_SUSPECT_STREAK_LIMIT = 2
@@ -133,6 +148,72 @@ DONE_EVIDENCE_RULE = (
     "only by a tool call in this run. A memory, or an earlier run of the same task, never meets it."
 )
 
+
+class TimeHorizon(StrEnum):
+    """How long a delegated request needs attention; comms sets it on call_executor."""
+
+    ONE_SHOT = "one_shot"
+    DEADLINE = "deadline"
+    ONGOING = "ongoing"
+
+
+class OutcomeState(StrEnum):
+    """How an executor run left the user's request, declared on finish_task."""
+
+    DONE = "done"
+    SCHEDULE = "schedule"
+    SUBSCRIBE = "subscribe"
+    ASK = "ask"
+    BLOCKED = "blocked"
+
+
+#: The calls whose success backs a declared outcome (outcome_review.review_outcome).
+#: Only a tracked todo with a schedule or a recurrence wakes GAIA again; a
+#: reminder just notifies the user, so it backs done, never schedule.
+OUTCOME_CREATE_TODO_TOOL = "create_tracked_todo"
+OUTCOME_TRACKED_TODO_TOOLS = frozenset({OUTCOME_CREATE_TODO_TOOL, "update_tracked_todo"})
+OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence")
+OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
+OUTCOME_COMPLETE_TOOL = "complete_tracked_todo"
+
+#: Opens a scheduled tracked todo run's brief: the run spent the check that woke
+#: it and must close the todo or set a new one. outcome_review reads it off the
+#: task turn, so the brief and the check cannot drift apart on a string.
+TODO_REARM_TAG = "<todo_rearm>"
+#: Opens the brief of a run whose todo wakes GAIA again on its own (its recurrence,
+#: or the watch that fired it): that wake backs a schedule outcome without a new check.
+TODO_WAKES_AGAIN_TAG = "<todo_wakes_again>"
+
+
+#: What the executor brief tells the run each horizon demands before it may finish.
+TIME_HORIZON_BRIEF: dict[TimeHorizon, str] = {
+    TimeHorizon.ONE_SHOT: "one_shot: finish it in this run.",
+    TimeHorizon.DEADLINE: (
+        "deadline: unless it is fully done in this run, leave a tracked todo scheduled "
+        "to wake you before the date."
+    ),
+    TimeHorizon.ONGOING: (
+        "ongoing: it needs attention after this run. Leave a tracked todo with a schedule, "
+        "recurrence or trigger watch before you finish."
+    ),
+}
+
+IRREVERSIBLE_APPROVED_BRIEF = (
+    "Irreversible actions: the user approved them for this request. Do exactly what was "
+    "approved, nothing broader."
+)
+IRREVERSIBLE_UNAPPROVED_BRIEF = (
+    "Irreversible actions: NOT approved. Deleting, bulk-changing, sending or posting needs the "
+    "user's yes first: prepare it (the draft, the exact items) and finish with outcome ask."
+)
+
+#: What a delegator reads when a worker ended with no answer. Silence is not success:
+#: the literal "Task completed" once stood in here and comms told the user it was done.
+NO_ANSWER_NOTICE = (
+    "{name} ended without reporting a result, so nothing confirms any of it happened. "
+    "Treat the work as not done, and never report it as done without other evidence."
+)
+
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the
 #: gate cannot drift apart on a string.
@@ -154,8 +235,8 @@ PLAYBOOK_DECISION_NUDGE_MESSAGE = (
 )
 MAX_PLAYBOOK_DECISION_NUDGES = 1
 
-#: The playbook decision tools. Bookkeeping about a run, never the run itself:
-#: left out of the record the next run reads, or the model copies them as steps.
+#: The playbook tools. Bookkeeping about a run, never the run itself: left out
+#: of the record the next run reads, or the model copies them as steps.
 PLAYBOOK_TOOL_NAMES = frozenset(
-    {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+    {"read_run_record", "write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
 )

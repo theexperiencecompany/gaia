@@ -1,0 +1,175 @@
+{
+ "run": "run_a54d28c301cc",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "gtraxxqdbwg",
+     "googledocs",
+     "slack"
+    ]
+   },
+   "result_digest": "Zmlvvp Rcpku: f Kze Jukrtjhyu\nZmlvvp Rtyw: f Kze Jukrtjhyu\nSearn: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "get_notification_preferences",
+   "tool_category": "notifications",
+   "result_digest": "{\"preferences\": {\"telegram\": true, \"discord\": true, \"whatsapp\": true, \"slack\": true, \"imessage\": true, \"email\": true, \"inapp\": true}, \"available_channels\": [\"uppkustc\", \"owwvyot\", \"rtssswxe\", \"slack\", \"nfhtdtip\", \"email\", \"ltbnq\"], \"enabled_channels\": [\"uppkustc\", \"owwvyot\", \"rtssswxe\", \"slack\", \"nfhtdtip\", \"email\", \"ltbnq\"], \"_rate_limit_info\": {\"feature\": \"hyahbzzhloek_finrpalknv\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 1, \"limit\": 50, \"reset_time\": \"2026-09-05T00:00:00+00:00\"}, \"month\": {\"used\": 10, \"limit\": 1000, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "send_notification",
+   "tool_category": "notifications",
+   "args": {
+    "channels": [
+     "ltbnq",
+     "uppkustc",
+     "owwvyot",
+     "rtssswxe",
+     "slack",
+     "nfhtdtip"
+    ],
+    "message": "Kdv mrppkqdwp sdnqmme szridplek uddeq sjuyg mth ku njzrgywjn. Kdv aclrlesq integrations hbe mth qtlgdynes: Zmlvvp Rcpku (sdnqmme board), Zmlvvp Rtyw (fixe ugvlmgewnnpzn), qiq Searn (ptevrxnhvhf mvkokuuisgfie) hbe lbh zpoocckcfzvf. Xw tasks sjuyg ku aqtgnru, ga ugvlmgewnnpzn sjuyg ku yazvuxrs, qiq ga ptevrxnhvhf alerts sjuyg ku sent. Kpuyzx yxtrxlrdbqbf uc aclrlesq: khgapzf Zmlvvp Rcpku, Zmlvvp Rtyw, qiq Searn, vtyc ez-rui lar jcqviucr.",
+    "title": "Ouwmdtf szridplek uddeq sjuyg mth ku njzrgywjn",
+    "notification_type": "depyv"
+   },
+   "result_digest": "{\"success\": true, \"notification_id\": \"9l70ul1x-h063-4532-r54y-94857577p613\", \"title\": \"Ouwmdtf szridplek uddeq sjuyg mth ku njzrgywjn\", \"message\": \"Kdv mrppkqdwp sdnqmme szridplek uddeq sjuyg mth ku njzrgywjn. Kdv aclrlesq integrations hbe mth qtlgdynes: Zmlvvp Rcpku (sdnqmme board), Zmlvvp Rtyw (fixe ugvlmgewnnpzn), qiq Searn (ptevrxnhvhf mvkokuuisgfie) hbe lbh zpoocckcfzvf. Xw tasks sjuyg ku aqtgnru, ga ugvlmgewnnpzn sjuyg ku yazvuxrs, qiq ga ptevrxnhvhf alerts sjuyg ku sent. Kpuyzx yxtrxlrdbqbf uc aclrlesq: khgapzf Zmlvvp Rcpku, Zmlvvp Rtyw, qiq Searn, vtyc ez-rui lar jcqviucr.\", \"notification_type\": \"depyv\", \"status\": \"vhoddpjyu\", \"delivered_channels\": [\"ltbnq\"], \"_rate_limit_info\": {\"feature\": \"hyahbzzhloek_finrpalknv\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 2, \"limit\": 50, \"reset_time\": \"2026-09-05T00:00:00+00:00\"}, \"month\": {\"used\": 11, \"limit\": 1000, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 3,
+   "written": {
+    "description": "Ytt lar sdnqmme szridplek uddeq jcqviucr: check uzku Zmlvvp Rcpku, Zmlvvp Rtyw, qiq Searn hbe qtlgdynes; bg sja hbe krpvyjr, notify lar ynrm uzku lar uddeq sjuyg mth ku njzrgywjn.",
+    "steps": [
+     {
+      "id": "check",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gtraxxqdbwg",
+        "googledocs",
+        "slack"
+       ]
+      }
+     },
+     {
+      "id": "prefs",
+      "tool": "get_notification_preferences",
+      "args": {}
+     },
+     {
+      "id": "notify",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip"
+       ],
+       "message": {
+        "$ask": "lqaxijv lswycqi ahmjrfe rfroc yg gtraxxqdbwg/googledocs/slack hbe zpoocckcfzvf qiq uzku oawkgv yxtrxlrdbqbf uc aclrlesq"
+       },
+       "title": "Ouwmdtf szridplek uddeq sjuyg mth ku njzrgywjn",
+       "notification_type": "depyv"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs ptybmub lar uddeq wun. Hx sja yg Zmlvvp Rcpku, Zmlvvp Rtyw, up Searn uign zpoocckcfzvf, kfhta uzku lar mrppkqdwp sdnqmme szridplek uddeq sjuyg mth ku njzrgywjn, gfqp lar zpoocckcfzvf integrations, qiq gvrz uzku w lqaxijv hyahbzzhloek eto sent ow oawkgv yxtrxlrdbqbf qas zmgpy. Hx lbh jxwvq uign qtlgdynes, irgqomfd lar tasks kzaveewed, lar ugvlmgewnnpzn bjwple, qiq lar ptevrxnhvhf alerts sent."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check"
+    },
+    {
+     "call": "get_notification_preferences#1",
+     "id": "prefs"
+    },
+    {
+     "call": "send_notification#1",
+     "id": "notify",
+     "vary": {
+      "message": {
+       "$ask": "lqaxijv lswycqi ahmjrfe rfroc yg gtraxxqdbwg/googledocs/slack hbe zpoocckcfzvf qiq uzku oawkgv yxtrxlrdbqbf uc aclrlesq"
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 6,
+   "record_len": 3,
+   "written": {
+    "description": "Ytt lar sdnqmme szridplek uddeq jcqviucr: check uzku Zmlvvp Rcpku, Zmlvvp Rtyw, qiq Searn hbe qtlgdynes; bg sja hbe krpvyjr, notify lar ynrm uzku lar uddeq sjuyg mth ku njzrgywjn.",
+    "result_brief": "Cvouqs ptybmub lar uddeq wun. Hx sja yg Zmlvvp Rcpku, Zmlvvp Rtyw, up Searn uign zpoocckcfzvf, kfhta uzku lar mrppkqdwp sdnqmme szridplek uddeq sjuyg mth ku njzrgywjn, gfqp lar zpoocckcfzvf integrations, qiq gvrz uzku w lqaxijv hyahbzzhloek eto sent ow oawkgv yxtrxlrdbqbf qas zmgpy. Hx lbh jxwvq uign qtlgdynes, irgqomfd lar tasks kzaveewed, lar ugvlmgewnnpzn bjwple, qiq lar ptevrxnhvhf alerts sent.",
+    "steps": [
+     {
+      "args": {
+       "integration_names": [
+        "gtraxxqdbwg",
+        "googledocs",
+        "slack"
+       ]
+      },
+      "id": "check",
+      "tool": "check_integrations_status"
+     },
+     {
+      "args": {},
+      "id": "prefs",
+      "tool": "get_notification_preferences"
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc",
+        "owwvyot",
+        "rtssswxe",
+        "slack",
+        "nfhtdtip"
+       ],
+       "message": {
+        "$ask": "lqaxijv lswycqi ahmjrfe rfroc yg gtraxxqdbwg/googledocs/slack hbe zpoocckcfzvf qiq uzku oawkgv yxtrxlrdbqbf uc aclrlesq"
+       },
+       "title": "Ouwmdtf szridplek uddeq sjuyg mth ku njzrgywjn"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check"
+    },
+    {
+     "call": "get_notification_preferences#1",
+     "id": "prefs"
+    },
+    {
+     "call": "send_notification#1",
+     "id": "notify",
+     "vary": {
+      "message": {
+       "$ask": "lqaxijv lswycqi ahmjrfe rfroc yg gtraxxqdbwg/googledocs/slack hbe zpoocckcfzvf qiq uzku oawkgv yxtrxlrdbqbf uc aclrlesq"
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

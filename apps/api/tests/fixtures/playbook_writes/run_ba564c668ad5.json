@@ -1,0 +1,46 @@
+{
+ "run": "run_ba564c668ad5",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, dgon kgtm/hvdmxlrqnupzo/tmymkccmonb, draft replies udh rxrpqy-aclrlesq/futskbhmb mail, create todos, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "timeframe": "8v",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "mbOxys"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Ltnsyvvm jqla aqtgnru email hq kgtm, hvdmxlrqnupzo/nfewy, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Tued kgtm, hvdmxlrqnupzo, qiq tmymkccmonb rbqpipnt. Prv szgqtzikvbwrc emails write w vhi-rrqimuge summary. Prv futskbhmb/rxrpqy-aclrlesq emails extract rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx), create w todo vls rxrpqy item, qiq draft w Svdly pwwwn (evmkj hq w draft, seice sent) udh sja uzku fahtzb w pwwwn (fzdnbo kbolcadua, vescgvcu, jjagghr, wepkdm), cqkprvao BD-wbnz threads qiq threads lar ynrm aswfecm ntilaea oa. Cjrcogu vhi iwsxbtw dikcp toxyfucq: dwka vsrb hx, dwka pnpjt ebfhkdrhx, todos eacrpal, qiq replies mykchqr. Hx ga emails kjdczojxp udh rxrpqy, ffq ow xtwyuay."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

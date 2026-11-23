@@ -4,15 +4,23 @@ Covers the MAX_PAGE_NUMBER page bound on the todo list endpoint, the
 happy path with the service faked, and analytics captures on mutations.
 """
 
-from datetime import UTC, datetime, timedelta, tzinfo
-from typing import Self
-from unittest.mock import AsyncMock, patch
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime, time
+from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from httpx import AsyncClient
 import pytest
 
+from app.constants.briefing import BriefingFrequency
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.trigger_gates import GateAuthor
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
@@ -21,20 +29,44 @@ from app.models.todo_models import (
     ProjectResponse,
     SearchMode,
     SubTask,
+    TodoCounts,
+    TodoDayWindow,
     TodoDocument,
     TodoListParams,
     TodoListResponse,
     TodoResponse,
     TodoUpdateRequest,
 )
+from app.models.trigger_gate_models import AuthoredGate, TriggerGate
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    SubscriptionResolution,
+    TriggerSubscription,
+)
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 from app.utils.log_identifiers import user_text_shape
+from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
+from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled
+from shared.py.analytics.catalog.triggers import TriggerGateEdited
+from tests.briefing_helpers import briefs_on
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
+_TZ_BACKFILL = "app.api.v1.dependencies.oauth_dependencies._backfill_user_timezone"
+_IST_HEADER = {"x-timezone": "Asia/Kolkata"}
+
+
+def _is_ist_midnight(instant: datetime) -> bool:
+    return instant.astimezone(ZoneInfo("Asia/Kolkata")).time() == time.min
+
+
+# 01:00 IST on 2026-11-18.
+_IST_WINDOW = TodoDayWindow.for_timezone(
+    Timezone.parse("Asia/Kolkata"), datetime(2026, 11, 17, 19, 30, tzinfo=UTC)
+)
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture"
+GATE_SERVICE = "app.services.todos.subscription_gate"
 
 pytestmark = pytest.mark.usefixtures("todo_response_reads")
 
@@ -120,6 +152,43 @@ class TestListTodos:
         assert params.due_date_start == datetime(2026, 1, 1, tzinfo=UTC)
         assert params.due_date_end == datetime(2026, 2, 1, tzinfo=UTC)
 
+    async def test_list_buckets_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.list_todos",
+                new_callable=AsyncMock,
+                return_value=_empty_list_response(),
+            ) as list_todos,
+            patch(_TZ_BACKFILL, new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/todos?due_today=true", headers=_IST_HEADER)
+
+        assert resp.status_code == 200
+        params = list_todos.await_args.args[1]
+        assert params.day_window is not None
+        assert _is_ist_midnight(params.day_window.today_start)
+        assert params.due_date_start == params.day_window.today_start
+
+    async def test_counts_bucket_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.project_repository.get_default_inbox",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.compute_counts",
+                new_callable=AsyncMock,
+                return_value=TodoCounts(today=2),
+            ) as compute_counts,
+            patch(_TZ_BACKFILL, new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/todos/counts", headers=_IST_HEADER)
+
+        assert resp.status_code == 200
+        assert resp.json()["today"] == 2
+        assert _is_ist_midnight(compute_counts.await_args.kwargs["window"].today_start)
+
     async def test_list_logs_the_search_context(self, client: AsyncClient) -> None:
         with (
             patch(
@@ -153,12 +222,14 @@ class TestListTodos:
 class TestTodoAnalytics:
     """Analytics captures on todo endpoints without a service-layer capture.
 
-    Single-todo mutations are captured inside TodoService (covered by
-    test_todo_service.py); these assert the endpoint-only bulk and subtask
-    captures.
+    Single and bulk todo edits are captured inside TodoService (covered by
+    test_todo_service.py); these assert the endpoint-only bulk move and subtask
+    captures, and that the bulk edits leave theirs to the service.
     """
 
-    async def test_bulk_complete_captures_todo_completed(self, client: AsyncClient) -> None:
+    async def test_bulk_complete_leaves_the_capture_to_the_service(
+        self, client: AsyncClient
+    ) -> None:
         with (
             patch(
                 f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
@@ -178,7 +249,8 @@ class TestTodoAnalytics:
             user={"id": "507f1f77bcf86cd799439011"},
             todo={"operation": "bulk_complete", "bulk_count": 2},
         )
-        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosToggled(bulk_count=2))
+        # TodoService.bulk_update_todos captures what it wrote; the endpoint emits nothing.
+        mock_capture.assert_not_called()
         mock_bulk.assert_awaited_once_with(
             BulkUpdateRequest(
                 todo_ids=["todo-1", "todo-2"],
@@ -187,15 +259,13 @@ class TestTodoAnalytics:
             "507f1f77bcf86cd799439011",
         )
 
-    async def test_bulk_update_captures_todos_updated_on_the_caller(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_bulk_update_leaves_the_capture_to_the_service(self, client: AsyncClient) -> None:
         with (
             patch(
                 f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
                 new_callable=AsyncMock,
                 return_value=BulkOperationResponse(total=2, message="ok"),
-            ),
+            ) as mock_bulk,
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.put(
@@ -204,7 +274,15 @@ class TestTodoAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosUpdated(bulk_count=2))
+        assert resp.json() == BulkOperationResponse(total=2, message="ok").model_dump(mode="json")
+        mock_bulk.assert_awaited_once_with(
+            BulkUpdateRequest(
+                todo_ids=["todo-1", "todo-2"],
+                updates=TodoUpdateRequest(priority=Priority.HIGH),
+            ),
+            "507f1f77bcf86cd799439011",
+        )
+        mock_capture.assert_not_called()
 
     async def test_toggle_subtask_captures_todo_completed(self, client: AsyncClient) -> None:
         doc = TodoDocument(
@@ -430,52 +508,32 @@ class TestListQueryHelpers:
 
         assert params.filters_applied == ["date_range"]
 
-    def test_due_today_is_the_utc_day_bounds(self):
-        search = TodoListParams(due_today=True).to_search_params()
-        start, end = search.due_date_start, search.due_date_end
+    def test_due_today_is_the_users_local_day(self):
+        search = TodoListParams(due_today=True).to_search_params(_IST_WINDOW)
 
-        today = datetime.now(UTC).date()
-        assert start == datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
-        assert end == datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
-        # Aware UTC, not a naive local datetime — the bounds are timezone-tagged.
-        assert start is not None and start.tzinfo is UTC
-        assert end is not None and end.tzinfo is UTC
+        assert (search.due_date_start, search.due_date_end) == _IST_WINDOW.today
 
-    def test_due_today_asks_for_utc_now(self, monkeypatch: pytest.MonkeyPatch):
-        now_calls: list[tzinfo | None] = []
+    def test_due_this_week_starts_after_today(self):
+        search = TodoListParams(due_this_week=True).to_search_params(_IST_WINDOW)
 
-        class _RecordingDatetime(datetime):
-            @classmethod
-            def now(cls, tz: tzinfo | None = None) -> Self:
-                now_calls.append(tz)
-                return super().now(tz)
+        assert (search.due_date_start, search.due_date_end) == _IST_WINDOW.upcoming
+        assert search.due_date_start == _IST_WINDOW.tomorrow_start
 
-        monkeypatch.setattr("app.models.todo_models.datetime", _RecordingDatetime)
+    def test_the_window_reaches_the_overdue_filter(self):
+        search = TodoListParams(overdue=True).to_search_params(_IST_WINDOW)
 
-        TodoListParams(due_today=True).to_search_params()
-
-        # A naive local ``datetime.now()`` would silently shift the day bounds
-        # for non-UTC deployments; the tz is the observable contract here.
-        assert now_calls == [UTC]
-
-    def test_due_this_week_is_a_seven_day_window(self):
-        search = TodoListParams(due_this_week=True).to_search_params()
-        start, end = search.due_date_start, search.due_date_end
-
-        assert start is not None and end is not None
-        assert end - start == timedelta(days=7)
-        assert start.tzinfo is UTC and end.tzinfo is UTC
+        assert search.required_day_window == _IST_WINDOW
 
     def test_explicit_range_passes_through(self):
         after = datetime(2026, 1, 1, tzinfo=UTC)
         before = datetime(2026, 2, 1, tzinfo=UTC)
 
-        search = TodoListParams(due_after=after, due_before=before).to_search_params()
+        search = TodoListParams(due_after=after, due_before=before).to_search_params(_IST_WINDOW)
 
         assert (search.due_date_start, search.due_date_end) == (after, before)
 
     def test_no_date_filter_is_none(self):
-        search = TodoListParams().to_search_params()
+        search = TodoListParams().to_search_params(_IST_WINDOW)
 
         assert (search.due_date_start, search.due_date_end) == (None, None)
 
@@ -496,7 +554,7 @@ class TestListQueryHelpers:
             include_stats=True,
             due_after=after,
             due_before=before,
-        ).to_search_params()
+        ).to_search_params(_IST_WINDOW)
 
         assert params.q == "x"
         assert params.mode == SearchMode.TEXT
@@ -574,6 +632,68 @@ class TestGenerateTodoWorkflow:
             title="Test todo",
             description="",
         )
+
+
+class TestBriefDeliveryWithoutADailyBrief:
+    """A todo may deliver to the brief only while the user gets a daily brief, as a workflow may."""
+
+    @pytest.mark.parametrize(
+        ("frequency", "status"),
+        [
+            (BriefingFrequency.OFF, 409),
+            (BriefingFrequency.WEEKLY_ONLY, 409),
+            (BriefingFrequency.DAILY, 201),
+        ],
+    )
+    async def test_creating_a_brief_todo(
+        self, client: AsyncClient, frequency: BriefingFrequency, status: int
+    ) -> None:
+        with (
+            patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)),
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo",
+                new=AsyncMock(return_value=_todo_response()),
+            ) as create,
+        ):
+            resp = await client.post(
+                "/api/v1/todos", json={"title": "Watch prices", "delivery": "brief"}
+            )
+
+        assert resp.status_code == status
+        if status == 409:
+            assert resp.json()["code"] == BRIEFS_OFF
+            create.assert_not_called()
+
+    async def test_moving_a_todo_onto_the_brief_writes_nothing(self, client: AsyncClient) -> None:
+        with (
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
+            patch.object(todo_repository, "update", new=AsyncMock()) as update,
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"delivery": "brief"})
+
+        assert resp.status_code == 409
+        assert resp.json()["code"] == BRIEFS_OFF
+        update.assert_not_called()
+
+    async def test_moving_todos_onto_the_brief_in_bulk_writes_nothing(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
+            patch.object(todo_repository, "bulk_update", new=AsyncMock()) as bulk_update,
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["todo-1", "todo-2"], "updates": {"delivery": "brief"}},
+            )
+
+        assert resp.status_code == 409
+        assert resp.json()["code"] == BRIEFS_OFF
+        bulk_update.assert_not_called()
 
 
 class TestUpdateTodoWorkflowLink:
@@ -660,11 +780,11 @@ class TestUpdateTodoTimeline:
     async def test_turning_a_tracked_todos_delivery_off_is_recorded_as_the_users(
         self, client: AsyncClient
     ) -> None:
-        recorded = await self._put(client, {"notify_on_run": False}, [GAIA_TRACKED_LABEL])
+        recorded = await self._put(client, {"delivery": "silent"}, [GAIA_TRACKED_LABEL])
 
         todo_id, user_id, update = recorded.await_args.args
         assert (todo_id, user_id) == ("todo-1", "507f1f77bcf86cd799439011")
-        assert update.notify_on_run is False
+        assert update.delivery is WorkflowDelivery.SILENT
         assert recorded.await_args.kwargs == {"by": "the user in the app"}
 
     async def test_a_classic_todo_has_no_timeline(self, client: AsyncClient) -> None:
@@ -826,3 +946,167 @@ class TestReopenOfATakenThread:
 
         assert resp.status_code == 409
         assert resp.json()["todo_id"] == "held-1"
+
+
+class TestEditSubscriptionGate:
+    """PATCH /todos/{id}/subscriptions/{id}/gate: the user rewrites or switches one run watch's gate."""
+
+    OWNER = FAKE_USER.user_id
+    GAIA_GATE = AuthoredGate(condition="the email is from a customer", author=GateAuthor.GAIA)
+    PATH = "/api/v1/todos/todo-1/subscriptions/{subscription_id}/gate"
+
+    @classmethod
+    def _todo(cls, *watches: TriggerSubscription, owner: str = OWNER) -> TodoDocument:
+        return TodoDocument(
+            id="todo-1",
+            user_id=owner,
+            title="Billing replies",
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+            trigger_subscriptions=list(watches),
+        )
+
+    @staticmethod
+    def _watch(**overrides: object) -> TriggerSubscription:
+        return TriggerSubscription.model_validate(
+            {
+                "id": "watch-1",
+                "trigger_name": "gmail_new_message",
+                "action": SubscriptionAction.EXECUTE,
+                "resolution": SubscriptionResolution.ACCOUNT,
+                **overrides,
+            }
+        )
+
+    @contextmanager
+    def _stored(self, todo: TodoDocument) -> Iterator[tuple[AsyncMock, MagicMock]]:
+        """Serve todo to its owner only, and store a gate write on it as Mongo would."""
+
+        async def get(todo_id: str, *, user_id: str) -> TodoDocument | None:
+            return todo if (todo_id, user_id) == (todo.id, todo.user_id) else None
+
+        async def set_gate(
+            todo_id: str, *, user_id: str, subscription_id: str, gate: TriggerGate
+        ) -> TodoDocument:
+            watches = [
+                w.model_copy(update={"gate": gate}) if w.id == subscription_id else w
+                for w in todo.trigger_subscriptions
+            ]
+            return todo.model_copy(update={"trigger_subscriptions": watches})
+
+        with (
+            patch(f"{GATE_SERVICE}.todo_repository.get", new=AsyncMock(side_effect=get)),
+            patch(
+                f"{GATE_SERVICE}.todo_repository.set_subscription_gate",
+                new=AsyncMock(side_effect=set_gate),
+            ) as write,
+            patch("app.services.triggers.gate_edits.capture") as capture,
+        ):
+            yield write, capture
+
+    async def test_a_rewritten_condition_is_stored_as_the_users(self, client: AsyncClient) -> None:
+        with self._stored(self._todo(self._watch(gate=self.GAIA_GATE))) as (write, capture):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"),
+                json={"condition": "the email is about an invoice", "author": "gaia"},
+            )
+
+        assert resp.status_code == 200
+        stored = AuthoredGate(condition="the email is about an invoice", author=GateAuthor.USER)
+        assert write.await_args.args == ("todo-1",)
+        assert write.await_args.kwargs == {
+            "user_id": self.OWNER,
+            "subscription_id": "watch-1",
+            "gate": stored,
+        }
+        gate = resp.json()["trigger_subscriptions"][0]["gate"]
+        assert (gate["display_condition"], gate["author"], gate["enabled"]) == (
+            "the email is about an invoice",
+            "user",
+            True,
+        )
+        capture.assert_called_once_with(
+            UserId(self.OWNER),
+            TriggerGateEdited(owner_type="todo", action="edited", gate_kind="authored"),
+        )
+
+    async def test_the_wide_event_and_the_audit_trail_name_the_edit(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            self._stored(self._todo(self._watch(gate=self.GAIA_GATE))),
+            patch(f"{TODOS_ENDPOINT}.log") as log,
+        ):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"),
+                json={"condition": "the email is about an invoice", "enabled": False},
+            )
+
+        assert resp.status_code == 200
+        log.set.assert_called_once_with(
+            user={"id": self.OWNER},
+            todo={
+                "operation": "edit_subscription_gate",
+                "id": "todo-1",
+                "subscription_id": "watch-1",
+                "gate_condition_sent": True,
+                "gate_enabled": False,
+            },
+        )
+        log.audit.assert_called_once_with(
+            "todo watch gate edited",
+            actor=self.OWNER,
+            resource="watch-1",
+            todo_id="todo-1",
+            enabled=False,
+        )
+        log.set_ns.assert_called_once_with("todo", outcome="success")
+
+    async def test_turning_it_off_keeps_the_condition(self, client: AsyncClient) -> None:
+        with self._stored(self._todo(self._watch(gate=self.GAIA_GATE))) as (write, _):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"), json={"enabled": False}
+            )
+
+        assert resp.status_code == 200
+        assert write.await_args.kwargs["gate"] == self.GAIA_GATE.model_copy(
+            update={"enabled": False}
+        )
+        gate = resp.json()["trigger_subscriptions"][0]["gate"]
+        assert (gate["display_condition"], gate["enabled"]) == (self.GAIA_GATE.condition, False)
+
+    @pytest.mark.parametrize(
+        "action",
+        [SubscriptionAction.NOTIFY, SubscriptionAction.COMPLETE, SubscriptionAction.UNBLOCK],
+    )
+    async def test_a_watch_that_starts_no_run_takes_no_gate(
+        self, client: AsyncClient, action: SubscriptionAction
+    ) -> None:
+        with self._stored(self._todo(self._watch(action=action))) as (write, capture):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"),
+                json={"condition": "the email is about an invoice"},
+            )
+
+        assert resp.status_code == 422
+        write.assert_not_awaited()
+        capture.assert_not_called()
+
+    async def test_another_users_todo_is_not_found(self, client: AsyncClient) -> None:
+        theirs = self._todo(self._watch(gate=self.GAIA_GATE), owner="507f1f77bcf86cd799439099")
+        with self._stored(theirs) as (write, _):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-1"), json={"enabled": False}
+            )
+
+        assert resp.status_code == 404
+        write.assert_not_awaited()
+
+    async def test_an_unknown_watch_is_not_found(self, client: AsyncClient) -> None:
+        with self._stored(self._todo(self._watch(gate=self.GAIA_GATE))) as (write, _):
+            resp = await client.patch(
+                self.PATH.format(subscription_id="watch-2"), json={"enabled": False}
+            )
+
+        assert resp.status_code == 404
+        write.assert_not_awaited()

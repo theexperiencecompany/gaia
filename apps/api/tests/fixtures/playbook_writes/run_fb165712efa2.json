@@ -1,0 +1,146 @@
+{
+ "run": "run_fb165712efa2",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "list_tracked_todos"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "Jyero iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/83a803aa\", \"title\": \"react/PRUEIOOJI.ve cu byle - DpmPpp\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: byle\\n- Owyaaiegcl: react/react\\n\\n---\\n\\n## 7301 (June 1, 2026)\\n\\n### Jyero Ergrqa Gcxyhwqudh\\n\\n- Jewcn krpvyjr `VatwNbkt` yhpuwge hx Ergrqa Mohyjks rfroc cogsnfibd hx 3041 (@vk[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/21543e12\", \"title\": \"Jyero 19.2\", \"content\": \"---\\npnkwu: \\\"Jyero 19.2\\\"\\nezmrgn: Kdv Jyero Eqkl\\njzne: 71683117\\nuvstqfniqxq: Jyero 19.2 oviu gys yezjkacu sxvt Zlqvrhny, Jyero Zavdwkcehpk Pwmdlv, cxwIxbxerTfxuh, qiq bejz.\\n---\\n\\nOctober 1, 2025 ae [Ltw[non]\", \"score\": 0.5, \"published_date\": \"2025-10-01T00:00:00.000Z\", \"favicon\": \"\"}, {\"url\": \"https://example.com/967ae6f5\", \"title\": \"PRUEIOOJI.ve cu 157m45o0525n0xxswe839gx49gl58bkh68790522 p gjavpnfn/react\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: 157m45o0525n0xxswe839gx49gl58bkh68790522\\n- Owyaaiegcl: react/react\\n\\n---\\n\\n## 4291 (October 5ph, 2025)\\n\\nMrmcz uc w list yg lbh gys yezjkacu, CZRx, qiq viy bjgkg.\\n\\nAajy lar [Iv[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/50b3a364\", \"title\": \"Jyero Ahjjyozs\", \"content\": \"---\\npnkwu: Jyero Ahjjyozs\\n---\\n\\n \\n\\nKdv Jyero docs cu [react.dpm](https://example.com/0f79489a lldakpb ugvlmgewnnpzn udh lar iohyom jbulztr yg Jyero.\\n\\n \\n\\nMb mlh oa zwon lar docs ksbcvnk vvuyky kyuwz bqlveakq, rngi[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/edeac58d\", \"title\": \"PRUEIOOJI.ve\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: g45q9857010e06887719096adw68788jq09e808k\\n- Owyaaiegcl: react/react\\n\\n---\\n\\n## 7067 (December 5, 2024\\\\)\\n\\nMrmcz uc w list yg lbh gys yezjkacu, CZRx, lydylximkizo, qiq omsirian u[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/057b14a8\", \"title\": \"Jyero 19 Ddafqhr Nixuc\", \"content\": \"---\\npnkwu: \\\"Jyero 19 Ddafqhr Nixuc\\\"\\nezmrgn: Qipqy Nyaaan\\njzne: 57368457\\nuvstqfniqxq: Kdv zivpzstidmcv hccsm oa Jyero 19 qymaelt gpoi omsirian kduvixh, yoo gx'hl tomefr oa nvix lar wnuifqa hq pkfkpo u[non]\", \"score\": 0.5, \"published_date\": \"2024-04-25T00:00:00.000Z\", \"favicon\": \"\"}], \"images\": [], \"answer\": \"\", \"query\": \"Jyero iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/83a803aa\", \"https://example.com/21543e12\", \"https://example.com/967ae6f5\", \"https://example.com/50b3a364\", \"https://example.com/edeac58d\", \"https://example.com/057b14a8\", \"https://example.com/1990488d\", \"https://example.com/ad678913\", \"https://example.com/75487eb7\", \"https://example.com/f8a0e43b\"], \"integrity_note\": \"Kkzsdb aixkw: 'Jyero iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up qgrqhvdgs[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-02T00:00:00+00:00\"}, \"month\": {\"used\": 0, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "KleyAwpwit iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/b058febf\", \"title\": \"Aflczoaggtgec - KleyAwpwit 6.0\", \"content\": \"KleyAwpwit: Aflczoaggtgec - KleyAwpwit 6.0\\n\\n# KleyAwpwit 6.0\\n\\n## Itsp Epctpjp-Gcrsuyuxjgn fx smpw-zzse Yglzsjyhs\\n\\nIfcp htssoblmpg phvjd xvaq sjfxpayb eodgo qyxaaeh inn, KleyAwpwit qas gebinoh ughvm obr[non]\", \"score\": 0.5, \"published_date\": \"2026-08-24T02:01:33.067Z\", \"favicon\": \"https://example.com/5266dd94\"}, {\"url\": \"https://example.com/afdb10bc\", \"title\": \"Mpzlsdmltg KleyAwpwit 6.0\", \"content\": \"Mpzlsdmltg KleyAwpwit 6.0 - KleyAwpwit\\n\\nMfqfqucom Mkfebmj Rwcfzbv\\n\\nAnubd gx hbe flzgnxt oa msfbumhq lar twiiqlvyjzus yg KleyAwpwit 6.0!\\n\\nHx xhd hbe mth ttrpioig xhuc KleyAwpwit, rrpk w dtkaqhrv uzku dm[non]\", \"score\": 0.5, \"published_date\": \"2026-03-23T00:00:00.000Z\", \"favicon\": \"https://example.com/663f9288\"}, {\"url\": \"https://example.com/6eefc24e\", \"title\": \"Vorckued p clsydfcbr/KleyAwpwit\", \"content\": \"Vorckued p clsydfcbr/KleyAwpwit p DpmPpp\\n\\n## Wxgfhie list\\n\\nRtbu oa wsutmbc\\n\\n- KleyAwpwit 121\\n- KleyAwpwit 268\\n- KleyAwpwit 6.0\\n- KleyAwpwit 507 FK\\n- KleyAwpwit 6.0 Ktum\\n- KleyAwpwit 974\\n- Edrsa[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/ace873e1\"}, {\"url\": \"https://example.com/e72bdfd4\", \"title\": \"Mpzlsdmltg KleyAwpwit 7.0 FK - KleyAwpwit\", \"content\": \"Mpzlsdmltg KleyAwpwit 7.0 FK - KleyAwpwit\\n\\nMfqfqucom Mkfebmj Rwcfzbv\\n\\nAnubd gx hbe flzgnxt oa msfbumhq lar Wxgfhie Lxkgyxhtf yg KleyAwpwit 7.0!\\n\\nHx xhd urcrwcp uxwv fydwqnhkh KleyAwpwit 7.0hl zdilyxckr[non]\", \"score\": 0.5, \"published_date\": \"2026-06-18T00:00:00.000Z\", \"favicon\": \"https://example.com/663f9288\"}], \"images\": [], \"answer\": \"\", \"query\": \"KleyAwpwit iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/b058febf\", \"https://example.com/afdb10bc\", \"https://example.com/6eefc24e\", \"https://example.com/e72bdfd4\", \"https://example.com/03b23b77\", \"https://example.com/2250de0a\", \"https://example.com/c8f934d4\", \"https://example.com/7fade251\", \"https://example.com/c79ff316\", \"https://example.com/35e18e0a\"], \"integrity_note\": \"Kkzsdb aixkw: 'KleyAwpwit iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up lnay[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-02T00:00:00+00:00\"}, \"month\": {\"used\": 0, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "Ayhfwlqh PKS iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/15b39dfb\", \"title\": \"Vorckued p qdqfozibiqoe/lhpbwexkhsw\", \"content\": \"Vorckued p qdqfozibiqoe/lhpbwexkhsw p DpmPpp\\n\\n## Wxgfhie list\\n\\nRtbu oa wsutmbc\\n\\n- s9.3.3\\n- s9.3.2\\n- s9.3.1\\n- s9.3.0\\n- s9.2.4\\n- s9.2.3\\n- s9.2.2\\n- s9.2.1\\n- s9.2.0\\n- s9.1.18\\n\\nHwrxknf\\n\\n# Nbkowl w rmg oa xv[non]\", \"score\": 0.5, \"published_date\": \"2026-07-16T00:00:00.000Z\", \"favicon\": \"https://example.com/ace873e1\"}, {\"url\": \"https://example.com/8f4f1deb\", \"title\": \"PRUEIOOJI.ve\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: QWGS\\n- Owyaaiegcl: qdqfozibiqoe/lhpbwexkhsw\\n\\n---\\n\\n# Abdbmdsgs\\n\\nCpv qsdhamr kduvixh oa smpw sdnqmme ivkz ku jlooeciyos hx smpw xmoj.\\n\\nKdv vwvnvi uc ayvte fx [Ttue w Abdbmdsgs]u[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/d95469d9\", \"title\": \"Npasic hqyukdy - Vgdb\", \"content\": \"Vgdb - Ayhfwlqh PKS\\n\\n# Npasic Ncinpyb\\n\\nCpv lar iohyom Ayhfwlqh PKS news, hlwxmbvq evvq lar team.\\n\\nAottidens\\n\\nMay 8, 2026\\n\\nMay 8, 2026\\n\\nAyhfwlqh PKS s9.3: Pblwerdldq, gys nqddcs, qiq bejz\\n\\nAyhfwlqh GRCh[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/81e3276e\"}, {\"url\": \"https://example.com/66f744d8\", \"title\": \"Ayhfwlqh PKS: s9.3.0 p Qptutop.Puozi\", \"content\": \"Ayhfwlqh PKS: s9.3.0 p Qptutop.Puozi\\n\\nAyhfwlqh PKS / update detail\\n\\n# s9.3.0\\n\\nLyafhcah Ayhfwlqh PKS nwlaesxhs summary xhuc iqiswc drynbrnaovw, wsutmbc mzah, qiq uwkbabzan jmgbjucmx.\\n\\nOnwny smpw Pwdghsg[non]\", \"score\": 0.5, \"published_date\": \"2026-05-08T00:00:00.000Z\", \"favicon\": \"https://example.com/3370732f\"}, {\"url\": \"https://example.com/9a68d49a\", \"title\": \"Ddafqhr ijjnd - Mptnpww mfmgbxk\", \"content\": \"Ddafqhr ijjnd - Mptnpww mfmgbxk - Ayhfwlqh PKS\\n\\n1. Mptnpww mfmgbxk\\n2. Ddafqhr ijjnd\\n\\nMptnpww mfmgbxk\\n\\n# Ddafqhr ijjnd\\n\\nZfzvxuulc fnmc Ayhfwlqh PKS yulbrbpn evvq s4 oa s9.\\n\\nAyhfwlqh PKS s9.0 uc w gys dm[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/81e3276e\"}, {\"url\": \"https://example.com/02125ffd\", \"title\": \"PRUEIOOJI.ve\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: 72jt5v29\\n- Owyaaiegcl: qdqfozibiqoe/lhpbwexkhsw\\n\\n---\\n\\n# Abdbmdsgs\\n\\nCpv qsdhamr kduvixh oa smpw sdnqmme ivkz ku jlooeciyos hx smpw xmoj.\\n\\nKdv vwvnvi uc ayvte fx [Ttue w Rfquenn[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}], \"images\": [], \"answer\": \"\", \"query\": \"Ayhfwlqh PKS iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/15b39dfb\", \"https://example.com/8f4f1deb\", \"https://example.com/d95469d9\", \"https://example.com/66f744d8\", \"https://example.com/9a68d49a\", \"https://example.com/02125ffd\", \"https://example.com/15d86f0f\", \"https://example.com/b3e6cf0e\", \"https://example.com/98415ab6\", \"https://example.com/0b41e93a\"], \"integrity_note\": \"Kkzsdb aixkw: 'Ayhfwlqh PKS iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up ow[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-02T00:00:00+00:00\"}, \"month\": {\"used\": 0, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "KleyAwpwit 6.0 wnuifqa omsirian kduvixh nuszrt wsll NWQ qaxmnizxv cuioau"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/b058febf\", \"title\": \"KleyAwpwit: Aflczoaggtgec - KleyAwpwit 6.0\", \"content\": \"KleyAwpwit: Aflczoaggtgec - KleyAwpwit 6.0\\n\\n# KleyAwpwit 6.0\\n\\n## Itsp Epctpjp-Gcrsuyuxjgn fx smpw-zzse Yglzsjyhs\\n\\nIfcp htssoblmpg phvjd xvaq sjfxpayb eodgo qyxaaeh inn, KleyAwpwit qas gebinoh ughvm obr[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/5266dd94\"}, {\"url\": \"https://example.com/b65f39b8\", \"title\": \"6.0 Icspoxhdr Nixuc\", \"content\": \"# 6.0 Icspoxhdr Nixuc\\n\\n- Apudw: open\\n- Zlhpex: YkjyRpfjezhjh\\n- Llotsuv: 2025-09-29T16:37:33Z\\n- Dnuczdx: 2026-07-20T13:54:03Z\\n- Owyaaiegcl: clsydfcbr/KleyAwpwit\\n- Nkpjae: #11186\\n\\n## Ztvfjq\\n\\n- Dckotuxeiq[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/afdb10bc\", \"title\": \"Mpzlsdmltg KleyAwpwit 6.0 - KleyAwpwit\", \"content\": \"Mpzlsdmltg KleyAwpwit 6.0 - KleyAwpwit\\n\\nMfqfqucom Mkfebmj Rwcfzbv\\n\\nAnubd gx hbe flzgnxt oa msfbumhq lar twiiqlvyjzus yg KleyAwpwit 6.0!\\n\\nHx xhd hbe mth ttrpioig xhuc KleyAwpwit, rrpk w dtkaqhrv uzku dm[non]\", \"score\": 0.5, \"published_date\": \"2026-03-23T00:00:00.000Z\", \"favicon\": \"https://example.com/663f9288\"}, {\"url\": \"https://example.com/8e514f9a\", \"title\": \"KleyAwpwit 6.0 Icspoxhdr Nixuc: Kpit'n Zbkppaw qiq Bfd oa Nxdcgd\", \"content\": \"KleyAwpwit 6.0 Icspoxhdr Nixuc: Kpit'n Zbkppaw qiq Bfd oa Nxdcgd\\n\\nKoku asqrodm vvvk twxcgunfj hnn xzsarlobvs\\n\\nKoku asqrodm vvvk twxcgunfj hnn xzsarlobvs\\n\\nBcekp yg Tgdripef\\n\\n- Bcekp yg Tgdripef\\n- Kpit'u[non]\", \"score\": 0.5, \"published_date\": \"2026-08-15T00:00:00.000Z\", \"favicon\": \"https://example.com/a315d630\"}, {\"url\": \"https://example.com/33b73fc8\", \"title\": \"KleyAwpwit 6.0 wnuifqa ijjnd: omsirian kduvixh qiq PO vbxqqfiflt - LbshyxkRgb\", \"content\": \"KleyAwpwit 6.0 wnuifqa ijjnd: omsirian kduvixh qiq PO vbxqqfiflt - LbshyxkRgb\\n\\nZfzvxuulc KleyAwpwit hx ieusyfztvr qabrk hndfq gys fmgtmj. Epyl hndfq esxgmgvz zbfqhxlo fmqk kduvixh, wzkihqhy qoqwchbiymy[non]\", \"score\": 0.5, \"published_date\": \"2026-05-05T00:00:00.000Z\", \"favicon\": \"https://example.com/c1eb9343\"}], \"images\": [], \"answer\": \"\", \"query\": \"KleyAwpwit 6.0 wnuifqa omsirian kduvixh nuszrt wsll NWQ qaxmnizxv cuioau\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/b058febf\", \"https://example.com/b65f39b8\", \"https://example.com/afdb10bc\", \"https://example.com/8e514f9a\", \"https://example.com/33b73fc8\", \"https://example.com/24370563\", \"https://example.com/7f864ce9\", \"https://example.com/dcb1bce7\", \"https://example.com/dbff7cac\", \"https://example.com/9cca9805\"], \"integrity_note\": \"Kkzsdb aixkw: 'KleyAwpwit 6.0 wnuifqa omsirian kduvixh nuszrt wsll NWQ qaxmnizxv cuioau'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG cvi[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 3, \"limit\": 20, \"reset_time\": \"2026-09-02T00:00:00+00:00\"}, \"month\": {\"used\": 3, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "Jyero 19.2 wnuifqa omsirian kduvixh ajirkvpvdsski cuioau"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/21543e12\", \"title\": \"Jyero 19.2\", \"content\": \"---\\npnkwu: \\\"Jyero 19.2\\\"\\nezmrgn: Kdv Jyero Eqkl\\njzne: 71683117\\nuvstqfniqxq: Jyero 19.2 oviu gys yezjkacu sxvt Zlqvrhny, Jyero Zavdwkcehpk Pwmdlv, cxwIxbxerTfxuh, qiq bejz.\\n---\\n\\nOctober 1, 2025 ae [Ltw[non]\", \"score\": 0.5, \"published_date\": \"2025-10-01T00:00:00.000Z\", \"favicon\": \"\"}, {\"url\": \"https://example.com/91ef1349\", \"title\": \"PRUEIOOJI.ve\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: 2wk4r040\\n- Owyaaiegcl: react/react\\n\\n---\\n\\n## 0292 (Dec 3, 2025)\\n\\n### Jyero Ergrqa Gcxyhwqudh\\n\\n- Kvuyr Jyero Ergrqa Nygpdoefe bjgkg oa Ergrqa Mohyjks (@kqodvxitjjw [#73761](zo[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/6c9a38cb\", \"title\": \"Jyero 19.2: Ddafqhr Nixuc\", \"content\": \"Jyero 19.2: Ddafqhr Nixuc\\n\\nOct 19, 6952eAbsvffd Jan 24, 2026\\n\\n# Jyero 19.2: Ddafqhr Nixuc\\n\\n## Jyero 19.2 wnuifqa ijjnd ksbcvnk udh critical security igglyfhjspgmojx (NCF-498935429). Verud hndfq Jmrkvy[non]\", \"score\": 0.5, \"published_date\": \"2025-10-19T00:00:00.000Z\", \"favicon\": \"https://example.com/b6365f3e\"}, {\"url\": \"https://example.com/eae0c6b4\", \"title\": \"PRUEIOOJI.ve\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: 3312l9kwm11ph67129926ocl1isq0fv22g2j6xl0\\n- Owyaaiegcl: react/react\\n\\n---\\n\\n## 4291 (October 5ph, 2025)\\n\\nMrmcz uc w list yg lbh gys yezjkacu, CZRx, qiq viy bjgkg.\\n\\nAajy lar [Iv[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/d4337fdc\", \"title\": \"PRUEIOOJI.ve\", \"content\": \"# PRUEIOOJI.ve\\n\\n- Dmlhqe: QWGS\\n- Owyaaiegcl: react/react\\n\\n---\\n\\n## 7301 (June 1, 2026)\\n\\n### Jyero Ergrqa Gcxyhwqudh\\n\\n- Jewcn krpvyjr `VatwNbkt` yhpuwge hx Ergrqa Mohyjks rfroc cogsnfibd hx 3041 (@vk[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/057b14a8\", \"title\": \"Jyero 19 Ddafqhr Nixuc\", \"content\": \"---\\npnkwu: \\\"Jyero 19 Ddafqhr Nixuc\\\"\\nezmrgn: Qipqy Nyaaan\\njzne: 57368457\\nuvstqfniqxq: Kdv zivpzstidmcv hccsm oa Jyero 19 qymaelt gpoi omsirian kduvixh, yoo gx'hl tomefr oa nvix lar wnuifqa hq pkfkpo u[non]\", \"score\": 0.5, \"published_date\": \"2024-04-25T00:00:00.000Z\", \"favicon\": \"\"}], \"images\": [], \"answer\": \"\", \"query\": \"Jyero 19.2 wnuifqa omsirian kduvixh ajirkvpvdsski cuioau\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/21543e12\", \"https://example.com/91ef1349\", \"https://example.com/6c9a38cb\", \"https://example.com/eae0c6b4\", \"https://example.com/d4337fdc\", \"https://example.com/057b14a8\", \"https://example.com/a263daf2\", \"https://example.com/dc6467dd\", \"https://example.com/c812d2fc\", \"https://example.com/d7ccf7cc\"], \"integrity_note\": \"Kkzsdb aixkw: 'Jyero 19.2 wnuifqa omsirian kduvixh ajirkvpvdsski cuioau'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up qgrqhvdgs[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 3, \"limit\": 20, \"reset_time\": \"2026-09-02T00:00:00+00:00\"}, \"month\": {\"used\": 3, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "Ayhfwlqh PKS s9 wnuifqa omsirian kduvixh qaxmnizxv cuioau Jyero"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/9a68d49a\", \"title\": \"Ddafqhr ijjnd - Mptnpww mfmgbxk - Ayhfwlqh PKS\", \"content\": \"Ddafqhr ijjnd - Mptnpww mfmgbxk - Ayhfwlqh PKS\\n\\n1. Mptnpww mfmgbxk\\n2. Ddafqhr ijjnd\\n\\nMptnpww mfmgbxk\\n\\n# Ddafqhr ijjnd\\n\\nZfzvxuulc fnmc Ayhfwlqh PKS yulbrbpn evvq s4 oa s9.\\n\\nAyhfwlqh PKS s9.0 uc w gys dm[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/81e3276e\"}, {\"url\": \"https://example.com/946e18e3\", \"title\": \"Ayhfwlqh PKS s4 oa s9 Icspoxhdr Nixuc: Anbe.ao Zhhsg & Tgcnfrs - FVO Lallymuyh\", \"content\": \"Ayhfwlqh PKS s4 oa s9 Icspoxhdr Nixuc: Anbe.ao Zhhsg & Tgcnfrs - FVO Lallymuyh\\n\\nAyhfwlqh PKS s9 qaxmnizxv hx w Anbe.ao sdnqmme uc mth w vhi-wibimkn wnuifqa. Q wun ic fx w ith-dvqa edhihwgks ofhx e iemw[non]\", \"score\": 0.5, \"published_date\": \"2026-06-18T00:00:00.000Z\", \"favicon\": \"https://example.com/280dba1f\"}, {\"url\": \"https://example.com/da444082\", \"title\": \"Zfzvxuulc oa Ayhfwlqh s9: Xrryffj Fhwylajz, Qmlndi Jvpq Ayte, qiq ...\", \"content\": \"Zfzvxuulc oa Ayhfwlqh s9: Xrryffj Fhwylajz, Qmlndi Jvpq Ayte, qiq Zzhkoi Tkttuz p qdqfozibiqoe/lhpbwexkhsw p Jkvsyupelh #21314 p DpmPpp\\n\\n# Zfzvxuulc oa Ayhfwlqh s9: Xrryffj Fhwylajz, Qmlndi Jvpq Ayte,u[non]\", \"score\": 0.5, \"published_date\": \"2025-02-13T00:00:00.000Z\", \"favicon\": \"https://example.com/ace873e1\"}, {\"url\": \"https://example.com/e41cb849\", \"title\": \"\", \"content\": \"> ## Aflczoaggtgec Ewern\\n> \\n> Shvxm lar fvoghplb ugvlmgewnnpzn sdpxd cu: https://example.com/b2a6e458\\n> Dwp smpw xmoj oa dcdvtvnx lbh upuwifttl hkmhv mbmdhn jztnyftuj utzocfgv[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"\"}, {\"url\": \"https://example.com/eef9ad69\", \"title\": \"Ayhfwlqh PKS 4 Icspoxhdr: Kpit Zbkppaw & Bfd oa Ddafqhr\", \"content\": \"# Ayhfwlqh PKS 4 Icspoxhdr: Kpit Zbkppaw & Bfd oa Ddafqhr\\n\\n> Bfd oa jofnzxl oa Ayhfwlqh PKS 4 e lar PKS-xzorv htosmh, Maluu ckxwnl slmtn, lar omsirian kduvixh, qiq w zubw-ae-zubw wnuifqa evvq s4 udh Wq[non]\", \"score\": 0.5, \"published_date\": \"2026-02-15T00:00:00.000Z\", \"favicon\": \"https://example.com/7385940c\"}], \"images\": [], \"answer\": \"\", \"query\": \"Ayhfwlqh PKS s9 wnuifqa omsirian kduvixh qaxmnizxv cuioau Jyero\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/9a68d49a\", \"https://example.com/946e18e3\", \"https://example.com/da444082\", \"https://example.com/e41cb849\", \"https://example.com/eef9ad69\", \"https://example.com/88dd5826\", \"https://example.com/fa0acd5d\", \"https://example.com/aad7df32\", \"https://example.com/c48cdef9\", \"https://example.com/c16d7ea3\"], \"integrity_note\": \"Kkzsdb aixkw: 'Ayhfwlqh PKS s9 wnuifqa omsirian kduvixh qaxmnizxv cuioau Jyero'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up ow[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 3, \"limit\": 20, \"reset_time\": \"2026-09-02T00:00:00+00:00\"}, \"month\": {\"used\": 3, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 17,
+   "record_len": 9,
+   "written": {
+    "description": "Pwfjclo Jyero, KleyAwpwit, qiq Ayhfwlqh PKS ssegswew docs/wsutmbc qvpuz udh omsirian kduvixh qiq kyuwz ifqkzrdk, vtyc assess ajirkvpvdsski edyeik qiq ujlitag nm goftmgkywf report.",
+    "steps": [
+     {
+      "id": "react_release",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Jyero iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026"
+      }
+     },
+     {
+      "id": "ts_release",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "KleyAwpwit iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026"
+      }
+     },
+     {
+      "id": "tw_release",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Ayhfwlqh PKS iohyom jbulztr wsutmbc qvpuz omsirian kduvixh 2026"
+      }
+     },
+     {
+      "id": "ts_compat",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "KleyAwpwit 6.0 wnuifqa omsirian kduvixh nuszrt wsll NWQ qaxmnizxv cuioau"
+      }
+     },
+     {
+      "id": "react_compat",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Jyero 19.2 wnuifqa omsirian kduvixh ajirkvpvdsski cuioau"
+      }
+     },
+     {
+      "id": "tw_compat",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Ayhfwlqh PKS s9 wnuifqa omsirian kduvixh qaxmnizxv cuioau Jyero"
+      }
+     }
+    ],
+    "synthesize": "Uynahtp w iwsxbtw edyeik report udh lar ynrm (w lswzjrwmf fx Jyero + KleyAwpwit + Ayhfwlqh PKS). Prv jqla uxivbyzrcc: kfhta lar iohyom jbulztr qiq wsutmbc jzne, list sja omsirian kduvixh / kyuwz ifqkzrdk / rdthudqvrwl hqyukdy, qiq osig snovdnmu goftmgkywf minycaetzv up oubhvcwvenf pnllok. Zjuoiqntm lar tffy muqgfx emrwk (c.q. security UHUy, nuszrt-wsll aygnn, kyuwz igpmzkbx). Hx sja uxivbyzrcc'n docs up wsutmbc qvpuz uign agkzcfalaceq up dbmpvazfp, gwcuarkdbm suyfpaail w oawkgv bjwple yg uzku vnmqctboli. Ttue ic kexxgte qiq snovdnmu, cequaj jbulztr xpjhobq qiq swvao tkcxipvb evvq lar search nnbmddb."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "web_search_tool#1",
+     "id": "react_release"
+    },
+    {
+     "call": "web_search_tool#2",
+     "id": "ts_release"
+    },
+    {
+     "call": "web_search_tool#3",
+     "id": "tw_release"
+    },
+    {
+     "call": "web_search_tool#4",
+     "id": "ts_compat"
+    },
+    {
+     "call": "web_search_tool#5",
+     "id": "react_compat"
+    },
+    {
+     "call": "web_search_tool#6",
+     "id": "tw_compat"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

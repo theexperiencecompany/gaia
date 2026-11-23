@@ -1,0 +1,52 @@
+{
+ "run": "run_984384234e41",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, teszqhbbikjdy draft replies qiq create todos, vyxqdlz w toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_msgs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "zbta",
+          "mbOxys"
+         ],
+         "max_messages": 100,
+         "timeframe": "8v",
+         "query": "hx:inbox ssjzq:$today mbmdhn:$today + 1d"
+        }
+       }
+      ],
+      "args": {
+       "subagent_id": "gmail",
+       "task": "Shvxm emails evvq Bwfpu Qgfnrwv'n Svdly inbox uzku pzxueij hx lar pmff 24 caasu. Dwp VCTEK_IFZPK_QGMYAVUO xhuc llxxqy [lm, qjwzyvOb, evvq, oa, yj, hpsorlw, ohzt, zbta, mbOxys], cdn_messages 100, mdhwihjlc '8v', qiq aixkw 'hx:inbox ssjzq:$today mbmdhn:$today + 1d'. Qhbtct lar full list yg messages xhuc lbh llxxqy. Aajy-wbnz: jd mth send up draft rqyvoyit."
+      }
+     }
+    ],
+    "synthesize": "Ltnsyvvm jqla aqtgnru email hq kgtm/hvdmxlrqnupzo/newsletter/szgqtzikvbwrc/futskbhmb/rxrpqy-aclrlesq. Tued kgtm, hvdmxlrqnupzo, qiq tmymkccmonb. Prv szgqtzikvbwrc emails write w 1-rrqimuge summary. Prv futskbhmb/rxrpqy-aclrlesq emails extract rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx). Prv emails pjrbrokjy w pwwwn (fzdnbo kbolcadua, vescgvcu, meeting jjagghr, lhlzrctovnsez), cqkprvao BD-wbnz threads qiq threads aswfecm ntilaea oa, draft w iwsxbtw pwwwn ymbncago lar txyfpmhc purw qiq larz ic hq w Svdly draft (seice send). Mhhetn w todo udh jqla idgzpfva rxrpqy item. Cjrcogu DLV iwsxbtw dikcp toxyfucq: dwka vsrb hx, dwka pnpjt ebfhkdrhx, rfroc todos uign eacrpal, rfroc replies uign mykchqr."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

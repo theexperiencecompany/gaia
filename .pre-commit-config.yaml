@@ -1,6 +1,9 @@
 # Commit hooks only. The push-time CI check is git's own pre-push hook
 # (scripts/dev/pre-push.sh): prek stashes the tree around its hooks, which a
 # multi-minute check turned into lost edits.
+# Every local hook starts with `mise exec --`: a hook inherits the PATH of
+# whatever shell ran git, which can name another uv or node than mise.toml pins
+# (tools/lints/check_tool_pins.py fails on one that does not).
 default_install_hook_types: [pre-commit]
 default_stages: [pre-commit]
 
@@ -23,7 +26,11 @@ repos:
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/api/openapi\.json|libs/shared/ts/src/api/generated/schema\.d\.ts|apps/web/public/.*|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
+        # The edition-explorer asset bundle is one vendored file of base64
+        # fonts and public-domain artwork (~530KB). Same rationale as the
+        # lockfiles and i18n bundles already listed: generated/vendored bulk
+        # that is reviewed once, not edited by hand.
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/api/openapi\.json|libs/shared/ts/src/api/generated/schema\.d\.ts|apps/web/public/.*|apps/api/app/services/briefing/editions/explorer/assets/assets\.json|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
@@ -35,6 +42,17 @@ repos:
       - id: detect-private-key
         priority: 0
 
+  - repo: local
+    hooks:
+      # Before every hook that runs node or pnpm: a fresh worktree has no node_modules.
+      - id: ensure-node-modules
+        name: node_modules installed (one-time pnpm install in a fresh checkout)
+        entry: mise exec -- bash scripts/dev/ensure-node-modules.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        priority: 0
+
   # Ruff is version-sensitive (#1063): every surface runs the one the root
   # pyproject's lint group locks, so there is no second pin to bump.
   - repo: local
@@ -43,38 +61,54 @@ repos:
         name: ruff check
         # Autofix at commit time — parity with the biome hook below. A fix
         # fails the commit so the corrected files get re-staged.
-        entry: uv run --frozen --no-build --isolated --only-group lint ruff check --force-exclude --fix --exit-non-zero-on-fix
+        entry: mise exec -- uv run --frozen --no-build --isolated --only-group lint ruff check --force-exclude --fix --exit-non-zero-on-fix
         language: system
         types_or: [python, pyi]
         priority: 0
       - id: ruff-format
         name: ruff format
-        entry: uv run --frozen --no-build --isolated --only-group lint ruff format --force-exclude
+        entry: mise exec -- uv run --frozen --no-build --isolated --only-group lint ruff format --force-exclude
         language: system
         types_or: [python, pyi]
+        priority: 0
+
+      # The touch-to-fix ratchets CI gates on, at commit time instead of 40
+      # minutes into a lane. Repo-wide scan, filename-independent: the ratchet
+      # only fails on a file the change touches, which changes.sh derives from
+      # the tree. `mypy-tests` is NOT here -- its first run in a fresh worktree
+      # builds mypy's cache (~3.5 min), which is pre-push work, not commit work.
+      - id: plr-complexity
+        name: plr-complexity ratchet (PLR0911/0912/0913/0915)
+        # uv runs CI's script on the .python-version interpreter.
+        entry: mise exec -- uv run --no-project --isolated python tools/lints/check_plr_complexity.py
+        language: system
+        # The baseline is an nx input too: a commit that only re-baselines still
+        # has to prove the ratchet accepts it.
+        files: '\.py$|^tools/lints/plr_complexity_baseline\.txt$'
+        pass_filenames: false
         priority: 0
 
   - repo: local
     hooks:
       - id: lint-imports
         name: import-linter (app.constants/app.config/app.utils stay leaves)
-        entry: bash -c 'cd apps/api && uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache'
+        entry: mise exec -- bash -c 'cd apps/api && uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache'
         language: system
         files: '^apps/api/(app/.*\.py|pyproject\.toml)$'
         pass_filenames: false
 
       - id: uv-lock
         name: every uv.lock still resolves from its pyproject.toml
-        entry: bash scripts/ci/audit.sh uv-lock
+        entry: mise exec -- bash scripts/ci/audit.sh uv-lock
         language: system
         files: '(^|/)(pyproject\.toml|uv\.lock)$'
         pass_filenames: false
 
-      - id: openui-gen-prompt
-        name: openui generated prompt up to date
-        entry: bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'
+      - id: openui-prompts
+        name: OpenUI prompts up to date
+        entry: mise exec -- node scripts/ci/checks.mjs openui-prompts
         language: system
-        files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
+        files: '^(scripts/openui/|scripts/ci/checks\.mjs|apps/web/src/config/openui/|libs/artifacts/src/|libs/shared/ts/src/artifacts/|apps/api/app/agents/prompts/(openui_generated\.txt|artifacts/)|pnpm-lock\.yaml)'
         pass_filenames: false
 
       # `files:` selects exactly what the ci:api-schema nx target's inputs do —
@@ -84,7 +118,7 @@ repos:
       - id: api-types
         name: openapi.json + generated API types up to date
         entry: >-
-          bash -c 'set -e; mise run api:types; regenerated=$(git diff --name-only --
+          mise exec -- bash -c 'set -e; mise run api:types; regenerated=$(git diff --name-only --
           apps/api/openapi.json libs/shared/ts/src/api/generated/schema.d.ts); if [ -n
           "$regenerated" ]; then echo "api-types regenerated and staged:"; echo
           "$regenerated"; git add -- $regenerated; else echo "api-types: already in sync";
@@ -96,7 +130,7 @@ repos:
       - id: analytics-types
         name: analytics catalog JSON + generated event types up to date
         entry: >-
-          bash -c 'set -e; mise run analytics:types; regenerated=$(git status --porcelain
+          mise exec -- bash -c 'set -e; mise run analytics:types; regenerated=$(git status --porcelain
           -- libs/shared/ts/src/analytics/generated | cut -c4-); if [ -n "$regenerated" ];
           then echo "analytics-types regenerated and staged:"; echo "$regenerated"; git add
           -- $regenerated; else echo "analytics-types: already in sync"; fi'
@@ -106,7 +140,7 @@ repos:
 
       - id: generate-changelog-pages
         name: Generate changelog sub-pages from release-notes.mdx
-        entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes.mdx docs/release-notes/'
+        entry: mise exec -- bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes.mdx docs/release-notes/'
         language: system
         files: ^docs/release-notes\.mdx$
         pass_filenames: false
@@ -115,7 +149,7 @@ repos:
         name: Biome check (lint + format + imports)
         # pnpm exec, not npx: the same binary CI runs (pnpm-lock.yaml pins it),
         # never one npx resolves from the registry.
-        entry: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
+        entry: mise exec -- pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
         language: system
         files: \.(js|jsx|ts|tsx|json|css|html)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
@@ -124,14 +158,30 @@ repos:
         name: Doc comments state the contract (JSDoc / line-comment content gate)
         # Staged files are passed as explicit args (the CHANGED_FILES contract
         # in scripts/ci/lib/explicit-file-list.mjs), so only they are scanned.
-        entry: node scripts/ci/checks.mjs doc-comments
+        entry: mise exec -- node scripts/ci/checks.mjs doc-comments
         language: system
         files: \.(js|jsx|ts|tsx|mjs|cjs)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: bot-handles
+        name: Every bot link points at the live handle
+        # Repo-wide, never staged-file scoped: the copies live in the README, the
+        # docs and the API prompt, and the one that drifts is the one nobody edited.
+        entry: mise exec -- node scripts/ci/checks.mjs bot-handles
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: skills-symlink
+        name: .claude/skills stays a symlink to .agents/skills
+        entry: mise exec -- node scripts/ci/checks.mjs skills-symlink
+        language: system
+        pass_filenames: false
+        files: ^\.(claude|agents)/
   - repo: local
     hooks:
       - id: react-doctor
         name: react-doctor
-        entry: sh -c 'react_doctor_output=$(mktemp "${TMPDIR:-/tmp}/react-doctor-hook.XXXXXX"); if react-doctor --staged --blocking warning > "$react_doctor_output" 2>&1; then rm -f "$react_doctor_output"; else cat "$react_doctor_output" >&2; rm -f "$react_doctor_output"; printf "%s\n" "React Doctor found staged regressions." "Run react-doctor --staged --blocking warning to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2; fi'
+        entry: mise exec -- sh -c 'react_doctor_output=$(mktemp "${TMPDIR:-/tmp}/react-doctor-hook.XXXXXX"); if react-doctor --staged --blocking warning > "$react_doctor_output" 2>&1; then rm -f "$react_doctor_output"; else cat "$react_doctor_output" >&2; rm -f "$react_doctor_output"; printf "%s\n" "React Doctor found staged regressions." "Run react-doctor --staged --blocking warning to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2; fi'
         language: system
         pass_filenames: false

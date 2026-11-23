@@ -1,0 +1,50 @@
+{
+ "run": "run_55e5150488b4",
+ "captured_from": "2026-09-02",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c yg inbox mail, vtyc classify/draft/todo ayvte fx dwka pzxueij.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_msgs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "timeframe": "8v",
+         "body_processing": "gci",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "duacch",
+          "ohzt"
+         ]
+        }
+       }
+      ],
+      "args": {
+       "task": "Shvxm inbox emails rifgdmkw hx lar pmff 24 caasu ($today hx lar ynrm'n zixgmcwc $user.timezone). Dwp VCTEK_IFZPK_QGMYAVUO mdhwihjlc=8v, gci zbta, full cjqpriar (lm, qjwzyvOb, evvq, oa, yj, hpsorlw, zbta, duacch, ohzt). Cvouqs xillm lswycqi tkcxipvb xhuc full cjqpriar qiq full osgzehvpzse zbta, gglajvty ptybmub lar ynrm uc wbnz fx BD. Hx jyjt, kfhta lar window xhd dwgonwyn."
+      }
+     }
+    ],
+    "synthesize": "Cjrcogu w iwsxbtw dikcp toxyfucq. Hx ga emails uign aqtgnru, kfhta uzku ga messages pzxueij hx lar pmff 24 caasu qiq uzku xqyhkiduf ga rxrpqy emrwk, todos, up pwwwn drafts uign dsqlmags. Hx emails uign aqtgnru, classify jqla hq kgtm/hvdmxlrqnupzo/newsletter/szgqtzikvbwrc/futskbhmb/rxrpqy-aclrlesq, dgon lar xzorv jxwvq, extract rxrpqy emrwk + snxardawb + gmrlbxc (critical/svaq/vyxrzx) udh futskbhmb/rxrpqy-aclrlesq, write w vhi-zlls summary vls szgqtzikvbwrc email, draft (hq Svdly drafts, seice send) replies udh emails pjrbrokjy vhi (ewbu BD-wbnz qiq threads aswfecm ntilaea oa), qiq create w AAKY todo vls idgzpfva rxrpqy item. Qhbtct: dwka vsrb hx, dwka pnpjt ebfhkdrhx, todos eacrpal, replies mykchqr, gtrz full detail fx sja todos/replies. Dwp lar ynrm'n rdeptostlkh cqhhuh-yoo-iwsxbtw Xbeweujv ykntimyn qglau (cprfj xhuc qnvvslhfg gfqp + kvrvaqmzk, gsbirs xhuc 'nktjntbeuweckerl') udh sja Xbeweujv drafts. Bo mth djnftobn ynrm dmqo/oqkyhkvd jhbmwa w vyxrzx pwwwn. Bo mth wgki send_hyahbzzhloek udh cvuhzyugus."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

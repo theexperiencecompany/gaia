@@ -14,14 +14,28 @@
   "ignore": {
     // Agent-skill bundles: SKILL.md files and the example templates they ship,
     // installed here and read by agents — never imported, built or shipped by
-    // this repo. The two trees are copies of one set, and the templates that
-    // triggered this (motion/templates/*.tsx) are byte-identical across both,
-    // so a finding here is a finding in an upstream file and "fixing" it turns
-    // the next skill update into a merge conflict. Same call the other
+    // this repo. .claude/skills is a symlink to .agents/skills, listed too for
+    // walkers that follow it. A finding in the templates that triggered this
+    // (motion/templates/*.tsx) is a finding in an upstream file, and "fixing"
+    // it turns the next skill update into a merge conflict. Same call the other
     // scanners already make for these paths: [tool.ruff] extend-exclude and
     // [tool.bandit] exclude_dirs in pyproject.toml, and biome.json, which
     // excludes .claude and .agents outright.
-    "files": [".agents/skills/**", ".claude/skills/**"],
+    // Explorer briefing edition templates: plain JS read as text and injected
+    // into a headless-Chromium page by the briefing renderer to produce a
+    // poster image — never imported, bundled, or executed by the web app, so
+    // there is no fast-refresh/tree-shaking/type-checking reason to touch
+    // their internals. The chained `.filter().map()`/`.map().filter()` calls
+    // js-combine-iterations flags run once per render against a handful of
+    // template items, so the "extra iteration" has no measurable cost, and
+    // rewriting hand-authored template JS to satisfy a React-oriented lint
+    // rule would only make future template edits (done by design, not by
+    // import) harder to diff against upstream template updates.
+    "files": [
+      ".agents/skills/**",
+      ".claude/skills/**",
+      "apps/api/app/services/briefing/editions/explorer/js/**",
+    ],
     "overrides": [
       // The bridge `add`/setup wizard collects a URL server's headers and then
       // its name through interactive terminal prompts. server-sequential-
@@ -38,6 +52,13 @@
       // finish one prompt before showing the next.
       {
         "files": ["**/commands/bots/handler.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // `gaia up` asks for each unset share domain in turn on the terminal, and
+      // each answer is checked against the domains already chosen this run, so
+      // the next prompt depends on the previous answer as well as on stdin.
+      {
+        "files": ["**/src/lib/share-domains.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
       // deliverSources MUST await each send before the next: the bubbles of one
@@ -57,6 +78,13 @@
       // fanning them out would deliver "here is how to start" before "hi".
       {
         "files": ["libs/shared/ts/src/bots/link-codes.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // A bot's browser progress is a thread the user reads top to bottom:
+      // each card (session, step, handoff, result) is sent after the previous
+      // one lands, so a step never arrives before the session that opened it.
+      {
+        "files": ["libs/shared/ts/src/bots/conversation/browser-progress.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
       // Tunnel.run() is a reconnection supervisor loop: each iteration awaits

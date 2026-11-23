@@ -1,15 +1,17 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Delete02Icon } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import CanvasViewer from "@/features/todo/components/CanvasViewer";
 import { OpenTodoChatButton } from "@/features/todo/components/OpenTodoChatButton";
+import { SubscriptionGateLine } from "@/features/todo/components/SubscriptionGateLine";
 import { SubTodosSection } from "@/features/todo/components/SubTodosSection";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
@@ -81,9 +83,27 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </p>
           )}
 
-          {/* Canvas working memory — only for gaia-tracked todos */}
-          {isTrackedTodo(todo) && (
-            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
+          {(isTrackedTodo(todo) ||
+            todo.trigger_subscriptions.some(({ gate }) => gate)) && (
+            <PanelRowGroup>
+              {todo.trigger_subscriptions.map(
+                (subscription) =>
+                  subscription.gate && (
+                    <SubscriptionGateLine
+                      // The stored text resets the line's draft once a save comes back.
+                      key={`${subscription.id}:${subscription.gate.display_condition}`}
+                      todoId={todo.id}
+                      subscriptionId={subscription.id}
+                      triggerName={subscription.trigger_name}
+                      gate={subscription.gate}
+                    />
+                  ),
+              )}
+              {/* Canvas working memory — only for gaia-tracked todos */}
+              {isTrackedTodo(todo) && (
+                <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
+              )}
+            </PanelRowGroup>
           )}
 
           {isTrackedTodo(todo) && !todo.parent_todo_id && (
@@ -153,17 +173,16 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
           <div className="flex items-center gap-2">
             {isTrackedTodo(todo) && <OpenTodoChatButton todoId={todo.id} />}
-            <Button
+            <GaiaButton
+              variant="danger-soft"
               type="button"
               isIconOnly
-              color="danger"
               size="sm"
-              variant="flat"
               onPress={handleDelete}
               aria-label="Delete todo"
             >
               <Delete02Icon className="size-5" />
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       </SidebarFooter>

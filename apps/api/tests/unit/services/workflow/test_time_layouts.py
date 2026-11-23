@@ -6,12 +6,16 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
+from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 from app.services.workflow.playbook.time_layouts import (
     ISO_DATE_LAYOUT,
     ISO_DATETIME_LAYOUT,
     KNOWN_TIME_LAYOUTS,
     detect_layout,
     render_iso,
+    renders_inside,
+    slot_layout,
+    time_slot_layout,
 )
 
 
@@ -21,7 +25,8 @@ class TestDetectLayout:
         ("value", "layout"),
         [
             ("2026-09-06 09:00:00", "%Y-%m-%d %H:%M:%S"),
-            ("2026-09-06T09:00:00+00:00", "%Y-%m-%dT%H:%M:%S%z"),
+            ("2026-09-06T09:00:00+00:00", "%Y-%m-%dT%H:%M:%S%:z"),
+            ("2026-09-06T09:00:00+0000", "%Y-%m-%dT%H:%M:%S%z"),
             ("2026-09-06T09:00:00Z", "%Y-%m-%dT%H:%M:%SZ"),
             ("2026-09-06T09:00:00", "%Y-%m-%dT%H:%M:%S"),
             ("2026-09-06 09:00", "%Y-%m-%d %H:%M"),
@@ -31,7 +36,18 @@ class TestDetectLayout:
     )
     def test_each_known_layout_is_told_apart(self, value: str, layout: str) -> None:
         assert detect_layout(value) == layout
-        assert layout in KNOWN_TIME_LAYOUTS
+        assert layout.replace("%:z", "%z") in KNOWN_TIME_LAYOUTS
+
+    @pytest.mark.parametrize(
+        "value",
+        ["2026-09-06T09:00:00+00:00", "2026-09-06T09:00:00+0530", "2026-09-06 09:00:00-07:00"],
+    )
+    def test_an_offset_renders_back_as_it_was_written(self, value: str) -> None:
+        """Offsets read alike with or without a colon, but are written differently; a replay sends what the run sent."""
+        layout = detect_layout(value)
+        assert layout is not None
+        moment = datetime.strptime(value, layout.replace("%:z", "%z"))
+        assert moment.strftime(layout) == value
 
     def test_the_most_specific_layout_wins(self) -> None:
         """A value with seconds must not be read as the minutes-only layout, which is what a table in the wrong order would do."""
@@ -83,6 +99,70 @@ class TestRenderIso:
 
     def test_a_datetime_is_to_the_second_with_its_offset(self) -> None:
         assert render_iso(self.MOMENT, date_only=False) == "2026-03-14T09:30:07+01:00"
-        assert datetime(2026, 3, 14, 9, 30, 7, tzinfo=UTC).strftime(ISO_DATETIME_LAYOUT) == (
-            "2026-03-14T09:30:07+0000"
-        )
+        # The layout a bare placeholder renders as, so a recorded value in it needs no slot.
+        assert self.MOMENT.strftime(ISO_DATETIME_LAYOUT) == render_iso(self.MOMENT, date_only=False)
+
+
+@pytest.mark.unit
+class TestRendersInside:
+    """A time placeholder inside text renders as ISO 8601 there."""
+
+    @pytest.mark.parametrize(
+        ("placeholder", "example", "renders"),
+        [
+            ("$today", "Run at 2026-01-01 for someone", True),
+            ("$now", "Sent 2026-01-01T09:00:00+00:00 by Dana", True),
+            ("$now", "Sent 2026-01-01T09:00:00Z by Dana", True),
+            ("$today", "Plan for September 5, 2026", False),
+            ("$today", "Due 2026-01-01 09:00:00", False),
+            ("$today", "a title with no date", True),
+        ],
+    )
+    def test_it_holds_only_where_the_recorded_date_was_iso(
+        self, placeholder: str, example: str, renders: bool
+    ) -> None:
+        match = PLACEHOLDER_TOKEN.fullmatch(placeholder)
+        assert match is not None
+        assert renders_inside(match, example) is renders
+
+
+@pytest.mark.unit
+class TestTimeSlotLayout:
+    """When a whole time placeholder must carry a layout to render as the recorded value."""
+
+    @pytest.mark.parametrize(
+        ("placeholder", "example", "layout"),
+        [
+            ("$now", "2026-09-06T09:00:00+00:00", None),
+            ("$today", "2026-09-06", None),
+            ("$now", "2026-09-06T09:00:00+0000", "%Y-%m-%dT%H:%M:%S%z"),
+            ("$today", "2026-09-06 09:00:00", "%Y-%m-%d %H:%M:%S"),
+            ("$today + 1d 09:00", "2026-09-06", "%Y-%m-%d"),
+            ("$now", "soon", None),
+        ],
+    )
+    def test_a_slot_is_needed_only_where_iso_would_not_match(
+        self, placeholder: str, example: str, layout: str | None
+    ) -> None:
+        match = PLACEHOLDER_TOKEN.fullmatch(placeholder)
+        assert match is not None
+        assert time_slot_layout(match, example) == layout
+
+
+@pytest.mark.parametrize(
+    ("value", "named", "layout"),
+    [
+        ("2026-10-08T14:50:20Z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ"),
+        ("2026-09-10T14:50:00-04:00", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%:z"),
+        ("03/11/2026", "%m/%d/%Y", "%m/%d/%Y"),
+        ("10/09/2026 14:50 -04:00", "%d/%m/%Y %H:%M %:z", "%d/%m/%Y %H:%M %:z"),
+        ("2026-11-20", None, "%Y-%m-%d"),
+        ("Plan for September 5, 2026", "Plan for %B %d, %Y", "Plan for %B %d, %Y"),
+        ("soon", "%Y", None),
+        ("soon", None, None),
+    ],
+)
+def test_a_slot_renders_in_the_named_layout_only_when_it_writes_the_value_back(
+    value: str, named: str | None, layout: str | None
+) -> None:
+    assert slot_layout(value, named) == layout

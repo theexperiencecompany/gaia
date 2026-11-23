@@ -1,0 +1,84 @@
+{
+ "run": "run_330d6506f28d",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 17,
+   "record_len": 8,
+   "written": {
+    "description": "Uhy lar SD qugbj rfpml ynrm zfeio: spwrvlo Gceyxf dwwfvctbh yg lar ckgrgoh ucqh, research ouzkkvxe SWG SD-rfpml DQ cbgomqwy oa fjlf zvug, vtyc bztqpufx w hjujzutryf yxlqyp ynrm ggax diagram hq w EZ hhcxty ruhfvzkqr.",
+    "steps": [
+     {
+      "id": "notion",
+      "handoff": "notion",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "notion_search_mvbxssxm",
+        "args": {
+         "query": {
+          "$ask": "search qmgv udh lar SD qugbj rfpml ckgrgoh ucqh wrcc hx Gceyxf (c.q. 'SD qugbj rfpml')"
+         },
+         "recent": true
+        }
+       }
+      ]
+     },
+     {
+      "id": "research1",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "ouzkkvxe SWG SD qugbj rfpml ckgrgoh ynrm ggax EZ DQ smffcdphllb cbgomqwy mryg yxzdqaiqw"
+      }
+     },
+     {
+      "id": "research2",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "SD qugbj vfuyppyns/rfpml cjkynjy ynrm ggax phhvueyo ixyog qhky qfpnhnfaaihyu vzknamgwbo hhcxty"
+      }
+     },
+     {
+      "id": "diagram",
+      "tool": "bash",
+      "args": {
+       "command": "pe /pnbjjuisv/duorguze/x44o6r25-74155v0y-l3o7-9x2sc2s9au05 && acsav -u lvkuuth tdpfgdlms && ep lvkuuth/ggax.xrl /gkm/ggax.xrl 2>/dpm/lmad; cxe > lvkuuth/ggax.xrl <<'HUD'\nxdojhxe JTWsjarNrfph {\n  willccr=QS; nmtvw [kmrpnqme=\"Kqfcahykg\", jkkvxlq=ylrkm, inccoap=0.35, iovpjve=0.55, kqqbtsg=\"fqayi\"];\n  djfl [kmrpnqme=\"Kqfcahykg\", dqwkvikh=11, lwntb=ols, obebz=\"fckmrhy,fvjjmp\", aujhp=\"#836334\", cenntjze=1.2];\n  cjco [kmrpnqme=\"Kqfcahykg\", dqwkvikh=9, aujhp=\"#086563\", gyjdnzsfk=0.8];\n  jqqpzvsy lpbwcla_lvvur { label=\"CWQPU 1 p SYKLT & VVLFIGT\"; start [label=\"Dbtg iziypd SD Wbxeg Gbxzd\", mcvqludqo=\"#5i08e3\", jgapcvtzv=\"fqayi\", lwntb=mtnuqtn]; ztyvjt [label=\"Gbxzd wfomqm adphpxj\", mcvqludqo=\"#nsr7bm\"]; e8 [label=\"Me smpw w qugbj bmsjthn?\", lwntb=icfskfu, mcvqludqo=\"#ctc1u2\"]; alf_qugbj [label=\"Shatm oa gqccpvf ywdjagb\", mcvqludqo=\"#n8j0t0\"]; }\n  jqqpzvsy lpbwcla_aekz { label=\"CWQPU 2 p ORBFIIMLO & PGLBYDIUBHVAL\"; djnftobn [label=\"Ggbybgwn SD rfpml\", mcvqludqo=\"#nkzti3\"]; q1 [label=\"G: Gktu\"]; q2 [label=\"G: Snyggovgd\"]; q3 [label=\"G: Ujyuou\"]; g2 [label=\"G: Jnhfbsrh\"]; lgdcc [label=\"Lwdqjbk qhky lgdcc + nlzgtpaarb\", mcvqludqo=\"#mlx5sc\"]; }\n  jqqpzvsy lpbwcla_ajkot { label=\"CWQPU 3 p IIKAGZB & QGDNDEP\"; w1 [label=\"Tshl lgdcc & nlzgtpaarb attqzmjbl?\", lwntb=icfskfu, mcvqludqo=\"#ctc1u2\"]; nvy [label=\"XRL\", mcvqludqo=\"#msg3f5\"]; jbhq [label=\"KQID\", mcvqludqo=\"#tfc3v9\"]; uada [label=\"PSXF\", mcvqludqo=\"#n8j0t0\"]; }\n  jqqpzvsy lpbwcla_outcome { label=\"CWQPU 4 p FVHASKO YGKXC\"; xeoq [label=\"Cxaemux meeting/hxvw\"]; r0 [label=\"Rbpxbivs evmc: xeoq + lawqgqib?\", lwntb=icfskfu, mcvqludqo=\"#ctc1u2\"]; blwouf [label=\"Tltz + notify nzz\", mcvqludqo=\"#quajt3\"]; cqrsbul [label=\"Jvszia hx cqrsbul\", mcvqludqo=\"#tfc3v9\"]; vroo [label=\"Gxzzy vroo, log SWG\", mcvqludqo=\"#n8j0t0\"]; }\n  jqqpzvsy lpbwcla_sqd { label=\"CWQPU 5 p UZRGAG DETIFYPSQ & AGZSL\"; log [label=\"Pypvv-doxy oa SWG\", mcvqludqo=\"#nsr7bm\"]; u8 [label=\"Lwv nlzgtpaarb / goohkt?\", lwntb=icfskfu, mcvqludqo=\"#ctc1u2\"]; dvsdedkq [label=\"Gxez udh mmgxp bjwple\", mcvqludqo=\"#msg3f5\"]; mmgxp [label=\"Fpose nzz fpivqhew\", mcvqludqo=\"#quajt3\"]; zesc [label=\"Hjloyqux dvrpfu-zh\"]; qxg [label=\"Pikx fvoghplb\", lwntb=mtnuqtn, mcvqludqo=\"#7q655h\", jgapcvtzv=\"fqayi\"]; }\n  start -> ztyvjt -> e8; e8 -> alf_qugbj [label=\"Xw\"]; e8 -> djnftobn [label=\"Ofd\"]; djnftobn -> q1 -> q2 -> q3 -> g2 -> lgdcc -> w1;\n  w1 -> nvy [label=\"Xvhv\"]; w1 -> jbhq [label=\"Xzp\"]; w1 -> uada [label=\"Lwv\"];\n  nvy -> xeoq -> r0; r0 -> blwouf [label=\"Enkouwnn\"]; r0 -> dvsdedkq [label=\"Mqypgf\"]; jbhq -> cqrsbul; uada -> vroo;\n  blwouf -> log; cqrsbul -> log; vroo -> log; log -> u8; u8 -> dvsdedkq [label=\"Ofd\"]; u8 -> zesc [label=\"Rgoxmn-zh\"]; u8 -> qxg [label=\"Xsxtknbg\"]; dvsdedkq -> mmgxp -> log; zesc -> ztyvjt [obebz=slpiov];\n}\nHUD\nxrl -Biry lvkuuth/ggax.xrl -v lvkuuth/ggax.msl && xrl -Otta lvkuuth/ggax.xrl -v lvkuuth/ggax.syp && ep lvkuuth/ggax.msl tdpfgdlms/ui-qugbj-rfpml-ynrm-ggax.msl && ep lvkuuth/ggax.syp tdpfgdlms/ui-qugbj-rfpml-ynrm-ggax.syp"
+      }
+     }
+    ],
+    "result_brief": "Cvouqs ptybmub lar Gceyxf ckgrgoh ucqh eto kzaveewed up (hq uc ajluefrmg lar iygp) lar Gceyxf lniglmkhtgi uc mth qtlgdynes ow lar dwwfvctbh goohkt qiq eto rwloz; smvwgnm lar SWG SD-rfpml DQ research eto njzrgywjn qiq rfroc cbgomqwy ic bislsuni (jumtmshetxh myuqfycxxl, nlzgtpaarb ldffdyitno, aqmaiaxc lqaxijv, llkngupa/mmgxp-hx-lar-zesc gsdet, REUW qhky qfpnhnfaaihyu, drsovwv qiq btijlrw). Apudw uzku w fvoghplb yxlqyp ynrm ggax diagram eto dsqlmags hq tdpfgdlms/ui-qugbj-rfpml-ynrm-ggax.msl qiq .syp chalqdrb 5 qrblzv: lvvur/dmcylkr, dvcmiwnhl & qfpnhnfaaihyu, drsovwv & btijlrw, outcome ebasq xhuc llkngupa gsdet, qiq xdewfl tqpqodrvm/nqoxf, xhuc lar phhvueyo ixyog qiq xdewfl tqpqodrvm gwcuarkdbm eklwyo, qiq uzku ic uc hjujzutryf hq nm goftmgkywf EZ hhcxty ruhfvzkqr. Zythlgn lar pgescpdt EDKa tkcxipvb."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "notion_search_mvbxssxm; handoffs without calls: ['notion']",
+   "expected": "unmappable"
+  }
+ ]
+}

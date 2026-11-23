@@ -3,7 +3,8 @@
 from langchain_core.runnables import RunnableConfig
 
 from app.config.oauth_config import get_integration_by_tool_slug
-from app.constants.integrations import ConnectMode
+from app.constants.integrations import ConnectMode, IntegrationStatus
+from app.constants.log_tags import LogTag
 from app.models.agent_config import ComposioAccountSelection
 from app.models.execute_models import AccountChoice, DispatchError, DispatchErrorKind
 from app.models.integration_models import UserIntegrationDocument
@@ -14,13 +15,11 @@ from app.services.integrations.integration_accounts import (
 )
 from app.utils.integration_checker import request_integration_connection
 from shared.py.analytics.catalog.agents import ToolUsed
+from shared.py.wide_events import log
 
 
 def _account_names(record: UserIntegrationDocument) -> str:
-    return ", ".join(
-        f'"{a.display_name}" ({"expired" if a.status != "connected" else "connected"})'
-        for a in record.accounts
-    )
+    return ", ".join(f'"{a.display_name}" ({a.status})' for a in record.accounts)
 
 
 async def choose_account(
@@ -28,12 +27,20 @@ async def choose_account(
 ) -> AccountChoice | DispatchError | None:
     """The connected account a Composio tool call acts as; None leaves the call unpinned.
 
-    Unpinned covers non-Composio tools and integrations with no accounts on
-    record, where the tool's own not-connected path (the connect card) answers.
+    Unpinned covers non-Composio tools (an `account` passed for one is ignored)
+    and integrations with no accounts on record, where the tool's own
+    not-connected path (the connect card) answers.
     """
     integration = get_integration_by_tool_slug(tool_name)
     composio_config = integration.composio_config if integration else None
-    if integration is None or composio_config is None or not user_id:
+    if integration is None or composio_config is None:
+        if account:
+            # The model is never offered `account` for these tools, so refusing would punish a guess.
+            log.warning(
+                f"{LogTag.TOOL} execute: account ignored, tool has no accounts", tool_name=tool_name
+            )
+        return None
+    if not user_id:
         if account:
             return DispatchError(
                 kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
@@ -54,8 +61,8 @@ async def choose_account(
                 "Otherwise ask them which account they meant."
             ),
         )
-    live = [a for a in record.accounts if a.status == "connected"]
-    if chosen.status != "connected" and live:
+    live = [a for a in record.accounts if a.status == IntegrationStatus.CONNECTED]
+    if chosen.status != IntegrationStatus.CONNECTED and live:
         return DispatchError(
             kind=DispatchErrorKind.ACCOUNT_EXPIRED,
             detail=f"The {integration.name} account {chosen.display_name} needs reconnecting.",
@@ -75,6 +82,9 @@ async def choose_account(
         display_name=chosen.display_name,
         is_primary=chosen.id == record.primary_account_id,
         account_count=len(record.accounts),
+        # Only a call that named an account is pinned to it; the primary is
+        # re-resolved at replay, so it records nothing.
+        account_id=chosen.id if account else None,
     )
 
 

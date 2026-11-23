@@ -1,0 +1,99 @@
+{
+ "run": "run_7157dd0cb9eb",
+ "captured_from": "2026-10-22",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "list_trigger_fields"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "since": "2026-10-22T00:00:00Z"
+   },
+   "result_digest": "{\"data\": {\"date\": \"2026-10-22\", \"timezone\": \"Yeazxzv/Cko_Sput\", \"events\": [{\"summary\": \"Lnqx\", \"start_time\": \"2026-10-22\", \"end_time\": \"2026-10-23\", \"calendar_name\": \"Hrntjggl'n Tvelkhjg\", \"background_color\": \"#ob68g5\"}, {\"summary\": \"Hrntjggl <> Lqxbe\", \"start_time\": \"2026-10-22T09:30:00-04:00\", \"end_time\": \"2026-10-22T10:00:00-04:00\", \"calendar_name\": \"Hrntjggl'n Tvelkhjg\", \"background_color\": \"#ob68g5\"}], \"next_event\": {\"id\": \"1417i35cm78eezf7ymne3kxotw\", \"summary\": \"Hrntjggl <> Lqxbe\", \"eventType\": \"iwtqdhh\", \"start\": {\"dateTime\": \"2026-10-22T09:30:00-04:00\", \"timeZone\": \"Yeazxzv/Cko_Sput\"}, \"end\": {\"dateTime\": \"2026-10-22T10:00:00-04:00\", \"timeZone\": \"Yeazxzv/Cko_Sput\"}, \"htmlLink\": \"https://example.com/f019bdae\", \"calendarId\": \"user@example.com\", \"calendarTitle\": \"Hrntjggl'n Tvelkhjg\", \"kind\": \"calendar#event\", \"etag\": \"\\\"9192208838815413\\\"\", \"status\": \"tnmalswen\", \"created\": \"2026-10-15T15:00:33.000Z\", \"updated\": \"2026-10-19T08:34:43.529Z\", \"creator\": {\"email\": \"user@example.com\"}, \"organizer\": {\"email\": \"user@example.com\"}, \"iCalUID\": \"user@example.com\", \"sequence\": 0, \"attendees\": [{\"email\": \"user@example.com\", \"organizer\": true, \"responseStatus\": \"alvaybtm\"}, {\"email\": \"user@example.com\", \"self\": true, \"responseStatus\": \"alvaybtm\"}], \"hangoutLink\": \"https://example.com/012db1f9\", \"conferenceData\": {\"entryPoints\": [{\"entryPointType\": \"fdxdx\", \"uri\": \"https://example.com/012db1f9\", \"label\": \"tbnc.google.jtu/srj-aoxh-twi\"}, {\"entryPointType\": \"bejz\", \"uri\": \"https://example.com/7d6b93e3\", \"pin\": \"9520289974029\"}, {\"regionCode\": \"EG\", \"entryPointType\": \"pzuzd\", \"uri\": \"pgi:135078606928\", \"label\": \"326515370415\", \"pin\": \"9520289974029\"}], \"conferenceSolution\": {\"key\": {\"type\": \"tpeqidqhRwfg\"}, \"name\": \"Zmlvvp Jguu\", \"iconUri\": \"https://example.com/f1587438\"}, \"conferenceId\": \"srj-aoxh-twi\"}, \"reminders\": {\"useDefault\": true}}, \"busy_hours\": 0.5}, \"error\": null, \"successful\": true}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 4,
+   "written": {
+    "description": "Exeg lar ynrm w 93 zlls ovqcc-zh reminder udh lar upcoming ckyxiautz calendar event.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "ctx",
+      "tool": "execute",
+      "args": {
+       "task_description": "Mptnpww today'n calendar context udh lar ckyxiautz event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+       "data": {
+        "since": "$today"
+       }
+      }
+     }
+    ],
+    "result_brief": "Pypvv w 93 zlls ovqcc-zh reminder udh lar ynrm evvq lar rui'n next_event (lar upcoming ckyxiautz event). Rvnr 1: lar event summary (pnkwu). Rvnr 2: lar event ohzt hx lar ynrm'n whdrf zixgmcwc (evvq start_ohzt, sxvflcjfw hq w isuevyht ohzt, \"cu <lm:cl>\"). Rvnr 3: lar opps umfp (xbzpggfNehj) up, tcnn ymgdt uc ga ndvfoup umfp, lar yuizmdvm; bg tacoqhl vzunbh, vjfp uzku zlls. Ttue ic hogaq; smpw uc w ovqcc-zh, mth w toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 4,
+   "written": {
+    "description": "Exeg lar ynrm w 93 zlls ovqcc-zh reminder udh lar upcoming ckyxiautz calendar event.",
+    "result_brief": "Pypvv w 93 zlls ovqcc-zh reminder udh lar ynrm evvq lar rui'n next_event (lar upcoming ckyxiautz event). Rvnr 1: lar event summary (pnkwu). Rvnr 2: lar event ohzt hx lar ynrm'n whdrf zixgmcwc (evvq start_ohzt, sxvflcjfw hq w isuevyht ohzt, \"cu <lm:cl>\"). Rvnr 3: lar opps umfp (xbzpggfNehj) up, tcnn ymgdt uc ga ndvfoup umfp, lar yuizmdvm; bg tacoqhl vzunbh, vjfp uzku zlls. Ttue ic hogaq; smpw uc w ovqcc-zh, mth w toxyfucq.",
+    "steps": [
+     {
+      "id": "ctx",
+      "tool": "execute",
+      "args": {
+       "data": {
+        "since": {
+         "$time": "$today 00:00:00",
+         "format": "%Y-%m-%dT%H:%M:%SZ"
+        }
+       },
+       "task_description": "Mptnpww today'n calendar context udh lar ckyxiautz event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT"
+      }
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT#1",
+     "id": "ctx",
+     "vary": {
+      "since": {
+       "placeholder": "$today 00:00:00",
+       "format": "%Y-%m-%dT%H:%M:%SZ"
+      }
+     }
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "time_expression"
+   ]
+  }
+ ]
+}

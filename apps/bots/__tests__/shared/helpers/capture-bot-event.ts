@@ -1,7 +1,7 @@
 /** Captures the `bot_event` lines a bot boundary really prints, parsed. */
 import { vi } from "vitest";
 
-const CONSOLE_LEVELS = ["log", "warn", "error", "debug"] as const;
+const CONSOLE_LEVELS = ["log", "info", "warn", "error", "debug"] as const;
 
 /** Runs `body`, returning every `bot_event` printed meanwhile, for `task`. */
 export async function captureBotEvents(

@@ -18,13 +18,16 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.repositories.base import MongoDocument
+from app.constants.workflows import WorkflowDelivery
+from app.models.document_models import MongoDocument
+from app.models.legacy_delivery import LEGACY_WORKFLOW_NOTIFY_KEY, delivery_from_legacy_flag
 from app.models.scheduler_models import (
     BaseScheduledTask,
     DeactivationReason,
     ScheduledTaskStatus,
 )
 from app.models.trigger_configs import TriggerConfigData
+from app.models.trigger_gate_models import GateCondition, GateEdit, TriggerGate, TriggerGateView
 from app.schemas.common import ResponseModel
 from app.utils.cron_utils import get_next_run_time
 from app.utils.schedule import validate_recurring_schedule
@@ -217,6 +220,11 @@ class Workflow(BaseScheduledTask, ResponseModel):
 
     # Configuration
     trigger_config: TriggerConfig = Field(description="Trigger configuration")
+    # A sibling of trigger_config, so a client that rebuilds the trigger cannot drop it.
+    gate: TriggerGate | None = Field(
+        default=None,
+        description="The check a fired integration event must pass before this workflow runs",
+    )
 
     # Workflow-specific fields
     activated: bool = Field(
@@ -230,12 +238,11 @@ class Workflow(BaseScheduledTask, ResponseModel):
             "themselves — only system-paused workflows may be resumed automatically."
         ),
     )
-    notify_on_completion: bool = Field(
-        default=True,
+    delivery: WorkflowDelivery = Field(
         description=(
-            "Whether GAIA sends the automatic completion notification when a run "
-            "finishes. When False the run is silent (failures still notify) and the "
-            "agent only notifies if the workflow's own instructions ask it to."
+            "How a finished run's result reaches the user: pushed now, held for the "
+            "next brief, or kept silent in the workflow's conversation. Failures "
+            "always notify."
         ),
     )
     last_executed_at: datetime | None = Field(default=None)
@@ -314,6 +321,13 @@ class Workflow(BaseScheduledTask, ResponseModel):
     )
 
     @model_validator(mode="after")
+    def gate_only_on_an_integration_trigger(self) -> "Workflow":
+        """Refuse a gate on a trigger that carries no event for it to read."""
+        if self.gate is not None and self.trigger_config.type is not TriggerType.INTEGRATION:
+            raise ValueError("a gate needs an integration trigger")
+        return self
+
+    @model_validator(mode="after")
     def schedule_from_trigger(self) -> "Workflow":
         """Take scheduled_at and repeat from the trigger when the caller did not give them.
 
@@ -361,6 +375,10 @@ class WorkflowWithIntegrations(Workflow):
         default=None,
         description="Required integrations the user has not connected yet.",
     )
+    gate: TriggerGateView | None = Field(
+        default=None,
+        description="The check a fired integration event must pass before this workflow runs",
+    )
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -381,6 +399,10 @@ class CreateWorkflowRequest(BaseModel):
         description="Hex color for the user-chosen icon",
     )
     trigger_config: NewTriggerConfig = Field(description="Trigger configuration")
+    runs_only_when: GateCondition | None = Field(
+        default=None,
+        description="GAIA's drafted condition for an integration trigger, stored as GAIA's gate",
+    )
     steps: list[WorkflowStep] | None = Field(
         default=None,
         description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
@@ -389,9 +411,12 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
-    notify_on_completion: bool = Field(
-        default=True,
-        description="Whether GAIA sends the automatic completion notification when a run finishes.",
+    delivery: WorkflowDelivery = Field(
+        description=(
+            "How a finished run's result reaches the user. Required: every creator "
+            "(the user, the agent from the user's intent, a system definition) "
+            "decides it explicitly."
+        ),
     )
     integration_ids: list[str] | None = Field(
         default=None,
@@ -399,6 +424,10 @@ class CreateWorkflowRequest(BaseModel):
             "Integration ids this workflow uses — picked by the user or identified "
             "from intent. Scopes the tool palette when generating steps."
         ),
+    )
+    draft_id: str | None = Field(
+        default=None,
+        description="The chat draft this workflow was created from, so what waited on it resumes.",
     )
 
     # System workflow fields — set by provisioner, not by regular API users
@@ -431,6 +460,15 @@ class CreateWorkflowRequest(BaseModel):
             return ""
         return v.strip() if v else None
 
+    @model_validator(mode="after")
+    def runs_only_when_needs_an_event(self) -> "CreateWorkflowRequest":
+        """Refuse a drafted condition on a trigger that carries no event for it to read."""
+        if self.runs_only_when is not None and self.trigger_config.type is not (
+            TriggerType.INTEGRATION
+        ):
+            raise ValueError("runs_only_when needs an integration trigger")
+        return self
+
 
 class CreateWorkflowFromTodoRequest(BaseModel):
     """Request model for the todo → workflow migration helper.
@@ -456,8 +494,12 @@ class UpdateWorkflowRequest(BaseModel):
     icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: NewTriggerConfig | None = Field(default=None)
+    gate: GateEdit | None = Field(
+        default=None,
+        description="Absent keeps the gate, null removes it, a value replaces it",
+    )
     activated: bool | None = Field(default=None)
-    notify_on_completion: bool | None = Field(default=None)
+    delivery: WorkflowDelivery | None = Field(default=None)
     integration_ids: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
@@ -769,6 +811,21 @@ class WorkflowDocument(Workflow, MongoDocument):
     # diamond: a persisted workflow always has its wf_ id, so this stays
     # non-optional with no alias — the repository keys on _id directly.
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Read a record stored before delivery modes by what its flag meant then.
+
+        notify_on_completion=False ran silently; True, or the flag never written,
+        pushed the result. This maps a stored value, not a missing one, so the
+        API reads every existing workflow the way it ran until now.
+        scripts/migrate_workflow_delivery.py rewrites the records for good.
+        """
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_WORKFLOW_NOTIFY_KEY, delivery_key="delivery"
+        )
+
     #: What a blocked run named as missing when it paused this workflow —
     #: not always what compute_required_integrations reads off the declared
     #: steps, so the resume side can't re-derive it. Empty otherwise.
@@ -807,6 +864,34 @@ class PublicWorkflowRow(WorkflowDocument):
     use_case_categories: list[str] = Field(default_factory=lambda: ["featured"], exclude=True)
 
 
+class UnstoredDeliveryRow(BaseModel):
+    """Projection of a workflow stored before delivery modes: its id and the delivery its flag meant."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(validation_alias="_id")
+    delivery: WorkflowDelivery
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Map the stored flag the way WorkflowDocument reads it."""
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_WORKFLOW_NOTIFY_KEY, delivery_key="delivery"
+        )
+
+
+class StoredTriggerRow(BaseModel):
+    """Projection of a workflow whose stored trigger type no TriggerType names."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(validation_alias="_id")
+    user_id: str
+    activated: bool = False
+    trigger_type: str
+
+
 class WorkflowUpdate(BaseModel):
     """Partial ``$set`` update for a workflow — the flat, top-level fields the
     owned-CRUD paths mutate. Nested (``trigger_config.*``) and operator
@@ -823,8 +908,9 @@ class WorkflowUpdate(BaseModel):
     icon_color: str | None = None
     steps: list[WorkflowStep] | None = None
     trigger_config: TriggerConfig | None = None
+    gate: TriggerGate | None = None
     activated: bool | None = None
-    notify_on_completion: bool | None = None
+    delivery: WorkflowDelivery | None = None
     integration_ids: list[str] | None = None
     status: ScheduledTaskStatus | None = None
     scheduled_at: datetime | None = None

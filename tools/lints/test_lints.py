@@ -13,15 +13,22 @@ and asserts on the returned violations.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
+import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
+from typing import TypedDict
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import check_plr_complexity
 import comment_slop
+import comms_graph_owner
 import docstring_slop
+import mutation_pragmas
 import no_service_classes
 import pytest
 import repository_boundaries
@@ -149,6 +156,18 @@ def test_allowlisted_service_is_clean(tmp_path: Path) -> None:
     assert no_service_classes.check([path]) == []
 
 
+def test_service_class_with_an_injected_mongo_handle_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "class DeviceTokenService:\n"
+        "    def __init__(self, mongodb):\n"
+        "        self.collection = mongodb.database.get_collection('device_tokens')\n"
+    )
+    path = _write(tmp_path, f"{_SERVICES_DIR}/device_token_service.py", src)
+    violations = no_service_classes.check([path])
+    assert len(violations) == 1
+    assert "DeviceTokenService" in violations[0].detail
+
+
 def test_non_service_named_class_is_ignored(tmp_path: Path) -> None:
     # Stateful infra not named *Service is intentionally out of scope.
     src = "class SandboxPool:\n    def __init__(self):\n        self._lock = Lock()\n"
@@ -219,6 +238,63 @@ def test_collections_import_inside_repositories_is_clean(tmp_path: Path) -> None
     assert repository_boundaries.check([path]) == []
 
 
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from app.db.mongodb.mongodb import MongoDB\n",
+        "from app.db.mongodb import mongodb\n",
+        "import app.db.mongodb.mongodb\n",
+        # The lazy-singleton shape: a function-scope import is still an import.
+        "def get_service():\n    from app.db.mongodb.mongodb import init_mongodb\n",
+    ],
+)
+def test_mongo_client_import_outside_db_is_flagged(tmp_path: Path, src: str) -> None:
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert len(violations) == 1
+    assert "imports the Mongo client outside app/db/" in violations[0].detail
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "app/db/mongodb/collections.py",
+        "app/scripts/migrate_integration_accounts.py",
+        # Startup is the one caller outside app/db/ that opens the connection.
+        "app/helpers/lifespan_helpers.py",
+    ],
+)
+def test_mongo_client_import_in_its_allowed_homes_is_clean(tmp_path: Path, rel: str) -> None:
+    path = _write(tmp_path, rel, "from app.db.mongodb.mongodb import init_mongodb\n")
+    assert repository_boundaries.check([path]) == []
+
+
+def test_get_collection_call_outside_db_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "class Tokens:\n"
+        "    def __init__(self, mongodb):\n"
+        "        self.collection = mongodb.database.get_collection('device_tokens')\n"
+    )
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert [v.line for v in violations] == [3]
+    assert "calls .get_collection() outside app/db/" in violations[0].detail
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "app/db/mongodb/mongodb.py",
+        "app/scripts/reset_admin_password.py",
+        # A Chroma client's get_collection, which the AST cannot tell from Mongo's.
+        "app/memory/chroma_store.py",
+    ],
+)
+def test_get_collection_call_in_its_allowed_homes_is_clean(tmp_path: Path, rel: str) -> None:
+    path = _write(tmp_path, rel, "handle = client.get_collection('name')\n")
+    assert repository_boundaries.check([path]) == []
+
+
 def test_bson_import_outside_db_is_flagged(tmp_path: Path) -> None:
     src = "from bson import ObjectId\n"
     path = _write(tmp_path, "app/services/brand_new_service.py", src)
@@ -237,6 +313,33 @@ def test_bson_import_in_scripts_is_exempt(tmp_path: Path) -> None:
     # Operational one-shot scripts work on raw documents across every store by
     # design (run manually, never on a request path) — the boundary is exempt.
     src = "from bson import ObjectId\n"
+    path = _write(tmp_path, "app/scripts/delete_user_account.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from pymongo.errors import PyMongoError\n",
+        "import pymongo.errors\n",
+        "from motor.motor_asyncio import AsyncIOMotorCollection\n",
+    ],
+)
+def test_driver_import_outside_db_is_flagged(tmp_path: Path, src: str) -> None:
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert len(violations) == 1
+    assert "pymongo/motor outside app/db/" in violations[0].detail
+
+
+def test_driver_import_inside_repositories_is_clean(tmp_path: Path) -> None:
+    src = "from pymongo.errors import DuplicateKeyError\n"
+    path = _write(tmp_path, "app/db/repositories/hil.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+def test_driver_import_in_scripts_is_exempt(tmp_path: Path) -> None:
+    src = "from pymongo import UpdateOne\n"
     path = _write(tmp_path, "app/scripts/delete_user_account.py", src)
     assert repository_boundaries.check([path]) == []
 
@@ -315,6 +418,80 @@ def test_raw_redis_cache_client_import_is_not_flagged(tmp_path: Path) -> None:
     src = "from app.db.redis import redis_cache\n"
     path = _write(tmp_path, "app/services/brand_new_service.py", src)
     assert repository_boundaries.check([path]) == []
+
+
+# --------------------------------------------------------------------------- #
+# comms-graph-owner
+# --------------------------------------------------------------------------- #
+
+_COMMS_LOOKUP = (
+    "from app.constants.graphs import GraphName\n"
+    "async def run(config):\n"
+    "    graph = await GraphManager.get_graph(GraphName.COMMS)\n"
+    "    await graph.aupdate_state(config, {})\n"
+)
+
+
+def _fence(paths: list[Path]) -> list[str]:
+    return [f"{v.path.name}:{v.line} {v.detail}" for v in comms_graph_owner.check(paths)]
+
+
+def test_new_module_naming_the_comms_graph_is_flagged(tmp_path: Path) -> None:
+    path = _write(tmp_path, "app/services/new_writer.py", _COMMS_LOOKUP)
+    assert _fence([path]) == [
+        "new_writer.py:3 names the comms graph (GraphName.COMMS)",
+        "new_writer.py:4 calls .aupdate_state() in a module that holds the comms graph",
+    ]
+
+
+def test_comms_graph_looked_up_by_string_is_flagged(tmp_path: Path) -> None:
+    src = 'async def run():\n    return await providers.aget("comms_agent")\n'
+    path = _write(tmp_path, "app/services/new_writer.py", src)
+    assert _fence([path]) == ['new_writer.py:2 looks up the comms graph by name ("comms_agent")']
+
+
+def test_aliased_comms_constructor_call_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "from app.agents.core.graph_builder.build_graph import build_comms_graph as build\n"
+        "async def go():\n"
+        "    return await build()\n"
+    )
+    path = _write(tmp_path, "app/workers/tasks/new_task.py", src)
+    assert _fence([path]) == ["new_task.py:3 calls build_comms_graph, which builds the comms graph"]
+
+
+def test_executor_thread_code_is_not_flagged(tmp_path: Path) -> None:
+    src = (
+        "from app.constants.graphs import GraphName\n"
+        "async def resume(config):\n"
+        "    graph = await GraphManager.get_graph(GraphName.EXECUTOR)\n"
+        "    await graph.aget_state(config)\n"
+        "    await graph.aupdate_state(config, {})\n"
+        "    async for _ in graph.astream({}, config):\n"
+        "        pass\n"
+    )
+    path = _write(tmp_path, "app/agents/core/subagents/new_runner.py", src)
+    assert _fence([path]) == []
+
+
+def test_graph_builder_and_the_comms_runner_own_the_comms_graph(tmp_path: Path) -> None:
+    builder = _write(tmp_path, "app/agents/core/graph_builder/build_graph.py", _COMMS_LOOKUP)
+    runner = _write(tmp_path, "app/services/conversation/comms_runner.py", _COMMS_LOOKUP)
+    assert _fence([builder, runner]) == []
+
+
+def test_the_step_drives_the_runner_and_may_not_run_the_graph_itself(tmp_path: Path) -> None:
+    step = _write(tmp_path, "app/services/conversation/step.py", _COMMS_LOOKUP)
+    assert _fence([step]) == [
+        "step.py:3 names the comms graph (GraphName.COMMS)",
+        "step.py:4 calls .aupdate_state() in a module that holds the comms graph",
+    ]
+
+
+def test_comms_graph_rule_skips_tests(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write(tmp_path, "tests/unit/test_writer.py", _COMMS_LOOKUP)
+    assert lint_runner.main([str(tmp_path)]) == 0
+    assert "comms-graph-owner" not in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #
@@ -457,6 +634,146 @@ def test_new_bare_dump_in_allowlisted_function_is_flagged(tmp_path: Path) -> Non
         violations = tool_dump_boundary.check([path])
     assert len(violations) == 1
     assert "beyond the 1 grandfathered" in violations[0].detail
+
+
+# --------------------------------------------------------------------------- #
+# plr-complexity-ratchet
+# --------------------------------------------------------------------------- #
+
+_EIGHT_ARGS = "a, b, c, d, e, f, g, h"
+_LANGCHAIN_TOOL_IMPORT = "from langchain_core.tools import tool\n"
+
+
+class _RuffLocation(TypedDict):
+    row: int
+    column: int
+
+
+class _RuffRecord(TypedDict):
+    """The slice of one ``ruff check --output-format json`` entry the ratchet reads."""
+
+    filename: str
+    code: str
+    location: _RuffLocation
+
+
+def _ruff_reported(records: list[_RuffRecord]) -> AbstractContextManager[MagicMock]:
+    """Stand in for the pinned ruff invocation with a canned JSON result."""
+    return patch(
+        "check_plr_complexity.subprocess.run",
+        return_value=SimpleNamespace(returncode=1, stdout=json.dumps(records), stderr=""),
+    )
+
+
+def _plr(path: Path, code: str, row: int) -> _RuffRecord:
+    return {"filename": str(path), "code": code, "location": {"row": row, "column": 11}}
+
+
+def _scan(tmp_path: Path, records: list[_RuffRecord]) -> dict[tuple[str, str], int]:
+    with (
+        patch.object(check_plr_complexity, "REPO_ROOT", tmp_path.resolve()),
+        _ruff_reported(records),
+    ):
+        return check_plr_complexity._current_violations()
+
+
+@pytest.mark.parametrize(
+    ("binding", "decorator"),
+    [
+        (_LANGCHAIN_TOOL_IMPORT, "@tool"),
+        (_LANGCHAIN_TOOL_IMPORT, "@tool(parse_docstring=True)"),
+        ("from langchain_core.tools import tool as langchain_tool\n", "@langchain_tool"),
+        ("import langchain_core.tools as lc_tools\n", "@lc_tools.tool"),
+        ("import langchain_core.tools\n", "@langchain_core.tools.tool"),
+    ],
+)
+def test_tool_decorated_function_is_exempt_from_the_argument_limit(
+    tmp_path: Path, binding: str, decorator: str
+) -> None:
+    """Waive the argument count on a LangChain @tool, however it is imported.
+
+    A @tool's parameters are the schema the model sees, so the argument count is
+    the tool's contract rather than complexity.
+    """
+    src = f"{binding}{decorator}\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 3)]) == {}
+
+
+@pytest.mark.parametrize(
+    ("binding", "decorator"),
+    [
+        ("", "@tool"),
+        ("from mcp.server.fastmcp import tool\n", "@tool"),
+        ("import mcp\n", "@mcp.tool"),
+        ("", "@server.tool"),
+    ],
+)
+def test_a_tool_decorator_not_bound_to_langchain_gets_no_waiver(
+    tmp_path: Path, binding: str, decorator: str
+) -> None:
+    """Match the decorator by its import, not its spelling.
+
+    An unimported or non-LangChain ``tool`` is an unrelated decorator, so its
+    function is held to the argument limit.
+    """
+    src = f"{binding}{decorator}\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+    row = src.count("\n", 0, src.index("async def")) + 1
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", row)]) == {
+        ("app/agents/tools/thing_tool.py", "PLR0913"): row
+    }
+
+
+def test_tool_decorated_function_is_still_held_to_the_branch_limit(tmp_path: Path) -> None:
+    """Waive only the argument count on a @tool.
+
+    Branches inside the body are ordinary complexity and must still fail, on the
+    very same function.
+    """
+    src = f"{_LANGCHAIN_TOOL_IMPORT}@tool\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    violations = _scan(tmp_path, [_plr(path, "PLR0913", 3), _plr(path, "PLR0912", 3)])
+
+    assert violations == {("app/agents/tools/thing_tool.py", "PLR0912"): 3}
+
+
+def test_plain_function_with_too_many_arguments_is_still_reported(tmp_path: Path) -> None:
+    src = f"async def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/services/thing_service.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 1)]) == {
+        ("app/services/thing_service.py", "PLR0913"): 1
+    }
+
+
+def test_the_waiver_is_per_function_not_per_file(tmp_path: Path) -> None:
+    """An undecorated helper sharing a file with a @tool gets no cover from it."""
+    src = (
+        f"{_LANGCHAIN_TOOL_IMPORT}@tool\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+        f"\n\ndef _helper({_EIGHT_ARGS}):\n    return a\n"
+    )
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    violations = _scan(tmp_path, [_plr(path, "PLR0913", 3), _plr(path, "PLR0913", 7)])
+
+    assert violations == {("app/agents/tools/thing_tool.py", "PLR0913"): 7}
+
+
+def test_a_differently_decorated_function_gets_no_waiver(tmp_path: Path) -> None:
+    """Grant the waiver to the @tool decorator only.
+
+    A route handler or any other decorated function is held to the argument limit.
+    """
+    src = f"@router.post('/x')\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/api/v1/endpoints/thing.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 2)]) == {
+        ("app/api/v1/endpoints/thing.py", "PLR0913"): 2
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -849,3 +1166,83 @@ def test_runner_hands_test_files_only_to_rules_that_opt_in(
     assert code == 1
     assert "DS4" in err  # docstring-content opted in and saw the test file
     assert "repository-boundaries" not in err  # the boundary rule still skips tests
+
+
+# --------------------------------------------------------------------------- #
+# mutation-pragmas
+# --------------------------------------------------------------------------- #
+
+
+def _pragma_lines(tmp_path: Path, src: str) -> list[int]:
+    path = _write(tmp_path, "app/x.py", src)
+    return [v.line for v in mutation_pragmas.check([path])]
+
+
+def test_a_pragma_mutmut_honours_is_clean(tmp_path: Path) -> None:
+    src = (
+        "def f(a):\n"
+        "    x = [\n"
+        "        {'$limit': 1},  # pragma: no mutate\n"
+        "    ]\n"
+        "    # pragma: no mutate start\n"
+        "    y = g(a, 1)\n"
+        "    # pragma: no mutate end\n"
+        "    z = h(  # pragma: no mutate\n"
+        "        a,\n"
+        "    )\n"
+        "    return g(\n"
+        "        a\n"
+        "    )  # pragma: no mutate\n"
+    )
+    assert _pragma_lines(tmp_path, src) == []
+
+
+def test_a_start_or_end_inside_brackets_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "x = [\n    # pragma: no mutate start\n    {'$limit': 1},\n    # pragma: no mutate end\n]\n"
+    )
+    assert _pragma_lines(tmp_path, src) == [2, 4]
+
+
+def test_a_bare_comment_only_pragma_is_flagged(tmp_path: Path) -> None:
+    src = "# pragma: no mutate -- the next line is a no-op\nx = g('a')\n"
+    assert _pragma_lines(tmp_path, src) == [1]
+
+
+def test_a_pragma_on_a_closing_bracket_inside_an_expression_is_flagged(tmp_path: Path) -> None:
+    src = "x = [\n    {\n        'a': 1\n    },  # pragma: no mutate\n]\n"
+    assert _pragma_lines(tmp_path, src) == [4]
+
+
+def test_a_pragma_on_a_plain_argument_of_a_multiline_call_is_flagged(tmp_path: Path) -> None:
+    src = "x = g(\n    a,  # pragma: no mutate\n    f(a),  # pragma: no mutate\n)\n"
+    assert _pragma_lines(tmp_path, src) == [2]
+
+
+def test_a_pragma_on_any_keyword_argument_of_a_multiline_call_is_flagged(tmp_path: Path) -> None:
+    # mutmut's kw=None and drop mutants are Call-node mutants, positioned on the call's line.
+    src = (
+        "x = g(\n"
+        "    limit=limit,  # pragma: no mutate\n"
+        "    why=f'host {h}',  # pragma: no mutate\n"
+        "    kind=item.kind[key],  # pragma: no mutate\n"
+        "    b='s',  # pragma: no mutate -- the literal's own mutants are on this line\n"
+        "    error_type=type(e).__name__,  # pragma: no mutate\n"
+        "    ok=a == b,  # pragma: no mutate\n"
+        ")\n"
+        "y = g(c=1)  # pragma: no mutate\n"
+        "z = g(  # pragma: no mutate -- the call's line skips its argument mutants\n"
+        "    mode='json',  # pragma: no mutate -- and this one the literal's\n"
+        ")\n"
+        "# pragma: no mutate start\n"
+        "w = g(\n"
+        "    mode='json',  # pragma: no mutate\n"
+        ")\n"
+        "# pragma: no mutate end\n"
+    )
+    assert _pragma_lines(tmp_path, src) == [2, 3, 4]
+
+
+def test_pragmas_outside_app_are_ignored(tmp_path: Path) -> None:
+    path = _write(tmp_path, "scripts/x.py", "x = [\n    # pragma: no mutate start\n    1,\n]\n")
+    assert mutation_pragmas.check([path]) == []

@@ -1,16 +1,12 @@
-import { Button } from "@heroui/button";
+import { formatDate } from "@shared/utils";
 import Image from "next/image";
 import type React from "react";
-
+import { LinkButton } from "@/components/shared/LinkButton";
 import type { GoogleDocsData } from "@/types/features/toolDataTypes";
 
 interface GoogleDocsSectionProps {
   google_docs_data: GoogleDocsData;
 }
-
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString();
-};
 
 const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
   google_docs_data,
@@ -24,29 +20,27 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
           <span className="text-sm text-gray-600">{message}</span>
         </div>
         <div className="space-y-2 space-x-2">
-          <Button
-            key={document.id}
-            as={"a"}
+          <LinkButton
             href={document.url}
             target="_blank"
-            variant="flat"
-            startContent={
-              <Image
-                src={"/images/icons/googledocs.webp"}
-                alt="Google docs logo"
-                width={25}
-                height={25}
-              />
-            }
+            rel="noopener noreferrer"
+            key={document.id}
+            variant="default-soft"
             className="max-w-60 min-w-60 justify-start py-7"
           >
+            <Image
+              src={"/images/icons/googledocs.webp"}
+              alt="Google docs logo"
+              width={25}
+              height={25}
+            />
             <div className="flex flex-1 flex-col items-start">
               <span className="text-left text-sm font-medium">
                 {document.title}
               </span>
               <div className="flex gap-2 text-xs opacity-70">
                 <span suppressHydrationWarning>
-                  Modified: {formatDate(document.modified_time)}
+                  Modified: {formatDate(document.modified_time, "numeric")}
                 </span>
                 {action && (
                   <span className="capitalize">
@@ -63,7 +57,7 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
                 )}
               </div>
             </div>
-          </Button>
+          </LinkButton>
         </div>
       </div>
     );

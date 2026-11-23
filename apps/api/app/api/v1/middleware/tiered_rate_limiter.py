@@ -26,6 +26,7 @@ from app.config.rate_limits import (
 )
 from app.config.settings import settings
 from app.constants.cache import RATE_LIMIT_KEY_PREFIX
+from app.constants.http import RATE_LIMIT_EXCEEDED_CODE
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
@@ -35,10 +36,16 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
-from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
-from app.services.usage_activity import counts_as_activity, record_activity
+from app.services.limit_upsell import (
+    LimitHitOrigin,
+    capture_limit_hit,
+    current_limit_origin,
+    schedule_limit_upsell,
+)
+from app.services.usage_activity import count_daily_actions, counts_as_activity
 from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
 from shared.py.wide_events import log, spawn_logged_task
 
 # UsageInfo is imported (not defined here) but re-exported for callers that
@@ -61,7 +68,7 @@ class RateLimitExceededException(HTTPException):
         current_plan: str | None = None,
     ) -> None:
         detail = {
-            "code": "rate_limit_exceeded",
+            "code": RATE_LIMIT_EXCEEDED_CODE,
             "feature": feature,
             "message": f"Rate limit exceeded for {feature}",
         }
@@ -102,10 +109,15 @@ class CostBudgetExceededException(RateLimitExceededException):
         plan_required: str | None = None,
         reset_time: datetime | None = None,
         current_plan: str | None = None,
+        *,
+        message: str = "You've used today's AI usage allowance.",
+        period: RateLimitPeriod = RateLimitPeriod.DAY,
     ):
-        budget_message = "You've used today's AI usage allowance."
+        budget_message = message
         if plan_required:
             budget_message += f" Upgrade to {plan_required.capitalize()} for higher limits."
+        self.period = period
+        self.message = budget_message
         super().__init__(
             feature, plan_required, reset_time, message=budget_message, current_plan=current_plan
         )
@@ -148,6 +160,7 @@ class TieredRateLimiter:
         try:
             return await self._check_and_increment(user_id, feature_key, user_plan)
         except RateLimitExceededException:
+            capture_limit_hit(UserId(user_id), feature_key, user_plan, origin=origin)
             schedule_limit_upsell(user_id, feature_key, user_plan, origin)
             raise
 
@@ -288,7 +301,7 @@ class TieredRateLimiter:
 
         # Durable daily rollup for the activity heatmap (meaningful actions only).
         if counts_as_activity(feature_key):
-            spawn_background_task(record_activity(user_id))
+            spawn_background_task(count_daily_actions(user_id))
 
         return usage_info
 

@@ -1,0 +1,90 @@
+{
+ "run": "run_cd98fc906d0c",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Epzhnl vbeqwy toxyfucq: fetch Xlurkysspvwk qiq ZLMtbyii tmymkccmonb evvq Svdly, pwlztlikjl, send toxyfucq oa lar ynrm'n mtx zsggppn, log lar rui fx lar bxwwhjl todo canvas.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inv",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "evvq:psmbecmpujey.jtu",
+         "timeframe": "0h",
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "ind",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "evvq:zxewqlba.jtu",
+         "timeframe": "0h",
+         "fields": [
+          "lm",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "send",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": "$user.email",
+         "subject": "Epzhnl Glgcgn Cbswsimi e $today",
+         "body": {
+          "$ask": "Pypvv lar vauqqyvvxpm rdsguv vbeqwy toxyfucq zbta: Cfbymd vbeqwy summary, key adywxl, goftmgkywf juqeqf, qiq iqiswc qvpuz evvq lar aqtgnru tmymkccmonb"
+         }
+        }
+       },
+       {
+        "id": "go",
+        "tool": "GMAIL_SEND_DRAFT",
+        "args": {
+         "draft_id": {
+          "$ask": "lar draft lm evvq zubw send.draft"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tjhxavxyu lar aqtgnru tmymkccmonb tnvd w iwsxbtw rdsguv toxyfucq chalqdrb Cfbymd vbeqwy xwgbm (zaizl qiq iikatsvai yg Zcibev/Uqkrm), key adywxl (tstzl/orlzwbxohsi, exti, hysfxl, svaq-dpnww ndwphzx), qiq goftmgkywf juqeqf. Dqhi rfroc vyagigm uign etfpq qiq rfroc sjuyg mth ku qsisjc (c.q. nm mnpyu-zbta sjpolljfj) ow lar ynrm qas check lar txyfpmhc email. Mevgres lar toxyfucq eto sent oa lar ynrm'n mtx zsggppn xhuc lar lswycqi lm."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

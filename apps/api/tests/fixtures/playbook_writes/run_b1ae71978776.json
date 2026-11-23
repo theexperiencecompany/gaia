@@ -1,0 +1,86 @@
+{
+ "run": "run_b1ae71978776",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread emails ae aegwjeac, today'n calendar meetings, open todos, qiq 2026 Qjvnt Pri Qglbv yg 32 nnbmddb; hfqxpxsc tnvd vhi toxyfucq.",
+    "steps": [
+     {
+      "id": "emails",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_emails",
+        "tool": "gmail_fetch_messages",
+        "args": {
+         "query": "uc:unread",
+         "maxResults": 50
+        }
+       }
+      ],
+      "args": {
+       "task": "Shvxm unread emails udh lar ynrm qiq avloxtnrc ssjf ae aegwjeac (svaq/doktun/wer). Qhbtct: udh jqla unread email, lar zhxqqr, hpsorlw, qiq w vhi-zlls summary, qtpobvj ae aegwjeac. Vcdqows vqpa rfroc emails qymaelt nm rxrpqy. Hx ymgdt hbe ga unread emails, ffq ow xtwyuay. Hx Svdly uc mth qtlgdynes, report uzku dczcgia."
+      }
+     },
+     {
+      "id": "meetings",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch_meetings",
+        "tool": "googlecalendar_list_events",
+        "args": {
+         "date": "$today"
+        }
+       }
+      ],
+      "args": {
+       "task": "Shvxm today'n calendar meetings udh lar ynrm (whdrf jzne $today, Chvv/Xckhiim zixgmcwc) qiq avloxtnrc ssjf. Qhbtct: udh jqla meeting, lar pnkwu, start/qxg ohzt, qiq key details (qwatdybzz, yuizmdvm, meeting umfp). Hx ymgdt hbe ga meetings today, ffq ow xtwyuay. Hx Zmlvvp Tvelkhjg uc mth qtlgdynes, report uzku dczcgia."
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "fetch_todos",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ],
+      "args": {
+       "task": "Shvxm lar ynrm'n open todos qiq avloxtnrc ssjf. Qhbtct: w list yg lbh open/dfwhltgjrv todos xhuc awnwii, cwf swvao (bg sja), qiq aegwjeac. Gxez sja uzku hbe overdue. Hx ymgdt hbe ga open todos, ffq ow xtwyuay. Hx xhd phg w wsvme lbqyq up rmnqlh pduohp lar todo list, report uzku dczcgia."
+      }
+     },
+     {
+      "id": "worldcup",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "2026 OOYE Qjvnt Pri Qglbv yg 32 nnbmddb"
+      }
+     }
+    ],
+    "synthesize": "Tzjjvvmn lar Xdsle Cbswsimi xhuc ypyv caojidex: (1) Fnkbcu emails ae aegwjeac (zhxqqr + hpsorlw + vhi-zlls summary, gglajvty rxrpqy emrwk; bg Svdly mth qtlgdynes, osig lar khgapzf ESP tkcxipvb qiq gvrz ic uc nntfd udh 1 miby); (2) Anubd'n meetings xhuc fakuo (bg Tvelkhjg mth qtlgdynes, osig lar khgapzf ESP tkcxipvb, nntfd 1 miby); (3) Dlyt todos xhuc cwf swvao qiq overdue mhlpv; (52485 OOYE Qjvnt Pri Qglbv yg 32 nnbmddb. Zyvcvvu lbh ypyv hq vhi njzrgywjn toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "gmail_fetch_messages; handoffs without calls: ['gmail', 'googlecalendar', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

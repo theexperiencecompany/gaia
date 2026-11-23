@@ -4,9 +4,12 @@ import copy
 from typing import Any
 from unittest.mock import patch
 
-from pydantic import BaseModel
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.runtime import Runtime
+from pydantic import BaseModel, ValidationError
 import pytest
 
+from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.services.composio.langchain_composio_service import LangchainProvider, StructuredTool
 from tests.factories import make_composio_tool
 
@@ -78,9 +81,7 @@ def _send(recipient: str, count: int) -> str:
 
 class TestInvalidArgumentsReturnAFailure:
     def _tool(self) -> StructuredTool:
-        return StructuredTool.from_function(
-            func=_send, name="send", description="Send.", args_schema=_SendArgs
-        )
+        return StructuredTool(name="send", description="Send.", func=_send, args_schema=_SendArgs)
 
     def test_invalid_arguments_come_back_as_a_failure_result(self) -> None:
         result = self._tool().run({"recipient": "a@b.c", "count": "not-a-number"})
@@ -92,6 +93,32 @@ class TestInvalidArgumentsReturnAFailure:
 
     def test_valid_arguments_still_run_the_tool(self) -> None:
         assert self._tool().run({"recipient": "a@b.c", "count": 2}) == "sent 2 to a@b.c"
+
+    def test_a_plain_string_input_reaches_the_tool_as_langchain_maps_it(self) -> None:
+        class _Query(BaseModel):
+            query: str
+
+        def search(query: str) -> str:
+            return f"searched {query}"
+
+        tool = StructuredTool(name="search", description="Search.", func=search, args_schema=_Query)
+
+        assert tool.run("invoices") == "searched invoices"
+
+    def test_a_validation_error_from_the_body_is_raised_not_blamed_on_the_arguments(self) -> None:
+        sent: list[str] = []
+
+        def sends_then_misparses(recipient: str, count: int) -> str:
+            sent.append(recipient)
+            return _ProviderReply.model_validate({}).message_id
+
+        tool = StructuredTool(
+            name="send", description="Send.", func=sends_then_misparses, args_schema=_SendArgs
+        )
+
+        with pytest.raises(ValidationError, match="_ProviderReply"):
+            tool.run({"recipient": "a@b.c", "count": 2})
+        assert sent == ["a@b.c"]
 
 
 # "from" and "pass" are Python keywords, so the args schema cannot carry them as-is.
@@ -116,8 +143,8 @@ class TestReservedKeywordArguments:
     def _wrap(self) -> tuple[StructuredTool, dict[str, Any]]:
         seen: dict[str, Any] = {}
 
-        def execute_tool(_tool: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-            seen.update(kwargs)
+        def execute_tool(slug: str, arguments: dict[Any, Any]) -> dict[Any, Any]:
+            seen.update(arguments)
             return {"successful": True, "data": {}, "error": None}
 
         # wrap_tool renames the schema in place, so every wrap gets its own copy.
@@ -191,8 +218,8 @@ class TestWhatTheWrapperForwardsAndRecords:
     ) -> None:
         seen: dict[str, Any] = {}
 
-        def execute_tool(_tool: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-            seen.update(kwargs)
+        def execute_tool(slug: str, arguments: dict[Any, Any]) -> dict[Any, Any]:
+            seen.update(arguments)
             return {"successful": True, "data": {}}
 
         self._action_func(execute_tool)(__runnable_config__=runnable_config)
@@ -250,3 +277,62 @@ class TestWhatTheWrapperForwardsAndRecords:
             action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
 
         assert mock_log.info.call_args.kwargs["err_preview"] == long_error[:200]
+
+
+SEND_INPUT = {
+    "type": "object",
+    "title": "SendEmailRequest",
+    "properties": {"to": {"type": "string"}},
+    "required": ["to"],
+}
+
+
+class _ProviderReply(BaseModel):
+    message_id: str
+
+
+class TestAToolsOwnFailuresAreNotBlamedOnItsArguments:
+    """Run in the agent's tool node, as every bound Composio tool is."""
+
+    def _node(self, sent: list[str]) -> DynamicToolNode:
+        def execute_tool(slug: str, arguments: dict[Any, Any]) -> dict[Any, Any]:
+            sent.append(arguments["to"])
+            return {"successful": True, "data": _ProviderReply.model_validate({}).model_dump()}
+
+        tool = make_composio_tool("GMAIL_SEND_EMAIL").model_copy(
+            update={"input_parameters": copy.deepcopy(SEND_INPUT)}
+        )
+        wrapped = LangchainProvider().wrap_tool(tool, execute_tool)
+        return DynamicToolNode({wrapped.name: wrapped})
+
+    async def _run(self, node: DynamicToolNode, args: dict[str, Any]) -> ToolMessage:
+        call = {"name": "GMAIL_SEND_EMAIL", "args": args, "id": "c1", "type": "tool_call"}
+        state = {"messages": [AIMessage(content="", tool_calls=[call])]}
+        result = await node._afunc(state, {}, Runtime())
+        (message,) = result["messages"]
+        return message
+
+    @pytest.mark.regression
+    async def test_a_validation_error_after_the_send_is_an_execution_error(self) -> None:
+        sent: list[str] = []
+
+        message = await self._run(self._node(sent), {"to": "bob@example.com"})
+
+        assert sent == ["bob@example.com"]
+        assert message.status == "error"
+        assert message.text.startswith(
+            "Error: ValidationError: 1 validation error for _ProviderReply"
+        )
+        assert "input validation" not in message.text.lower()
+        assert "not run" not in message.text
+
+    async def test_invalid_arguments_are_refused_before_the_send(self) -> None:
+        sent: list[str] = []
+
+        message = await self._run(self._node(sent), {"to": ["not", "a", "string"]})
+
+        assert sent == []
+        assert message.text.startswith(
+            "Error: ToolInvocationError: 'GMAIL_SEND_EMAIL' was not run, its arguments are invalid:"
+        )
+        assert "to: Input should be a valid string" in message.text

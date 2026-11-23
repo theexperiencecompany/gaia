@@ -140,6 +140,52 @@
         }
       }
     },
+    "heroui-style-overrides": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs heroui-style-overrides"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/apps/web/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/apps/desktop/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/libs/shared/ts/src/**/*.{ts,tsx}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "heroui-style-overrides",
+          "area": "node"
+        }
+      }
+    },
+    "heroui-usage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs heroui-usage"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/apps/web/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/apps/desktop/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/libs/shared/ts/src/**/*.{ts,tsx}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "heroui-usage",
+          "area": "node"
+        }
+      }
+    },
     "components-per-file": {
       "executor": "nx:run-commands",
       "options": {
@@ -538,6 +584,28 @@
         }
       }
     },
+    "regression-proof": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/pytest.sh regression-proof --services false --lane lint-python/regression-proof \"$(bash scripts/ci/changes.sh base-rev)\""
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/tests/**/test_*.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "regression-proof",
+          "area": "tests",
+          "events": ["pull_request", "merge_group"]
+        }
+      }
+    },
     "api-schema": {
       "executor": "nx:run-commands",
       "options": {
@@ -602,8 +670,6 @@
         "cwd": "apps/api"
       },
       "inputs": [
-        "{workspaceRoot}/libs/shared/py/analytics/**/*",
-        "{workspaceRoot}/libs/shared/py/tests/test_analytics_catalog.py",
         "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
         "{workspaceRoot}/apps/api/app/**/*",
         "{workspaceRoot}/apps/api/pytest.ini",
@@ -614,6 +680,7 @@
         "{workspaceRoot}/apps/bots/**/*",
         "{workspaceRoot}/uv.lock",
         "ciHarness",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
         {
           "externalDependencies": []
         }
@@ -651,6 +718,40 @@
         }
       }
     },
+    "link-constants": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs link-constants"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/constants/short_links.py",
+        "{workspaceRoot}/apps/api/app/constants/http.py",
+        "{workspaceRoot}/apps/api/app/utils/loggable_path.py",
+        "{workspaceRoot}/apps/api/app/models/short_link_models.py",
+        "{workspaceRoot}/apps/api/app/services/links/access.py",
+        "{workspaceRoot}/apps/api/app/services/links/errors.py",
+        "{workspaceRoot}/apps/api/scripts/dump_link_constants.py",
+        "{workspaceRoot}/apps/api/tests/offline_env.py",
+        "{workspaceRoot}/apps/usercontent-worker/src/link-constants.generated.json",
+        "{workspaceRoot}/packages/cli/src/lib/link-constants.generated.json",
+        "{workspaceRoot}/apps/web/src/features/short-links/link-constants.generated.ts",
+        "{workspaceRoot}/packages/cli/selfhost/Caddyfile",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "link-constants",
+          "area": "contracts"
+        }
+      }
+    },
     "deploy-templates": {
       "executor": "nx:run-commands",
       "options": {
@@ -676,6 +777,35 @@
         "ci": {
           "job": "lint-mixed",
           "check": "deploy-templates",
+          "area": "contracts"
+        }
+      }
+    },
+    "openui-prompts": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs openui-prompts"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/scripts/openui/**/*",
+        "{workspaceRoot}/apps/web/src/config/openui/**/*",
+        "{workspaceRoot}/libs/artifacts/src/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/artifacts/**/*",
+        "{workspaceRoot}/apps/api/app/agents/prompts/openui_generated.txt",
+        "{workspaceRoot}/apps/api/app/agents/prompts/artifacts/**/*",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "openui-prompts",
           "area": "contracts"
         }
       }
@@ -898,16 +1028,40 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "suppression-hygiene",
           "area": "python"
+        }
+      }
+    },
+    "baseline-growth": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 scripts/ci/baselines.py growth"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/tools/lints/*_baseline.txt",
+        "{workspaceRoot}/apps/api/tests/meta/*_baseline.txt",
+        "{workspaceRoot}/tools/lints/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "baseline-growth",
+          "area": "contracts",
+          "events": ["pull_request", "merge_group"]
         }
       }
     },
     "tool-pins": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "python3 tools/lints/check_tool_pins.py"
+        "command": "uv run --frozen --no-build --isolated --only-group harness python3 tools/lints/check_tool_pins.py"
       },
       "cache": false,
       "inputs": [
@@ -921,7 +1075,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "tool-pins",
           "area": "python"
         }
@@ -1046,6 +1200,7 @@
         "{workspaceRoot}/scripts/ci/lib/seo_audit.py",
         "{workspaceRoot}/scripts/ci/lib/squirrel.py",
         "{workspaceRoot}/scripts/ci/lib/origin_proxy.py",
+        "{workspaceRoot}/scripts/ci/lib/indexnow.py",
         "{workspaceRoot}/scripts/ci/baselines/squirrel-build.txt",
         "{workspaceRoot}/config/squirrel.toml",
         "ciHarness",
@@ -1112,6 +1267,10 @@
     "desktop-package": {
       "executor": "nx:noop",
       "inputs": [
+        {
+          "input": "default",
+          "projects": "desktop"
+        },
         "{workspaceRoot}/.github/workflows/desktop-pr-build.yml",
         "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
         "{workspaceRoot}/.github/actions/restore-nextjs-cache/**/*",
@@ -1122,6 +1281,25 @@
       "metadata": {
         "ci": {
           "job": "desktop-build"
+        }
+      }
+    },
+    "desktop-package-deps": {
+      "executor": "nx:noop",
+      "inputs": [
+        {
+          "input": "production",
+          "projects": "desktop",
+          "dependencies": true
+        },
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "desktop-build",
+          "events": ["merge_group", "push", "workflow_dispatch"]
         }
       }
     },
@@ -1165,15 +1343,67 @@
       }
     },
     "gitleaks": {
-      "executor": "nx:noop",
-      "inputs": ["{workspaceRoot}/**/*"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh secrets --lane lint-node/gitleaks"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "gitleaks",
           "area": "security",
-          "events": ["pull_request", "push"],
-          "runner": "action"
+          "events": ["pull_request", "merge_group", "push"]
+        }
+      }
+    },
+    "bot-handles": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs bot-handles"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "bot-handles",
+          "area": "contracts"
+        }
+      }
+    },
+    "skills-symlink": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs skills-symlink"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/.claude/**/*",
+        "{workspaceRoot}/.agents/skills/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "skills-symlink",
+          "area": "contracts"
         }
       }
     },

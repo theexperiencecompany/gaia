@@ -17,6 +17,7 @@ import urllib.parse
 
 from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict, JsonValue
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     GAIA_OAUTH_CLIENT_NAME,
@@ -645,7 +646,9 @@ async def handle_oauth_callback(
     # immediately; connect_after_oauth reconciles (resets to disconnected)
     # if credentials prove dead.
     try:
-        await update_user_integration_status(token_store.user_id, integration_id, "connected")
+        await update_user_integration_status(
+            token_store.user_id, integration_id, IntegrationStatus.CONNECTED
+        )
     except Exception as status_err:
         log.warning(
             f"{LogTag.MCP} optimistic status flip failed (will retry in background connect)",

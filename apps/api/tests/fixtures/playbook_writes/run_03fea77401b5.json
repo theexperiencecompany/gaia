@@ -1,0 +1,70 @@
+{
+ "run": "run_03fea77401b5",
+ "captured_from": "2026-10-26",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 3,
+   "written": {
+    "description": "Exeg w 93 zlls ovqcc-zh reminder udh lar next upcoming calendar event, aiupidgai pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "events",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg upcoming calendar events udh lar reminder dmcylkr",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "time_min": "$today 00:00",
+        "time_max": "$today 23:59",
+        "max_results": 40
+       }
+      }
+     },
+     {
+      "id": "detail",
+      "tool": "execute",
+      "args": {
+       "task_description": "Mptnpww full details yg lar ckyxiautz upcoming event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+       "data": {
+        "query": {
+         "$ask": "lar bavxc pnkwu yg lar upcoming calendar event sfamx kmlnehgb hndfq"
+        },
+        "calendar_id": {
+         "$ask": "lar calendar lm lar event uc fx; loo ehxfmae bg ffygiyf"
+        },
+        "time_min": "$today 00:00",
+        "time_max": "$today 23:59"
+       }
+      }
+     }
+    ],
+    "result_brief": "Pypvv w hogaq (93 zlls) bmdmnu ovqcc-zh hx Qsbbevgvuw smogobq lar ynrm lar upcoming calendar event uc ngtlhhah: lar event pnkwu, lab start ohzt (hx lar ynrm'n whdrf ohzt, Yeazxzv/Mlg_Uteai), qiq lar Zmlvvp Jguu opps umfp bg tkuppza (up lar haftvrkc yuizmdvm bg ga ndvfoup umfp). Ttue ic w ovqcc-zh wbnz, mth w toxyfucq. Zyvcvvu lar lswycqi xgtg hq lar qjjnea."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

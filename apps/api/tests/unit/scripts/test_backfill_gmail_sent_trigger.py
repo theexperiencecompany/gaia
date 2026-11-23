@@ -156,7 +156,7 @@ async def _main_with(monkeypatch: pytest.MonkeyPatch, failed_user_ids: list[str]
     )
     monkeypatch.setattr("sys.argv", ["backfill_gmail_sent_trigger.py", "--execute"])
     with (
-        patch("scripts.backfill_gmail_sent_trigger.init_composio_service"),
+        patch("scripts.backfill_gmail_sent_trigger.boot_process"),
         patch("scripts.backfill_gmail_sent_trigger.get_composio_service"),
         patch("scripts.backfill_gmail_sent_trigger.run_backfill", AsyncMock(return_value=result)),
     ):

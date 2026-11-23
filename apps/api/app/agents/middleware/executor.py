@@ -39,12 +39,11 @@ from langgraph.graph.message import Messages
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.core.subagents.call_record import tool_call_failed
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
-    BigtoolToolRuntime,
     create_model_request,
-    create_tool_call_request,
     to_agent_state,
 )
 from app.constants.execute import EXECUTE_TOOL_NAME
@@ -52,7 +51,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import (
     AgentConfigurable,
     AgentMiddlewareStack,
-    agent_configurable,
+    runtime_configurable,
 )
 from app.override.langgraph_bigtool.utils import (
     State,
@@ -69,6 +68,8 @@ from shared.py.wide_events import log
 # ever feeds and consumes ModelResponse, so the model chain is narrowed to it.
 ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
 ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]]
+# Calls the model on messages, bound with exactly these tools: none leaves it no tool to call.
+ModelInvoke = Callable[[list[AnyMessage], list[BaseTool | dict[str, object]]], Awaitable[AIMessage]]
 
 MIDDLEWARE_FAILURE_TEMPLATE = (
     "`{tool}` was NOT run: a safety check that runs before every tool call failed "
@@ -243,19 +244,6 @@ class MiddlewareExecutor:
             store=store,
         )
 
-    def _create_tool_runtime(
-        self,
-        config: RunnableConfig,
-        store: BaseStore | None = None,
-        tool_name: str | None = None,
-    ) -> BigtoolToolRuntime:
-        """Create a BigtoolToolRuntime for tool execution."""
-        return BigtoolToolRuntime.from_graph_context(
-            config=config,
-            store=store,
-            tool_name=tool_name,
-        )
-
     async def execute_before_model(
         self,
         state: State,
@@ -349,12 +337,13 @@ class MiddlewareExecutor:
         config: RunnableConfig,
         store: BaseStore | None,
         tools: list[BaseTool | dict[str, object]],
-        invoke_fn: Callable[..., Awaitable[AIMessage]],
+        invoke_fn: ModelInvoke,
     ) -> AIMessage:
         """Wrap the model invocation with all wrap_model_call middleware.
 
-        Creates a chain of handlers where each middleware wraps the next;
-        the innermost handler calls the actual model.
+        Creates a chain of handlers where each middleware wraps the next; the
+        innermost handler calls the model bound with the request's tools, as a
+        middleware left or changed them.
         """
         runtime = self._create_runtime(config, store)
         request = create_model_request(model, state, runtime, tools)
@@ -367,7 +356,7 @@ class MiddlewareExecutor:
             if req.system_message:
                 messages_to_send.append(req.system_message)
             messages_to_send.extend(req.messages)
-            response = await invoke_fn(messages_to_send)
+            response = await invoke_fn(messages_to_send, req.tools)
             return ModelResponse(result=[response])
 
         # Wrap with middleware (reverse order so first middleware is outermost)
@@ -429,7 +418,7 @@ class MiddlewareExecutor:
                 error_type=type(e).__name__,
             )
             # Fallback to direct invocation
-            return await invoke_fn(state.get("messages", []))
+            return await invoke_fn(state.get("messages", []), tools)
 
     def _build_tool_chain(
         self, final_handler: ToolCallHandler, chain: _ToolChainState
@@ -448,45 +437,34 @@ class MiddlewareExecutor:
         return current_handler
 
     async def wrap_tool_invocation(
-        self,
-        tool_call: ToolCall,
-        tool: BaseTool | None,
-        state: State,
-        config: RunnableConfig,
-        store: BaseStore | None,
-        invoke_fn: Callable[..., Awaitable[ToolMessage | Command[str]]],
+        self, request: ToolCallRequest, run_tool: ToolCallHandler
     ) -> ToolMessage | Command[str]:
-        """Wrap a tool invocation with all wrap_tool_call middleware.
+        """Run one tool call through every wrap_tool_call middleware; run_tool is the innermost link.
 
-        Creates a chain of handlers where each middleware wraps the next;
-        the innermost handler calls the actual tool. Returns the tool
-        result, or a Command when a middleware replaces it with a graph
-        update (e.g. workspace compaction).
+        Returns the tool result, or a Command when a middleware replaces it with a
+        graph update (e.g. workspace compaction).
         """
-        tool_name = tool_call.get("name", "unknown")
+        tool_call: ToolCall = request.tool_call
+        tool_name = tool_call["name"]
         # Attribute the capture by the run's user; personless runs are skipped.
-        configurable: AgentConfigurable = agent_configurable(config)
+        configurable: AgentConfigurable = runtime_configurable(request)
         tool_user_id = configurable.get("user_id")
-        runtime = self._create_tool_runtime(config, store, tool_name)
-        # A ToolCall is a plain dict at runtime; create_tool_call_request re-normalizes it.
-        request = create_tool_call_request(cast(dict[str, object], tool_call), tool, state, runtime)
         # Where the chain broke decides the outcome below: before the tool (refuse),
         # in the tool (tool_attempted with no result: propagate), or after it (ship
         # the result). failed_middleware names the innermost hook that raised.
         chain = _ToolChainState()
 
-        # Build the handler chain from inside out
         async def final_handler(req: ToolCallRequest) -> ToolMessage | Command[str]:
             """Innermost handler - actually calls the tool."""
             chain.tool_attempted = True
-            chain.tool_result = await invoke_fn(req.tool_call)
+            chain.tool_result = await run_tool(req)
             _emit_bound_tool_used(tool_user_id, tool_name)
             return chain.tool_result
 
         current_handler = self._build_tool_chain(final_handler, chain)
 
         # Execute the chain
-        metric_name = _tool_metric_name(tool_name, tool)
+        metric_name = _tool_metric_name(tool_name, request.tool)
         chain_start = perf_counter()
         try:
             result = await current_handler(request)
@@ -518,19 +496,17 @@ class MiddlewareExecutor:
                 # A pre-tool middleware broke, and it may be the approval gate: fail
                 # closed. The tool never runs on a check that did not complete.
                 return _middleware_failure_message(tool_name, tool_call.get("id") or "")
-        observe_tool_call(perf_counter() - chain_start, tool_name=metric_name, status="success")
+        failed = isinstance(result, ToolMessage) and tool_call_failed(result)
+        observe_tool_call(
+            perf_counter() - chain_start,
+            tool_name=metric_name,
+            status="error" if failed else "success",
+        )
         return result
 
     def has_wrap_model_call(self) -> bool:
         """Check if any middleware has wrap_model_call."""
         return any(
             _has_override(mw, "wrap_model_call") or _has_override(mw, "awrap_model_call")
-            for mw in self.middleware
-        )
-
-    def has_wrap_tool_call(self) -> bool:
-        """Check if any middleware has wrap_tool_call."""
-        return any(
-            _has_override(mw, "wrap_tool_call") or _has_override(mw, "awrap_tool_call")
             for mw in self.middleware
         )

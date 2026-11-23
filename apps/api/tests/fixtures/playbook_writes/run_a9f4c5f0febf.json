@@ -1,0 +1,335 @@
+{
+ "run": "run_a9f4c5f0febf",
+ "captured_from": "2026-10-12",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASK_LISTS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_LIST_TASKS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLETASKS_INSERT_TASK"
+  },
+  {
+   "tool_name": "GOOGLETASKS_INSERT_TASK"
+  },
+  {
+   "tool_name": "GOOGLETASKS_UPDATE_TASK"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "edit"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 61,
+   "record_len": 44,
+   "written": {
+    "description": "Celulurhrxu AOD Tcweipikyaipa: fetch gys Svdly (inbox+sent), check Yekh duorguze, dllumdsnw Zmlvvp Rcpku (Ajcooabh/Rgoxmn-yoj/SWG/Qaultlv/D-Oxnwf/Rjkrj) qiq calendar, create/update SWG rhmijzrv qiq dvrpfu-yoj, create pwwwn drafts wbnz tcnn qjfmsuvog qpxlxm.",
+    "steps": [
+     {
+      "id": "gmail",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "gmail"
+      }
+     },
+     {
+      "id": "tasks",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "gtraxxqdbwg"
+      }
+     },
+     {
+      "id": "cal",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "inbox",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg Svdly inbox messages akqqn pmff rui",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "hx:inbox wfjho_wqbg:6h",
+        "fields": [
+         "lm",
+         "qjwzyvOb",
+         "evvq",
+         "oa",
+         "hpsorlw",
+         "ohzt",
+         "nclzdvv",
+         "zbta",
+         "duacch"
+        ],
+        "body_processing": "tqoqqbhdv",
+        "offload": true
+       }
+      }
+     },
+     {
+      "id": "sent",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg Svdly sent messages akqqn pmff rui",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "hx:sent wfjho_wqbg:6h",
+        "fields": [
+         "lm",
+         "qjwzyvOb",
+         "evvq",
+         "oa",
+         "hpsorlw",
+         "ohzt",
+         "nclzdvv",
+         "zbta",
+         "duacch"
+        ],
+        "body_processing": "tqoqqbhdv",
+        "offload": true
+       }
+      }
+     },
+     {
+      "id": "tasklists",
+      "tool": "execute",
+      "args": {
+       "task_description": "Kzhrwwq Zmlvvp Rcpku jivrp",
+       "tool_name": "GOOGLETASKS_LIST_TASK_LISTS",
+       "data": {}
+      }
+     },
+     {
+      "id": "listtasks",
+      "tool": "execute",
+      "for_each": {
+       "$ask": "lar AOD Zmlvvp Rcpku list APb oa read udh voyznab kfhta (AOD u Ajcooabh, AOD u Rgoxmn-yoj, AOD u SWG, AOD u Qaultlv, AOD u D-Oxnwf, Rjkrj)"
+      },
+      "max_items": 8,
+      "args": {
+       "task_description": "Kzhrwwq tasks hx nm AOD list",
+       "tool_name": "GOOGLETASKS_LIST_TASKS",
+       "data": {
+        "tasklist_id": "$item"
+       }
+      }
+     },
+     {
+      "id": "wave",
+      "handoff": "662893c9-f341-4d36-43633a8e5d43f3d1",
+      "steps": [
+       {
+        "tool": "list_sessions",
+        "args": {
+         "since": {
+          "$ask": "lar pmff etxoxgllw Yekh ontkrg jzne (KYB), p.c. lar ysn ssjzq lar swmfdqvj rui'n oyyggm xiqnztk"
+         },
+         "limit": 100
+        }
+       }
+      ]
+     },
+     {
+      "id": "calevents",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg upcoming calendar events",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "calendar_ids": [
+         "user@example.com"
+        ],
+        "time_min": "$today",
+        "time_max": "$today + 20d",
+        "max_results": 100
+       }
+      }
+     },
+     {
+      "id": "crm",
+      "tool": "execute",
+      "for_each": {
+       "$ask": "lar gys bgchvcmk rhmijzrv etfpq hx lar aqtgnru Svdly/Yekh dmqo uzku hbe mth xoo hx AOD u SWG (gfqp, zzmcdad, pqis, email, pzuzd, pmff aqxwmrf, toxyfucq, iqiswc), jqla xhuc wbnz sulqxgef llxxqy"
+      },
+      "max_items": 10,
+      "args": {
+       "task_description": "Jtmmeaxv SWG aqxwmrf lvvur",
+       "tool_name": "GOOGLETASKS_INSERT_TASK",
+       "data": {
+        "tasklist_id": "BqEUzkL9gJO7EQJoq1J7Tx",
+        "title": "Mmmthkp rcyynmt agpa fasdzzdfpmshk: $item.name ($item.company)",
+        "notes": "$item.details\n\nJszplne: Mmmthkp rcyynmt agpa fasdzzdfpmshk"
+       }
+      }
+     },
+     {
+      "id": "followup",
+      "tool": "execute",
+      "for_each": {
+       "$ask": "lar vbqpykyd dvrpfu-zh tasks (ae fixe lm qiq list) uzku tuvn qcwjhhyw oa gcmqufu gys kfhta evvq smpw rui'n Svdly/Yekh dmqo"
+      },
+      "max_items": 10,
+      "args": {
+       "task_description": "Nadipmjk w dvrpfu-zh fixe oa voyznab kfhta",
+       "tool_name": "GOOGLETASKS_UPDATE_TASK",
+       "data": {
+        "task": "$item.task_id",
+        "tasklist": "$item.tasklist_id",
+        "notes": {
+         "$ask": "lar ksbcvnk qvpuz udh smpw dvrpfu-zh cawbfitghi lar iohyom kfhta"
+        }
+       }
+      }
+     },
+     {
+      "id": "draft",
+      "tool": "execute",
+      "for_each": {
+       "$ask": "lar emails evvq w wmda tscekmvq zhxqqr uzku qjfmsuvog tuvn w pwwwn (ewbu tmymkccmonb, dvaqrnsb, ilva-oheongzb alf-replies, aswfecm-bxwwhjl nopjq), jqla xhuc tbyrfw_lm, qnvvslhfg, hpsorlw qiq lar pwwwn fqqibmc"
+      },
+      "max_items": 10,
+      "args": {
+       "task_description": "Jtmmeaxv w pwwwn draft hx lar txyfpmhc tbyrfw",
+       "tool_name": "GMAIL_CREATE_EMAIL_DRAFT",
+       "data": {
+        "thread_id": "$item.thread_id",
+        "recipient_email": "$item.recipient",
+        "subject": "$item.subject",
+        "body": {
+         "$ask": "lar pwwwn zbta hx Wpkevi Uvmupi'n xpjjzur Bdbzna rnfnkrv obebz"
+        }
+       }
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar hgvpdzlgjmd AOD Tcweipikyaipa outcome, zzjlfadvswq: (1) sja gys tnmalswen adiocjkwytod djalbdj/ksbcvnk hx Zmlvvp Tvelkhjg (wbnz dczcgia tnmalswen ielv, nytxjz zs fx-ofhx, whklqd arolun udh fx-ofhx, ga ianrksiqqg) e bg jyjt, ffq ow; (2) gys bgchvcmk rhmijzrv eacrpal hx 'AOD u SWG' (gfqp, zzmcdad, pqis, email, pzuzd, pmff aqxwmrf, iqiswc) xhuc lar bavxc gvrz 'Mmmthkp rcyynmt agpa fasdzzdfpmshk'; (3) dvrpfu-zh tasks eacrpal up ksbcvnk hx 'AOD u Rgoxmn-yoj' / 'Rjkrj' (cdn vhi open vls ykntimyn phhvueyo, ga ianrksiqqg, ga halavbkryoxs yg njzrgywjn nopjq); (4) sja pwwwn drafts eacrpal hx txyfpmhc threads (wbnz armqdsb pwwwn tuvn, xpjjzur rnfnkrv obebz) e bg jyjt, ffq ow; (5) Yekh duorguze etxoxgllw (up jyjt gys akqqn pmff rui); (6) ohnais/ayhogju emrwk. Rfsqha kfhta gwcuarkdbm: ga email eto sent, ga dmqo qetlrpg, ga read-status qguzysi, ga ilva iuybyccnm. Ttue ic brief qiq zzjlfadvswq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration; handoffs without calls: ['662893c9-f341-4d36-43633a8e5d43f3d1']",
+   "expected": "unmappable"
+  }
+ ]
+}

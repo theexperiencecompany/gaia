@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from fastapi import HTTPException
 import pytest
 
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.constants.calendar import CALENDAR_CHANGED_EVENT
 from app.models.calendar_models import (
     CalendarEventDisplay,
     CalendarPreferencesDocument,
@@ -27,13 +27,11 @@ from app.models.calendar_models import (
     GoogleCalendarEventDateTime,
     GoogleCalendarEventResource,
     GoogleCalendarEventsPage,
-    GoogleCalendarListEntry,
     RecurrenceData,
     RecurrenceRule,
 )
 from app.services.calendar_service import (
     _all_day_bounds,
-    _selected_search_calendars,
     create_calendar_event,
     delete_calendar_event,
     fetch_calendar_events,
@@ -50,14 +48,22 @@ from app.services.calendar_service import (
     update_calendar_event,
     update_user_calendar_preferences,
 )
-from app.utils.errors import AppError
+from app.services.integrations.integration_accounts import toolkit_not_connected
+from app.utils.errors import AppError, IntegrationNotConnectedError
 
 USER_ID = "user_test_123"
 PROXY_PATH = "app.services.calendar_service.proxy_request"
 
 
 @pytest.fixture
-def mock_proxy() -> Iterator[AsyncMock]:
+def announced() -> Iterator[AsyncMock]:
+    """Record the socket announce a write to Google makes to the user's open clients."""
+    with patch("app.services.calendar_service.websocket_manager.announce", AsyncMock()) as announce:
+        yield announce
+
+
+@pytest.fixture
+def mock_proxy(announced: AsyncMock) -> Iterator[AsyncMock]:
     with patch(PROXY_PATH, new_callable=AsyncMock) as proxy:
         proxy.return_value = {}
         yield proxy
@@ -83,20 +89,199 @@ def _http_error(status: int, body: dict[str, Any] | None = None) -> AppError:
     )
 
 
-class TestSelectedSearchCalendars:
-    async def test_preferences_matching_no_listed_calendar_search_everything(
-        self, mock_calendar_repo: AsyncMock
+TEAMMATE_PRIMARY_ID = "teammate@example.com"
+TEAM_CALENDAR_ID = "c_team@group.calendar.google.com"
+# Google's calendarList reports the primary calendar under its real id, never the alias.
+TEAMMATE_CALENDAR_LIST = {
+    "items": [
+        {"id": TEAM_CALENDAR_ID, "summary": "Team"},
+        {"id": TEAMMATE_PRIMARY_ID, "summary": TEAMMATE_PRIMARY_ID, "primary": True},
+    ]
+}
+
+
+@pytest.fixture
+def mock_fetch_events() -> Iterator[AsyncMock]:
+    with patch(
+        "app.services.calendar_service.fetch_calendar_events", new_callable=AsyncMock
+    ) as fetch:
+        fetch.return_value = GoogleCalendarEventsPage()
+        yield fetch
+
+
+def _requested_calendar_ids(call_mock: AsyncMock) -> list[str]:
+    return [call.args[0] for call in call_mock.await_args_list]
+
+
+class TestCalendarSelectionResolution:
+    @pytest.mark.regression
+    async def test_stored_primary_alias_reads_the_primary_calendar_and_is_rewritten(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
     ):
-        """Stored selections referencing calendars absent from Google's list would otherwise search nothing."""
+        """Regression: a stored "primary" matched no listed id, so every read returned zero events."""
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs(["primary"])
+
+        result = await get_calendar_events(USER_ID)
+
+        assert _requested_calendar_ids(mock_fetch_events) == [TEAMMATE_PRIMARY_ID]
+        assert result.selected_calendars == [TEAMMATE_PRIMARY_ID]
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, ["primary"], [TEAMMATE_PRIMARY_ID]
+        )
+
+    async def test_stored_ids_google_no_longer_lists_are_dropped(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID, "deleted-cal"])
+
+        await get_calendar_events(USER_ID)
+
+        assert _requested_calendar_ids(mock_fetch_events) == [TEAM_CALENDAR_ID]
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, [TEAM_CALENDAR_ID, "deleted-cal"], [TEAM_CALENDAR_ID]
+        )
+
+    async def test_stored_selection_matching_nothing_warns_and_reads_every_calendar(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
         mock_calendar_repo.get_for_user.return_value = _prefs(["deleted-cal"])
-        calendars = [
-            GoogleCalendarListEntry(id="cal-a", summary="A"),
-            GoogleCalendarListEntry(id="cal-b", summary="B"),
+
+        with patch("app.services.calendar_service.log") as mock_log:
+            await get_calendar_events(USER_ID)
+
+        assert _requested_calendar_ids(mock_fetch_events) == [
+            TEAM_CALENDAR_ID,
+            TEAMMATE_PRIMARY_ID,
         ]
+        mock_log.warning.assert_called_once_with(
+            "Calendar selection names no listed calendar, reading every calendar",
+            user_id=USER_ID,
+            stale_calendar_ids=["deleted-cal"],
+        )
 
-        result = await _selected_search_calendars(USER_ID, calendars)
+    async def test_no_stored_selection_reads_every_calendar_without_warning(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
 
-        assert result == calendars
+        with patch("app.services.calendar_service.log") as mock_log:
+            await get_calendar_events(USER_ID)
+
+        assert _requested_calendar_ids(mock_fetch_events) == [
+            TEAM_CALENDAR_ID,
+            TEAMMATE_PRIMARY_ID,
+        ]
+        mock_log.warning.assert_not_called()
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, None, [TEAM_CALENDAR_ID, TEAMMATE_PRIMARY_ID]
+        )
+
+    async def test_an_empty_calendar_list_never_rewrites_the_stored_selection(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = {"items": []}
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
+
+        await get_calendar_events(USER_ID)
+
+        mock_calendar_repo.repair_selected_calendars.assert_not_awaited()
+
+    async def test_a_valid_stored_selection_is_not_rewritten(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAMMATE_PRIMARY_ID])
+
+        await get_calendar_events(USER_ID)
+
+        mock_calendar_repo.repair_selected_calendars.assert_not_awaited()
+
+    async def test_an_explicit_selection_filters_one_read_without_overwriting_the_preference(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        """Regression: the agent's calendar_ids=["primary"] was persisted as the user's selection."""
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
+
+        with patch("app.services.calendar_service.log") as mock_log:
+            result = await get_calendar_events(USER_ID, selected_calendars=["primary"])
+
+        mock_log.warning.assert_not_called()
+        assert _requested_calendar_ids(mock_fetch_events) == [TEAMMATE_PRIMARY_ID]
+        assert result.selected_calendars == [TEAMMATE_PRIMARY_ID]
+        mock_calendar_repo.set_selected_calendars.assert_not_awaited()
+        mock_calendar_repo.repair_selected_calendars.assert_not_awaited()
+
+    async def test_an_explicit_selection_naming_no_listed_calendar_reads_nothing(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
+
+        with patch("app.services.calendar_service.log") as mock_log:
+            result = await get_calendar_events(USER_ID, selected_calendars=["removed-calendar"])
+
+        mock_fetch_events.assert_not_awaited()
+        assert result.events == []
+        assert result.selected_calendars == []
+        mock_log.warning.assert_called_once_with(
+            "Calendar filter names no listed calendar",
+            user_id=USER_ID,
+            stale_calendar_ids=["removed-calendar"],
+        )
+
+    async def test_an_explicit_empty_selection_reads_nothing(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
+
+        result = await get_calendar_events(USER_ID, selected_calendars=[])
+
+        mock_fetch_events.assert_not_awaited()
+        assert result.selected_calendars == []
+        mock_calendar_repo.get_for_user.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_search_resolves_the_stored_primary_alias(self, mock_proxy, mock_calendar_repo):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs(["primary"])
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(
+                items=[
+                    GoogleCalendarEventResource(
+                        id="e1", start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00")
+                    )
+                ]
+            )
+            await search_calendar_events_native("standup", USER_ID)
+
+        assert _requested_calendar_ids(mock_search) == [TEAMMATE_PRIMARY_ID]
+
+    async def test_saving_preferences_stores_real_calendar_ids(
+        self, mock_proxy, mock_calendar_repo
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+
+        with patch("app.services.calendar_service.log") as mock_log:
+            await update_user_calendar_preferences(
+                USER_ID, ["primary", "deleted-cal", TEAM_CALENDAR_ID]
+            )
+
+        assert mock_proxy.await_args.args[0].user_id == USER_ID
+        mock_calendar_repo.set_selected_calendars.assert_awaited_once_with(
+            USER_ID, [TEAM_CALENDAR_ID, TEAMMATE_PRIMARY_ID]
+        )
+        mock_log.warning.assert_called_once_with(
+            "Dropping calendar ids the user's calendar list does not contain",
+            user_id=USER_ID,
+            stale_calendar_ids=["deleted-cal"],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +357,11 @@ class TestListCalendars:
         assert request.method == "GET"
         assert request.user_id == USER_ID
 
+    async def test_a_read_announces_nothing(self, mock_proxy, announced):
+        mock_proxy.return_value = {"items": []}
+        await list_calendars(USER_ID)
+        announced.assert_not_awaited()
+
     async def test_short_format_returns_subset(self, mock_proxy):
         mock_proxy.return_value = {
             "items": [
@@ -196,22 +386,24 @@ class TestListCalendars:
         assert exc.value.status_code == 500
         assert "boom" in str(exc.value.detail)
 
-    async def test_a_disconnected_integration_is_the_structured_reconnect_detail(self, mock_proxy):
-        mock_proxy.side_effect = AppError(
-            message="Google Calendar is not connected",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            public={"toolkit": "googlecalendar"},
-        )
+    @pytest.mark.parametrize(
+        "body",
+        [{}, {"error": "invalid_grant"}, {"error": {"code": 500}}],
+        ids=["empty", "oauth_string_error", "no_message"],
+    )
+    async def test_a_body_without_a_google_message_keeps_the_proxy_message(self, mock_proxy, body):
+        mock_proxy.side_effect = _http_error(502, body)
         with pytest.raises(HTTPException) as exc:
             await list_calendars(USER_ID)
-        assert exc.value.status_code == 403
-        assert exc.value.detail == {
-            "type": "integration",
-            "code": INTEGRATION_NOT_CONNECTED,
-            "toolkit": "googlecalendar",
-            "message": "Reconnect Google Calendar to load your events.",
-        }
+        assert exc.value.detail == "GOOGLECALENDAR API error (502)"
+
+    async def test_a_disconnected_integration_forwards_the_one_typed_error(self, mock_proxy):
+        """The app's AppError handler renders it; a hand-built detail here was a second copy."""
+        not_connected = toolkit_not_connected("GOOGLECALENDAR", "no account")
+        mock_proxy.side_effect = not_connected
+        with pytest.raises(IntegrationNotConnectedError) as exc:
+            await list_calendars(USER_ID)
+        assert exc.value is not_connected
 
 
 class TestGetCalendarMetadataMap:
@@ -454,6 +646,13 @@ class TestDeleteCalendarEvent:
         assert request.method == "DELETE"
         assert request.endpoint.endswith("/calendars/primary/events/evt-1")
 
+    async def test_a_delete_tells_the_users_open_clients_to_re_read(self, mock_proxy, announced):
+        mock_proxy.return_value = None
+        await delete_calendar_event(
+            EventDeleteRequest(event_id="evt-1", calendar_id="primary"), USER_ID
+        )
+        announced.assert_awaited_once_with(USER_ID, {"type": CALENDAR_CHANGED_EVENT})
+
     async def test_404_raises_clean_message(self, mock_proxy):
         mock_proxy.side_effect = _http_error(404)
         with pytest.raises(HTTPException) as exc:
@@ -609,7 +808,9 @@ class TestGetCalendarEvents:
         ) as mock_fetch:
             mock_fetch.return_value = GoogleCalendarEventsPage()
             await get_calendar_events(USER_ID)
-        mock_calendar_repo.set_selected_calendars.assert_awaited_once()
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, None, ["c1", "c2"]
+        )
 
 
 class TestGetCalendarEventsById:
@@ -663,13 +864,15 @@ class TestPreferences:
             await get_user_calendar_preferences(USER_ID)
         assert exc.value.status_code == 404
 
-    async def test_update_returns_success_message(self, mock_calendar_repo):
+    async def test_update_returns_success_message(self, mock_proxy, mock_calendar_repo):
+        mock_proxy.return_value = {"items": [{"id": "c1"}]}
         mock_calendar_repo.set_selected_calendars.return_value = True
         assert await update_user_calendar_preferences(
             USER_ID, ["c1"]
         ) == CalendarPreferencesUpdateResponse(message="Calendar preferences updated successfully")
 
-    async def test_update_no_change_message(self, mock_calendar_repo):
+    async def test_update_no_change_message(self, mock_proxy, mock_calendar_repo):
+        mock_proxy.return_value = {"items": [{"id": "c1"}]}
         mock_calendar_repo.set_selected_calendars.return_value = False
         assert await update_user_calendar_preferences(
             USER_ID, ["c1"]

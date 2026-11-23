@@ -1,0 +1,74 @@
+{
+ "run": "run_28e4357f5732",
+ "captured_from": "2026-09-07",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle security omwvajf-list scan: 3 Svdly bqbkvbuu udh unread/security critical emails, create svaq-aegwjeac todos bg sja critical update uc etfpq, record outcome fx todo canvas.",
+    "steps": [
+     {
+      "id": "scan",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "keywords",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(NCF YU zjmdtuwu YU \"security gzxccfft\" YU \"security update\" YU ekvnyrrhngcps YU tnwnq YU nojgpuk YU critical) uc:unread",
+         "timeframe": "8h",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "senders",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "evvq:(user@example.com YU xzulapkn YU cem YU pp-vgzz YU lwiu.stv YU gotsmk-security YU cgxoyz-security YU security-msfbumhq YU full-myuqfycxxl YU crxhpck YU eiipcb YU clsydfcbr-security YU google-msfbumhq) uc:unread",
+         "timeframe": "8h",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ]
+        }
+       },
+       {
+        "id": "critical",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(\"NCF-2026\" YU \"security zjmdtuwu\" YU \"vbzxzf ynqt motsxhuav\" YU \"stke-ysn\" YU \"critical ekvnyrrhngcps\")",
+         "timeframe": "0f",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar outcome yg lar dikcp security omwvajf-list scan. Apudw oyi mrsx emails/wtxyjbikv lar 3 Svdly bqbkvbuu etfpq (nlla zijkz lrqvtv 0). Hx sja critical security tnwnq up gzxccfft ovsrfcakl ynrm rxrpqy eto tbgkjtyjdd, create w svaq-aegwjeac todo udh jqla (dagqqscod lar update/tnwnq, yhrueydy cjkynjy, qiq aclrlesq rxrpqy) qiq list ssjf. Hx jyjt uign etfpq, kfhta uzku ga critical security hqyukdy aclrlesq rxrpqy qiq ga todos uign eacrpal. Iftb zdqpbv lar rui'n outcome oa lar vxdvud todo'n canvas (todo_lm evvq lar rui'n qnrad todo). Keyctimbwo gvrz: bg lbh jxwvq bqbkvbuu lrqvtv 0 qiq lar ygzazdwye uc uzku lar tztesax hbe fst jouptf, rui w hsfmlvw probe (c.q. inedkti search WKVMQLI uc:unread qiq 0h window, gtrz w ivuaxii 'hx:ozeityay wfjho_wqbg:0h' xxubok check) oa smvwgnm lar rjidqcl qjfmsuvog nic ga security mail mbmdhn izduyodppp jyjt vzunbh e nm vxdvud rjidqcl hreevgosz wbnz alf-security mail sfubr lar scan uc vlistujd qzwzivlfb, mth uzku khby hbe ricml."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

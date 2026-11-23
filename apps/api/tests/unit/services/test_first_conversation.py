@@ -9,7 +9,6 @@ no jobs the escape hatch is the only chip, never invented ones.
 from app.models.user_models import OnboardingPreferences
 from app.services.onboarding.first_conversation import (
     CALENDAR_INTEGRATION_ID,
-    CONNECT_OPTIONS,
     CONNECT_OPTIONS_TOOL_NAME,
     GMAIL_INTEGRATION_ID,
     INTEGRATIONS_PATH,
@@ -58,15 +57,22 @@ class TestOpeningBubble:
 
     def test_the_buttons_open_each_app_and_the_full_page(self) -> None:
         """Rendered by the web as a row of buttons outside the bubble, same tab."""
-        tool = compose_first_conversation(_prefs("founder"), None).connect_tool_data()
+        composed = compose_first_conversation(_prefs("founder"), None)
+        tool = composed.connect_tool_data()
+        options = composed.connect_options
         assert tool["tool_name"] == CONNECT_OPTIONS_TOOL_NAME == "connect_options"
-        assert tool["data"] == {"options": CONNECT_OPTIONS}
-        assert [o["href"] for o in CONNECT_OPTIONS] == [
+        assert tool["data"] == {"options": options}
+        assert [o["label"] for o in options] == [
+            "Connect Gmail",
+            "Connect Calendar",
+            "All integrations",
+        ]
+        assert [o["href"] for o in options] == [
             connect_link(GMAIL_INTEGRATION_ID),
             connect_link(CALENDAR_INTEGRATION_ID),
             INTEGRATIONS_PATH,
         ]
-        assert [o.get("integration_id") for o in CONNECT_OPTIONS] == [
+        assert [o.get("integration_id") for o in options] == [
             GMAIL_INTEGRATION_ID,
             CALENDAR_INTEGRATION_ID,
             None,
@@ -169,3 +175,39 @@ class TestChips:
         updated = with_starting_jobs(compose_first_conversation(_prefs(), None), jobs)
         jobs.append("Ship it")
         assert updated.follow_ups == [*JOBS, SOMETHING_ELSE_CHIP]
+
+
+class TestLanguage:
+    """The welcome thread speaks the browser language stored at onboarding."""
+
+    def _german(self, profession: str = "founder") -> OnboardingPreferences:
+        return OnboardingPreferences(profession=profession, needs=[], language="de-DE")
+
+    def test_a_german_browser_gets_the_whole_thread_in_german(self) -> None:
+        composed = with_starting_jobs(
+            compose_first_conversation(self._german(), "telegram"), ["Investoren finden"]
+        )
+        assert composed.opening[0] == "So, du bist drin."
+        assert composed.opening[1].endswith("Ich bin auch auf deinem Telegram.")
+        assert composed.opening[2].startswith("Zwei Dinge, die sich jetzt lohnen.\n- Gmail:")
+        assert composed.question == "Womit fangen wir an?"
+        assert composed.follow_ups == ["Investoren finden", "Etwas anderes"]
+        assert [o["label"] for o in composed.connect_options] == [
+            "Gmail verbinden",
+            "Kalender verbinden",
+            "Alle Integrationen",
+        ]
+
+    def test_outside_english_the_question_never_renders_the_english_job(self) -> None:
+        for language in ("es", "fr", "pt-BR", "ja", "ko"):
+            prefs = OnboardingPreferences(profession="founder", language=language)
+            question = compose_first_conversation(prefs, None).question
+            assert "founder" not in question
+            assert "What's first" not in question
+
+    def test_a_language_without_copy_falls_back_to_english(self) -> None:
+        prefs = OnboardingPreferences(profession="founder", language="sv-SE")
+        composed = compose_first_conversation(prefs, None)
+        assert composed.opening[0] == "Okay, you're in."
+        assert composed.question == "You're a founder. What's first?"
+        assert composed.follow_ups == [SOMETHING_ELSE_CHIP]

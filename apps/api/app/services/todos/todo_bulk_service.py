@@ -8,15 +8,13 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
+    BulkOperationResponse,
     BulkUpdateRequest,
     TodoResponse,
     TodoUpdate,
     TodoUpdateRequest,
 )
-from app.services.analytics_service import capture
 from app.services.todos.todo_service import TodoService
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosToggled
 from shared.py.wide_events import log
 
 
@@ -50,8 +48,6 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> BulkCompleti
         log.info(
             f"{LogTag.TODO} Bulk completed todos", todo_count=len(result.success), user_id=user_id
         )
-        if result.success:
-            capture(UserId(user_id), TodosToggled(count=len(result.success)))
         return BulkCompletion(
             todos=[TodoResponse.from_document(todo) for todo in updated], failed=result.failed
         )
@@ -120,8 +116,8 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
         ) from e
 
 
-async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
-    """Delete multiple todos, with the sub-todos of any parent among them."""
+async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> BulkOperationResponse:
+    """Delete multiple todos, with the sub-todos of any parent among them; say which were not found."""
     log.set(
         component="todo_bulk_service",
         operation="bulk_delete_todos",
@@ -130,18 +126,14 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
     )
     try:
         result = await TodoService.bulk_delete_todos(todo_ids, user_id)
-        if not result.success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="No todos found to delete"
-            )
         log.info(
             f"{LogTag.TODO} Bulk deleted todos for user",
             deleted=len(result.success),
+            not_found=len(result.failed),
             user_id=user_id,
         )
-
-    except HTTPException:
-        raise
+        # Unknown ids are reported in result.failed for the caller to name, not raised.
+        return result
     except Exception as e:
         log.error(
             f"{LogTag.TODO} Error bulk deleting todos",

@@ -1,0 +1,136 @@
+{
+ "run": "run_212b2a8a9e37",
+ "captured_from": "2026-10-23",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+   "tool_category": "GOOGLECALENDAR",
+   "result_digest": "{\"data\": {\"date\": \"2026-10-23\", \"timezone\": \"Yeazxzv/Mlg_Uteai\", \"events\": [{\"summary\": \"Skgi\", \"start_time\": \"2026-10-23\", \"end_time\": \"2026-10-24\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#z84qw9\"}, {\"summary\": \"Jvlsnn vwfpl\", \"start_time\": \"2026-10-23T06:00:00-03:00\", \"end_time\": \"2026-10-23T07:20:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}, {\"summary\": \"Uukyo Psbs Ulehxwnrt\", \"start_time\": \"2026-10-23T07:20:00-03:00\", \"end_time\": \"2026-10-23T07:45:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}, {\"summary\": \"Iotoqf w Ijzlnffmrp Zifnmnge\", \"start_time\": \"2026-10-23T09:00:00-03:00\", \"end_time\": \"2026-10-23T09:30:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}, {\"summary\": \"Eouej v kxj jcjfwuhe sacqfcu 500\", \"start_time\": \"2026-10-23T09:00:00-03:00\", \"end_time\": \"2026-10-23T09:30:00-03:00\", \"calendar_name\": \"Quozmktogd\", \"background_color\": \"#pz275w\"}, {\"summary\": \"dikcp\", \"start_time\": \"2026-10-23T10:30:00-03:00\", \"end_time\": \"2026-10-23T10:45:00-03:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#z84qw9\"}, {\"summary\": \"Spnaxzbhmze Xuojcrg (Dtebhhr)\", \"start_time\": \"2026-10-23T15:30:00-03:00\", \"end_time\": \"2026-10-23T16:00:00-03:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#z84qw9\"}, {\"summary\": \"Bgomgfrvhpa em Dgrnwasmz jd Hgsrax\", \"start_time\": \"2026-10-23T15:30:00-03:00\", \"end_time\": \"2026-10-23T16:00:00-03:00\", \"calendar_name\": \"Eno-w-tez\", \"background_color\": \"#2054a8\"}, {\"summary\": \"Dgrnwasmz jd Hgsrax : Fxqig cq xudgql\", \"start_time\": \"2026-10-23T15:30:00-03:00\", \"end_time\": \"2026-10-23T16:00:00-03:00\", \"calendar_name\": \"Hjvrgk & Qdxeqkcl\", \"background_color\": \"#30q441\"}, {\"summary\": \"Ajsd oprvhdnbr bokb 100% Bulg EF\", \"start_time\": \"2026-10-23T17:00:00-03:00\", \"end_time\": \"2026-10-23T18:00:00-03:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#z84qw9\"}, {\"summary\": \"Snzgnmuh ioaci cq nwavyf\", \"start_time\": \"2026-10-23T21:00:00-03:00\", \"end_time\": \"2026-10-23T21:30:00-03:00\", \"calendar_name\": \"Hjvrgk & Qdxeqkcl\", \"background_color\": \"#30q441\"}], \"next_event\": {\"id\": \"6kfx7y1i5ybp9wt5rk4na3h7ds_37852142U866365Z\", \"summary\": \"Jvlsnn vwfpl\", \"eventType\": \"iwtqdhh\", \"start\": {\"dateTime\": \"2026-10-23T06:00:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"end\": {\"dateTime\": \"2026-10-23T07:20:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"htmlLink\": \"https://example.com/27707ad9\", \"calendarId\": \"user@example.com\", \"calendarTitle\": \"Eno-w-tez\", \"kind\": \"calendar#event\", \"etag\": \"\\\"4935899906115998\\\"\", \"status\": \"tnmalswen\", \"created\": \"2026-06-23T19:55:31.000Z\", \"updated\": \"2026-07-06T01:18:07.386Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"recurringEventId\": \"6kfx7y1i5ybp9wt5rk4na3h7ds\", \"originalStartTime\": {\"dateTime\": \"2026-10-23T06:00:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"iCalUID\": \"user@example.com\", \"sequence\": 0, \"guestsCanInviteOthers\": false, \"reminders\": {\"useDefault\": false}}, \"busy_hours\": 6.0}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "events": [
+     {
+      "event_id": "6kfx7y1i5ybp9wt5rk4na3h7ds_37852142U866365Z",
+      "calendar_id": "user@example.com"
+     }
+    ]
+   },
+   "result_digest": "{\"data\": {\"events\": [{\"event_id\": \"6kfx7y1i5ybp9wt5rk4na3h7ds_37852142U866365Z\", \"calendar_id\": \"user@example.com\", \"event\": {\"id\": \"6kfx7y1i5ybp9wt5rk4na3h7ds_37852142U866365Z\", \"summary\": \"Jvlsnn vwfpl\", \"eventType\": \"iwtqdhh\", \"start\": {\"dateTime\": \"2026-10-23T06:00:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"end\": {\"dateTime\": \"2026-10-23T07:20:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"htmlLink\": \"https://example.com/27707ad9\", \"kind\": \"calendar#event\", \"etag\": \"\\\"4935899906115998\\\"\", \"status\": \"tnmalswen\", \"created\": \"2026-06-23T19:55:31.000Z\", \"updated\": \"2026-07-06T01:18:07.386Z\", \"creator\": {\"email\": \"user@example.com\", \"self\": true}, \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"recurringEventId\": \"6kfx7y1i5ybp9wt5rk4na3h7ds\", \"originalStartTime\": {\"dateTime\": \"2026-10-23T06:00:00-03:00\", \"timeZone\": \"Yeazxzv/Mlg_Uteai\"}, \"iCalUID\": \"user@example.com\", \"sequence\": 0, \"guestsCanInviteOthers\": false, \"reminders\": {\"useDefault\": false}}}], \"errors\": []}, \"error\": null, \"successful\": true}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 10,
+   "record_len": 6,
+   "written": {
+    "description": "Dovtnio Kkkppnct: qqdq lar ckyxiautz upcoming calendar event'n details qiq ujlitag w iwsxbtw 93 zlls ovqcc-zh.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "gather",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg calendar context oa find lar upcoming event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+       "data": {}
+      }
+     },
+     {
+      "id": "event",
+      "tool": "execute",
+      "args": {
+       "task_description": "Mptnpww full details yg lar upcoming event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+       "data": {
+        "events": [
+         {
+          "event_id": "$steps.gather.data.next_event.id",
+          "calendar_id": "$steps.gather.data.next_event.calendarId"
+         }
+        ]
+       }
+      }
+     }
+    ],
+    "result_brief": "Kezcsl-znzjc lar event fxbllck lar eqf vxdvud bxwwhjl todos (\"Snobe sshw\", \"AAKY qfjtfri pwwwn ez: TfckySru\") ae email zsggppn, zhxqqr, tbyrfw/event/ursyk HW, hpsorlw, fqqibmc, yqliee, sdnqmme up topic; personal wfkquvl events xhuc ga bcsb gkgfrhb znzjc evqhlbd, ow muzxz kexvl todos keeljxjfn (wbnz update w todo'n canvas.ve Uzwtyhm Apudw qiq zdqpbv w dyjzy activity.ve lvvur fx w armqdsb znzjc). Iftb write lar ynrm w hogaq 93 zlls ovqcc-zh reminder hx Qsbbevgvuw aiupidgai lar event pnkwu qiq start ohzt hx lar ynrm'n whdrf zixgmcwc (Yeazxzv/Mlg_Uteai), gtrz lar yuizmdvm up fdxdx opps umfp tcnn lar event nic vhi, qiq w brief ebpzwlk yg lar uvstqfniqxq wbnz bg ic oviu zwtct e ic uc w ovqcc-zh, mth w full toxyfucq. Xw gys bxwwhjl todo (smpw jcqviucr wbnz qnqli), qiq jd mth wgki send_hyahbzzhloek (lar cvuhzyugus hyahbzzhloek temyvxvr lar qjjnea)."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 11,
+   "record_len": 6,
+   "written": {
+    "description": "Dovtnio Kkkppnct: qqdq lar ckyxiautz upcoming calendar event'n details qiq ujlitag w iwsxbtw 93 zlls ovqcc-zh.",
+    "result_brief": "Kezcsl-znzjc lar event fxbllck lar eqf vxdvud bxwwhjl todos (\"Snobe sshw\", \"AAKY qfjtfri pwwwn ez: TfckySru\") ae email zsggppn, zhxqqr, tbyrfw/event/ursyk HW, hpsorlw, fqqibmc, yqliee, sdnqmme up topic; w personal wfkquvl event xhuc ga bcsb gkgfrhb makxpik evqhlbd, ow muzxz yagc todos keeljxjfn (wbnz update w todo'n canvas.ve Uzwtyhm Apudw qiq zdqpbv w dyjzy activity.ve lvvur fx w armqdsb znzjc). Iftb write lar ynrm w hogaq 93 zlls ovqcc-zh reminder hx Qsbbevgvuw aiupidgai lar event pnkwu qiq start ohzt hx lar ynrm'n whdrf zixgmcwc (Yeazxzv/Mlg_Uteai), gtrz lar yuizmdvm up fdxdx opps umfp tcnn lar event nic vhi, qiq w brief ebpzwlk yg lar uvstqfniqxq wbnz bg ic oviu zwtct e w ovqcc-zh, mth w full toxyfucq. Xw gys bxwwhjl todo (smpw jcqviucr wbnz qnqli), qiq jd mth wgki send_hyahbzzhloek (lar cvuhzyugus hyahbzzhloek temyvxvr lar qjjnea).",
+    "steps": [
+     {
+      "args": {
+       "data": {},
+       "task_description": "Mptnpww calendar context xtwgqjuh udh today",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT"
+      },
+      "id": "gather",
+      "tool": "execute"
+     },
+     {
+      "args": {
+       "data": {
+        "events": [
+         {
+          "calendar_id": "$steps.gather.data.next_event.calendarId",
+          "event_id": "$steps.gather.data.next_event.id"
+         }
+        ]
+       },
+       "task_description": "Mptnpww full details yg lar cwzwcxyyna event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT"
+      },
+      "id": "event",
+      "tool": "execute"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT#1",
+     "id": "gather"
+    },
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_GET_EVENT#1",
+     "id": "event",
+     "vary": {
+      "events.0.calendar_id": "$steps.gather.data.next_event.calendarId",
+      "events.0.event_id": "$steps.gather.data.next_event.id"
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

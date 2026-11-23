@@ -1,7 +1,7 @@
 import { SquareLock01Icon } from "@icons";
 import type React from "react";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 
 import type { EnhancedToolInfo } from "../../types/enhancedTools";
 
@@ -17,7 +17,8 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
   return (
     <button
       type="button"
-      className="group relative mx-2 mb-1 block w-full cursor-pointer text-left"
+      aria-label={`Connect ${tool.displayName} to use ${formatToolName(tool.name)}`}
+      className="group relative mx-2 mb-1 block w-[calc(100%_-_1rem)] cursor-pointer text-left"
       onClick={onConnect}
     >
       {/* Overlay */}
@@ -28,13 +29,18 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
         <div className="flex items-center gap-2">
           {/* Icon */}
           <div className="flex-shrink-0 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
-            {getToolCategoryIcon(tool.category, {}, tool.iconUrl)}
+            <IntegrationIcon
+              integrationId={tool.category}
+              iconUrl={tool.iconUrl}
+              size={20}
+              showBackground
+            />
           </div>
 
           {/* Content */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm text-foreground-600 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
+              <span className="truncate text-sm text-zinc-300 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
                 {formatToolName(tool.name)}
               </span>
 

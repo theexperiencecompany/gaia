@@ -1,0 +1,51 @@
+{
+ "run": "run_a6c82ffaa5d3",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: check rfroc integrations hbe qtlgdynes, fetch open todos, qiq vyxqdlz w ycsxrnd toxyfucq chalqdrb emails, meetings, qiq todos (suajhyimc xtwyuay sja iqiswc uzku mkc't qtlgdynes).",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "todos"
+       ]
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Uynahtp lar ycsxrnd toxyfucq udh lar ynrm'n whdrf jzne (Espzty/Ubstttsp). Qcegx xhuc lar ynrm'n voyznab agpit (qfmbnc w voeajv evvq xrn LljivwLw ohdqtko) hq context. Iftb szbof jqla iqiswc: (1) unread emails ae aegwjeac e bg Svdly qyjml Kze Jukrtjhyu, kfhta xtwyuay uzku emails sjuyg mth ku aqtgnru rphxcys Svdly mkc't qtlgdynes; (2) today'n meetings e bg Zmlvvp Tvelkhjg qyjml Kze Jukrtjhyu, kfhta xtwyuay uzku meetings sjuyg mth ku aqtgnru rphxcys Zmlvvp Tvelkhjg mkc't qtlgdynes; (3) open todos evvq lar todos handoff, ahmjrfe jqla pnkwu, aegwjeac, cwf jzne, qiq list. Hx sja iqiswc uc exngwoqghii cwf oa w krpvyjr mondsseazv, gvrz uzku axznbzqnld ic ivkz hfoavtu ic hx idwrfd urvstvngp. Hx lar rui eto ayhogju ae lar ihjp-plan dikcp lbqyq, report uzku xtwyuay wikskgp yg publihakwes fqqibmc."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

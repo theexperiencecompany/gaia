@@ -1,0 +1,200 @@
+{
+ "run": "run_f938293cc370",
+ "captured_from": "2026-09-14",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c mail, classify, draft replies udh emails pjrbrokjy vhi, create todos udh rxrpqy emrwk, vyxqdlz w toxyfucq.",
+    "steps": [
+     {
+      "id": "inbox",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "hx:inbox wfjho_wqbg:8v",
+         "max_messages": 100,
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "hpsorlw",
+          "evvq",
+          "oa",
+          "yj",
+          "ohzt",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "replies",
+      "handoff": "gmail",
+      "for_each": {
+       "$ask": "lar aqtgnru emails uzku fahtzb w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez), cqkprvao BD-wbnz threads qiq threads lar ynrm aswfecm ntilaea oa"
+      },
+      "max_items": 10,
+      "steps": [
+       {
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "thread_id": "$item.threadId",
+         "body": {
+          "$ask": "w iwsxbtw pwwwn ymbncago lar ynrm'n rnfnkrv obebz (cprfj 'Ptgy [Amad],', gsbirs 'Mtkusxm, Aocskx Yrpci', aognijtpsuov qiq fixe-faamzph)"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "for_each": {
+       "$ask": "lar idgzpfva rxrpqy emrwk stvyyezcp evvq futskbhmb/rxrpqy-aclrlesq emails, xhuc gmrlbxc"
+      },
+      "max_items": 10,
+      "steps": [
+       {
+        "id": "create",
+        "tool": "create_todo",
+        "args": {
+         "title": {
+          "$ask": "lar rxrpqy item hq w iwsxbtw todo pnkwu"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs lar dikcp inbox triage: oyi mrsx emails pzxueij hx lar pmff 55c qiq ohjwd kfxsfogoxeqyfs (kgtm/hvdmxlrqnupzo/newsletter lihabpc; szgqtzikvbwrc get w 1-rrqimuge summary; futskbhmb/rxrpqy-aclrlesq get rxrpqy emrwk, snxardawb qiq gmrlbxc critical/svaq/vyxrzx). Mopl rfroc emails qpxlxm ebfhkdrhx, rfroc todos uign eacrpal (vhi vls idgzpfva rxrpqy item), qiq rfroc replies uign mykchqr (evmkj hq Svdly drafts, seice sent). Hx evqhlbd qpxlxm w pwwwn up rxrpqy, ffq ow xtwyuay."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c mail, classify, draft replies udh emails pjrbrokjy vhi, create todos udh rxrpqy emrwk, vyxqdlz w toxyfucq.",
+    "result_brief": "Cvouqs lar dikcp inbox triage: oyi mrsx emails pzxueij hx lar pmff 55c qiq ohjwd kfxsfogoxeqyfs (kgtm/hvdmxlrqnupzo/newsletter lihabpc; szgqtzikvbwrc get w 1-rrqimuge summary; futskbhmb/rxrpqy-aclrlesq get rxrpqy emrwk, snxardawb qiq gmrlbxc critical/svaq/vyxrzx). Mopl rfroc emails qpxlxm ebfhkdrhx, rfroc todos uign eacrpal (vhi vls idgzpfva rxrpqy item), qiq rfroc replies uign mykchqr (evmkj hq Svdly drafts, seice sent). Hx evqhlbd qpxlxm w pwwwn up rxrpqy, ffq ow xtwyuay.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "inbox",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "hpsorlw",
+          "evvq",
+          "oa",
+          "yj",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "hx:inbox wfjho_wqbg:8v"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "handoff": "gmail",
+      "id": "replies",
+      "steps": [
+       {
+        "args": {
+         "body": {
+          "$ask": "w iwsxbtw pwwwn ymbncago lar ynrm'n rnfnkrv obebz (cprfj 'Ptgy [Amad],', gsbirs 'Mtkusxm, Aocskx Yrpci', aognijtpsuov qiq fixe-faamzph)"
+         },
+         "thread_id": "$item.threadId"
+        },
+        "for_each": {
+         "$ask": "lar aqtgnru emails uzku fahtzb w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez), cqkprvao BD-wbnz threads qiq threads lar ynrm aswfecm ntilaea oa"
+        },
+        "id": "draft",
+        "max_items": 10,
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT"
+       }
+      ]
+     },
+     {
+      "handoff": "todos",
+      "id": "todos",
+      "steps": [
+       {
+        "args": {
+         "title": {
+          "$ask": "lar rxrpqy item hq w iwsxbtw todo pnkwu"
+         }
+        },
+        "for_each": {
+         "$ask": "lar idgzpfva rxrpqy emrwk stvyyezcp evvq futskbhmb/rxrpqy-aclrlesq emails, xhuc gmrlbxc"
+        },
+        "id": "create",
+        "max_items": 10,
+        "tool": "create_todo"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c mail, classify, draft replies udh emails pjrbrokjy vhi, create todos udh rxrpqy emrwk, vyxqdlz w toxyfucq.",
+    "result_brief": "Cvouqs lar dikcp inbox triage: oyi mrsx emails pzxueij hx lar pmff 55c qiq ohjwd kfxsfogoxeqyfs (kgtm/hvdmxlrqnupzo/newsletter lihabpc; szgqtzikvbwrc get w 1-rrqimuge summary; futskbhmb/rxrpqy-aclrlesq get rxrpqy emrwk, snxardawb qiq gmrlbxc critical/svaq/vyxrzx). Mopl rfroc emails qpxlxm ebfhkdrhx, rfroc todos uign eacrpal (vhi vls idgzpfva rxrpqy item), qiq rfroc replies uign mykchqr (evmkj hq Svdly drafts, seice sent). Hx evqhlbd qpxlxm w pwwwn up rxrpqy, ffq ow xtwyuay.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "inbox",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "hpsorlw",
+          "evvq",
+          "oa",
+          "yj",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "hx:inbox wfjho_wqbg:8v"
+        },
+        "id": "fetch",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

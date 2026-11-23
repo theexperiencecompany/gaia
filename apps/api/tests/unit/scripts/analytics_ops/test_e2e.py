@@ -15,11 +15,13 @@ from pathlib import Path
 import fakeredis
 import pytest
 from scripts.analytics_ops import e2e
+from scripts.analytics_ops.e2e_coverage import UNCOVERED, Gap
 from scripts.analytics_ops.e2e_journeys import Stack
 from scripts.analytics_ops.posthog_api import ROW_CAP
 
 from app.workers.config.worker_settings import WorkerSettings
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog import CATALOG
 from tests.unit.scripts.analytics_ops.conftest import FakeReader
 
 USER = "6ac74a19fa5dfaf1f5770471"
@@ -30,6 +32,7 @@ WEB: dict[str, object] = {
     "surface": "web",
     "$session_id": SESSION,
 }
+WEB_SERVER: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "web"}
 WEBHOOK: dict[str, object] = {"actor": "agent", "trigger": "webhook", "surface": "worker"}
 BOT: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "bot"}
 # The agent acts in the run tree the user's request started.
@@ -44,6 +47,20 @@ BOT_TURN: dict[str, object] = {
     "mode": "interactive",
     "agent": "comms",
 }
+ARTIFACT_CONVERSATION = "7e4cb1d0-5a1e-4a55-9b2c-0f9d3c2b8a11"
+ARTIFACT_TURN: dict[str, object] = {
+    "conversation_id": ARTIFACT_CONVERSATION,
+    "mode": "interactive",
+    "agent": "comms",
+}
+ARTIFACT_CREATED: dict[str, object] = {
+    "kind": "dashboard",
+    "components": 6,
+    "repairs": 0,
+    "output_tokens": 900,
+    "first_component_ms": 2600.0,
+    "total_ms": 5200.0,
+}
 WORKFLOW_RUN: dict[str, object] = {
     "conversation_id": WORKFLOW_CONVERSATION,
     "mode": "background",
@@ -52,7 +69,6 @@ WORKFLOW_RUN: dict[str, object] = {
 COMPLETED = {
     "delegated": False,
     "queued": False,
-    "voice_mode": False,
     "ttft_ms": 44.0,
     "e2e_ack_ms": 4.0,
     "e2e_full_ms": 4.0,
@@ -65,8 +81,15 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         "chat:conversation_created",
         {**WEB, "is_onboarding_demo": False, "is_system_generated": True},
     ),
-    ("onboarding:phase_completed", {**WEB, "phase": "getting_started"}),
-    ("paywall:blocked", {**WEB, "feature": "/api/v1/chat-stream"}),
+    ("onboarding:started", WEB),
+    (
+        "onboarding:phase_completed",
+        {**WEB, "phase": "questions_answered", "needs": ["inbox"], "has_other_need": False},
+    ),
+    ("onboarding:phase_completed", {**WEB, "phase": "paywall_reached"}),
+    ("onboarding:phase_completed", {**WEB, "phase": "paid_reveal_seen"}),
+    ("onboarding:phase_completed", {**WEB, "phase": "first_chat_opened"}),
+    ("paywall:blocked", {**WEB, "feature": "/api/v1/conversations/{conversation_id}/messages"}),
     (
         "subscription:activated",
         {
@@ -108,6 +131,18 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "is_new_conversation": True,
         },
     ),
+    # The journey presses Stop on the finished turn: nothing was left running.
+    (
+        "chat:work_stopped",
+        {
+            **WEB,
+            "executor_stopped": False,
+            "pending_tasks": 0,
+            "subagents": 0,
+            "approvals": 0,
+            "browser_jobs": 0,
+        },
+    ),
     (
         "workflow:created",
         {
@@ -115,6 +150,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "origin": "user_created",
             "steps_count": 1,
             "generated_immediately": False,
+            "delivery": "now",
             "trigger_type": "manual",
         },
     ),
@@ -126,6 +162,114 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ),
     ("agent:run_started", {**AGENT_WEB, **WORKFLOW_RUN}),
     ("agent:run_completed", {**AGENT_WEB, **WORKFLOW_RUN}),
+    (
+        "settings:briefing_schedule_updated",
+        {**WEB, "frequency": "weekdays", "hour": 7, "via": "settings"},
+    ),
+    (
+        "workflow:created",
+        {
+            **WEB,
+            "origin": "user_created",
+            "steps_count": 1,
+            "generated_immediately": False,
+            "delivery": "now",
+            "trigger_type": "manual",
+        },
+    ),
+    ("settings:briefs_off_blocked", {**WEB, "workflow_count": 1, "via": "settings"}),
+    (
+        "settings:briefs_off_resolved",
+        {**WEB, "moved_to_now": 1, "moved_to_silent": 0, "via": "settings"},
+    ),
+    (
+        "settings:briefing_schedule_updated",
+        {**WEB, "frequency": "off", "hour": 8, "via": "settings"},
+    ),
+    (
+        "chat:message_submitted",
+        {
+            **WEB,
+            "source": "web",
+            "stream_id": "s-artifact",
+            "is_retry": False,
+            "has_files": False,
+            "is_new_conversation": True,
+            "message_count": 1,
+        },
+    ),
+    (
+        "chat:conversation_created",
+        {**WEB, "is_onboarding_demo": False, "is_system_generated": False},
+    ),
+    ("agent:run_started", {**AGENT_WEB, **ARTIFACT_TURN}),
+    ("agent:run_completed", {**AGENT_WEB, **ARTIFACT_TURN}),
+    (
+        "chat:message_completed",
+        {
+            **WEB,
+            **COMPLETED,
+            "conversation_id": ARTIFACT_CONVERSATION,
+            "stream_id": "s-artifact",
+            "source": "web",
+            "is_new_conversation": True,
+        },
+    ),
+    ("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED}),
+    (
+        "short_link:opened",
+        {
+            **WEB_SERVER,
+            "target_type": "openui_artifact",
+            "access": "unlisted",
+            "viewer_signed_in": False,
+        },
+    ),
+    ("artifact:pdf_exported", {**WEB_SERVER, "kind": "dashboard", "pages": 1}),
+    (
+        "todos:created",
+        {
+            **WEB,
+            "priority": "none",
+            "has_due_date": False,
+            "has_description": False,
+            "labels_count": 0,
+            "subtasks_count": 0,
+            "has_project": False,
+            "is_sub_todo": False,
+        },
+    ),
+    (
+        "short_link:created",
+        {
+            **WEB,
+            "target_type": "todo_deliverable",
+            "access": "unlisted",
+            "origin": "owner_share",
+            "has_expiry": False,
+        },
+    ),
+    (
+        "short_link:opened",
+        {
+            **WEB_SERVER,
+            "target_type": "todo_deliverable",
+            "access": "unlisted",
+            "viewer_signed_in": True,
+        },
+    ),
+    (
+        "short_link:access_changed",
+        {
+            **WEB,
+            "target_type": "todo_deliverable",
+            "from_access": "unlisted",
+            "to_access": "owner",
+        },
+    ),
+    ("short_link:denied", {**WEB_SERVER, "target_type": "todo_deliverable", "reason": "forbidden"}),
+    ("short_link:rotated", {**WEB, "target_type": "todo_deliverable", "access": "owner"}),
+    ("short_link:revoked", {**WEB, "target_type": "todo_deliverable", "reason": "owner"}),
     (
         "chat:message_submitted",
         {**BOT, "source": "telegram", "stream_id": "s-bot", "is_retry": False, "has_files": False},
@@ -373,3 +517,28 @@ def test_a_read_the_query_api_timed_out_is_retried_within_the_deadline(
 
     assert len(received) == len(CLEAN)
     assert "PostHog read timed out" in capsys.readouterr().out
+
+
+def _expected_by_journeys() -> set[str]:
+    return {x.event for journey in e2e.build_journeys(Path("/dev/null")) for x in journey.expects}
+
+
+def test_every_catalog_event_is_expected_by_a_journey_or_declared_uncovered() -> None:
+    """A new event chooses: an Expect in a journey, or an UNCOVERED entry saying why not."""
+    missing = set(CATALOG) - _expected_by_journeys() - set(UNCOVERED)
+    assert not missing, f"add an Expect or an e2e_coverage.UNCOVERED entry for {sorted(missing)}"
+
+
+def test_no_event_is_both_expected_and_declared_uncovered() -> None:
+    both = _expected_by_journeys() & set(UNCOVERED)
+    assert not both, f"a journey expects {sorted(both)}: drop them from UNCOVERED"
+
+
+def test_every_uncovered_entry_names_a_catalog_event() -> None:
+    assert not set(UNCOVERED) - set(CATALOG)
+
+
+def test_a_web_event_is_uncovered_only_as_a_browser_interaction() -> None:
+    """The e2e drives no browser, so a web event's one honest reason is WEB_CLIENT, and only its."""
+    for name, gap in UNCOVERED.items():
+        assert (gap is Gap.WEB_CLIENT) == (CATALOG[name].owner == "web"), name

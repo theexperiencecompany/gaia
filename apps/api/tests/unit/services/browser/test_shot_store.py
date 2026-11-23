@@ -12,6 +12,7 @@ from app.constants.browser import (
     BROWSER_REPLAY_CODE_TTL_SECONDS,
     BROWSER_SHOT_CODE_KEY_PREFIX,
 )
+from app.db.redis import redis_cache
 from app.services.browser import shot_store
 from tests.helpers import captured_wide_event
 
@@ -20,9 +21,7 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture(autouse=True)
 def link_base(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL", "https://browser.test"
-    )
+    monkeypatch.setattr("app.services.browser.links.settings.HOST", "https://browser.test")
 
 
 def _code(url: str) -> str:
@@ -35,7 +34,7 @@ async def test_a_stored_frame_is_read_back_by_its_runs_code_and_index(
     url = await shot_store.store_step_screenshot(b"\xff\xd8jpeg-one", "sess-1", 2)
 
     assert url is not None
-    assert url.startswith("https://browser.test/shots/")
+    assert url.startswith("https://browser.test/api/v1/browser/shots/")
     assert url.endswith("/2.jpg")
     assert "sess-1" not in url
     assert await shot_store.read_step_screenshot(_code(url), 2) == b"\xff\xd8jpeg-one"
@@ -92,7 +91,7 @@ async def test_an_unknown_code_or_a_session_id_opens_nothing(
 
 
 async def test_a_frame_redis_does_not_take_gets_no_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(shot_store.redis_cache, "redis", None)
+    monkeypatch.setattr(redis_cache, "redis", None)
 
     assert await shot_store.store_step_screenshot(b"a", "sess-1", 1) is None
 

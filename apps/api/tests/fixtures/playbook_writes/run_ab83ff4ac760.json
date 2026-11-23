@@ -1,0 +1,94 @@
+{
+ "run": "run_ab83ff4ac760",
+ "captured_from": "2026-09-14",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "list_tracked_todos"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_conversations"
+  },
+  {
+   "tool_name": "search_journal"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_conversations"
+  },
+  {
+   "tool_name": "send_notification"
+  },
+  {
+   "tool_name": "edit"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 19,
+   "record_len": 10,
+   "written": {
+    "description": "Tzedzqr 8:30pm WZC check-hx fx Nqarb'n dikcp pmocc: gather today'n ihnmky pmocc evvq ammjvnc qiq today'n/overdue Rbwxszg tasks, vtyc mbpsbgb qiq mtwsxbz lar check-hx.",
+    "steps": [
+     {
+      "id": "conv",
+      "tool": "search_conversations",
+      "args": {
+       "query": "$today dikcp pmocc ycsxrnd plan ihnmky today"
+      }
+     },
+     {
+      "id": "journ",
+      "tool": "search_journal",
+      "args": {
+       "query": "dikcp pmocc ycsxrnd plan $today"
+      }
+     },
+     {
+      "id": "mem",
+      "tool": "search_memory",
+      "args": {
+       "query": "dikcp pmocc ihnmky $today today"
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todoist",
+      "steps": [
+       {
+        "id": "today",
+        "tool": "TODOIST_GET_ALL_TASKS",
+        "args": {
+         "filter": "today"
+        }
+       },
+       {
+        "id": "overdue",
+        "tool": "TODOIST_GET_ALL_TASKS",
+        "args": {
+         "filter": "overdue"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Fplgega Nqarb'n fhnpyfy check-hx hx xrn bmdmnu, vuaxh qglau (eighhbqbq, hogaq wozpf, \"c\", lkdiaps qhmze, yxpx qkv \"Famd\"). Tshl xhuc ptybmub today'n dikcp pmocc uign ihnmky: bg lar bqbkvbuu lrqvtv ga pmocc udh today (lar mvrsg iygp), ffq evqhlbd snovdnmu oa lobk qkv; bg sja hbe etfpq, smvwgnm rfroc hbe imfb qiq list rfroc hbe rdddk open. Iftb qqdq lar xenivee/overdue Rbwxszg emrwk lar rui gxrbwril (kgesdcfa \"Pckynbz 20 uada TYe fx E\", \"Oujwg inbox jcqviucr\", \"Nrue Styz\") qiq znupxa remind uwr ohjsb rdddk tuvn beekaymqu mbmdhn iazlgjix. Bo UXJ bqzd-fvoghplb sja xenivee olqd e report culccqzd. Dqhi uzku send_hyahbzzhloek frlpqlwv lar ynrm'n llkngupa qiq rmnqlh fvoghplb hx w duilvcbnuh rui, ow lar check-hx lswycqi uc vhoddpjyu oa Nqarb ukm lar rui'n bqzd-cvuhzyugus hyahbzzhloek wikskgp; w dyjzy outcome lvvur uc ojqbtvny oa activity.ve udh lar todo (iuqcei fhnpyfy-check-hx-fx-dikcp-pmocc-986cs-p-063t906b)."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "TODOIST_GET_ALL_TASKS; handoffs without calls: ['todoist']",
+   "expected": "unmappable"
+  }
+ ]
+}

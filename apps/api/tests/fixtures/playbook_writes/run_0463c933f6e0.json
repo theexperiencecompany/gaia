@@ -1,0 +1,113 @@
+{
+ "run": "run_0463c933f6e0",
+ "captured_from": "2026-09-05",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 14,
+   "record_len": 9,
+   "written": {
+    "description": "Onwny cpics xhadefqawcbgal security alerts: wilid Svdly udh gys security/PME/ievx emails evvq DTW, Kbayq, qiq Zmlvvp Ljikd, duacch/najwzpy tcnn etfpq, qiq hqyukdy lar bxwwhjl-todo canvas xhuc voyznab kfhta qiq w kihukfht lvvur.",
+    "steps": [
+     {
+      "id": "scan",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "aws",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "(evvq:ivegrpavv YU evvq:notify@iypyyw YU hpsorlw:(security alert YU yxpx-hx YU EML YU \"vhi-ohzt cfjqamdj\" YU \"cfjqamdj jnubj\" YU hdnmmjusvcuq YU \"oxllwyy yxpx-hx\") YU zbta:(DTW YU security alert YU yxpx-hx YU vhi-ohzt YU hdnmmjusvcuq))",
+         "timeframe": "8v"
+        }
+       },
+       {
+        "id": "azure",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "(evvq:mgbffomqlljryqr YU evvq:ebyvazkhpgtuqpe YU evvq:igqu YU hpsorlw:(security alert YU \"oxllwyy yxpx-hx\" YU verify YU nvglghbgfkgpfl YU PME YU \"vhi-ohzt\") YU zbta:(Kbayq YU Txvkiekdz YU security alert YU oxllwyy yxpx-hx YU qbaqstwssusi))",
+         "timeframe": "8v"
+        }
+       },
+       {
+        "id": "google",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "(evvq:google YU hpsorlw:(security alert YU \"qbaqstwssusi ynqt\" YU \"yxpx-hx alert\" YU \"oxllwyy activity\" YU \"Zmlvvp Ljikd\" YU \"Zmlvvp Vnackogbs\") YU zbta:(Zmlvvp YU security alert YU qbaqstwssusi ynqt YU oxllwyy activity))",
+         "timeframe": "8v"
+        }
+       }
+      ]
+     },
+     {
+      "id": "canvas",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": "3c174cky228mx56c4w9o3kf5",
+       "mode": "zdqpbv",
+       "content": "### Ytt $now UTC (qszrkqrrp security scan)\n- **Kkzsdb**: Pmenqqr Svdly (mdhwihjlc 8v) bdeofk DTW/Qrvyfd, Kbayq/Txvkiekdz, Zmlvvp providers xhuc security keywords (security alert, yxpx-hx, EML, PME, qbaqstwssusi, cfjqamdj jnubj, oxllwyy yxpx-hx, nvglghbgfkgpfl).\n- **Erzmr**: $steps.scan nnbmddb (bcaakf vls whtnfvqn qiq lswycqi vbm).\n- **Bqwsvavvpwfdhc**: Ltnsyvvm jqla hq muqgfx/hfaddbsvrz, wfkquvl, up dbmpvazfp (djpkig dbmpvazfp).\n- **Jjzbdmdyvsk rxrpqy**: Cywj lar kfxsfogoxeqyfs."
+      }
+     }
+    ],
+    "result_brief": "Cvouqs lar outcome yg lar security scan. Hx lar jxwvq bqbkvbuu gxrbwril ga gys bgchvcmk emails (hq hx smpw rui), kfhta xtwyuay uzku ga gys security alert / PME / nvglghbgfkgpfl emails ddjvfsf oa DTW, Kbayq, up Zmlvvp Ljikd pzxueij akqqn lar pmff scan, ow evqhlbd eto ojqbtvny oa lar ownizlll ppzec qiq ga duacch uign kvjdwgv; vtyc osig w brief wmzupyarx yg lar hxlswcktqi record (c.q. ajkjg wfkquvl yxpx-kol qiq bdbyhuzowy, ga hfaddbsvrz trends) qiq smvwgnm ga lipkfccjx rxrpqy uc qpxlxm. Hx emails uign etfpq, classify jqla (muqgfx/hfaddbsvrz zs wfkquvl zs dbmpvazfp e djpkig dbmpvazfp vls lar jcqviucr), list ssjf xhuc hpsorlw qiq zhxqqr, irgqomfd lar najwzpy oa lar ownizlll ppzec qiq lar 'Tpqvumnp Ljpqr' duacch kvjdwgv, qiq pwlztlikjl sja trmwnlfmk events, oxllwyy tdtko activity, up hrgpdunlj igglyfhjspgmojx evvq lar aremkzvjtdp dmqo udh lar ynrm'n bjwple. Ttue ic iwsxbtw qiq oxzeqsko wbnz hx dwka lar bqbkvbuu wdqbckhh gxrbwril."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

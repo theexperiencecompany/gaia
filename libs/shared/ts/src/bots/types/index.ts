@@ -9,7 +9,10 @@
  * - ChatRequest / ChatResponse: chat API payloads
  * - CommandContext: user identity passed to all shared command handlers
  * - BotConfig: environment config loaded by config/index.ts
- * - Domain types: BotWorkflow, BotTodo, BotConversation (match backend API schemas)
+ * - BotConversation: the conversation list row bots display
+ *
+ * Workflow and todo payloads are the generated API models
+ * (`@gaia/shared/api/generated`), never a hand-written copy.
  */
 
 /**
@@ -61,6 +64,12 @@ export interface ChatRequest {
    * Absent when the trigger has no message id (slash-command interactions).
    */
   platformMessageId?: string;
+  /**
+   * When the platform event reached the bot (epoch ms), stamped by the adapter
+   * on arrival — before any per-user queue — so the chat event can report how
+   * much of the reply's latency the bot itself added. Never sent to the API.
+   */
+  receivedAt?: number;
   /**
    * Full file metadata for the attached files. Sent alongside `fileIds` so
    * the agent can resolve URLs/filenames without an extra DB lookup, matching
@@ -134,58 +143,10 @@ export interface RedeemedLinkCode {
   firstContact: string[];
 }
 
-export interface BotWorkflow {
-  id: string;
-  name: string;
-  description: string;
-  status: "active" | "inactive" | "draft";
-  triggers?: Record<string, unknown>[];
-  steps?: Record<string, unknown>[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface BotWorkflowListResponse {
-  workflows: BotWorkflow[];
-}
-
-export interface BotWorkflowExecutionRequest {
-  workflow_id: string;
-  inputs?: Record<string, unknown>;
-}
-
-export interface BotWorkflowExecutionResponse {
-  execution_id: string;
-  status: string;
-  result?: unknown;
-}
-
-export interface BotTodo {
-  id: string;
-  title: string;
-  description?: string;
-  completed: boolean;
-  priority?: "low" | "medium" | "high";
-  due_date?: string;
-  project_id?: string;
-}
-
-export interface BotTodoListResponse {
-  todos: BotTodo[];
-  total: number;
-}
-
-export interface BotCreateTodoRequest {
-  title: string;
-  description?: string;
-  completed?: boolean;
-  priority?: "low" | "medium" | "high";
-  due_date?: string;
-  project_id?: string;
-}
-
 export interface BotConversation {
   conversation_id: string;
+  /** The conversation's web app page, built by the server. */
+  url: string;
   title?: string;
   description?: string;
   created_at: string;

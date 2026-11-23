@@ -87,7 +87,8 @@
   }
 
   const labelsName = (e, seen) => [...(e.labels||[])].map(l=>accessibleName(l, seen)).filter(Boolean).join(' ');
-  const buttonValue = e => ['button','submit','reset'].includes(e.type) ? e.value : '';
+  // Only an <input> button is named by its value; a <button>'s value is what its form sends.
+  const buttonValue = e => e.tagName==='INPUT' && ['button','submit','reset'].includes(e.type) ? e.value : '';
 
   function childrenName(e, seen) {
     if (e.tagName==='INPUT') return '';
@@ -264,21 +265,72 @@
       current_value:[...e.selectedOptions].map(o=>o.label).join(', '),options}];
   }
 
-  const offered = e => isSafe(e) && isVisible(e) && !e.matches(':disabled') && !e.closest('[aria-disabled="true"]');
+  const isDisabled = e => e.matches(':disabled') || !!e.closest('[aria-disabled="true"]');
+  const offered = e => isSafe(e) && isVisible(e) && !isDisabled(e);
+  // A one-character box: a code split into one box per character, which the page steps through.
+  const isSegment = e => e.tagName==='INPUT' && !isSecret(e) && e.maxLength===1 && offered(e) && isEditable(e, roleOf(e));
+  // How many one-character boxes in one form make one code field (BROWSER_CODE_MIN_BOXES).
+  const MIN_SEGMENTS=4;
 
-  // Every control a press reaches, and Enter for the observed field that holds focus.
+  // Each run of one-character boxes in one form: its boxes by their first, and every box's run.
+  function segmentedFields(roots) {
+    const byForm=new Map();
+    for (const {root} of roots) for (const e of root.querySelectorAll('input')) {
+      if (!isSegment(e)) continue;
+      const key=e.form || e.parentElement;
+      byForm.set(key, [...(byForm.get(key) || []), e]);
+    }
+    const first=new Map(), runOf=new Map();
+    for (const boxes of byForm.values()) if (boxes.length>=MIN_SEGMENTS) {
+      first.set(boxes[0], boxes);
+      boxes.forEach(b=>runOf.set(b, boxes));
+    }
+    return {first, runOf};
+  }
+
+  // A box's label without the index it carries ("User code 0" -> "User code").
+  function stem(label) {
+    let end=label.length;
+    while (end>0 && label[end-1]>='0' && label[end-1]<='9') end--;
+    return label.slice(0,end).trimEnd() || label;
+  }
+
+  // One code field for a run of boxes: typed into its first box, which the page carries on from.
+  function segmentedAction(boxes, base, cache) {
+    return {...base,kind:'fill',label:stem(base.label),
+      value:boxes.map(b=>b.value).join(''),segments:boxes.map(b=>cache.identity(b))};
+  }
+
+  // The name of a control the page shows but has disabled; '' for any other element.
+  const disabledName = e => isSafe(e) && isVisible(e) && isDisabled(e) && roleOf(e) ?
+    (accessibleName(e) || roleOf(e)).slice(0,LABEL_CHARS) : '';
+
+  // What one reachable control offers: a code's run is one field on its first box, nothing on the rest.
+  function actionsOf(e, ox, oy, cache, segments) {
+    const rname=offered(e) ? roleOf(e) : null;
+    if (!rname || !cache.pressPoint(e) || (segments.runOf.has(e) && !segments.first.has(e))) return [];
+    const base=describe(e, rname, ox, oy, cache), run=segments.first.get(e);
+    return run ? [segmentedAction(run, base, cache)] : controlActions(e, base);
+  }
+
+  // Whether focus is in e, or in any box of the code run e leads.
+  const holdsFocus = (e, active, segments) =>
+    e===active || (segments.first.has(e) && segments.runOf.get(active)===segments.first.get(e));
+
+  // Every control a press reaches, Enter for the observed field that holds focus, and the
+  // controls the page shows but has disabled, which Jev waits for instead of judging them absent.
   function collectActions(roots, cache) {
-    const active=deepActive(), actions=[];
+    const active=deepActive(), actions=[], disabled=[], segments=segmentedFields(roots);
     let focused=null;
     for (const {root, ox, oy} of roots) for (const e of root.querySelectorAll(SELECTOR)) {
-      const rname=offered(e) ? roleOf(e) : null;
-      if (!rname || !cache.pressPoint(e)) continue;
-      const own=controlActions(e, describe(e, rname, ox, oy, cache));
+      const name=disabledName(e);
+      if (name) { disabled.push(name); continue; }
+      const own=actionsOf(e, ox, oy, cache, segments);
       actions.push(...own);
-      if (e===active && own.some(a=>a.kind==='fill' || a.kind==='secret'))
+      if (holdsFocus(e, active, segments) && own.some(a=>a.kind==='fill' || a.kind==='secret'))
         focused={id:'enter',kind:'enter',node:own[0].node,label:'Press Enter in '+own[0].label};
     }
-    return {actions, focused};
+    return {actions, focused, disabled};
   }
 
   // Visible text, in the order it reads down the screen, across every document and shadow root.
@@ -331,7 +383,7 @@
     if (!document.body) return bodiless(cache);
     const {roots, frames}=collectRoots();
     prepare(cache, roots);
-    const {actions, focused}=collectActions(roots, cache);
+    const {actions, focused, disabled}=collectActions(roots, cache);
     const omitted_actions=Math.max(0,actions.length-MAX_ACTIONS);
     actions.splice(MAX_ACTIONS);
     actions.forEach((a,i)=>a.id='e'+(i+1));
@@ -340,7 +392,7 @@
     const guards={};
     for (const a of actions) if (a.node!==undefined && !(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
     return {url:location.href,title:document.title,...visibleText(roots),
-      actions,page_key:cache.pageKey(),guards,omitted_actions,frames};
+      actions,disabled,page_key:cache.pageKey(),guards,omitted_actions,frames};
   }
 
   return snapshot();

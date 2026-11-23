@@ -22,6 +22,7 @@ from pydantic_core import ErrorDetails
 from app.constants.todos import TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument
+from app.models.trigger_gate_models import TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -32,7 +33,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.analytics_service import capture
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.triggers import get_handler_by_name
 from app.services.triggers.subscription_validation import (
     ValidationOutcome,
@@ -84,6 +85,7 @@ async def register_subscription(
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
     trigger_data: Mapping[str, object] | None = None,
     account_id: str | None = None,
+    gate: TriggerGate | None = None,
 ) -> tuple[TriggerSubscription, ValidationOutcome, bool]:
     """Validate, register with Composio, and store one subscription on todo_id.
 
@@ -129,6 +131,28 @@ async def register_subscription(
             f"Invalid configuration for '{trigger_name}': {first_error['msg']}",
         ) from e
 
+    # Built before Composio is called: a row its own rules refuse (a gate on a
+    # watch that starts no run) must leave no trigger instance upstream.
+    try:
+        subscription = TriggerSubscription(
+            trigger_name=trigger_name,
+            account_id=account_id,
+            conditions=outcome.conditions,
+            match=match,
+            action=action,
+            cooldown_seconds=cooldown_seconds,
+            resolution=(
+                SubscriptionResolution.TRIGGER_ID
+                if handler.registers_instances
+                else SubscriptionResolution.ACCOUNT
+            ),
+            trigger_data=dict(trigger_data or {}),
+            gate=gate,
+        )
+    except ValidationError as e:
+        refusal: ErrorDetails = e.errors()[0]
+        raise _fail("invalid_subscription", f"Invalid subscription: {refusal['msg']}") from e
+
     try:
         trigger_ids = await TriggerService.register_triggers(
             user_id, todo_id, trigger_name, config, raise_on_failure=True
@@ -145,22 +169,7 @@ async def register_subscription(
             f"Registering '{trigger_name}' returned no trigger instance, so the "
             "subscription would never fire. Check the trigger configuration.",
         )
-
-    subscription = TriggerSubscription(
-        trigger_name=trigger_name,
-        account_id=account_id,
-        conditions=outcome.conditions,
-        match=match,
-        action=action,
-        cooldown_seconds=cooldown_seconds,
-        resolution=(
-            SubscriptionResolution.TRIGGER_ID
-            if handler.registers_instances
-            else SubscriptionResolution.ACCOUNT
-        ),
-        composio_trigger_ids=trigger_ids,
-        trigger_data=dict(trigger_data or {}),
-    )
+    subscription.composio_trigger_ids = trigger_ids
 
     stored = await store_subscription(
         todo,
@@ -256,7 +265,7 @@ async def store_subscription(
             cooldown_seconds=subscription.cooldown_seconds,
         ),
     )
-    await record_activity(todo.id, todo.user_id, TodoActivityEvent.WATCH_ADDED, activity)
+    await record_todo_activity(todo.id, todo.user_id, TodoActivityEvent.WATCH_ADDED, activity)
     log.info(
         "todo_subscription.registered",
         todo_id=todo.id,
@@ -302,7 +311,7 @@ async def unregister_subscription(
                 error_type=type(e).__name__,
             )
 
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.WATCH_REMOVED, f"stopped watching {target.trigger_name}"
     )
     log.info(
@@ -352,7 +361,7 @@ async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> 
 
     count = len(before.trigger_subscriptions)
     names = ", ".join(sorted({sub.trigger_name for sub in before.trigger_subscriptions}))
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.WATCH_REMOVED, f"stopped watching {names} ({reason})"
     )
     log.info("todo_subscription.torn_down", todo_id=todo_id, count=count, reason=reason)
@@ -402,7 +411,7 @@ async def pause_subscriptions_for_trigger_names(
             await todo_repository.pause_trigger_subscriptions(
                 todo.id, user_id=user_id, subscription_ids={s.id for s in hit}
             )
-            await record_activity(
+            await record_todo_activity(
                 todo.id,
                 user_id,
                 TodoActivityEvent.WATCH_PAUSED,
@@ -455,7 +464,7 @@ async def resync_subscriptions_for_trigger_names(
             await todo_repository.resume_trigger_subscriptions(
                 todo.id, user_id=user_id, trigger_ids=trigger_ids
             )
-            await record_activity(
+            await record_todo_activity(
                 todo.id,
                 user_id,
                 TodoActivityEvent.WATCH_RESUMED,

@@ -9,6 +9,8 @@
  * - New triggers can be added without changing this schema
  */
 
+import { WORKFLOW_DELIVERIES } from "@gaia/shared";
+import type { WorkflowDelivery } from "@shared/api/generated";
 import { z } from "zod";
 import { isValidTimezone } from "@/lib/timezone";
 import type {
@@ -16,6 +18,7 @@ import type {
   Workflow,
 } from "@/types/features/workflowTypes";
 import { workflowApi } from "../api/workflowApi";
+import { GATE_CONDITION_MAX_CHARS } from "../constants/gates";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -89,7 +92,29 @@ export const workflowFormSchema = z.object({
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
-  notify_on_completion: z.boolean(),
+  // null until chosen: a new workflow has no default delivery, and this refusal
+  // keeps it from being created without one.
+  delivery: z
+    .enum(WORKFLOW_DELIVERIES)
+    .nullable()
+    .superRefine((delivery, ctx) => {
+      if (delivery === null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Choose how you hear about each run",
+        });
+      }
+    }),
+  // "Runs only when": an empty condition is no gate. A system gate's is its preset's wording.
+  gate: z.object({
+    condition: z
+      .string()
+      .max(
+        GATE_CONDITION_MAX_CHARS,
+        `Condition too long (max ${GATE_CONDITION_MAX_CHARS} characters)`,
+      ),
+    enabled: z.boolean(),
+  }),
 });
 
 // Export the inferred type
@@ -98,6 +123,11 @@ export type WorkflowFormData = z.infer<typeof workflowFormSchema>;
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
+
+export const NO_GATE: WorkflowFormData["gate"] = {
+  condition: "",
+  enabled: true,
+};
 
 /**
  * Get default form values for new workflow creation.
@@ -114,8 +144,20 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
     type: "manual",
     enabled: true,
   },
-  notify_on_completion: true,
+  delivery: null,
+  gate: NO_GATE,
 });
+
+/**
+ * The delivery a submitted form carries. The schema refuses null, so a form
+ * that reached submit always has one; reaching here without it is a bug.
+ */
+export const chosenDelivery = (data: WorkflowFormData): WorkflowDelivery => {
+  if (data.delivery === null) {
+    throw new Error("A workflow cannot be saved without a delivery mode");
+  }
+  return data.delivery;
+};
 
 /**
  * Convert existing workflow to form data for editing.
@@ -159,6 +201,12 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
     activeTab,
     selectedTrigger,
     trigger_config: workflow.trigger_config,
-    notify_on_completion: workflow.notify_on_completion ?? true,
+    delivery: workflow.delivery,
+    gate: workflow.gate
+      ? {
+          condition: workflow.gate.display_condition,
+          enabled: workflow.gate.enabled,
+        }
+      : NO_GATE,
   };
 };

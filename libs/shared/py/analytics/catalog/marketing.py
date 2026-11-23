@@ -38,8 +38,8 @@ class NavigationSidebarClicked(WebEvent):
     event: ClassVar[str] = "navigation:sidebar_clicked"
     budget_per_user_day: ClassVar[int] = 200
 
-    destination: Literal["/dashboard", "/todos", "/integrations", "/workflows", "/c"]
-    label: Literal["Home", "Tasks", "Integrations", "Workflows", "Chats"]
+    destination: Literal["/dashboard", "/todos", "/integrations", "/workflows", "/briefings", "/c"]
+    label: Literal["Home", "Tasks", "Integrations", "Workflows", "Briefings", "Chats"]
 
 
 class NavigationNavbarLinkClicked(WebEvent):

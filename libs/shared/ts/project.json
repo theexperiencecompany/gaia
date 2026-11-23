@@ -12,7 +12,8 @@
         "command": "pnpm build",
         "cwd": "{projectRoot}"
       },
-      "cache": true
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/libs/shared/bot-identity.json"]
     },
     "test": {
       "executor": "nx:run-commands",

@@ -1,0 +1,59 @@
+{
+ "run": "run_1653496f01a3",
+ "captured_from": "2026-09-20",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle rxrpqy emrwk summary: fetch unread Svdly evvq lar lliv 55c, znkiciio rxrpqy emrwk, send w ixdaqkma summary oa lar ynrm fx Searn.",
+    "steps": [
+     {
+      "id": "unread",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "lm",
+          "qjwzyvOb"
+         ],
+         "query": "uc:unread wfjho_wqbg:8v"
+        }
+       }
+      ]
+     },
+     {
+      "id": "slack",
+      "handoff": "slack",
+      "steps": [
+       {
+        "id": "send",
+        "tool": "SLACK_SEND_MESSAGE",
+        "args": {
+         "channel": "O69EITL51GK",
+         "markdown_text": {
+          "$ask": "lar dikcp rxrpqy emrwk summary lswycqi udh lar ynrm: w ixdaqkma list xhuc vhi svnuuf vls rxrpqy item etfpq hx lar aqtgnru unread emails, jqla lvvur lfvesi lar zhxqqr qiq hpsorlw qiq sja mxiqhhbd (vqpa QWVWZE bg vvuyky 55c); up w obvuob iwsxbtw 'ga xenivee rxrpqy emrwk' lswycqi bg jyjt; up w 'sjuyg mth ku yxhlihzsa' lswycqi bg lar fetch goohkt"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar aqtgnru unread emails, znkiciio rfroc uzjsmid sjfxpayb up ksgowxbz rxrpqy emrwk udh lar ynrm (xhcjynp tmymkccmonb, mrppkqdwp mvkokuuisgfie, qiq edhihwgks ofliee nlla adphpxj nm rxrpqy). Prv jqla, zuiillm zhxqqr, hpsorlw, lar snovdnmu rxrpqy khicceebb, qiq sja mxiqhhbd. Cvouqs lar summary hq w ixdaqkma list xhuc vhi svnuuf vls rxrpqy item aiupidgai zhxqqr qiq hpsorlw, awkkhyx inn snxardawb qiq gglajvty sja vvuyky lar next 24 caasu hq QWVWZE. Hx ga rxrpqy emrwk, kfhta ymgdt hbe jyjt. Dqhi uzku lar Searn swanmrqe may ku ayhogju xenivee ynrm llkngupa hx duilvcbnuh pwtz."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail', 'slack']",
+   "expected": "unmappable"
+  }
+ ]
+}

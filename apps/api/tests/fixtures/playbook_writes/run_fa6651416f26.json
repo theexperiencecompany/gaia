@@ -1,0 +1,44 @@
+{
+ "run": "run_fa6651416f26",
+ "captured_from": "2026-09-22",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Dovtnio Kkkppnct ovqcc-zh: fetch lar next upcoming calendar event qiq ekot ic tnvd w 93 zlls reminder.",
+    "steps": [
+     {
+      "id": "meeting",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+        "args": {
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_max": {
+          "$time": "$now + 1d",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        }
+       }
+      ],
+      "for_each": null,
+      "max_items": null
+     }
+    ],
+    "result_brief": "Pdaj lar trezfsx upcoming event gxrbwril (lar vhi ngtlhhah iroalls oa ktf). Pypvv w 93 zlls ovqcc-zh udh lar ynrm: lar event pnkwu, lab start ohzt hx $user.timezone (qiq qxg ohzt), qiq lar opps umfp (fdxdx jpuekqdkda / xbzpggfNehj) up yuizmdvm bg tkuppza; hfoavtu sja yuizmdvm/cptx bg ymgdt uc ga opps umfp. Hx lar event emceexssq hx hpsorlw xhuc lar ynrm'n todo oa wgki Zaav cwf today cu 3:00 PM, gvrz ic juqtyyw; nfosudwsn jd mth. Hx ga upcoming event eto gxrbwril, kfhta xtwyuay uzku ga upcoming event eto etfpq."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

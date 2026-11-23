@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+import os
+import signal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,7 +22,9 @@ from app.browser_host import server as server_mod
 from app.browser_host.cdp_mux import CdpCommandError, CdpConnectionClosed, CDPTimeoutError
 from app.browser_host.host import AtCapacityError, EngineUnresponsiveError, SessionNotFoundError
 from app.browser_host.wire import HealthResponse, SessionInfo
+from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import BrowserEngine, HostAdmissionRefusal
+from shared.py.wide_events import log
 
 pytestmark = pytest.mark.unit
 
@@ -36,7 +40,9 @@ class _HostStub:
         # The engine the session really runs on, which the client learns from the host.
         self.create_context = AsyncMock(
             return_value=MagicMock(
-                session_id="s1", token=_TOKEN, engine=MagicMock(kind=BrowserEngine.CHROMIUM)
+                session_id="s1",
+                token=_TOKEN,
+                engine=MagicMock(kind=BrowserEngine.CHROMIUM, fortress=True),
             )
         )
         self.dispose_context = AsyncMock(return_value={"cookies": [], "origins": []})
@@ -56,9 +62,9 @@ class _HostStub:
 def host(monkeypatch: pytest.MonkeyPatch) -> _HostStub:
     stub = _HostStub()
     monkeypatch.setattr(server_mod, "_host", stub)
-    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_HOST_URL", "http://bh:8930")
-    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_HOST_KEY", _KEY)
-    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_URL", "http://bh:8930")
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_KEY", _KEY)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     return stub
 
 
@@ -87,6 +93,7 @@ def test_a_created_session_comes_back_as_websocket_urls_carrying_its_own_token(
         "cdp_ws": f"ws://bh:8930/cdp/s1?token={_TOKEN}",
         "live_ws": f"ws://bh:8930/live/s1?token={_TOKEN}",
         "engine": "chromium",
+        "fortress": True,
     }
     assert host.create_context.await_args.args == ({"cookies": [], "origins": []},)
 
@@ -216,7 +223,7 @@ def test_healthz_is_503_when_the_engine_does_not_answer(
     client: TestClient, host: _HostStub, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recorded = MagicMock()
-    monkeypatch.setattr(server_mod.log, "set", recorded)
+    monkeypatch.setattr(log, "set", recorded)
     assert client.get("/healthz").json() == {
         "ok": True,
         "sessions": 0,
@@ -313,15 +320,15 @@ def test_a_rest_call_without_the_host_key_is_refused_and_leaves_a_trail(
 def test_an_unkeyed_host_serves_only_outside_production(
     monkeypatch: pytest.MonkeyPatch, env: str, allowed: bool
 ) -> None:
-    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_HOST_KEY", None)
-    monkeypatch.setattr(server_mod.browser_host_settings, "ENV", env)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_KEY", None)
+    monkeypatch.setattr(browser_host_settings, "ENV", env)
 
     assert server_mod._key_valid(None) is allowed
     assert server_mod._key_valid("anything") is allowed
 
 
 def test_a_configured_key_must_match_exactly(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_HOST_KEY", _KEY)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_KEY", _KEY)
 
     assert server_mod._key_valid(_KEY) is True
     assert server_mod._key_valid(_KEY[:-1]) is False
@@ -395,7 +402,7 @@ def test_a_socket_opened_from_a_web_page_is_refused_even_with_its_token(
 ) -> None:
     _live_session(host)
     warning = MagicMock()
-    monkeypatch.setattr(server_mod.log, "warning", warning)
+    monkeypatch.setattr(log, "warning", warning)
     with patch("shared.py.wide_events._loguru") as loguru:
         with pytest.raises(WebSocketDisconnect) as closed:
             with client.websocket_connect(
@@ -442,7 +449,7 @@ def test_only_a_loopback_origin_or_none_may_open_a_socket(
 def test_a_websocket_url_is_the_hosts_own_address_upgraded(
     monkeypatch: pytest.MonkeyPatch, base: str, expected: str
 ) -> None:
-    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_HOST_URL", base)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_URL", base)
 
     assert server_mod._ws_url("/cdp/s1", "t") == expected
 
@@ -454,11 +461,11 @@ def test_a_host_that_lost_its_engine_for_good_shuts_its_process_down(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     kill = MagicMock()
-    monkeypatch.setattr(server_mod.os, "kill", kill)
+    monkeypatch.setattr(os, "kill", kill)
 
     server_mod._exit_for_restart()
 
-    kill.assert_called_once_with(server_mod.os.getpid(), server_mod.signal.SIGTERM)
+    kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
 
 
 def test_whether_the_host_failed_is_the_hosts_own_word(host: _HostStub) -> None:

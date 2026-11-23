@@ -1,0 +1,28 @@
+{
+ "run": "run_7a8c1d81de53",
+ "captured_from": "2026-09-02",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 2,
+   "written": {
+    "description": "Iovildlg: jcqviucr ayhogju cu zubw 1 cwf oa zpoocckcfzvf DpmPpp lniglmkhtgi.",
+    "steps": [],
+    "synthesize": "Ienpriqr ayhogju cu zubw 1."
+   },
+   "old_outcome": "refused",
+   "unmappable": "no_steps",
+   "unmappable_detail": "steps was list",
+   "expected": "unmappable"
+  }
+ ]
+}

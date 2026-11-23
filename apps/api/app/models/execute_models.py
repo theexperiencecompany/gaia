@@ -41,3 +41,6 @@ class AccountChoice(BaseModel):
     display_name: str
     is_primary: bool
     account_count: int
+    #: The GAIA account id a call named, so a replay targets the same account even
+    #: after a rename. None is the primary account, which replay resolves again.
+    account_id: str | None = None

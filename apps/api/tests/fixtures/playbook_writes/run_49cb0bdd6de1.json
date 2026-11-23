@@ -1,0 +1,163 @@
+{
+ "run": "run_49cb0bdd6de1",
+ "captured_from": "2026-09-18",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_ids": [
+     "user@example.com"
+    ],
+    "max_results": 30,
+    "time_max": "2026-09-17T23:20:58-07:00",
+    "time_min": "2026-09-17T21:20:58-07:00"
+   },
+   "result_digest": "{\"data\": {\"calendar_fetch_data\": [{\"summary\": \"Wyodkghz Myi jqomcag xiqnztk\", \"start_time\": \"2026-09-17T21:30:00-07:00\", \"end_time\": \"2026-09-17T22:45:00-07:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#cz80d0\"}], \"has_more\": false}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_id": "user@example.com",
+    "query": "Wyodkghz Myi jqomcag xiqnztk"
+   },
+   "result_digest": "[Tryhaimxe hx context] HRWDPHJKMBUZBD_LMXQQC_PJAS_SDKNR gxrbwril 309429 qihui (wryov_cxdspf (309429 qihui)). Kdv full cxdspf sjuyg UXJ ku evmkj udh vbxdz qiq lar jklrbc 607447 qihui hbe jbof udh bmtc. Kdv xzorv 3000 qiq pmff 1000 qihui hbe kfeaz e bg xhd tuvn dwka eto lihabpc, wgki lar vvvk rrset xhuc w qronulhk aixkw rtokek wqbg qllivevy smpw uc lar fvoghplb qjjnea.\n\n{\"dmqo\": {\"events\": [{\"lm\": \"m3u9t6292hdx07ua9ch71y2725122s23_37836189Q450193T\", \"summary\": \"Pbuvo <> Ajaej\", \"uvstqfniqxq\": \"Frvzvr:\\x\\hVis - rdsguv cwcmilgu\\jHcbk\\oEcd\\jPrbvs\\hQgs\\x\\x\\x<cjfq>------</cjfq><et /><ceqgeo  >Dovtnio Oiule osacaaksbetcl yxhlihzsa ae Aajy (<w jovf=\\\"https://example.com/c6f3a1b7    >read.ui</w  >).</ceqgeo>&pnmn;Ibs lar kbam rmowjxey udh fnmc meetings xhuc w&pnmn;<w jovf=\\\"https://example.com/429243bf ihjp thdiq</w>.<ceqgeo>Yijkicd:</ceqgeo> Kdv meeting yazvuxrs w eznkqbhpu azmupz wvhldkyk sciyxm ae antxuvsvhddquqjzj yg azmupz yezjkacu, w spfrtjf ursyk evvq nmztgx mzah oa niq nknghh vuijqfg vccsdbspzh, qiq uutgupnb kljr efimsxjcotk cwf oa w Adpgmodk billing dsbob. Kwmuunxqwfeu azeoee azmupz, Adpgmodk kua, gctnfruwv, qiq ZyjUgwnj apxpxmniima hbe ehxfmae pdisnlvcqy qiq twzedyduw wypmfswsl izipdtlxala oa qiupwri sqhkkoqy qiq vxytsnr.Eczgyxczxqs: Lfcblqjj uc zzxkpoflfpsvhvo bdeofk vmo, jklrbc, qiq twhxep pikykb asqrodm; lar epfwp iobkkjtc udh KOLK nic mth nwfyegh nnbmddb qiq ivkz mth ku hvsyrr esbk udh lar next 15 pqyy. Skeyjhv efimsxjcotk udh lar coyiwoz cjkynjy peumlbo gtsvxda vktqe kljr rsulewjh hbe qnwlmw ae w Adpgmodk billing/sjhaqda ursyk uzku uc sfamx slnmfvrmjvwf qiq dlpsmmfxm oa Jkpckm. Kwosdg nkkaexf ifrjcm ddgmaephn xhuc lar niq ipgvv spfrtjf jsfoljo udh sydjkl xhuc qcenmg adywxl; lswfscne tkuppza hq vccsdbspzh up &#34;mth jqomcag&#34; eztskkug tdydnro.Ehfzgnp qiq pmocc: ZyjUgwnj voyznab sqhkkoqy ixfnqjg ~0.8/ysn fkoppu w oqgxkx yg 4y1/ysn oa npuaaw pvhfh; recent 62pnss qkd bsai eto +5 sqhkkoqy (35 gys, 30 jcsh). Eqkl yjx bvlumessw xwiraw pdisnlvcqy: kojg pvhfh (gctnfruwv), drive KOLK udh gys sqhkkoqy, vtyc qsdqxeh nbbghyqgougpr tmeacoklmr. Epzhnl suajhyimc khicceebb oa hfoavtu sqhkkoqy, vccsdbspzh, gctnfruwv, qiq vxytsnr.Jmadknthhdd qiq lmjzqfyoa: Epqjmq tanayscahh izipdtlxala hfoavtu eglnvzhjv oa kxcfqh JM/coyiwoz tcssnvpjpmt udh Adpgmodk kua, emmjhik eqf lqirhkaw lmjzqfyoa (geeqimc/vxytsnr qiq azmupz/sqhkkoqy), qiq thryjmjur jpdtrgoji jhbmwa EA/YZ. Ajaej tjylzkqy vgnadxeoho &#34;odoafajq&#34; pzyclxyr xhuc cawfudofy email daedwketh qiq vjixcmux lmjzqfyoa udh PME Hfoq qiq Lfcblqjj nossyyj hrgpdunlj gkgfrhb. Ujyuou wvscorltkj zzjlfadvswq dzullcwven vxytsnr evvq PME Hfoq vktqe teryrckallgn rcsog oa edtkg Lfcblqjj jpdtrgoji hq qpxlxm.Cpqtdjzzl qiq swfxpqtmafw: Bbsb urhg vzknamgwbo qiq ZyjUgwnj CHP zivpzstidmcv; Rhswcpe oa gbobrg Adpgmodk billing qiq qparle Jhqbyws qljufewjjgdlxxwgh qiq UNX stzsamnclso avjsrfif; Oyldxr oa hbhqqvf 49qnah vccsdbspzh qiq lrqvtv dfelpkeu; Pphkwr oa ujlitag wzmeci/el fqqibmc; jpuekqdkda cptx fkekmylmoyk oa fmpvi uueaproe rymieipwlnkp hx Gceyxf qiq iumpehx qilqqctmrzc cjkynjy npwbujl. Ajaej dxenlfbo w PSP udh nm khuvzkph wzkihqhy EZ ckgrgoh oa gbobrg bjatxaw oiraxnl.Rwdffdbulhx avjsrfif qiq rzumvjisdt cuioau: Adpgmodk billing/sjhaqda dsbob qiq w futijbybvr irpa hx GZH/PME Hfoq dkarb mmprnt rzumvjisdt; Jhqbyws ntsptpgzzqi lkizxxzemoi lar niq kpfat lfmhorey/drdmqkm mskgbwts hxridehq\n\n[... 607447 qihui lihabpc ...]\n\n \"Wyodkghz Myi jqomcag xiqnztk\", \"start_ohzt\": \"2027-06-24T21:15:00-07:00\", \"qxg_ohzt\": \"2027-06-24T22:30:00-07:00\", \"calendar_gfqp\": \"user@example.com\", \"duilvcbnuh_aujhp\": \"#cz80d0\"}, {\"summary\": \"Wyodkghz Myi jqomcag xiqnztk\", \"start_ohzt\": \"2027-07-01T21:15:00-07:00\", \"qxg_ohzt\": \"2027-07-01T22:30:00-07:00\", \"calendar_gfqp\": \"user@example.com\", \"duilvcbnuh_aujhp\": \"#cz80d0\"}, {\"summary\": \"Wyodkghz Myi jqomcag xiqnztk\", \"start_ohzt\": \"2027-07-08T21:15:00-07:00\", \"qxg_ohzt\": \"2027-07-08T22:30:00-07:00\", \"calendar_gfqp\": \"user@example.com\", \"duilvcbnuh_aujhp\": \"#cz80d0\"}, {\"summary\": \"Wyodkghz",
+   "replayed": true
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 2,
+   "written": {
+    "description": "Exeg w 93 zlls ovqcc-zh reminder udh lar next Zmlvvp Tvelkhjg event (~10 sxw inn) fx lar ynrm'n kgt.gtrz calendar.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 30,
+         "time_max": "$now + 2h",
+         "time_min": "$now"
+        }
+       },
+       {
+        "id": "details",
+        "tool": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+        "args": {
+         "calendar_id": "user@example.com",
+         "query": {
+          "$ask": "pnkwu yg lar trezfsx-ngtlhhah upcoming event (~10 sxw evvq ktf) gxrbwril ae lar fetch, oa qqdq lab full details aiupidgai Zmlvvp Jguu opps umfp / yuizmdvm"
+         },
+         "time_min": "$steps.events.data.calendar_fetch_data[0].start_ohzt",
+         "time_max": "$steps.events.data.calendar_fetch_data[0].qxg_ohzt"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Vday lar obvuob event evvq lar fetch uzku qjmqiy trezfsx (~10 sxw evvq ktf) cu lar ynrm'n whdrf ohzt. Uynahtp w 93 zlls ovqcc-zh hx lar ynrm'n qglau (ga hpwgdmxl, hogaq fzdnbo wozpf): event pnkwu, start ohzt (qiq rghye qxg bg gamfcm), qiq lar Zmlvvp Jguu opps umfp up yuizmdvm bg upuwifttl evvq lar find zubw. Sgoh w ovqcc-zh, mth w full toxyfucq."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "events",
+     "vary": {
+      "time_max": "$now + 2h",
+      "time_min": "$now"
+     }
+    },
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FIND_EVENT#1",
+     "id": "details",
+     "vary": {
+      "query": {
+       "$ask": "pnkwu yg lar trezfsx-ngtlhhah upcoming event (~10 sxw evvq ktf) gxrbwril ae lar fetch, oa qqdq lab full details aiupidgai Zmlvvp Jguu opps umfp / yuizmdvm"
+      }
+     }
+    }
+   ],
+   "dropped": [
+    "GOOGLECALENDAR_CUSTOM_FIND_EVENT.time_min: not an arg the call was made with",
+    "GOOGLECALENDAR_CUSTOM_FIND_EVENT.time_max: not an arg the call was made with"
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Exeg w 93 zlls ovqcc-zh reminder udh lar next Zmlvvp Tvelkhjg event (~10 sxw inn) fx lar ynrm'n kgt.gtrz calendar.",
+    "result_brief": "Vday lar obvuob event evvq lar fetch uzku qjmqiy trezfsx (~10 sxw evvq ktf) cu lar ynrm'n whdrf ohzt. Uynahtp w 93 zlls ovqcc-zh hx lar ynrm'n qglau (ga hpwgdmxl, hogaq fzdnbo wozpf): event pnkwu, start ohzt (qiq rghye qxg bg gamfcm), qiq lar Zmlvvp Jguu opps umfp up yuizmdvm bg upuwifttl evvq lar find zubw. Sgoh w ovqcc-zh, mth w full toxyfucq.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 30,
+         "time_max": "$now + 2h",
+         "time_min": "$now"
+        },
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       },
+       {
+        "args": {
+         "calendar_id": "user@example.com",
+         "query": {
+          "$ask": "pnkwu yg lar trezfsx-ngtlhhah upcoming event (~10 sxw evvq ktf) gxrbwril ae lar fetch, oa qqdq lab full details aiupidgai Zmlvvp Jguu opps umfp / yuizmdvm"
+         },
+         "time_max": "$steps.events.data.calendar_fetch_data[0].qxg_ohzt",
+         "time_min": "$steps.events.data.calendar_fetch_data[0].start_ohzt"
+        },
+        "id": "details",
+        "tool": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#1",
+     "id": "events",
+     "vary": {
+      "time_max": "$now + 2h",
+      "time_min": "$now"
+     }
+    },
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FIND_EVENT#1",
+     "id": "details",
+     "vary": {
+      "query": {
+       "$ask": "pnkwu yg lar trezfsx-ngtlhhah upcoming event (~10 sxw evvq ktf) gxrbwril ae lar fetch, oa qqdq lab full details aiupidgai Zmlvvp Jguu opps umfp / yuizmdvm"
+      }
+     }
+    }
+   ],
+   "dropped": [
+    "GOOGLECALENDAR_CUSTOM_FIND_EVENT.time_max: not an arg the call was made with",
+    "GOOGLECALENDAR_CUSTOM_FIND_EVENT.time_min: not an arg the call was made with"
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

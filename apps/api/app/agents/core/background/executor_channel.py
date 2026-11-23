@@ -26,7 +26,7 @@ from redis.asyncio.client import Pipeline
 from redis.exceptions import ResponseError
 
 from app.agents.core.background.executor_queue import decode_raw_item
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import NON_WAKING_TAGS, AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_INBOX_PREFIX
 from app.constants.executor import INBOX_ENTRY_ID, INTERRUPTION_NOTICE
 from app.constants.hil import EXECUTOR_INBOX_TTL
@@ -34,6 +34,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, InboxDrain, InboxEntry, agent_configurable
 from app.override.langgraph_bigtool.utils import INJECTED_MESSAGES_KEY, State
+from app.services.cost_budget import restart_request_tokens
 from shared.py.wide_events import log
 
 
@@ -125,10 +126,6 @@ class RedisInbox:
         """How much work is waiting. Cheap enough to ask before every decision."""
         return await redis_cache.client.llen(self._key) if redis_cache.client else 0
 
-    async def keep_for(self, seconds: int) -> None:
-        """Keep what is waiting for at least seconds from now: a hold that long may keep its reader away."""
-        await redis_cache.client.expire(self._key, seconds)
-
 
 class ExecutorInbox(RedisInbox):
     """Pending messages for one conversation's executor.
@@ -146,12 +143,12 @@ class ExecutorInbox(RedisInbox):
         super().__init__(f"{EXECUTOR_INBOX_PREFIX}{conversation_id}")
 
     async def clear(self) -> int:
-        """Drop everything pending; return how many entries went.
+        """Drop all pending work, keeping the notices a stop left; return how much work went.
 
-        Atomically DETACHES the current list before measuring and deleting it, so
-        a steering append that lands mid-cancel is not swept away. RENAME moves
-        the list in one atomic step; any later append starts a fresh list under
-        the live key and survives. A count-then-delete would lose such an append.
+        RENAME detaches the list in one atomic step, so a steering append that lands
+        mid-cancel starts a fresh list under the live key and survives; a
+        count-then-delete would sweep it away. Non-waking notices go back to the
+        head of the live list: they are not work.
         """
         client = redis_cache.client
         if not client:
@@ -161,12 +158,21 @@ class ExecutorInbox(RedisInbox):
             await client.rename(self._key, detached)
         except ResponseError:
             return 0  # RENAME raises "no such key" only when the inbox is empty
+        raw_entries = await client.lrange(detached, 0, -1)
+        notices = [
+            entry
+            for raw in raw_entries
+            if (entry := _decode(raw)) is not None and entry.tag in NON_WAKING_TAGS
+        ]
         # Mutating transaction= is equivalent: the detached uuid key has no other writer.
         async with client.pipeline(transaction=True) as pipe:  # pragma: no mutate
-            pipe.llen(detached)
             pipe.delete(detached)
-            pending, _ = await pipe.execute()
-        return cast(int, pending)
+            for notice in reversed(notices):
+                pipe.lpush(self._key, self._encode(notice))
+            if notices:
+                pipe.expire(self._key, self.ttl)
+            await pipe.execute()
+        return len(raw_entries) - len(notices)
 
     async def announce_interruption(self, message: str | None = None) -> list[InboxEntry]:
         """Tell the next run that the one before it was force-stopped.
@@ -216,17 +222,18 @@ def _decode(raw: bytes | memoryview | str) -> InboxEntry | None:
         return None
 
 
-async def apply_drain(inbox: RedisInbox, state: State, *, log_key: str) -> State:
-    """Read a mailbox, retire what the thread already holds, inject the rest.
+async def apply_drain(
+    inbox: RedisInbox, state: State, *, log_key: str
+) -> tuple[State, list[InboxEntry]]:
+    """Read a mailbox, retire what the thread already holds, inject the rest; return what was injected.
 
-    The one place the drain rule turns into a state change — shared by the
-    executor inbox and the per-subagent mailbox so both tiers inject and retire
-    identically. Staged under INJECTED_MESSAGES_KEY because a hook's own return is
-    discarded after the call; the model node commits it.
+    Shared by the executor inbox and the per-subagent mailbox so both tiers inject
+    and retire identically. Staged under INJECTED_MESSAGES_KEY because a hook's own
+    return is discarded after the call; the model node commits it.
     """
     entries = await inbox.read()
     if not entries:
-        return state
+        return state, []
 
     messages = state.get("messages", [])
     drain = decide_drain(entries, messages)
@@ -234,14 +241,15 @@ async def apply_drain(inbox: RedisInbox, state: State, *, log_key: str) -> State
         await inbox.retire(entry)
 
     if not drain.inject:
-        return state
+        return state, []
 
     injected = [as_interjection(entry) for entry in drain.inject]
     log.set(**{log_key: len(injected)})
-    return cast(
+    staged = cast(
         State,
         {**state, "messages": [*messages, *injected], INJECTED_MESSAGES_KEY: injected},
     )
+    return staged, drain.inject
 
 
 async def drain_inbox_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
@@ -259,9 +267,16 @@ async def drain_inbox_hook(state: State, config: RunnableConfig, store: BaseStor
         if not conversation_id:
             log.warning(f"{LogTag.AGENT} drain_inbox_hook: run carries no conversation_id")
             return state
-        return await apply_drain(
+        drained, injected = await apply_drain(
             ExecutorInbox(conversation_id), state, log_key="executor_inbox_injected"
         )
+        user_spoke = any(entry.tag is AgentTag.USER_INTERJECTION for entry in injected)
+        root_request_id = configurable.get("root_request_id")
+        if user_spoke and root_request_id:
+            # A message absorbed mid-run is a new user turn: give it a fresh token ceiling.
+            await restart_request_tokens(root_request_id)
+            log.set(request_ceiling_restarted=True)
+        return drained
     except Exception as e:  # reading the inbox must never break the turn
         log.error(f"{LogTag.AGENT} drain_inbox_hook failed", error_type=type(e).__name__)
         return state

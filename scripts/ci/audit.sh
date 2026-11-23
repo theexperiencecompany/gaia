@@ -17,6 +17,9 @@
 #   uv-lock            Every tracked uv.lock must still resolve from its
 #                      pyproject.toml (`uv lock --check`), standalone projects
 #                      outside the root workspace included.
+#   secrets --lane L   Pinned gitleaks over every commit this change adds,
+#                      merged-in branches included: base-rev..HEAD on a PR and
+#                      a merge group, the pushed range on a push.
 #
 # Both audits fail on every advisory at or above their level, on a PR as on
 # master, as trivy does: a CVE in what master already ships blocks the next
@@ -38,10 +41,19 @@
 #                     checkout.
 #   uv-lock           UV_LOCK_ROOT (tests; defaults to the repo root). Needs uv
 #                     and index access. Exit: 0 all current; 1 any stale lock.
+#   secrets           GAIA_PR_BASE (PR, merge group) or PUSH_BEFORE_SHA (push),
+#                     GITLEAKS_CACHE (the release tarball's cache dir), RUNNER_TEMP;
+#                     GITLEAKS_RELEASE_URL / GITLEAKS_SHA256 replace the pin
+#                     only for the script's own tests;
+#                     SECRETS_ROOT (tests; defaults to the repo root);
+#                     needs a fetch-depth: 0 checkout. Exit: 0 clean; 1 a
+#                     finding (its verdict written from the SARIF) or a failed scan.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/pinned-release.sh
+source "$(dirname "$0")/lib/pinned-release.sh"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -156,6 +168,12 @@ PIP_AUDIT_IGNORED=(
   GHSA-2wm9-hf6c-p5cr
   GHSA-xph7-9rjv-w5fr
   GHSA-36p7-vc44-83pf
+  # wcmatch 10.1 (fix: 11.2), expires 2026-12-21. e2b <= 2.37.0 caps wcmatch<11 and
+  # imports it only in the template builder (e2b/template/utils.py), reached only
+  # from the operator script apps/api/scripts/build_e2b_template.py over our own
+  # file names. Real fix: e2b >= 2.37.1 (PR #1862) with uv.lock on wcmatch >= 11.2;
+  # drop this entry once the lock holds wcmatch >= 11.2.
+  CVE-2026-132276
 )
 
 cmd_pip() {
@@ -373,8 +391,93 @@ cmd_uv_lock() {
   ci_ok "uv-lock: OK ($checked lockfiles current)"
 }
 
+# The gitleaks CLI the secrets check runs, by its release tarball's sha256.
+GITLEAKS_VERSION=8.24.3
+gitleaks_sha256() {
+  case "$1" in
+    linux_x64) echo 9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c ;;
+    linux_arm64) echo 5f2edbe1f49f7b920f9e06e90759947d3c5dfc16f752fb93aaafc17e9d14cf07 ;;
+    darwin_x64) echo 41c44ae8ad1d6eef57d4526ad0fd67d8129eee9a856f55c2b3b9395fd3d9ec0f ;;
+    darwin_arm64) echo b90f13bb8c90ab72083d9b0c842e39dafb82c0e5c3f872f407366b7a58909013 ;;
+    *) ci_die "secrets: gitleaks $GITLEAKS_VERSION has no pinned build for $1" ;;
+  esac
+}
+
+# Extract the pinned gitleaks into <dir>. Only the release tarball is cached, and it is
+# checked against its pin on every run: the box's cache outlives the job that wrote it.
+install_gitleaks() {
+  local dir="$1" os arch want url cache tarball
+  case "$(uname -s)" in
+    Linux) os=linux ;;
+    Darwin) os=darwin ;;
+    *) ci_die "secrets: no gitleaks build for $(uname -s)" ;;
+  esac
+  case "$(uname -m)" in
+    x86_64 | amd64) arch=x64 ;;
+    aarch64 | arm64) arch=arm64 ;;
+    *) ci_die "secrets: no gitleaks build for $(uname -m)" ;;
+  esac
+  want="${GITLEAKS_SHA256:-$(gitleaks_sha256 "${os}_${arch}")}"
+  url="${GITLEAKS_RELEASE_URL:-https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${os}_${arch}.tar.gz}"
+  cache="${GITLEAKS_CACHE:-${RUNNER_TOOL_CACHE:-$HOME/.cache}/gitleaks}"
+  tarball="$cache/gitleaks_${GITLEAKS_VERSION}_${os}_${arch}.tar.gz"
+  if ! { [ -f "$tarball" ] && digest_matches sha256 "$want" "$tarball"; }; then
+    mkdir -p "$cache"
+    fetch_verified "gitleaks $GITLEAKS_VERSION (${os}_${arch})" "$url" sha256 "$want" "$dir/gitleaks.tar.gz"
+    mv -f "$dir/gitleaks.tar.gz" "$tarball"
+  fi
+  tar -xzf "$tarball" -C "$dir" gitleaks
+}
+
+# Every commit the change adds, merged-in branches included: no --first-parent,
+# which hid a fixture key a merged branch brought into #1723 until the master push.
+secrets_range() {
+  local root="$1" base
+  if [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
+    base="${PUSH_BEFORE_SHA:-}"
+    [[ "$base" =~ ^[0-9a-f]{40}$ && "$base" != "0000000000000000000000000000000000000000" ]] \
+      || ci_die "secrets: a push needs PUSH_BEFORE_SHA, the commit the push moved from (got '${base}')"
+  else
+    base="$(cd "$root" && bash "$REPO_ROOT/scripts/ci/changes.sh" base-rev)"
+  fi
+  echo "${base}..HEAD"
+}
+
+cmd_secrets() {
+  local lane=""
+  if [[ "${1:-}" == "--lane" ]]; then
+    lane="${2:?secrets --lane needs a lane id}"
+  fi
+  [ -n "$lane" ] || ci_die "secrets: --lane <job>/<check> is required"
+
+  local root="${SECRETS_ROOT:-$REPO_ROOT}" range commits work sarif status=0
+  range="$(secrets_range "$root")"
+  commits="$(git -C "$root" rev-list --count "$range")"
+  work="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/gitleaks.XXXXXX")"
+  # shellcheck disable=SC2064 # expand now: work is local to this function
+  trap "rm -rf '$work'" EXIT
+  sarif="$work/gitleaks.sarif"
+  install_gitleaks "$work"
+
+  ci_group "gitleaks $GITLEAKS_VERSION over $range ($commits commits)"
+  "$work/gitleaks" detect --source "$root" --config "$root/.gitleaks.toml" \
+    --gitleaks-ignore-path "$root/.gitleaksignore" --log-opts="$range" \
+    --redact --verbose --no-banner --exit-code=2 \
+    --report-format=sarif --report-path="$sarif" || status=$?
+  ci_endgroup
+
+  case "$status" in
+    0) ci_ok "gitleaks: OK ($commits commits in $range clean)" ;;
+    2)
+      python3 "$REPO_ROOT/scripts/ci/verdict.py" sarif --lane "$lane" "$sarif"
+      ci_die "gitleaks: secrets found in $range (findings above); allowlist a fixture by exact value in .gitleaks.toml"
+      ;;
+    *) ci_die "gitleaks: the scan itself failed (exit $status)" ;;
+  esac
+}
+
 usage() {
-  sed -n '2,19p' "$0" >&2
+  sed -n '2,22p' "$0" >&2
 }
 
 main() {
@@ -388,6 +491,7 @@ main() {
     alert-rule-tools) cmd_alert_rule_tools "$@" ;;
     evlog)            cmd_evlog "$@" ;;
     uv-lock)          cmd_uv_lock "$@" ;;
+    secrets)          cmd_secrets "$@" ;;
     *)
       echo "audit.sh: unknown subcommand '${sub}'" >&2
       usage

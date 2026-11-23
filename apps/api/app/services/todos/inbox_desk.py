@@ -1,4 +1,4 @@
-"""The Inbox desk: one tracked todo per user that triages mail, owns its threads, briefs and alerts.
+"""The Inbox desk: one tracked todo per user that triages mail each morning, owns its threads and briefs.
 
 Its operating contract rides on every run (INBOX_DESK_RUN_GUIDANCE), its canvas and
 observations.md are its memory, and the briefing is its run's final report. Nothing here
@@ -15,13 +15,13 @@ from app.agents.prompts.todo_prompts import (
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     CANVAS_OBSERVATIONS_SECTION,
-    INBOX_DESK_QUIET_HOURS_END,
-    INBOX_DESK_QUIET_HOURS_START,
-    INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.decorators.entitlements import is_paid
 from app.models.todo_models import (
     ExternalRef,
@@ -30,17 +30,17 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.services.analytics_service import capture
+from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.canvas_markdown import remove_section
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.todo_activity import record_field_changes
 from app.services.todo_canvas_storage import repair_notes
 from app.services.todo_observations import with_carried_lines
 from app.services.todos.errors import ExternalRefTakenError
-from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
-from app.services.user_service import get_profile_timezone
 from app.utils.cron_utils import get_next_run_time
 from app.utils.redis_utils import RedisPoolManager
+from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosInboxDeskProvisioned
@@ -49,6 +49,7 @@ from shared.py.wide_events import log
 INBOX_DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID)
 
 _PROVISIONED_BY = "GAIA, setting up the Inbox desk"
+_FOLLOWED_BY = "GAIA, keeping the Inbox desk ahead of the daily brief"
 
 
 async def provision_inbox_desk(user_id: str) -> None:
@@ -68,10 +69,9 @@ async def provision_inbox_desk(user_id: str) -> None:
     if existing is not None and existing.completed:
         log.set_ns("inbox_desk", outcome="stopped_by_user", todo_id=existing.id)
         return
-    desk = existing or await _open_desk(user_id, await _next_morning(user_id))
+    desk = existing or await _open_desk(user_id, await _desk_schedule(user_id))
     if desk.scheduled_at is None:
-        desk = await _rearm(desk, await _next_morning(user_id))
-    await watch_external_ref(desk.id, user_id, INBOX_DESK_REF, desk.trigger_subscriptions)
+        desk = await _rearm(desk, await _desk_schedule(user_id))
     next_run = desk.scheduled_at
     if next_run is None:
         raise LookupError(f"Inbox desk {desk.id} has no next run after it was armed")
@@ -107,22 +107,49 @@ async def with_desk_notes(doc: TodoDocument) -> TodoDocument:
     return repaired
 
 
-def in_quiet_hours(moment: datetime) -> bool:
-    """Whether moment, on the user's own clock, falls in the desk's quiet hours, which span midnight."""
-    return moment.hour >= INBOX_DESK_QUIET_HOURS_START or moment.hour < INBOX_DESK_QUIET_HOURS_END
-
-
 async def queue_inbox_desk_provision(user_id: str) -> None:
     """Hand provision_inbox_desk to the worker, which retries it until the desk is armed."""
     pool = await RedisPoolManager.get_pool()
     await enqueue_worker_job(pool, PROVISION_INBOX_DESK_TASK, user_id)
 
 
-async def _next_morning(user_id: str) -> datetime:
-    return get_next_run_time(INBOX_DESK_RECURRENCE, tz=await get_profile_timezone(user_id))
+async def follow_the_brief(user_id: str, before: str, after: str) -> None:
+    """Move an open desk sweeping on before, the old brief hour's recurrence, onto after.
+
+    A desk the user moved to a recurrence of their own stays where they put it.
+    """
+    if before == after:
+        return
+    desk = await todo_repository.find_latest_by_external_ref(user_id, INBOX_DESK_REF)
+    if desk is None or desk.completed or desk.recurrence != before:
+        return
+    hours = await user_repository.get_hours(user_id)
+    if hours is None:
+        raise LookupError(f"Inbox desk {desk.id} belongs to no user {user_id}")
+    schedule = _schedule_on(after, hours.timezone)
+    moved = await todo_repository.update(desk.id, user_id=user_id, update=schedule)
+    if moved is None or moved.scheduled_at is None:
+        raise LookupError(f"Inbox desk {desk.id} vanished while it followed the brief")
+    await record_field_changes(desk.id, user_id, schedule, by=_FOLLOWED_BY)
+    await tracked_todo_service.schedule_execution(desk.id, moved.scheduled_at)
+    log.info("inbox_desk.followed_the_brief", todo_id=desk.id, recurrence=after)
 
 
-async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
+async def _desk_schedule(user_id: str) -> TodoUpdate:
+    """Return the desk's daily recurrence, ahead of the user's daily brief, and its next run."""
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise LookupError(f"Cannot schedule an Inbox desk for unknown user {user_id}")
+    schedule = (await briefing_state_repository.state_for(user_id)).schedule
+    return _schedule_on(inbox_desk_recurrence(schedule, user.effective_quiet_hours), user.timezone)
+
+
+def _schedule_on(recurrence: str, timezone: str | None) -> TodoUpdate:
+    next_run = get_next_run_time(recurrence, tz=Timezone.parse(timezone))
+    return TodoUpdate(recurrence=recurrence, scheduled_at=next_run)
+
+
+async def _open_desk(user_id: str, schedule: TodoUpdate) -> TodoDocument:
     """Create the desk with its schedule, or return the one a concurrent provisioning created."""
     try:
         created = await tracked_todo_service.create_tracked_todo(
@@ -131,21 +158,20 @@ async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
             description=INBOX_DESK_DESCRIPTION,
             initial_canvas=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
             external_ref=INBOX_DESK_REF,
-            notify_on_run=True,
-            schedule=TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=first_run),
+            delivery=WorkflowDelivery.BRIEF,
+            schedule=schedule,
         )
     except ExternalRefTakenError as taken:
         return taken.existing
     capture(UserId(user_id), TodosInboxDeskProvisioned())
-    desk = await todo_repository.get(created.id, user_id=user_id)
+    desk = await todo_repository.get(created.todo.id, user_id=user_id)
     if desk is None:
-        raise LookupError(f"Inbox desk {created.id} vanished right after it was created")
+        raise LookupError(f"Inbox desk {created.todo.id} vanished right after it was created")
     return desk
 
 
-async def _rearm(desk: TodoDocument, next_run: datetime) -> TodoDocument:
+async def _rearm(desk: TodoDocument, schedule: TodoUpdate) -> TodoDocument:
     """Give a desk left without a schedule its daily recurrence back, on its timeline."""
-    schedule = TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=next_run)
     rearmed = await todo_repository.update(desk.id, user_id=desk.user_id, update=schedule)
     if rearmed is None:
         raise LookupError(f"Inbox desk {desk.id} vanished while it was being re-armed")

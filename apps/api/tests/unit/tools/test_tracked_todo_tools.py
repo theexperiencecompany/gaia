@@ -2,7 +2,7 @@
 
 Heavy focus on the pure helper functions (datetime/recurrence validation,
 update-field builders) — no mocking needed, and this is exactly where the real
-bugs in this file were hiding: both parse_iso_future_datetime and
+bugs in this file were hiding: both parse_next_check and
 build_scheduled_at_update raised an unhandled TypeError (instead of a clean
 validation error) on a timezone-naive ISO datetime. Fixed at the root in
 tracked_todo_tools.py; the tests here pin the fix down.
@@ -10,10 +10,13 @@ tracked_todo_tools.py; the tests here pin the fix down.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
 from bson.errors import InvalidId
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 import pytest
 import time_machine
@@ -30,7 +33,7 @@ from app.agents.tools.tracked_todo_fields import (
     format_first_fire_note,
     get_user_tz,
     is_cron_expression,
-    parse_iso_future_datetime,
+    parse_next_check,
     resolve_cron_first_fire,
     resolve_first_fire,
     validate_recurrence_format,
@@ -49,9 +52,11 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
 )
 from app.constants import todos as todo_constants
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, TodoCompleter, WaitingOn
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.models import agent_models
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -59,16 +64,19 @@ from app.models.todo_models import (
     TodoDocument,
     TodoResponse,
     TodoUpdate,
+    TrackedTodoCreation,
 )
 from app.models.user_models import UserDocument
+from app.services.links.placeholders import link_placeholder
 from app.services.todos import errors as todo_errors
-from app.services.todos.errors import ExternalRefTakenError, UnwatchedTodoKeptError
+from app.services.todos.errors import ExternalRefTakenError, OpenStateError, UnwatchedTodoKeptError
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils import auth_utils
 from app.utils.timezone import Timezone
 from shared.py.wide_events import spawn_logged_task
 from tests.integration_account_factories import make_integration_account, make_integration_record
+from tests.tool_helpers import tool_coroutine
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
 _FUTURE_ISO = _FUTURE.isoformat()
@@ -85,54 +93,98 @@ _REFUSED_RECURRENCES = [
 @pytest.fixture(autouse=True)
 def recorded_changes() -> Iterator[AsyncMock]:
     """Capture the scheduling changes the tools put on a todo's timeline."""
-    with patch(
-        "app.agents.tools.tracked_todo_tools.record_field_changes", new_callable=AsyncMock
-    ) as recorded:
+    with (
+        patch(
+            "app.agents.tools.tracked_todo_tools.record_field_changes", new_callable=AsyncMock
+        ) as recorded,
+        patch("app.agents.tools.tracked_todo_tools.record_waiting_change", new_callable=AsyncMock),
+    ):
         yield recorded
 
 
-def _config(user_id: str | None = "user-1") -> dict:
+def _config(user_id: str | None = "user-1") -> RunnableConfig:
     return {"metadata": {"user_id": user_id}} if user_id else {"metadata": {}}
 
 
 # ---------------------------------------------------------------------------
-# parse_iso_future_datetime / build_scheduled_at_update — tz-naive crash bug
+# parse_next_check / build_scheduled_at_update — tz-naive crash bug
 # ---------------------------------------------------------------------------
+
+
+async def _create_tracked(**kwargs: object) -> str:
+    """Call create_tracked_todo's coroutine directly, as the tool it is."""
+    created = cast(StructuredTool, create_tracked_todo)
+    assert created.coroutine is not None
+    return cast(str, await created.coroutine(**kwargs))
 
 
 class TestParseIsoFutureDatetime:
     def test_valid_future_datetime_with_offset(self):
-        parsed, error = parse_iso_future_datetime(_FUTURE_ISO, "scheduled_at")
+        parsed, error = parse_next_check(_FUTURE_ISO, "scheduled_at")
         assert error is None
         assert parsed == _FUTURE
 
     def test_past_datetime_rejected(self):
-        parsed, error = parse_iso_future_datetime(_PAST_ISO, "scheduled_at")
+        parsed, error = parse_next_check(_PAST_ISO, "scheduled_at")
         assert parsed is None
         assert error == "Error: scheduled_at must be in the future."
 
     def test_invalid_format_rejected(self):
-        parsed, error = parse_iso_future_datetime("not-a-date", "scheduled_at")
+        parsed, error = parse_next_check("not-a-date", "scheduled_at")
         assert parsed is None
-        assert error == "Error: invalid scheduled_at format 'not-a-date'."
+        assert error is not None
+        assert error.startswith("Error: invalid scheduled_at format 'not-a-date'.")
+        assert "duration like '4h'" in error
 
     def test_naive_datetime_without_timezone_offset_is_rejected_cleanly(self):
         """Regression: a naive datetime used to raise an unhandled TypeError instead of a clean validation error."""
-        parsed, error = parse_iso_future_datetime("2027-03-20T09:00:00", "scheduled_at")
+        parsed, error = parse_next_check("2027-03-20T09:00:00", "scheduled_at")
         assert parsed is None
-        assert error == "Error: scheduled_at '2027-03-20T09:00:00' must include a timezone offset."
+        assert error is not None
+        assert error.startswith(
+            "Error: scheduled_at '2027-03-20T09:00:00' must include a timezone offset."
+        )
 
     @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
     def test_the_present_moment_is_not_the_future(self):
-        parsed, error = parse_iso_future_datetime("2026-10-01T09:00:00+00:00", "scheduled_at")
+        parsed, error = parse_next_check("2026-10-01T09:00:00+00:00", "scheduled_at")
         assert parsed is None
         assert error == "Error: scheduled_at must be in the future."
 
     def test_z_suffix_is_treated_as_utc(self):
         future_z = (datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        parsed, error = parse_iso_future_datetime(future_z, "scheduled_at")
+        parsed, error = parse_next_check(future_z, "scheduled_at")
         assert error is None
         assert parsed.tzinfo is not None
+
+
+class TestNextCheckDurations:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("30m", timedelta(minutes=30)),
+            ("4h", timedelta(hours=4)),
+            ("3d", timedelta(days=3)),
+            ("1w", timedelta(weeks=1)),
+            (" 2 d ", timedelta(days=2)),
+        ],
+    )
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
+    def test_a_duration_counts_from_now(self, text, expected):
+        parsed, error = parse_next_check(text, "scheduled_at")
+        assert error is None
+        assert parsed == datetime(2026, 10, 1, 9, tzinfo=UTC) + expected
+
+    def test_a_zero_duration_is_not_the_future(self):
+        parsed, error = parse_next_check("0d", "scheduled_at")
+        assert parsed is None
+        assert error == "Error: scheduled_at must be in the future."
+
+    def test_a_duration_in_an_unknown_unit_is_not_guessed(self):
+        parsed, error = parse_next_check("3 fortnights", "scheduled_at")
+        assert parsed is None
+        assert error is not None
+        assert "duration like '4h'" in error
 
 
 class TestBuildScheduledAtUpdate:
@@ -178,6 +230,11 @@ class TestBuildScheduledAtUpdate:
         assert error is not None
         assert "invalid scheduled_at format" in error
         assert fields == {}
+
+    def test_a_duration_sets_the_field(self):
+        fields: dict[str, object] = {}
+        assert build_scheduled_at_update("3d", fields) is None
+        assert isinstance(fields["scheduled_at"], datetime)
 
 
 # ---------------------------------------------------------------------------
@@ -401,9 +458,9 @@ class TestBuildRecurrenceUpdate:
 
 class TestBuildListDetailParts:
     def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
+        base: dict[str, object] = {"user_id": "u1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     def test_overdue_due_date_is_flagged(self):
         now = datetime.now(UTC)
@@ -466,25 +523,34 @@ class TestUpdateTrackedTodoValidation:
         result = await update_tracked_todo.coroutine(config=_config(), todo_id="t1")
         assert "No fields to update" in result
 
-    async def test_clearing_scheduled_at_while_recurrence_remains_set_is_rejected(self):
+    async def test_clearing_scheduled_at_while_recurrence_remains_set_is_rejected(self) -> None:
         """The in-call guards alone can't see this: clearing scheduled_at while an existing recurrence stays set would leave a broken recurring todo with nothing to anchor it."""
         existing = TodoDocument(
             id="t1", user_id="u1", title="t", recurrence="daily", scheduled_at=_FUTURE
         )
-        with patch(
-            "app.agents.tools.tracked_todo_tools.todo_repository.get",
-            new_callable=AsyncMock,
-            return_value=existing,
+        with (
+            time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_user_tz",
+                AsyncMock(return_value="Asia/Kolkata"),
+            ) as user_tz,
         ):
-            result = await update_tracked_todo.coroutine(
+            result = await tool_coroutine(update_tracked_todo, str)(
                 config=_config(), todo_id="t1", scheduled_at=""
             )
         assert result == (
-            "Error: cannot have recurrence without scheduled_at. "
-            "Either clear recurrence or provide a scheduled_at value."
+            "Not updated: an open tracked todo needs a next step, so it can never be forgotten.\n"
+            "- recurrence needs scheduled_at: either clear recurrence or provide scheduled_at.\n"
+            "Now: Thu 01 Oct 2026, 14:30 IST. Nothing was saved."
         )
+        user_tz.assert_awaited_once_with("u1")
 
-    @pytest.mark.parametrize("value", [True, False])
+    @pytest.mark.parametrize("value", [WorkflowDelivery.NOW, WorkflowDelivery.SILENT])
     async def test_toggling_delivery_writes_that_field(self, value):
         """A mistyped key or a dropped value leaves the todo on its old setting, silently."""
         existing = TodoDocument(id="t1", user_id="u1", title="t")
@@ -499,14 +565,21 @@ class TestUpdateTrackedTodoValidation:
                 new_callable=AsyncMock,
                 return_value=existing,
             ) as update,
+            patch(
+                "app.services.briefing.held.release_held_items", new_callable=AsyncMock
+            ) as release,
         ):
             result = await update_tracked_todo.coroutine(
-                config=_config(), todo_id="t1", notify_on_run=value
+                config=_config(), todo_id="t1", delivery=value
             )
 
         written = update.await_args.kwargs["update"]
-        assert written.model_dump(exclude_unset=True) == {"notify_on_run": value}
-        assert "notify_on_run" in result
+        assert written.model_dump(exclude_unset=True) == {"delivery": value}
+        assert "delivery" in result
+        # Tell me now owes at once what the todo held for the brief.
+        assert release.await_args_list == (
+            [call("u1", source_ids=["t1"])] if value is WorkflowDelivery.NOW else []
+        )
 
     async def test_todo_not_found_returns_error(self):
         with patch(
@@ -609,10 +682,91 @@ class TestCreateTrackedTodoValidation:
             pytest.raises(auth_utils.OwnerNotFoundError),
         ):
             await create_tracked_todo.coroutine(
-                config=_config(SYSTEM_USER_ID), title="Hourly Review Queue Alert"
+                config=_config(SYSTEM_USER_ID),
+                title="Hourly Review Queue Alert",
+                waiting_on=WaitingOn.TIME,
+                scheduled_at="4h",
             )
 
         repo.create.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_watch_on_an_unconnected_service_is_never_created(self):
+        """Regression: "I'll monitor the replies" made a check that could never read the mail."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value={"notion"}),
+            ) as connected,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(),
+                title="Watch for replies",
+                needs_integrations=["gmail", "notion", "not-a-real-service"],
+            )
+
+        create.assert_not_awaited()
+        connected.assert_awaited_once_with("user-1")
+        assert result == (
+            "Error: Gmail, not-a-real-service is not connected, so no later run of this todo "
+            "could do its work. Nothing was saved. Activate it first (activation brings the "
+            "user its connect card) and create the todo once it is connected."
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("needs_integrations", [None, ["gmail"]])
+    async def test_a_thread_watch_is_never_created_without_gmail(
+        self, needs_integrations: list[str] | None
+    ) -> None:
+        """Regression: a thread watch saved with no Gmail account could never receive its mail."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value=set()),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            result = await create_tracked_todo.ainvoke(
+                {
+                    "title": "Chase the reply",
+                    "gmail_thread_id": "abc",
+                    "needs_integrations": needs_integrations,
+                },
+                config=_config(),
+            )
+
+        create.assert_not_awaited()
+        assert str(result).startswith("Error: Gmail is not connected")
+
+    async def test_a_watch_on_a_connected_service_is_created(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+                AsyncMock(return_value={"gmail"}),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+        ):
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+                ),
+                reopened=False,
+            )
+            await create_tracked_todo.coroutine(
+                config=_config(), title="Watch for replies", needs_integrations=["gmail"]
+            )
+
+        create.assert_awaited_once()
 
     async def test_a_new_tracked_todo_delivers_its_run_results_by_default(self):
         """The agent usually omits this argument, so the default is what almost every todo gets."""
@@ -620,33 +774,103 @@ class TestCreateTrackedTodoValidation:
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
             new_callable=AsyncMock,
         ) as create:
-            create.return_value = TodoResponse(
-                id="t1",
-                user_id="u1",
-                title="t",
-                created_at=_FUTURE,
-                updated_at=_FUTURE,
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1",
+                    user_id="u1",
+                    title="t",
+                    created_at=_FUTURE,
+                    updated_at=_FUTURE,
+                ),
+                reopened=False,
             )
             await create_tracked_todo.coroutine(config=_config(), title="t")
 
         # Unset reaches the service, which delivers a top-level todo's runs and not a sub-todo's.
-        assert create.await_args.kwargs["notify_on_run"] is None
+        assert create.await_args.kwargs["delivery"] is None
+
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
+    async def test_a_todo_with_no_next_step_gets_a_refusal_the_model_can_act_on(self) -> None:
+        """The model sees what is missing, every option, and the user's clock, and nothing was saved."""
+        refusal = OpenStateError(["waiting_on is missing: pick one.", "scheduled_at is missing."])
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                AsyncMock(side_effect=refusal),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_user_tz",
+                AsyncMock(return_value="Asia/Kolkata"),
+            ),
+        ):
+            result = await tool_coroutine(create_tracked_todo, str)(config=_config(), title="t")
+
+        assert result == (
+            "Not created: an open tracked todo needs a next step, so it can never be forgotten.\n"
+            "- waiting_on is missing: pick one.\n"
+            "- scheduled_at is missing.\n"
+            "Now: Thu 01 Oct 2026, 14:30 IST. Nothing was saved."
+        )
+
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
+    async def test_a_duration_and_the_waiting_fields_reach_the_service_as_one_schedule(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+            ) as create,
+            patch(
+                "app.agents.tools.tracked_todo_tools._schedule_execution_after_create",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as armed,
+        ):
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1", user_id="u1", title="t", created_at=_FUTURE, updated_at=_FUTURE
+                ),
+                reopened=False,
+            )
+            await create_tracked_todo.coroutine(
+                config=_config(),
+                title="t",
+                scheduled_at="3d",
+                waiting_on=WaitingOn.USER,
+                question="Ship it?",
+                if_no_reply=NoReplyPlan.PROCEED,
+                default_action="archive it",
+            )
+
+        expected = datetime(2026, 10, 4, 9, tzinfo=UTC)
+        assert create.await_args.kwargs["schedule"] == TodoUpdate(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.PROCEED,
+            default_action="archive it",
+            scheduled_at=expected,
+        )
+        armed.assert_awaited_once_with("t1", expected)
 
     async def test_the_agent_can_create_a_silent_tracked_todo(self):
         with patch(
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
             new_callable=AsyncMock,
         ) as create:
-            create.return_value = TodoResponse(
-                id="t1",
-                user_id="u1",
-                title="t",
-                created_at=_FUTURE,
-                updated_at=_FUTURE,
+            create.return_value = TrackedTodoCreation(
+                todo=TodoResponse(
+                    id="t1",
+                    user_id="u1",
+                    title="t",
+                    created_at=_FUTURE,
+                    updated_at=_FUTURE,
+                ),
+                reopened=False,
             )
-            await create_tracked_todo.coroutine(config=_config(), title="t", notify_on_run=False)
+            await create_tracked_todo.coroutine(
+                config=_config(), title="t", delivery=WorkflowDelivery.SILENT
+            )
 
-        assert create.await_args.kwargs["notify_on_run"] is False
+        assert create.await_args.kwargs["delivery"] is WorkflowDelivery.SILENT
 
     @pytest.mark.regression
     @pytest.mark.parametrize(("recurrence", "message"), _REFUSED_RECURRENCES)
@@ -677,8 +901,9 @@ class TestCreateTrackedTodoValidation:
 
     async def test_cron_recurrence_looks_up_the_owners_timezone(self):
         now = datetime.now(UTC)
-        response = TodoResponse(
-            id="t1", user_id="user-1", title="t", created_at=now, updated_at=now
+        response = TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
         )
         with (
             patch(
@@ -706,8 +931,9 @@ class TestCreateTrackedTodoValidation:
     @time_machine.travel(datetime(2026, 10, 1, tzinfo=UTC), tick=False)
     async def test_a_cron_first_fires_at_the_owners_local_time(self):
         now = datetime.now(UTC)
-        response = TodoResponse(
-            id="t1", user_id="user-1", title="t", created_at=now, updated_at=now
+        response = TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
         )
         with (
             patch(
@@ -762,7 +988,45 @@ class TestCompleteTrackedTodo:
             )
         assert "could not complete" in result
 
-    async def test_success_returns_confirmation(self):
+    async def test_success_returns_confirmation_with_the_link(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=TodoDocument(id="t1", user_id="u1", title="t"),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as complete,
+            patch(
+                "app.agents.tools.tracked_todo_tools.attach_link",
+                new_callable=AsyncMock,
+                return_value=ShortLink(
+                    slug="abcdefghijk",
+                    user_id="user-1",
+                    target=RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"),
+                ),
+            ) as mint,
+        ):
+            result = await complete_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", summary="done"
+            )
+        assert "completed and archived" in result
+        assert complete.await_args.kwargs["by"] is TodoCompleter.GAIA
+        # The agent reads its own tool result, so it carries the link's placeholder, never its URL.
+        assert (
+            link_placeholder(RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"))
+            in result
+        )
+        assert "abcdefghijk" not in result
+        mint.assert_awaited_once_with(
+            "user-1", RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1")
+        )
+
+    async def test_no_link_when_sharing_is_off_still_confirms(self):
+        """A todo the owner stopped sharing completes without handing out a link."""
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.get",
@@ -774,11 +1038,16 @@ class TestCompleteTrackedTodo:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.attach_link",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
             )
-        assert "completed and archived" in result
+        assert result == "Tracked todo t1 completed and archived."
 
     async def test_missing_todo_returns_error(self):
         with patch(
@@ -790,6 +1059,33 @@ class TestCompleteTrackedTodo:
                 config=_config(), todo_id="t1", summary="done"
             )
         assert "could not complete" in result
+
+    async def test_stop_recurrence_closes_a_recurring_todo(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=TodoDocument(id="t1", user_id="u1", title="t", recurrence="daily"),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as complete,
+            patch(
+                "app.agents.tools.tracked_todo_tools.attach_link",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            result = await complete_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", summary="user stopped it", stop_recurrence=True
+            )
+
+        assert result == "Tracked todo t1 completed and archived."
+        complete.assert_awaited_once_with(
+            todo_id="t1", user_id="user-1", summary="user stopped it", by=TodoCompleter.GAIA
+        )
 
     async def test_active_recurrence_refuses_and_names_the_stop_procedure(self):
         with patch(
@@ -804,8 +1100,8 @@ class TestCompleteTrackedTodo:
         assert result == (
             "Error: tracked todo t1 still has an active recurrence (daily). "
             "One finished run never ends a standing schedule: leave it open, "
-            "or if the user asked to stop it entirely, clear its recurrence "
-            "(and scheduled_at) with update_tracked_todo first, then complete it."
+            "or if the user asked to stop it entirely, call "
+            "complete_tracked_todo again with stop_recurrence=true."
         )
 
 
@@ -944,14 +1240,14 @@ class TestResolveCronFirstFire:
 
 class TestCreationFieldUpdate:
     def test_nothing_to_set_is_no_update(self):
-        assert tracked_todo_fields.creation_field_update(None, None, None, None) == (None, None)
+        assert tracked_todo_fields.creation_field_update(None, None, None, None, {}) == (None, None)
 
     def test_an_empty_date_is_unset_not_a_clear(self):
-        assert tracked_todo_fields.creation_field_update(None, None, "", "") == (None, None)
+        assert tracked_todo_fields.creation_field_update(None, None, "", "", {}) == (None, None)
 
     def test_collects_every_field_the_create_sets(self):
         update, error = tracked_todo_fields.creation_field_update(
-            _FUTURE, "daily", _PAST_ISO, _FUTURE_ISO
+            _FUTURE, "daily", _PAST_ISO, _FUTURE_ISO, {"waiting_on": WaitingOn.TIME}
         )
         assert error is None
         assert update.scheduled_at == _FUTURE
@@ -959,11 +1255,14 @@ class TestCreationFieldUpdate:
         # A past due date is still a deadline: overdue work still needs doing.
         assert update.due_date == datetime.fromisoformat(_PAST_ISO)
         assert update.expires_at == _FUTURE
+        assert update.waiting_on is WaitingOn.TIME
 
     @pytest.mark.parametrize("field", ["due_date", "expires_at"])
     def test_an_unparseable_date_is_an_error(self, field):
         dates = {"due_date": None, "expires_at": None, field: "garbage"}
-        update, error = tracked_todo_fields.creation_field_update(_FUTURE, "daily", **dates)
+        update, error = tracked_todo_fields.creation_field_update(
+            _FUTURE, "daily", **dates, waiting={}
+        )
         assert update is None
         assert error == f"Error: invalid {field} format 'garbage'."
 
@@ -1011,15 +1310,41 @@ class TestScheduleExecutionAfterCreate:
 
 
 class TestFormatCreateOutput:
+    def test_a_reopened_todo_is_named_as_one_with_history_to_bring_up_to_date(self) -> None:
+        now = datetime.now(UTC)
+        reopened = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Reply to Sam",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=True,
+        )
+
+        out = format_create_output(reopened, None, None, [])
+
+        assert out.startswith(
+            "Tracked todo reopened: 66f838cc8829054e5f10e407\n"
+            "What it tracks already had this todo, completed; it is open again with your title, "
+            "labels and schedule. Its canvas.md and activity.md keep their history and "
+            "initial_canvas was not written: bring its Current State up to date.\n"
+            "Title: Reply to Sam\n"
+        )
+
     def test_the_summary_routes_canvas_edits_away_from_filesystem_tools(self) -> None:
         """The create result names the exact folder (slug + short id) and both files, so the model finds its notes by path."""
         now = datetime.now(UTC)
-        result = TodoResponse(
-            id="66f838cc8829054e5f10e407",
-            user_id="user-1",
-            title="Fix the thing",
-            created_at=now,
-            updated_at=now,
+        result = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Fix the thing",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=False,
         )
 
         out = format_create_output(result, None, None, [])
@@ -1033,12 +1358,15 @@ class TestFormatCreateOutput:
 
     def test_scheduled_create_appends_the_fire_note_and_details_verbatim(self) -> None:
         now = datetime.now(UTC)
-        result = TodoResponse(
-            id="66f838cc8829054e5f10e407",
-            user_id="user-1",
-            title="Fix the thing",
-            created_at=now,
-            updated_at=now,
+        result = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Fix the thing",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=False,
         )
         out = format_create_output(result, _FUTURE, "America/New_York", ["kept watcher"])
 
@@ -1058,12 +1386,15 @@ class TestFormatCreateOutput:
 
     def test_each_detail_gets_its_own_bullet(self) -> None:
         now = datetime.now(UTC)
-        result = TodoResponse(
-            id="66f838cc8829054e5f10e407",
-            user_id="user-1",
-            title="Fix the thing",
-            created_at=now,
-            updated_at=now,
+        result = TrackedTodoCreation(
+            todo=TodoResponse(
+                id="66f838cc8829054e5f10e407",
+                user_id="user-1",
+                title="Fix the thing",
+                created_at=now,
+                updated_at=now,
+            ),
+            reopened=False,
         )
 
         out = format_create_output(result, None, None, ["kept watcher", "due moved"])
@@ -1151,9 +1482,9 @@ class TestApplyCronFirstFire:
 
 class TestBuildListDetailPartsScheduling:
     def _doc(self, **overrides) -> TodoDocument:
-        base = {"user_id": "u1", "title": "t"}
+        base: dict[str, object] = {"user_id": "u1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     def test_scheduled_at_is_shown(self):
         now = datetime.now(UTC)
@@ -1249,6 +1580,7 @@ class TestFormatTrackedTodoFull:
         assert format_tracked_todo_full(doc, now) == (
             '- "Plan" (ID: 66f838cc8829054e5f10e407)\n'
             "  Priority: none | Age: 3d | Last updated: 1d ago\n"
+            "  State: repeats daily, next run never\n"
             "  files: /workspace/gaia-tasks/plan-5f10e407/\n"
             "  Due: 2d | Recurrence: daily"
         )
@@ -1375,12 +1707,24 @@ class TestSearchTodoContext:
 
 class TestUpdateTrackedTodoSuccess:
     def _existing_doc(self, **overrides) -> TodoDocument:
-        base = {"id": "t1", "user_id": "user-1", "title": "t"}
+        base: dict[str, object] = {"id": "t1", "user_id": "user-1", "title": "t"}
         base.update(overrides)
-        return TodoDocument(**base)
+        return TodoDocument.model_validate(base)
 
     async def test_clearing_recurrence_on_an_unscheduled_todo_persists_the_clear(self):
         existing = self._existing_doc(recurrence="daily")
+        recurrence_cleared = TodoUpdate.model_validate(
+            {
+                "recurrence": None,
+                "waiting_on": WaitingOn.TIME,
+                "scheduled_at": _FUTURE,
+                # Not waiting on the user, so any question it held is cleared with it.
+                "question": None,
+                "if_no_reply": None,
+                "default_action": None,
+                "hold_checks": 0,
+            }
+        )
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.get",
@@ -1392,14 +1736,39 @@ class TestUpdateTrackedTodoSuccess:
                 new_callable=AsyncMock,
                 return_value=self._existing_doc(),
             ) as mock_update,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(),
+                todo_id="t1",
+                recurrence="",
+                waiting_on=WaitingOn.TIME,
+                scheduled_at=_FUTURE_ISO,
+            )
+        assert result.startswith("Updated tracked todo t1:")
+        mock_update.assert_awaited_once_with("t1", user_id="user-1", update=recurrence_cleared)
+
+    async def test_clearing_recurrence_without_a_next_step_is_refused_and_nothing_is_saved(self):
+        existing = self._existing_doc(recurrence="daily", scheduled_at=_FUTURE)
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+            ) as mock_update,
         ):
             result = await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", recurrence=""
             )
-        assert result == "Updated tracked todo t1: recurrence"
-        mock_update.assert_awaited_once_with(
-            "t1", user_id="user-1", update=TodoUpdate.model_validate({"recurrence": None})
-        )
+        assert "waiting_on is missing" in result
+        mock_update.assert_not_awaited()
 
     async def test_a_reschedule_names_the_conversation_that_made_it(self, recorded_changes):
         """Regression for 2026-09-26: a chat scheduled the wrong todo and nothing on it said which."""
@@ -1411,7 +1780,7 @@ class TestUpdateTrackedTodoSuccess:
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.get",
                 new_callable=AsyncMock,
-                return_value=self._existing_doc(),
+                return_value=self._existing_doc(waiting_on=WaitingOn.TIME),
             ),
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
@@ -1431,6 +1800,68 @@ class TestUpdateTrackedTodoSuccess:
         assert (todo_id, user_id) == ("t1", "user-1")
         assert update.model_fields_set == {"scheduled_at"}
         assert recorded_changes.await_args.kwargs == {"by": "GAIA in conversation 00f7c88f"}
+
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
+    async def test_a_new_plan_for_the_same_question_keeps_its_holds_and_logs_the_wait(
+        self,
+    ) -> None:
+        """Re-asking the question already on file is not a new question, so its hold count stays."""
+        config = {
+            "metadata": {"user_id": "user-1"},
+            "configurable": {"conversation_id": "00f7c88f-4ac1-4169-86ed-eff3a9027e78"},
+        }
+        existing = self._existing_doc(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.HOLD,
+            hold_checks=2,
+            scheduled_at=datetime(2026, 10, 2, 9, tzinfo=UTC),
+        )
+        written = TodoUpdate(
+            scheduled_at=datetime(2026, 10, 3, 9, tzinfo=UTC),
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.PROCEED,
+            default_action="archive it",
+        )
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ) as mock_update,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.record_waiting_change",
+                new_callable=AsyncMock,
+            ) as waiting_logged,
+        ):
+            result = await tool_coroutine(update_tracked_todo, str)(
+                config=config,
+                todo_id="t1",
+                scheduled_at="2d",
+                waiting_on=WaitingOn.USER,
+                question="Ship it?",
+                if_no_reply=NoReplyPlan.PROCEED,
+                default_action="archive it",
+            )
+
+        assert result == (
+            "Updated tracked todo t1: "
+            "scheduled_at, waiting_on, question, if_no_reply, default_action"
+        )
+        mock_update.assert_awaited_once_with("t1", user_id="user-1", update=written)
+        waiting_logged.assert_awaited_once_with(
+            "t1", "user-1", written, by="GAIA in conversation 00f7c88f"
+        )
 
     async def test_priority_update_persists_and_reports_updated_keys(self):
         with (
@@ -1455,7 +1886,7 @@ class TestUpdateTrackedTodoSuccess:
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.get",
                 new_callable=AsyncMock,
-                return_value=self._existing_doc(),
+                return_value=self._existing_doc(waiting_on=WaitingOn.TIME),
             ),
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
@@ -1620,7 +2051,7 @@ class TestUpdateTrackedTodoSuccess:
 
 
 class TestCreateTrackedTodoSuccess:
-    def _response(self, **overrides) -> TodoResponse:
+    def _response(self, **overrides: object) -> TrackedTodoCreation:
         now = datetime.now(UTC)
         base = {
             "id": "t1",
@@ -1630,7 +2061,7 @@ class TestCreateTrackedTodoSuccess:
             "updated_at": now,
         }
         base.update(overrides)
-        return TodoResponse(**base)
+        return TrackedTodoCreation(todo=TodoResponse.model_validate(base), reopened=False)
 
     async def test_create_without_scheduling_returns_confirmation(self):
         with patch(
@@ -1802,10 +2233,22 @@ class TestCreateThreadTrackedTodo:
         ) as lookup:
             yield lookup
 
+    @pytest.fixture(autouse=True)
+    def gmail_connected(self) -> Iterator[AsyncMock]:
+        """Connect Gmail, since a thread watch is refused without it."""
+        with patch(
+            "app.agents.tools.tracked_todo_tools.get_connected_integration_ids",
+            AsyncMock(return_value={"gmail"}),
+        ) as connected:
+            yield connected
+
     @staticmethod
-    def _response() -> TodoResponse:
+    def _response() -> TrackedTodoCreation:
         now = datetime.now(UTC)
-        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+        return TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
+        )
 
     _REFUSAL = (
         "Not created: this thread already has an open tracked todo. Update it with "
@@ -1829,13 +2272,13 @@ class TestCreateThreadTrackedTodo:
     @classmethod
     async def _refused_for(cls, holder: TodoDocument) -> str:
         with patch(cls._CREATE, new_callable=AsyncMock, side_effect=ExternalRefTakenError(holder)):
-            return await create_tracked_todo.coroutine(
-                config=_config(), title="t", gmail_thread_id="abc"
-            )
+            return await _create_tracked(config=_config(), title="t", gmail_thread_id="abc")
 
     async def test_the_thread_id_becomes_the_todo_ref(self):
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+            await create_tracked_todo.ainvoke(
+                {"title": "t", "gmail_thread_id": "abc"}, config=_config()
+            )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc"
         )
@@ -1848,7 +2291,7 @@ class TestCreateThreadTrackedTodo:
             make_integration_account("ca_work"), user_id="user-1"
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+            await _create_tracked(config=_config(), title="t", gmail_thread_id="abc")
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
             source=ExternalRefSource.GMAIL_THREAD, id="abc", account="ca_work"
         )
@@ -1863,7 +2306,7 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
-            await create_tracked_todo.coroutine(
+            await _create_tracked(
                 config=_config(), title="t", gmail_thread_id="abc", gmail_account="personal"
             )
         assert create.await_args.kwargs["external_ref"] == ExternalRef(
@@ -1895,7 +2338,7 @@ class TestCreateThreadTrackedTodo:
             user_id="user-1",
         )
         with patch(self._CREATE, new_callable=AsyncMock) as create:
-            result = await create_tracked_todo.coroutine(
+            result = await _create_tracked(
                 config=_config(), title="t", gmail_thread_id="abc", gmail_account=gmail_account
             )
         assert result == refusal
@@ -1910,8 +2353,10 @@ class TestCreateThreadTrackedTodo:
                 initial_canvas="# Lease",
                 labels=["waiting-for-reply"],
                 priority=Priority.HIGH,
-                notify_on_run=False,
+                delivery=WorkflowDelivery.SILENT,
                 gmail_thread_id="abc",
+                done_when=["Sam replied about the lease"],
+                evidence="a reply in the lease thread",
             )
         assert create.await_args.kwargs == {
             "user_id": "user-1",
@@ -1921,11 +2366,13 @@ class TestCreateThreadTrackedTodo:
             "labels": ["waiting-for-reply"],
             "priority": Priority.HIGH,
             "source_conversation_id": None,
-            "notify_on_run": False,
+            "delivery": WorkflowDelivery.SILENT,
             "external_ref": ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="abc"),
             "references": None,
             "parent_todo_id": None,
             "schedule": None,
+            "done_when": ["Sam replied about the lease"],
+            "evidence": "a reply in the lease thread",
         }
 
     async def test_no_thread_id_means_no_ref(self):
@@ -2013,9 +2460,12 @@ class TestTrackedTodoReferences:
         ]
 
     @staticmethod
-    def _response() -> TodoResponse:
+    def _response() -> TrackedTodoCreation:
         now = datetime.now(UTC)
-        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+        return TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
+        )
 
     async def test_a_todo_created_with_references_is_saved_with_them(self):
         find = AsyncMock(return_value=self._owned(self.DESK))
@@ -2133,9 +2583,12 @@ class TestSubTodoTools:
     DESK = "66f838cc8829054e5f10e401"
 
     @staticmethod
-    def _response() -> TodoResponse:
+    def _response() -> TrackedTodoCreation:
         now = datetime.now(UTC)
-        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+        return TrackedTodoCreation(
+            todo=TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now),
+            reopened=False,
+        )
 
     async def test_the_parent_reaches_the_service(self):
         with patch(self._CREATE, AsyncMock(return_value=self._response())) as create:
@@ -2227,9 +2680,29 @@ class TestSubTodoTools:
         # Moved under a parent, it reports there like a new sub-todo.
         assert written.model_dump(exclude_unset=True) == {
             "parent_todo_id": self.DESK,
-            "notify_on_run": False,
+            "delivery": WorkflowDelivery.SILENT,
         }
-        assert result == "Updated tracked todo t1: notify_on_run, parent_todo_id"
+        assert result == "Updated tracked todo t1: parent_todo_id, delivery"
+
+    async def test_a_thread_todo_moved_under_a_parent_still_tells_the_user(self):
+        """A thread's news cannot wait for its parent's next run, so moving it keeps it speaking."""
+        existing = TodoDocument(
+            id="t1",
+            user_id="user-1",
+            title="Reply to Sam",
+            external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611"),
+        )
+        with (
+            patch(self._GET, AsyncMock(return_value=existing)),
+            patch(self._REQUIRE, AsyncMock()),
+            patch(self._UPDATE, AsyncMock(return_value=existing)) as update,
+            patch("app.services.briefing.held.release_held_items", new_callable=AsyncMock),
+        ):
+            await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", parent_todo_id=self.DESK
+            )
+
+        assert update.await_args.kwargs["update"].delivery is WorkflowDelivery.NOW
 
     async def test_a_parent_completed_mid_move_rolls_the_move_back(self, recorded_changes):
         moving = TodoDocument(
@@ -2368,3 +2841,27 @@ class TestListTrackedTodos:
         assert "Active tracked todos (2):" in result
         assert "First" in result
         assert "Second" in result
+
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
+    async def test_a_todo_says_when_it_next_acts_counted_from_now(self) -> None:
+        doc = TodoDocument(
+            id="66f838cc8829054e5f10e401",
+            user_id="user-1",
+            title="Chase the invoice",
+            labels=[GAIA_TRACKED_LABEL, "finance"],
+            waiting_on=WaitingOn.TIME,
+            scheduled_at=datetime(2026, 10, 4, 9, tzinfo=UTC),
+            created_at=datetime(2026, 9, 29, 9, tzinfo=UTC),
+            updated_at=datetime(2026, 9, 30, 9, tzinfo=UTC),
+        )
+        with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[doc]):
+            result = await tool_coroutine(list_tracked_todos, str)(config=_config())
+
+        assert result == (
+            "Active tracked todos (1):\n\n"
+            '- "Chase the invoice" [finance] (ID: 66f838cc8829054e5f10e401)\n'
+            "  Priority: none | Age: 2d | Last updated: 1d ago\n"
+            "  State: next check in 3d\n"
+            "  files: /workspace/gaia-tasks/chase-the-invoice-5f10e401/\n"
+            "  Scheduled: 2026-10-04T09:00:00+00:00"
+        )

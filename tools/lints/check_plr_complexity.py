@@ -15,6 +15,9 @@ deferrals, ``--update``) live in ``_ratchet.py`` and are shared with the other
 baseline-carrying lints; this script only knows how to ask ruff for the
 current violations.
 
+One narrow waiver: a LangChain ``@tool`` function is exempt from ``PLR0913``
+only, because its parameters are the schema the model sees (see ``_is_exempt``).
+
 Usage::
 
     python3 tools/lints/check_plr_complexity.py       # check (exits 1 on failure)
@@ -23,7 +26,10 @@ Usage::
 
 from __future__ import annotations
 
+import ast
+from functools import cache
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -41,6 +47,13 @@ DOC = "tools/lints/README.md#plr-complexity-ratchet"
 _HERE = Path(__file__).resolve().parent
 BASELINE = _HERE / "plr_complexity_baseline.txt"
 PLR_RULES = ("PLR0911", "PLR0912", "PLR0913", "PLR0915")
+
+# The only rule this ratchet waives, and the decorator it waives it for -- see
+# `_is_exempt` for why a @tool's argument list is a contract, not complexity.
+# The decorator is matched by its import binding, not its spelling, so an
+# unrelated `@tool` / `@mcp.tool` gets no waiver and an aliased import does.
+_ARG_COUNT_RULE = "PLR0913"
+_TOOL_DECORATOR = "langchain_core.tools.tool"
 
 # Pinned to the same ruff version as the python-ruff CI check
 # (.github/workflows/ci.yml) -- bump both together. `uvx` resolves
@@ -63,6 +76,88 @@ _BASELINE_HEADER = """\
 # warns instead). Past the date it fails again: fix it, or renew the deferral
 # with a fresh reason. --update keeps the field.
 """
+
+
+def _import_bindings(tree: ast.Module) -> dict[str, str]:
+    """Map each name a module's imports bind to the dotted path it refers to.
+
+    ``from a.b import c as d`` binds ``d`` to ``a.b.c``; ``import a.b as e``
+    binds ``e`` to ``a.b``; a bare ``import a.b`` binds only ``a``.
+    """
+    bindings: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            for alias in node.names:
+                bindings[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    bindings[alias.asname] = alias.name
+                else:
+                    head = alias.name.split(".", 1)[0]
+                    bindings[head] = head
+    return bindings
+
+
+def _decorator_target(node: ast.expr, bindings: dict[str, str]) -> str | None:
+    """Resolve a decorator to the dotted path it imports from, or None if unbound.
+
+    Handles ``@name``, ``@name(...)`` and ``@mod.attr`` chains; the leading name
+    must come from an import, so a local or unimported ``tool`` resolves to None.
+    """
+    if isinstance(node, ast.Call):
+        node = node.func
+    attrs: list[str] = []
+    while isinstance(node, ast.Attribute):
+        attrs.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name) or node.id not in bindings:
+        return None
+    return ".".join([bindings[node.id], *reversed(attrs)])
+
+
+@cache
+def _tool_decorated_def_lines(path: Path) -> frozenset[int]:
+    """Return the ``def`` line of every LangChain ``@tool``-decorated function in a file.
+
+    Ruff reports PLR0913 at the ``def`` line (decorators are separate nodes),
+    which is also ``FunctionDef.lineno`` -- so the two line up directly.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    bindings = _import_bindings(tree)
+    return frozenset(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and any(_decorator_target(d, bindings) == _TOOL_DECORATOR for d in node.decorator_list)
+    )
+
+
+def _is_exempt(code: str, filename: str, row: int) -> bool:
+    """Report the one waiver this ratchet grants: argument count on a @tool.
+
+    A LangChain ``@tool`` function's parameters ARE the schema the model sees,
+    so the argument list is the tool's contract rather than accidental
+    complexity -- collapsing it into nested objects would change what the LLM
+    is asked to emit. Only the argument-count rule is waived; too many returns,
+    branches, or statements inside the body are ordinary complexity and still
+    fail.
+    """
+    if code != _ARG_COUNT_RULE:
+        return False
+    return row in _tool_decorated_def_lines(Path(filename).resolve())
+
+
+def _untracked_python() -> set[str]:
+    """Python files git does not track: prek stashes unstaged edits, not these, so no commit holds them."""
+    proc = subprocess.run(  # nosec B603 - fixed git argv, no shell
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "*.py"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return set(proc.stdout.splitlines())
 
 
 def _current_violations() -> dict[tuple[str, str], int]:
@@ -91,9 +186,15 @@ def _current_violations() -> dict[tuple[str, str], int]:
         print(proc.stderr, file=sys.stderr)
         raise SystemExit(f"{RULE}: ruff failed unexpectedly (exit {proc.returncode})")
     violations = json.loads(proc.stdout)
+    outside_commit = _untracked_python() if os.environ.get("PRE_COMMIT") else set()
     out: dict[tuple[str, str], int] = {}
     for v in violations:
+        row = v["location"]["row"]
+        if _is_exempt(v["code"], v["filename"], row):
+            continue
         path = Path(v["filename"]).resolve().relative_to(REPO_ROOT).as_posix()
+        if path in outside_commit:
+            continue
         key = (path, v["code"])
         out.setdefault(key, v["location"]["row"])
     return out

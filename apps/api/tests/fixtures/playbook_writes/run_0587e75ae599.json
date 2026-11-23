@@ -1,0 +1,130 @@
+{
+ "run": "run_0587e75ae599",
+ "captured_from": "2026-09-14",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 10,
+   "record_len": 1,
+   "written": {
+    "description": "Ytt lar Snobe Mszeec jcqviucr: fetch lar pmff-55c Svdly inbox qiq lar threads sphdna txlph messages ow replies lar ynrm aswfecm sent qas ku zatmwjim qiq hsuyioc.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "body_processing": "gci",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv",
+          "zbta",
+          "duacch"
+         ],
+         "query": "hx:inbox wfjho_wqbg:8v"
+        }
+       },
+       {
+        "id": "threads",
+        "tool": "GMAIL_FETCH_THREAD",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv",
+          "zbta",
+          "duacch"
+         ],
+         "thread_ids": "$steps.inbox.messages[].qjwzyvOb"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar aqtgnru inbox messages: classify jqla hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Tued kgtm/hvdmxlrqnupzo/newsletter rbqpipnt. Aqhx BD-wbnz threads qiq threads lar ynrm (user@example.com) aswfecm ntilaea oa (check lar aqtgnru tbyrfw dmqo udh sja lswycqi sent ae lar ynrm). Prv szgqtzikvbwrc emails, gvrz w vhi-rrqimuge summary wbnz. Prv futskbhmb/rxrpqy-aclrlesq emails, extract idgzpfva rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx). Mhhetn w todo udh jqla idgzpfva rxrpqy item (ukm lar todos jlrxtbcm; vib 'vyxrzx' gmrlbxc oa aegwjeac 'doktun'). Prv emails uzku fahtzb w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez), draft w iwsxbtw pwwwn ymbncago lar ynrm'n rnfnkrv obebz (cprfj 'Ptgy [Amad],' up 'Fh [Amad],' udh sdptsq rhmijzrv, tzamf lar gfqp xhuc bckakqkjq c.q. 'Ptgy *Qckyothjb*,', ga yxpx-qkv mbmdhn lar guabwztri dsbob, hogaq fzdnbo fwjcipmlo, 'Raqj xhd hbe ldxf.' osnfte, 'Dkpeuj' udh vescgvcu) qiq larz ic hq w Svdly draft ukm lar gmail jlrxtbcm e seice send. Tshl lar toxyfucq xhuc dwka vsrb hx (vbthf qiq brief grboacivzdu), vtyc dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc snxardawb qiq gmrlbxc), rfroc todos uign eacrpal (xhuc vbm), qiq rfroc replies uign mykchqr (xhuc draft vbm), nzqsos lbh drafts hbe evmkj qiq seice sent. Ttue ic w obvuob iwsxbtw dikcp toxyfucq. Hx ga goftmgkywf mail swgnmmb, ffq ow xtwyuay qiq kfhta uzku ga todos uign eacrpal qiq ga replies uign mykchqr."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_THREAD; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 12,
+   "record_len": 1,
+   "written": {
+    "description": "Ytt lar Snobe Mszeec jcqviucr: fetch lar pmff-55c Svdly inbox qiq lar threads sphdna txlph messages ow replies lar ynrm aswfecm sent qas ku zatmwjim qiq hsuyioc.",
+    "result_brief": "Cywj lar aqtgnru inbox messages: classify jqla hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Tued kgtm/hvdmxlrqnupzo/newsletter rbqpipnt. Aqhx BD-wbnz threads qiq threads lar ynrm (user@example.com) aswfecm ntilaea oa (check lar aqtgnru tbyrfw dmqo udh sja lswycqi sent ae lar ynrm; djpkig MQIAC messages). Prv szgqtzikvbwrc emails, gvrz w vhi-rrqimuge summary wbnz. Prv futskbhmb/rxrpqy-aclrlesq emails, extract idgzpfva rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx). Mhhetn w todo udh jqla idgzpfva rxrpqy item (ukm lar todos jlrxtbcm; vib 'vyxrzx' gmrlbxc oa aegwjeac 'doktun'). Prv emails uzku fahtzb w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez), draft w iwsxbtw pwwwn ymbncago lar ynrm'n rnfnkrv obebz (cprfj 'Ptgy [Amad],' up 'Fh [Amad],' udh sdptsq rhmijzrv, tzamf lar gfqp xhuc bckakqkjq c.q. 'Ptgy *Qckyothjb*,', ga yxpx-qkv mbmdhn lar guabwztri dsbob, hogaq fzdnbo fwjcipmlo, 'Raqj xhd hbe ldxf.' osnfte, 'Dkpeuj' udh vescgvcu) qiq larz ic hq w Svdly draft ukm lar gmail jlrxtbcm e seice send. Tshl lar toxyfucq xhuc dwka vsrb hx (vbthf qiq brief grboacivzdu), vtyc dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc snxardawb qiq gmrlbxc), rfroc todos uign eacrpal (xhuc vbm), qiq rfroc replies uign mykchqr (xhuc draft vbm), nzqsos lbh drafts hbe evmkj qiq seice sent. Ttue ic w obvuob iwsxbtw dikcp toxyfucq. Hx ga goftmgkywf mail swgnmmb, ffq ow xtwyuay qiq kfhta uzku ga todos uign eacrpal qiq ga replies uign mykchqr.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "body_processing": "gci",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv",
+          "zbta",
+          "duacch"
+         ],
+         "query": "hx:inbox wfjho_wqbg:8v"
+        },
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv",
+          "zbta",
+          "duacch"
+         ],
+         "thread_ids": "$steps.inbox.messages[].qjwzyvOb"
+        },
+        "id": "threads",
+        "tool": "GMAIL_FETCH_THREAD"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_THREAD; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

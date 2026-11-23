@@ -102,7 +102,7 @@ class TestRateLimiterEnforcement:
         self, real_redis, real_rate_limiter
     ):
         """Chat is cost-walled with no free daily count, so its enforced count is the monthly abuse backstop."""
-        user_id = "limit-enforce-user-1"
+        user_id = "6812f0b3c9a14e2b7d5a9201"
         feature = "chat_messages"
 
         day_key = tiered_limiter._get_redis_key(user_id, feature, RateLimitPeriod.DAY)
@@ -129,7 +129,7 @@ class TestRateLimiterEnforcement:
 
     async def test_request_allowed_below_daily_limit(self, real_redis, real_rate_limiter):
         """check_and_increment must succeed when usage is below the limit."""
-        user_id = "limit-enforce-user-2"
+        user_id = "6812f0b3c9a14e2b7d5a9202"
         feature = "chat_messages"
 
         day_key = tiered_limiter._get_redis_key(user_id, feature, RateLimitPeriod.DAY)
@@ -154,7 +154,7 @@ class TestRateLimiterEnforcement:
 
     async def test_counter_increments_on_each_allowed_request(self, real_redis, real_rate_limiter):
         """Each successful check_and_increment must advance the counter by 1."""
-        user_id = "limit-enforce-user-3"
+        user_id = "6812f0b3c9a14e2b7d5a9203"
         feature = "chat_messages"
 
         day_key = tiered_limiter._get_redis_key(user_id, feature, RateLimitPeriod.DAY)

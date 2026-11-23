@@ -48,7 +48,7 @@ from app.constants.memory import (
     MemoryRelationType,
     MemoryShelfLife,
 )
-from app.core.provider_registration import register_lazy_providers
+from app.core.provider_registration import boot_process
 from app.db.postgresql import close_postgresql_db
 from app.memory import pg_store
 from app.memory.consolidation import consolidate, render_agenda_document
@@ -279,7 +279,7 @@ async def _run(args: argparse.Namespace) -> int:
     Registration is bookkeeping only; the engine builds on first use and is
     disposed here so the script exits without an open-pool warning.
     """
-    register_lazy_providers("main_app")
+    boot_process("main_app")
     try:
         for user_id in args.user:
             await _repair_user(user_id, args)

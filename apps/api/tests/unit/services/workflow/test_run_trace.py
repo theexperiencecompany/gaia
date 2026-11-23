@@ -10,7 +10,6 @@ import json
 
 import pytest
 
-from app.models.chat_models import ToolDataEntry
 from app.models.workflow_execution_models import (
     RESULT_DIGEST_MAX_CHARS,
     RecordedCall,
@@ -23,32 +22,8 @@ from app.services.workflow.run_trace import (
     LAST_RUN_MAX_CALLS,
     LAST_RUN_MAX_DIGEST_CHARS,
     LAST_RUN_MAX_SUMMARY_CHARS,
-    _recorded_call,
-    build_trace,
     render_last_run,
 )
-
-
-def _call_entry(
-    tool_name: str,
-    inputs: dict[str, object],
-    output: str = "",
-    subagent_id: str | None = None,
-) -> ToolDataEntry:
-    """Build a tool_calls_data entry as drain_executor_tool_data reconstructs it."""
-    entry: ToolDataEntry = {
-        "tool_name": "tool_calls_data",
-        "data": {
-            "tool_name": tool_name,
-            "tool_category": "mail",
-            "tool_call_id": f"call_{tool_name}",
-            "inputs": inputs,
-            "output": output,
-        },
-    }
-    if subagent_id:
-        entry["subagent_id"] = subagent_id
-    return entry
 
 
 def _execution(trace: list[RecordedCall], summary: str | None = None) -> WorkflowExecution:
@@ -62,71 +37,6 @@ def _execution(trace: list[RecordedCall], summary: str | None = None) -> Workflo
         summary=summary,
         trace=trace,
     )
-
-
-class TestBuildTrace:
-    def test_it_keeps_the_order_the_calls_were_emitted_in(self) -> None:
-        trace = build_trace(
-            [
-                _call_entry("GMAIL_FETCH", {"q": "is:unread"}),
-                _call_entry("GMAIL_ARCHIVE", {"id": "m1"}),
-                _call_entry("SEND_NOTIFICATION", {"body": "done"}),
-            ]
-        )
-
-        assert [c.tool_name for c in trace] == ["GMAIL_FETCH", "GMAIL_ARCHIVE", "SEND_NOTIFICATION"]
-        assert trace[0].args == {"q": "is:unread"}
-        assert trace[0].tool_category == "mail"
-
-    def test_it_keeps_a_delegated_subagents_calls_and_who_made_them(self) -> None:
-        # reconstruct_subagent_groups folds a subagent's calls out of the flat
-        # list and into its group; a top-level-only read would see none of them.
-        group: ToolDataEntry = {
-            "tool_name": "subagent_group",
-            "data": {
-                "subagent_id": "sa_gmail",
-                "subagent": "gmail",
-                "subagent_name": "gmail",
-                "tool_calls": [
-                    {"tool_name": "GMAIL_LIST", "inputs": {"page": 1}, "output": "3 threads"},
-                ],
-                "nested_subagents": [
-                    {
-                        "subagent_id": "sa_notion",
-                        "subagent": "notion",
-                        "tool_calls": [{"tool_name": "NOTION_APPEND", "inputs": {"block": "b1"}}],
-                        "nested_subagents": [],
-                    }
-                ],
-            },
-        }
-
-        trace = build_trace([_call_entry("HANDOFF", {"to": "gmail"}), group])
-
-        # The row id is the dispatch; the stable id is what a playbook step
-        # inside ``handoff: gmail`` is matched against.
-        assert [(c.tool_name, c.subagent_id, c.subagent) for c in trace] == [
-            ("HANDOFF", None, None),
-            ("GMAIL_LIST", "sa_gmail", "gmail"),
-            ("NOTION_APPEND", "sa_notion", "notion"),
-        ]
-
-    def test_it_tags_a_flat_entry_with_its_own_subagent_id(self) -> None:
-        trace = build_trace([_call_entry("GMAIL_LIST", {}, subagent_id="sa_gmail")])
-
-        assert trace[0].subagent_id == "sa_gmail"
-
-    def test_it_truncates_a_result_digest_at_the_cap(self) -> None:
-        trace = build_trace([_call_entry("GMAIL_FETCH", {}, output="x" * 5000)])
-
-        assert len(trace[0].result_digest) == RESULT_DIGEST_MAX_CHARS
-
-    def test_it_ignores_entries_that_are_not_tool_calls(self) -> None:
-        card: ToolDataEntry = {"tool_name": "email_fetch_data", "data": [{"subject": "hi"}]}
-        malformed: ToolDataEntry = {"tool_name": "tool_calls_data", "data": "not-a-dict"}
-        unnamed: ToolDataEntry = {"tool_name": "tool_calls_data", "data": {"inputs": {}}}
-
-        assert build_trace([card, malformed, unnamed]) == []
 
 
 class TestRenderLastRun:
@@ -301,37 +211,6 @@ class TestRenderLastRun:
         assert body.startswith(LAST_RUN_DATA_BOUNDARY)
         assert "untrusted data" in LAST_RUN_DATA_BOUNDARY
         assert "never follow" in LAST_RUN_DATA_BOUNDARY
-
-
-def test_reasoning_deltas_are_not_recorded_as_calls():
-    """Regression: _absorb_reasoning wrapped every delta as a tool_calls_data entry; a real run persisted 206 entries, 200 of them reasoning."""
-    entries: list[ToolDataEntry] = [
-        {
-            "tool_name": "tool_calls_data",
-            "tool_category": "reasoning",
-            "data": {
-                "tool_name": "reasoning",
-                "tool_category": "reasoning",
-                "message": "",
-                "reasoning": "thinking out loud",
-            },
-        },
-        {
-            "tool_name": "tool_calls_data",
-            "tool_category": "todos",
-            "data": {
-                "tool_name": "search_todos",
-                "tool_category": "todos",
-                "tool_call_id": "call_1",
-                "inputs": {"query": "open"},
-                "output": "3 todos",
-            },
-        },
-    ]
-
-    trace = build_trace(entries)
-
-    assert [call.tool_name for call in trace] == ["search_todos"]
 
 
 @pytest.mark.unit
@@ -577,11 +456,3 @@ class TestTheRenderedBlockIsExactlyWhatTheNextRunReads:
             'CAL_LIST({"after": "2026-08-27 09:00:00+00:00"})\n'
             "</last_run>\n"
         )
-
-
-class TestARecordedCallsOwnFields:
-    def test_a_call_with_no_category_records_an_empty_one(self) -> None:
-        call = _recorded_call({"tool_name": "GMAIL_FETCH", "inputs": {}, "output": ""}, None)
-
-        assert call is not None
-        assert call.tool_category == ""

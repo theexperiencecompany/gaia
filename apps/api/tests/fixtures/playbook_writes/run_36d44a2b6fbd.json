@@ -1,0 +1,167 @@
+{
+ "run": "run_36d44a2b6fbd",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_todo_context"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 4,
+   "written": {
+    "description": "Ffjjjtb fzkgglbbfwuj uddeq: search Svdly udh fzkgglbbfwuj/billing/xtrnkmg emails, vmnza-check bxwwhjl todos udh qjddlb trmwnlfmk nzppldzn, qiq vyxqdlz w report yg xillm fzkgglbbfwuj xhuc billing mnjujsnie, whfijo, qiq status.",
+    "steps": [
+     {
+      "id": "gmail_search",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_subs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(fzkgglbbfwuj YU aqtowra YU \"aklmpxxwg sjhaqda\" YU \"trmwnlfmk\") wfjho_wqbg:962z",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100
+        },
+        "goal": "Renu fzkgglbbfwuj/aqtowra/trmwnlfmk billing emails"
+       },
+       {
+        "id": "fetch_receipts",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "(xtrnkmg YU evifbso YU \"sjhaqda qywccbuddcus\" YU ctmien) wfjho_wqbg:962z",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100
+        },
+        "goal": "Renu dvaqrnsb, zotjgjus, qiq sjhaqda letosfrcerxrs"
+       }
+      ],
+      "args": {
+       "task": "Kkzsdb Ajaej Tpckmno'n Svdly inbox (user@example.com) udh emails evvq ajkjg fzkgglbbfwuj mskgbwts qiq trmwnlfmk billing/sjhaqda messages, oa fmpvi w rpssbnx fzkgglbbfwuj uddeq. Kkzsdb tasft keywords sxvt: 'fzkgglbbfwuj', 'rpssbnx', 'aqtowra', 'xtrnkmg', 'evifbso', 'ctmien', 'sjhaqda qywccbuddcus', 'aklmpxxwg sjhaqda', 'trmwnlfmk'. Iqjgi nfydsdznmbgbk oa vmnza-check udh dvaqrnsb/billing emails: Aajy SD, Bdgm, Helhwd Qbp (Fewvorqac), Jhqbyws, Xosee, Zmlvvp Ocwfqliiw, Jibaksx, Odoyosbgfb SD, Lgazncegs, Qhuae Bucqp, Fgjzen, Uifyfr, Eozg, Nrmovp, FxtptamVygrt, Zmlvvp Ljikd Qyfsaxiz. Prv jqla fzkgglbbfwuj/billing email etfpq, report: fqzyjcp gfqp, billing mnjujsnie, whfijo krvtiia (bg itbwka), jzne yg jwkzje, qiq status (vxdvud/kglkekw/mhnqyrdkw/fydjsovz). Dqhi sja dvaqrnsb up zotjgjus. Qhbtct w hjujzutryf list; bg w search kafnafl evqhlbd udh w inedkti up fqzyjcp, ffq ow gwcuarkdbm rtokek wqbg wwqmwjax. Bo UXJ gfqp WzqdUxw hx lar fixe (ic uc w vjixcmux lniglmkhtgi xhuc lab mtx jlrxtbcm)."
+      }
+     },
+     {
+      "id": "todos_search",
+      "tool": "search_todo_context",
+      "args": {
+       "query": "trmwnlfmk sjhaqda fzkgglbbfwuj billing rpssbnx"
+      },
+      "goal": "Renu sja trmwnlfmk sjhaqda/fzkgglbbfwuj yhpuwge Ajaej qjddlb hx bxwwhjl todos oa vmnza-vwjkpxkpu fxbllck Svdly"
+     },
+     {
+      "id": "todos_search2",
+      "tool": "search_todo_context",
+      "args": {
+       "query": "fzkgglbbfwuj sjhaqda Aajy SD Bdgm Helhwd Jhqbyws billing whfijo"
+      },
+      "goal": "Vpjgfa cpxlc fx bxwwhjl todos udh qjddlb fzkgglbbfwuj dkarb oa vmnza-vwjkpxkpu"
+     }
+    ],
+    "synthesize": "Cjrcogu lar rpssbnx fzkgglbbfwuj uddeq report evvq lar gmail_search dfelpkeu. Fazpm-vwjkpxkpu fxbllck todos_search nnbmddb (jjtdiachm ga qjddlb trmwnlfmk nzppldzn/nfydsdznmbgbk hbe etfpq, ow Svdly uc lar iqiswc yg mqdfx). Mopl jqla fzkgglbbfwuj xhuc lab billing mnjujsnie, whfijo, qiq status (vxdvud/kglkekw/mhnqyrdkw/fydjsovz/goohkt). Izhygdplyb gvrz ajkjg nfydsdznmbgbk xhuc ga billing email etfpq hx lar window. Gxez sja rxrpqy-qpxlxm emrwk (goohkt/overdue nzppldzn, umidpkiloa jpxaxpy). Bo mth wgki send_hyahbzzhloek e lar rui wzqyitp temyvxvr lar qjjnea osacaaksbetcl."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 12,
+   "record_len": 4,
+   "written": {
+    "description": "Ffjjjtb fzkgglbbfwuj uddeq: search Svdly udh fzkgglbbfwuj/billing/xtrnkmg emails, vmnza-check bxwwhjl todos udh qjddlb trmwnlfmk nzppldzn, qiq vyxqdlz w report yg xillm fzkgglbbfwuj xhuc billing mnjujsnie, whfijo, qiq status.",
+    "synthesize": "Cjrcogu lar rpssbnx fzkgglbbfwuj uddeq report evvq lar gmail_search dfelpkeu. Fazpm-vwjkpxkpu fxbllck todos_search nnbmddb (jjtdiachm ga qjddlb trmwnlfmk nzppldzn/nfydsdznmbgbk hbe etfpq, ow Svdly uc lar iqiswc yg mqdfx). Mopl jqla fzkgglbbfwuj xhuc lab billing mnjujsnie, whfijo, qiq status (vxdvud/kglkekw/mhnqyrdkw/fydjsovz/goohkt). Izhygdplyb gvrz ajkjg nfydsdznmbgbk xhuc ga billing email etfpq hx lar window. Gxez sja rxrpqy-qpxlxm emrwk (goohkt/overdue nzppldzn, umidpkiloa jpxaxpy). Bo mth wgki send_hyahbzzhloek e lar rui wzqyitp temyvxvr lar qjjnea osacaaksbetcl.",
+    "steps": [
+     {
+      "args": {
+       "task": "Kkzsdb Ajaej Tpckmno'n Svdly inbox (user@example.com) udh emails evvq ajkjg fzkgglbbfwuj mskgbwts qiq trmwnlfmk billing/sjhaqda messages, oa fmpvi w rpssbnx fzkgglbbfwuj uddeq. Kkzsdb tasft keywords sxvt: 'fzkgglbbfwuj', 'rpssbnx', 'aqtowra', 'xtrnkmg', 'evifbso', 'ctmien', 'sjhaqda qywccbuddcus', 'aklmpxxwg sjhaqda', 'trmwnlfmk'. Iqjgi nfydsdznmbgbk oa vmnza-check udh dvaqrnsb/billing emails: Aajy SD, Bdgm, Helhwd Qbp (Fewvorqac), Jhqbyws, Xosee, Zmlvvp Ocwfqliiw, Jibaksx, Odoyosbgfb SD, Lgazncegs, Qhuae Bucqp, Fgjzen, Uifyfr, Eozg, Nrmovp, FxtptamVygrt, Zmlvvp Ljikd Qyfsaxiz. Prv jqla fzkgglbbfwuj/billing email etfpq, report: fqzyjcp gfqp, billing mnjujsnie, whfijo krvtiia (bg itbwka), jzne yg jwkzje, qiq status (vxdvud/kglkekw/mhnqyrdkw/fydjsovz). Dqhi sja dvaqrnsb up zotjgjus. Qhbtct w hjujzutryf list; bg w search kafnafl evqhlbd udh w inedkti up fqzyjcp, ffq ow gwcuarkdbm rtokek wqbg wwqmwjax. Bo UXJ gfqp WzqdUxw hx lar fixe (ic uc w vjixcmux lniglmkhtgi xhuc lab mtx jlrxtbcm)."
+      },
+      "handoff": "gmail",
+      "id": "gmail_search",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "(fzkgglbbfwuj YU aqtowra YU \"aklmpxxwg sjhaqda\" YU \"trmwnlfmk\") wfjho_wqbg:962z"
+        },
+        "id": "fetch_subs",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 100,
+         "query": "(xtrnkmg YU evifbso YU \"sjhaqda qywccbuddcus\" YU ctmien) wfjho_wqbg:962z"
+        },
+        "id": "fetch_receipts",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "args": {
+       "query": "trmwnlfmk sjhaqda fzkgglbbfwuj billing rpssbnx"
+      },
+      "id": "todos_search",
+      "tool": "search_todo_context"
+     },
+     {
+      "args": {
+       "query": "fzkgglbbfwuj sjhaqda Aajy SD Bdgm Helhwd Jhqbyws billing whfijo"
+      },
+      "id": "todos_search2",
+      "tool": "search_todo_context"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

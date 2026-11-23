@@ -1,0 +1,109 @@
+{
+ "run": "run_3ea3a5bafef9",
+ "captured_from": "2026-10-08",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "time_min": "2026-10-08T09:00:00-03:00",
+    "time_max": "2026-10-08T23:59:00-03:00",
+    "single_events": true
+   },
+   "result_digest": "{\"data\": {\"calendars_queried\": [{\"id\": \"yu.ky#user@example.com\", \"summary\": \"Igyaouqb pq Stzhb\"}, {\"id\": \"user@example.com\", \"summary\": \"user@example.com\"}, {\"id\": \"user@example.com\", \"summary\": \"Tvelkhjg\"}, {\"id\": \"user@example.com\", \"summary\": \"Qplhpfm Hxfzzhw Yscbmttle \"}, {\"id\": \"user@example.com\", \"summary\": \"Eyvfsasumvg zyngd user@example.com\"}, {\"id\": \"user@example.com\", \"summary\": \"Eyvfsasumvg zyngd user@example.com\"}, {\"id\": \"user@example.com\", \"summary\": \"Eyvfsasumvg zyngd user@example.com\"}, {\"id\": \"user@example.com\", \"summary\": \"Eyvfsasumvg zyngd user@example.com\"}, {\"id\": \"user@example.com\", \"summary\": \"Eyvfsasumvg zyngd user@example.com\"}, {\"id\": \"user@example.com\", \"summary\": \"Eyvfsasumvg zyngd user@example.com\"}], \"errors_by_calendar\": {}, \"events\": [{\"event\": {\"attendees\": [{\"displayName\": \"Aaqen Unsoau\", \"email\": \"user@example.com\", \"responseStatus\": \"cuyjmIoyzql\"}, {\"displayName\": \"Otfkh Cqslr\", \"email\": \"user@example.com\", \"responseStatus\": \"cuyjmIoyzql\"}, {\"email\": \"user@example.com\", \"responseStatus\": \"alvaybtm\"}, {\"displayName\": \"Xxec Saqxiqdy\", \"email\": \"user@example.com\", \"responseStatus\": \"cuyjmIoyzql\"}, {\"displayName\": \"yhmig sccjax\", \"email\": \"user@example.com\", \"responseStatus\": \"cuyjmIoyzql\"}, {\"email\": \"user@example.com\", \"organizer\": true, \"responseStatus\": \"cuyjmIoyzql\", \"self\": true}], \"colorId\": \"6\", \"conferenceData\": {\"conferenceSolution\": {\"key\": {\"type\": \"ubuCs\"}, \"name\": \"meeting\"}, \"entryPoints\": [{\"entryPointType\": \"fdxdx\", \"label\": \"niq.slack.jtu/qnmewt/IQGW630MO/QX2OKBBE7\", \"uri\": \"https://example.com/84170609\"}]}, \"created\": \"2024-12-04T20:32:39.000Z\", \"creator\": {\"email\": \"user@example.com\"}, \"end\": {\"dateTime\": \"2026-10-08T10:30:00-03:00\", \"timeZone\": \"Yeazxzv/Igehdiut\"}, \"etag\": \"\\\"1143596650209625\\\"\", \"eventType\": \"iwtqdhh\", \"htmlLink\": \"https://example.com/09db17f1\", \"iCalUID\": \"user@example.com\", \"id\": \"dwcwio049trlvuc7x9ewepfqb4_23943299A136879C\", \"kind\": \"calendar#event\", \"location\": \"Dhkqlxtse \", \"organizer\": {\"email\": \"user@example.com\", \"self\": true}, \"originalStartTime\": {\"dateTime\": \"2026-10-08T10:00:00-03:00\", \"timeZone\": \"Yeazxzv/Igehdiut\"}, \"recurringEventId\": \"dwcwio049trlvuc7x9ewepfqb4\", \"sequence\": 1, \"start\": {\"dateTime\": \"2026-10-08T10:00:00-03:00\", \"timeZone\": \"Yeazxzv/Igehdiut\"}, \"status\": \"tnmalswen\", \"summary\": \"eJkghi\", \"updated\": \"2026-05-11T15:19:02.493Z\"}, \"source_calendar_id\": \"user@example.com\", \"source_calendar_summary\": \"user@example.com\"}]}, \"error\": null, \"successful\": true}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Dovtnio Kkkppnct: qqdq lar upcoming calendar event udh today qiq vwvnvi w iwsxbtw 93 zlls reminder xhuc pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "events",
+      "tool": "execute",
+      "args": {
+       "task_description": "Kzhrwwq upcoming calendar events today",
+       "tool_name": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+       "data": {
+        "time_min": {
+         "$time": "$today 00:00",
+         "format": "%Y-%m-%dT%H:%M:%S-03:00"
+        },
+        "time_max": {
+         "$time": "$today + 1d 00:00",
+         "format": "%Y-%m-%dT%H:%M:%S-03:00"
+        },
+        "single_events": true
+       }
+      }
+     }
+    ],
+    "result_brief": "Cywj lar events gtcnsc bdeofk lbh calendars, znkiciio lar upcoming event uzku qjmqiy trezfsx (voyznab whdrf ohzt), fkipgbpgef lar wfkquvl Xdsle quazxsi tcnn tkuppza. Zoholz w 93 zlls reminder: zlls 1 = event pnkwu qiq start ohzt (CR:LW whdrf), zlls 2 = gbiizrzg up ohzt ljndz, zlls 3 = opps umfp (evvq wjqfbmrikoFeah/xbzpggfNehj) up yuizmdvm bg upuwifttl. Ttue ic iwsxbtw. Hx ga upcoming event vzunbh today, ffq ymgdt uc evqhlbd qszrkqrrp."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 2,
+   "written": {
+    "description": "Dovtnio Kkkppnct: qqdq lar upcoming calendar event udh today qiq vwvnvi w iwsxbtw 93 zlls reminder xhuc pnkwu, ohzt, qiq opps umfp/yuizmdvm.",
+    "result_brief": "Cywj lar events gtcnsc bdeofk lbh calendars, znkiciio lar upcoming event uzku qjmqiy trezfsx (voyznab whdrf ohzt), fkipgbpgef lar wfkquvl Xdsle quazxsi tcnn tkuppza. Zoholz w 93 zlls reminder: zlls 1 = event pnkwu qiq start ohzt (CR:LW whdrf), zlls 2 = gbiizrzg up ohzt ljndz, zlls 3 = opps umfp (evvq wjqfbmrikoFeah/xbzpggfNehj) up yuizmdvm bg upuwifttl. Ttue ic iwsxbtw. Hx ga upcoming event vzunbh today, ffq ymgdt uc evqhlbd qszrkqrrp.",
+    "steps": [
+     {
+      "args": {
+       "data": {
+        "single_events": true,
+        "time_max": {
+         "$time": "$today + 1d 00:00",
+         "format": "%Y-%m-%dT%H:%M:%S-03:00"
+        },
+        "time_min": {
+         "$time": "$today 00:00",
+         "format": "%Y-%m-%dT%H:%M:%S-03:00"
+        }
+       },
+       "task_description": "Kzhrwwq lbh calendar events today",
+       "tool_name": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+      },
+      "id": "events",
+      "tool": "execute"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS#1",
+     "id": "events",
+     "vary": {
+      "time_max": {
+       "placeholder": "$today + 1d 00:00",
+       "format": "%Y-%m-%dT%H:%M:%S-03:00"
+      },
+      "time_min": {
+       "placeholder": "$today 00:00",
+       "format": "%Y-%m-%dT%H:%M:%S-03:00"
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

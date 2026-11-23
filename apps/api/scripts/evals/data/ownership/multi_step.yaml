@@ -1,0 +1,87 @@
+# Whole jobs: deliver the first real piece (the plan, the list, the draft, the
+# comparison) in this reply, never a plan to make a plan, no "I'll get back to
+# you", no booking or sending claims, and no follow-ups nobody asked for.
+
+- id: own-ms-lisbon-trip
+  ticket: "Trip plan: a real day-by-day plan within budget, nothing booked."
+  prompt: "plan a 3 day trip to lisbon in march for two of us, budget around 1500 euros"
+  tags: [ownership, multi_step, trip]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 120}
+    must_not_communicate: ["booked", "i've reserved", "confirmation number", "i'll get back to you"]
+    judge:
+      criteria: ["MUST: gives a plan for each of the 3 days and keeps the total near 1500 euros"]
+    score: {gates: [deliverable, followup, must_not_communicate]}
+
+- id: own-ms-climate-investors
+  ticket: "Investor research: an actual list of named investors, not a method."
+  prompt: "find 5 seed-stage investors who back climate tech startups in europe"
+  tags: [ownership, multi_step, research]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 60}
+    must_not_communicate: ["i'll get back to you", "still working on it", "give me a moment"]
+    judge:
+      criteria: ["MUST: names 5 specific investors or funds, each with why it fits climate tech in Europe"]
+    score: {gates: [deliverable, followup, must_not_communicate]}
+
+- id: own-ms-packing-list
+  ticket: "Packing list: the list itself, sized to a week of Scottish hiking."
+  prompt: "make me a packing list for a week of hiking in scotland in april"
+  tags: [ownership, multi_step]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 60}
+    must_not_communicate: ["i'll get back to you", "still working on it"]
+    score: {gates: [deliverable, followup, must_not_communicate]}
+
+- id: own-ms-landlord-draft
+  ticket: "Draft only: write the email in full, never send it."
+  prompt: "draft a polite email to my landlord asking him to fix the heater this week"
+  tags: [ownership, multi_step, writing, external]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 50}
+    must_not_communicate: ["i've sent", "email sent", "sent it to your landlord"]
+    score: {gates: [deliverable, followup, must_not_communicate]}
+
+- id: own-ms-plan-week
+  ticket: "Weekly plan from stated constraints: a concrete schedule, created without asking for more."
+  prompt: "plan my week: launch on thursday, gym 3 times, dentist on tuesday at 10"
+  tags: [ownership, multi_step, planning]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 60, questions: {min: 0, max: 1}}
+    must_not_communicate: ["i'll get back to you", "still working on it"]
+    score: {gates: [deliverable, followup, question_budget, must_not_communicate]}
+
+- id: own-ms-moving-checklist
+  ticket: "Moving checklist: ordered steps for a move next month."
+  prompt: "give me a checklist for moving apartments next month"
+  tags: [ownership, multi_step, planning]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 60}
+    must_not_communicate: ["i'll get back to you", "still working on it"]
+    score: {gates: [deliverable, followup, must_not_communicate]}
+
+- id: own-ms-study-plan
+  ticket: "Study plan with a deadline: day-by-day until Friday's exam."
+  prompt: "write me a study plan for my statistics exam on friday, i have 2 hours a day"
+  tags: [ownership, multi_step, planning, deadline]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 60}
+    must_not_communicate: ["i'll get back to you", "still working on it"]
+    score: {gates: [deliverable, followup, must_not_communicate]}
+
+- id: own-ms-launch-announcement
+  ticket: "Writing deliverable: the full announcement in this reply, posted nowhere."
+  prompt: "write a short launch announcement for our new budgeting app, friendly tone"
+  tags: [ownership, multi_step, writing]
+  expected:
+    category: multi_step
+    ownership: {followup: forbidden, min_words: 40}
+    must_not_communicate: ["i've posted", "it's live", "i'll get back to you"]
+    score: {gates: [deliverable, followup, must_not_communicate]}

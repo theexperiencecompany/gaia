@@ -1,0 +1,114 @@
+{
+ "run": "run_8284e7aaa508",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "gmail",
+     "googlecalendar",
+     "todos",
+     "github"
+    ]
+   },
+   "result_digest": "Svdly: f Kze Jukrtjhyu\nZmlvvp Tvelkhjg: f Kze Jukrtjhyu\nQnzul: f Kze Jukrtjhyu\nDpmPpp: f Kze Jukrtjhyu"
+  },
+  {
+   "tool_name": "web_search_tool",
+   "tool_category": "search",
+   "args": {
+    "query_text": "DpmPpp trending tdfrtxlpeidv smpw trrb vmo"
+   },
+   "result_digest": "{\"web\": [{\"url\": \"https://example.com/2ecda857\", \"title\": \"DpmPpp 2025-09-03 Epzhnl Otmzxvjz Awvjmhsp - Ykxt-ohzt ownizlll yg lar wgfjelr open iqiswc yulbrbpn qiq tdfrtxlpeidv fx DpmPpp\", \"content\": \"DpmPpp 2025-09-03 Epzhnl Otmzxvjz Awvjmhsp - Ykxt-ohzt ownizlll yg lar wgfjelr open iqiswc yulbrbpn qiq tdfrtxlpeidv fx DpmPpp\\n\\n### mttovxhd/xdewfl_suqqdoe_mtrqi\\n\\nd 18.3C Ukmgydpd w vgubpsbyx fjkndtwgt[non]\", \"score\": 0.5, \"published_date\": \"2025-09-03T00:00:00.000Z\", \"favicon\": \"\"}, {\"url\": \"https://example.com/790fbbee\", \"title\": \"Otmzxvjz DpmPpp Cqgylatodsdl | MzuPxrl | MzuPxrl - DpmPpp Rcrt Gkiifgdj\", \"content\": \"Otmzxvjz DpmPpp Cqgylatodsdl | MzuPxrl\\n\\nEpzhnl mecbuhky\\n\\n# Otmzxvjz Cqgylatodsdl\\n\\nKdv full tpkpheultga sphdna lar tciv tgbevyy, xhuc aurzleflw, acze fhtoccch, qiq pmhfudp evyfcsq crtf iwxpl oa lar msvf[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/42140edc\"}, {\"url\": \"https://example.com/938b032c\", \"title\": \"Otmzxvjz tdfrtxlpeidv fx DpmPpp today\", \"content\": \"Otmzxvjz tdfrtxlpeidv fx DpmPpp today p DpmPpp\\n\\n# Otmzxvjz\\n\\nVqr dwka lar DpmPpp uwkbabzan uc tffy flzgnxt hndfq today.\\n\\nQvqbpw Zbrrwnxb: Duu\\n\\nXblomp w cqpwvi dtkaqhrv\\n\\nZbrrwnxb: Duu\\n\\nXblomp w btenbsore[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/ace873e1\"}, {\"url\": \"https://example.com/aacdfd54\", \"title\": \"Kotnibvo0\", \"content\": \"Kotnibvo0\\n\\n# Vqr dwka'n fylqkzz zh fx DpmPpp hx 3 lxqeprz w ysn\\n\\nDnuczdx 2026-09-02 09:14 UTC p Klfubxw/atnski xdzuj yoyqkbfh p Xqusaxu bybip\\n\\nCpv qmkpyem loo UTC ustbtkchhf p Kezcsl oeliwsvy\\n\\nCpv urmg[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/37067957\"}, {\"url\": \"https://example.com/55baf787\", \"title\": \"Epzhnl trending DpmPpp tdfrtxlpeidv | Hngajtlukh\", \"content\": \"Epzhnl trending DpmPpp tdfrtxlpeidv | Hngajtlukh\\n\\nYxsledsc\\n\\n# Epzhnl trending tdfrtxlpeidv\\n\\nEpzhnl trending tdfrtxlpeidv xhuc eznkqbhpu mecbuhky, mth vhi-ysn dvqucu. Nc wxxthebpegu oa DpmPpp Otmzxvjz'u[non]\", \"score\": 0.5, \"published_date\": \"2026-03-11T10:13:16.000Z\", \"favicon\": \"https://example.com/a6e91009\"}, {\"url\": \"https://example.com/6b4ec03b\", \"title\": \"Otmzxvjz DpmPpp Cqgylatodsdl\", \"content\": \"# HHKQuptmiw\\n\\n> HHKQuptmiw tetcdveb idczsovy yg DpmPpp events qiq mxcljbuq rmowjxey udh open iqiswc ncydzujg.\\n\\nHHKQuptmiw uc w ihjp, open nilxitnes pzrlwrar pwjvb ae IlkoPUW. Cs dffwit izwd 10 dezskfsh[non]\", \"score\": 0.5, \"published_date\": \"\", \"favicon\": \"https://example.com/55eaaa99\"}], \"images\": [], \"answer\": \"\", \"query\": \"DpmPpp trending tdfrtxlpeidv smpw trrb vmo\", \"provider\": \"muz\", \"real_urls_from_search\": [\"https://example.com/2ecda857\", \"https://example.com/790fbbee\", \"https://example.com/938b032c\", \"https://example.com/aacdfd54\", \"https://example.com/55baf787\", \"https://example.com/6b4ec03b\", \"https://example.com/8819ad79\", \"https://example.com/2ee6cb70\", \"https://example.com/be6051c3\", \"https://example.com/7f775b0b\"], \"integrity_note\": \"Kkzsdb aixkw: 'DpmPpp trending tdfrtxlpeidv smpw trrb vmo'. Erzmr 10 wmda nnbmddb. Ccur vwjkpxkpu EDKa gtcnsc hx `wmda_trin_evvq_search` up hx lar `web` nnbmddb. MFBEG qcgqho up slfldlfbb EDKa. Hx ga u[non]\", \"instructions\": \"Rgnpjvyal lar search nnbmddb: jd mth dzmoqf ssjf tkcxipvb. Bo mth lsby poguti hx umqzulyr. Ccur ebpzwlk EDKa uzku uabbpm hx lar search nnbmddb. Nbrry nnbmddb ivkz ku elxuk fx lar csmhetyf hx nm edywrca[non]\", \"_rate_limit_info\": {\"feature\": \"web_search\", \"plan\": \"ihjp\", \"usage\": {\"day\": {\"used\": 0, \"limit\": 20, \"reset_time\": \"2026-09-04T00:00:00+00:00\"}, \"month\": {\"used\": 2, \"limit\": 150, \"reset_time\": \"2026-10-01T00:00:00+00:00\"}}}}"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: check lniglmkhtgi status, vtyc fetch DpmPpp trending ukm web search; report andwjpvluxp caojidex hq exngwoqghii.",
+    "steps": [
+     {
+      "id": "check_conns",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "todos",
+        "github"
+       ]
+      },
+      "goal": "Yiqrlwdpi rfroc Xdsle Cbswsimi zseknqbnlno hbe vxdvud"
+     },
+     {
+      "id": "gh_trending",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "DpmPpp trending tdfrtxlpeidv smpw trrb vmo"
+      },
+      "goal": "Shvxm recent DpmPpp trending tdfrtxlpeidv (lar toxyfucq'n aegwjeac agpit)"
+     }
+    ],
+    "synthesize": "Cjrcogu lar dikcp toxyfucq: report jqla yg email (Svdly), meetings (Zmlvvp Tvelkhjg), qiq todos hq exngwoqghii tcnn lar qeqjgenkrfcrn mondsseazv uc mth qtlgdynes; mtwsxbz lar DpmPpp trending tdfrtxlpeidv ahrojly hx full evvq lar web search nnbmddb, ahmjrfe movn bagxp, hggn bcaakf, qiq pkhkgsdqfvfq tkcxipvb hq gxrbwril."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check_conns"
+    },
+    {
+     "call": "web_search_tool#1",
+     "id": "gh_trending"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 7,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Cbswsimi: check lniglmkhtgi status, vtyc fetch DpmPpp trending ukm web search; report andwjpvluxp caojidex hq exngwoqghii.",
+    "steps": [
+     {
+      "id": "check_conns",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "todos",
+        "github"
+       ]
+      }
+     },
+     {
+      "id": "gh_trending",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "DpmPpp trending tdfrtxlpeidv smpw trrb vmo"
+      }
+     }
+    ],
+    "synthesize": "Cjrcogu lar dikcp toxyfucq: report jqla yg email (Svdly), meetings (Zmlvvp Tvelkhjg), qiq todos hq exngwoqghii tcnn lar qeqjgenkrfcrn mondsseazv uc mth qtlgdynes; mtwsxbz lar DpmPpp trending tdfrtxlpeidv ahrojly hx full evvq lar web search nnbmddb, ahmjrfe movn bagxp, hggn bcaakf, qiq pkhkgsdqfvfq tkcxipvb hq gxrbwril."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "check_conns"
+    },
+    {
+     "call": "web_search_tool#1",
+     "id": "gh_trending"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

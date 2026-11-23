@@ -11,8 +11,11 @@ does, because the Chroma vector ids are derived from it after the insert.
 from dataclasses import dataclass, field
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
+import itertools
+import random
+import threading
 from types import SimpleNamespace
-from typing import Any, TypedDict, Unpack
+from typing import Any, TypedDict, Unpack, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -34,14 +37,22 @@ from app.constants.memory import (
     TRANSCRIPT_CHUNK_TURNS,
     TRANSCRIPT_CHUNKS_PER_SESSION_CAP,
     MemoryDocType,
+    MemoryEntityType,
     MemoryKind,
     MemoryRelationType,
     MemoryShelfLife,
     MemorySourceType,
     ReconcileOutcome,
 )
-from app.memory import ingestion, user_time
-from app.memory.ingestion import RetainResult, retain, retain_single, summarize_episode
+from app.db.repositories.users import user_repository
+from app.memory import cap_counter, chroma_store, ingestion, pg_store, vector_index
+from app.memory.ingestion import (
+    RetainResult,
+    TranscriptTurn,
+    retain,
+    retain_single,
+    summarize_episode,
+)
 from app.memory.reconciliation import ReconciledFact
 from app.memory.schemas import (
     AgendaUpdate,
@@ -53,6 +64,7 @@ from app.memory.schemas import (
 )
 from app.models.memory_db_models import MemoryRecord
 from app.models.payment_models import PlanType
+from app.services.payments.payment_service import payment_service
 from tests.helpers import captured_wide_event
 
 USER = "user-1"
@@ -162,6 +174,7 @@ class Boundaries:
     query_similar: AsyncMock
     forget_memory: AsyncMock
     get_user: AsyncMock
+    index_memories: AsyncMock
     inserted_records: list[MemoryRecord] = field(default_factory=list)
 
     @property
@@ -237,16 +250,18 @@ def boundaries() -> Any:
     vfs_mock = MagicMock(return_value=None)
     # No user document by default -> journal days bucket in UTC.
     get_user_mock = AsyncMock(return_value=None)
+    index_memories_mock = AsyncMock(return_value=None)
 
     with (
-        patch.object(user_time.user_repository, "get", get_user_mock),
-        patch.multiple(ingestion.pg_store, insert_memories=insert_mock, **patches),
-        patch.multiple(ingestion.chroma_store, **chroma_patches),
+        patch.object(user_repository, "get", get_user_mock),
+        patch.object(vector_index, "index_memories", index_memories_mock),
+        patch.multiple(pg_store, insert_memories=insert_mock, **patches),
+        patch.multiple(chroma_store, **chroma_patches),
         patch.multiple(ingestion, schedule_memory_vfs_sync=vfs_mock, **module_patches),
         # Paid plan -> the free memory cap never applies, so these tests exercise
         # ingestion itself without the cap's plan/count lookups reaching real infra.
         patch.object(
-            ingestion.payment_service,
+            payment_service,
             "get_cached_plan_type",
             AsyncMock(return_value=PlanType.PRO),
         ),
@@ -283,6 +298,7 @@ def boundaries() -> Any:
             query_similar=chroma_patches["query_similar"],
             forget_memory=module_patches["forget_memory"],
             get_user=get_user_mock,
+            index_memories=index_memories_mock,
             inserted_records=inserted,
         )
 
@@ -449,7 +465,9 @@ class TestStoreConversationChunks:
         ]
 
     async def test_turns_are_flushed_every_chunk_turn_limit(self, boundaries: Boundaries) -> None:
-        messages = [{"role": "user", "content": f"turn {index}"} for index in range(9)]
+        messages: list[TranscriptTurn] = [
+            {"role": "user", "content": f"turn {index}"} for index in range(9)
+        ]
         await ingestion._store_conversation_chunks(
             USER, messages, source_id="c", local_now=datetime(2026, 1, 1, tzinfo=UTC)
         )
@@ -461,9 +479,11 @@ class TestStoreConversationChunks:
         ]
 
     async def test_message_without_a_role_defaults_to_user(self, boundaries: Boundaries) -> None:
+        # retain() takes loose dicts and casts them to TranscriptTurn, so a
+        # role-less turn reaches the chunker exactly this way.
         await ingestion._store_conversation_chunks(
             USER,
-            [{"content": "no role"}],
+            cast(list[TranscriptTurn], [{"content": "no role"}]),
             source_id="c",
             local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -534,7 +554,7 @@ class TestStoreConversationChunks:
         assert len(documents) > 1
 
     async def test_chunks_are_capped_per_session(self, boundaries: Boundaries) -> None:
-        messages = [
+        messages: list[TranscriptTurn] = [
             {"role": "user", "content": f"turn {index} " + "y" * 400} for index in range(400)
         ]
         await ingestion._store_conversation_chunks(
@@ -575,7 +595,9 @@ class TestStoreConversationChunks:
     async def test_each_chunk_is_paired_with_its_own_embedding(
         self, boundaries: Boundaries
     ) -> None:
-        messages = [{"role": "user", "content": f"turn {index}"} for index in range(9)]
+        messages: list[TranscriptTurn] = [
+            {"role": "user", "content": f"turn {index}"} for index in range(9)
+        ]
         await ingestion._store_conversation_chunks(
             USER, messages, source_id="c", local_now=datetime(2026, 1, 1, tzinfo=UTC)
         )
@@ -587,6 +609,40 @@ class TestStoreConversationChunks:
 
 
 class TestAppendEpisodeEntries:
+    def test_the_quick_bounds_never_change_which_pairs_are_duplicates(self) -> None:
+        """The pre-check is only a shortcut: every pair gets the plain ratio rule's answer."""
+        rng = random.Random(7)
+        words = ["gym", "call", "mom", "review", "q3", "budget", "trip", "draft", "email"]
+        lines = [" ".join(rng.choices(words, k=rng.randint(1, 8))) for _ in range(60)]
+        for candidate, prior in itertools.product(lines, repeat=2):
+            plain = (
+                candidate == prior
+                or SequenceMatcher(None, candidate, prior).ratio() >= EPISODE_ENTRY_DEDUPE_RATIO
+            )
+            assert ingestion._is_near_duplicate(candidate, [prior]) is plain
+
+    @pytest.mark.regression
+    async def test_the_dedupe_runs_off_the_event_loop(self, boundaries: Boundaries) -> None:
+        """Quadratic in a busy day's entries, it would stall a reply sharing the loop."""
+        loop_thread = threading.get_ident()
+        dedupe_threads: list[int] = []
+        novel = ingestion._novel_entries
+
+        def tracked(entries: list[str], seen: list[str]) -> list[str]:
+            dedupe_threads.append(threading.get_ident())
+            return novel(entries, seen)
+
+        with patch.object(ingestion, "_novel_entries", side_effect=tracked):
+            count, deduped = await ingestion._append_episode_entries(
+                USER,
+                ["drafted the email", "drafted the email!"],
+                source_type=MemorySourceType.TOOL,
+                local_now=datetime(2026, 3, 5, 9, 0, tzinfo=UTC),
+            )
+
+        assert (count, deduped) == (1, 1)
+        assert dedupe_threads and loop_thread not in dedupe_threads
+
     async def test_no_entries_writes_nothing(self, boundaries: Boundaries) -> None:
         count, deduped = await ingestion._append_episode_entries(
             USER, [], source_type=MemorySourceType.CONVERSATION, local_now=datetime.now(UTC)
@@ -704,6 +760,17 @@ class TestApplyReconciled:
         assert (applied.new, applied.updated, applied.extended, applied.duplicates) == (2, 0, 0, 0)
         assert [record.content for record in boundaries.inserted_records] == ["a", "b"]
         assert all(record.source_id == "s1" for record in boundaries.inserted_records)
+
+    async def test_new_facts_get_a_fast_lane_vector_for_their_owner(
+        self, boundaries: Boundaries
+    ) -> None:
+        reconciled = [make_reconciled(make_fact("a")), make_reconciled(make_fact("b"))]
+        await ingestion._apply_reconciled(
+            USER, reconciled, source_type=MemorySourceType.CONVERSATION, source_id=None
+        )
+        boundaries.index_memories.assert_awaited_once_with(
+            USER, [(record.id, record.content) for record in boundaries.inserted_records]
+        )
 
     async def test_duplicates_are_counted_and_never_written(self, boundaries: Boundaries) -> None:
         reconciled = [
@@ -925,8 +992,8 @@ class TestApplyGraph:
         fact = make_fact(
             "sam lives in berlin",
             entities=[
-                ExtractedEntity(name="Sam Carter", entity_type="person"),
-                ExtractedEntity(name="Berlin", entity_type="place"),
+                ExtractedEntity(name="Sam Carter", entity_type=MemoryEntityType.PERSON),
+                ExtractedEntity(name="Berlin", entity_type=MemoryEntityType.PLACE),
             ],
         )
         applied = await ingestion._apply_reconciled(
@@ -947,7 +1014,8 @@ class TestApplyGraph:
         sam = uuid.uuid4()
         boundaries.upsert_entities.return_value = {"sam carter": sam}
         fact = make_fact(
-            "x", entities=[ExtractedEntity(name="  SAM CARTER  ", entity_type="person")]
+            "x",
+            entities=[ExtractedEntity(name="  SAM CARTER  ", entity_type=MemoryEntityType.PERSON)],
         )
         applied = await ingestion._apply_reconciled(
             USER,
@@ -966,8 +1034,8 @@ class TestApplyGraph:
         fact = make_fact(
             "x",
             entities=[
-                ExtractedEntity(name="Sam Carter", entity_type="person"),
-                ExtractedEntity(name="Unresolvable", entity_type="person"),
+                ExtractedEntity(name="Sam Carter", entity_type=MemoryEntityType.PERSON),
+                ExtractedEntity(name="Unresolvable", entity_type=MemoryEntityType.PERSON),
             ],
         )
         applied = await ingestion._apply_reconciled(
@@ -985,8 +1053,8 @@ class TestApplyGraph:
         fact = make_fact(
             "sam lives in berlin",
             entities=[
-                ExtractedEntity(name="Sam Carter", entity_type="person"),
-                ExtractedEntity(name="Berlin", entity_type="place"),
+                ExtractedEntity(name="Sam Carter", entity_type=MemoryEntityType.PERSON),
+                ExtractedEntity(name="Berlin", entity_type=MemoryEntityType.PLACE),
             ],
             edges=[ExtractedEdge(source="Sam Carter", relationship="lives_in", target="Berlin")],
         )
@@ -1009,7 +1077,7 @@ class TestApplyGraph:
         boundaries.upsert_entities.return_value = {"sam carter": sam}
         fact = make_fact(
             "x",
-            entities=[ExtractedEntity(name="Sam Carter", entity_type="person")],
+            entities=[ExtractedEntity(name="Sam Carter", entity_type=MemoryEntityType.PERSON)],
             edges=[ExtractedEdge(source="Sam Carter", relationship="knows", target="Nobody")],
         )
         await ingestion._apply_reconciled(
@@ -1027,8 +1095,8 @@ class TestApplyGraph:
         fact = make_fact(
             "x",
             entities=[
-                ExtractedEntity(name="Sam", entity_type="person"),
-                ExtractedEntity(name="Acme", entity_type="organization"),
+                ExtractedEntity(name="Sam", entity_type=MemoryEntityType.PERSON),
+                ExtractedEntity(name="Acme", entity_type=MemoryEntityType.ORGANIZATION),
             ],
         )
         await ingestion._apply_reconciled(
@@ -1112,7 +1180,7 @@ class TestBuildSingleFact:
             category_path="work/gaia",
             kind=MemoryKind.EXPERIENCE,
             importance=0.8,
-            entities=[ExtractedEntity(name="Sam", entity_type="person")],
+            entities=[ExtractedEntity(name="Sam", entity_type=MemoryEntityType.PERSON)],
             edges=[],
         )
         fact = await ingestion._build_single_fact(USER, "shipped it", None, datetime.now(UTC))
@@ -1692,7 +1760,7 @@ class TestShelfLifeRouting:
 
         with (
             patch.object(
-                ingestion.chroma_store,
+                chroma_store,
                 "query_similar",
                 AsyncMock(return_value=[(str(open_row.id), 0.99)]),
             ),
@@ -1795,7 +1863,7 @@ class TestApplyReconciledCounts:
             ),
         ]
 
-        with patch.object(ingestion.cap_counter, "adjust_live_count", AsyncMock()) as adjust:
+        with patch.object(cap_counter, "adjust_live_count", AsyncMock()) as adjust:
             await ingestion._apply_reconciled(
                 USER, reconciled, source_type=MemorySourceType.CONVERSATION, source_id=None
             )
@@ -2087,21 +2155,19 @@ class TestRetainFreePlanCap:
         """Simulate a FREE user whose Redis counter says one thing and Postgres another."""
         return (
             patch.object(
-                ingestion.payment_service,
+                payment_service,
                 "get_cached_plan_type",
                 AsyncMock(return_value=PlanType.FREE),
             ),
             patch.object(
-                ingestion.cap_counter,
+                cap_counter,
                 "get_cached_live_count",
                 AsyncMock(return_value=cached_live),
             ),
+            patch.object(cap_counter, "set_cached_live_count", AsyncMock(return_value=None)),
+            patch.object(cap_counter, "adjust_live_count", AsyncMock(return_value=None)),
             patch.object(
-                ingestion.cap_counter, "set_cached_live_count", AsyncMock(return_value=None)
-            ),
-            patch.object(ingestion.cap_counter, "adjust_live_count", AsyncMock(return_value=None)),
-            patch.object(
-                ingestion.pg_store,
+                pg_store,
                 "count_live_memories",
                 AsyncMock(return_value=counted_live),
             ),
@@ -2180,21 +2246,19 @@ class TestRetainSingleFreePlanCap:
     def _at_the_cap():
         return (
             patch.object(
-                ingestion.payment_service,
+                payment_service,
                 "get_cached_plan_type",
                 AsyncMock(return_value=PlanType.FREE),
             ),
             patch.object(
-                ingestion.cap_counter,
+                cap_counter,
                 "get_cached_live_count",
                 AsyncMock(return_value=FREE_MEMORY_FACT_LIMIT),
             ),
+            patch.object(cap_counter, "set_cached_live_count", AsyncMock(return_value=None)),
+            patch.object(cap_counter, "adjust_live_count", AsyncMock(return_value=None)),
             patch.object(
-                ingestion.cap_counter, "set_cached_live_count", AsyncMock(return_value=None)
-            ),
-            patch.object(ingestion.cap_counter, "adjust_live_count", AsyncMock(return_value=None)),
-            patch.object(
-                ingestion.pg_store,
+                pg_store,
                 "count_live_memories",
                 AsyncMock(return_value=FREE_MEMORY_FACT_LIMIT),
             ),
@@ -2331,6 +2395,14 @@ class TestJournalNearDuplicateGate:
         assert SequenceMatcher(None, candidate, prior).ratio() == EPISODE_ENTRY_DEDUPE_RATIO
         assert ingestion._is_near_duplicate(candidate, [prior]) is True
 
+    def test_a_length_bound_exactly_at_the_dedupe_ratio_still_compares(self) -> None:
+        candidate = "a" * 17
+        prior = "a" * 17 + "b" * 6
+        # The lengths alone cap the ratio at 2*17/40, and the full match reaches it.
+        matcher = SequenceMatcher(None, candidate, prior)
+        assert matcher.real_quick_ratio() == matcher.ratio() == EPISODE_ENTRY_DEDUPE_RATIO
+        assert ingestion._is_near_duplicate(candidate, [prior]) is True
+
     async def test_a_stored_entry_without_text_never_masks_new_entries(
         self, boundaries: Boundaries
     ) -> None:
@@ -2370,8 +2442,8 @@ async def test_retain_reports_every_count_the_apply_step_produced(boundaries: Bo
     linked = make_fact(
         "sam lives in berlin",
         entities=[
-            ExtractedEntity(name="Sam Carter", entity_type="person"),
-            ExtractedEntity(name="Berlin", entity_type="place"),
+            ExtractedEntity(name="Sam Carter", entity_type=MemoryEntityType.PERSON),
+            ExtractedEntity(name="Berlin", entity_type=MemoryEntityType.PLACE),
         ],
         edges=[ExtractedEdge(source="Sam Carter", relationship="lives_in", target="Berlin")],
     )

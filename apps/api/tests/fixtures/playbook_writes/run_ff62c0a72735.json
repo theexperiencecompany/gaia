@@ -1,0 +1,122 @@
+{
+ "run": "run_ff62c0a72735",
+ "captured_from": "2026-09-24",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+   "tool_category": "GOOGLECALENDAR",
+   "args": {
+    "calendar_ids": [
+     "user@example.com"
+    ],
+    "time_min": "2026-09-24T06:41:00Z",
+    "time_max": "2026-09-24T06:56:00Z",
+    "max_results": 20
+   },
+   "result_digest": "{\"data\": {\"calendar_fetch_data\": [{\"summary\": \"RSDY e Lbqncac Cqbz\", \"start_time\": \"2026-09-23T23:50:00-07:00\", \"end_time\": \"2026-09-24T00:00:00-07:00\", \"calendar_name\": \"user@example.com\", \"background_color\": \"#cz80d0\"}], \"has_more\": false}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 3,
+   "written": {
+    "description": "Dovtnio Kkkppnct: check user@example.com udh nm event ngtlhhah hx lar next ~15 sxw qiq send w hogaq reminder bg vhi vzunbh.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "fetch",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg calendar events udh user@example.com hx lar dmcylkr window",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "calendar_ids": [
+         "user@example.com"
+        ],
+        "time_min": "$now",
+        "time_max": "$now + 15min",
+        "max_results": 20
+       }
+      }
+     },
+     {
+      "id": "notify",
+      "tool": "send_notification",
+      "for_each": {
+       "$ask": "lar events gxrbwril ae lar fetch zubw loqce, bg sja"
+      },
+      "max_items": 5,
+      "args": {
+       "channels": [
+        "ltbnq"
+       ],
+       "title": {
+        "$ask": "w hogaq meeting-reminder pnkwu lfvesi smpw event"
+       },
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls meeting reminder udh smpw event: pnkwu, start ohzt (hx lar ynrm'n whdrf ohzt), qiq opps umfp up yuizmdvm bg gtcnsc, nfosudwsn gvrz jyjt uc gtcnsc"
+       }
+      }
+     }
+    ],
+    "result_brief": "Hx vhi up bejz events uign gxrbwril qiq w reminder hyahbzzhloek eto sent, report lar event pnkwu, lab start ohzt, qiq lar opps umfp up yuizmdvm (up gvrz jyjt eto gtcnsc). Hx lar fetch gxrbwril ga events, report uzku evqhlbd hx lar next ~15 lxqeprz pnpjt w reminder qiq ga hyahbzzhloek eto sent."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  },
+  {
+   "position": 7,
+   "record_len": 3,
+   "written": {
+    "description": "Dovtnio Kkkppnct: check user@example.com udh nm event ngtlhhah hx lar next ~15 sxw qiq send w hogaq reminder bg vhi vzunbh.",
+    "result_brief": "Hx lar fetch gxrbwril vhi up bejz events, send w iwsxbtw 93 zlls meeting-reminder hyahbzzhloek ukm send_hyahbzzhloek (rsulewjh: ltbnq) lfvesi lar event pnkwu, lab start ohzt hx lar ynrm'n whdrf ohzt, qiq lar opps umfp up yuizmdvm bg gtcnsc (nfosudwsn gvrz jyjt uc gtcnsc). Hx lar fetch gxrbwril ga events, send ga hyahbzzhloek e ymgdt uc evqhlbd oa remind hndfq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg calendar events udh user@example.com hx lar dmcylkr window",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "calendar_ids": [
+         "user@example.com"
+        ],
+        "time_min": "$now",
+        "time_max": "$now + 15min",
+        "max_results": 20
+       }
+      }
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS#2",
+     "id": "fetch",
+     "vary": {
+      "time_min": "$now",
+      "time_max": "$now + 15min"
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

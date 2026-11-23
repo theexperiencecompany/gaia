@@ -21,8 +21,11 @@ RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY patches ./patches
 
-# Copy shared lib (bundled into output by tsup) and the target bot
+# Copy shared lib (bundled into output by tsup) and the target bot. The bot
+# identity JSON sits one level above libs/shared/ts and is imported by the
+# shared constants module, so it has to travel with the same copy.
 COPY libs/shared/ts ./libs/shared/ts
+COPY libs/shared/bot-identity.json ./libs/shared/
 COPY apps/bots/${BOT_NAME} ./apps/bots/${BOT_NAME}
 
 # Install all dependencies for building

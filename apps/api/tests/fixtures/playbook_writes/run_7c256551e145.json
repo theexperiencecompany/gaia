@@ -1,0 +1,319 @@
+{
+ "run": "run_7c256551e145",
+ "captured_from": "2026-09-12",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "search_journal"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_conversations"
+  },
+  {
+   "tool_name": "search_journal"
+  },
+  {
+   "tool_name": "search_conversations"
+  },
+  {
+   "tool_name": "get_journal"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "send_notification"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 19,
+   "record_len": 11,
+   "written": {
+    "description": "Tzedzqr 8:30pm WZC check-hx fx Nqarb'n dikcp pmocc: search today'n ihnmky pmocc, check Rbwxszg status, mbpsbgb qiq send lar check-hx ukm hyahbzzhloek.",
+    "result_brief": "Cywj lar search nnbmddb qiq Rbwxszg status, write lar check-hx hx Nqarb'n bmdmnu, vuaxh, eighhbqbq-isuevyht qglau xhuc yxpx-qkv 'Famd'. Hx em ihnmky pmocc smpw ycsxrnd qiq nlla'ez lbh imfb, crpxom smvwgnm ssjf. Hx rqyvoyit uc xenivee mbmdhn iazlgjix (today'n pmocc up odlfwng-meilxxl open Rbwxszg emrwk sxvt 'Pckynbz 20 uada TYe fx E', 'Oujwg inbox jcqviucr', 'Nrue Styz'), znupxa remind uwr, ahmjrfe xenivee emrwk juqtyyw. Hx ga pmocc uign ihnmky today, ffq ow xtwyuay qiq gvrz rqyvoyit odlfwng meilxxl. Exeg ic ukm send_hyahbzzhloek fx rtssswxe, slack, uppkustc, qiq ltbnq xhuc w pnkwu sxvt 'Tzedzqr check-hx e {ysn} {wjycx} {jzne}'. Kdv check-hx lswycqi oeglwa uc lar tvxbylfafvm; jd mth send w vjixcmux cvuhzyugus hyahbzzhloek.",
+    "steps": [
+     {
+      "id": "goals_search",
+      "tool": "search_conversations",
+      "args": {
+       "query": {
+        "$ask": "today'n jzne qiq 'dikcp pmocc ycsxrnd plan ihnmky today' aixkw udh lar check-hx jzne hx Nqarb'n ammjvnc",
+        "max_tokens": 40
+       }
+      }
+     },
+     {
+      "id": "journal",
+      "tool": "search_journal",
+      "args": {
+       "query": {
+        "$ask": "today'n jzne qiq 'ycsxrnd dikcp pmocc plan today' udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      }
+     },
+     {
+      "id": "memory",
+      "tool": "search_memory",
+      "args": {
+       "query": {
+        "$ask": "dikcp pmocc udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      }
+     },
+     {
+      "id": "todos",
+      "tool": "search_todo_context",
+      "args": {
+       "query": {
+        "$ask": "dikcp pmocc ycsxrnd plan udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      }
+     },
+     {
+      "id": "todoist",
+      "handoff": "todoist",
+      "args": {
+       "task": "Odsn Nqarb Zdtopgva'n Rbwxszg tasks udh today ({$today} hx WZC), qiq sja open/xenivee up overdue olqd-ddjvfsf tasks sfamx odlfwng meilxxl (c.q. 'Pckynbz 20 uada TYe fx E'). Cvouqs jqla fixe: pnkwu, cwf jzne, cvuhzyugus status. Mopl sja tasks cwf today uzku hbe dfwhltgjrv."
+      }
+     },
+     {
+      "id": "compose_send",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "rtssswxe",
+        "slack",
+        "uppkustc",
+        "ltbnq"
+       ],
+       "title": {
+        "$ask": "Tzedzqr check-hx e {ysn} {wjycx ifszui} {jzne}",
+        "max_tokens": 20
+       },
+       "notification_type": "vroo",
+       "message": {
+        "$ask": "lar cbbypowc fhnpyfy check-hx lswycqi hx Nqarb'n bmdmnu qglau vls qjjnea_brief",
+        "max_tokens": 700
+       }
+      }
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "todoist",
+   "expected": "unmappable"
+  },
+  {
+   "position": 20,
+   "record_len": 11,
+   "written": {
+    "description": "Tzedzqr 8:30pm WZC check-hx fx Nqarb'n dikcp pmocc: search today'n ihnmky pmocc, check Rbwxszg status, mbpsbgb qiq send lar check-hx ukm hyahbzzhloek.",
+    "result_brief": "Cywj lar search nnbmddb qiq Rbwxszg status, write lar check-hx hx Nqarb'n bmdmnu, vuaxh, eighhbqbq-isuevyht qglau xhuc yxpx-qkv 'Famd'. Hx em ihnmky pmocc smpw ycsxrnd qiq nlla'ez lbh imfb, crpxom smvwgnm ssjf. Hx rqyvoyit uc xenivee mbmdhn iazlgjix (today'n pmocc up odlfwng-meilxxl open Rbwxszg emrwk sxvt 'Pckynbz 20 uada TYe fx E', 'Oujwg inbox jcqviucr', 'Nrue Styz'), znupxa remind uwr, ahmjrfe xenivee emrwk juqtyyw. Hx ga pmocc uign ihnmky today, ffq ow xtwyuay qiq gvrz rqyvoyit odlfwng meilxxl. Exeg ic ukm send_hyahbzzhloek fx rtssswxe, slack, uppkustc, qiq ltbnq xhuc w pnkwu sxvt 'Tzedzqr check-hx e {ysn} {wjycx} {jzne}'. Kdv check-hx lswycqi oeglwa uc lar tvxbylfafvm; jd mth send w vjixcmux cvuhzyugus hyahbzzhloek.",
+    "steps": [
+     {
+      "args": {
+       "query": {
+        "$ask": "today'n jzne qiq 'dikcp pmocc ycsxrnd plan ihnmky today' aixkw udh lar check-hx jzne hx Nqarb'n ammjvnc",
+        "max_tokens": 40
+       }
+      },
+      "id": "goals_search",
+      "tool": "search_conversations"
+     },
+     {
+      "args": {
+       "query": {
+        "$ask": "today'n jzne qiq 'ycsxrnd dikcp pmocc plan today' udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      },
+      "id": "journal",
+      "tool": "search_journal"
+     },
+     {
+      "args": {
+       "query": {
+        "$ask": "dikcp pmocc udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      },
+      "id": "memory",
+      "tool": "search_memory"
+     },
+     {
+      "args": {
+       "query": {
+        "$ask": "dikcp pmocc ycsxrnd plan udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      },
+      "id": "todos",
+      "tool": "search_todo_context"
+     },
+     {
+      "args": {
+       "task": "Odsn Nqarb Zdtopgva'n Rbwxszg tasks udh today ({$today} hx WZC), qiq sja open/xenivee up overdue olqd-ddjvfsf tasks sfamx odlfwng meilxxl (c.q. 'Pckynbz 20 uada TYe fx E'). Cvouqs jqla fixe: pnkwu, cwf jzne, cvuhzyugus status. Mopl sja tasks cwf today uzku hbe dfwhltgjrv."
+      },
+      "handoff": "todoist",
+      "id": "todoist",
+      "steps": [
+       {
+        "args": {
+         "filter": "today"
+        },
+        "id": "today",
+        "tool": "TODOIST_GET_ALL_TASKS"
+       },
+       {
+        "args": {
+         "filter": "overdue"
+        },
+        "id": "overdue",
+        "tool": "TODOIST_GET_ALL_TASKS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "rtssswxe",
+        "slack",
+        "uppkustc",
+        "ltbnq"
+       ],
+       "notification_type": "vroo",
+       "title": {
+        "$ask": "Tzedzqr check-hx e {ysn} {wjycx ifszui} {jzne}",
+        "max_tokens": 20
+       },
+       "message": {
+        "$ask": "lar cbbypowc fhnpyfy check-hx lswycqi hx Nqarb'n bmdmnu qglau vls qjjnea_brief",
+        "max_tokens": 700
+       }
+      },
+      "id": "compose_send",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "TODOIST_GET_ALL_TASKS; handoffs without calls: ['todoist']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 21,
+   "record_len": 11,
+   "written": {
+    "description": "Tzedzqr 8:30pm WZC check-hx fx Nqarb'n dikcp pmocc: search today'n ihnmky pmocc, check Rbwxszg status, mbpsbgb qiq send lar check-hx ukm hyahbzzhloek.",
+    "result_brief": "Cywj lar search nnbmddb qiq Rbwxszg status, write lar check-hx hx Nqarb'n bmdmnu, vuaxh, eighhbqbq-isuevyht qglau xhuc yxpx-qkv 'Famd'. Hx em ihnmky pmocc smpw ycsxrnd qiq nlla'ez lbh imfb, crpxom smvwgnm ssjf. Hx rqyvoyit uc xenivee mbmdhn iazlgjix (today'n pmocc up odlfwng-meilxxl open Rbwxszg emrwk sxvt 'Pckynbz 20 uada TYe fx E', 'Oujwg inbox jcqviucr', 'Nrue Styz'), znupxa remind uwr, ahmjrfe xenivee emrwk juqtyyw. Hx ga pmocc uign ihnmky today, ffq ow xtwyuay qiq gvrz rqyvoyit odlfwng meilxxl. Exeg ic ukm send_hyahbzzhloek fx rtssswxe, slack, uppkustc, qiq ltbnq xhuc w pnkwu sxvt 'Tzedzqr check-hx e {ysn} {wjycx} {jzne}'. Kdv check-hx lswycqi oeglwa uc lar tvxbylfafvm; jd mth send w vjixcmux cvuhzyugus hyahbzzhloek.",
+    "steps": [
+     {
+      "args": {
+       "query": {
+        "$ask": "today'n jzne qiq 'dikcp pmocc ycsxrnd plan ihnmky today' aixkw udh lar check-hx jzne hx Nqarb'n ammjvnc",
+        "max_tokens": 40
+       }
+      },
+      "id": "goals_search",
+      "tool": "search_conversations"
+     },
+     {
+      "args": {
+       "query": {
+        "$ask": "today'n jzne qiq 'ycsxrnd dikcp pmocc plan today' udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      },
+      "id": "journal",
+      "tool": "search_journal"
+     },
+     {
+      "args": {
+       "query": {
+        "$ask": "dikcp pmocc udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      },
+      "id": "memory",
+      "tool": "search_memory"
+     },
+     {
+      "args": {
+       "query": {
+        "$ask": "dikcp pmocc ycsxrnd plan udh lar check-hx jzne",
+        "max_tokens": 40
+       }
+      },
+      "id": "todos",
+      "tool": "search_todo_context"
+     },
+     {
+      "args": {
+       "task": "Odsn Nqarb Zdtopgva'n Rbwxszg tasks udh today ({$today} hx WZC), qiq sja open/xenivee up overdue olqd-ddjvfsf tasks sfamx odlfwng meilxxl (c.q. 'Pckynbz 20 uada TYe fx E'). Cvouqs jqla fixe: pnkwu, cwf jzne, cvuhzyugus status. Mopl sja tasks cwf today uzku hbe dfwhltgjrv."
+      },
+      "handoff": "todoist",
+      "id": "todoist",
+      "steps": [
+       {
+        "args": {
+         "filter": "today"
+        },
+        "id": "today",
+        "tool": "TODOIST_GET_ALL_TASKS"
+       },
+       {
+        "args": {
+         "filter": "overdue"
+        },
+        "id": "overdue",
+        "tool": "TODOIST_GET_ALL_TASKS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "rtssswxe",
+        "slack",
+        "uppkustc",
+        "ltbnq"
+       ],
+       "title": {
+        "$ask": "Tzedzqr check-hx e {ysn} {wjycx ifszui} {jzne}",
+        "max_tokens": 20
+       },
+       "message": {
+        "$ask": "lar cbbypowc fhnpyfy check-hx lswycqi hx Nqarb'n bmdmnu qglau vls qjjnea_brief",
+        "max_tokens": 700
+       }
+      },
+      "id": "compose_send",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "TODOIST_GET_ALL_TASKS; handoffs without calls: ['todoist']",
+   "expected": "unmappable"
+  }
+ ]
+}

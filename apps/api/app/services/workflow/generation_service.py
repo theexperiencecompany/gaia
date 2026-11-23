@@ -206,7 +206,7 @@ def _collect_subagent_categories(active_set: set[str]) -> tuple[list[str], list[
     """List subagent capabilities offered to the generator as categories.
 
     Internal subagents (todos/reminders/skills) are always-available core
-    capabilities; provider subagents are gated by the active set so
+    capabilities; other integrations are gated by the active set so
     unconnected/unnamed ones stay out.
     """
     category_names: list[str] = []
@@ -218,7 +218,7 @@ def _collect_subagent_categories(active_set: set[str]) -> tuple[list[str], list[
                 continue
             cfg = integration.subagent_config
             category_names.append(integration.id)
-            tools_with_categories.append(f"{integration.id} (subagent): {cfg.capabilities}")
+            tools_with_categories.append(f"{integration.id} (integration): {cfg.capabilities}")
     return category_names, tools_with_categories
 
 

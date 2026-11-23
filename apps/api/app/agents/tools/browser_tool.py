@@ -19,7 +19,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import BaseModel, ConfigDict
 
-from app.agents.core.background.redis_writer import publish_to_stream
+from app.agents.core.background.session_writer import collect_frame
 from app.agents.core.subagents.delegation import runs_in_background
 from app.constants.browser import (
     BROWSER_JOB_QUEUE,
@@ -65,9 +65,11 @@ _SLOT_HELD = (
 )
 _NOT_QUEUED = "I couldn't start the browser task right now. Try again in a moment."
 _STARTED = (
-    "Browser task started in the background (job {job_id}). It has NOT finished: do not "
-    "report an outcome, and do not wait for one. Its result arrives in your inbox as a "
-    "<browser_result> message when it ends, and wakes you if you have already finished."
+    "Browser task started in the background (job {job_id}). It has NOT finished, so do "
+    "not report an outcome. Finish any other work this task needs, then end your turn, "
+    "saying only that the browser task started. Nothing you can call reports on it, so "
+    "do not check on it: when it ends, its result starts a new run of yours as a "
+    "<browser_result> message for you to report."
 )
 _NO_ENDING = (
     "The browser task (job {job_id}) stopped reporting before it recorded how it ended. "
@@ -268,7 +270,7 @@ async def _enqueue(request: BrowserJobRequest) -> bool:
 
 async def _await_ending(request: BrowserJobRequest) -> str:
     """Block a headless run until its job ends, its cards on the run's own stream; return how it ended."""
-    sink = partial(publish_to_stream, request.stream_id) if request.stream_id else _ignore
+    sink = partial(collect_frame, request.stream_id) if request.stream_id else _ignore
     await follow_job_cards(request.job_id, request.conversation_id, sink)
     ending = await done_state(request.job_id)
     if ending is None:
@@ -281,5 +283,5 @@ async def _await_ending(request: BrowserJobRequest) -> str:
     return ending_message(request.job_id, ending)
 
 
-async def _ignore(_card: dict[str, object]) -> None:
+def _ignore(_card: dict[str, object]) -> None:
     """Drop a card: a headless run with no stream has nowhere to show it."""

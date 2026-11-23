@@ -1,4 +1,4 @@
-"""The browser stack's processes: the API, the ARQ browser worker and two browser hosts, each a real OS process.
+"""The browser stack's processes: the API, the ARQ browser worker, two browser hosts and the proxy, each a real OS process.
 
 The hosts run python -m app.browser_host (one Chrome, one Obscura); the API
 and the worker run serve.py. All of them run on this interpreter with the
@@ -6,6 +6,8 @@ stack's environment: this test process's own credential-fenced environment plus
 what wires them to each other, the fake models and the fixture site. Each takes
 its every setting from that environment at import, as in production, and runs
 under guard.py, so a hard-killed test process takes it and its engines along.
+The proxy is the Caddy self-host ships, run on its unmodified Caddyfile, so a
+link or live view reaches the API only where a deployed proxy forwards it.
 Each writes a log a failing test's report carries. Readiness is what each serves,
 polled to a deadline: an HTTP health route, or the workers' ARQ health keys.
 """
@@ -25,13 +27,17 @@ import time
 import httpx
 from redis.asyncio import Redis
 
-from app.constants.browser import BROWSER_HOST_KEY_HEADER, BrowserEngine
-from app.workers.browser_worker import browser_worker_health_key
+from app.constants.browser import BROWSER_HOST_KEY_HEADER, BROWSER_JOB_QUEUE, BrowserEngine
+from app.workers.queue_workers import queue_worker_health_key
 from tests.helpers import pick_free_port
 
 API_ROOT = Path(__file__).resolve().parents[5]
+#: The single-origin proxy self-host ships in front of the API and the web app.
+SELFHOST_CADDYFILE = API_ROOT.parents[1] / "packages" / "cli" / "selfhost" / "Caddyfile"
 #: The health key the worker process's reaper (a main-queue ARQ worker) refreshes while it polls.
 REAPER_HEALTH_KEY = "browser-stack:reaper:health"
+#: How long the reaper keeps each conversation sweep's ARQ result: a test's proof that a sweep ran.
+SWEEP_RESULT_SECONDS = 600.0
 #: How long a process gets to boot: a cold import of the app, or an engine launch.
 READY_SECONDS = 120.0
 _SERVE_MODULE = "tests.integration.real.browser._stack.serve"
@@ -183,6 +189,24 @@ def browser_host(
     return BrowserHost(engine=engine, key=key, process=process, port=port)
 
 
+def proxy_process(binary: str, port: int, api_port: int, log_dir: Path) -> StackProcess:
+    """Build (not start) the self-host Caddy on port in front of the API; it has no web app behind it."""
+    return StackProcess(
+        name="proxy",
+        argv=[binary, "run", "--config", str(SELFHOST_CADDYFILE), "--adapter", "caddyfile"],
+        env=child_environment(
+            {
+                "GAIA_SITE_ADDRESS": f":{port}",
+                # The Caddyfile's own hook: its plain-HTTP localhost site joins this port instead of :80.
+                "GAIA_CADDY_GLOBAL_OPTIONS": f"http_port {port}\nadmin off",
+                "GAIA_BACKEND_UPSTREAM": f"127.0.0.1:{api_port}",
+                "GAIA_WEB_UPSTREAM": f"127.0.0.1:{pick_free_port()}",
+            }
+        ),
+        log_path=log_dir / "proxy.log",
+    )
+
+
 def api_process(env: dict[str, str], port: int, log_dir: Path) -> StackProcess:
     """Build (not start) the API process, serving on port."""
     return StackProcess(
@@ -201,7 +225,7 @@ class BrowserWorker:
         self._log_dir = log_dir
         #: The stack's own database, where both of the process's ARQ workers record their health.
         self._redis = redis
-        self._health_keys = (browser_worker_health_key(), REAPER_HEALTH_KEY)
+        self._health_keys = (queue_worker_health_key(BROWSER_JOB_QUEUE), REAPER_HEALTH_KEY)
         self._generation = 0
         self.process = self._next()
 

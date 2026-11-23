@@ -1,5 +1,7 @@
 """Workflow generation prompts for GAIA workflow system."""
 
+from app.constants.workflows import WorkflowDelivery
+
 # =============================================================================
 # WHAT A WORKFLOW'S EXECUTION PROMPT MAY CONTAIN
 # =============================================================================
@@ -110,7 +112,7 @@ CRITICAL REQUIREMENTS:
 2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "googlecalendar", "todos", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
 4. The execution agent will use `activate_integration` to load each step's integration in-context, then run its tools itself via `execute`
-5. Categories like gmail, notion, github, slack, googlecalendar name the integration to activate; the executor acts on them directly, never via subagents
+5. Categories like gmail, notion, github, slack, googlecalendar name the integration to activate; the executor activates it and acts on it itself
 6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
@@ -122,14 +124,14 @@ CRITICAL REQUIREMENTS:
 **Steps are GENERIC descriptions, NOT specific tool calls!**
 
 - **You generate WHAT should happen**, the execution LLM will decide HOW
-- **Use descriptive titles**: "Search for client context" not "GMAIL_SEARCH_MESSAGES"
+- **Use descriptive titles**: "Search for client context" not "GMAIL_FETCH_EMAILS"
 - **Focus on intent**: The `category` provides routing, the `description` provides context
 - **Let execution decide**: The executing LLM has full context and will choose optimal tools
 - **Think high-level**: "Create follow-up reminder" instead of "create_todo with title=..."
 
 **Step Structure:**
 - `title`: Human-readable step name (what action to take)
-- `category`: Which system/subagent handles this step (gmail, notion, todos, reminders, etc.)
+- `category`: Which integration handles this step (gmail, notion, todos, reminders, etc.)
 - `description`: Detailed context about what this step should accomplish
 - `inputs`: Optional hints/parameters, but the executor makes final decisions
 
@@ -264,6 +266,14 @@ like "only if something needs my attention"), deliver that alert with send_notif
 Otherwise finish without notifying.
 """
 
+WORKFLOW_BRIEF_NOTIFY_SECTION = """
+NOTIFICATIONS: This workflow's result goes into the user's next brief. GAIA does NOT notify the
+user when the run finishes; it holds the result and the brief carries it. Do NOT call
+send_notification to announce or deliver the result. Only call it if the workflow instructions
+above explicitly ask for an immediate alert during the run (e.g. "ping me right away if an
+invoice is overdue").
+"""
+
 WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their behalf. This is an automated run, so finish it end to end and don't ask the user anything.
 
 **Workflow:** {workflow_title}
@@ -340,3 +350,11 @@ EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You're running the user's saved workflow, t
 
 Use the email above as context for the run, treat the whole workflow as one job, and get it all done in this run. If this workflow only fetches, reads, or summarizes data, do NOT create a tracked todo for it.
 """
+
+
+#: The notification rule a background workflow run follows, by its delivery mode.
+WORKFLOW_DELIVERY_SECTIONS: dict[WorkflowDelivery, str] = {
+    WorkflowDelivery.NOW: WORKFLOW_AUTO_NOTIFY_SECTION,
+    WorkflowDelivery.BRIEF: WORKFLOW_BRIEF_NOTIFY_SECTION,
+    WorkflowDelivery.SILENT: WORKFLOW_SILENT_NOTIFY_SECTION,
+}

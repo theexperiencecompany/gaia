@@ -101,6 +101,48 @@ def test_an_unknown_subcommand_exits_two(repo: Path) -> None:
     assert proc.returncode == 2
 
 
+def test_a_stale_base_ref_is_refreshed_before_the_diff(repo: Path, tmp_path: Path) -> None:
+    """The base diff must follow the base branch, not a leftover copy of it.
+
+    actions/checkout narrows remote.origin.fetch to the ref it checked out, and
+    the self-hosted runner reuses its workspace, so refs/remotes/origin/<base>
+    can survive from an earlier job pointing at an old commit. Under that
+    narrowed refspec a bare `git fetch origin <branch>` updates FETCH_HEAD only
+    and leaves the remote-tracking ref alone, so the merge-base resolves far
+    behind the real base and the diff silently widens to most of the branch —
+    which is a scoped lane grading a PR on changes it does not own.
+    """
+    # A base branch that has since moved on, and a feature branched off its tip.
+    _git(repo, "checkout", "-q", "master")
+    _git(repo, "checkout", "-qb", "base")
+    (repo / "only_on_base.py").write_text("base = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base moves")
+    _git(repo, "push", "-q", "origin", "base")
+    _git(repo, "checkout", "-qb", "topic")
+    (repo / "mine.py").write_text("mine = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "my one change")
+
+    # Age the remote-tracking ref, then narrow the refspec so a bare fetch
+    # cannot repair it — exactly the state checkout leaves on the box.
+    _git(repo, "update-ref", "refs/remotes/origin/base", "master")
+    _git(repo, "config", "remote.origin.fetch", "+refs/heads/master:refs/remotes/origin/master")
+
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "files", "py"],
+        cwd=repo,
+        env={**GIT_ENV, "GITHUB_ACTIONS": "true", "GITHUB_BASE_REF": "base"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    # Only this PR's own file. only_on_base.py belongs to the base branch and
+    # appears here only when the merge-base has fallen back past it.
+    assert proc.stdout.split() == ["mine.py"]
+
+
 # ---------------------------------------------------------------------------
 # `base` — the branch this PR is REALLY based on.
 #
@@ -431,6 +473,44 @@ def test_files_off_ci_counts_uncommitted_and_untracked_edits(repo: Path) -> None
     (repo / "app.py").write_text("x = 2\n")
     (repo / "new.py").write_text("y = 1\n")
     assert _local_files(repo) == ["app.py", "new.py"]
+
+
+def _origin_master(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "origin/master"],
+        check=True,
+        env=GIT_ENV,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def test_files_off_ci_never_fetches_the_remote(repo: Path, tmp_path: Path) -> None:
+    """A commit hook calls this on every commit; a network fetch there stalls it on a slow link."""
+    other = tmp_path / "other"
+    _git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(other))
+    (other / "later.py").write_text("z = 1\n")
+    _git(other, "add", "-A")
+    _git(other, "commit", "-qm", "later")
+    _git(other, "push", "-q", "origin", "master")
+    # macOS ships no `timeout`, which would hide a fetch there; Linux has one.
+    shims = tmp_path / "bin"
+    shims.mkdir()
+    (shims / "timeout").write_text('#!/bin/sh\nshift\nexec "$@"\n')
+    (shims / "timeout").chmod(0o755)
+    before = _origin_master(repo)
+
+    env = {k: v for k, v in GIT_ENV.items() if k != "GITHUB_ACTIONS"}
+    subprocess.run(
+        ["bash", str(SCRIPT), "files", "py"],
+        cwd=repo,
+        env={**env, "GAIA_PR_BASE": "master", "PATH": f"{shims}:{GIT_ENV['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert _origin_master(repo) == before
 
 
 def test_files_in_ci_counts_only_the_commits(repo: Path) -> None:

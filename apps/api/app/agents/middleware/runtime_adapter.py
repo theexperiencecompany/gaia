@@ -13,12 +13,10 @@ from typing import Any
 from langchain.agents.middleware.types import (
     AgentState,
     ModelRequest,
-    ToolCallRequest,
 )
 from langchain.tools import ToolRuntime
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import SystemMessage
-from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.runtime import Runtime
@@ -33,9 +31,17 @@ def _noop_stream_writer(_: object) -> None:
     return
 
 
-def to_agent_state(state: State | dict[str, Any]) -> AgentState[Any]:
+class GaiaAgentState(AgentState[object], total=False):
+    """AgentState plus the graph state keys GAIA's own middleware reads."""
+
+    verbatim_message_ids: list[str]
+
+
+def to_agent_state(state: State) -> GaiaAgentState:
     """Convert graph state into LangChain AgentState-compatible shape."""
-    agent_state: AgentState[Any] = AgentState(messages=list(state.get("messages", [])))
+    agent_state = GaiaAgentState(messages=list(state.get("messages", [])))
+    if "verbatim_message_ids" in state:
+        agent_state["verbatim_message_ids"] = state["verbatim_message_ids"]
     jump_to = state.get("jump_to")
     if jump_to in {"tools", "model", "end"}:
         agent_state["jump_to"] = jump_to
@@ -105,17 +111,14 @@ class BigtoolToolRuntime(ToolRuntime[None, dict[str, Any]]):
         config: RunnableConfig,
         store: BaseStore | None = None,
         tool_name: str | None = None,
-        state: dict[str, Any] | None = None,
-        context: None = None,
-        stream_writer: StreamWriter = _noop_stream_writer,
         tool_call_id: str | None = None,
     ) -> "BigtoolToolRuntime":
         """Create tool runtime with defaults suitable for middleware wrappers."""
         return cls(
-            state={} if state is None else state,
-            context=context,
+            state={},
+            context=None,
             config=config,
-            stream_writer=stream_writer,
+            stream_writer=_noop_stream_writer,
             tool_call_id=tool_call_id,
             store=store,
             tool_name=tool_name,
@@ -126,7 +129,7 @@ def create_model_request(
     model: BaseChatModel,
     state: State,
     runtime: BigtoolRuntime,
-    tools: Sequence[BaseTool | dict[str, Any]],
+    tools: Sequence[BaseTool | dict[str, object]],
     system_message: SystemMessage | None = None,
 ) -> ModelRequest:
     """Create a ModelRequest from langgraph_bigtool context, for wrap_model_call middleware."""
@@ -164,26 +167,4 @@ def create_model_request(
         state=agent_state,
         runtime=runtime,
         model_settings={},
-    )
-
-
-def create_tool_call_request(
-    tool_call: dict[str, Any],
-    tool: BaseTool | None,
-    state: State,
-    runtime: BigtoolToolRuntime,
-) -> ToolCallRequest:
-    """Create a ToolCallRequest from langgraph_bigtool context, for wrap_tool_call middleware."""
-    # Convert dict to ToolCall TypedDict
-    tc: ToolCall = {
-        "name": tool_call.get("name", ""),
-        "args": tool_call.get("args", {}),
-        "id": tool_call.get("id"),
-    }
-
-    return ToolCallRequest(
-        tool_call=tc,
-        tool=tool,
-        state=state,
-        runtime=runtime,
     )

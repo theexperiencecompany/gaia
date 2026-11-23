@@ -2,7 +2,7 @@
 
 The component vocabulary (syntax rules + every component signature) is generated
 from the merged @openuidev/react-ui + GAIA component library by
-scripts/openui/generate-prompt.ts and read here from openui_generated.txt.
+scripts/openui/generate-prompts.ts and read here from openui_generated.txt.
 A pre-commit hook keeps the artifact in sync with the TypeScript specs, so this
 module never hand-maintains the component catalog.
 
@@ -20,7 +20,7 @@ OPENUI_SUPPRESSED_TOOLS: list[str] = list(tool_fields)
 _suppression_list: str = "\n".join(f"  - {t}" for t in OPENUI_SUPPRESSED_TOOLS)
 
 # Generated component vocabulary (syntax rules + component signatures), produced
-# by `pnpm openui:gen-prompt` from the merged TypeScript component library.
+# by `mise openui:prompts` from the merged TypeScript component library.
 _GENERATED_PROMPT_PATH: Path = Path(__file__).parent / "openui_generated.txt"
 OPENUI_COMPONENT_PROMPT: str = _GENERATED_PROMPT_PATH.read_text(encoding="utf-8")
 
@@ -38,6 +38,7 @@ Math renders only inside $$...$$, inline or on its own lines; a single $ is a li
 SURFACE POLICY, pick the first that matches:
 1. Data the app already shows as a native card: no component, the card has it. These tools render their own cards:
 {_suppression_list}
+   A report, dashboard, plan, comparison, memo or document the user asks for is an artifact (the artifact_done card), never a set of components: hand it to the executor.
 2. Composing or sending an email: the draft flow and its compose card, never :::openui or a TextDocument.
 3. Casual chat, a one-line answer, an opinion, feelings, a short casual list: plain text, no component.
 4. Data with a visual shape: an :::openui component, and this one is required. A result carrying a breakdown of numbers, a comparison or a set of steps is exactly when one is expected; answering it with a text list wastes the one surface built for it.

@@ -39,6 +39,7 @@ dependencies = [
   "pdf-inspector==0.2.6",
   "langchain-text-splitters>=1.1.2",
   "genson>=1.4.0",
+  "filetype>=1.2.0",
 ]
 
 [tool.taskipy.tasks]
@@ -128,6 +129,10 @@ dev = [
   "opik>=1.10.0",
   "pandas>=2.3.0",
   "pyarrow>=25.0.0",
+  "zxing-cpp>=3.1.1",
+  "fonttools==4.68.0",
+  "brotli>=1.2.1",
+  "resvg-py==0.5.0",
 ]
 
 backend = [
@@ -213,6 +218,9 @@ backend = [
   "bubus==1.5.6",
   "cdp-use==1.4.5",
   "slack-sdk>=3.36.0",
+  "segno>=1.6.6",
+  "python-barcode>=0.16.1",
+  "pdf417gen>=0.8.1",
 ]
 
 [tool.uv.sources]
@@ -220,6 +228,8 @@ gaia-shared = { workspace = true }
 
 [tool.uv]
 prerelease = "if-necessary-or-explicit"
+# The app imports the backend group at runtime, so a plain uv sync or uv run here installs it.
+default-groups = ["backend", "dev"]
 
 [project.urls]
 Homepage = "https://heygaia.io"
@@ -367,7 +377,6 @@ ignore_imports = [
   # runtime — for these the import IS the work.
   "app.utils.agent_utils -> langchain_core",
   "app.utils.chat_utils -> langchain_core",
-  "app.utils.embedding_utils -> langchain_core",
   "app.utils.file_utils -> langchain_core",
   "app.utils.mcp_utils -> langchain_core",
   "app.utils.multimodal -> langchain_core",
@@ -380,6 +389,10 @@ ignore_imports = [
   "app.utils.stream_utils -> langchain_core",
   "app.utils.todo_vector_utils -> langchain_core",
   "app.utils.workflow_utils -> langgraph",
+  # The chat-platform notification adapter posts into the user's DM conversation
+  # and records the message in that conversation's LangGraph thread, so the
+  # user's reply is answered with it in mind. The checkpoint write IS the work.
+  "app.utils.notification.channels.external -> app.agents.core.background.platform_chat",
   "app.utils.integration_checker -> langgraph",
   "app.utils.integration_checker -> app.models.agent_models",
   "app.utils.composio_hooks.gmail_hooks -> app.models.agent_models",
@@ -401,8 +414,6 @@ ignore_imports = [
   "app.utils.research_utils -> app.agents.llm.client",
   "app.utils.notes_utils -> app.db.chroma.chromadb",
   "app.utils.todo_vector_utils -> app.db.chroma.chromadb",
-  "app.utils.stream_publishers -> app.models.stream_events",
   "app.utils.agent_utils -> app.models.stream_events",
   "app.utils.canvas_vector_utils -> app.db.chroma.chromadb",
-  "app.utils.embedding_utils -> app.db.chroma.chromadb",
 ]

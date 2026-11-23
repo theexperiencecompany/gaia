@@ -5,7 +5,6 @@ after success. Each test drives the real route with the service seam mocked
 and asserts the exact event model and the UserId it is attributed to.
 """
 
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,10 +16,11 @@ from starlette.requests import Request
 
 from app.agents.skills.models import Skill, SkillAuthor, SkillSource
 from app.constants.memory import MemoryDocType
+from app.constants.workflows import WorkflowDelivery
+from app.models.conversation_log_models import ApprovalDecided as LoggedDecision
 from app.models.files_models import FileDocument
-from app.models.hil_models import ApprovalLedgerDocument, LedgerState
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.integration_models import Integration
-from app.models.mail_models import GmailMessageResource
 from app.models.memory_models import MemoryDocument
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
@@ -32,8 +32,7 @@ from app.models.user_instructions_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import Workflow
-from app.schemas.hil_schemas import BatchDecisionOutcome
-from app.services.hil.ledger_decide import LedgerDecision
+from app.services.conversation.work_log import DecisionTaken
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.calendars import CalendarPreferencesUpdated
 from shared.py.analytics.catalog.chat import (
@@ -43,7 +42,7 @@ from shared.py.analytics.catalog.chat import (
     ImageGenerated,
 )
 from shared.py.analytics.catalog.devices import DeviceApproved, DeviceRevoked
-from shared.py.analytics.catalog.hil import ApprovalDecided
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationCustomDeleted,
@@ -53,24 +52,6 @@ from shared.py.analytics.catalog.integrations import (
     McpConnectionTested,
     SkillDisabled,
     SkillEnabled,
-)
-from shared.py.analytics.catalog.mail import (
-    EmailArchived,
-    EmailDraftCreated,
-    EmailDraftDeleted,
-    EmailDraftUpdated,
-    EmailLabelApplied,
-    EmailLabelCreated,
-    EmailLabelDeleted,
-    EmailLabelRemoved,
-    EmailLabelUpdated,
-    EmailMarkedRead,
-    EmailMarkedUnread,
-    EmailMovedToInbox,
-    EmailStarred,
-    EmailTrashed,
-    EmailUnstarred,
-    EmailUntrashed,
 )
 from shared.py.analytics.catalog.memory import MemoryCreated, MemoryDocumentUpdated, MemoryUpdated
 from shared.py.analytics.catalog.notifications import (
@@ -100,6 +81,7 @@ from shared.py.analytics.catalog.workflows import (
     WorkflowUnpublished,
     WorkflowUpdated,
 )
+from shared.py.approvals import ApprovalOutcome, ApprovalStatus
 
 pytestmark = pytest.mark.unit
 
@@ -125,6 +107,7 @@ def _make_workflow(**overrides: object) -> Workflow:
         "prompt": "Do the thing",
         "steps": [{"id": "step_1", "title": "Step 1", "category": "general", "description": "x"}],
         "trigger_config": {"type": "manual", "enabled": True},
+        "delivery": WorkflowDelivery.NOW,
         "activated": True,
         "is_public": False,
         "slug": None,
@@ -153,10 +136,51 @@ class TestWorkflowNewEvents:
     async def test_update_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ),
             patch(_WF_CAPTURE) as mock_capture,
         ):
             mock_svc.return_value = _make_workflow(title="Updated")
             resp = await client.put(f"{WF}/wf_abc123", json={"title": "Updated"})
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated())
+
+    async def test_an_update_that_changes_delivery_captures_the_new_mode(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(delivery=WorkflowDelivery.NOW),
+            ),
+            patch(_WF_CAPTURE) as mock_capture,
+        ):
+            mock_svc.return_value = _make_workflow(delivery=WorkflowDelivery.BRIEF)
+            resp = await client.put(f"{WF}/wf_abc123", json={"delivery": "brief"})
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated(delivery="brief"))
+
+    async def test_an_update_resending_the_same_delivery_reports_no_change(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(delivery=WorkflowDelivery.BRIEF),
+            ),
+            patch(_WF_CAPTURE) as mock_capture,
+        ):
+            mock_svc.return_value = _make_workflow(title="Renamed", delivery=WorkflowDelivery.BRIEF)
+            resp = await client.put(
+                f"{WF}/wf_abc123", json={"title": "Renamed", "delivery": "brief"}
+            )
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated())
 
@@ -230,7 +254,9 @@ class TestWorkflowNewEvents:
                 json={"todo_id": "todo_123", "todo_title": "Buy groceries"},
             )
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), WorkflowCreated(origin="todo_converted"))
+        mock_capture.assert_called_once_with(
+            UserId(UID), WorkflowCreated(origin="todo_converted", delivery="now")
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -500,7 +526,7 @@ class TestCalendarPrefs:
 
 class TestImageNewEvents:
     async def test_generate_captures(self, client: AsyncClient) -> None:
-        from app.models.chat_models import ImageData
+        from shared.py.conversation_wire import ImageData
 
         with (
             patch("app.api.v1.endpoints.image.api_generate_image", new_callable=AsyncMock) as m,
@@ -529,222 +555,6 @@ class TestImageNewEvents:
 
 
 # ---------------------------------------------------------------------------
-# Mail triage (representative sample; remaining label/draft variants share code)
-# ---------------------------------------------------------------------------
-
-MAIL = "app.api.v1.endpoints.mail"
-
-
-@pytest.fixture
-def _gmail_bypass() -> Iterator[None]:
-    with patch(
-        "app.api.v1.dependencies.google_scope_dependencies.check_integration_status",
-        new_callable=AsyncMock,
-        return_value=True,
-    ):
-        yield
-
-
-@pytest.mark.usefixtures("_gmail_bypass")
-class TestMailNewEvents:
-    async def test_mark_read_captures_count(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.mark_messages_as_read", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1"), GmailMessageResource(id="m2")]
-            resp = await client.post(
-                "/api/v1/gmail/mark-as-read", json={"message_ids": ["m1", "m2"]}
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailMarkedRead(message_count=2))
-
-    async def test_star_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.star_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/star", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailStarred(message_count=1))
-
-    async def test_trash_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.trash_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/trash", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailTrashed(message_count=1))
-
-    async def test_create_label_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.create_label", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "L1", "name": "Imp"})
-            resp = await client.post("/api/v1/gmail/labels", json={"name": "Imp"})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelCreated())
-
-    async def test_apply_label_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.apply_labels", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post(
-                "/api/v1/gmail/messages/apply-label",
-                json={"message_ids": ["m1"], "label_ids": ["L1"]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelApplied(message_count=1))
-
-    async def test_create_draft_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.create_draft", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "d1", "message": {"id": "m1"}})
-            resp = await client.post(
-                "/api/v1/gmail/drafts",
-                json={"to": ["a@t.com"], "subject": "S", "body": "B"},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailDraftCreated())
-
-    async def test_update_draft_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.update_draft", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "d1", "message": {"id": "m1"}})
-            resp = await client.put(
-                "/api/v1/gmail/drafts/d1",
-                json={"to": ["a@t.com"], "subject": "S", "body": "B"},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailDraftUpdated())
-
-    async def test_delete_draft_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.delete_draft", new_callable=AsyncMock, return_value=True),
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            resp = await client.delete("/api/v1/gmail/drafts/d1")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailDraftDeleted())
-
-    async def test_mark_unread_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.mark_messages_as_unread", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/mark-as-unread", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailMarkedUnread(message_count=1))
-
-    async def test_unstar_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.unstar_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/unstar", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailUnstarred(message_count=1))
-
-    async def test_untrash_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.untrash_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/untrash", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailUntrashed(message_count=1))
-
-    async def test_archive_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.archive_messages", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/archive", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailArchived(message_count=1))
-
-    async def test_move_to_inbox_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.move_to_inbox", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post("/api/v1/gmail/move-to-inbox", json={"message_ids": ["m1"]})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailMovedToInbox(message_count=1))
-
-    async def test_update_label_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailToolResult
-
-        with (
-            patch(f"{MAIL}.update_label_service", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = GmailToolResult.model_validate({"id": "L1", "name": "Renamed"})
-            resp = await client.put("/api/v1/gmail/labels/L1", json={"name": "Renamed"})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelUpdated())
-
-    async def test_delete_label_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{MAIL}.delete_label", new_callable=AsyncMock, return_value=True),
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            resp = await client.delete("/api/v1/gmail/labels/L1")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelDeleted())
-
-    async def test_remove_labels_captures(self, client: AsyncClient) -> None:
-        from app.models.mail_models import GmailMessageResource
-
-        with (
-            patch(f"{MAIL}.remove_labels", new_callable=AsyncMock) as m,
-            patch(f"{MAIL}.capture") as mock_capture,
-        ):
-            m.return_value = [GmailMessageResource(id="m1")]
-            resp = await client.post(
-                "/api/v1/gmail/messages/remove-label",
-                json={"message_ids": ["m1"], "label_ids": ["L1"]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), EmailLabelRemoved(message_count=1))
-
-
-# ---------------------------------------------------------------------------
 # Notifications
 # ---------------------------------------------------------------------------
 
@@ -769,6 +579,7 @@ def _notif_record() -> NotificationRecord:
         status=NotificationStatus.READ,
         created_at=_dt(2026, 1, 1, tzinfo=_UTC),
         original_request=NotificationRequest(
+            id="n-read",
             user_id=UID,
             source=NotificationSourceEnum.AI_AGENT,
             type=NotificationType.INFO,
@@ -826,11 +637,12 @@ class TestNotificationNewEvents:
             patch(
                 f"{NOTIF}.user_repository.set_channel_preferences",
                 new_callable=AsyncMock,
-            ),
+            ) as set_prefs,
             patch(f"{NOTIF}.capture") as mock_capture,
         ):
             resp = await client.post("/api/v1/notifications/unsubscribe?token=tok")
         assert resp.status_code == 200
+        set_prefs.assert_awaited_once_with(UID, {"email": False})
         mock_capture.assert_called_once_with(UserId(UID), NotificationUnsubscribed())
 
     async def test_a_token_for_a_non_user_id_unsubscribes_nobody(self, client: AsyncClient) -> None:
@@ -851,60 +663,8 @@ class TestNotificationNewEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.usefixtures("hil_barrier_mode")
-class TestApprovalNewEvents:
-    async def test_decision_captures(self, client: AsyncClient) -> None:
-        with (
-            patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post("/api/v1/approvals/a1/decision", json={"decision": "approve"})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), ApprovalDecided(decision="approve"))
-
-    async def test_batch_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.resolve_approvals_batch",
-                new_callable=AsyncMock,
-                return_value=[BatchDecisionOutcome(approval_id="a1", resolved=True)],
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/approvals/batch-decision",
-                json={"decisions": [{"approval_id": "a1", "decision": "approve"}]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            UserId(UID), ApprovalDecided(batch=True, decisions=1, resolved=1)
-        )
-
-
-def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
-    return LedgerDecision(
-        committed=committed,
-        approval_id="ap_1",
-        prior_state=LedgerState.PENDING,
-        state=LedgerState.APPROVED if committed else LedgerState.PENDING,
-        stale=stale,
-    )
-
-
 class TestLedgerApprovalEvents:
-    """The ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
-
-    async def test_a_committed_decision_emits_no_second_event(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.decide_ledger_card",
-                new=AsyncMock(return_value=_ledger_decision(committed=True)),
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
-        assert resp.json()["success"] is True
-        mock_capture.assert_not_called()
+    """The ledger emits hil:decision_submitted per committed decision, named by where it was made."""
 
     @pytest.mark.regression
     async def test_a_card_tap_is_decided_as_a_card_decision(self, client: AsyncClient) -> None:
@@ -916,13 +676,27 @@ class TestLedgerApprovalEvents:
             user_id="507f1f77bcf86cd799439011",
         )
         repo = MagicMock(
-            get_by_approval_id=AsyncMock(return_value=row), transition=AsyncMock(return_value=True)
+            get_by_approval_id=AsyncMock(return_value=row),
+            claim_delivery=AsyncMock(return_value=None),
+            settle=AsyncMock(return_value=True),
         )
         ledger = "app.services.hil.ledger_decide"
         with (
             patch(f"{ledger}.approval_ledger_repository", new=repo),
-            patch(f"{ledger}.publish_ledger_decision", new=AsyncMock()),
-            patch(f"{ledger}.sync_conversation_approval_flag", new=AsyncMock()),
+            patch(f"{ledger}.logged_status", new=AsyncMock(return_value=ApprovalStatus.WAITING)),
+            patch(
+                f"{ledger}.record_approval_decided",
+                new=AsyncMock(
+                    return_value=DecisionTaken(
+                        stands=LoggedDecision(
+                            id="approval:ap_1:decided",
+                            approval_id="ap_1",
+                            outcome=ApprovalOutcome.DENIED,
+                        ),
+                        taken=True,
+                    )
+                ),
+            ),
             patch(f"{ledger}._deliver_verdict", new=AsyncMock()),
             patch(f"{ledger}.record_owner_deny", new=AsyncMock()),
             patch(f"{ledger}.reconcile_conversation_ledger", new=AsyncMock()),
@@ -930,24 +704,12 @@ class TestLedgerApprovalEvents:
         ):
             await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
 
-        assert capture.call_args.args[1].via == "card"
-
-    async def test_a_batch_emits_no_second_event(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.decide_ledger_batch",
-                new=AsyncMock(
-                    return_value=[BatchDecisionOutcome(approval_id="ap_1", resolved=True)]
-                ),
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/approvals/batch-decision",
-                json={"decisions": [{"approval_id": "ap_1", "decision": "approve"}]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_not_called()
+        [submitted] = [
+            call.args[1]
+            for call in capture.call_args_list
+            if isinstance(call.args[1], HilDecisionSubmitted)
+        ]
+        assert submitted.via == "card"
 
 
 class TestPlatformConnectInit:

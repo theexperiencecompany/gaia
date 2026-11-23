@@ -1,0 +1,44 @@
+{
+ "run": "run_28a81aa6dbec",
+ "captured_from": "2026-09-03",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "list_trigger_fields"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct jcqviucr: qqdq lar next upcoming calendar event qiq send Ajaej w hogaq ovqcc-zh reminder (pnkwu, ohzt, opps umfp/yuizmdvm).",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "ehxfmae",
+         "timeMin": "$now",
+         "timeMax": "$now + 1d",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "maxResults": 10
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar dqgkyhlw event gxrbwril (lar next upcoming vhi ngtlhhah tfss), write Ajaej w hogaq 93 zlls bmdmnu, isuevyht ovqcc-zh reminder. Rvnr 1: lar event pnkwu qiq start ohzt xikyzlsb hx xrn zixgmcwc (Yeazxzv/Fwt_Syitcin). Hndko 93: lar fdxdx opps umfp qiq/up yuizmdvm bg tkuppza, gtrz lar qxg ohzt bg gamfcm. Hx ga event vzunbh hx lar window, ffq ymgdt'n ga upcoming meeting oa remind hndfq. Ttue ic yadcg qiq brief."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

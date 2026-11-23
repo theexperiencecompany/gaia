@@ -13,10 +13,10 @@ Covers:
 """
 
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from composio.types import ToolExecuteParams
+from composio.types import ToolExecuteParams, ToolExecutionResponse
 from pydantic import ValidationError
 import pytest
 
@@ -54,7 +54,7 @@ from app.utils.composio_hooks.twitter_hooks import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_ENVELOPE = {"data": {"raw": True}, "successful": True, "error": None}
+_ENVELOPE: ToolExecutionResponse = {"data": {"raw": True}, "successful": True, "error": None}
 
 
 def _make_tool_schema(**overrides: Any) -> MagicMock:
@@ -76,13 +76,14 @@ def _make_params(arguments: dict | None = None, **extra: Any) -> ToolExecutePara
 
 
 def _make_response(
-    data: dict[str, Any] | list[Any], successful: bool = True, error: str | None = None
-) -> dict[str, Any]:
-    """Create a ToolExecutionResponse-like dict."""
-    resp: dict[str, Any] = {"data": data, "successful": successful}
-    if error is not None:
-        resp["error"] = error
-    return resp
+    data: dict[str, Any], successful: bool = True, error: str | None = None
+) -> ToolExecutionResponse:
+    return {"data": data, "successful": successful, "error": error}
+
+
+def _make_listing_response(data: list[dict[str, Any]]) -> ToolExecutionResponse:
+    """Wrap a Reddit listing array, a real payload the SDK's dict-typed data field cannot express."""
+    return cast(ToolExecutionResponse, {"data": data, "successful": True, "error": None})
 
 
 def _noop_writer() -> MagicMock:
@@ -101,11 +102,11 @@ class TestComposioHookRegistry:
     def test_register_and_execute_before_hook(self) -> None:
         registry = ComposioHookRegistry()
 
-        def double_value(tool: str, toolkit: str, params: dict) -> dict:
+        def double_value(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["x"] = params["arguments"].get("x", 0) * 2
             return params
 
-        registry.register_before_hook(double_value)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
+        registry.register_before_hook(double_value)
         result = registry.execute_before_hooks("TOOL", "KIT", _make_params({"x": 5}))
         assert result["arguments"]["x"] == 10
 
@@ -116,7 +117,8 @@ class TestComposioHookRegistry:
             return str(response).upper()
 
         registry.register_after_hook(upper_response)
-        result = registry.execute_after_hooks("TOOL", "KIT", "hello")
+        # A bare str stands in for the envelope: the registry chains any value through untouched.
+        result = registry.execute_after_hooks("TOOL", "KIT", cast(ToolExecutionResponse, "hello"))
         assert result == "HELLO"
 
     def test_register_and_execute_schema_modifier(self) -> None:
@@ -135,47 +137,47 @@ class TestComposioHookRegistry:
         registry = ComposioHookRegistry()
         call_order: list[str] = []
 
-        def first(tool: str, toolkit: str, params: dict) -> dict:
+        def first(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             call_order.append("first")
             return params
 
-        def second(tool: str, toolkit: str, params: dict) -> dict:
+        def second(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             call_order.append("second")
             return params
 
-        registry.register_before_hook(first)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
-        registry.register_before_hook(second)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
+        registry.register_before_hook(first)
+        registry.register_before_hook(second)
         registry.execute_before_hooks("T", "K", _make_params())
         assert call_order == ["first", "second"]
 
     def test_chained_before_hooks_accumulate_changes(self) -> None:
         registry = ComposioHookRegistry()
 
-        def add_a(tool: str, toolkit: str, params: dict) -> dict:
+        def add_a(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["a"] = 1
             return params
 
-        def add_b(tool: str, toolkit: str, params: dict) -> dict:
+        def add_b(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["b"] = 2
             return params
 
-        registry.register_before_hook(add_a)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
-        registry.register_before_hook(add_b)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
+        registry.register_before_hook(add_a)
+        registry.register_before_hook(add_b)
         result = registry.execute_before_hooks("T", "K", _make_params())
         assert result["arguments"] == {"a": 1, "b": 2}
 
     def test_failing_before_hook_does_not_block_others(self) -> None:
         registry = ComposioHookRegistry()
 
-        def bad_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def bad_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             raise RuntimeError("boom")
 
-        def good_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def good_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["ok"] = True
             return params
 
-        registry.register_before_hook(bad_hook)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
-        registry.register_before_hook(good_hook)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
+        registry.register_before_hook(bad_hook)
+        registry.register_before_hook(good_hook)
         result = registry.execute_before_hooks("T", "K", _make_params())
         assert result["arguments"]["ok"] is True
 
@@ -190,7 +192,8 @@ class TestComposioHookRegistry:
 
         registry.register_after_hook(bad_hook)
         registry.register_after_hook(good_hook)
-        result = registry.execute_after_hooks("T", "K", "original")
+        # A bare str stands in for the envelope: the registry chains any value through untouched.
+        result = registry.execute_after_hooks("T", "K", cast(ToolExecutionResponse, "original"))
         assert result == {"processed": True}
 
     def test_failing_schema_modifier_does_not_block_others(self) -> None:
@@ -222,7 +225,8 @@ class TestComposioHookRegistry:
 
     def test_empty_registry_returns_response_unchanged(self) -> None:
         registry = ComposioHookRegistry()
-        response = {"data": "hello"}
+        # Malformed on purpose: an empty registry must hand back the very object it got.
+        response = cast(ToolExecutionResponse, {"data": "hello"})
         result = registry.execute_after_hooks("T", "K", response)
         assert result is response
 
@@ -266,7 +270,7 @@ class TestDecoratorRegistration:
         initial = len(hook_registry._before_hooks)
 
         @register_before_hook(tools=["MY_TOOL"])
-        def my_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def my_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["injected"] = True
             return params
 
@@ -283,7 +287,7 @@ class TestDecoratorRegistration:
         initial = len(hook_registry._before_hooks)
 
         @register_before_hook(tools=["MY_TOOL"])
-        def my_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def my_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["injected"] = True
             return params
 
@@ -298,7 +302,7 @@ class TestDecoratorRegistration:
         from app.utils.composio_hooks.registry import hook_registry
 
         @register_before_hook(toolkits=["GMAIL"])
-        def gmail_kit_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def gmail_kit_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["gmail_kit"] = True
             return params
 
@@ -310,7 +314,7 @@ class TestDecoratorRegistration:
         from app.utils.composio_hooks.registry import hook_registry
 
         @register_before_hook()
-        def universal_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def universal_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["universal"] = True
             return params
 
@@ -339,7 +343,7 @@ class TestDecoratorRegistration:
             calls.append((tool, toolkit, response))
             return {"processed": True}
 
-        failed = {"data": {}, "successful": False, "error": "Rate limited"}
+        failed: ToolExecutionResponse = {"data": {}, "successful": False, "error": "Rate limited"}
         assert hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", failed) == failed
         assert calls == []
         hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", _ENVELOPE)
@@ -357,7 +361,9 @@ class TestDecoratorRegistration:
             return {"processed": True}
 
         # Non-matching tool returns original
-        hook_registry.execute_after_hooks("SLACK_SEND_MESSAGE", "SLACK", "raw")
+        hook_registry.execute_after_hooks(
+            "SLACK_SEND_MESSAGE", "SLACK", cast(ToolExecutionResponse, "raw")
+        )
         # The hook should not touch non-matching tools, but other globally registered hooks may
         # Let's just verify the hook count increased
         assert len(hook_registry._after_hooks) == before_count + 1
@@ -401,7 +407,7 @@ class TestMasterHooks:
         )
 
         with patch.object(hook_registry, "execute_after_hooks", return_value="delegated") as mock:
-            result = master_after_execute_hook("T", "K", {"data": "x"})
+            result = master_after_execute_hook("T", "K", _ENVELOPE)
             mock.assert_called_once()
             assert result == "delegated"
 
@@ -566,12 +572,17 @@ class TestCallIdentityResolution:
         )
 
         seen: list[str | None] = []
+
+        def record_identity(tool: str, toolkit: str, p: ToolExecuteParams) -> ToolExecuteParams:
+            seen.append(p.get("user_id"))
+            return p
+
         params = _make_params({"__runnable_config__": {"metadata": {"user_id": "u1"}}})
         params["user_id"] = ""
         with patch.object(
             hook_registry,
             "execute_before_hooks",
-            side_effect=lambda t, k, p: (seen.append(p.get("user_id")), p)[1],
+            side_effect=record_identity,
         ):
             master_before_execute_hook("T", "K", params)
         assert seen == ["u1"]
@@ -674,52 +685,15 @@ class TestGmailSchemaModifiers:
             input_parameters={"properties": {"subject": {"type": "string"}}, "required": []}
         )
         result = gmail_compose_require_subject_schema_modifier("GMAIL_SEND_EMAIL", "GMAIL", schema)
-        subject = result.input_parameters["properties"]["subject"]
+        properties = result.input_parameters["properties"]
+        assert isinstance(properties, dict)
+        subject = properties["subject"]
         assert result.input_parameters["required"] == ["subject"]
         assert subject["minLength"] == 1
         assert subject["description"] == (
             "Email subject line. Required: write a clear, specific subject "
             "that summarizes the email. Never leave it blank."
         )
-
-    def test_fetch_message_by_id_schema_sets_format_default(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import (
-            gmail_fetch_message_schema_modifier,
-        )
-
-        schema = _make_tool_schema(
-            input_parameters={
-                "properties": {
-                    "format": {"type": "string"},
-                },
-            }
-        )
-        result = gmail_fetch_message_schema_modifier(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", schema
-        )
-        props = result.input_parameters["properties"]
-        assert props["format"]["default"] == "full"
-
-    def test_schema_modifier_handles_non_dict_input_params(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import (
-            gmail_fetch_message_schema_modifier,
-        )
-
-        schema = _make_tool_schema(input_parameters="not_a_dict")
-        # Should return schema unchanged (early return)
-        result = gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
-        assert result is schema
-
-    def test_schema_modifier_rejects_non_dict_properties(self) -> None:
-        # Not a JSON-schema object: it fails to parse (the registry logs and keeps
-        # the schema untouched) rather than being silently walked around.
-        from app.utils.composio_hooks.gmail_hooks import (
-            gmail_fetch_message_schema_modifier,
-        )
-
-        schema = _make_tool_schema(input_parameters={"properties": "not_a_dict"})
-        with pytest.raises(ValidationError):
-            gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
 
 
 # ============================================================================
@@ -807,7 +781,9 @@ class TestGmailBeforeHooks:
         )
         gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", params)
         # The draft card is streamed by the after-hook, once the draft exists.
-        gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", {"data": {"id": "d1"}})
+        gmail_create_draft_after_hook(
+            "GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", _make_response({"id": "d1"})
+        )
         writer.assert_called_once()
         payload = writer.call_args[0][0]
         assert "email_compose_data" in payload
@@ -862,7 +838,7 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params(
             {
-                "to_recipients": ["fwd@example.com", "fwd2@example.com"],
+                "recipients": ["fwd@example.com", "fwd2@example.com"],
                 "subject": "Fwd: Something",
                 "body": "Forwarded",
             }
@@ -884,7 +860,7 @@ class TestGmailBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params(
             {
-                "to_recipients": "single@example.com",
+                "recipients": "single@example.com",
                 "subject": "Fwd: Test",
                 "body": "Content",
             }
@@ -929,7 +905,7 @@ class TestGmailBeforeHooks:
         writer = _noop_writer()
         mock_writer.return_value = writer
         params = _make_params()
-        gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
+        gmail_trash_before_hook("GMAIL_MOVE_TO_TRASH", "GMAIL", params)
         writer.assert_called_once_with({"progress": "Moving to trash..."})
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
@@ -1097,27 +1073,6 @@ class TestGmailBeforeHooks:
 class TestGmailAfterHooks:
     """Tests for Gmail after-execute hooks."""
 
-    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
-    def test_message_detail_after_hook(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
-
-        mock_template.return_value = {"id": "m1", "from": "a@b.com", "subject": "Hi"}
-        response = _make_response({"id": "m1", "payload": {}})
-        result = gmail_message_detail_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
-        )
-        assert result["id"] == "m1"
-        mock_template.assert_called_once_with(response["data"])
-
-    def test_message_detail_after_hook_error_response(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
-
-        response = _make_response({"error": "Not found"})
-        result = gmail_message_detail_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
-        )
-        assert result == {"error": "Not found"}
-
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
     def test_thread_after_hook_processes_and_streams(
@@ -1144,6 +1099,7 @@ class TestGmailAfterHooks:
         }
         response = _make_response({"id": "thread1", "messages": []})
         result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
+        assert isinstance(result, dict)
         assert result["id"] == "thread1"
         writer.assert_called_once()
         payload = writer.call_args[0][0]
@@ -1167,6 +1123,7 @@ class TestGmailAfterHooks:
         }
         response = _make_response({"drafts": [{"id": "d1"}]})
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
+        assert isinstance(result, dict)
         assert result["drafts"][0]["id"] == "d1"
 
     def test_drafts_after_hook_error_response(self) -> None:
@@ -1175,44 +1132,6 @@ class TestGmailAfterHooks:
         response = _make_response({"error": "Not found"})
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
         assert result == {"error": "Not found"}
-
-    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
-    def test_draft_detail_after_hook(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
-
-        mock_template.return_value = {"id": "d1", "message": {"to": "a@b.com"}}
-        response = _make_response({"id": "d1", "message": {}})
-        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
-        assert result["id"] == "d1"
-
-    def test_attachment_after_hook_extracts_metadata(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
-
-        response = _make_response(
-            {
-                "attachmentId": "att1",
-                "filename": "report.pdf",
-                "mimeType": "application/pdf",
-                "size": 1024,
-                "data": "base64_encoded_content_should_be_stripped",
-            },
-            successful=True,
-        )
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
-        assert result["attachmentId"] == "att1"
-        assert result["filename"] == "report.pdf"
-        assert result["size"] == 1024
-        assert "data" not in result
-        assert "message" in result
-
-    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
-    def test_fetch_by_id_after_hook(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_fetch_by_id_after_hook
-
-        mock_template.return_value = {"id": "m1", "subject": "Test"}
-        response = _make_response({"id": "m1", "payload": {}})
-        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
-        assert result["id"] == "m1"
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_after_hook_successful(self, mock_writer: MagicMock) -> None:
@@ -1229,6 +1148,7 @@ class TestGmailAfterHooks:
             }
         )
         result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
+        assert isinstance(result, dict)
         assert result["successful"] is True
         assert result["id"] == "sent_1"
         writer.assert_called_once()
@@ -1278,6 +1198,7 @@ class TestGmailAfterHooks:
             }
         )
         result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert isinstance(result, dict)
         assert result["contacts"][0]["name"] == "John Doe"
         assert result["contacts"][0]["email"] == "john@example.com"
         assert result["contacts"][0]["phone"] == "+1234567890"
@@ -1304,6 +1225,7 @@ class TestGmailAfterHooks:
             }
         )
         result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert isinstance(result, dict)
         assert result["contacts"][0]["name"] == "Unknown"
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
@@ -1339,6 +1261,7 @@ class TestGmailAfterHooks:
             }
         )
         result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
+        assert isinstance(result, dict)
         assert result["people"][0]["name"] == "Jane Doe"
         assert result["result_count"] == 1
         writer.assert_called_once()
@@ -1366,6 +1289,7 @@ class TestSlackHooks:
         )
         result = slack_search_schema_modifier("SLACK_SEARCH_MESSAGES", "SLACK", schema)
         props = result.input_parameters["properties"]
+        assert isinstance(props, dict)
         assert props["sort"]["default"] == "timestamp"
         assert props["sort_dir"]["default"] == "desc"
         assert props["count"]["default"] == 20
@@ -1438,7 +1362,9 @@ class TestTwitterSchemaModifiers:
         result = twitter_timeline_schema_modifier(
             "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", schema
         )
-        assert result.input_parameters["properties"]["max_results"]["default"] == 20
+        properties = result.input_parameters["properties"]
+        assert isinstance(properties, dict)
+        assert properties["max_results"]["default"] == 20
 
     def test_twitter_timeline_schema_non_dict_input_params(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
@@ -1606,6 +1532,7 @@ class TestTwitterAfterHooks:
         mock_writer.return_value = writer
         response = _make_response({"data": [{"id": "tw1", "text": "hi"}], "meta": meta})
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert isinstance(result, dict)
         assert result["result_count"] == expected_count
         assert writer.call_args[0][0]["twitter_search_data"]["result_count"] == expected_count
 
@@ -1620,6 +1547,7 @@ class TestTwitterAfterHooks:
             {"data": [{"id": "tw1", "text": text_at_limit, "author_id": "missing"}]}
         )
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert isinstance(result, dict)
         assert result["tweets"] == [
             {
                 "id": "tw1",
@@ -1671,6 +1599,7 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert isinstance(result, dict)
         assert len(result["tweets"][0]["text"]) == 203  # 200 + "..."
 
     @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
@@ -1781,6 +1710,7 @@ class TestTwitterAfterHooks:
         result = twitter_user_lookup_after_hook(
             "TWITTER_USER_LOOKUP_BY_USERNAMES", "TWITTER", response
         )
+        assert isinstance(result, dict)
         assert len(result["users"]) == 2
 
     @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
@@ -1906,19 +1836,20 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_followers_after_hook("TWITTER_FOLLOWING_BY_USER_ID", "TWITTER", response)
+        assert isinstance(result, dict)
         assert result["has_more"] is False
         writer.assert_called_once()
         payload = writer.call_args[0][0]
         assert "twitter_following_data" in payload
 
     @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_post_created_after_hook(self, mock_writer: MagicMock) -> None:
+    def test_post_created_after_hook_summarises_and_streams_nothing(
+        self, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        writer = _noop_writer()
-        mock_writer.return_value = writer
         response = _make_response(
             {
                 "data": {
@@ -1930,17 +1861,13 @@ class TestTwitterAfterHooks:
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         url = "https://twitter.com/i/status/post123"
         assert result == {"success": True, "id": "post123", "text": "My new tweet", "url": url}
-        writer.assert_called_once_with(
-            {"twitter_post_created": {"id": "post123", "text": "My new tweet", "url": url}}
-        )
+        mock_writer.assert_not_called()
 
-    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_post_created_after_hook_error(self, mock_writer: MagicMock) -> None:
+    def test_post_created_after_hook_error(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Duplicate"})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert result == {"error": "Duplicate"}
@@ -2257,6 +2184,7 @@ class TestRedditAfterHooks:
             }
         )
         result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["result_count"] == 1
         assert result["posts"][0]["id"] == "p1"
         writer.assert_called_once_with(
@@ -2305,6 +2233,7 @@ class TestRedditAfterHooks:
             {"search_results": {"data": {"children": [{"kind": "t3", "data": {"id": "p1"}}]}}}
         )
         result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["result_count"] == 1
         assert result["posts"][0]["id"] == "p1"
 
@@ -2351,6 +2280,7 @@ class TestRedditAfterHooks:
             }
         )
         result = reddit_post_detail_after_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["id"] == "p1"
         writer.assert_called_once_with(
             {
@@ -2399,7 +2329,7 @@ class TestRedditAfterHooks:
         writer = _noop_writer()
         mock_writer.return_value = writer
         # Reddit returns [post_listing, comments_listing]
-        response = _make_response(
+        response = _make_listing_response(
             [
                 {"data": {"children": []}},  # post listing
                 {
@@ -2424,6 +2354,7 @@ class TestRedditAfterHooks:
             ]
         )
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["comment_count"] == 1
         assert result["comments"][0]["body"] == "Nice post!"
         writer.assert_called_once_with(
@@ -2450,7 +2381,7 @@ class TestRedditAfterHooks:
         self, mock_writer: MagicMock
     ) -> None:
         mock_writer.return_value = _noop_writer()
-        response = _make_response([{"data": {"children": []}}])
+        response = _make_listing_response([{"data": {"children": []}}])
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result == {"comments": [], "comment_count": 0}
 
@@ -2463,6 +2394,7 @@ class TestRedditAfterHooks:
         ]
         response = _make_response({"comments": {"data": {"children": children}}})
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
+        assert isinstance(result, dict)
         assert [comment["id"] for comment in result["comments"]] == ["c1"]
         assert result["comment_count"] == 1
 
@@ -2492,6 +2424,7 @@ class TestRedditAfterHooks:
             }
         )
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["comment_count"] == 1
 
     @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
@@ -2499,7 +2432,7 @@ class TestRedditAfterHooks:
         from app.utils.composio_hooks.reddit_hooks import reddit_comments_after_hook
 
         mock_writer.return_value = _noop_writer()
-        response = _make_response(
+        response = _make_listing_response(
             [
                 {"data": {"children": []}},
                 {
@@ -2512,6 +2445,7 @@ class TestRedditAfterHooks:
             ]
         )
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["comment_count"] == 0
 
     @patch("app.utils.composio_hooks.reddit_hooks.current_stream_writer")
@@ -2530,6 +2464,7 @@ class TestRedditAfterHooks:
             }
         )
         result = reddit_content_created_after_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["success"] is True
         assert result["id"] == "new_post"
         writer.assert_called_once_with(
@@ -2561,6 +2496,7 @@ class TestRedditAfterHooks:
             }
         )
         result = reddit_content_created_after_hook("REDDIT_POST_REDDIT_COMMENT", "REDDIT", response)
+        assert isinstance(result, dict)
         assert result["success"] is True
         writer.assert_called_once_with(
             {
@@ -2630,13 +2566,6 @@ class TestEdgeCases:
         # When exception occurs during processing, falls through to return response data
         assert isinstance(result, dict)
 
-    def test_gmail_attachment_non_dict_data(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
-
-        response: dict[str, Any] = {"data": "plain_string", "successful": True}
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
-        assert result == "plain_string"
-
     def test_gmail_before_hook_no_writer_skips_streaming(self) -> None:
         """Before hooks that check writer truthy-ness skip streaming gracefully."""
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
@@ -2673,7 +2602,7 @@ class TestEdgeCases:
 
         mock_writer.side_effect = RuntimeError("no context")
         params = _make_params({})
-        result = gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
+        result = gmail_trash_before_hook("GMAIL_MOVE_TO_TRASH", "GMAIL", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
@@ -2750,17 +2679,6 @@ class TestEdgeCases:
 class TestGmailAfterHookExceptions:
     """Cover exception branches in Gmail after-execute hooks."""
 
-    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
-    def test_message_detail_exception_returns_raw(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
-
-        mock_template.side_effect = KeyError("bad key")
-        response = _make_response({"raw": "data"})
-        result = gmail_message_detail_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
-        )
-        assert result == {"raw": "data"}
-
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
     def test_thread_exception_returns_raw(
@@ -2782,24 +2700,6 @@ class TestGmailAfterHookExceptions:
         response = _make_response({"raw": "drafts"})
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
         assert result == {"raw": "drafts"}
-
-    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
-    def test_draft_detail_exception_returns_raw(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
-
-        mock_template.side_effect = RuntimeError("parse fail")
-        response = _make_response({"raw": "draft"})
-        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
-        assert result == {"raw": "draft"}
-
-    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
-    def test_fetch_by_id_exception_returns_raw(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_fetch_by_id_after_hook
-
-        mock_template.side_effect = KeyError("bad key")
-        response = _make_response({"raw": "email"})
-        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
-        assert result == {"raw": "email"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
@@ -2867,6 +2767,7 @@ class TestGmailAfterHookExceptions:
             }
         )
         result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
+        assert isinstance(result, dict)
         assert result["people"][0]["phone"] == "+1111"
 
 
@@ -2975,7 +2876,9 @@ class TestDecoratorStringArgsAndToolkitMatching:
         from app.utils.composio_hooks.registry import hook_registry
 
         @register_before_hook(toolkits="REDDIT")
-        def reddit_kit_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def reddit_kit_hook(
+            tool: str, toolkit: str, params: ToolExecuteParams
+        ) -> ToolExecuteParams:
             params["arguments"]["reddit_kit"] = True
             return params
 
@@ -2988,7 +2891,7 @@ class TestDecoratorStringArgsAndToolkitMatching:
         from app.utils.composio_hooks.registry import hook_registry
 
         @register_before_hook(tools="SINGLE")
-        def single_hook(tool: str, toolkit: str, params: dict) -> dict:
+        def single_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["single"] = True
             return params
 
@@ -3019,7 +2922,7 @@ class TestRedditTwitterAfterHookExceptions:
         from app.utils.composio_hooks.reddit_hooks import reddit_comments_after_hook
 
         mock_writer.side_effect = RuntimeError("broken")
-        response = _make_response([{}, {"data": {"children": []}}])
+        response = _make_listing_response([{}, {"data": {"children": []}}])
         result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         # On exception, returns response.get("data") which is the list
         assert isinstance(result, list)
@@ -3115,13 +3018,11 @@ class TestRedditTwitterAfterHookExceptions:
         result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_twitter_post_created_exception(self, mock_writer: MagicMock) -> None:
+    def test_a_malformed_created_post_passes_through_raw(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        mock_writer.side_effect = RuntimeError("broken")
-        response = _make_response({"data": {"id": "p1"}})
+        response = _make_response({"data": {"text": "no id"}})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
-        assert isinstance(result, dict)
+        assert result == {"data": {"text": "no id"}}

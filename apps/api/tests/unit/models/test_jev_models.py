@@ -46,3 +46,32 @@ class TestTokens:
     @pytest.mark.parametrize("usage", [None, {}, {"input_tokens": None, "output_tokens": None}])
     def test_absent_usage_reads_as_zero(self, usage: dict[str, object] | None) -> None:
         assert _body({"choice": "yes"}, usage).tokens() == (0, 0)
+
+
+class TestNoul:
+    @pytest.mark.parametrize("p", [0.0, 0.42, 1.0])
+    def test_a_probability_within_zero_and_one_is_returned(self, p: float) -> None:
+        assert _body({"type": "noul", "noul": p}).noul("q") == p
+
+    @pytest.mark.parametrize("p", [-0.01, 1.01])
+    def test_a_probability_out_of_range_is_refused(self, p: float) -> None:
+        with pytest.raises(ValueError, match="out of range"):
+            _body({"type": "noul", "noul": p}).noul("q")
+
+    def test_a_missing_or_choice_answer_is_no_noul(self) -> None:
+        body = _body({"type": "choice", "choice": "yes"})
+        with pytest.raises(ValueError, match="no JEV noul answer for question 'q'"):
+            body.noul("q")
+        with pytest.raises(ValueError, match="no JEV noul answer for question 'other'"):
+            body.noul("other")
+
+    def test_a_non_noul_answer_is_refused_in_at_most_300_characters(self) -> None:
+        body = _body({"type": "score", "choice": "x" * 400})
+        with pytest.raises(ValueError) as caught:
+            body.noul("q")
+        assert str(caught.value).startswith("no JEV noul answer for question 'q': ")
+        assert len(str(caught.value)) == 300
+
+    def test_a_noul_answer_is_no_choice(self) -> None:
+        with pytest.raises(ValueError, match="non-choice"):
+            _body({"type": "noul", "noul": 0.5}).choice("q", ("yes",))

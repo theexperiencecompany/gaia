@@ -4,6 +4,8 @@ from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
+from app.constants.general import FINISH_TASK_NAME
+
 
 class LLMProviderName(StrEnum):
     """Logical provider names, keying the catalog in app/constants/providers.py.
@@ -19,6 +21,8 @@ class LLMProviderName(StrEnum):
     # OLLAMA_BASE_URL picks the endpoint at load time; nothing keys off the name
     # beyond registration.
     OLLAMA = "ollama"
+    # Workers AI's OpenAI-compatible API. Configured, it serves every role ahead of the rest.
+    CLOUDFLARE = "cloudflare"
 
 
 class LLMProviderKey(StrEnum):
@@ -33,6 +37,7 @@ class LLMProviderKey(StrEnum):
     CUSTOM = "custom_llm"
     OPENAI = "openai_llm"
     OLLAMA = "ollama_llm"
+    CLOUDFLARE = "cloudflare_llm"
 
 
 class ModelUse(StrEnum):
@@ -78,17 +83,10 @@ class OpenRouterReasoning(TypedDict):
     effort: OpenRouterEffort
 
 
-class OpenRouterProviderRouting(TypedDict, total=False):
-    """OpenRouter's provider-routing block: a soft order, or a hard only-these pin.
+class OpenRouterProviderRouting(TypedDict):
+    """OpenRouter's provider-routing block, as GAIA sends it: a hard only-these pin."""
 
-    total=False because the two uses set different keys: the client's
-    OPENROUTER_PROVIDER_ORDER writes order + allow_fallbacks, a dev-menu pin
-    writes only.
-    """
-
-    order: list[str]
     only: list[str]
-    allow_fallbacks: bool
 
 
 class OpenRouterModelKwargs(TypedDict):
@@ -110,8 +108,6 @@ class DevModelOption:
     provider: LLMProviderName
     #: None = pin no model; the client's own default serves the request.
     model: str | None
-    #: The OpenRouter provider-routing pin the lane carries as model_kwargs.
-    provider_pin: OpenRouterModelKwargs | None
     reasoning: bool
 
 
@@ -152,6 +148,11 @@ PROVIDER_NAME_METADATA_KEY = "provider_name"
 # The response_metadata flag on the reply the budget wall writes in place of a
 # model call; the accounting middleware meters nothing for a reply carrying it.
 BUDGET_STOP_METADATA_KEY = "budget_stop"
+# What a ledger run's last call is told: its tools are gone, so it answers from what it read.
+LEDGER_WRAPUP_NOTICE = (
+    "[System notice: this run has spent its budget and its tools are gone. Give your "
+    "final answer now, from what you have already read.]"
+)
 # The response_metadata keys marking a reply a fallback provider served, and the
 # model it served: read by the SSE downgrade notice and priced by accounting.
 FELL_BACK_METADATA_KEY = "gaia_fell_back"
@@ -170,7 +171,10 @@ AGENT_RECURSION_LIMIT = 40  # Comms + workers (routing / focused work)
 # truncates real work with GraphRecursionError. Both the graph runtime limit and
 # the accounting middleware's denominator read this, so they stay in sync.
 EXECUTOR_RECURSION_LIMIT = 100
-SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
+# Spawned subagents run sweep slices (fetch, mine, read, report). The Inbox desk mail
+# pass measures 18 supersteps with the wrap-up window; at 15 a slice was stopped after
+# four tool calls, so 30 leaves room for a second fetch and retries.
+SUBAGENT_RECURSION_LIMIT = 30
 # The workflow authoring subagent only discovers integrations/triggers then emits
 # JSON, never executes, so a handful of discovery calls is plenty. On hitting the
 # limit the runner forces a final answer instead of crashing ("stop wandering").
@@ -178,9 +182,6 @@ WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# When this few supersteps remain before the limit, acall_model injects a
-# wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
-RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
 # starts showing the wrap-up notice, so the model answers before GraphRecursionError.
 # Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
@@ -192,15 +193,20 @@ RECURSION_WRAPUP_MIN_STEPS = 6
 # instead let each delegation inherit the previous one's nudges.
 MAX_COMPLETION_NUDGES = 1
 # Tool results that prove no work happened: discovery-only or failed calls.
-COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
+# finish_task is how a run ends, not work it did: counting it would let a run
+# that only declared itself finished pass for one that did something.
+COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools", FINISH_TASK_NAME})
 COMPLETION_NUDGE_MESSAGE = (
     "[System: before you finish, every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "
     "verified, or an action you described but did not take, do it now. Nothing "
     "runs after your reply ends, so never tell the user you are still working or "
     "that more results are coming ('hang tight', 'still digging'): either do the "
-    "work now with tools, or state plainly what you got and what failed. If you "
-    "are genuinely finished, reply with your complete final result.]"
+    "work now with tools, or state plainly what you got and what failed. Then "
+    "finish with finish_task: your complete final result and its outcome, backed "
+    "by this run's tool calls (done: the work ran; schedule: a tracked todo "
+    "with a schedule or recurrence was set; subscribe: the trigger watch was set). "
+    "Anything else is ask or blocked.]"
 )
 # A plain-text stop that PROMISES future work is never valid: the run is over the
 # moment the reply ends, so "hang tight" is a lie. Lowercase substrings matched
@@ -306,6 +312,12 @@ AUX_MODEL_NAME = DEFAULT_MODEL_NAME
 OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT: dict[str, bool] = {
     DEFAULT_MODEL_NAME: False,
 }
+# Provider routing belongs to the model it was chosen for: a pin naming providers that
+# do not serve a model fails every call to it. A model absent here gets no provider block.
+OPENROUTER_PROVIDER_ROUTING: dict[str, OpenRouterModelKwargs] = {
+    "minimax/minimax-m3": {"provider": {"only": ["minimax"]}},
+    "z-ai/glm-5.2": {"provider": {"only": ["z-ai"]}},
+}
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
@@ -347,12 +359,27 @@ COMMS_MODEL_NAME = "gpt-5.6-luna"
 # Chat completions reject function tools with any other effort, and comms always binds tools.
 COMMS_REASONING_EFFORT = "none"
 OPENAI_MAX_OUTPUT_TOKENS = 16_000
+# create_artifact's own lane, direct to OpenAI: no reasoning keeps the first component on
+# screen in about 2.6 s (prototype bench, .agents/plans/artifacts-openui.md).
+ARTIFACT_MODEL_NAME: Final = "gpt-6-luna"
+ARTIFACT_REASONING_EFFORT: Final = "none"
+# OpenAI rejects a longer prompt_cache_key with a 400 (string_above_max_length).
+OPENAI_PROMPT_CACHE_KEY_MAX_CHARS = 64
 
 # Per-plan model policy (hardcoded; not user-selectable). Both tiers run the SAME
 # model today, so the pro monthly-budget degrade in resolve_lane has nothing to
 # degrade to — kept so re-pointing PAID_MODEL_NAME makes that guard bite again.
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = DEFAULT_MODEL_NAME
+
+#: Cloudflare Workers AI. The 1M-token window equals DEFAULT_MAX_TOKENS; the model takes
+#: images, tools and reasoning_effort none|low|high|max (developers.cloudflare.com/workers-ai).
+CLOUDFLARE_MODEL_NAME = "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
+CLOUDFLARE_AI_API_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
+#: One effort for every chat role, comms included: comms ran at "none" on OpenAI, and the
+#: model's own default ("high") would stall voice and chat replies.
+CLOUDFLARE_REASONING_EFFORT = "low"
+CLOUDFLARE_MAX_OUTPUT_TOKENS = 64_000
 
 OPENAI_API_URL = "https://api.openai.com/v1"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
@@ -440,25 +467,21 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="minimax/minimax-m3",
-        provider_pin={"provider": {"only": ["minimax"]}},
         reasoning=True,
     ),
     "glm-5.2": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="z-ai/glm-5.2",
-        provider_pin={"provider": {"only": ["z-ai"]}},
         reasoning=True,
     ),
     "gemini-3.5-flash": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="google/gemini-3.5-flash",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-pro",
-        provider_pin=None,
         reasoning=False,
     ),
     "deepseek-v4-flash": DevModelOption(
@@ -467,9 +490,6 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # identical model for A/B-ing routes.
         provider=LLMProviderName.OPENROUTER,
         model="deepseek/deepseek-v4-flash-0731",
-        # Deliberately unpinned — the pin measured worse on the real graph
-        # (see the paid-lane rationale above).
-        provider_pin=None,
         reasoning=False,
     ),
     DEV_CUSTOM_MODEL_OPTION: DevModelOption(
@@ -477,13 +497,11 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
         provider=LLMProviderName.CUSTOM,
         model=None,
-        provider_pin=None,
         reasoning=False,
     ),
     "gemini-3.1-flash-lite": DevModelOption(
         provider=LLMProviderName.GEMINI,
         model="gemini-3.1-flash-lite",
-        provider_pin=None,
         reasoning=False,
     ),
 }
@@ -506,9 +524,12 @@ PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
 
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard, ~1x the
-# subscription price. On exhaustion pro is NOT blocked — routing degrades to
-# the free-tier model for the rest of the month.
+# subscription price. Reaching it pauses chat, bots, workflow runs and tracked
+# todos until the month resets, the same wall as the daily budget.
 PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
+# The one-time heads-up fires here; mirrors USAGE_WARN_THRESHOLD (libs/shared/ts/src/constants/usage.ts),
+# where the usage page turns amber.
+PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION = 0.75
 
 # TTLs for the budget Redis keys: sized just past their window so keys expire
 # on their own (26h > 24h day, 32d > 31d month) even with clock skew.
@@ -527,7 +548,7 @@ LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
 # "Repeat" counts identical calls issued this run, consecutive or not, regardless of
 # success or failure: a successful call whose result won't change is as much a loop
-# as a failing one (the failure counters above only see status="error").
+# as a failing one (the failure counters above only see failed calls).
 LOOP_GUARD_WARN_REPEAT = 3
 LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so counters are keyed by the run

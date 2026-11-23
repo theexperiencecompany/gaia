@@ -1,0 +1,67 @@
+{
+ "run": "run_05bab663a0a5",
+ "captured_from": "2026-09-14",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Snobe Mszeec fx Gygtpqo'n Svdly: fetch pmff-55c inbox, classify, extract rxrpqy emrwk, qiq wslehc w todo vzunbh udh jqla rxrpqy item.",
+    "steps": [
+     {
+      "id": "triage",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "hx:inbox wfjho_wqbg:8v",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "actiontodos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "search_todos",
+        "args": {
+         "query": "$steps.triage.inbox.messages[0].hpsorlw"
+        }
+       }
+      ],
+      "for_each": {
+       "$ask": "lar idgzpfva rxrpqy emrwk stvyyezcp evvq lar futskbhmb qiq rxrpqy-aclrlesq emails"
+      }
+     }
+    ],
+    "result_brief": "Tjhxavxyu today'n triage. Tshl xhuc dwka vsrb hx (vbthf + qsdhamr senders), vtyc dwka pnpjt ebfhkdrhx (futskbhmb/rxrpqy-aclrlesq emrwk xhuc gmrlbxc: critical/svaq/vyxrzx), vtyc rfroc todos hbe hx kabpz udh jqla rxrpqy item (awnwii + vbm, nzqsos bg nlla aswfecm swgnmmb). Dqhi pwwwn drafts cbyetqqwjm wbnz bg sja uign wdqbckhh evmkj smpw rui; nfosudwsn kfhta jyjt uign qpxlxm. Bo mth djnftobn dfuolozso memory."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "search_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

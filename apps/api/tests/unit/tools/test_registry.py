@@ -16,6 +16,7 @@ from app.agents.tools.core.registry import (
     ToolRegistry,
 )
 from app.config.settings import settings
+from app.constants.agents import PLAYBOOK_TOOL_NAMES
 from shared.py.wide_events import log
 
 
@@ -441,6 +442,7 @@ _EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
     "add_custom_mcp_server",
     "approve_device_pairing",
     "disconnect_integration",
+    "set_briefing_schedule",
     "set_selected_voice",
     "update_notification_settings",
     "update_preferences",
@@ -462,6 +464,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
     """Return expected tool-name membership per category, read from the same tool modules _initialize_categories() itself imports."""
     from app.agents.tools import (
         account_tools,
+        artifact_tool,
         browser_tool,
         coding,
         context_tool,
@@ -518,7 +521,11 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "instructions": {t.name for t in instructions_tools.tools},
         "development": {t.name for t in coding.tools},
         "execute": {execute_tool.execute.name, schema_tool.get_tool_schema.name},
-        "creative": {image_tool.generate_image.name, flowchart_tool.create_flowchart.name},
+        "creative": {
+            image_tool.generate_image.name,
+            flowchart_tool.create_flowchart.name,
+            artifact_tool.create_artifact.name,
+        },
         "weather": {weather_tool.get_weather.name},
         "browser": {browser_tool.browser_task.name},
         "context": {context_tool.gather_context.name},
@@ -737,12 +744,14 @@ class TestCoreInitializationContract:
             "update_notification_settings",
             "update_preferences",
             "set_selected_voice",
+            "set_briefing_schedule",
             "manage_linked_account",
         ]
         assert {tool.name for tool in category.tools if tool.always_gate} == {
             "update_notification_settings",
             "update_preferences",
             "set_selected_voice",
+            "set_briefing_schedule",
         }
         assert all(tool.destructive is False for tool in category.tools)
 
@@ -947,12 +956,13 @@ class TestInitializeCategories:
                 f"{tool_name} must stay in the {category!r} category"
             )
 
-    def test_the_playbook_category_holds_exactly_its_four_tools(
+    def test_the_playbook_category_holds_exactly_the_playbook_tools(
         self, registry: ToolRegistry
     ) -> None:
         names = {tool.name for tool in registry._categories["playbooks"].tools}
 
-        assert names == {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+        assert names == PLAYBOOK_TOOL_NAMES
+        assert "read_run_record" in names
 
     def test_playbook_tools_are_curated_as_non_destructive(self, registry: ToolRegistry) -> None:
         """None sends a tool to the LLM risk classifier; an explicit empty set means curated non-destructive — writing a playbook has no side effect on user data, so it must be the latter."""

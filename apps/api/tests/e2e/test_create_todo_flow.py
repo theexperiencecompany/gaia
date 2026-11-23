@@ -3,11 +3,8 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
 
-from app.agents.tools.todo_tools import (
-    TODO_TOOL_NAMES,
-    create_todo_pre_model_hook,
-    create_todo_tools,
-)
+from app.agents.tools.todo_tools import TODO_TOOL_NAMES, create_todo_tools
+from tests.e2e._harness.graph_run import RecordingFakeModel
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
 
@@ -526,123 +523,53 @@ class TestCreateTodoFlow:
             "Update TODO_TOOL_NAMES in todo_tools.py."
         )
 
-    async def test_todo_pre_model_hook_injects_task_context_into_system_message(
+    async def test_the_plan_reaches_the_next_call_as_the_plan_tasks_result(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """Exercises create_todo_pre_model_hook through the real graph wiring (create_agent -> acall_model -> execute_hooks), not by calling the hook directly."""
-        from typing import Any
-
-        from langchain_core.language_models.fake_chat_models import (
-            FakeMessagesListChatModel,
+        """The plan rides the thread as plan_tasks' result, not a per-call system message."""
+        fake_llm = RecordingFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_plan_ctx",
+                            "name": "plan_tasks",
+                            "args": {"tasks": [{"content": "Write the report"}]},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Done."),
+            ]
         )
-        from langchain_core.messages import BaseMessage
-        from langchain_core.outputs import ChatResult
-
-        captured_inputs: list[list[BaseMessage]] = []
-
-        class CapturingFakeModel(FakeMessagesListChatModel):
-            """Fake LLM that records the messages list on every invocation."""
-
-            def bind_tools(self, tools: Any, **kwargs: Any) -> "CapturingFakeModel":
-                return self
-
-            def _generate(
-                self,
-                messages: list[BaseMessage],
-                stop: list[str] | None = None,
-                run_manager: Any = None,
-                **kwargs: Any,
-            ) -> ChatResult:
-                captured_inputs.append(list(messages))
-                return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
-
-            async def _agenerate(
-                self,
-                messages: list[BaseMessage],
-                stop: list[str] | None = None,
-                run_manager: Any = None,
-                **kwargs: Any,
-            ) -> ChatResult:
-                captured_inputs.append(list(messages))
-                return await super()._agenerate(
-                    messages, stop=stop, run_manager=run_manager, **kwargs
-                )
-
-        from typing import cast
-
-        from app.agents.core.nodes.filter_messages import filter_messages_node
-        from app.agents.core.nodes.manage_system_prompts import (
-            manage_system_prompts_node,
-        )
-        from app.override.langgraph_bigtool.hooks import HookType
-
-        todo_hooks = [create_todo_pre_model_hook(source="test")]
-
-        fake_llm = CapturingFakeModel(responses=[AIMessage(content="Done.")])
-
         todo_tools = create_todo_tools(source="test")
-        tool_registry = {t.name: t for t in todo_tools}
-
-        # Build graph with all three hooks: filter → manage_system_prompts → todo_pre_model
-        from app.override.langgraph_bigtool.create_agent import (
-            AgentConfig,
-            HookConfig,
-            ToolRetrievalConfig,
-            create_agent,
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry={t.name: t for t in todo_tools},
+            checkpointer=memory_saver,
+            store=in_memory_store,
         )
 
-        pre_model_hooks: list[HookType] = [
-            cast(HookType, filter_messages_node),
-            cast(HookType, manage_system_prompts_node),
-            cast(HookType, todo_hooks[0]),
-        ]
-
-        builder = create_agent(
-            llm=fake_llm,
-            tool_registry=tool_registry,
-            tools_config=ToolRetrievalConfig(
-                disable_retrieve_tools=True,
-                initial_tool_ids=list(tool_registry.keys()),
-            ),
-            hooks_config=HookConfig(pre_model_hooks=pre_model_hooks),
-            agent_config=AgentConfig(agent_name="test_agent"),
-        )
-        graph = builder.compile(checkpointer=memory_saver, store=in_memory_store)
-
-        # Invoke with a system message and a pre-seeded todo in state so the hook
-        # has something to inject.
-        await graph.ainvoke(
+        result = await graph.ainvoke(
             {
                 "messages": [
                     SystemMessage(content="You are a helpful assistant."),
                     HumanMessage(content="Do the work"),
                 ],
-                "todos": [
-                    {
-                        "id": "abc123",
-                        "content": "Write the report",
-                        "status": "in_progress",
-                        "created_at": "2026-01-01T00:00:00Z",
-                    }
-                ],
             },
             config=thread_config,
         )
 
-        assert captured_inputs, "CapturingFakeModel must have been called at least once"
-
-        # The first call to the model is the one where hooks ran.
-        messages_seen_by_model = captured_inputs[0]
-        system_messages_seen = [m for m in messages_seen_by_model if isinstance(m, SystemMessage)]
-        assert system_messages_seen, (
-            "The model must receive at least one SystemMessage after hooks ran"
+        [todo] = result["todos"]
+        first_call, second_call = fake_llm.prompts
+        assert second_call[: len(first_call)] == first_call, (
+            "The second request must begin with the first, byte for byte"
         )
-        combined_content = "\n".join(m.content for m in system_messages_seen)
-        assert "Write the report" in combined_content, (
-            "create_todo_pre_model_hook must inject todo content into the system message "
-            f"seen by the model. Got: {combined_content!r}"
-        )
-        assert "abc123" in combined_content, (
-            "create_todo_pre_model_hook must inject todo ID into the system message "
-            f"seen by the model. Got: {combined_content!r}"
+        plan_result = _find_tool_message(second_call, "call_plan_ctx")
+        assert "## Current Tasks" in str(plan_result.content)
+        assert f"({todo['id']}) Write the report" in str(plan_result.content)
+        system_text = "\n".join(str(m.content) for m in second_call if isinstance(m, SystemMessage))
+        assert "Write the report" not in system_text, (
+            f"The plan must not be injected as a system message. Got: {system_text!r}"
         )

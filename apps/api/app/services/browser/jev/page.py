@@ -190,6 +190,8 @@ class PageAction(TypedDict):
     rect: NotRequired[Rect]
     #: A dropdown's choices; the action that picks one carries its value instead.
     options: NotRequired[list[SelectOption]]
+    #: A code typed one character per box: every box, in order; the action's node is the first.
+    segments: NotRequired[list[int]]
 
 
 class Frame(TypedDict):
@@ -224,6 +226,7 @@ class _Snapshot(TypedDict):
     guards: dict[str, object]
     omitted_actions: int
     frames: list[Frame]
+    disabled: list[str]
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,17 @@ class PageState:
     fingerprint: str
     #: Controls the snapshot found beyond its budget and left out.
     omitted_actions: int = 0
+    #: The names of controls the page shows but has disabled: there, not yet usable.
+    disabled: tuple[str, ...] = ()
+
+
+def typed_text(action: PageAction, text: str) -> str:
+    """Return what is typed into a field: a one-box-per-character code drops the separators its page draws."""
+    segments = action.get("segments")
+    if segments is None:
+        return text
+    characters = "".join(char for char in text if char.isalnum())
+    return characters if len(characters) == len(segments) else text
 
 
 def controls(actions: list[PageAction]) -> list[PageAction]:
@@ -270,6 +284,7 @@ def _page_state(snapshot: _Snapshot) -> PageState:
         frames=snapshot["frames"],
         fingerprint=_fingerprint(snapshot),
         omitted_actions=snapshot["omitted_actions"],
+        disabled=tuple(snapshot["disabled"]),
     )
 
 
@@ -601,9 +616,9 @@ class JevPage:
             focused = False
         if not focused:
             raise FieldUnfocused(_NOT_FOCUSED)
-        await self._type(session, text)
+        await self._type(session, typed_text(action, text))
         try:
-            return str(await self._evaluate(_VALUE.call(action["node"])))
+            return str(await self._evaluate(_VALUE.call(action)))
         except DocumentReplaced:
             # What was typed submitted the page (a line break pressed Enter): nothing left to read.
             return None

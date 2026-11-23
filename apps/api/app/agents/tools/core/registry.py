@@ -55,7 +55,7 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         self._extra_tools: dict[str, BaseTool] = {}
 
     def __getitem__(self, key: str) -> BaseTool:
-        # Check extra tools first (like handoff)
+        # Check extra tools first (like activate_integration)
         if key in self._extra_tools:
             return self._extra_tools[key]
         # Then check registry
@@ -84,7 +84,7 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         return key in self._extra_tools or key in self._registry._get_tool_dict_internal()
 
     def update(self, other: dict[str, BaseTool]) -> None:
-        """Add extra tools (like handoff) that aren't in the registry."""
+        """Add extra tools (like activate_integration) that aren't in the registry."""
         self._extra_tools.update(other)
 
     def values(self) -> ValuesView[BaseTool]:
@@ -356,6 +356,7 @@ class ToolRegistry:
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             account_tools,
+            artifact_tool,
             browser_tool,
             context_tool,
             desktop_tools,
@@ -416,6 +417,7 @@ class ToolRegistry:
                     "update_notification_settings",
                     "update_preferences",
                     "set_selected_voice",
+                    "set_briefing_schedule",
                 },
             ),
         )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)
@@ -543,7 +545,11 @@ class ToolRegistry:
         )
         self._add_category(
             "creative",
-            tools=[image_tool.generate_image, flowchart_tool.create_flowchart],
+            tools=[
+                image_tool.generate_image,
+                flowchart_tool.create_flowchart,
+                artifact_tool.create_artifact,
+            ],
             risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(

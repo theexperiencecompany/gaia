@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_execution_models import (
     WorkflowExecution,
     WorkflowExecutionDocument,
@@ -31,6 +32,7 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.validators import WorkflowValidator
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -53,6 +55,7 @@ def _make_workflow(
     if trigger_config is None:
         trigger_config = TriggerConfig(type=TriggerType.MANUAL)
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         user_id=USER_ID,
         title="Test Workflow",
         prompt="Execute test workflow",
@@ -432,6 +435,25 @@ class TestWorkflowQueueServiceExecution:
 
         args = mock_redis_pool.enqueue_job.call_args[0]
         assert args[2] == {}
+
+    @pytest.mark.parametrize(
+        ("defer_until", "queue_mode"),
+        [(None, "immediate"), (datetime(2026, 10, 2, 2, 30, tzinfo=UTC), "deferred")],
+    )
+    async def test_the_wide_event_says_whether_the_run_waits(
+        self, mock_redis_pool, defer_until: datetime | None, queue_mode: str
+    ) -> None:
+        mock_redis_pool.enqueue_job.return_value = MagicMock(job_id="job_q")
+
+        async with captured_wide_event() as event:
+            await WorkflowQueueService.queue_workflow_execution(
+                WORKFLOW_ID, USER_ID, defer_until=defer_until
+            )
+
+        assert (event["queue_mode"], event["defer_until"]) == (
+            queue_mode,
+            defer_until.isoformat() if defer_until else None,
+        )
 
     async def test_queue_execution_returns_false_on_exception(self, mock_redis_pool):
         mock_redis_pool.enqueue_job.side_effect = Exception("redis timeout")

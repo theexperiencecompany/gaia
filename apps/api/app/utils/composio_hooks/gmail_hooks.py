@@ -14,8 +14,6 @@ from typing import TypedDict, TypeVar
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 
 from app.agents.templates.mail_templates import (
-    detailed_message_template,
-    draft_template,
     process_get_thread_response,
     process_list_drafts_response,
 )
@@ -41,7 +39,6 @@ from app.models.integrations.composio_hooks import (
     JsonSchemaNode,
 )
 from app.models.integrations.gmail import (
-    GmailAttachmentData,
     GmailComposeArguments,
     GmailContactsData,
     GmailDraftCreatedData,
@@ -82,7 +79,6 @@ _GMAIL_BODY_KEYS = ("body", "message_body", "message")
 # Composio's names for the Gmail params the hooks read or rewrite.
 _IS_HTML_PARAM = "is_html"
 _SUBJECT_PARAM = "subject"
-_FORMAT_PARAM = "format"
 _USER_ID_PARAM = "user_id"
 _RECIPIENT_EMAIL_PARAM = "recipient_email"
 _TO_PARAM = "to"
@@ -139,14 +135,6 @@ class ContactsSummary(TypedDict):
 class PeopleSearchSummary(TypedDict):
     people: list[ContactSummary]
     result_count: int
-
-
-class AttachmentSummary(TypedDict):
-    attachmentId: str | None
-    filename: str | None
-    mimeType: str | None
-    size: int | None
-    message: str
 
 
 # The draft compose card, built before the tool runs but streamed after it, once
@@ -284,21 +272,6 @@ def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schem
     return schema
 
 
-@register_schema_modifier(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
-def gmail_fetch_message_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """Default GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID to format='full' for detailed content."""
-    input_params = JsonSchemaNode.parse(schema.input_parameters)
-    if input_params is None:
-        return schema
-
-    fmt = input_params.properties.get(_FORMAT_PARAM) if input_params.properties else None
-    if fmt is not None:
-        fmt.default = "full"
-        schema.input_parameters = input_params.as_schema()
-
-    return schema
-
-
 @register_schema_modifier(toolkits=["gmail"])
 def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """Strip user_id from every Gmail tool's agent-facing schema.
@@ -363,7 +336,7 @@ def _compose_recipient_ready(tool: str, arguments: dict[str, object]) -> bool:
 def _compose_recipients(tool: str, compose: GmailComposeArguments) -> list[str]:
     """Flatten the recipient set for the compose card, per tool."""
     if tool == "GMAIL_FORWARD_MESSAGE":
-        recipients = compose.to_recipients
+        recipients = compose.recipients
         return [recipients] if isinstance(recipients, str) else recipients
     extra_recipients = compose.extra_recipients
     if not isinstance(extra_recipients, list):
@@ -487,28 +460,6 @@ def gmail_create_draft_after_hook(
     return data
 
 
-@register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
-def gmail_message_detail_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> AfterHookResponse:
-    """Process single message response to minimize raw data."""
-    raw = ComposioToolResponse.model_validate(response).data
-    try:
-        if not isinstance(raw, dict) or "error" in raw:
-            return raw
-
-        # Transform raw message data to detailed but clean format
-        return detailed_message_template(raw)
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} Error in gmail_message_detail_after_hook",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return raw
-
-
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_THREAD_ID"])
 def gmail_thread_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
@@ -582,62 +533,6 @@ def gmail_drafts_after_hook(
         return raw
 
 
-@register_after_hook(tools=["GMAIL_GET_DRAFT"])
-def gmail_draft_detail_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> AfterHookResponse:
-    """Process single draft response to minimize raw data."""
-    raw = ComposioToolResponse.model_validate(response).data
-    try:
-        if not isinstance(raw, dict) or "error" in raw:
-            return raw
-
-        # Transform raw draft data to clean format
-        return draft_template(raw)
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} Error in gmail_draft_detail_after_hook",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return raw
-
-
-@register_after_hook(tools=["GMAIL_FETCH_ATTACHMENT"])
-def gmail_attachment_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> AfterHookResponse:
-    """Process attachment response to extract metadata only."""
-    result = ComposioToolResponse.model_validate(response)
-    # Composio's envelope types `data` as a plain Dict, but this endpoint has been
-    # observed returning a non-dict `data` (e.g. a bare string) on some error paths,
-    # so both branches below pass the raw value through unprocessed.
-    data = result.data
-    try:
-        # Extract only metadata, not the base64 content
-        if not isinstance(data, dict):
-            return data
-
-        attachment = GmailAttachmentData.model_validate(data)
-        summary: AttachmentSummary = {
-            "attachmentId": attachment.attachment_id,
-            "filename": attachment.filename,
-            "mimeType": attachment.mime_type,
-            "size": attachment.size,
-            "message": "Attachment content available but not displayed to preserve context",
-        }
-        return summary
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} Error in gmail_attachment_after_hook",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return data
-
-
 # ====================== PROGRESS HOOKS FOR OTHER OPERATIONS ======================
 
 
@@ -661,14 +556,14 @@ def gmail_send_draft_before_hook(
     return params
 
 
-@register_before_hook(tools=["GMAIL_TRASH_MESSAGE", "GMAIL_UNTRASH_MESSAGE"])
+@register_before_hook(tools=["GMAIL_MOVE_TO_TRASH", "GMAIL_UNTRASH_MESSAGE"])
 def gmail_trash_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
     """Handle message trash/untrash progress."""
     try:
         writer = current_stream_writer()
-        action = "Moving to trash" if tool == "GMAIL_TRASH_MESSAGE" else "Restoring from trash"
+        action = "Moving to trash" if tool == "GMAIL_MOVE_TO_TRASH" else "Restoring from trash"
 
         payload = {"progress": f"{action}..."}
         writer(payload)
@@ -868,28 +763,6 @@ def gmail_search_people_before_hook(
 
 
 # ====================== ADDITIONAL AFTER HOOKS FOR RESPONSE PROCESSING ======================
-
-
-@register_after_hook(tools=["GMAIL_FETCH_EMAIL_BY_ID"])
-def gmail_fetch_by_id_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> AfterHookResponse:
-    """Process single email fetch response to minimize raw data."""
-    raw = ComposioToolResponse.model_validate(response).data
-    try:
-        if not isinstance(raw, dict) or "error" in raw:
-            return raw
-
-        # Transform raw message data to detailed but clean format
-        return detailed_message_template(raw)
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.COMPOSIO} Error in gmail_fetch_by_id_after_hook",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return raw
 
 
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])

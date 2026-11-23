@@ -12,7 +12,7 @@ from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.composio_schemas.gmail import GmailMessageContent
+from app.models.composio_schemas.gmail import GmailAttachmentMetadata, GmailMessageContent
 from app.models.composio_schemas.google_people import (
     GoogleContactsResponseData,
     GooglePeopleSearchResponseData,
@@ -26,17 +26,6 @@ class GmailDraftCreatedData(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str | None = None
-
-
-class GmailAttachmentData(BaseModel):
-    """``GMAIL_FETCH_ATTACHMENT`` — the metadata kept for the LLM; the base64 body is dropped."""
-
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-
-    attachment_id: str | None = Field(default="", alias="attachmentId")
-    filename: str | None = ""
-    mime_type: str | None = Field(default="", alias="mimeType")
-    size: int | None = 0
 
 
 class GmailSentDraftMessage(BaseModel):
@@ -92,7 +81,7 @@ class GmailThreadData(BaseModel):
 
 
 class GmailDraftDetailData(BaseModel):
-    """A users.drafts resource: GMAIL_GET_DRAFT's data, or one GMAIL_LIST_DRAFTS entry."""
+    """A users.drafts resource: one GMAIL_LIST_DRAFTS entry."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -128,9 +117,6 @@ class GmailThreadMessageView(BaseModel):
     snippet: str | None = ""
     time: str | None = ""
     is_read: bool = Field(default=False, validation_alias="isRead", serialization_alias="isRead")
-    has_attachment: bool = Field(
-        default=False, validation_alias="hasAttachment", serialization_alias="hasAttachment"
-    )
     body: str | None = ""
     labels: list[str] = Field(default_factory=list)
     content: GmailMessageContent | None = Field(
@@ -151,17 +137,18 @@ class GmailThreadView(BaseModel):
 
 
 class GmailDraftMessageView(TypedDict):
-    """A draft's message as ``draft_template`` trims it; body is the plain text."""
+    """A draft's message as ``process_list_drafts_response`` trims it; body is the plain text."""
 
     to: str
     subject: str
     snippet: str
     body: str
     content: GmailMessageContent
+    attachments: list[GmailAttachmentMetadata]
 
 
 class GmailDraftView(TypedDict):
-    """``draft_template``'s output."""
+    """One draft in ``process_list_drafts_response``'s output."""
 
     id: str
     message: GmailDraftMessageView
@@ -180,11 +167,11 @@ class GmailComposeArguments(BaseModel):
 
     Covers ``GMAIL_SEND_EMAIL``, ``GMAIL_CREATE_EMAIL_DRAFT``,
     ``GMAIL_REPLY_TO_THREAD`` and ``GMAIL_FORWARD_MESSAGE``: ``recipient_email`` /
-    ``extra_recipients`` name the compose recipients, ``to_recipients`` the
+    ``extra_recipients`` name the compose recipients, ``recipients`` the
     forward ones, and ``to`` is the field agents reach for instead of
     ``recipient_email`` (the hook maps it across). Every value may be null — the
     agent decides what it sends — and a string where a list belongs is tolerated
-    the way the card always did (``to_recipients`` wraps it, ``extra_recipients``
+    the way the card always did (``recipients`` wraps it, ``extra_recipients``
     drops it).
     """
 
@@ -193,7 +180,7 @@ class GmailComposeArguments(BaseModel):
     recipient_email: str | None = ""
     to: str | list[str] | None = None
     extra_recipients: list[str] | str | None = Field(default_factory=list)
-    to_recipients: list[str] | str | None = Field(default_factory=list)
+    recipients: list[str] | str | None = Field(default_factory=list)
     cc: list[str] | str | None = Field(default_factory=list)
     bcc: list[str] | str | None = Field(default_factory=list)
     subject: str | None = ""

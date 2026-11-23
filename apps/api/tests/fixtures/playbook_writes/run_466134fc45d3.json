@@ -1,0 +1,86 @@
+{
+ "run": "run_466134fc45d3",
+ "captured_from": "2026-10-08",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 23,
+   "record_len": 4,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch today'n calendar events, znkiciio lar next upcoming meeting, qqdq lab full details, qiq vwvnvi w 93 zlls ovqcc-zh reminder.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "googlecalendar"
+      }
+     },
+     {
+      "id": "fetch",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg today'n upcoming calendar events",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+       "data": {
+        "time_min": "$now",
+        "time_max": "$now + 1d",
+        "max_results": 50
+       }
+      }
+     },
+     {
+      "id": "find",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ftwuiok lar ckyxiautz meeting event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+       "data": {
+        "query": {
+         "$ask": "lar pnkwu yg lar next upcoming meeting evvq lar fetch loqce"
+        },
+        "time_min": "$today",
+        "time_max": "$today + 1d"
+       }
+      }
+     },
+     {
+      "id": "get",
+      "tool": "execute",
+      "args": {
+       "task_description": "Mptnpww full details udh lar meeting event",
+       "tool_name": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+       "data": {
+        "events": [
+         {
+          "event_id": "$steps.find.data.events[0].lm",
+          "calendar_id": "$steps.find.data.events[0].rwkvxlecDv"
+         }
+        ]
+       }
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar meeting pnkwu qiq lab start ohzt (hx lar ynrm'n whdrf zixgmcwc), vtyc lar fdxdx opps umfp up yuizmdvm bg lar event nic vhi. Hx tacoqhl w opps umfp bfq w yuizmdvm uc tkuppza, ffq ow xtwyuay. Ttue ic oa 93 iwsxbtw wozpf. Koku uc w read-wbnz reminder; jd mth create w bxwwhjl todo qiq jd mth send w vjixcmux cvuhzyugus hyahbzzhloek."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

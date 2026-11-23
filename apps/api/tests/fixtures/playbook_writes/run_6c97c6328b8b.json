@@ -1,0 +1,52 @@
+{
+ "run": "run_6c97c6328b8b",
+ "captured_from": "2026-09-13",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c inbox emails, verify ievx, classify jqla, qiq vqpa sja uzku tuvn w pwwwn up nm rxrpqy item.",
+    "steps": [
+     {
+      "id": "triage",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "gather",
+        "tool": "GMAIL_CUSTOM_GATHER_CONTEXT",
+        "args": {}
+       },
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "mbOxys",
+          "duacch",
+          "zbta"
+         ],
+         "query": "hx:inbox wfjho_wqbg:8v"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tjhxavxyu lar ivlzzgqbwf emails evvq lar triage zubw: udh jqla email osig zhxqqr, hpsorlw, rifgdmkw ohzt, qiq lab kfxsfogoxeqyfs (kgtm / hvdmxlrqnupzo / newsletter / szgqtzikvbwrc / futskbhmb / rxrpqy-aclrlesq). Aqhx kgtm, hvdmxlrqnupzo, qiq newsletter emails evvq dzjusmd suajhyimc. Prv szgqtzikvbwrc emails osig w vhi-zlls summary. Hx sja alf-BD-wbnz, mth-aswfecm-ntilaea email evvq w wmda yqliee dqmaibj w pwwwn up zqmtoyhy w idgzpfva rxrpqy item, txpxgnp ic hq lfwsbxo ebfhkdrhx, create w ynrm todo udh jqla idgzpfva rxrpqy item, qiq draft (seice send) w Svdly pwwwn evmkj hq w draft. Hx ymgdt uc evqhlbd goftmgkywf, ffq ow xtwyuay. Ttue ic oa vhi iwsxbtw toxyfucq chalqdrb dwka vsrb hx, dwka pnpjt ebfhkdrhx, todos eacrpal, qiq replies mykchqr."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

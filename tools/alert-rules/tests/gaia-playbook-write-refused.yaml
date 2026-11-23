@@ -1,0 +1,70 @@
+# gaia-playbook-write-refused — fires on the first write_playbook call refused or
+# raised in the last hour.
+#
+# The series come from app/services/workflow/playbook/metrics.py, cross-registered
+# on the worker's REGISTRY (app/workers/metrics.py), and every write refusal
+# series exists at 0 from import: a local worker's /metrics was scraped to
+# confirm the names and labels match the selector here.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-playbook-write-refused fires on the first refusal
+    interval: 1m
+    input_series:
+      - series: 'gaia_playbook_decision_total{tool="write",outcome="refused",reason="empty_result"}'
+        values: '0x20 1x10'
+      - series: 'gaia_playbook_decision_total{tool="write",outcome="accepted",reason="none"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: gaia-playbook-write-refused
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                A workflow run asked to freeze its calls as a playbook was told no, so that workflow keeps reasoning every fire from scratch at full model cost instead of replaying. Users see nothing: the run's own result is delivered either way. The reason label says why (not_in_record, empty_result, time_layout, malformed, ... or outcome="error" for a crash); the runbook has the query and how to pull the attempt.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-playbook-write-refused
+
+  - name: gaia-playbook-write-refused fires when a write raised
+    interval: 1m
+    input_series:
+      - series: 'gaia_playbook_decision_total{tool="write",outcome="error",reason="none"}'
+        values: '0x20 1x10'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: gaia-playbook-write-refused
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                A workflow run asked to freeze its calls as a playbook was told no, so that workflow keeps reasoning every fire from scratch at full model cost instead of replaying. Users see nothing: the run's own result is delivered either way. The reason label says why (not_in_record, empty_result, time_layout, malformed, ... or outcome="error" for a crash); the runbook has the query and how to pull the attempt.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-playbook-write-refused
+
+  - name: gaia-playbook-write-refused stays quiet while every write is accepted and declines are refused
+    interval: 1m
+    input_series:
+      - series: 'gaia_playbook_decision_total{tool="write",outcome="refused",reason="empty_result"}'
+        values: '0x30'
+      - series: 'gaia_playbook_decision_total{tool="write",outcome="accepted",reason="none"}'
+        values: '0+1x30'
+      - series: 'gaia_playbook_decision_total{tool="decline",outcome="refused",reason="no_work_today"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-playbook-write-refused
+        exp_alerts: []
+
+  - name: gaia-playbook-write-refused resolves an hour after the last refusal
+    interval: 1m
+    input_series:
+      - series: 'gaia_playbook_decision_total{tool="write",outcome="refused",reason="empty_result"}'
+        values: '0x5 1x120'
+    alert_rule_test:
+      - eval_time: 120m
+        alertname: gaia-playbook-write-refused
+        exp_alerts: []

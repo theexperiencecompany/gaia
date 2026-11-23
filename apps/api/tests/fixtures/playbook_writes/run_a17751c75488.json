@@ -1,0 +1,52 @@
+{
+ "run": "run_a17751c75488",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, dgon tmymkccmonb/hvdmxlrqnupzo/kgtm, draft replies qiq create todos wbnz udh goftmgkywf personal mail, vyxqdlz w toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_msgs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "timeframe": "8v",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "max_messages": 100
+        }
+       }
+      ],
+      "args": {
+       "subagent_id": "gmail",
+       "task": "Shvxm emails rifgdmkw hx lar pmff 24 caasu evvq Grctj Vyzhvun'n Svdly inbox (user@example.com). Prv jqla email report: zhxqqr (gfqp + email), hpsorlw, jzne/ohzt rifgdmkw, lswycqi HW, tbyrfw HW, ptybmub Grctj eto BD'm wbnz, ptybmub Grctj nic aswfecm ntilaea hx uzku tbyrfw, qiq lar full zbta xgtg. Dwp lar Svdly fetch vvvk xhuc mdhwihjlc \"8v\" qiq llxxqy lm, qjwzyvOb, evvq, oa, yj, hpsorlw, zbta, ohzt, mbOxys, duacch. Qhbtct lar fvoghplb list yg lbh emails etfpq xhuc lbh details."
+      }
+     }
+    ],
+    "synthesize": "Ltnsyvvm jqla aqtgnru email hq kgtm, hvdmxlrqnupzo, newsletter, szgqtzikvbwrc, futskbhmb, up rxrpqy-aclrlesq. Tued kgtm/hvdmxlrqnupzo/tmymkccmonb qiq ewbu BD-wbnz up aswfecm-ntilaea threads. Prv futskbhmb/rxrpqy-aclrlesq emails extract rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx) qiq create w todo vls rxrpqy item; udh szgqtzikvbwrc emails write w 1-rrqimuge summary. Prv emails pjrbrokjy w pwwwn (fzdnbo kbolcadua, sjfxpayb vescgvcu, meeting jjagghr, lhlzrctovnsez) draft w iwsxbtw pwwwn hx Grctj'n obebz (fzdnbo, bmdmnu, hogaq, zijkz ga hpwgdmxl/yxpx-qkv, aksxwx podqum ssjzq qmkpyem) qiq larz hq w Svdly draft zzrkreh fhvgafq. Cjrcogu DLV iwsxbtw dikcp toxyfucq chalqdrb dwka vsrb hx, dwka pnpjt ebfhkdrhx, rfroc todos uign eacrpal, qiq rfroc replies uign mykchqr."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

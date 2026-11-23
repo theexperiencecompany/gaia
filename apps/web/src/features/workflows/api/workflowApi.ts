@@ -3,7 +3,10 @@
  * Provides functions to interact with the workflow backend API.
  */
 
-import type { GenerateWorkflowPromptRequest } from "@shared/api/generated";
+import type {
+  GenerateWorkflowPromptRequest,
+  UpdateWorkflowRequest,
+} from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 import type {
   CommunityWorkflow,
@@ -47,20 +50,7 @@ export const workflowApi = {
     }),
 
   // Update a workflow
-  updateWorkflow: (
-    workflowId: string,
-    updates: {
-      title?: string;
-      description?: string;
-      prompt?: string;
-      icon?: string | null;
-      icon_color?: string | null;
-      trigger_config?: CreateWorkflowRequest["trigger_config"];
-      activated?: boolean;
-      notify_on_completion?: boolean;
-      integration_ids?: string[];
-    },
-  ) =>
+  updateWorkflow: (workflowId: string, updates: UpdateWorkflowRequest) =>
     api.put("/api/v1/workflows/{workflow_id}", {
       path: { workflow_id: workflowId },
       body: updates,

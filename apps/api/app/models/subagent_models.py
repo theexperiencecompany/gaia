@@ -1,12 +1,11 @@
 """Subagent identity model.
 
-A `Subagent` is the canonical handle for a delegated agent: an OAuth
-integration's subagent_config, or a built-in subagent registered in
+A `Subagent` is the canonical handle for an integration the executor activates:
+an OAuth integration's subagent_config, or a built-in one registered in
 `agents/core/subagents/builtin_subagents.py`.
 
 Lookup keys are `id` and `short_name` (user-facing). The `config.agent_name`
-field lives in a separate key space — that's the name registered with
-`providers.aget(agent_name)` in the lazy provider system.
+field lives in a separate key space: the skill catalog and activation key on it.
 """
 
 from dataclasses import dataclass

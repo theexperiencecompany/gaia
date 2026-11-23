@@ -19,10 +19,10 @@ async def ensure_app_registered() -> None:
     async with _lock:
         if _registered:
             return
-        from app.core.provider_registration import register_lazy_providers
+        from app.core.provider_registration import boot_process
         from app.db.redis import redis_cache
         from app.helpers.lifespan_helpers import init_mongodb_async
 
-        register_lazy_providers("arq_worker")
+        boot_process("arq_worker")
         await asyncio.gather(init_mongodb_async(), redis_cache.verify_connection())
         _registered = True

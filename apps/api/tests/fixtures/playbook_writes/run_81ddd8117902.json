@@ -1,0 +1,129 @@
+{
+ "run": "run_81ddd8117902",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, draft replies (seice send), create todos udh rxrpqy emrwk, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "GMAIL_FETCH_MESSAGES",
+      "args": {
+       "query": "wfjho_wqbg:8v",
+       "fields": [
+        "lm",
+        "qjwzyvOb",
+        "evvq",
+        "oa",
+        "yj",
+        "hpsorlw",
+        "zbta",
+        "ohzt",
+        "duacch"
+       ],
+       "max_messages": 100
+      }
+     },
+     {
+      "id": "drafts",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": {
+          "$ask": "zhxqqr email yg lar email uzku dqmaibj w pwwwn"
+         },
+         "subject": {
+          "$ask": "Ag: <txyfpmhc hpsorlw>"
+         },
+         "body": {
+          "$ask": "iwsxbtw aognijtpsuov pwwwn ymbncago txyfpmhc purw"
+         },
+         "thread_id": {
+          "$ask": "tbyrfw lm yg lar email oa pwwwn oa"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tshl xhuc lar aqtgnru email dmqo zxpyln (zhxqqr, hpsorlw, zbta) vls lar ynrm'n sbwitmxqej, vtyc classify jqla hq kgtm/hvdmxlrqnupzo/newsletter/szgqtzikvbwrc/futskbhmb/rxrpqy-aclrlesq. Apudw rfroc uign hsuyioc (kgtm/hvdmxlrqnupzo/newsletter), rfroc szgqtzikvbwrc emails dbn w 1-rrqimuge summary, rfroc replies uign mykchqr (xhuc draft vbm, seice sent), qiq rfroc todos uign eacrpal udh rxrpqy emrwk. Hx lar ihjp-plan dikcp wsvme lbqyq ayhogju lar rui, report uzku xtwyuay."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_CREATE_EMAIL_DRAFT; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 12,
+   "record_len": 2,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, draft replies (seice send), create todos udh rxrpqy emrwk, vyxqdlz toxyfucq.",
+    "result_brief": "Tshl xhuc lar aqtgnru email dmqo zxpyln (zhxqqr, hpsorlw, zbta) vls lar ynrm'n sbwitmxqej, vtyc classify jqla hq kgtm/hvdmxlrqnupzo/newsletter/szgqtzikvbwrc/futskbhmb/rxrpqy-aclrlesq. Apudw rfroc uign hsuyioc (kgtm/hvdmxlrqnupzo/newsletter), rfroc szgqtzikvbwrc emails dbn w 1-rrqimuge summary, rfroc replies uign mykchqr (xhuc draft vbm, seice sent), qiq rfroc todos uign eacrpal udh rxrpqy emrwk. Hx lar ihjp-plan dikcp wsvme lbqyq ayhogju lar rui, report uzku xtwyuay.",
+    "steps": [
+     {
+      "args": {
+       "fields": [
+        "lm",
+        "qjwzyvOb",
+        "evvq",
+        "oa",
+        "yj",
+        "hpsorlw",
+        "zbta",
+        "ohzt",
+        "duacch"
+       ],
+       "max_messages": 100,
+       "query": "ssjzq:$today"
+      },
+      "id": "fetch",
+      "tool": "GMAIL_FETCH_MESSAGES"
+     },
+     {
+      "handoff": "gmail",
+      "id": "drafts",
+      "steps": [
+       {
+        "args": {
+         "body": {
+          "$ask": "iwsxbtw aognijtpsuov pwwwn ymbncago txyfpmhc purw"
+         },
+         "recipient_email": {
+          "$ask": "zhxqqr email yg lar email uzku dqmaibj w pwwwn"
+         },
+         "subject": {
+          "$ask": "Ag: <txyfpmhc hpsorlw>"
+         },
+         "thread_id": {
+          "$ask": "tbyrfw lm yg lar email oa pwwwn oa"
+         }
+        },
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_CREATE_EMAIL_DRAFT; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

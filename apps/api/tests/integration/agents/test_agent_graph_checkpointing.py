@@ -36,12 +36,12 @@ from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.constants.general import FINISH_TASK_NAME
 from app.models.integration_models import UserIntegrationCapabilities
-from app.override.langgraph_bigtool.create_agent import (
+from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
     ToolRetrievalConfig,
-    create_agent,
 )
+from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import (
     create_fake_llm,
@@ -52,14 +52,9 @@ POSTGRES_TEST_URL = os.environ.get(
     "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/gaia_test"
 )
 
-# The hooks build_comms_graph declares, in run order. executor_status_hook
-# must stay before manage_system_prompts_node so the status frame lands inside
-# the system block (Gemini drops trailing system messages).
-COMMS_PRE_MODEL_HOOKS = [
-    "filter_messages_node",
-    "executor_status_hook",
-    "manage_system_prompts_node",
-]
+# The hooks build_comms_graph declares, in run order. manage_system_prompts_node
+# runs last so the request it builds is the one the model sees.
+COMMS_PRE_MODEL_HOOKS = ["filter_messages_node", "manage_system_prompts_node"]
 COMMS_END_GRAPH_HOOKS = ["follow_up_actions_node", "memory_node"]
 COMMS_HOOKS = COMMS_PRE_MODEL_HOOKS + COMMS_END_GRAPH_HOOKS
 

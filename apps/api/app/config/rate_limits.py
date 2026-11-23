@@ -4,6 +4,7 @@ Limits are enforced across daily and monthly periods; either being exceeded
 rejects the request with a 429.
 """
 
+from calendar import monthrange
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
@@ -14,6 +15,10 @@ from app.constants.llm import (
     FREE_PER_REQUEST_TOKEN_CEILING,
     PRO_DAILY_COST_BUDGET_USD,
     PRO_PER_REQUEST_TOKEN_CEILING,
+)
+from app.constants.openui_artifacts import (
+    ARTIFACT_CREATION_DAILY_CAP,
+    ARTIFACT_CREATION_MONTHLY_CAP,
 )
 from app.constants.platform_links import PLATFORM_LINK_CODE_FEATURE_KEY
 from app.models.payment_models import PlanType
@@ -317,6 +322,14 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
         info=FeatureInfo(title="Flowchart Creation", description="Create flowcharts and diagrams"),
     ),
+    # GAIA is paid-only, so the plan's cap is the one limit: an abuse ceiling, not a quota.
+    "artifact_creation": TieredRateLimits(
+        pro=RateLimitConfig(day=ARTIFACT_CREATION_DAILY_CAP, month=ARTIFACT_CREATION_MONTHLY_CAP),
+        info=FeatureInfo(
+            title="Artifact Creation",
+            description="Create reports, dashboards, plans and other artifacts",
+        ),
+    ),
     # BROWSER AUTOMATION (Heaviest: a real browser + vision model per task)
     "browser_task": TieredRateLimits(
         free=RateLimitConfig(day=2, month=10),
@@ -428,6 +441,29 @@ def get_reset_time(period: RateLimitPeriod) -> datetime:
             microsecond=0,
         )
     return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _billing_instant(year: int, month: int, billing_day: int) -> datetime:
+    """Midnight UTC of billing_day in that month, clamped to the month's last day."""
+    return datetime(year, month, min(billing_day, monthrange(year, month)[1]), tzinfo=UTC)
+
+
+def billing_month_window(billing_day: int | None, now: datetime) -> tuple[str, datetime]:
+    """Return the Pro allowance month's Redis window key and reset instant.
+
+    The month runs billing day to billing day (yearly plans too); without a
+    billing day it is the calendar month.
+    """
+    next_year, next_month = (now.year + 1, 1) if now.month == 12 else (now.year, now.month + 1)
+    if billing_day is None:
+        return now.strftime("%Y%m"), datetime(next_year, next_month, 1, tzinfo=UTC)
+    this_month = _billing_instant(now.year, now.month, billing_day)
+    prev_year, prev_month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+    if now >= this_month:
+        start, reset = this_month, _billing_instant(next_year, next_month, billing_day)
+    else:
+        start, reset = _billing_instant(prev_year, prev_month, billing_day), this_month
+    return start.strftime("%Y%m%d"), reset
 
 
 def get_time_window_key(period: RateLimitPeriod) -> str:

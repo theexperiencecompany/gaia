@@ -10,11 +10,14 @@ from __future__ import annotations
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import boto3
 import fakeredis
 from PIL import Image
 import pytest
 
+from app.config.settings import settings
 from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY
+from app.db.redis import redis_cache
 from app.services.browser import screenshots as shots, shot_store
 from tests.helpers import captured_wide_event
 
@@ -38,14 +41,14 @@ def _clear_r2_client_cache():
 def r2(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every R2 setting present, so frames go to the bucket."""
     for name, value in _R2_SETTINGS.items():
-        monkeypatch.setattr(shots.settings, name, value)
-    monkeypatch.setattr(shots.settings, "R2_BUCKET", "b")
+        monkeypatch.setattr(settings, name, value)
+    monkeypatch.setattr(settings, "R2_BUCKET", "b")
 
 
 @pytest.fixture
 def no_r2(monkeypatch: pytest.MonkeyPatch) -> None:
     """No object store configured, so frames go to Redis."""
-    monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", None)
+    monkeypatch.setattr(settings, "R2_PUBLIC_BASE_URL", None)
 
 
 def _frame_fields(event: dict[str, object]) -> dict[str, object]:
@@ -65,16 +68,14 @@ def redis_backend(
     monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> fakeredis.aioredis.FakeRedis:
     """Give the Redis backend a per-test store and a link base."""
-    monkeypatch.setattr(
-        "app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL", "https://browser.test"
-    )
+    monkeypatch.setattr("app.services.browser.links.settings.HOST", "https://browser.test")
     return fake_redis
 
 
 @pytest.fixture
 def no_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     """Redis down: the cache takes no write."""
-    monkeypatch.setattr(shot_store.redis_cache, "redis", None)
+    monkeypatch.setattr(redis_cache, "redis", None)
 
 
 async def _read_back(url: str, index: int) -> bytes | None:
@@ -94,12 +95,12 @@ class TestR2PublicBase:
 
     @pytest.mark.parametrize("field", list(_R2_SETTINGS))
     def test_any_missing_means_no_bucket(self, r2, monkeypatch, field):
-        monkeypatch.setattr(shots.settings, field, None)
+        monkeypatch.setattr(settings, field, None)
         assert shots._r2_public_base() is None
 
     def test_a_trailing_slash_on_the_base_never_doubles_in_a_frame_url(self, r2, monkeypatch):
         # A path-prefixed public base; only the slash after it goes, never the path's own tail.
-        monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", "https://cdn.example.com/GAIA-X/")
+        monkeypatch.setattr(settings, "R2_PUBLIC_BASE_URL", "https://cdn.example.com/GAIA-X/")
         assert shots._r2_public_base() == "https://cdn.example.com/GAIA-X"
 
 
@@ -111,13 +112,13 @@ class TestR2PublicBase:
 @pytest.mark.unit
 class TestR2Client:
     def test_creates_boto3_client_with_correct_args(self, monkeypatch):
-        monkeypatch.setattr(shots.settings, "CLOUDFLARE_ACCOUNT_ID", "acct123")
-        monkeypatch.setattr(shots.settings, "R2_ACCESS_KEY_ID", "akid")
-        monkeypatch.setattr(shots.settings, "R2_SECRET_ACCESS_KEY", "s3cr3t")
-        monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+        monkeypatch.setattr(settings, "CLOUDFLARE_ACCOUNT_ID", "acct123")
+        monkeypatch.setattr(settings, "R2_ACCESS_KEY_ID", "akid")
+        monkeypatch.setattr(settings, "R2_SECRET_ACCESS_KEY", "s3cr3t")
+        monkeypatch.setattr(settings, "R2_PUBLIC_BASE_URL", "https://cdn.example.com")
 
         mock_client = MagicMock()
-        with patch.object(shots.boto3, "client", return_value=mock_client) as mock_boto:
+        with patch.object(boto3, "client", return_value=mock_client) as mock_boto:
             result = shots._r2_client()
             assert result is mock_client
             mock_boto.assert_called_once()
@@ -144,7 +145,7 @@ class TestR2Client:
 @pytest.mark.unit
 class TestPut:
     def test_put_stores_the_frame_as_a_jpeg(self, monkeypatch):
-        monkeypatch.setattr(shots.settings, "R2_BUCKET", "my-bucket")
+        monkeypatch.setattr(settings, "R2_BUCKET", "my-bucket")
         fake_client = MagicMock()
         with patch.object(shots, "_r2_client", return_value=fake_client):
             shots._put(b"jpegbytes", "browser_steps/c1/step_1.jpg")
@@ -167,13 +168,13 @@ class TestPublishStepScreenshot:
         result = await shots.publish_step_screenshot(b"jpegbytes", "conv1", 1)
 
         assert result is not None
-        assert result.startswith("https://browser.test/shots/")
+        assert result.startswith("https://browser.test/api/v1/browser/shots/")
         assert result.endswith("/1.jpg")
         assert await _read_back(result, 1) == b"jpegbytes"
 
     async def test_success_returns_public_url(self, monkeypatch):
         for name, value in _R2_SETTINGS.items():
-            monkeypatch.setattr(shots.settings, name, value)
+            monkeypatch.setattr(settings, name, value)
         mock_to_thread = AsyncMock(return_value=None)
         with patch.object(shots.asyncio, "to_thread", mock_to_thread):
             result = await shots.publish_step_screenshot(b"jpegdata", "conv-abc", 3)

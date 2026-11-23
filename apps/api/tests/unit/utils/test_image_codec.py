@@ -8,7 +8,9 @@ decode is assumed to fail late.
 
 import base64
 import io
+import struct
 from typing import Any
+import zlib
 
 from PIL import Image
 import pytest
@@ -17,6 +19,7 @@ from app.constants.media import (
     DOWNSCALE_LONGEST_EDGE,
     JPEG_MIME,
     MAX_IMAGE_FILE_BYTES,
+    MAX_IMAGE_PIXELS,
     PNG_MIME,
     TARGET_INLINE_IMAGE_BYTES,
     WEBP_MIME,
@@ -205,3 +208,35 @@ class TestMimeForPathAndBlock:
         assert block["mime_type"] == PNG_MIME
         assert block["base64"] == inline.base64
         assert Image.open(io.BytesIO(base64.b64decode(block["base64"]))).format == "PNG"
+
+
+def _blank_png(width: int, height: int) -> bytes:
+    """Build a 1-bit width x height PNG by hand: tiny on disk, its header all probe reads."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        crc = struct.pack(">I", zlib.crc32(kind + data))
+        return struct.pack(">I", len(data)) + kind + data + crc
+
+    rows = (b"\x00" * (1 + (width + 7) // 8)) * height
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 1, 0, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+class TestProbe:
+    def test_an_image_at_the_pixel_budget_passes(self) -> None:
+        width, height = 5_000, MAX_IMAGE_PIXELS // 5_000
+        assert width * height == MAX_IMAGE_PIXELS
+        assert ImageCodec.probe(_blank_png(width, height)) == ("image/png", (width, height))
+
+    def test_one_row_past_the_budget_is_refused_naming_its_size(self) -> None:
+        width, height = 4_000, MAX_IMAGE_PIXELS // 4_000 + 1
+        with pytest.raises(InvalidImageError) as refused:
+            ImageCodec.probe(_blank_png(width, height))
+        assert str(refused.value) == (
+            f"image is {width}x{height} ({width * height} pixels); "
+            f"exceeds the {MAX_IMAGE_PIXELS}-pixel limit"
+        )

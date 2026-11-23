@@ -10,7 +10,7 @@ falls back to reading through the sandbox so file reads still work.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated
 
 from e2b import AsyncSandbox, NotFoundException
 from langchain_core.runnables.config import RunnableConfig
@@ -37,7 +37,7 @@ from app.services.storage.juicefs import (
 )
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
 from app.utils.image_codec import ImageCodec, InvalidImageError
-from app.utils.multimodal import text_content_block
+from app.utils.multimodal import ContentBlock, text_content_block
 from shared.py.wide_events import log
 
 DEFAULT_LIMIT = 2000
@@ -45,6 +45,9 @@ MAX_LIMIT = 10_000
 # Native-dev sandbox-read fallback slurps the whole file into memory (no
 # server-side range read), so cap it to avoid OOMing the worker on a huge file.
 MAX_SANDBOX_READ_BYTES = 10 * 1024 * 1024  # 10 MB
+# A page also stops at this many characters (about 25k tokens): a line can be a
+# whole record, and 400 JSONL lines of email came back as 1.2M characters.
+MAX_READ_OUTPUT_CHARS = 100_000
 
 
 @dataclass(frozen=True)
@@ -67,7 +70,7 @@ class ReadPage:
 
 async def _read_special(
     target: ReadTarget, page: ReadPage, mime_type: str | None
-) -> str | list[dict[str, Any]] | None:
+) -> str | list[ContentBlock] | None:
     """Serve image, in-memory system, and todo-document files.
 
     Returns the tool result when handled, else None so the caller falls
@@ -116,7 +119,7 @@ async def read(
     path: Annotated[str, "Path inside the workspace (relative = session scratch)"],
     offset: Annotated[int, "Starting line (1-indexed); 0 = start of file"] = 0,
     limit: Annotated[int, "Max lines to return"] = DEFAULT_LIMIT,
-) -> str | list[dict[str, Any]]:
+) -> str | list[ContentBlock]:
     """Read a file from the persistent workspace."""
 
     log.set(tool={"name": "read", "action": "read"})
@@ -173,7 +176,7 @@ async def _read_image(
     abs_path: str,
     mime_type: str,
     session_id: str | None,
-) -> str | list[dict[str, Any]]:
+) -> str | list[ContentBlock]:
     """Read an image file and return it as inline content blocks.
 
     Always returns the pixels. Fitting them to the active lane — actual image, or
@@ -255,6 +258,26 @@ def _format_text_read(
     return _format_read(abs_path, sliced, len(all_lines), offset, limit, session_id)
 
 
+def _within_output_cap(numbered: list[str]) -> tuple[list[str], bool]:
+    """The leading numbered lines within MAX_READ_OUTPUT_CHARS, and whether any were held back.
+
+    A first line longer than the cap is cut, so a page always advances.
+    """
+    kept: list[str] = []
+    used = 0
+    for entry in numbered:
+        if used + len(entry) > MAX_READ_OUTPUT_CHARS:
+            if not kept:
+                kept.append(
+                    f"{entry[:MAX_READ_OUTPUT_CHARS]} ...[line cut: the rest of this line is not "
+                    "shown; use grep or query_json for it]"
+                )
+            return kept, True
+        kept.append(entry)
+        used += len(entry) + 1
+    return kept, False
+
+
 def _format_read(
     abs_path: str,
     lines: list[str],
@@ -263,12 +286,24 @@ def _format_read(
     limit: int,
     session_id: str | None,
 ) -> str:
-    """Number the sliced lines and append a paging footer (shared by both paths)."""
+    """Number the sliced lines, stop at MAX_READ_OUTPUT_CHARS, and append a paging footer."""
     start, end = page_bounds(offset, limit)
-    numbered = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(lines))
+    shown, capped = _within_output_cap([f"{start + i:>6}\t{line}" for i, line in enumerate(lines)])
+    numbered = "\n".join(shown)
 
     footer = ""
-    if total_lines > end:
+    if capped:
+        last = start + len(shown) - 1
+        more = (
+            f"call again with offset={last + 1} for more"
+            if last < total_lines
+            else "no lines follow"
+        )
+        footer = (
+            f"\n\n... [showing lines {start}-{last} of {total_lines}, output capped at "
+            f"{MAX_READ_OUTPUT_CHARS} characters; {more}]"
+        )
+    elif total_lines > end:
         footer = (
             f"\n\n... [showing lines {start}-{min(end, total_lines)} of "
             f"{total_lines}; call again with offset={end + 1} for more]"
@@ -279,7 +314,7 @@ def _format_read(
             "file_data": {
                 "operation": "read",
                 "path": abs_path,
-                "lines_returned": len(lines),
+                "lines_returned": len(shown),
             }
         },
         session_id=session_id,

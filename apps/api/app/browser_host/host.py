@@ -29,7 +29,12 @@ from app.browser_host.cdp_mux import (
     cdp_attach,
     cdp_call,
 )
-from app.browser_host.engine import Engine, launch_engine, resolve_chromium_path
+from app.browser_host.engine import (
+    ChromiumBinary,
+    Engine,
+    launch_engine,
+    resolve_chromium_binary,
+)
 from app.browser_host.memory import memory_usage_mb
 from app.browser_host.metrics import SessionMetrics
 from app.browser_host.storage import dump_storage_state, seed_storage_state
@@ -112,9 +117,9 @@ class EngineUnresponsiveError(RuntimeError):
     """Raised when no engine serves, or it does not answer on its root connection in time."""
 
 
-#: Starts an engine of a kind on a binary with a User-Agent, returning it and the UA it learned.
+#: Starts an engine of a kind on a binary (None for Obscura) with a User-Agent, returning it and the UA it learned.
 LaunchEngine = Callable[
-    [BrowserEngine, str | None, str | None], Awaitable[tuple[Engine, str | None]]
+    [BrowserEngine, ChromiumBinary | None, str | None], Awaitable[tuple[Engine, str | None]]
 ]
 #: Opens a connection to an engine's root websocket URL.
 ConnectEngine = Callable[[str], CdpMux]
@@ -139,7 +144,7 @@ class BrowserHost:
         self._connect = connect
         self._memory = memory
         self.failed = False
-        self._chromium_path: str | None = None
+        self._chromium: ChromiumBinary | None = None
         # Chromium's own User-Agent without the headless marker, learned on its first launch.
         self._user_agent: str | None = None
         self._engine: Engine | None = None
@@ -162,7 +167,7 @@ class BrowserHost:
     async def start(self) -> None:
         """Resolve the binary, launch the engine and start supervising it."""
         if browser_host_settings.BROWSER_ENGINE is not BrowserEngine.OBSCURA:
-            self._chromium_path = await asyncio.to_thread(resolve_chromium_path)
+            self._chromium = await asyncio.to_thread(resolve_chromium_binary)
         self._engine = await self._launch()
         log.info(f"{LogTag.BROWSER} browser host started")
 
@@ -497,7 +502,7 @@ class BrowserHost:
 
     async def _launch(self) -> Engine:
         engine, self._user_agent = await self._launch_engine(
-            browser_host_settings.BROWSER_ENGINE, self._chromium_path, self._user_agent
+            browser_host_settings.BROWSER_ENGINE, self._chromium, self._user_agent
         )
         self._supervisors[engine] = asyncio.create_task(self._supervise(engine))
         return engine

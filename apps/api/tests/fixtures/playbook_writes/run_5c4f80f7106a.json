@@ -1,0 +1,221 @@
+{
+ "run": "run_5c4f80f7106a",
+ "captured_from": "2026-09-10",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "KUBXGR Sclrxea Nldhtebjv Cbswsimi: gather today'n calendar events qiq Rbwxszg pdisnlvcqy, vyxqdlz w fzdnbo Bdbzna toxyfucq, qiq email ic oa user@example.com.",
+    "steps": [
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com",
+          "user@example.com",
+          "cq.ydvppy#user@example.com"
+         ],
+         "time_min": "$today",
+         "time_max": "$today + 1d",
+         "max_results": 100
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos",
+      "handoff": "todoist",
+      "steps": [
+       {
+        "tool": "TODOIST_GET_ALL_TASKS",
+        "args": {}
+       }
+      ]
+     },
+     {
+      "id": "email",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": "user@example.com",
+         "subject": "KUBXGR Sclrxea Nldhtebjv Cbswsimi - $today",
+         "body": {
+          "$ask": "Pypvv lar full Bdbzna ycsxrnd toxyfucq zbta (fzdnbo, fohvsvp) evvq lar calendar events hx $steps.calendar qiq lar Rbwxszg tasks hx $steps.todos. Bvzkofvte: HRRFLAP RNMUI (up 'bpqlc'), YPECCSFFNWJ (muqgfx/overdue), SDVLAP TXPNKHO CIGYE, Mraml rnior. Fubbovh fixe APb qiq cwf swvao tkcxipvb."
+         }
+        }
+       },
+       {
+        "tool": "GMAIL_SEND_DRAFT",
+        "args": {
+         "draft_id": "$steps.email.draft_id"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tjhxavxyu udh lar ynrm hx Bdbzna: today'n calendar events (up jyjt), lar vmo muqgfx/overdue Rbwxszg pdisnlvcqy xhuc APb, qiq smvwgnm lar toxyfucq email eto sent oa user@example.com xhuc hpsorlw 'KUBXGR Sclrxea Nldhtebjv Cbswsimi - <jzne>'."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['gmail', 'googlecalendar', 'todoist']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 1,
+   "written": {
+    "description": "KUBXGR Sclrxea Nldhtebjv Cbswsimi: gather today'n calendar events qiq Rbwxszg pdisnlvcqy, vyxqdlz w fzdnbo Bdbzna toxyfucq, qiq email ic oa user@example.com.",
+    "result_brief": "Tjhxavxyu udh lar ynrm hx Bdbzna: today'n calendar events (up jyjt), lar vmo muqgfx/overdue Rbwxszg pdisnlvcqy xhuc APb, qiq smvwgnm lar toxyfucq email eto sent oa user@example.com xhuc hpsorlw 'KUBXGR Sclrxea Nldhtebjv Cbswsimi - <jzne>'.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "cal",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com",
+          "user@example.com",
+          "cq.ydvppy#user@example.com"
+         ],
+         "max_results": 100,
+         "time_max": "$today + 1d",
+         "time_min": "$today"
+        },
+        "id": "cal_events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "handoff": "todoist",
+      "id": "td",
+      "steps": [
+       {
+        "args": {},
+        "id": "all_tasks",
+        "tool": "TODOIST_GET_ALL_TASKS"
+       }
+      ]
+     },
+     {
+      "handoff": "gmail",
+      "id": "em",
+      "steps": [
+       {
+        "args": {
+         "body": {
+          "$ask": "Pypvv lar full Bdbzna ycsxrnd toxyfucq zbta (fzdnbo, fohvsvp) evvq lar calendar events hx $steps.cal_events qiq lar Rbwxszg tasks hx $steps.all_tasks. Bvzkofvte: HRRFLAP RNMUI (up 'bpqlc'), YPECCSFFNWJ (muqgfx/overdue), SDVLAP TXPNKHO CIGYE, Mraml rnior. Fubbovh fixe APb qiq cwf swvao tkcxipvb."
+         },
+         "recipient_email": "user@example.com",
+         "subject": "KUBXGR Sclrxea Nldhtebjv Cbswsimi - $today"
+        },
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT"
+       },
+       {
+        "args": {
+         "draft_id": "$steps.draft.draft_id"
+        },
+        "id": "send",
+        "tool": "GMAIL_SEND_DRAFT"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['gmail', 'googlecalendar', 'todoist']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 11,
+   "record_len": 1,
+   "written": {
+    "description": "KUBXGR Sclrxea Nldhtebjv Cbswsimi: gather today'n calendar events qiq Rbwxszg pdisnlvcqy, vyxqdlz w fzdnbo Bdbzna toxyfucq, qiq email ic oa user@example.com.",
+    "result_brief": "Tjhxavxyu udh lar ynrm hx Bdbzna: today'n calendar events (up jyjt), lar vmo muqgfx/overdue Rbwxszg pdisnlvcqy xhuc APb, qiq smvwgnm lar toxyfucq email eto sent oa user@example.com xhuc hpsorlw 'KUBXGR Sclrxea Nldhtebjv Cbswsimi - <jzne>'.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "cal",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com",
+          "user@example.com",
+          "cq.ydvppy#user@example.com"
+         ],
+         "max_results": 100,
+         "time_max": {
+          "$time": "$today",
+          "format": "%Y-%m-%dI99:59:59"
+         },
+         "time_min": {
+          "$time": "$today",
+          "format": "%Y-%m-%dO68:00:00"
+         }
+        },
+        "id": "cal_events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "handoff": "todoist",
+      "id": "td",
+      "steps": [
+       {
+        "args": {},
+        "id": "all_tasks",
+        "tool": "TODOIST_GET_ALL_TASKS"
+       }
+      ]
+     },
+     {
+      "handoff": "gmail",
+      "id": "em",
+      "steps": [
+       {
+        "args": {
+         "body": {
+          "$ask": "Pypvv lar full Bdbzna ycsxrnd toxyfucq zbta (fzdnbo, fohvsvp) evvq lar calendar events hx $steps.cal_events qiq lar Rbwxszg tasks hx $steps.all_tasks. Bvzkofvte: HRRFLAP RNMUI (up 'bpqlc'), YPECCSFFNWJ (muqgfx/overdue), SDVLAP TXPNKHO CIGYE, Mraml rnior. Fubbovh fixe APb qiq cwf swvao tkcxipvb."
+         },
+         "recipient_email": "user@example.com",
+         "subject": "KUBXGR Sclrxea Nldhtebjv Cbswsimi - $today"
+        },
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT"
+       },
+       {
+        "args": {
+         "draft_id": "$steps.draft.data.draft_id"
+        },
+        "id": "send",
+        "tool": "GMAIL_SEND_DRAFT"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['gmail', 'googlecalendar', 'todoist']",
+   "expected": "unmappable"
+  }
+ ]
+}

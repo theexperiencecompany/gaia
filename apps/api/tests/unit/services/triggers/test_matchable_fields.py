@@ -63,6 +63,7 @@ _EXPECTED_ANNOTATION: dict[MatchableFieldType, object] = {
     MatchableFieldType.INTEGER: int,
     MatchableFieldType.NUMBER: float,
     MatchableFieldType.STRING_LIST: list[str],
+    MatchableFieldType.BOOLEAN: bool,
 }
 
 _CATALOG_ITEMS = sorted(MATCHABLE_TRIGGERS.items())
@@ -146,6 +147,16 @@ class TestCatalogFields:
     ) -> None:
         for name, reason in entry.excluded.items():
             assert reason.strip(), f"{trigger_name} excludes {name} with no reason"
+
+    @pytest.mark.parametrize(("trigger_name", "entry"), _CATALOG_ITEMS)
+    def test_a_title_field_is_a_catalogued_string(
+        self, trigger_name: str, entry: MatchableTrigger
+    ) -> None:
+        if entry.title_field is None:
+            return
+        field = entry.field(entry.title_field)
+        assert field is not None, f"{trigger_name} names an uncatalogued title field"
+        assert field.type is MatchableFieldType.STRING
 
     @pytest.mark.parametrize(("trigger_name", "entry"), _CATALOG_ITEMS)
     def test_field_names_are_unique(self, trigger_name: str, entry: MatchableTrigger) -> None:

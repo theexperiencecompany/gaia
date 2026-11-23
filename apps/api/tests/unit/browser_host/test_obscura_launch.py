@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import subprocess
 import sys
@@ -13,8 +14,10 @@ import pytest
 
 from app.browser_host import obscura_launch
 from app.browser_host.obscura_launch import (
+    OBSCURA_DEFAULT_HEAP_MB,
     free_local_port,
     launch_obscura,
+    obscura_page_heap_mb,
     obscura_serve_argv,
     obscura_serve_env,
 )
@@ -24,6 +27,13 @@ from app.config.browser_host_settings import browser_host_settings
 pytestmark = pytest.mark.unit
 
 _WS = "ws://127.0.0.1:9333/devtools/browser/abc"
+_GIB_MB = 1024
+
+
+@pytest.fixture(autouse=True)
+def _roomy_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the host a memory limit Obscura's default heap fits, unless a test sets a tighter one."""
+    monkeypatch.setattr(obscura_launch, "memory_usage_mb", lambda: (0.0, 64.0 * _GIB_MB))
 
 
 class _Proc:
@@ -58,6 +68,39 @@ def test_obscura_is_served_stealthed_on_the_port_it_is_given_and_never_privately
     ]
 
 
+def test_a_container_tighter_than_the_default_heap_caps_each_page_before_the_subcommand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(browser_host_settings, "OBSCURA_BIN", "/opt/obscura/obscura")
+    monkeypatch.setattr(obscura_launch, "memory_usage_mb", lambda: (100.0, 2.0 * _GIB_MB))
+
+    assert obscura_serve_argv(9931) == [
+        "/opt/obscura/obscura",
+        "--v8-flags",
+        "--max-old-space-size=512",
+        "serve",
+        "--port",
+        "9931",
+        "--stealth",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("memory_limit_mb", "heap_mb"),
+    [
+        (3 * _GIB_MB, 768),
+        (4 * OBSCURA_DEFAULT_HEAP_MB - 4, OBSCURA_DEFAULT_HEAP_MB - 1),
+        (4 * OBSCURA_DEFAULT_HEAP_MB, None),
+        (64 * _GIB_MB, None),
+        (256, 128),
+    ],
+)
+def test_each_page_gets_a_quarter_of_memory_below_the_default_with_a_floor(
+    memory_limit_mb: float, heap_mb: int | None
+) -> None:
+    assert obscura_page_heap_mb(memory_limit_mb) == heap_mb
+
+
 def test_obscura_without_a_binary_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(browser_host_settings, "OBSCURA_BIN", None)
 
@@ -76,6 +119,19 @@ def test_obscura_receives_its_script_deadline_in_milliseconds(
 
     assert env["OBSCURA_SCRIPT_DEADLINE_MS"] == "7000"
     assert env["OBSCURA_PROBE_PASSTHROUGH"] == "kept"
+
+
+@pytest.mark.regression
+def test_a_command_outlives_the_script_phase_it_waits_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Obscura's per-command budget defaulted to our 60 s script deadline, so both expired together."""
+    monkeypatch.setattr(browser_host_settings, "OBSCURA_SCRIPT_DEADLINE_SECONDS", 60)
+
+    env = obscura_serve_env()
+
+    assert (env["OBSCURA_SCRIPT_DEADLINE_MS"], env["OBSCURA_CDP_COMMAND_TIMEOUT_MS"]) == (
+        "60000",
+        "70000",
+    )
 
 
 def test_obscura_reaches_private_addresses_only_while_the_host_allows_private_origins(
@@ -146,7 +202,7 @@ async def test_obscura_is_launched_on_a_free_port_and_stopped_when_it_never_answ
     monkeypatch.setattr(obscura_launch, "free_local_port", lambda: 9444)
     proc = _Proc()
     spawn = AsyncMock(return_value=proc)
-    monkeypatch.setattr(obscura_launch.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     monkeypatch.setattr(
         obscura_launch, "until_published", AsyncMock(side_effect=EngineLaunchError("x"))
     )

@@ -4,17 +4,19 @@ The API, the ARQ browser worker and two browser hosts (Chrome, and Obscura
 behind it) are child processes; the models and the two-origin fixture site are
 local servers in this process; the outbound Telegram queue is read
 as transcripts. A scenario talks to it the way the Telegram bot does: messages
-to /api/v1/bot/chat-stream, /stop to /api/v1/bot/reset-session, and the live
-view's own decision endpoint for a handoff's Done and Cancel.
+to /api/v1/bot/messages, followed on the conversation's events stream, and /stop
+to /api/v1/bot/reset-session. What a user
+opens (the live view, its Done and Cancel, recaps) goes through the self-host
+Caddy in front of the API, so it works only where a deployed proxy forwards it.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
 import os
 from pathlib import Path
 import secrets
@@ -25,13 +27,17 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 import uuid
 
-from browser_use import Browser
+from arq import create_pool
+from arq.connections import ArqRedis, RedisSettings
+from arq.constants import result_key_prefix
+from arq.jobs import deserialize_result
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import httpx
 import psutil
 import pytest
 from redis.asyncio import Redis
+from scripts.evals.core.live_chat import TurnReader, follow
 
 from app.agents.core.background.executor_queue import get_lock_holder
 from app.config.feature_flags import FeatureFlag
@@ -40,21 +46,26 @@ from app.constants.browser import BrowserEngine, JobEnding
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX, SUBSCRIPTION_PLAN_CACHE_TTL
 from app.constants.llm import LLMProviderName
 from app.db.mongodb import collections
-from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
+from app.db.mongodb.mongodb import MongoDB
 from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.subscriptions import subscription_repository
+from app.models.conversation_send_models import ActiveBotConversation, BotMessageAccepted
 from app.models.payment_models import PlanType, SubscriptionDocument
 from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.dev_schemas import SeedDevDataRequest
 from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.jobs import done_state, get_latest_job
-from app.services.browser.registry import get_session_entry
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
-from tests.helpers import pick_free_port, worker_redis_url
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.tasks.conversation_sweep_tasks import conversation_sweep_cron
+from shared.py.conversation_wire import ReplyOutcome
+from tests.helpers import pick_free_port, worker_mongo_db_name, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
 from tests.integration.real.browser._stack.fixture_site import FixtureSite
-from tests.integration.real.browser._stack.observe import OutboundObserver, Transcript
+from tests.integration.real.browser._stack.live_viewer import LiveViewer
+from tests.integration.real.browser._stack.observe import OutboundObserver
 from tests.integration.real.browser._stack.processes import (
     BrowserHost,
     BrowserWorker,
@@ -62,9 +73,11 @@ from tests.integration.real.browser._stack.processes import (
     api_process,
     browser_host,
     child_environment,
+    proxy_process,
 )
 from tests.integration.real.browser._stack.progress import Progress
 from tests.integration.real.browser._stack.tls import FixtureTls, issue
+from tests.integration.real.browser._stack.transcript import Transcript
 
 _TELEGRAM = "telegram"
 _BOT_KEY = "browser-stack-bot-key-" + "x" * 16
@@ -72,11 +85,11 @@ _BOT_SESSION_SECRET = "browser-stack-session-" + "y" * 42  # pragma: allowlist s
 _FAKE_MODEL = "browser-stack-model"
 _FAKE_KEY = "browser-stack-model-key"  # pragma: allowlist secret
 _POLL_SECONDS = 0.2
+#: Where the web live view dials a live link's code: liveSocketUrl in apps/web's browserApi.ts.
+_LIVE_SOCKET_PATH = "/api/v1/browser/live/"
 #: The key a stack claims its Redis database by, and how long a claim lives unrefreshed.
 _CLAIM_KEY = "browser-stack:owner"
 _CLAIM_SECONDS = 60
-#: How long acting in the run's own page (attach, then one script) may take.
-_LIVE_PAGE_SECONDS = 30.0
 #: How long a whole browser run may take in this stack before a scenario gives up on it.
 RUN_SECONDS = 120.0
 #: One scenario's cap, the stack's boot included for a module's first: the boot's own
@@ -102,7 +115,7 @@ class BotUser:
 
 @dataclass(frozen=True)
 class BotReply:
-    """What one chat-stream turn answered: its text, and the conversation it ran in."""
+    """What one posted message was answered with: its text, and the conversation it ran in."""
 
     text: str
     conversation_id: str | None
@@ -118,19 +131,27 @@ class BrowserStack:
         self.site = FixtureSite()
         self.models = FakeModels()
         self.redis_url = worker_redis_url(settings.REDIS_URL or "redis://localhost:6379/0")
+        # Each worker's own, like its Redis: a stack's sweeper reads every conversation in
+        # the database, and another stack's live work has no lock in this one's Redis.
+        self.mongo_db_name = worker_mongo_db_name()
         self.api_port = pick_free_port()
+        self.proxy_port = pick_free_port()
         #: One key for both hosts: the worker presents the same BROWSER_HOST_KEY to each.
         self.host_key = secrets.token_hex(16)
         #: Encrypts the logins a run saves, as production's key does.
         self.state_key = Fernet.generate_key().decode()
-        self.observer = OutboundObserver(settings.RABBITMQ_URL, progress)
+        self.observer = OutboundObserver(
+            settings.RABBITMQ_URL, progress, self.api_url, self._bot_headers
+        )
         self.tls: FixtureTls | None = None
         self.chrome: BrowserHost | None = None
         self.obscura: BrowserHost | None = None
         self.worker: BrowserWorker | None = None
         self.api: StackProcess | None = None
+        self.proxy: StackProcess | None = None
         self.redis: Redis | None = None
         self.mongo: MongoDB | None = None
+        self.arq: ArqRedis | None = None
         self._patches: pytest.MonkeyPatch = pytest.MonkeyPatch()
         self._claim: asyncio.Task[None] | None = None
 
@@ -138,12 +159,17 @@ class BrowserStack:
     def api_url(self) -> str:
         return f"http://127.0.0.1:{self.api_port}"
 
+    @property
+    def public_url(self) -> str:
+        """The single origin a user reaches, through the self-host proxy."""
+        return f"http://127.0.0.1:{self.proxy_port}"
+
     # --- lifecycle ----------------------------------------------------------
 
     async def start(self) -> None:
         say = self.progress.say
         say(
-            f"booting on Redis {self.redis_url}, RabbitMQ {_without_credentials(settings.RABBITMQ_URL)}"
+            f"booting on Redis {self.redis_url}, Mongo {self.mongo_db_name}, RabbitMQ {_without_credentials(settings.RABBITMQ_URL)}"
         )
         await self._own_the_redis_database()
         tls = self.tls = issue(self.log_dir)
@@ -169,7 +195,10 @@ class BrowserStack:
             raise RuntimeError("the stack claims its Redis database before it starts the worker")
         self.worker = BrowserWorker(env, self.log_dir, self.redis)
         self.api = api_process(env, self.api_port, self.log_dir)
-        for process in (self.chrome.process, self.obscura.process, self.api):
+        self.proxy = proxy_process(
+            required_binary("CADDY_BIN", "caddy"), self.proxy_port, self.api_port, self.log_dir
+        )
+        for process in (self.chrome.process, self.obscura.process, self.api, self.proxy):
             process.start()
         say(f"processes started; logs in {self.log_dir}")
         await asyncio.gather(
@@ -177,8 +206,11 @@ class BrowserStack:
             self._phase("Obscura host answers healthz", self.obscura.wait_ready()),
             self._phase("browser worker serves its queue", self.worker.start()),
             self._phase("API serves", self.api.wait_healthy(f"{self.api_url}/health")),
+            self._phase(
+                "proxy reaches the API", self.proxy.wait_healthy(f"{self.public_url}/api/v1/ping")
+            ),
         )
-        self._lend_the_app_this_loops_clients()
+        await self._lend_the_app_this_loops_clients()
         await self.observer.start()
         say("ready")
 
@@ -215,6 +247,7 @@ class BrowserStack:
     async def stop(self) -> None:
         await self.observer.stop()
         processes = (
+            self.proxy,
             self.api,
             self.worker.process if self.worker else None,
             self.chrome.process if self.chrome else None,
@@ -231,6 +264,8 @@ class BrowserStack:
         self._patches.undo()
         if self.mongo is not None:
             self.mongo.client.close()
+        if self.arq is not None:
+            await self.arq.aclose()
         if self.redis is not None:
             await self.redis.flushdb()
             await self.redis.aclose()
@@ -239,6 +274,7 @@ class BrowserStack:
     def logs(self) -> str:
         """Every process's log tail, for a failing scenario's report."""
         processes = [
+            self.proxy,
             self.api,
             self.worker.process if self.worker else None,
             self.chrome.process if self.chrome else None,
@@ -253,7 +289,7 @@ class BrowserStack:
         return {
             "ENV": "development",
             "REDIS_URL": self.redis_url,
-            "MONGO_DB_NAME": MONGO_DATABASE_NAME,
+            "MONGO_DB_NAME": self.mongo_db_name,
             "RABBITMQ_URL": settings.RABBITMQ_URL,
             "DEV_DEFAULT_MODEL": LLMProviderName.CUSTOM.value,
             "DEV_LLM_BASE_URL": self.models.base_url,
@@ -267,15 +303,14 @@ class BrowserStack:
             "BROWSER_HOST_URL": self.obscura.url,
             "BROWSER_HOST_KEY": self.host_key,
             "BROWSER_FALLBACK_HOST_URL": self.chrome.url,
-            "HOST": self.api_url,
-            "BROWSER_LIVE_VIEW_BASE_URL": self.api_url,
+            "HOST": self.public_url,
             "GAIA_BOT_API_KEY": _BOT_KEY,
             "BOT_SESSION_TOKEN_SECRET": _BOT_SESSION_SECRET,
             "BROWSER_STATE_ENCRYPTION_KEY": self.state_key,
         }
 
-    def _lend_the_app_this_loops_clients(self) -> None:
-        """Point the app helpers this process calls (users, job state, handoffs, the plan cache) at the stack's own clients.
+    async def _lend_the_app_this_loops_clients(self) -> None:
+        """Point the app helpers this process calls (users, job state, handoffs, the plan cache, the job queue) at the stack's own clients.
 
         The app's Mongo and Redis clients are module globals that bind to the first
         event loop using them; a stack lives on its own loop and closes its clients
@@ -283,9 +318,11 @@ class BrowserStack:
         """
         if self.redis is None:
             raise RuntimeError("the stack's Redis client is made when it claims its database")
-        self.mongo = MongoDB(uri=settings.MONGO_DB, db_name=MONGO_DATABASE_NAME)
+        self.mongo = MongoDB(uri=settings.MONGO_DB, db_name=self.mongo_db_name)
         self._patches.setattr(collections, "_get_collection", self.mongo.get_collection)
         self._patches.setattr(redis_cache, "redis", cast(AsyncRedisCommands, self.redis))
+        self.arq = await create_pool(RedisSettings.from_dsn(self.redis_url))
+        self._patches.setattr(RedisPoolManager, "_pool", self.arq)
 
     # --- users and chats ------------------------------------------------------
 
@@ -293,7 +330,7 @@ class BrowserStack:
         """Mint a user through the real signup path, link a Telegram account, and make them PRO."""
         email = f"browser-stack-{uuid.uuid4().hex[:10]}@gaia.test"
         user = await mint_dev_user(email)
-        seeded = await seed_dev_data(email, todos=0, conversations=0, platform_links=[_TELEGRAM])
+        seeded = await seed_dev_data(SeedDevDataRequest(email=email, platform_links=[_TELEGRAM]))
         await _make_pro(user.id)
         return BotUser(user_id=user.id, telegram_id=seeded.platform_user_ids[_TELEGRAM])
 
@@ -309,62 +346,72 @@ class BrowserStack:
             "channel_id": channel_id,
             "is_dm": channel_id is None,
         }
-        chunks: list[str] = []
-        conversation_id: str | None = None
-        error: str | None = None
-        # Keepalive frames reset a read timeout, so a turn that never ends is bounded as a whole.
+        # The events stream sends a keepalive, so a reply that never comes is bounded as a whole.
         async with (
             asyncio.timeout(RUN_SECONDS),
-            httpx.AsyncClient(base_url=self.api_url, timeout=RUN_SECONDS) as client,
+            httpx.AsyncClient(
+                base_url=self.api_url,
+                headers=self._bot_headers(user.telegram_id),
+                timeout=RUN_SECONDS,
+            ) as client,
         ):
-            async with client.stream(
-                "POST", "/api/v1/bot/chat-stream", json=body, headers=self._bot_headers(user)
-            ) as response:
-                if response.status_code != 200:
-                    await response.aread()
-                    raise AssertionError(
-                        f"chat-stream answered {response.status_code}: {response.text}"
-                    )
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    frame = json.loads(line.removeprefix("data:").strip())
-                    if "text" in frame:
-                        chunks.append(frame["text"])
-                    if "error" in frame:
-                        error = str(frame["error"])
-                    if frame.get("done"):
-                        conversation_id = frame.get("conversation_id")
-        return BotReply(text="".join(chunks), conversation_id=conversation_id, error=error)
+            posted = await client.post("/api/v1/bot/messages", json=body)
+            if posted.status_code != 202:
+                raise AssertionError(f"bot/messages answered {posted.status_code}: {posted.text}")
+            accepted = BotMessageAccepted.model_validate(posted.json())
+            # The bot follows the conversation for the chat from the server's cursor, as it does on every post.
+            self.observer.follow(
+                ActiveBotConversation(
+                    conversation_id=accepted.conversation_id,
+                    platform_user_id=user.telegram_id,
+                    channel_id=channel_id,
+                    is_dm=channel_id is None,
+                    after_seq=accepted.after_seq,
+                    partial_reply=accepted.partial_reply,
+                ),
+                expect=accepted.seq,
+            )
+            reader = TurnReader(text, accepted.message_id, wait_for_work=False)
+            await follow(
+                client, self.api_url, accepted.conversation_id, reader, after=accepted.seq - 1
+            )
+        turn = reader.turn()
+        return BotReply(
+            text=turn.reply,
+            conversation_id=accepted.conversation_id,
+            error="reply_failed" if turn.outcome is ReplyOutcome.FAILED else None,
+        )
 
     async def stop_command(self, user: BotUser, *, channel_id: str | None = None) -> None:
-        """Send /stop the way the bot does: a session reset for that chat."""
+        """Send /stop the way the bot does: stop that chat's conversation, keeping its session."""
         async with httpx.AsyncClient(base_url=self.api_url, timeout=30) as client:
             response = await client.post(
-                "/api/v1/bot/reset-session",
+                "/api/v1/bot/stop",
                 json={
                     "platform": _TELEGRAM,
                     "platform_user_id": user.telegram_id,
                     "channel_id": channel_id,
                     "is_dm": channel_id is None,
                 },
-                headers=self._bot_headers(user),
+                headers=self._bot_headers(user.telegram_id),
             )
             if response.status_code != 200:
-                raise AssertionError(
-                    f"reset-session answered {response.status_code}: {response.text}"
-                )
+                raise AssertionError(f"bot/stop answered {response.status_code}: {response.text}")
 
-    def _bot_headers(self, user: BotUser) -> dict[str, str]:
+    def _bot_headers(self, telegram_id: str) -> dict[str, str]:
         return {
             "X-Bot-API-Key": _BOT_KEY,
             "X-Bot-Platform": _TELEGRAM,
-            "X-Bot-Platform-User-Id": user.telegram_id,
+            "X-Bot-Platform-User-Id": telegram_id,
         }
 
     async def set_obscura(self, user: BotUser) -> None:
         """Opt the user into the fast engine through the settings toggle's own path."""
         await set_user_flag(user.user_id, FeatureFlag.BROWSER_OBSCURA.value, True)
+
+    async def set_jev(self, user: BotUser) -> None:
+        """Opt the user into Jev through the settings toggle's own path; off, the agent runs alone."""
+        await set_user_flag(user.user_id, FeatureFlag.BROWSER_JEV.value, True)
 
     # --- the run --------------------------------------------------------------
 
@@ -407,11 +454,23 @@ class BrowserStack:
             job_id = await get_latest_job(conversation_id)
             running = job_id is not None and await done_state(job_id) is None
             idle = not running and await get_lock_holder(conversation_id) is None
-            quiet = quiet + 1 if idle and await self.observer.drained() else 0
+            quiet = quiet + 1 if idle and await self.observer.drained(conversation_id) else 0
             if quiet >= 2:
                 return
             await asyncio.sleep(1.0)
         raise AssertionError(f"{conversation_id} never went quiet within {timeout}s\n{self.logs()}")
+
+    async def swept_since(self, since_ms: int) -> bool:
+        """Whether a conversation sweep due after since_ms (epoch milliseconds) has finished without failing."""
+        prefix = f"{result_key_prefix}{conversation_sweep_cron().name}:"
+        # ARQ pickles its results, which the stack's decoding client cannot read.
+        async with Redis.from_url(self.redis_url) as raw:
+            for key in await raw.keys(f"{prefix}*"):
+                due = int(key.decode().removeprefix(prefix))
+                result = await raw.get(key)
+                if due > since_ms and result is not None and deserialize_result(result).success:
+                    return True
+        return False
 
     async def handoff_waiting(self, user: BotUser) -> bool:
         """Whether a bot run of this user is waiting on the user right now."""
@@ -444,44 +503,10 @@ class BrowserStack:
         ]
         return list(dict.fromkeys(sessions))
 
-    async def in_live_page(self, job_id: str, script: str) -> object:
-        """Run JS in the run's own page, the way a person acts in the live view during a handoff.
-
-        Dialled with the session's own token, as the live view is: the host refuses a bare /cdp/<id>.
-        """
-        sessions = await self.sessions_of(job_id)
-        if not sessions:
-            raise AssertionError(f"job {job_id} has opened no browser session")
-        session_id = sessions[-1]
-        entry = await get_session_entry(session_id)
-        if entry is None or not entry.live_ws:
-            raise AssertionError(f"session {session_id} has no live view")
-        live = urlsplit(entry.live_ws)
-        cdp = live._replace(path=live.path.replace(f"/live/{session_id}", f"/cdp/{session_id}"))
-        browser = Browser(cdp_url=cdp.geturl())
-        async with asyncio.timeout(_LIVE_PAGE_SECONDS):
-            await browser.start()
-        try:
-            session = await browser.get_or_create_cdp_session(focus=False)
-            async with asyncio.timeout(_LIVE_PAGE_SECONDS):
-                result = await session.cdp_client.send.Runtime.evaluate(
-                    params={"expression": script, "awaitPromise": True, "returnByValue": True},
-                    session_id=session.session_id,
-                )
-            return result.get("result", {}).get("value")
-        finally:
-            await browser.stop()
-
-    async def page_reaches(self, job_id: str, path: str, *, timeout: float = 30.0) -> None:
-        """Wait until the run's page is on path, read from the page itself."""
-        deadline = time.monotonic() + timeout
-        seen: object = None
-        while time.monotonic() < deadline:
-            seen = await self.in_live_page(job_id, "location.pathname")
-            if seen == path:
-                return
-            await asyncio.sleep(_POLL_SECONDS)
-        raise AssertionError(f"the run's page never reached {path} (last on {seen})")
+    def live_view(self, live_url: str) -> AbstractAsyncContextManager[LiveViewer]:
+        """Open the live view a live link leads to, as its web page dials it: through the proxy."""
+        code = urlsplit(live_url).path.rstrip("/").rsplit("/", 1)[-1]
+        return LiveViewer.open(f"ws://127.0.0.1:{self.proxy_port}{_LIVE_SOCKET_PATH}{code}")
 
     def kill_obscura_engine(self) -> None:
         """SIGKILL the Obscura engine under its host, as an engine crash would end it."""
@@ -500,11 +525,13 @@ class BrowserStack:
     async def decide_on_live_page(self, live_url: str, decision: str) -> int:
         """Press the live view page's Done ("continue") or Cancel, as its buttons do.
 
-        The link opens the web app's page; its buttons answer on this API's /live/{code}/decision.
+        The link opens the web app's page; its buttons answer through the proxy, on {code}/decision.
         """
         code = urlsplit(live_url).path.rstrip("/").rsplit("/", 1)[-1]
-        async with httpx.AsyncClient(base_url=self.api_url, timeout=30) as client:
-            response = await client.post(f"/live/{code}/decision", json={"decision": decision})
+        async with httpx.AsyncClient(base_url=self.public_url, timeout=30) as client:
+            response = await client.post(
+                f"{_LIVE_SOCKET_PATH}{code}/decision", json={"decision": decision}
+            )
         return response.status_code
 
 

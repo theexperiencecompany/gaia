@@ -1,9 +1,14 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { InformationCircleIcon } from "@icons";
-import type { ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  DetailedHTMLProps,
+  HTMLAttributes,
+  ReactNode,
+} from "react";
 import { type SileoOptions, type SileoPosition, sileo } from "sileo";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 // Mutable holder for a toast's id. sileo returns the id only after the toast is
 // created, but dismiss controls (rendered inside the toast) need it on click,
@@ -54,9 +59,17 @@ const ACTION_CLS: Record<ToastState, string> = {
   loading: "bg-white/10 text-white data-[hover=true]:bg-white/15",
 };
 const DISMISS_CLS = "bg-white/5 text-white/70 data-[hover=true]:bg-white/10";
-// rounded-xl (12px) on the 28px-tall button reads as a rounded rectangle; a
+// shape md (12px) on the 28px-tall button reads as a rounded rectangle; a
 // larger radius would exceed half the height and clamp into a full pill.
-const BTN_BASE = "h-7 min-w-0 rounded-xl px-3 font-medium text-xs";
+const BTN_BASE = "h-7 min-w-0 font-medium text-xs";
+
+// sileo renders the toast as a <button>, so its controls can't be buttons; HeroUI's render type only allows one.
+const renderAsDiv = (
+  props: DetailedHTMLProps<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    HTMLButtonElement
+  >,
+) => <div {...(props as unknown as HTMLAttributes<HTMLDivElement>)} />;
 
 // Sileo's own `button` slot only fits one button, so we render our own row here.
 // `idRef` resolves the toast id at click time, since sileo only returns it after creation.
@@ -75,35 +88,49 @@ function ToastControls({
   return (
     <div className={twoUp ? "mt-2 grid grid-cols-2 gap-2" : "mt-2"}>
       {action ? (
-        <Button
-          as="div"
+        <GaiaButton
+          render={renderAsDiv}
           size="sm"
-          variant="flat"
+          variant="default-soft"
+          shape="md"
           fullWidth
           className={`${BTN_BASE} ${ACTION_CLS[state]}`}
           onPress={action.onClick}
         >
           {action.label}
-        </Button>
+        </GaiaButton>
       ) : null}
       {showDismiss ? (
-        <Button
-          as="div"
+        <GaiaButton
+          render={renderAsDiv}
           size="sm"
-          variant="flat"
+          variant="default-soft"
+          shape="md"
           fullWidth
           className={`${BTN_BASE} ${DISMISS_CLS}`}
           onPress={() => sileo.dismiss(idRef.id)}
         >
           {DISMISS_LABEL}
-        </Button>
+        </GaiaButton>
       ) : null}
     </div>
   );
 }
 
-function translate(message: string, opts?: ToastOptions): SileoOptions {
-  const out: SileoOptions = {};
+// sileo reads `id` at runtime (it is how a toast is replaced in place) but leaves it out of its types.
+type IdentifiedSileoOptions = SileoOptions & { id: string };
+
+let toastCounter = 0;
+
+// sileo files every id-less toast under one shared id, so a later dismiss of
+// that id also removes whichever toast has since taken its place.
+function translate(
+  message: string,
+  opts?: ToastOptions,
+): IdentifiedSileoOptions {
+  const out: IdentifiedSileoOptions = {
+    id: opts?.id ?? `toast-${++toastCounter}`,
+  };
 
   if (message.length > TITLE_MAX_CHARS && opts?.description === undefined) {
     // Long title, no description: promote to description so it wraps, and opt into
@@ -166,8 +193,6 @@ function fire(
   message: string,
   opts?: ToastOptions,
 ): string {
-  // When an id is passed, dismiss the previous toast first (replace loading → result)
-  if (opts?.id) sileo.dismiss(opts.id);
   const out = translate(message, opts);
   const bindId = attachControls(out, state, opts);
   const id = fn(out);
@@ -196,7 +221,6 @@ export const toast = {
 
   /** Sticky info toast. Pass the returned id to success/error to replace it. */
   loading: (message: string, opts?: ToastOptions): string => {
-    if (opts?.id) sileo.dismiss(opts.id);
     const out: SileoOptions = { ...translate(message, opts), duration: null };
     const bindId = attachControls(out, "loading", opts);
     const id = sileo.info(out);

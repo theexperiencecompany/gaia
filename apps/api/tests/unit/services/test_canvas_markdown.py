@@ -12,6 +12,8 @@ from app.services.canvas_markdown import (
     _line_timestamp,
     bounded_canvas,
     canvas_problems,
+    deliverable_markdown,
+    deliverable_size,
     normalize_canvas,
     section_body,
     split_legacy_canvas,
@@ -405,13 +407,13 @@ class TestWithMissingSections:
         canvas = "# T\n\n## Key Details\nk\n\n## Learnings\n"
 
         assert with_missing_sections(canvas) == (
-            "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n"
+            "# T\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n## Current State\n\n"
             "## Context\n\n## Learnings\n"
         )
 
     def test_a_complete_canvas_is_returned_as_is(self) -> None:
         canvas = (
-            "## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
+            "## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
             "## Learnings\n"
         )
         assert with_missing_sections(canvas) == canvas
@@ -465,7 +467,7 @@ class TestNormalizeCanvas:
 
         assert moved is None
         assert canvas == (
-            "## Standing rules\n\n## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n"
+            "## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n"
             "## Learnings\nx\ny\n"
         )
 
@@ -486,7 +488,7 @@ class TestNormalizeCanvas:
 
         assert moved == "- a\n\n- b"
         assert canvas == (
-            "## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
+            "## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
             "## Learnings\n"
         )
 
@@ -496,7 +498,7 @@ class TestNormalizeCanvas:
         )
 
         assert canvas == (
-            "## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+            "## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
             "## Learnings\nl\n"
         )
 
@@ -514,7 +516,7 @@ class TestNormalizeCanvas:
         )
 
         assert canvas == (
-            f"{preamble}\n\n## Standing rules\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
+            f"{preamble}\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
             "## Current State\n\n## Context\n\n## Learnings\n"
         )
 
@@ -556,7 +558,7 @@ class TestWithMissingSectionsKeepsTheLastLine:
         canvas = with_missing_sections(f"## Key Details\n{last_line}\n")
 
         assert canvas == (
-            f"## Standing rules\n\n## Key Details\n{last_line}\n\n## Current State\n\n"
+            f"## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\n{last_line}\n\n## Current State\n\n"
             "## Context\n\n## Learnings\n"
         )
 
@@ -568,7 +570,7 @@ class TestStandingRules:
         canvas = "# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n"
 
         assert normalize_canvas(canvas) == (
-            "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n"
+            "# T\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n## Current State\n\n"
             "## Context\n\n## Learnings\n",
             None,
         )
@@ -591,7 +593,7 @@ class TestStandingRules:
         )
 
     def test_rules_longer_than_the_cap_are_refused_at_write(self) -> None:
-        canvas = f"## Standing rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+        canvas = f"## Standing rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Done when\n\n## Evidence\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == [
             f'shorten "## Standing rules" to {todo_constants.STANDING_RULES_MAX_CHARS} characters: '
@@ -599,7 +601,7 @@ class TestStandingRules:
         ]
 
     def test_rules_at_the_cap_are_accepted(self) -> None:
-        canvas = f"## Standing rules\n{'r' * todo_constants.STANDING_RULES_MAX_CHARS}\n\n## Key Details\n"
+        canvas = f"## Standing rules\n{'r' * todo_constants.STANDING_RULES_MAX_CHARS}\n\n## Done when\n\n## Evidence\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == []
 
@@ -609,19 +611,19 @@ class TestSectionHeadingCase:
 
     @pytest.mark.regression
     def test_a_title_cased_heading_is_read_as_the_section(self) -> None:
-        canvas = "## Standing Rules\n- 2026-09-28: tell me every time\n\n## Key Details\n"
+        canvas = "## Standing Rules\n- 2026-09-28: tell me every time\n\n## Done when\n\n## Evidence\n\n## Key Details\n"
 
         assert section_body(canvas, "Standing rules") == "- 2026-09-28: tell me every time"
 
     @pytest.mark.regression
     def test_a_title_cased_heading_is_not_added_twice(self) -> None:
         canvas = (
-            "# T\n\n## Standing Rules\n- 2026-09-28: tell me every time\n\n## Key Details\nk\n\n"
+            "# T\n\n## Standing Rules\n- 2026-09-28: tell me every time\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n"
             "## Current State\n\n## Context\n\n## Learnings\n"
         )
 
         assert normalize_canvas(canvas) == (
-            "# T\n\n## Standing rules\n- 2026-09-28: tell me every time\n\n## Key Details\nk\n\n"
+            "# T\n\n## Standing rules\n- 2026-09-28: tell me every time\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n"
             "## Current State\n\n## Context\n\n## Learnings\n",
             None,
         )
@@ -631,13 +633,13 @@ class TestSectionHeadingCase:
         canvas = "## STANDING RULES\n- r\n\n## key details\nk\n"
 
         assert with_missing_sections(canvas) == (
-            "## Standing rules\n- r\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+            "## Standing rules\n- r\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
             "## Learnings\n"
         )
 
     @pytest.mark.regression
     def test_the_cap_holds_for_a_title_cased_heading(self) -> None:
-        canvas = f"## Standing Rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+        canvas = f"## Standing Rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Done when\n\n## Evidence\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == [
             f'shorten "## Standing rules" to {todo_constants.STANDING_RULES_MAX_CHARS} characters: '
@@ -665,7 +667,7 @@ class TestTemplateComments:
 
     @pytest.mark.regression
     def test_an_all_comment_section_reads_as_empty(self) -> None:
-        canvas = "## Standing rules\n<!-- the user's rules,\none line each -->\n\n## Key Details\n"
+        canvas = "## Standing rules\n<!-- the user's rules,\none line each -->\n\n## Done when\n\n## Evidence\n\n## Key Details\n"
 
         assert section_body(canvas, "Standing rules") == ""
 
@@ -678,6 +680,106 @@ class TestTemplateComments:
     @pytest.mark.regression
     def test_template_comments_do_not_count_toward_the_cap(self) -> None:
         rules = "r" * todo_constants.STANDING_RULES_MAX_CHARS
-        canvas = f"## Standing rules\n<!-- guidance for the writer -->\n{rules}\n\n## Key Details\n"
+        canvas = f"## Standing rules\n<!-- guidance for the writer -->\n{rules}\n\n## Done when\n\n## Evidence\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == []
+
+
+DELIVERABLE_CANVAS = """# Reply to Acme
+
+## Standing rules
+<!-- the user's instructions -->
+- Never cc legal
+
+## Key Details
+- email: ceo@acme-secret.com
+- gmail thread: thread-18c2f9a
+
+## Current State
+Draft is ready for review.
+
+## Context
+Dana prefers mornings.
+
+## Activity Log
+- read thread-18c2f9a
+
+## Draft reply
+Hi team, Tuesday works for us.
+
+## Learnings
+- worked well
+"""
+
+
+class TestDeliverable:
+    """One definition of a canvas's deliverable, so its two readers never disagree.
+
+    The readers are the public heygaia.link page and the brief's "is it big" hint.
+    """
+
+    def test_keeps_the_result_and_drops_every_working_section(self):
+        out = deliverable_markdown(DELIVERABLE_CANVAS)
+
+        assert "Draft is ready for review." in out
+        assert "Tuesday works for us." in out
+        for private in (
+            "ceo@acme-secret.com",
+            "thread-18c2f9a",
+            "Never cc legal",
+            "Dana prefers mornings",
+            "worked well",
+            "<!--",
+            "# Reply to Acme",
+        ):
+            assert private not in out
+
+    def test_size_counts_only_the_deliverable_text(self):
+        expected = len("Draft is ready for review. Hi team, Tuesday works for us.")
+        assert deliverable_size(DELIVERABLE_CANVAS) == expected
+
+    def test_the_deliverable_is_exactly_the_result_sections_without_their_comments(self):
+        canvas = (
+            "  # Reply to Acme\n"
+            "Intro the user wrote.\n"
+            "\n## Current State\nDraft <!-- internal: v2 --> is ready.\n"
+            "\n## Key Details\n- email: ceo@acme-secret.com\n"
+            "\n## Draft reply\nHi team.\n"
+        )
+
+        assert deliverable_markdown(canvas) == (
+            "Intro the user wrote.\n\n"
+            "## Current State\nDraft  is ready.\n\n"
+            "## Draft reply\nHi team."
+        )
+
+    def test_a_blank_heading_never_drops_the_sections_before_it(self):
+        canvas = "# Plan\n\n## Current State\nShipped.\n\n## \nloose line\n"
+
+        out = deliverable_markdown(canvas)
+
+        assert out.startswith("## Current State\nShipped.\n\n")
+        assert out.endswith("loose line")
+
+    def test_size_skips_an_indented_heading_inside_a_result_section(self):
+        canvas = "# Plan\n\n## Current State\n  ### Summary\nShipped.\n"
+
+        assert deliverable_size(canvas) == len("Shipped.")
+
+    def test_an_empty_canvas_has_no_deliverable(self):
+        assert deliverable_markdown("") == ""
+        assert deliverable_size("") == 0
+
+    def test_a_fresh_template_canvas_has_no_deliverable(self):
+        """A todo with no result yet must not publish a bare "## Current State" heading."""
+        canvas = (
+            "# Reply to Acme\n\n## Standing rules\n\n## Key Details\n- email: a@b.co\n"
+            "\n## Current State\n<!-- what is done so far -->\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert deliverable_markdown(canvas) == ""
+
+    def test_an_empty_result_section_is_omitted_and_the_filled_one_kept(self):
+        canvas = "# Plan\n\n## Current State\n   \n\n## Draft reply\nHi team.\n"
+
+        assert deliverable_markdown(canvas) == "## Draft reply\nHi team."

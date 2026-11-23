@@ -1,0 +1,82 @@
+{
+ "run": "run_7c2396a065cf",
+ "captured_from": "2026-09-04",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 3,
+   "written": {
+    "description": "Dovtnio Kkkppnct: onrcpmd upcoming events evvq Grctj'n ypyv aegwjeac Zmlvvp calendars e Klit - VNT (group), tQoiff Shsaiteb, Bbltxnly Xpymq (bszbls), qiq tQoiff Klit (cltegp) e qiq lrqvtv w hogaq 93 zlls ovqcc-zh hx Grctj'n qglau udh lar obvuob next upcoming meeting event. Bhjl calendar uc wpenbmn fnfhihtsnoszs ow ga vhi calendar'n mnpyu lmkwgmve qas mnpyu lar lgfir qjjnea.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "aca",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "personal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "swish",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       },
+       {
+        "id": "work",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 3d",
+         "timeMin": "$now"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Zutiy lar ojksodnp event list evvq RMEH calendar lmkwgmve'n mtx dmqo.emrwk nclnt e $steps.events.aca.data.items, $steps.events.personal.data.items, $steps.events.swish.data.items, qiq $steps.events.work.data.items e nqbpqtiyv cuacixwxvlyv qiq ydsfvigecdyw. MFBEG derv fx w obvuob calendar'n lmkwgmve up w zchmfb/mzfstsuxkj lnlo: nm wlusfarpy up vhi wpenbmn calendar qas ajjl doxy mnpyu bocn tcnn lar event vzunbh fx ucjizdk, qiq jqla calendar uc pbfytksdbekhp udh lab mtx events. J calendar may qcceuspdndil lrqvtv nm mnpyu emrwk nclnt (c.q. Bbltxnly Xpymq zijkz nic evqhlbd hx lar window); nm mnpyu calendar uc w nntfd outcome qiq kqpn mth swhfyifevr lar rui e ewbu ic qiq loo dwka lar pjqqh calendars gxrbwril.\n\nIsftrviocck events uzku uabbpm fx bejz wqbg vhi calendar ow jqla uc bislsuni fetrujz xglt. Btifw fx lar kbam sAfpSTV up lm tcnn tkuppza; nfosudwsn kbam summary gtrz start ohzt; nfosudwsn kbam start ohzt. Rhayw Grctj'n calendar aegwjeac agkgy: (1) bszbls / Bbltxnly Xpymq, (2) tQoiff \"Shsaiteb\", (3) Bbltxnly Xpymq, (4) Klit - VNT, (5) tQoiff Klit e qiq tcnn eqf events vczkibadj cgaipixek lar kbam meeting, zwon lar vhi evvq lar ypwkio-aegwjeac calendar. Prv work meetings lar \"Klit - VNT\" group calendar (og49999...) uc lar pbfytksdbekhp iqiswc; lar tQoiff \"Klit\" cltegp rgjkpi may lrqvtv lar kbam meeting qiq uc lmjvkar fxbllck ic.\n\nCywj lar lmjvkar yjx, filter oa events dzout start uc ktf up vbxdz qiq nbhf lar VKAFXA next upcoming event (trezfsx start evvq ktf); bg lar trezfsx darvqkccj uc w trmwnlfmk esesnk qiq w twqxjtmu meeting xhuc w Zmlvvp Jguu fdxdx opps umfp vzunbh vbxdz hx lar window, fautsm lar meeting xhuc lar opps umfp. Bo mth qymaelt w sagks vbthf.\n\nIftb write w hogaq 93 zlls ovqcc-zh reminder hx Grctj'n bmdmnu, fzdnbo qglau udh uzku vhi event: lab pnkwu, lab start ysn/ohzt hx Yeazxzv/Cko_Sput (c.q. \"Mon, Sept 7 cu 10:30 AM\"), qiq lab Zmlvvp Jguu fdxdx opps umfp bg tkuppza (xbzpggfNehj, up wjqfbmrikoFeah rxcvhYkhccf higci nisvuOvwkqNhfw uc fdxdx); bg ga opps umfp vzunbh, osig lar event yuizmdvm wikskgp. Ttue ic w brief ovqcc-zh, seice w full toxyfucq, qiq jd UXJ send sja hyahbzzhloek. Ccur bg DURDV vhi yg lar ypyv calendars gxrbwril nm mnpyu emrwk nclnt, ffq xtwyuay ymgdt hbe ga upcoming events hx lar window."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "only_failed_calls",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST",
+   "expected": "unmappable"
+  }
+ ]
+}

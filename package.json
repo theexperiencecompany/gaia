@@ -1,7 +1,6 @@
 {
   "name": "gaia",
   "scripts": {
-    "openui:gen-prompt": "tsx scripts/openui/generate-prompt.ts",
     "quality:attw": "pnpm --filter @heygaia/cli build && attw --pack packages/cli --profile node16",
     "quality:circular": "biome lint --only=suspicious/noImportCycles apps/web/src apps/mobile/src apps/desktop/src apps/bots libs/shared/ts/src libs/wake-word/src packages/cli/src",
     "quality:components": "node scripts/ci/checks.mjs components-per-file",
@@ -42,7 +41,7 @@
     "jscpd": "^4.2.5",
     "jsdom": "^30.0.1",
     "knip": "^6.43.0",
-    "next": "16.4.2",
+    "next": "16.4.5",
     "npm-package-json-lint": "^10.4.1",
     "nx": "^24.0.0",
     "publint": "^0.3.24",
@@ -93,6 +92,7 @@
       "koa@>=3.0.0 <3.1.2": "3.1.2",
       "lodash-es@<=4.17.23": "4.18.0",
       "prismjs@<1.30.0": "1.30.0",
+      "dompurify@>=3.4.4 <3.4.17": "3.4.17",
       "esbuild@<=0.24.2": "0.25.0",
       "esbuild@>=0.27.3 <0.28.1": "0.28.1",
       "postcss@<8.5.32": "8.5.32",
@@ -139,10 +139,7 @@
       }
     },
     "patchedDependencies": {
-      "sileo@0.1.4": "patches/sileo@0.1.4.patch",
-      "@react-aria/label@3.7.23": "patches/@react-aria__label@3.7.23.patch",
-      "@heroui/input@2.4.31": "patches/@heroui__input@2.4.31.patch",
-      "@heroui/select@2.4.31": "patches/@heroui__select@2.4.31.patch"
+      "sileo@0.1.4": "patches/sileo@0.1.4.patch"
     }
   }
 }

@@ -1,6 +1,8 @@
 """Shared logic for subagent invocation, used by delegation.py and executor_tool.py."""
 
 import asyncio
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass, field, replace
 import time
 from typing import Any, TypedDict, cast
@@ -16,12 +18,13 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
-from langgraph.types import Command, StateSnapshot, interrupt
+from langgraph.types import StateSnapshot
 
 from app.agents.context.assemble import assemble_context
 from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
+from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.background.subagent_channel import SubagentCancel
 from app.agents.core.graph_manager import (
@@ -30,29 +33,38 @@ from app.agents.core.graph_manager import (
     GraphUnavailableError,
 )
 from app.agents.core.held_replies import HeldReplies
+from app.agents.core.interruption import close_open_tool_calls, record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.llm.reasoning import extract_reasoning_delta
+from app.agents.prompts.delegation_prompts import SUBAGENT_NARRATION_ONLY_RESULT
 from app.agents.prompts.workflow_prompts import (
-    WORKFLOW_AUTO_NOTIFY_SECTION,
-    WORKFLOW_SILENT_NOTIFY_SECTION,
+    WORKFLOW_DELIVERY_SECTIONS,
 )
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
+from app.constants.agents import (
+    DONE_EVIDENCE_RULE,
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    NO_ANSWER_NOTICE,
+    TIME_HORIZON_BRIEF,
+    AgentTag,
+    wrap_agent_payload,
+)
 from app.constants.general import (
     EXECUTOR_INTEGRATION_ID,
     EXECUTOR_THREAD_PREFIX,
     FINISH_TASK_NAME,
 )
-from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
-from app.constants.llm import EXECUTOR_RECURSION_LIMIT
+from app.constants.graphs import GraphName
+from app.constants.llm import BUDGET_STOP_METADATA_KEY, EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
 from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
     format_files_list,
 )
+from app.models.agent_config import AgentConfigurableView
 from app.models.agent_models import (
     AgentConfigurable,
     AgentRunnableConfig,
@@ -61,23 +73,23 @@ from app.models.agent_models import (
     agent_configurable,
     run_analytics_context,
 )
-from app.models.hil_models import HilInterruptPayload, HilResumeDecision
+from app.models.ownership_models import ExecutorIntent
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
-from app.services.chat.chunks import normalize_custom_event
+from app.override.langgraph_bigtool.utils import NUDGE_CONTINUE_NODE
 from app.services.files import FileService
 from app.services.latency_metrics import observe_subagent_run
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
 from app.utils.multimodal import extract_text_content
 from app.utils.stream_utils import extract_tool_entries_from_update
+from app.utils.tool_events import normalize_custom_event
 from shared.py.wide_events import log
 
 
 def _finish_task_result(chunk: ToolMessage) -> str | None:
     """Return the finish_task chunk's textual content, or None for any other tool result.
 
-    finish_task carries the final answer in its return value; capturing it makes
-    the parent handoff return the actual content instead of the literal "Task
-    completed" fallback. Subagents with include_finish_task=False never enter this branch.
+    finish_task carries the final answer in its return value, so the parent handoff
+    returns it. Subagents with include_finish_task=False never enter this branch.
     """
     if chunk.name == FINISH_TASK_NAME and isinstance(chunk.content, str):
         return chunk.content
@@ -102,11 +114,7 @@ class SubagentInitialState(TypedDict, total=False):
 
 @dataclass(frozen=True)
 class SubagentOutcome:
-    """One graph run's result: its text, the HIL approval it paused on, or that the user stopped it.
-
-    interrupt carries the payload the gate passed to interrupt(). When it
-    is set the graph is checkpointed mid-run and text is meaningless — the
-    caller must bubble the pause up rather than treat it as an answer.
+    """One graph run's result: its text, or that the user stopped it.
 
     run_messages are THIS run's tool-bearing messages captured off the
     stream — the agent node's AIMessages (complete tool_calls) and the
@@ -115,13 +123,10 @@ class SubagentOutcome:
     """
 
     text: str
-    interrupt: HilInterruptPayload | None = None
     run_messages: tuple[AnyMessage, ...] = ()
     stopped: bool = False
-
-    @property
-    def paused(self) -> bool:
-        return self.interrupt is not None
+    #: False when the run ended without an answer; text then says nothing confirms the work.
+    answered: bool = True
 
 
 def subagent_row_id(tool_call_id: str) -> str:
@@ -134,24 +139,6 @@ def subagent_row_id(tool_call_id: str) -> str:
     if not tool_call_id:
         return str(uuid4())
     return str(uuid5(NAMESPACE_URL, f"subagent_row:{tool_call_id}"))
-
-
-def resume_for_gate(interrupt_payload: HilInterruptPayload) -> object:
-    """Return the decision belonging to the subagent gate now paused.
-
-    Resume values replay positionally from zero even though recover_from_checkpoint
-    fast-forwards to the LATEST parked gate, so skip any payload whose approval_id
-    doesn't match this gate's (one without an id, or a match, delivers as-is).
-    """
-    target = interrupt_payload.get("approval_id") if isinstance(interrupt_payload, dict) else None
-    decision = interrupt(interrupt_payload)
-    while target is not None and isinstance(decision, dict):
-        answered: HilResumeDecision = cast(HilResumeDecision, decision)
-        answered_id = answered.get("approval_id")
-        if answered_id is None or answered_id == target:
-            break
-        decision = interrupt(interrupt_payload)
-    return decision
 
 
 # eq/repr stay off: instances are compared and printed by identity (a generated
@@ -197,7 +184,7 @@ async def build_initial_messages(
     task: str,
     seed: ThreadSeed,
 ) -> list[AnyMessage]:
-    """Seed a worker tier's thread, in canonical slot order.
+    """Seed a worker tier's thread: static prompt, context, the task, then the clock.
 
     system_message must be STATIC (no per-user/per-time content) so the cache
     prefix stays shared across users. seed.retrieval_query defaults to task, but
@@ -264,23 +251,6 @@ async def _executor_presence_note(
     )
 
 
-def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Command:
-    """Re-clock a resumed run.
-
-    A resume replaces initial_state, so the thread keeps the clock from when it
-    STARTED — a HIL pause can leave it hours stale. Appending is safe mid
-    tool-call: manage_system_prompts_node lifts the latest time message to the tail, untouched pairing.
-    """
-    update: _MessagesChannel = (
-        cast(_MessagesChannel, {**resume.update}) if isinstance(resume.update, dict) else {}
-    )
-    update["messages"] = [
-        *update.get("messages", []),
-        build_current_time_message(user_timezone=configurable.get("user_timezone")),
-    ]
-    return Command(resume=resume.resume, update=update, goto=resume.goto, graph=resume.graph)
-
-
 @dataclass
 class _StreamRun:
     """One drive of execute_subagent_stream: its emitters and its running state.
@@ -295,17 +265,25 @@ class _StreamRun:
     subagent_id: str | None
     #: The finish_task return value, which is the answer over anything the run said.
     finish_result: str | None = None
+    #: The budget wall's stop text: it answers in place of a model, so no token streams it.
+    budget_stop: str | None = None
     held: HeldReplies = field(default_factory=HeldReplies)
     emitted_tool_calls: set[str] = field(default_factory=set)
     tool_ran: bool = False
-    pending_approvals: list[HilInterruptPayload] = field(default_factory=list)
     run_messages: list[AnyMessage] = field(default_factory=list)
+    #: The run's own thread, which build_agent_config stamps on every chunk its model streams.
+    thread_id: str | None = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.thread_id = AgentConfigurableView.model_validate(self.ctx.configurable).thread_id
 
     @property
     def complete_message(self) -> str:
-        """What the run answered: finish_task's result, else the replies that called no tool."""
+        """What the run answered: finish_task's result, the budget stop, else the replies that called no tool."""
         if self.finish_result is not None:
             return self.finish_result
+        if self.budget_stop is not None:
+            return self.budget_stop
         return self.held.reply_text()
 
 
@@ -326,8 +304,12 @@ def _process_messages_payload(
     if metadata.get("silent"):
         return
 
+    # A spawned subagent's chunks share this stream: its reply and finish_task are its own.
+    nested = metadata.get("agent_thread_id", run.thread_id) != run.thread_id
+
     if chunk and isinstance(chunk, AIMessageChunk):
-        run.held.hold(chunk, metadata)
+        if not nested:
+            run.held.hold(chunk, metadata)
 
         # Stream reasoning token by token, carrying subagent_id for step nesting
         # (empty for non-reasoning models). Deltas are per chunk; the stream
@@ -344,7 +326,7 @@ def _process_messages_payload(
     # inline media (base64 image blocks) never streams to the frontend.
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = extract_text_content(chunk.content)
-        if (finish_result := _finish_task_result(chunk)) is not None:
+        if not nested and (finish_result := _finish_task_result(chunk)) is not None:
             run.finish_result = finish_result
         if run.stream_writer and claim_tool_output(
             run.ctx.stream_id or "", chunk.tool_call_id, run.subagent_id
@@ -357,21 +339,18 @@ def _process_messages_payload(
             run.stream_writer({"tool_output": tool_output_payload.model_dump(exclude_none=True)})
 
 
-async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) -> None:
-    """Handle one "updates"-mode stream event: record a pause, or emit tool_data.
+def _note_budget_stop(run: _StreamRun, messages: Sequence[AnyMessage]) -> None:
+    """Keep the budget wall's stop text: it answers in place of a model, so no token streams it."""
+    for msg in messages:
+        if isinstance(msg, AIMessage) and msg.response_metadata.get(BUDGET_STOP_METADATA_KEY):
+            run.budget_stop = extract_text_content(msg.content)
 
-    Never break on a pause — keep draining. Under durability="exit", the run-exit
-    save is the only checkpoint write, so abandoning early loses completed
-    tasks' writes and they re-run on resume (break + "exit" is the only combination that loses them).
-    """
-    if LANGGRAPH_INTERRUPT_KEY in payload:
-        # ONE event per paused task, so two gated calls in a message arrive as
-        # two events. Accumulate: the caller stamps re-dispatch context onto
-        # every id here, and an approval left out of that can never be applied.
-        run.pending_approvals.extend(interrupt_values(payload[LANGGRAPH_INTERRUPT_KEY]))
-        log.info(f"{LogTag.HIL} Subagent paused on approval", agent=run.ctx.agent_name)
-        return
+
+async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) -> None:
+    """Handle one "updates"-mode stream event: emit tool_data for the agent node's calls."""
     for node_name, state_update in payload.items():
+        if node_name == NUDGE_CONTINUE_NODE:
+            run.held.supersede()
         # Only emit tool_data from the LLM ("agent") node — pre-model hooks
         # produce "updates" events with historical AIMessages from previous
         # checkpoint runs, and emitting those would replay stale tool cards.
@@ -382,6 +361,7 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
         # streams them as partial chunks. Captured for the call record.
         if isinstance(state_update, dict):
             agent_update: _MessagesChannel = cast(_MessagesChannel, state_update)
+            _note_budget_stop(run, agent_update.get("messages", []))
             announcing = [
                 msg for msg in agent_update.get("messages", []) if getattr(msg, "tool_calls", None)
             ]
@@ -394,6 +374,7 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
             state_update=state_update,
             emitted_tool_calls=run.emitted_tool_calls,
             integration_metadata=run.integration_metadata,
+            user_id=run.ctx.user_id,
         )
         for tc_id, tool_entry in entries:
             # Announcing the call is what claims its result: "messages" mode
@@ -407,32 +388,29 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
 
 
 def _finalize_run(run: _StreamRun) -> SubagentOutcome:
-    """Return the outcome a drained (or paused) stream produced."""
-    # A pause is not a result: the narration-only heuristic below would misread a
-    # half-finished run as "planning text" and tell the parent to re-issue it.
-    if run.pending_approvals:
+    """Return the outcome a drained stream produced."""
+    if not run.complete_message:
+        log.warning("subagent_ended_without_answer", subagent_name=run.ctx.agent_name)
         return SubagentOutcome(
-            text=run.complete_message,
-            interrupt=merge_approvals(run.pending_approvals),
+            text=NO_ANSWER_NOTICE.format(name=f"The {run.ctx.agent_name} run"),
             run_messages=tuple(run.run_messages),
+            answered=False,
         )
 
     # A worker that only narrated did no work: say so, so its delegator re-issues it.
     # The executor is nobody's delegate; its words are its answer (collection runs report).
     if (
         run.ctx.integration_id != EXECUTOR_INTEGRATION_ID
+        and run.budget_stop is None
         and not run.tool_ran
         and not run.emitted_tool_calls
-        and run.complete_message
     ):
         log.warning("subagent_returned_narration_only", subagent_name=run.ctx.agent_name)
-        final_message = (
-            f"The {run.ctx.agent_name} subagent ended without running any tool; it only "
-            f'produced planning text: "{run.complete_message}". Re-issue the handoff with an '
-            "explicit instruction to perform the action."
+        final_message = SUBAGENT_NARRATION_ONLY_RESULT.format(
+            name=run.ctx.agent_name, text=run.complete_message
         )
     else:
-        final_message = run.complete_message or "Task completed"
+        final_message = run.complete_message
     initial_state: SubagentInitialState = run.ctx.initial_state
     log.set(
         subagent={
@@ -450,14 +428,12 @@ async def execute_subagent_stream(
     stream_writer: StreamWriterCallable | None = None,
     integration_metadata: IntegrationMetadata | None = None,
     subagent_id: str | None = None,
-    resume: Command | None = None,
 ) -> SubagentOutcome:
-    """Execute (or resume) a subagent with streaming and tool tracking.
+    """Execute a subagent with streaming and tool tracking.
 
     Stream events: "updates" emits tool_data on a tool call, "messages" streams
     content and emits tool_output on a ToolMessage, "custom" forwards progress
-    events to the parent. resume continues a thread already paused on a HIL
-    interrupt(); a paused outcome carries the approval payload for the caller to bubble up.
+    events to the parent.
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     run = _StreamRun(
@@ -478,92 +454,99 @@ async def execute_subagent_stream(
             "configurable": {**base_configurable, "subagent_id": subagent_id},
         }
 
-    if resume is not None:
-        resume = await _address_resume(ctx.subagent_graph, cast(RunnableConfig, run_config), resume)
-        if resume is None:
-            # The thread has already consumed this decision. Running it would execute
-            # nothing and return empty, which the caller cannot tell apart from a
-            # finished task — an empty outcome says "nothing to deliver" outright.
-            return SubagentOutcome(text="")
-
     # The executor addresses a cancel to this subagent by its own thread_id.
     run_configurable: AgentConfigurable = agent_configurable(ctx.config)
     subagent_thread_id = run_configurable.get("thread_id")
     cancel = SubagentCancel(subagent_thread_id) if subagent_thread_id else None
 
-    # One span per segment; a pause ends its segment here, so the HIL wait that
-    # follows never counts as active time. Labelled by integration id: per-call
+    # Labelled by integration id: per-call
     # uuids and user-made MCPs would each mint unbounded series.
     label = (
         "custom_mcp"
         if ctx.agent_name.startswith("custom_mcp_")
         else ctx.integration_id or ctx.agent_name or "unknown"
     )
+    graph_config = cast(RunnableConfig, run_config)
+    await close_open_tool_calls(ctx.subagent_graph, graph_config)
     cancelled = False
+    stopped_by_executor = False
     segment_start = time.perf_counter()
     try:
-        async for event in ctx.subagent_graph.astream(
-            _with_current_time(resume, ctx.configurable)
-            if resume is not None
-            else ctx.initial_state,
-            stream_mode=["messages", "custom", "updates"],
-            # build_agent_config returns an AgentRunnableConfig, but run_config may be
-            # rebuilt above as a dict spread, which mypy widens back to a plain dict.
-            config=cast(RunnableConfig, run_config),
-            # Persist checkpoints only on run exit (this path is one unit of work),
-            # collapsing O(steps) writes to one. The comms graph driver keeps
-            # "async" — its mid-run checkpoints are needed.
-            durability="exit",
-        ):
-            if await _stream_cancelled(ctx):
-                log.info(
-                    f"{LogTag.AGENT} Subagent stream cancelled by user", stream_id=ctx.stream_id
-                )
-                cancelled = True
-                break
+        # aclosing: the run must have stopped, its checkpoint written, before a stop closes its calls.
+        # astream is an async generator; langgraph annotates it as a bare AsyncIterator.
+        stream = cast(
+            AsyncGenerator[object],
+            ctx.subagent_graph.astream(
+                ctx.initial_state,
+                stream_mode=["messages", "custom", "updates"],
+                config=graph_config,
+                # Persist checkpoints only on run exit (this path is one unit of work),
+                # collapsing O(steps) writes to one. The comms graph driver keeps
+                # "async" — its mid-run checkpoints are needed.
+                durability="exit",
+            ),
+        )
+        async with aclosing(stream) as events:
+            async for event in events:
+                if await _stream_cancelled(ctx):
+                    log.info(
+                        f"{LogTag.AGENT} Subagent stream cancelled by user",
+                        stream_id=ctx.stream_id,
+                    )
+                    cancelled = True
+                    break
 
-            # Handle 2-tuple format only (no subgraphs)
-            if len(event) != 2:
-                continue
-            # A list `stream_mode` makes astream yield (mode, payload) tuples, which
-            # langgraph's own overload return type does not express.
-            stream_mode, payload = cast(tuple[str, object], event)
+                # Handle 2-tuple format only (no subgraphs)
+                if not isinstance(event, tuple) or len(event) != 2:
+                    continue
+                # A list `stream_mode` makes astream yield (mode, payload) tuples, which
+                # langgraph's own overload return type does not express.
+                stream_mode, payload = cast(tuple[str, object], event)
 
-            # Targeted cancel from the executor, checked once per superstep (one
-            # redis read per reasoning step). Returns a clean cancelled result so
-            # the executor learns it stopped; the executor and siblings keep running.
-            if (
-                stream_mode == "updates"
-                and ctx.stream_id
-                and cancel
-                and await cancel.is_requested()
-            ):
-                await cancel.clear()
-                log.info(f"{LogTag.AGENT} Subagent cancelled by executor", stream_id=ctx.stream_id)
-                outcome = _finalize_run(run)
-                observe_subagent_run(
-                    time.perf_counter() - segment_start, subagent_id=label, status="cancelled"
-                )
-                # What the run said so far, not the finished-run text: that one reads
-                # "Task completed" or tells the executor to re-issue what it just stopped.
-                return replace(
-                    outcome,
-                    text=wrap_agent_payload(
-                        AgentTag.SUBAGENT_CANCELLED,
-                        run.complete_message or "Stopped by the executor before finishing.",
-                    ),
-                )
+                # Targeted cancel from the executor, checked once per superstep (one
+                # redis read per reasoning step). Returns a clean cancelled result so
+                # the executor learns it stopped; the executor and siblings keep running.
+                if (
+                    stream_mode == "updates"
+                    and ctx.stream_id
+                    and cancel
+                    and await cancel.is_requested()
+                ):
+                    await cancel.clear()
+                    log.info(
+                        f"{LogTag.AGENT} Subagent cancelled by executor", stream_id=ctx.stream_id
+                    )
+                    stopped_by_executor = True
+                    break
 
-            await _consume_stream_event(run, stream_mode, payload)
+                await _consume_stream_event(run, stream_mode, payload)
+        if cancelled:
+            await record_interruption(ctx.subagent_graph, graph_config)
+        elif stopped_by_executor:
+            await close_open_tool_calls(ctx.subagent_graph, graph_config)
     except Exception:
         observe_subagent_run(time.perf_counter() - segment_start, subagent_id=label, status="error")
         raise
+
+    if stopped_by_executor:
+        observe_subagent_run(
+            time.perf_counter() - segment_start, subagent_id=label, status="cancelled"
+        )
+        # What the run said so far, not the finished-run text: that one says
+        # nothing was confirmed or tells the executor to re-issue what it just stopped.
+        return replace(
+            _finalize_run(run),
+            text=wrap_agent_payload(
+                AgentTag.SUBAGENT_CANCELLED,
+                run.complete_message or "Stopped by the executor before finishing.",
+            ),
+        )
 
     outcome = replace(_finalize_run(run), stopped=cancelled)
     observe_subagent_run(
         time.perf_counter() - segment_start,
         subagent_id=label,
-        status=_segment_status(outcome, cancelled=cancelled),
+        status="cancelled" if cancelled else "success",
     )
     return outcome
 
@@ -571,16 +554,9 @@ async def execute_subagent_stream(
 async def _stream_cancelled(ctx: SubagentExecutionContext) -> bool:
     """Whether the user stopped this run's stream, or the turn that dispatched it."""
     for stream_id in (ctx.stream_id, ctx.parent_stream_id):
-        if stream_id and await stream_manager.is_cancelled(stream_id):
+        if stream_id and await stop_requested(stream_id):
             return True
     return False
-
-
-def _segment_status(outcome: SubagentOutcome, *, cancelled: bool) -> str:
-    """How this run segment ended, for the latency histogram's status label."""
-    if outcome.paused:
-        return "paused"
-    return "cancelled" if cancelled else "success"
 
 
 async def _consume_stream_event(run: _StreamRun, stream_mode: str, payload: object) -> None:
@@ -625,135 +601,21 @@ async def thread_messages(ctx: SubagentExecutionContext) -> list[AnyMessage]:
     return _snapshot_messages(await ctx.subagent_graph.aget_state(cast(RunnableConfig, ctx.config)))
 
 
-def _final_text_from_snapshot(snapshot: StateSnapshot) -> str:
-    messages = _snapshot_messages(snapshot)
-    if not messages:
-        return ""
-    content = getattr(messages[-1], "content", "")
-    return content if isinstance(content, str) else str(content or "")
-
-
-async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutcome | None:
-    """Return what this subagent's own thread already holds, or None if it never ran.
-
-    Three states, conflating the last two re-drives a completed subagent: Parked
-    (mid-run on a HIL interrupt) returns a paused outcome; Finished (state but no
-    pending work) returns its checkpointed final answer, since re-running would
-    repeat every action; Never ran (no state) returns None so the caller starts it.
-    """
-    snapshot = await ctx.subagent_graph.aget_state(cast(RunnableConfig, ctx.config))
-    if snapshot.next:
-        return SubagentOutcome(
-            text="", interrupt=interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
-        )
-    if not _snapshot_messages(snapshot):
-        return None
-    return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
-
-
-async def _address_resume(
-    graph: CompiledAgentGraph, config: RunnableConfig, resume: Command
-) -> Command | None:
-    """Aim a resume at the one interrupt it answers, or None if the thread already consumed it.
-
-    A bare resume is refused once two interrupts are pending (two destructive calls in one
-    message): the approved action never runs and the second approval stays pending forever.
-    None keeps a redundant sweep re-dispatch (list_decided_unresumed) from reading as success.
-    Reads the live checkpoint; one interrupt, or no matching approval_id, falls through unchanged.
-    """
-    snapshot = await graph.aget_state(config)
-    interrupts = getattr(snapshot, "interrupts", ()) or ()
-    if not interrupts and not snapshot.next:
-        log.error(
-            f"{LogTag.HIL} Resume arrived for a thread with no pending work; "
-            "the decision was already applied and this run has nothing to do",
-            approval_id=str(_approval_id_of(resume) or ""),
-        )
-        return None
-
-    approval_id = _approval_id_of(resume)
-    if not approval_id or len(interrupts) < 2:
-        return resume
-    payload = resume.resume
-
-    for item in interrupts:
-        value = getattr(item, "value", None)
-        interrupt_id = getattr(item, "id", None)
-        if not (interrupt_id and isinstance(value, dict)):
-            continue
-        gate_payload: HilInterruptPayload = cast(HilInterruptPayload, value)
-        if gate_payload.get("approval_id") == approval_id:
-            log.info(
-                f"{LogTag.HIL} Addressing resume to its interrupt",
-                approval_id=str(approval_id),
-                pending_interrupts=len(interrupts),
-            )
-            return Command(resume={interrupt_id: payload}, update=resume.update, goto=resume.goto)
-
-    log.warning(
-        f"{LogTag.HIL} No pending interrupt matches this decision",
-        approval_id=str(approval_id),
-        pending_interrupts=len(interrupts),
-    )
-    return resume
-
-
-def _approval_id_of(resume: Command) -> str | None:
-    """Which gate this decision answers, when the payload carries one."""
-    payload = resume.resume
-    if not isinstance(payload, dict):
-        return None
-    decision: HilResumeDecision = cast(HilResumeDecision, payload)
-    approval_id = decision.get("approval_id")
-    return str(approval_id) if approval_id else None
-
-
-def interrupt_payload(raw: object) -> HilInterruptPayload:
-    """Return the HIL payload inside LangGraph Interrupt object(s).
-
-    Carries EVERY pending approval, not just the first — two destructive calls in
-    one message park two tasks, and each id needs its own re-dispatch context. The
-    first payload's own fields stay at the top level; approval_ids is what batch readers use.
-    """
-    return merge_approvals(interrupt_values(raw))
-
-
-def interrupt_values(raw: object) -> list[HilInterruptPayload]:
-    """Return the dict payloads inside one or more LangGraph Interrupt objects."""
-    items = raw if isinstance(raw, (list, tuple)) else (raw,)
-    return [
-        cast(HilInterruptPayload, value)
-        for value in (getattr(item, "value", item) for item in items)
-        if isinstance(value, dict)
+def _render_intent(intent: ExecutorIntent) -> str:
+    lines = [
+        f"Outcome the user actually wants: {intent.desired_outcome.strip()}",
+        f"Time horizon: {TIME_HORIZON_BRIEF[intent.time_horizon]}",
     ]
-
-
-def merge_approvals(payloads: list[HilInterruptPayload]) -> HilInterruptPayload:
-    """Fold several pending approvals into one payload carrying ALL their ids.
-
-    The first payload's own fields stay at the top level, so callers reading a single
-    approval (resume_for_gate) are unaffected; approval_ids is what the batch
-    readers use (paused_approval_ids).
-    """
-    if not payloads:
-        return {}
-    ids = [str(payload["approval_id"]) for payload in payloads if payload.get("approval_id")]
-    if len(ids) < 2:
-        return payloads[0]
-    merged = payloads[0].copy()
-    merged["approval_ids"] = ids
-    return merged
-
-
-def paused_approval_ids(payload: HilInterruptPayload) -> tuple[str, ...]:
-    """Every approval id a pause carries — the batch first, then the single id."""
-    batch = payload.get("approval_ids")
-    if isinstance(batch, list):
-        ids = tuple(str(a) for a in batch if a)
-        if ids:
-            return ids
-    single = payload.get("approval_id")
-    return (str(single),) if single else ()
+    defaults = [d.strip() for d in intent.defaults_assumed if d.strip()]
+    if defaults:
+        lines.append("Defaults assumed (name them in your report):")
+        lines.extend(f"- {d}" for d in defaults)
+    lines.append(
+        IRREVERSIBLE_APPROVED_BRIEF
+        if intent.irreversible_approved
+        else IRREVERSIBLE_UNAPPROVED_BRIEF
+    )
+    return "\n".join(lines)
 
 
 def compose_executor_brief(
@@ -763,8 +625,9 @@ def compose_executor_brief(
     verbatim_request: str | None = None,
     last_run: str | None = None,
     playbook_check: str | None = None,
+    intent: ExecutorIntent | None = None,
 ) -> str:
-    """Fold the definition-of-done (and verbatim request, previous run) into the brief.
+    """Fold the intent, definition-of-done (and verbatim request, previous run) into the brief.
 
     last_run is a workflow's rendered previous run — its memory now that
     checkpoint threads drop before each fire. playbook_check rides in the brief
@@ -778,6 +641,8 @@ def compose_executor_brief(
     parts.append(task)
     if last_run:
         parts.append(last_run.strip())
+    if intent is not None:
+        parts.append(_render_intent(intent))
     if criteria:
         lines = "\n".join(f"- {c}" for c in criteria)
         parts.append(
@@ -816,7 +681,7 @@ async def prepare_executor_execution(
     # Load executor graph. Degrade contract: comms must still receive a
     # tool-result string, so log the real cause loudly and return the error.
     try:
-        executor_graph = await GraphManager.get_graph("executor_agent")
+        executor_graph = await GraphManager.get_graph(GraphName.EXECUTOR)
     except GraphUnavailableError as e:
         log.error(
             f"{LogTag.AGENT} prepare_executor_execution: executor_agent graph unavailable",
@@ -888,11 +753,9 @@ async def prepare_executor_execution(
     # writes, so inject the notification mode here (keyed off this run's own
     # configurable) rather than depend on comms forwarding the rule. Skip if already present.
     if configurable.get("workflow_id") and "NOTIFICATIONS:" not in enhanced_task:
-        notification_section = (
-            WORKFLOW_AUTO_NOTIFY_SECTION
-            if configurable.get("workflow_notify_on_completion", True)
-            else WORKFLOW_SILENT_NOTIFY_SECTION
-        )
+        notification_section = WORKFLOW_DELIVERY_SECTIONS[
+            AgentConfigurableView.model_validate(configurable).workflow_delivery
+        ]
         enhanced_task = f"{enhanced_task}\n{notification_section}"
 
     # Surface uploaded files so the executor (which holds the file tools) can act

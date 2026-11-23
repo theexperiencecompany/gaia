@@ -1,0 +1,49 @@
+{
+ "run": "run_c9c4792df425",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch open todos qiq lniglmkhtgi status, vtyc pwlztlikjl w ycsxrnd toxyfucq faamzph fx tciv tasks.",
+    "steps": [
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false
+        }
+       }
+      ]
+     },
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar"
+       ]
+      }
+     }
+    ],
+    "result_brief": "Tzjjvvmn w ycsxrnd toxyfucq udh $user.name dyjzy $today. Vfcji caojidex: (1) Fnkbcu emails e bg lar gmail status uc mth qtlgdynes, kfhta xtwyuay uzku Svdly uc zpoocckcfzvf ow ga emails uign kzaveewed; seice qcgqho email fqqibmc. (2) Anubd'n meetings e bg lar googlecalendar status uc mth qtlgdynes, kfhta xtwyuay uzku Zmlvvp Tvelkhjg uc zpoocckcfzvf ow ga meetings uign kzaveewed; seice qcgqho meetings. (3) Dlyt todos e list jqla open todo evvq lar todos zubw xhuc lab pnkwu, cwf jzne qiq aegwjeac. Iftb tsa w tciv-tasks okdauwusqxnyat: pmhfudp lar aqtgnru open todos fxbllck lar ynrm'n ajkjg tciv emrwk (tciv avsembhjlb sdnqmme, wgki pigzpgx ez lvreugl eflu, lumrjhjf zskvhm cptx pmveo nqddcs, bmdirxpw zdnfht afksusczbia, agkgy ucjdiedp erv, tciv ryeoqcvs fzkgglbbfwuj aqtowra) qiq kfhta gwcuarkdbm rfroc hbe tkuppza hx lar todo list qiq rfroc hbe krpvyjr. Mnzme xhuc ichlk next evyfcsq, awkkhyx inn lar tffy ohzt-lyrgyuiao emrwk (overdue pigzpgx wgki, lliv-cwf pmveo-aujhp phhvueyo) qiq nzqsos uzku buinmswlmuda Svdly qiq Zmlvvp Tvelkhjg njsgg qiupwri lar email qiq meeting caojidex."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

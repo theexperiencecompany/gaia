@@ -1,0 +1,109 @@
+{
+ "run": "run_c8f113b3b56f",
+ "captured_from": "2026-09-03",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "list_tracked_todos",
+   "tool_category": "tracked_todos",
+   "result_digest": "Vujmna bxwwhjl todos (1):\n\n- \"Epzhnl bpgkdeg zqcxengc wfkquvl (ziuwx + regrqfk)\" [wfkquvl, csxktyzec] (HW: 4c328177vu4p4572ad6rp14f)\n  Ymmxmsst: doktun | Tas: 9d | Caab ksbcvnk: 0i kho\n  Hirqfizul: 2026-09-04T18:00:00+00:00 | Dxkusnrjdk: 165 * * *"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas",
+   "tool_category": "tracked_todos",
+   "args": {
+    "todo_id": "4c328177vu4p4572ad6rp14f",
+    "content": "## Anubd'n Ifisso e Thu 2026-09-03 20:00 Espzty/Ivgxioklr\n\n- [ ] Irkmbbe myco e 40 sxw\n- [ ] Pgaohnp xiqnztk e 20 sxw\n\nAnubd: Gkhtf crrhcefy mcto e w 40-sxw myco oa dadawwc fnmc cvhb, vtyc 20 sxw yg regrqfk oa uixn fscy. Jclcg, Tubgw a",
+    "mode": "zdqpbv"
+   },
+   "result_digest": "Xdjwbc ksbcvnk (wsll=zdqpbv)."
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas",
+   "tool_category": "tracked_todos",
+   "args": {
+    "content": "## Ytt Uoasgal e Thu 2026-09-03 20:00 Espzty/Ivgxioklr\n\n1. **Irkmbbe jmwjih e vxdvud ukm mbmgudlsqy.** Kdv wfkquvl bxwwhjl todo hptbo xillm bpgkdeg cu 20:00 Espzty/Ivgxioklr (dlvy `165 * * *`); ga vmnpuhsfj/zguhmq reminder qpxlxm up eacrpal. Anubd: Thu e 40-sxw myco + 20-sxw regrqfk.\n2. **Sloaagetf e ksbcvnk.** Anubd'n ritual kjksdisqk hccsm loqce (40-sxw myco m trvgtlbn, 20-sxw regrqfk m trvgtlbn, label [wfkquvl, csxktyzec] aswfecm fx lar todo).\n3. **Ztlvj ownizlll e tkuppza fx smpw todo** (ga vmnpuhsfj eacrpal): \"## Ztlvj Fmfrugq e Epzhnl Tekojcugte\" grjvjd Begs yg Mon 2026-08-31 g Sun 2026-09-06 xhuc vls-bpgkdeg myco/regrqfk lobk ikxvr.\n\n## Jalppkn e next rui\nBspdzga wzkihqhy. Anubd'n myco/regrqfk emrwk mmprnt oa ku zcmjhx ae Tubgw hx lar kjksdisqk; scucs-xswdjbr lobk ikxvr bxdgw izwd oa ahp Sunday bjwple.",
+    "mode": "zdqpbv",
+    "todo_id": "4c328177vu4p4572ad6rp14f"
+   },
+   "result_digest": "Xdjwbc ksbcvnk (wsll=zdqpbv)."
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 6,
+   "written": {
+    "description": "Xdsle motsxhuav yg Tubgw'n \"Epzhnl bpgkdeg zqcxengc wfkquvl\" bxwwhjl todo: smvwgnm lar bpgkdeg jmwjih hptbo ukm lar wfkquvl'n mtx mbmgudlsqy (ga vmnpuhsfj reminder), post today'n myco+regrqfk ritual kjksdisqk, qiq record lar rui outcome fx lar todo canvas.",
+    "steps": [
+     {
+      "id": "verify",
+      "tool": "list_tracked_todos",
+      "args": {},
+      "goal": "Mevgres lar wfkquvl bxwwhjl todo uc vxdvud qiq cdhzfa dikcp cu 20:00 Espzty/Ivgxioklr (mbmgudlsqy dlvy '165 * * *'), ow ga vmnpuhsfj zguhmq reminder pnpjt oa ku eacrpal."
+     },
+     {
+      "id": "ritual",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": "4c328177vu4p4572ad6rp14f",
+       "mode": "zdqpbv",
+       "content": {
+        "$ask": "Pypvv w '## Anubd'n Ifisso e <cdnwwmq> <jzne>' umqzulyr ahrojly. Yiqrlwdpi today'n ysn-yg-trrb evvq $today (Espzty/Ivgxioklr), uvnq zh lar myco + regrqfk siabogulj evvq Tubgw'n dikcp plan (Mon 20+25, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30), qiq fmqk w kjksdisqk xhuc eqf ikbqpvxoy emrwk ('Irkmbbe myco e <x> sxw' qiq 'Pgaohnp xiqnztk e <x> sxw') gtrz w hogaq tormgmwcmdr chlerat zlls qxbbuzule oa Tubgw."
+       }
+      },
+      "goal": "Xdeh lar ikbqpvxoy myco + regrqfk kjksdisqk udh today'n bpgkdeg xhuc gqccpvf siabogulj."
+     },
+     {
+      "id": "outcome",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": "4c328177vu4p4572ad6rp14f",
+       "mode": "zdqpbv",
+       "content": {
+        "$ask": "Pypvv w '## Ytt Uoasgal e <cdnwwmq> <jzne>' ahrojly nzqsos: (1) lar bpgkdeg jmwjih uc fnbkxj ukm lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), ow ga vmnpuhsfj reminder eto eacrpal; (2) today'n ritual kjksdisqk eto ojqbtvny loqce; (3) rdsguv scucs ownizlll aswfecm cvoki fx smpw kbam todo (ga vmnpuhsfj eacrpal). Vbynrapmab gvrz rqyvoyit xenivee."
+       }
+      },
+      "goal": "Kvrmyg today'n rui outcome fx lar vxdvud todo'n canvas."
+     }
+    ],
+    "result_brief": "Usjn Tubgw ic'n ohzt udh bfqvmek'n zqcxengc ritual: gfqp today'n ysn qiq lar holrckj bpgkdeg myco + regrqfk siabogulj evvq lar dikcp plan (c.q. Thu = 40-sxw myco + 20-sxw regrqfk), vhoddpjyu xhuc w jbhq, tormgmwcmdr uixn-fscy purw. Mevgres lar wfkquvl aswfecm suqqdoe ahp jqla bpgkdeg cu 20:00 ukm lab mtx dikcp mbmgudlsqy, ow ga vmnpuhsfj reminder eto hccsm. Dqhi bfqvmek'n kjksdisqk (bpgkdeg myco + regrqfk, jqla xhuc lab gbiizrzg) uc lobk-kzxo fx ahp bxwwhjl todo, qiq ahp rdsguv myco/regrqfk scucs xswdjbr zxyas yszhk ymgdt fx lar kbam todo e evqhlbd vdywfcqabw."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "verify"
+    },
+    {
+     "call": "update_tracked_todo_canvas#1",
+     "id": "ritual",
+     "vary": {
+      "content": {
+       "$ask": "Pypvv w '## Anubd'n Ifisso e <cdnwwmq> <jzne>' umqzulyr ahrojly. Yiqrlwdpi today'n ysn-yg-trrb evvq $today (Espzty/Ivgxioklr), uvnq zh lar myco + regrqfk siabogulj evvq Tubgw'n dikcp plan (Mon 20+25, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30), qiq fmqk w kjksdisqk xhuc eqf ikbqpvxoy emrwk ('Irkmbbe myco e <x> sxw' qiq 'Pgaohnp xiqnztk e <x> sxw') gtrz w hogaq tormgmwcmdr chlerat zlls qxbbuzule oa Tubgw."
+      }
+     }
+    },
+    {
+     "call": "update_tracked_todo_canvas#2",
+     "id": "outcome",
+     "vary": {
+      "content": {
+       "$ask": "Pypvv w '## Ytt Uoasgal e <cdnwwmq> <jzne>' ahrojly nzqsos: (1) lar bpgkdeg jmwjih uc fnbkxj ukm lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), ow ga vmnpuhsfj reminder eto eacrpal; (2) today'n ritual kjksdisqk eto ojqbtvny loqce; (3) rdsguv scucs ownizlll aswfecm cvoki fx smpw kbam todo (ga vmnpuhsfj eacrpal). Vbynrapmab gvrz rqyvoyit xenivee."
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

@@ -212,7 +212,7 @@ function subscribed(
 }
 
 /** HeroUI's Skeleton base class: what a loading price renders instead of a figure. */
-const SKELETON = ".bg-content3";
+const SKELETON = ".skeleton";
 
 /** What a reader sees: the rendered text, minus injected styles, whitespace collapsed. */
 function visibleText(container: HTMLElement): string {
@@ -298,20 +298,41 @@ describe("pricing cards", () => {
 
   it("billing period tabs", () => {
     const { container } = render(
-      <BillingPeriodTabs isYearly={false} onChange={vi.fn()} />,
+      <BillingPeriodTabs isYearly={false} onChange={vi.fn()}>
+        cards
+      </BillingPeriodTabs>,
     );
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"MonthlyYearly2 months free"`,
+      `"MonthlyYearly2 months freecards"`,
     );
+  });
+
+  it("billing period tabs control a panel that exists", () => {
+    const { container } = render(
+      <BillingPeriodTabs isYearly onChange={vi.fn()}>
+        cards
+      </BillingPeriodTabs>,
+    );
+    const controlled = [...container.querySelectorAll("[aria-controls]")];
+    expect(controlled.length).toBeGreaterThan(0);
+    for (const el of controlled) {
+      const panel = container.ownerDocument.getElementById(
+        el.getAttribute("aria-controls") ?? "",
+      );
+      expect(panel?.getAttribute("role")).toBe("tabpanel");
+      expect(panel?.textContent).toBe("cards");
+    }
   });
 
   it("never rounds a part month up into the chip", () => {
     // $271/yr saves $89: 2.97 months of $30, so two months free, not three.
     mockPlans = [PRO_MONTHLY, { ...PRO_YEARLY, amount: 27100 }];
     const { container } = render(
-      <BillingPeriodTabs isYearly={false} onChange={vi.fn()} />,
+      <BillingPeriodTabs isYearly={false} onChange={vi.fn()}>
+        cards
+      </BillingPeriodTabs>,
     );
-    expect(visibleText(container)).toBe("MonthlyYearly2 months free");
+    expect(visibleText(container)).toBe("MonthlyYearly2 months freecards");
   });
 
   it("discount banners", () => {
@@ -332,7 +353,7 @@ describe("sidebar promo", () => {
   it("quotes the monthly catalogue price to a never-subscribed user", () => {
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"GAIA is paid onlyGAIA is paid only right now. $30 a month gets you all of it.SubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"GAIA is paid onlyGAIA is paid only right now. $30 a month gets you all of it.SubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
   });
 
@@ -340,7 +361,7 @@ describe("sidebar promo", () => {
     paidState.hasEverSubscribed = true;
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"Your subscription endedResubscribe for $30 a month to pick up where you left offResubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"Your subscription endedResubscribe for $30 a month to pick up where you left offResubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
   });
 
@@ -349,7 +370,7 @@ describe("sidebar promo", () => {
     mockPlansLoading = true;
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
     expect(container.querySelector(SKELETON)).not.toBeNull();
   });
@@ -358,7 +379,7 @@ describe("sidebar promo", () => {
     mockPlans = [];
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
     expect(container.querySelector(SKELETON)).toBeNull();
   });

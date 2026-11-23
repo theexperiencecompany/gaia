@@ -17,10 +17,11 @@ import pytest
 from app.models.payment_models import PlanType
 from app.services.limit_upsell import (
     LimitHitOrigin,
+    capture_limit_hit,
     current_limit_origin,
     schedule_limit_upsell,
 )
-from shared.py.analytics import UserId
+from shared.py.analytics import PlatformIdentity, UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.billing import RateLimitHit
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
@@ -56,6 +57,32 @@ async def _patched_seams() -> AsyncIterator[_Seams]:
         yield _Seams(capture=capture, upsell=upsell, paused=paused, spawn=spawn)
 
 
+class TestCaptureLimitHit:
+    def test_records_the_refusal_with_its_window(self) -> None:
+        with patch("app.services.limit_upsell.capture") as capture:
+            capture_limit_hit(
+                UserId(USER_1),
+                "chat_messages",
+                PlanType.PRO,
+                origin=LimitHitOrigin.INTERACTIVE,
+                window="month",
+            )
+
+        capture.assert_called_once_with(
+            UserId(USER_1),
+            RateLimitHit(feature="chat_messages", plan="pro", origin="interactive", window="month"),
+        )
+
+    def test_a_refusal_before_the_user_is_known_carries_no_plan(self) -> None:
+        sender = PlatformIdentity("telegram", "12345")
+        with patch("app.services.limit_upsell.capture") as capture:
+            capture_limit_hit(sender, "chat_messages", None, window="burst")
+
+        capture.assert_called_once_with(
+            sender, RateLimitHit(feature="chat_messages", plan=None, origin=None, window="burst")
+        )
+
+
 class TestOriginRouting:
     async def test_interactive_sends_upsell_email(self) -> None:
         async with _patched_seams() as seams:
@@ -66,10 +93,8 @@ class TestOriginRouting:
 
         seams.upsell.assert_awaited_once_with(USER_1, "chat_messages")
         seams.paused.assert_not_awaited()
-        seams.capture.assert_called_once_with(
-            UserId(USER_1),
-            RateLimitHit(feature="chat_messages", origin="interactive", plan="free"),
-        )
+        # The wall records the hit itself (capture_limit_hit); the upsell only emails.
+        seams.capture.assert_not_called()
 
     async def test_background_sends_workflows_paused_email(self) -> None:
         async with _patched_seams() as seams:
@@ -80,10 +105,8 @@ class TestOriginRouting:
 
         seams.paused.assert_awaited_once_with(USER_2)
         seams.upsell.assert_not_awaited()
-        seams.capture.assert_called_once_with(
-            UserId(USER_2),
-            RateLimitHit(feature="trigger_workflow_executions", origin="background", plan="free"),
-        )
+        # The wall records the hit itself (capture_limit_hit); the upsell only emails.
+        seams.capture.assert_not_called()
 
     async def test_email_failure_is_swallowed(self) -> None:
         async with _patched_seams() as seams:

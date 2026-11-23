@@ -190,6 +190,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
+        legacy_ids=["google_calendar"],
         name="Google Calendar",
         description="Schedule meetings and manage your calendar events",
         category="productivity",
@@ -302,6 +303,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     ),
     OAuthIntegration(
         id="googledocs",
+        legacy_ids=["google_docs"],
         name="Google Docs",
         description="Create, edit, and share documents in your workspace",
         category="productivity",
@@ -511,7 +513,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_svLPDmjcTVMX",
             toolkit="GMAIL",
-            toolkit_version="20260107_00",
+            toolkit_version="20261105_00",
         ),
         destructive_tools=GMAIL_DESTRUCTIVE_TOOLS,
         associated_triggers=[
@@ -585,7 +587,15 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "GMAIL_GET_CONTACT_LIST",
             ],
             extra_initial_tools=["query_json", "grep"],
-            exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
+            exclude_tools=[
+                "GMAIL_FETCH_EMAILS",
+                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+                # Filters need gmail.settings.basic, which the Gmail connection does not grant: 403.
+                "GMAIL_CREATE_FILTER",
+                "GMAIL_DELETE_FILTER",
+                "GMAIL_GET_FILTER",
+                "GMAIL_LIST_FILTERS",
+            ],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(
@@ -2255,6 +2265,13 @@ def set_instance_integrations(integrations: Sequence[OAuthIntegration]) -> None:
 def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
     """Return the matching integration, or None if no integration has this id."""
     return next((i for i in all_integrations() if i.id == integration_id), None)
+
+
+def canonical_integration_id(integration_id: str) -> str:
+    """Return the id a retired spelling was renamed to; any other id as it is."""
+    return next(
+        (i.id for i in all_integrations() if integration_id in i.legacy_ids), integration_id
+    )
 
 
 def get_integration_scopes(integration_id: str) -> list[str]:

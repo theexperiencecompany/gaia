@@ -2,31 +2,29 @@
 
 from app.config.oauth_config import get_integration_by_tool_slug, get_integration_by_toolkit
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, IntegrationStatus
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
 from app.models.webhook_models import TriggerEventAccount
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 
 
-def derive_status(accounts: list[IntegrationAccount]) -> UserIntegrationStatus:
+def derive_status(accounts: list[IntegrationAccount]) -> IntegrationStatus:
     """Report connected while any account works, expired once every account has died."""
-    if any(a.status == "connected" for a in accounts):
-        return "connected"
-    return "expired" if accounts else "created"
+    if any(a.status == IntegrationStatus.CONNECTED for a in accounts):
+        return IntegrationStatus.CONNECTED
+    return IntegrationStatus.EXPIRED if accounts else IntegrationStatus.CREATED
 
 
 def pick_primary(accounts: list[IntegrationAccount], current: str | None) -> str | None:
     """Keep the current primary while it exists; otherwise the oldest live account, then the oldest."""
     if any(a.id == current for a in accounts):
         return current
-    live = [a for a in accounts if a.status == "connected"]
+    live = [a for a in accounts if a.status == IntegrationStatus.CONNECTED]
     pool = live or accounts
     return pool[0].id if pool else None
 
@@ -49,7 +47,7 @@ def describe_account(account: IntegrationAccount, primary_id: str | None) -> str
     tags = [f"id {account.id}"]
     if account.id == primary_id:
         tags.append("default")
-    if account.status != "connected":
+    if account.status != IntegrationStatus.CONNECTED:
         tags.append("expired")
     return " or ".join(f'"{name}"' for name in names) + f" ({', '.join(tags)})"
 
@@ -121,16 +119,22 @@ async def event_account(
     return tagged
 
 
-def _not_connected(toolkit: str, why: str) -> AppError:
-    # 403, not 401: a 401 trips the web client's session-expiry interceptor.
-    return AppError(
-        message=f"No active {toolkit} connection",
+def toolkit_not_connected(
+    toolkit: str,
+    why: str,
+    *,
+    grant_died: bool = False,
+    meta: dict[str, object] | None = None,
+) -> IntegrationNotConnectedError:
+    """Build the not-connected error for a Composio toolkit, named after its GAIA integration."""
+    integration = get_integration_by_toolkit(toolkit)
+    return IntegrationNotConnectedError(
+        integration_id=integration.id if integration else toolkit.lower(),
+        integration_name=integration.name if integration else toolkit,
         why=why,
-        fix=f"Reconnect the {toolkit} integration",
-        status_code=403,
-        code=INTEGRATION_NOT_CONNECTED,
-        # The web interceptor keys its reconnect toast on `toolkit`.
-        public={"toolkit": toolkit},
+        toolkit=toolkit,
+        grant_died=grant_died,
+        meta=meta,
     )
 
 
@@ -146,9 +150,10 @@ async def primary_connected_account_id(user_id: str, toolkit: str) -> str:
     record = await get_account_record(user_id, integration.id)
     account = primary_account(record) if record else None
     if account is None:
-        raise _not_connected(toolkit, "This integration has no connected account")
-    if account.status != "connected":
-        raise _not_connected(
-            toolkit, f"The primary {integration.name} account ({account.display_name}) expired"
+        raise toolkit_not_connected(toolkit, "This integration has no connected account")
+    if account.status != IntegrationStatus.CONNECTED:
+        raise toolkit_not_connected(
+            toolkit,
+            f"The primary {integration.name} account ({account.display_name}) expired",
         )
     return account.connected_account_id

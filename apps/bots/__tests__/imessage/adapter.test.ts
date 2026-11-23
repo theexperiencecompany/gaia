@@ -10,6 +10,10 @@ vi.mock("spectrum-ts", () => ({
     __reaction: { emoji, target },
     build: vi.fn(),
   })),
+  reply: vi.fn((text: string, target: unknown) => ({
+    __reply: { text, target },
+    build: vi.fn(),
+  })),
 }));
 
 vi.mock("spectrum-ts/providers/imessage", () => {
@@ -59,9 +63,14 @@ vi.mock("@gaia/shared/bots", async () => {
   });
 });
 
-import { handleStreamingChat, MEDIA_READ_TIMEOUT_MS } from "@gaia/shared/bots";
-import { attachment, reaction } from "spectrum-ts";
+import { MEDIA_READ_TIMEOUT_MS } from "@gaia/shared/bots";
+import { attachment, reaction, reply } from "spectrum-ts";
 import { ImessageAdapter } from "../../imessage/src/adapter";
+import {
+  lastAuthHandler,
+  lastSurface,
+  postAndFollowSpy,
+} from "../shared/mocks/postAndFollow";
 
 interface FakeSpace {
   id: string;
@@ -86,6 +95,7 @@ function makeSpace(overrides: Partial<FakeSpace> = {}): FakeSpace {
 
 const ATTACHMENT_CHUNK = 256;
 const CAP = 1000;
+const RECEIVED_AT = 1_700_000_000_000;
 
 function makeAttachment(overrides: { size?: number } = {}) {
   const content = {
@@ -169,14 +179,16 @@ type PrivateAdapter = {
   handleIncomingMessage: (
     handle: string,
     space: FakeSpace,
+    receivedAt: number,
     text: string,
   ) => Promise<void>;
-  handleStreamingMessage: (
+  postImessageMessage: (
     handle: string,
     space: FakeSpace,
+    receivedAt: number,
     text: string,
+    messageId?: string,
   ) => Promise<void>;
-  messageQueues: Map<string, Promise<void>>;
   deliverOutbound: (destinationId: string, text: string) => Promise<void>;
   sendOutboundFile: (
     destinationId: string,
@@ -188,10 +200,19 @@ type PrivateAdapter = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ) => Promise<string>;
   adapterLogger: { warn: ReturnType<typeof vi.fn> };
   commands: Map<string, { execute: (p: unknown) => Promise<void> }>;
 };
+
+/** The fire-and-forget handlers a webhook message starts; settleInbound() awaits them. */
+const INBOUND_HANDLERS = [
+  "handleIncomingMessage",
+  "handleMediaMessage",
+  "handleMultiPartMessage",
+] as const;
+let inboundInFlight: Promise<void>[] = [];
 
 function makeAdapter(): { adapter: ImessageAdapter; priv: PrivateAdapter } {
   const adapter = new ImessageAdapter();
@@ -203,16 +224,43 @@ function makeAdapter(): { adapter: ImessageAdapter; priv: PrivateAdapter } {
     },
     user: vi.fn(),
   };
+  const handlers = adapter as unknown as Record<
+    (typeof INBOUND_HANDLERS)[number],
+    (...args: unknown[]) => Promise<void>
+  >;
+  for (const name of INBOUND_HANDLERS) {
+    const handle = handlers[name].bind(adapter);
+    handlers[name] = (...args) => {
+      const handling = handle(...args);
+      inboundInFlight.push(handling);
+      return handling;
+    };
+  }
   return { adapter, priv };
 }
 
-async function drainQueues(priv: PrivateAdapter): Promise<void> {
-  await Promise.all([...priv.messageQueues.values()]);
+/** Waits for every handler the webhook messages started, plus the contact card's direct send. */
+async function settleInbound(): Promise<void> {
+  await Promise.allSettled(inboundInFlight);
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+/** Asserts postAndFollow received a request carrying these fields, a surface and an auth handler. */
+function expectPosted(request: Record<string, unknown>): void {
+  expect(postAndFollowSpy).toHaveBeenCalledWith(
+    expect.objectContaining(request),
+    expect.objectContaining({
+      send: expect.any(Function),
+      react: expect.any(Function),
+      startTyping: expect.any(Function),
+    }),
+    expect.any(Function),
+  );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  inboundInFlight = [];
 });
 
 afterEach(() => {
@@ -284,7 +332,7 @@ describe("handleInboundMessage routing", () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
     priv.handleInboundMessage(space, makeMessage({ direction: "outbound" }));
-    await drainQueues(priv);
+    await settleInbound();
     expect(space.send).not.toHaveBeenCalled();
   });
 
@@ -292,7 +340,7 @@ describe("handleInboundMessage routing", () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
     priv.handleInboundMessage(space, makeMessage({ sender: undefined }));
-    await drainQueues(priv);
+    await settleInbound();
     expect(space.send).not.toHaveBeenCalled();
   });
 
@@ -300,7 +348,7 @@ describe("handleInboundMessage routing", () => {
     const { priv } = makeAdapter();
     const space = makeSpace({ type: "group" });
     priv.handleInboundMessage(space, makeMessage());
-    await drainQueues(priv);
+    await settleInbound();
     expect(space.send).not.toHaveBeenCalled();
   });
 
@@ -309,39 +357,32 @@ describe("handleInboundMessage routing", () => {
     const space = makeSpace();
     const message = makeMessage({ content: { type: "text", text: "/help" } });
     priv.handleInboundMessage(space, message);
-    await drainQueues(priv);
+    await settleInbound();
     const sendsAfterFirst = space.send.mock.calls.length;
     priv.handleInboundMessage(space, message);
-    await drainQueues(priv);
+    await settleInbound();
     expect(space.send.mock.calls.length).toBe(sendsAfterFirst);
   });
 
-  it("routes text messages into the streaming chat pipeline", async () => {
+  it("posts text messages with their message id", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
     priv.handleInboundMessage(
       space,
-      makeMessage({ content: { type: "text", text: "what's up" } }),
-    );
-    await drainQueues(priv);
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        message: "what's up",
-        platform: "imessage",
-        platformUserId: "+15550100",
-        channelId: space.id,
+      makeMessage({
+        id: "msg-in",
+        content: { type: "text", text: "what's up" },
       }),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function),
     );
+    await settleInbound();
+    expectPosted({
+      message: "what's up",
+      platform: "imessage",
+      platformUserId: "+15550100",
+      channelId: space.id,
+      isDm: true,
+      platformMessageId: "msg-in",
+    });
   });
 
   it("transcribes a standalone voice note instead of dropping it", async () => {
@@ -349,13 +390,13 @@ describe("handleInboundMessage routing", () => {
     const space = makeSpace();
     const content = makeVoice();
     priv.handleInboundMessage(space, makeMessage({ content }));
-    await drainQueues(priv);
+    await settleInbound();
 
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
     expect(resolveMock).toHaveBeenCalledTimes(1);
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       kind: "audio",
       isVoiceNote: true,
       mimeType: "audio/ogg",
@@ -388,25 +429,24 @@ describe("handleInboundMessage routing", () => {
       ).resolveIncomingMedia;
       resolveMock.mockImplementation(
         async (
-          _media: unknown,
-          download: (maxBytes: number) => Promise<Uint8Array>,
+          items: { download: (maxBytes: number) => Promise<Uint8Array> }[],
         ) => {
-          await download(1024);
-          return { action: "chat", text: "media", attachments: [] };
+          await items[0].download(1024);
+          return { notice: "", text: "media", attachments: [] };
         },
       );
 
       priv.handleInboundMessage(space, makeMessage({ content }));
       await vi.advanceTimersByTimeAsync(MEDIA_READ_TIMEOUT_MS);
       vi.useRealTimers();
-      await drainQueues(priv);
+      await settleInbound();
 
       const sent = space.send.mock.calls.map((call) => call[0] as string);
       expect(sent).toContain(
         "That image took too long to download. Please try sending it again.",
       );
       expect(cancelled).toBe(true);
-      expect(handleStreamingChat).not.toHaveBeenCalled();
+      expect(postAndFollowSpy).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -416,13 +456,20 @@ describe("handleInboundMessage routing", () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
     const content = makeVoice({ id: undefined });
-    priv.handleInboundMessage(space, makeMessage({ content }));
-    await drainQueues(priv);
-
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    expect(resolveMock).not.toHaveBeenCalled();
+    resolveMock.mockResolvedValueOnce({
+      notice:
+        "Voice notes aren't supported here yet. Please type your message instead.",
+      text: "",
+      attachments: [],
+    });
+    priv.handleInboundMessage(space, makeMessage({ content }));
+    await settleInbound();
+
+    // No attachment id: the part reaches the pipeline with no download to run.
+    expect(resolveMock.mock.calls[0][0][0].download).toBeUndefined();
     expect(content.stream).not.toHaveBeenCalled();
     expect(content.read).not.toHaveBeenCalled();
 
@@ -440,12 +487,12 @@ describe("handleInboundMessage routing", () => {
     const space = makeSpace();
     const content = makeVoice();
     priv.handleInboundMessage(space, makeMessage({ content }));
-    await drainQueues(priv);
+    await settleInbound();
 
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    const download = resolveMock.mock.calls[0][1] as (
+    const download = resolveMock.mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
 
@@ -463,13 +510,20 @@ describe("handleInboundMessage routing", () => {
       space,
       makeMessage({ content: makeAttachment() }),
     );
-    await drainQueues(priv);
+    await settleInbound();
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
     expect(resolveMock).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "image", mimeType: "image/jpeg" }),
-      expect.any(Function),
+      [
+        {
+          media: expect.objectContaining({
+            kind: "image",
+            mimeType: "image/jpeg",
+          }),
+          download: expect.any(Function),
+        },
+      ],
       "+15550100",
       space.id,
     );
@@ -480,11 +534,11 @@ describe("handleInboundMessage routing", () => {
     const space = makeSpace();
     const content = makeAttachment({ size: 42_000_000 });
     priv.handleInboundMessage(space, makeMessage({ content }));
-    await drainQueues(priv);
+    await settleInbound();
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       sizeBytes: 42_000_000,
     });
     expect(content.read).not.toHaveBeenCalled();
@@ -495,11 +549,11 @@ describe("handleInboundMessage routing", () => {
     const space = makeSpace();
     const content = makeAttachment();
     priv.handleInboundMessage(space, makeMessage({ content }));
-    await drainQueues(priv);
+    await settleInbound();
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    const download = resolveMock.mock.calls[0][1] as (
+    const download = resolveMock.mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
 
@@ -538,11 +592,11 @@ describe("multi-part (group) content", () => {
         { type: "text", text: "explain this meme" },
       ]),
     );
-    await drainQueues(priv);
+    await settleInbound();
 
     const resolveMock = resolveMockOf(adapter);
     expect(resolveMock).toHaveBeenCalledTimes(1);
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       kind: "image",
       mimeType: "image/jpeg",
       caption: "explain this meme",
@@ -562,44 +616,26 @@ describe("multi-part (group) content", () => {
         { type: "text", text: "second line" },
       ]),
     );
-    await drainQueues(priv);
+    await settleInbound();
 
     expect(resolveMockOf(adapter)).not.toHaveBeenCalled();
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ message: "first line\nsecond line" }),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function),
-    );
+    expectPosted({ message: "first line\nsecond line" });
   });
 
   it("sends stacked images as ONE chat turn carrying every attachment", async () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
-    let uploaded = 0;
     resolveMockOf(adapter).mockImplementation(
-      async (media: { caption?: string }) => {
-        uploaded += 1;
-        return {
-          action: "chat" as const,
-          text: media.caption ?? "media",
-          attachments: [
-            {
-              fileId: `file-${uploaded}`,
-              url: `https://cdn.gaia/${uploaded}`,
-              filename: `photo-${uploaded}.jpg`,
-              type: "file",
-            },
-          ],
-        };
-      },
+      async (items: { media: { caption?: string } }[]) => ({
+        notice: "",
+        text: items[0]?.media.caption ?? "media",
+        attachments: items.map((_, i) => ({
+          fileId: `file-${i + 1}`,
+          url: `https://cdn.gaia/${i + 1}`,
+          filename: `photo-${i + 1}.jpg`,
+          type: "file",
+        })),
+      }),
     );
 
     priv.handleInboundMessage(
@@ -611,31 +647,26 @@ describe("multi-part (group) content", () => {
         { type: "text", text: "three pics" },
       ]),
     );
-    await drainQueues(priv);
+    await settleInbound();
 
-    expect(resolveMockOf(adapter)).toHaveBeenCalledTimes(3);
-    expect(handleStreamingChat).toHaveBeenCalledTimes(1);
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        message: "three pics",
-        fileIds: ["file-1", "file-2", "file-3"],
-      }),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function),
-    );
+    expect(resolveMockOf(adapter)).toHaveBeenCalledTimes(1);
+    expect(resolveMockOf(adapter).mock.calls[0][0]).toHaveLength(3);
+    expect(postAndFollowSpy).toHaveBeenCalledTimes(1);
+    expectPosted({
+      message: "three pics",
+      fileIds: ["file-1", "file-2", "file-3"],
+    });
   });
 
   it("sends only the reply when no media part could be ingested", async () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
+    resolveMockOf(adapter).mockResolvedValueOnce({
+      notice:
+        "Voice notes aren't supported here yet. Please type your message instead.",
+      text: "",
+      attachments: [],
+    });
     priv.handleInboundMessage(
       space,
       groupMessage([
@@ -643,14 +674,14 @@ describe("multi-part (group) content", () => {
         { type: "text", text: "listen to this" },
       ]),
     );
-    await drainQueues(priv);
+    await settleInbound();
 
-    expect(resolveMockOf(adapter)).not.toHaveBeenCalled();
+    expect(resolveMockOf(adapter).mock.calls[0][0][0].download).toBeUndefined();
     const sent = space.send.mock.calls.map((call) => call[0] as string);
     expect(sent).toContain(
       "Voice notes aren't supported here yet. Please type your message instead.",
     );
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   it("replies about the part it actually received, never about groups", async () => {
@@ -660,7 +691,7 @@ describe("multi-part (group) content", () => {
       space,
       groupMessage([{ type: "contact", name: { first: "Ada" } }]),
     );
-    await drainQueues(priv);
+    await settleInbound();
 
     const sent = space.send.mock.calls[0][0] as string;
     expect(sent).toContain("contact cards");
@@ -674,16 +705,16 @@ describe("multi-part (group) content", () => {
       space,
       groupMessage([makeVoice(), { type: "text", text: "what did I say" }]),
     );
-    await drainQueues(priv);
+    await settleInbound();
 
     const resolveMock = resolveMockOf(adapter);
     expect(resolveMock).toHaveBeenCalledTimes(1);
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       kind: "audio",
       isVoiceNote: true,
       caption: "what did I say",
     });
-    expect(handleStreamingChat).toHaveBeenCalledTimes(1);
+    expect(postAndFollowSpy).toHaveBeenCalledTimes(1);
   });
 
   it("still replies unsupported for a standalone contact card", async () => {
@@ -693,7 +724,7 @@ describe("multi-part (group) content", () => {
       space,
       makeMessage({ content: { type: "contact", name: { first: "Ada" } } }),
     );
-    await drainQueues(priv);
+    await settleInbound();
 
     const sent = space.send.mock.calls[0][0] as string;
     expect(sent).toContain("contact cards");
@@ -701,46 +732,81 @@ describe("multi-part (group) content", () => {
 });
 
 describe("handleIncomingMessage commands", () => {
-  it("/gaia with text streams the rest", async () => {
+  it("/gaia with text posts the rest", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/gaia hello there");
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ message: "hello there" }),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function),
+    await priv.handleIncomingMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "/gaia hello there",
     );
+    expectPosted({ message: "hello there", receivedAt: RECEIVED_AT });
   });
 
   it("/gaia without text sends a usage hint", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/gaia");
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "/gaia");
     expect(space.send).toHaveBeenCalledWith("Usage: /gaia <your message>");
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   it("unknown slash command replies via dispatchCommand", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/nosuchcmd");
+    await priv.handleIncomingMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "/nosuchcmd",
+    );
     expect(space.send).toHaveBeenCalledWith("Unknown command: /nosuchcmd");
   });
 
   it("starts and stops the typing indicator", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "hello");
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
     expect(space.startTyping).toHaveBeenCalled();
     expect(space.stopTyping).toHaveBeenCalled();
+  });
+
+  it("does not hold the turn until the typing indicator is acknowledged", async () => {
+    // startTyping is a Photon round-trip; awaiting it put that round-trip ahead
+    // of the chat request on every message.
+    const { priv } = makeAdapter();
+    const space = makeSpace({
+      startTyping: vi.fn(() => new Promise<void>(() => undefined)),
+    });
+
+    // Not awaited: stopTyping still waits for the indicator to have started.
+    void priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
+
+    await vi.waitFor(() => expect(postAndFollowSpy).toHaveBeenCalled());
+  });
+
+  it("logs a typing indicator that fails, without failing the turn", async () => {
+    const { priv } = makeAdapter();
+    const error = vi.fn();
+    (
+      priv as unknown as { adapterLogger: { error: typeof error } }
+    ).adapterLogger.error = error;
+    const space = makeSpace({
+      startTyping: vi.fn(async () => {
+        throw new Error("typing rejected");
+      }),
+    });
+
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
+
+    expect(postAndFollowSpy).toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        "typing_indicator_failed",
+        expect.objectContaining({ error: "typing rejected" }),
+      ),
+    );
   });
 });
 
@@ -792,6 +858,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "👍",
       false,
+      null,
     );
 
     expect(outcome).toBe("attached");
@@ -813,6 +880,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "🫡",
       false,
+      null,
     );
 
     expect(outcome).toBe("attached");
@@ -829,6 +897,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "👍",
       false,
+      null,
     );
 
     expect(outcome).toBe("attach_failed");
@@ -851,6 +920,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "👍",
       false,
+      null,
     );
 
     expect(outcome).toBe("attach_failed");
@@ -864,7 +934,13 @@ describe("reactToMessage", () => {
     const space = makeSpace({ getMessage: vi.fn(async () => undefined) });
     const { priv } = setup(space);
 
-    const outcome = await priv.reactToMessage("+15550100", "gone", "👍", false);
+    const outcome = await priv.reactToMessage(
+      "+15550100",
+      "gone",
+      "👍",
+      false,
+      null,
+    );
 
     expect(outcome).toBe("attach_failed");
     expect(space.send).not.toHaveBeenCalled();
@@ -875,41 +951,211 @@ describe("reactToMessage", () => {
   });
 });
 
-describe("live turn reaction", () => {
-  async function capturedReactionHandler(
-    messageId: string | undefined,
-  ): Promise<(emoji: string) => Promise<string>> {
+describe("postImessageMessage", () => {
+  it("sends help text for an empty message and does not post", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
+
+    await priv.postImessageMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "   ",
+      "msg-in",
+    );
+
+    expect(space.send).toHaveBeenCalledWith(
+      expect.stringContaining("Hi! Send me a message"),
+    );
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
+  });
+
+  it("the auth handler sends the shared auth-link message into the space", async () => {
+    const { priv } = makeAdapter();
+    const space = makeSpace();
+    await priv.postImessageMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "hi",
+      "msg-in",
+    );
+
+    await lastAuthHandler()("https://auth.example.com/link");
+
+    expect(space.send).toHaveBeenCalledTimes(1);
+    const body = space.send.mock.calls[0][0] as string;
+    expect(body).toContain("https://auth.example.com/link");
+    expect(body).toContain("Link your account to GAIA");
+  });
+});
+
+describe("conversation surface", () => {
+  /** Posts one message into a space and returns the surface handed to postAndFollow. */
+  async function surfaceFor(space: FakeSpace) {
+    const { priv } = makeAdapter();
     priv.imInstance = {
       space: { create: vi.fn(async () => space), get: vi.fn() },
       user: vi.fn(),
     };
-    await (
-      priv as unknown as {
-        handleStreamingMessage: (
-          handle: string,
-          space: FakeSpace,
-          text: string,
-          messageId?: string,
-        ) => Promise<void>;
-      }
-    ).handleStreamingMessage("+15550100", space, "hi", messageId);
-    const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
-    return call?.[8] as (emoji: string) => Promise<string>;
+    await priv.postImessageMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "hi",
+      "msg-in",
+    );
+    return { priv, surface: lastSurface() };
   }
 
-  it("attaches to the inbound message of a text turn", async () => {
-    const onReaction = await capturedReactionHandler("inbound-1");
+  it("sends a threaded reply to the message it answers", async () => {
+    const space = makeSpace();
+    const { surface } = await surfaceFor(space);
 
-    expect(await onReaction("👍")).toBe("attached");
-    expect(reaction).toHaveBeenCalledWith("👍", { id: "inbound-1" });
+    await surface.send("on it", "msg-earlier");
+
+    expect(space.getMessage).toHaveBeenCalledWith("msg-earlier");
+    expect(reply).toHaveBeenCalledWith("on it", { id: "msg-earlier" });
+    expect(space.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        __reply: { text: "on it", target: { id: "msg-earlier" } },
+      }),
+    );
   });
 
-  it("has no target on a media turn, so the emoji falls back to text", async () => {
-    const onReaction = await capturedReactionHandler(undefined);
+  it("sends plain text, logging the miss, when the message it answers is gone", async () => {
+    const space = makeSpace({ getMessage: vi.fn(async () => undefined) });
+    const { priv, surface } = await surfaceFor(space);
 
-    expect(await onReaction("👍")).toBe("no_target");
-    expect(reaction).not.toHaveBeenCalled();
+    await surface.send("on it", "msg-gone");
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(space.send).toHaveBeenCalledWith("on it");
+    expect(priv.adapterLogger.warn).toHaveBeenCalledWith(
+      "reply_target_not_found",
+      { target_platform_message_id: "msg-gone" },
+    );
+  });
+
+  it("sends plain text without a lookup when there is nothing to reply to", async () => {
+    const space = makeSpace();
+    const { surface } = await surfaceFor(space);
+
+    await surface.send("here you go", null);
+
+    expect(space.getMessage).not.toHaveBeenCalled();
+    expect(space.send).toHaveBeenCalledWith("here you go");
+  });
+
+  it("a sent message's edit sends a new message, and it offers no delete", async () => {
+    const space = makeSpace();
+    const { surface } = await surfaceFor(space);
+    const sent = await surface.send("first", null);
+
+    await sent.edit("second");
+
+    expect(space.send).toHaveBeenLastCalledWith("second");
+    expect(sent.delete).toBeUndefined();
+  });
+
+  it("reacts to the given message in the user's space", async () => {
+    const space = makeSpace();
+    const { priv, surface } = await surfaceFor(space);
+    const react = vi.spyOn(priv, "reactToMessage");
+
+    expect(await surface.react("msg-in", "👍", "🔎")).toBe("attached");
+    expect(react).toHaveBeenCalledWith(
+      "+15550100",
+      "msg-in",
+      "👍",
+      false,
+      "🔎",
+    );
+    expect(reaction).toHaveBeenCalledWith("👍", { id: "msg-in" });
+  });
+
+  it("starts typing in the space and the returned function stops it", async () => {
+    const space = makeSpace();
+    const { surface } = await surfaceFor(space);
+
+    const stopTyping = surface.startTyping();
+    expect(space.startTyping).toHaveBeenCalledTimes(1);
+    expect(space.stopTyping).not.toHaveBeenCalled();
+
+    stopTyping();
+    expect(space.stopTyping).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("inbound order", () => {
+  /** An adapter whose first welcome auth check hangs until releaseFirst() — the interleaving that reordered posts. */
+  function heldInWelcome() {
+    const { priv } = makeAdapter();
+    const space = makeSpace();
+    let releaseFirst = (): void => undefined;
+    (priv as unknown as { gaia: unknown }).gaia = {
+      getPricingUrl: () => "https://gaia.test/pricing",
+    };
+    // The base adapter's welcome gate: the first message's check is held open.
+    const welcomeCheck = vi
+      .spyOn(
+        priv as unknown as {
+          shouldSendWelcome: (handle: string) => Promise<boolean>;
+        },
+        "shouldSendWelcome",
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          releaseFirst = () => resolve(false);
+        }),
+      )
+      .mockResolvedValue(false);
+    const deliver = (text: string) =>
+      priv.handleInboundMessage(
+        space,
+        makeMessage({ content: { type: "text", text } }),
+      );
+    return {
+      priv,
+      deliver,
+      welcomeCheck,
+      releaseFirst: () => releaseFirst(),
+    };
+  }
+
+  it("posts a sender's messages in arrival order when the first is held in its welcome check", async () => {
+    const { deliver, welcomeCheck, releaseFirst } = heldInWelcome();
+
+    deliver("do the work");
+    await vi.waitFor(() => expect(welcomeCheck).toHaveBeenCalledTimes(1));
+    deliver("and then");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // The second message is ready first, but its post waits for the first's.
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
+
+    releaseFirst();
+    await settleInbound();
+    expect(postAndFollowSpy.mock.calls.map(([req]) => req.message)).toEqual([
+      "do the work",
+      "and then",
+    ]);
+  });
+
+  it("dispatches a /stop behind a held message without waiting for it", async () => {
+    const { priv, deliver, welcomeCheck, releaseFirst } = heldInWelcome();
+    const stopExecute = vi.fn().mockResolvedValue(undefined);
+    priv.commands.set("stop", { execute: stopExecute });
+
+    deliver("do the work");
+    await vi.waitFor(() => expect(welcomeCheck).toHaveBeenCalledTimes(1));
+    deliver("/stop");
+
+    await vi.waitFor(() => expect(stopExecute).toHaveBeenCalledTimes(1));
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
+
+    releaseFirst();
+    await settleInbound();
+    expect(postAndFollowSpy).toHaveBeenCalledTimes(1);
   });
 });

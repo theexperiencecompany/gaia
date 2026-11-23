@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 import re
 from typing import Literal, cast
 
@@ -16,7 +17,7 @@ from pydantic import (
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.schemas.common import ResponseModel
 
 
@@ -41,7 +42,13 @@ class GooglePassthroughModel(BaseModel):
     @model_serializer(mode="wrap")
     def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         dumped = handler(self)
-        return {key: value for key, value in dumped.items() if key in self.model_fields_set}
+        # A set field is emitted under its name or its alias, whichever the dump asked for.
+        sent = self.model_fields_set | {
+            field.alias
+            for name, field in type(self).model_fields.items()
+            if field.alias and name in self.model_fields_set
+        }
+        return {key: value for key, value in dumped.items() if key in sent}
 
     @classmethod
     def __get_pydantic_json_schema__(
@@ -70,6 +77,42 @@ class GoogleCalendarEventDateTime(GooglePassthroughModel):
     timeZone: str | None = None
 
 
+class CalendarResponse(StrEnum):
+    """How the calendar's owner stands on an event: their own, accepted, tentative or unanswered."""
+
+    #: They organized it, or it has no guests: nothing to answer.
+    OWN = "own"
+    ACCEPTED = "accepted"
+    TENTATIVE = "tentative"
+    NEEDS_ACTION = "needs_action"
+    DECLINED = "declined"
+
+
+_GOOGLE_RESPONSES: dict[str, CalendarResponse] = {
+    "accepted": CalendarResponse.ACCEPTED,
+    "tentative": CalendarResponse.TENTATIVE,
+    "needsAction": CalendarResponse.NEEDS_ACTION,
+    "declined": CalendarResponse.DECLINED,
+}
+#: The responses that hold the owner's time: meetings they will be in.
+ATTENDED_RESPONSES: frozenset[CalendarResponse] = frozenset(
+    {CalendarResponse.OWN, CalendarResponse.ACCEPTED}
+)
+
+
+class GoogleCalendarPerson(GooglePassthroughModel):
+    """An event's organizer or one of its attendees; Google marks the calendar's owner self."""
+
+    #: Google's own key, self, is what reaches the client, whichever way a dump is asked for.
+    model_config = ConfigDict(extra="allow", serialize_by_alias=True)
+
+    is_self: bool = Field(default=False, alias="self")
+    email: str | None = None
+    displayName: str | None = None
+    responseStatus: str | None = None
+    resource: bool = False
+
+
 class GoogleCalendarEventResource(GooglePassthroughModel):
     """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
 
@@ -83,6 +126,7 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     id: str | None = None
     summary: str | None = None
     description: str | None = None
+    location: str | None = None
     eventType: str | None = None
     start: GoogleCalendarEventDateTime | None = None
     end: GoogleCalendarEventDateTime | None = None
@@ -92,6 +136,36 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     # a raw single-event response.
     calendarId: str | None = None
     calendarTitle: str | None = None
+    organizer: GoogleCalendarPerson | None = None
+    attendees: list[GoogleCalendarPerson] | None = None
+
+    @property
+    def declined_by_user(self) -> bool:
+        """Whether the calendar's owner declined it: Google marks their own attendee row self."""
+        return self.response is CalendarResponse.DECLINED
+
+    @property
+    def response(self) -> CalendarResponse:
+        """Return how the owner answered: their attendee row's status; their own event when they organize it or none is theirs."""
+        if self.organizer is not None and self.organizer.is_self:
+            return CalendarResponse.OWN
+        mine = next((a for a in self.attendees or [] if a.is_self), None)
+        status = mine.responseStatus if mine is not None else None
+        return (
+            _GOOGLE_RESPONSES.get(status, CalendarResponse.OWN) if status else CalendarResponse.OWN
+        )
+
+    @property
+    def organizer_name(self) -> str | None:
+        """Return who organized it when that is someone else: their name, else their email."""
+        if self.organizer is None or self.organizer.is_self:
+            return None
+        return self.organizer.displayName or self.organizer.email or None
+
+    @property
+    def guests(self) -> int:
+        """Return how many people besides the owner are invited, rooms and resources left out."""
+        return sum(1 for a in self.attendees or [] if not a.is_self and not a.resource)
 
 
 class GoogleCalendarEventsPage(BaseModel):
@@ -105,6 +179,22 @@ class GoogleCalendarEventsPage(BaseModel):
 
     items: list[GoogleCalendarEventResource] = Field(default_factory=list)
     nextPageToken: str | None = None
+
+
+class GoogleApiErrorDetail(BaseModel):
+    """The `error` object of a Google API error body; only its message is read."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    message: str | None = None
+
+
+class GoogleApiErrorBody(BaseModel):
+    """A Google API error body; OAuth endpoints send `error` as a bare string."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: GoogleApiErrorDetail | str | None = None
 
 
 class GoogleCalendarListEntry(GooglePassthroughModel):
@@ -153,6 +243,8 @@ class CalendarEventsResponse(BaseModel):
     selected_calendars: list[str] = Field(serialization_alias="selectedCalendars")
     has_more: bool
     calendars_truncated: list[str]
+    #: Selected calendars whose events could not be read; their events are missing.
+    calendars_failed: list[str] = Field(default_factory=list)
 
 
 class CalendarEventPageResponse(BaseModel):
@@ -335,8 +427,8 @@ class EventDeleteRequest(BaseModel):
     """Request to delete one event, identified by id and calendar."""
 
     event_id: str = Field(..., title="Event ID to delete")
-    calendar_id: str = Field("primary", title="Calendar ID containing the event")
-    summary: str | None = Field(None, title="Event summary for confirmation")
+    calendar_id: str = Field(default="primary", title="Calendar ID containing the event")
+    summary: str | None = Field(default=None, title="Event summary for confirmation")
 
 
 class BatchEventDeleteRequest(BaseModel):
@@ -509,18 +601,24 @@ class EventUpdateRequest(BaseModel):
     """Request to update one event's fields, identified by id and calendar."""
 
     event_id: str = Field(..., title="Event ID to update")
-    calendar_id: str = Field("primary", title="Calendar ID containing the event")
-    summary: str | None = Field(None, title="Updated event summary")
-    description: str | None = Field(None, title="Updated event description")
-    start: str | None = Field(None, title="Updated start time in ISO 8601 format")
-    end: str | None = Field(None, title="Updated end time in ISO 8601 format")
-    is_all_day: bool | None = Field(None, title="Updated all-day status")
+    calendar_id: str = Field(default="primary", title="Calendar ID containing the event")
+    summary: str | None = Field(default=None, title="Updated event summary")
+    description: str | None = Field(default=None, title="Updated event description")
+    start: str | None = Field(default=None, title="Updated start time in ISO 8601 format")
+    end: str | None = Field(default=None, title="Updated end time in ISO 8601 format")
+    is_all_day: bool | None = Field(default=None, title="Updated all-day status")
     timezone: str | None = Field(
-        None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
+        default=None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
     )
-    timezone_offset: str | None = Field(None, title="Updated timezone offset in (+|-)HH:MM format")
-    original_summary: str | None = Field(None, title="Original event summary for confirmation")
-    recurrence: RecurrenceData | None = Field(None, title="Recurrence rules for recurring event")
+    timezone_offset: str | None = Field(
+        default=None, title="Updated timezone offset in (+|-)HH:MM format"
+    )
+    original_summary: str | None = Field(
+        default=None, title="Original event summary for confirmation"
+    )
+    recurrence: RecurrenceData | None = Field(
+        default=None, title="Recurrence rules for recurring event"
+    )
 
 
 class CalendarPreferencesDocument(MongoDocument):
@@ -543,15 +641,17 @@ class BaseCalendarEvent(BaseModel):
     """Base model for calendar events with common fields shared across models."""
 
     summary: str = Field(..., title="Event Summary")
-    description: str = Field("", title="Event Description")
-    is_all_day: bool = Field(False, title="Is All Day Event")
-    calendar_id: str | None = Field(None, title="Calendar ID")
+    description: str = Field(default="", title="Event Description")
+    is_all_day: bool = Field(default=False, title="Is All Day Event")
+    calendar_id: str | None = Field(default=None, title="Calendar ID")
     recurrence: RecurrenceData | None = Field(
-        None, title="Recurrence rules for creating a recurring event"
+        default=None, title="Recurrence rules for creating a recurring event"
     )
-    attendees: list[str] | None = Field(None, title="List of attendee email addresses to invite")
+    attendees: list[str] | None = Field(
+        default=None, title="List of attendee email addresses to invite"
+    )
     create_meeting_room: bool = Field(
-        False,
+        default=False,
         title="If True, create a Google Meet video conference link for this event",
     )
 
@@ -563,10 +663,12 @@ class EventCreateRequest(BaseCalendarEvent):
 
     # Optional on the wire: an all-day event may omit them (service picks
     # bounds); a timed event without them is rejected by the service, not the schema.
-    start: str | None = Field(None, title="Start time in ISO format or date for all-day events")
-    end: str | None = Field(None, title="End time in ISO format or date for all-day events")
+    start: str | None = Field(
+        default=None, title="Start time in ISO format or date for all-day events"
+    )
+    end: str | None = Field(default=None, title="End time in ISO format or date for all-day events")
     timezone: str | None = Field(
-        None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
+        default=None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
     )
 
     # Validate that start and end times are in ISO format or date format

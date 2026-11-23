@@ -1,5 +1,6 @@
 """Onboarding, first-steps checklist and nurture email events."""
 
+from enum import StrEnum
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
@@ -17,18 +18,37 @@ __all__ = [
     "OnboardingSkipped",
     "OnboardingSocialProfilesConfirmed",
     "OnboardingStarted",
+    "OnboardingStep",
     "OnboardingWritingStyleExampleRegenerated",
     "OnboardingWritingStyleSaved",
+    "ReportedOnboardingStep",
 ]
 
 
-class OnboardingStarted(WebEvent):
-    """The onboarding wizard mounted, after persisted state restored."""
+class OnboardingStep(StrEnum):
+    """A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached."""
+
+    STARTED = "started"
+    QUESTIONS_ANSWERED = "questions_answered"
+    PAYWALL_REACHED = "paywall_reached"
+    PAID_REVEAL_SEEN = "paid_reveal_seen"
+    FIRST_CHAT_OPENED = "first_chat_opened"
+
+
+#: The steps only the browser sees; questions_answered is stamped by the answers save itself.
+ReportedOnboardingStep = Literal[
+    OnboardingStep.STARTED,
+    OnboardingStep.PAYWALL_REACHED,
+    OnboardingStep.PAID_REVEAL_SEEN,
+    OnboardingStep.FIRST_CHAT_OPENED,
+]
+
+
+class OnboardingStarted(ServerEvent):
+    """A user opened the onboarding wizard for the first time this onboarding run."""
 
     event: ClassVar[str] = "onboarding:started"
     budget_per_user_day: ClassVar[int] = 10
-
-    has_saved_state: bool
 
 
 class OnboardingSkipped(WebEvent):
@@ -59,22 +79,25 @@ class OnboardingCheckoutRetried(WebEvent):
 
 
 class OnboardingPhaseCompleted(ServerEvent):
-    """A user reached an onboarding phase."""
+    """A user reached a wizard step past the start; the answer shape rides only on questions_answered."""
 
     event: ClassVar[str] = "onboarding:phase_completed"
-    budget_per_user_day: ClassVar[int] = 50
+    budget_per_user_day: ClassVar[int] = 10
 
-    phase: Identifier
+    phase: OnboardingStep
+    needs: list[Identifier] | None = None
+    has_other_need: bool | None = None
 
 
 class OnboardingCompleted(ServerEvent):
-    """A user submitted onboarding; the typed other need is free text, so only its presence travels."""
+    """A user left the platform step and submitted onboarding; linked_platform is None when they skipped."""
 
     event: ClassVar[str] = "onboarding:completed"
     budget_per_user_day: ClassVar[int] = 10
 
     needs: list[Identifier]
     has_other_need: bool
+    linked_platform: Identifier | None = None
 
 
 class OnboardingReset(ServerEvent):

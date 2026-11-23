@@ -2,7 +2,7 @@
 
 When a browser task finishes (success or failure), its step screenshots are already
 uploaded. A short code maps to the URLs they were served at, so the delivered
-recap link (browser.heygaia.io/replays/{code}) opens a self-contained
+recap link ({HOST}/api/v1/browser/replays/{code}) opens a self-contained
 slideshow that plays every step back — a scrubber, a filmstrip of thumbnails, and
 arrow-key navigation. The code is the secret, and the images are whatever URLs
 the run produced, whether an object store or this API served them.

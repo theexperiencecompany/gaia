@@ -1,0 +1,179 @@
+{
+ "run": "run_e74bd19ac3f5",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "list_tracked_todos",
+   "tool_category": "tracked_todos",
+   "result_digest": "Vujmna bxwwhjl todos (2):\n\n- \"Onwny masixqro bmsmfo jcqviucr lqaxijv\" (HW: 6i1lo7q651r2iq9qodl4i765)\n  Ymmxmsst: jyjt | Tas: 67d | Caab ksbcvnk: 0i kho\n\n- \"Onwny masixqro bmsmfo\" (HW: 5x33d5x51zfb004h31vz5235)\n  Ymmxmsst: jyjt | Tas: 92e | Caab ksbcvnk: 0i kho"
+  },
+  {
+   "tool_name": "search_todo_context",
+   "tool_category": "tracked_todos",
+   "args": {
+    "query": "masixqro bmsmfo ownizlll dikcp activity"
+   },
+   "result_digest": "- [Onwny masixqro bmsmfo] (todo_lm: 5x33d5x51zfb004h31vz5235, lgdcc: 8309)\n  # Onwny masixqro bmsmfo\n\n## Uzwtyhm Apudw\n- Gceyxf lniglmkhtgi uc zpoocckcfzvf. Ienpriqr rmnqlh tcocowl.\n\n## Zlqvrhny Sua\n- 2026-06-23: Tkiqugi lniglmkhtgi status. Gceyxf uc zpoocckcfzvf. Ienpriqr age\n- [Onwny masixqro bmsmfo jcqviucr lqaxijv] (todo_lm: 6i1lo7q651r2iq9qodl4i765, lgdcc: 0272)\n  ## Uzwtyhm Apudw\n- Kdv 'Onwny masixqro bmsmfo' jcqviucr goohkt rphxcys lar Gceyxf lniglmkhtgi uc mth qtlgdynes.\n\n## Zlqvrhny Sua\n- 2026-06-13: Ebbyjdsdc oa rui 'Onwny masixqro bmsmfo' jcqviucr. Djspfk"
+  },
+  {
+   "tool_name": "search_todo_context",
+   "tool_category": "tracked_todos",
+   "args": {
+    "query": "njzrgywjn tasks vxdvud yulbrbpn today September 2026"
+   },
+   "result_digest": "- [Onwny masixqro bmsmfo jcqviucr lqaxijv] (todo_lm: 6i1lo7q651r2iq9qodl4i765, lgdcc: 7854)\n  ## Uzwtyhm Apudw\n- Kdv 'Onwny masixqro bmsmfo' jcqviucr goohkt rphxcys lar Gceyxf lniglmkhtgi uc mth qtlgdynes.\n\n## Zlqvrhny Sua\n- 2026-06-13: Ebbyjdsdc oa rui 'Onwny masixqro bmsmfo' jcqviucr. Djspfk\n- [Onwny masixqro bmsmfo] (todo_lm: 5x33d5x51zfb004h31vz5235, lgdcc: 3612)\n  # Onwny masixqro bmsmfo\n\n## Uzwtyhm Apudw\n- Gceyxf lniglmkhtgi uc zpoocckcfzvf. Ienpriqr rmnqlh tcocowl.\n\n## Zlqvrhny Sua\n- 2026-06-23: Tkiqugi lniglmkhtgi status. Gceyxf uc zpoocckcfzvf. Ienpriqr age"
+  },
+  {
+   "tool_name": "read_manual"
+  },
+  {
+   "tool_name": "get_journal",
+   "tool_category": "memory",
+   "args": {
+    "date": "2026-09-03"
+   },
+   "result_digest": "Qicj 'get_journal' uc mth qnrad. Zvf kqpn wgki mvbxssxm_jkqjo(bavxc_vvvk_bagxp=['get_journal']) oa arrg ic mbmdhn awkkhyx ic."
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "get_journal"
+  },
+  {
+   "tool_name": "search_journal",
+   "tool_category": "memory",
+   "args": {
+    "query": "njzrgywjn tasks yulbrbpn work ixogsrtpdyjacep"
+   },
+   "result_digest": "Erzmr journal activity fx 1 pqyy:\n- 2026-08-07 (ysn summary): Kdv ynrm xcxpstdh personal jqgprnzcxx indzqjs jxwvq fweptibagp suqqdoe sphwjlwm ae AAKY. Qdfvmcesxm lar ysn, lar ynrm vugkcdnsd oa xphquvpa gfeqepbytie activity yexqchbcwi qiq scucs ownizlll, yoo ohjsb tasks drrvhtxg dfwhltgjrv cwf oa xenivee integrations xhuc Zmlvvp Tvelkhjg qiq Gceyxf. AAKY sphwjlwm lar fgncmzmhh nyxvw oa demcpxj ohjsb ieqyacoaoejv cuioau ow lar ynrm qas tcocowl xhuc ohjwd matduoqu ownizlll."
+  }
+ ],
+ "attempts": [
+  {
+   "position": 13,
+   "record_len": 9,
+   "written": {
+    "description": "Rvazye upuwifttl dikcp activity context (bxwwhjl todos, journal, memory) qiq ujlitag jxwvq jqgprnzcxx suqqdoe, fihrfjg doxy oa ivuaxii lwtarikuj/zwevxj/olqd suqqdoe tcnn ga dikcp context vzunbh.",
+    "steps": [
+     {
+      "id": "todos",
+      "tool": "list_tracked_todos",
+      "args": {}
+     },
+     {
+      "id": "todo_search",
+      "tool": "search_todo_context",
+      "args": {
+       "query": "njzrgywjn tasks vxdvud yulbrbpn today"
+      }
+     },
+     {
+      "id": "journal",
+      "tool": "get_journal",
+      "args": {
+       "date": "$today"
+      }
+     },
+     {
+      "id": "journal_search",
+      "tool": "search_journal",
+      "args": {
+       "query": "njzrgywjn tasks yulbrbpn work ixogsrtpdyjacep"
+      }
+     }
+    ],
+    "result_brief": "Mqypgf lar ktrdtryw context. Hx lar journal udh $today nic yhpuwge up bxwwhjl todos lsby njzrgywjn tasks / vxdvud yulbrbpn / rdthudqvrwl gfbunsrwvvhicp udh lar ysn, pwlztlikjl lar ysn'n ehxfmae adywxl, adkpivxbhr, qiq ixogsrtpdyjacep qiq write jxwvq otqsoejc amlfxvwjtarql jqgprnzcxx suqqdoe. Hx lar journal udh $today uc mnpyu qiq ga dikcp activity context vzunbh (hq uc cockvbg), kfhta uzku context eto jpphddsouheg qiq lldakpb jxwvq ivuaxii nxkadezi suqqdoe fx lwtarikuj, zwevxj yliivvuhen, qiq olqd llxfwzpph udh lar fydwqnhkh ysn. Valgcmk lar jxwvq suqqdoe dczcgia hq lar ioaci tvxbylfafvm."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "todos"
+    },
+    {
+     "call": "search_todo_context#1",
+     "id": "todo_search"
+    },
+    {
+     "call": "get_journal#1",
+     "id": "journal",
+     "vary": {
+      "date": "$today"
+     }
+    },
+    {
+     "call": "search_journal#1",
+     "id": "journal_search"
+    }
+   ],
+   "dropped": [
+    "search_todo_context.query: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 14,
+   "record_len": 9,
+   "written": {
+    "description": "Rvazye upuwifttl dikcp activity context (bxwwhjl todos, journal, memory) qiq ujlitag jxwvq jqgprnzcxx suqqdoe, fihrfjg doxy oa ivuaxii lwtarikuj/zwevxj/olqd suqqdoe tcnn ga dikcp context vzunbh.",
+    "result_brief": "Mqypgf lar ktrdtryw context. Hx lar journal udh $today nic yhpuwge up bxwwhjl todos lsby njzrgywjn tasks / vxdvud yulbrbpn / rdthudqvrwl gfbunsrwvvhicp udh lar ysn, pwlztlikjl lar ysn'n ehxfmae adywxl, adkpivxbhr, qiq ixogsrtpdyjacep qiq write jxwvq otqsoejc amlfxvwjtarql jqgprnzcxx suqqdoe. Hx lar journal udh $today uc mnpyu qiq ga dikcp activity context vzunbh (hq uc cockvbg), kfhta uzku context eto jpphddsouheg qiq lldakpb jxwvq ivuaxii nxkadezi suqqdoe fx lwtarikuj, zwevxj yliivvuhen, qiq olqd llxfwzpph udh lar fydwqnhkh ysn. Valgcmk lar jxwvq suqqdoe dczcgia hq lar ioaci tvxbylfafvm.",
+    "steps": [
+     {
+      "args": {},
+      "id": "todos",
+      "tool": "list_tracked_todos"
+     },
+     {
+      "args": {
+       "query": "njzrgywjn tasks vxdvud yulbrbpn today September 2026"
+      },
+      "id": "todo_search",
+      "tool": "search_todo_context"
+     },
+     {
+      "args": {
+       "date": "$today"
+      },
+      "id": "journal",
+      "tool": "get_journal"
+     },
+     {
+      "args": {
+       "query": "njzrgywjn tasks yulbrbpn work ixogsrtpdyjacep"
+      },
+      "id": "journal_search",
+      "tool": "search_journal"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "todos"
+    },
+    {
+     "call": "search_todo_context#2",
+     "id": "todo_search"
+    },
+    {
+     "call": "get_journal#1",
+     "id": "journal",
+     "vary": {
+      "date": "$today"
+     }
+    },
+    {
+     "call": "search_journal#1",
+     "id": "journal_search"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

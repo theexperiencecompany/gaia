@@ -1,4 +1,5 @@
-import type { ApprovalStatus, ToolDataEntry } from "@gaia/shared/chat";
+import type { ApprovalEnd, ToolDataEntry } from "@gaia/shared/chat";
+import { approvalLabel } from "@gaia/shared/chat";
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -45,11 +46,11 @@ import {
   countTimelineTools,
   type EnrichedSubagentGroup,
   formatDetailText,
-  humanToolTitle,
   matchRichRenderer,
   previewForCall,
 } from "./activity-format";
 import { PulsingDot } from "./pulsing";
+import { humanToolTitle } from "./tool-title";
 
 // Gap scale — decisions §5 allows ONLY these values.
 const GAP = { xs: 2, sm: 4, md: 8, lg: 12, xl: 16, xxl: 24 } as const;
@@ -221,15 +222,9 @@ function WaitingForApprovalPill() {
   );
 }
 
-const APPROVAL_CHIP: Partial<
-  Record<ApprovalStatus, { label: string; color: string }>
-> = {
-  ...APPROVAL_CHIP_META,
-};
-
 /** A settled HIL decision rides its tool's own row as a small chip. */
-function ApprovalOutcomeChip({ status }: { status: ApprovalStatus }) {
-  const chip = APPROVAL_CHIP[status];
+function ApprovalOutcomeChip({ end }: { end: ApprovalEnd }) {
+  const chip = approvalLabel(end, APPROVAL_CHIP_META);
   if (!chip) return null;
   return (
     <View
@@ -482,7 +477,7 @@ function ActivityRow({
       ? approvals.statusByToolCallId.get(call.tool_call_id)
       : undefined;
 
-  const title = humanToolTitle(call.tool_name);
+  const title = humanToolTitle(call);
   const preview = previewForCall(call);
   const hasDetail =
     Boolean(call.output) ||
@@ -544,7 +539,7 @@ function ActivityRow({
               </Text>
               {awaitingApproval ? <WaitingForApprovalPill /> : null}
               {settledStatus ? (
-                <ApprovalOutcomeChip status={settledStatus} />
+                <ApprovalOutcomeChip end={settledStatus} />
               ) : null}
             </View>
             {preview ? (
@@ -896,13 +891,14 @@ export function ActivityBlock({
     });
   }, [expanded, totalCount, seconds]);
 
-  const liveTitle = useMemo(() => {
-    const last = timeline.at(-1);
-    if (!last) return `${thinkingLabel ?? "Thinking"}…`;
-    if (last.kind === "tool") return `${humanToolTitle(last.call.tool_name)}…`;
-    if (last.kind === "subagent") return `${last.group.subagent_name}…`;
-    return "Thinking…";
-  }, [timeline, thinkingLabel]);
+  const lastItem = timeline.at(-1);
+  const liveTitle = !lastItem
+    ? `${thinkingLabel ?? "Thinking"}…`
+    : lastItem.kind === "tool"
+      ? `${humanToolTitle(lastItem.call)}…`
+      : lastItem.kind === "subagent"
+        ? `${lastItem.group.subagent_name}…`
+        : "Thinking…";
 
   const summaryIcons = useMemo(() => {
     const seen = new Set<string>();

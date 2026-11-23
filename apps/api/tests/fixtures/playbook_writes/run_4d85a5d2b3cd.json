@@ -1,0 +1,62 @@
+{
+ "run": "run_4d85a5d2b3cd",
+ "captured_from": "2026-09-15",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 48,
+   "record_len": 0,
+   "written": {
+    "description": "Vqdkscj w meeting toxyfucq udh lar next upcoming calendar event: get event details, gather attendee/context, pwlztlikjl w 5-ahrojly brief.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
+        "args": {},
+        "id": "ctx",
+        "goal": "Ibs today'n calendar context oa znkiciio lar next upcoming event"
+       }
+      ]
+     },
+     {
+      "id": "memory",
+      "tool": "search_memory",
+      "args": {
+       "query": {
+        "$ask": "lar meeting topic / sdnqmme gfqp evvq lar event pnkwu"
+       },
+       "limit": 8
+      },
+      "goal": "Renu lliv uqerxgvbeeow qiq sdnqmme context udh lar meeting"
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": {
+          "$ask": "w Svdly aixkw udh threads hx lar lliv 2 vfbhj ddjvfsf oa lar event topic"
+         },
+         "max_results": 25
+        },
+        "id": "threads",
+        "goal": "Renu recent email threads ddjvfsf oa lar meeting topic"
+       }
+      ]
+     }
+    ],
+    "result_brief": "Tshl xhuc lar meeting pnkwu, ohzt, qiq rplohqpyt. Iftb osig lar 5-ahrojly brief: (1) izb lar ynrm uc meeting qiq key context, (2) sjznoqgpq bbtwvv/rgupyck juqeqf, (3) open rxrpqy emrwk, (4) bgchvcmk duilvcbnuh evvq memory/email, (5) lar opps umfp. Hx Svdly goohkt cwf oa ievx, gvrz uzku qiq fmpvi lar brief evvq calendar + memory wbnz."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

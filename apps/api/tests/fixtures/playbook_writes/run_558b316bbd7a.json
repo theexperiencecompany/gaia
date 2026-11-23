@@ -1,0 +1,257 @@
+{
+ "run": "run_558b316bbd7a",
+ "captured_from": "2026-09-03",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "web_search_tool"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 15,
+   "record_len": 3,
+   "written": {
+    "description": "Dovtnio Cbswsimi jcqviucr: znkiciio lar upcoming calendar event uzku ckyxiautz lar rui, research qwatdybzz/context (Svdly, memory, web), qiq pwlztlikjl w hjujzutryf toxyfucq.",
+    "steps": [
+     {
+      "id": "cal",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list_cals",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "args": {}
+       },
+       {
+        "id": "freebusy",
+        "tool": "GOOGLECALENDAR_FIND_FREE_SLOTS",
+        "args": {
+         "items": "[\"user@example.com\",\"user@example.com\",\"user@example.com\",\"user@example.com\"]",
+         "time_min": "$now",
+         "time_max": "$now + 12h",
+         "timezone": "$user.timezone"
+        }
+       },
+       {
+        "id": "events_work",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 12h",
+         "maxResults": 20
+        }
+       },
+       {
+        "id": "events_aca",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 12h",
+         "maxResults": 20
+        }
+       },
+       {
+        "id": "events_personal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 12h",
+         "maxResults": 20
+        }
+       },
+       {
+        "id": "events_suncoast",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 12h",
+         "maxResults": 20
+        }
+       }
+      ]
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": {
+          "$ask": "Svdly search aixkw udh threads evvq lar lliv 2 vfbhj ddjvfsf oa lar cwzwcxyyna event'n topic"
+         },
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 50
+        }
+       }
+      ]
+     },
+     {
+      "id": "mem",
+      "tool": "search_memory",
+      "args": {
+       "query": {
+        "$ask": "memory search aixkw udh lliv uqerxgvbeeow/context fx lar cwzwcxyyna event'n topic"
+       },
+       "limit": 8
+      }
+     },
+     {
+      "id": "web",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": {
+        "$ask": "vhi web search uzku tosma voyznab duilvcbnuh fx lar cwzwcxyyna event'n topic"
+       }
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar cwzwcxyyna event (pnkwu, ohzt, opps umfp, wkun: gdks/1:1/group). Hx gdks personal, ffq ga brief uc qpxlxm qiq kojg. Prv 1:1, agpit fx lycibitosubd ammjvnc xhuc lar pjqqh enpbd; udh group, agpit fx bbtwvv qiq open emrwk. Iftb osig: (1) izb Grctj uc meeting qiq key context, (2) sjznoqgpq bbtwvv/rgupyck juqeqf yzmij evvq lar Svdly/memory/web research, (3) open rxrpqy emrwk, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow, (5) lar opps umfp. Dqhi sja rjvrgvnqllmwp bdeofk calendars qiq ptybmub lar inbox vlh armqdsb work threads up wbnz tmymkccmonb/edhihwgks."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 16,
+   "record_len": 3,
+   "written": {
+    "description": "Dovtnio Cbswsimi jcqviucr: znkiciio lar upcoming calendar event uzku ckyxiautz lar rui, research qwatdybzz/context (Svdly, memory, web), qiq pwlztlikjl w hjujzutryf toxyfucq.",
+    "result_brief": "Tshl xhuc lar cwzwcxyyna event (pnkwu, ohzt, opps umfp, wkun: gdks/1:1/group). Hx gdks personal, ffq ga brief uc qpxlxm qiq kojg. Prv 1:1, agpit fx lycibitosubd ammjvnc xhuc lar pjqqh enpbd; udh group, agpit fx bbtwvv qiq open emrwk. Iftb osig: (1) izb Grctj uc meeting qiq key context, (2) sjznoqgpq bbtwvv/rgupyck juqeqf yzmij evvq lar Svdly/memory/web research, (3) open rxrpqy emrwk, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow, (5) lar opps umfp. Dqhi sja rjvrgvnqllmwp bdeofk calendars qiq ptybmub lar inbox vlh armqdsb work threads up wbnz tmymkccmonb/edhihwgks.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "cal",
+      "steps": [
+       {
+        "args": {},
+        "id": "list_cals",
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+       },
+       {
+        "args": {
+         "items": [
+          "user@example.com",
+          "user@example.com",
+          "user@example.com",
+          "user@example.com"
+         ],
+         "time_max": "$now + 12h",
+         "time_min": "$now",
+         "timezone": "$user.timezone"
+        },
+        "id": "freebusy",
+        "tool": "GOOGLECALENDAR_FIND_FREE_SLOTS"
+       },
+       {
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        },
+        "id": "events_work",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST"
+       },
+       {
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        },
+        "id": "events_aca",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST"
+       },
+       {
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        },
+        "id": "events_personal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST"
+       },
+       {
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "timeMax": "$now + 12h",
+         "timeMin": "$now"
+        },
+        "id": "events_suncoast",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST"
+       }
+      ]
+     },
+     {
+      "handoff": "gmail",
+      "id": "gmail",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "zbta"
+         ],
+         "max_messages": 50,
+         "query": {
+          "$ask": "Svdly search aixkw udh threads evvq lar lliv 2 vfbhj ddjvfsf oa lar cwzwcxyyna event'n topic"
+         }
+        },
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "args": {
+       "limit": 8,
+       "query": {
+        "$ask": "memory search aixkw udh lliv uqerxgvbeeow/context fx lar cwzwcxyyna event'n topic"
+       }
+      },
+      "id": "mem",
+      "tool": "search_memory"
+     },
+     {
+      "args": {
+       "query_text": {
+        "$ask": "vhi web search uzku tosma voyznab duilvcbnuh fx lar cwzwcxyyna event'n topic"
+       }
+      },
+      "id": "web",
+      "tool": "web_search_tool"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

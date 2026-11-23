@@ -1,0 +1,22 @@
+# CodeRabbit reads this file from the repository ROOT (docs: "a .coderabbit.yaml
+# file in your repository root"). It lived in config/ and carried two keys the
+# current schema rejects (`reviews.branches`, `reviews.draft`), so none of it was
+# in effect.
+#
+# De-noised for agent sessions: no per-push walkthrough extras nobody acts on,
+# and no high-level summary written into the PR description -- editing the body
+# fires `edited`, which re-runs the PR's CI (react-doctor, pr-title) and wakes
+# the PR watcher for what is only a bot edit. Findings still arrive as inline
+# review comments, which are what an unresolved thread is.
+language: en-US
+reviews:
+  # Skip the "review skipped" status chatter in the walkthrough.
+  review_status: false
+  # Do not write a generated summary into the PR description.
+  high_level_summary: false
+  # Walkthrough extras that add notification weight but no finding.
+  sequence_diagrams: false
+  changed_files_summary: false
+  in_progress_fortune: false
+  auto_review:
+    drafts: false

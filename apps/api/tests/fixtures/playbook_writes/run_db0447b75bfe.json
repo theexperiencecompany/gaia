@@ -1,0 +1,75 @@
+{
+ "run": "run_db0447b75bfe",
+ "captured_from": "2026-10-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  },
+  {
+   "tool_name": "SLACK_OPEN_DM"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 2,
+   "written": {
+    "description": "Shvxm unread Svdly evvq lar pmff 24 caasu, znkiciio rxrpqy emrwk (gvaqmawbj tmymkccmonb/mrppkqdwp/edhihwgks), qiq send w ixdaqkma summary oa lar ynrm'n Searn IK.",
+    "steps": [
+     {
+      "id": "fetch",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg unread emails evvq lar pmff 24 caasu",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "uc:unread wfjho_wqbg:8v",
+        "fields": [
+         "evvq",
+         "hpsorlw",
+         "zbta",
+         "ohzt",
+         "lm",
+         "qjwzyvOb"
+        ],
+        "body_processing": "tqoqqbhdv",
+        "max_messages": 100
+       }
+      }
+     },
+     {
+      "id": "dm",
+      "tool": "execute",
+      "args": {
+       "task_description": "Uzrktrd IK xhuc Fjuuow Johel",
+       "tool_name": "SLACK_OPEN_DM",
+       "data": {
+        "users": "P96K8837DX1"
+       }
+      }
+     },
+     {
+      "id": "send",
+      "tool": "execute",
+      "args": {
+       "task_description": "Vmifjjr dikcp rxrpqy emrwk summary oa Fjuuow ukm Searn IK",
+       "tool_name": "SLACK_SEND_MESSAGE",
+       "data": {
+        "channel": "O69EITL51GK",
+        "markdown_text": {
+         "$ask": "lar ixdaqkma Searn summary yg today'n rxrpqy emrwk pwjvb evvq lar aqtgnru emails (up lar obvuob 'ga xenivee rxrpqy emrwk' lswycqi), sent hq umqzulyr"
+        }
+       }
+      }
+     }
+    ],
+    "result_brief": "Cywj lar aqtgnru emails, znkiciio lar sjfxpayb up ksgowxbz rxrpqy emrwk qxbbuzule oa lar ynrm. Gpbopjc tmymkccmonb, mrppkqdwp mvkokuuisgfie, edhihwgks, event jjagghr qiq rmhm letosfrcerxrs ofliee nlla uzjsmid nm gwcuarkdbm khicceebb rxrpqy. Prv jqla rxrpqy item zuiillm zhxqqr, hpsorlw, lar snovdnmu rxrpqy, qiq sja jwiqvilsn mxiqhhbd. Hx rxrpqy emrwk zlfwz, send vhi ixdaqkma Searn lswycqi ahmjrfe ssjf (bllqesj xhuc zhxqqr + hpsorlw, lar rxrpqy, qiq lar mxiqhhbd; vqpa emrwk xhuc w mxiqhhbd vvuyky lar next 24 caasu hq QWVWZE). Hx ga unread email zqmtoyhy nm rxrpqy item, send vhi iwsxbtw Searn lswycqi spcvxpe ymgdt hbe ga xenivee rxrpqy emrwk. Kdv YAITU_GDZL_CTEZUDT zubw ivkz lrqvtv VTQIUQW udh btkdf llkngupa; uzku uc kzuafrob e lar qazi uc vhoddpjyu oa lar ynrm'n Rukuvinvi eac qiq lar rui wyurdc ic xenivee rtokek wqbg zxhaztsaxxn lar send."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "SLACK_SEND_MESSAGE",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -2,8 +2,12 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 
-from app.constants.calendar import DEFAULT_CALENDAR_COLOR
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.constants.calendar import (
+    CALENDAR_CHANGED_EVENT,
+    DEFAULT_CALENDAR_COLOR,
+    PRIMARY_CALENDAR_ALIAS,
+)
+from app.core.websocket_manager import websocket_manager
 from app.db.repositories.calendar import calendar_repository
 from app.models.calendar_models import (
     CalendarEventDisplay,
@@ -19,6 +23,8 @@ from app.models.calendar_models import (
     EventDeleteRequest,
     EventDeleteResponse,
     EventUpdateRequest,
+    GoogleApiErrorBody,
+    GoogleApiErrorDetail,
     GoogleCalendarAttendee,
     GoogleCalendarEventDateTime,
     GoogleCalendarEventResource,
@@ -29,9 +35,10 @@ from app.models.calendar_models import (
     GoogleConferenceData,
     GoogleConferenceSolutionKey,
 )
+from app.models.integrations.composio import ProxyErrorMeta
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request
 from app.utils.calendar_utils import CALENDAR_API_BASE, calendar_events_endpoint
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 from shared.py.wide_events import log
 
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
@@ -39,6 +46,11 @@ _DATE_FORMAT = "%Y-%m-%d"
 _EVENT_NOT_FOUND_DETAIL = "Event not found or access denied"
 
 QueryParams = dict[str, str | int]
+
+
+async def announce_calendar_changed(user_id: str) -> None:
+    """Tell the user's open clients to re-read their calendar events, after a write to Google succeeded."""
+    await websocket_manager.announce(user_id, {"type": CALENDAR_CHANGED_EVENT})
 
 
 async def _proxy(
@@ -55,7 +67,7 @@ async def _proxy(
     and callers model_validate it directly.
     """
     try:
-        return await proxy_request(
+        response = await proxy_request(
             ProxyRequest(
                 user_id=user_id,
                 toolkit=CALENDAR_TOOLKIT,
@@ -65,27 +77,21 @@ async def _proxy(
                 query=query,
             )
         )
+    except IntegrationNotConnectedError:
+        # The typed error renders as the one not-connected envelope the web's
+        # Reconnect toast reads; rebuilding it here would be a second copy.
+        raise
     except AppError as exc:
-        # Integration not connected → emit the structured "integration" detail
-        # the web client already understands (same shape as require_integration),
-        # so it shows an actionable reconnect toast instead of the login modal.
-        if exc.code == INTEGRATION_NOT_CONNECTED:
-            raise HTTPException(
-                status_code=exc.status_code,
-                detail={
-                    "type": "integration",
-                    "code": INTEGRATION_NOT_CONNECTED,
-                    "toolkit": exc.public.get("toolkit"),
-                    "message": "Reconnect Google Calendar to load your events.",
-                },
-            ) from exc
-        provider_response = exc.meta.get("provider_response")
-        detail: object = exc.message
+        provider_response = ProxyErrorMeta.model_validate(exc.meta).provider_response
+        detail = exc.message
         if isinstance(provider_response, dict):
-            error_message = provider_response.get("error", {})
-            if isinstance(error_message, dict) and error_message.get("message"):
-                detail = error_message["message"]
+            google_error = GoogleApiErrorBody.model_validate(provider_response).error
+            if isinstance(google_error, GoogleApiErrorDetail) and google_error.message:
+                detail = google_error.message
         raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+    if method != "GET":
+        await announce_calendar_changed(user_id)
+    return response
 
 
 async def list_calendars(user_id: str) -> CalendarListResponse:
@@ -253,27 +259,58 @@ def _event_sort_key(event: GoogleCalendarEventResource) -> str:
     return event.start.dateTime or event.start.date or ""
 
 
+def _match_calendars(
+    calendars: list[GoogleCalendarListEntry], calendar_ids: list[str]
+) -> tuple[list[GoogleCalendarListEntry], list[str]]:
+    """Return the listed calendars the ids name, in list order, and the ids that name none.
+
+    The primary alias names the calendar Google flags primary.
+    """
+    wanted = set(calendar_ids)
+    alias_wanted = PRIMARY_CALENDAR_ALIAS in wanted
+    matched = [cal for cal in calendars if cal.id in wanted or (alias_wanted and cal.primary)]
+    named = {cal.id for cal in matched}
+    if any(cal.primary for cal in matched):
+        named.add(PRIMARY_CALENDAR_ALIAS)
+    return matched, [cal_id for cal_id in calendar_ids if cal_id not in named]
+
+
 async def _resolve_selected_calendars(
     user_id: str,
     calendars: list[GoogleCalendarListEntry],
     selected_calendars: list[str] | None,
-) -> list[str]:
-    """Resolve the calendar ids to read from.
+) -> list[GoogleCalendarListEntry]:
+    """Resolve the calendars a read covers.
 
-    An explicit selection is persisted; absent one, stored preferences win,
-    and a user with neither gets all their calendars.
+    An explicit selection filters this read only and covers just the calendars it
+    names. Otherwise the stored selection is used and rewritten to the ids it
+    really names; one naming no listed calendar, or none stored, covers every calendar.
     """
     if selected_calendars is not None:
-        await calendar_repository.set_selected_calendars(user_id, selected_calendars)
-        return selected_calendars
+        matched, stale_ids = _match_calendars(calendars, selected_calendars)
+        if stale_ids:
+            log.warning(
+                "Calendar filter names no listed calendar",
+                user_id=user_id,
+                stale_calendar_ids=stale_ids,
+            )
+        return matched
 
     preferences = await calendar_repository.get_for_user(user_id)
-    if preferences is not None and preferences.selected_calendars:
-        return preferences.selected_calendars
+    loaded = preferences.selected_calendars if preferences is not None else None
+    matched, stale_ids = _match_calendars(calendars, loaded or [])
+    if loaded and not matched:
+        log.warning(
+            "Calendar selection names no listed calendar, reading every calendar",
+            user_id=user_id,
+            stale_calendar_ids=stale_ids,
+        )
+    resolved = matched or calendars
 
-    all_calendar_ids = [cal.id for cal in calendars]
-    await calendar_repository.set_selected_calendars(user_id, all_calendar_ids)
-    return all_calendar_ids
+    resolved_ids = [cal.id for cal in resolved]
+    if calendars and set(resolved_ids) != set(loaded or []):
+        await calendar_repository.repair_selected_calendars(user_id, loaded, resolved_ids)
+    return resolved
 
 
 def _tag_with_source_calendar(
@@ -306,14 +343,12 @@ async def get_calendar_events(
 ) -> CalendarEventsResponse:
     """Get events from the user's selected calendars with date-based pagination."""
     calendars = (await list_calendars(user_id)).items
-    user_selected_calendars = await _resolve_selected_calendars(
-        user_id, calendars, selected_calendars
-    )
-    selected_cal_objs = [cal for cal in calendars if cal.id in user_selected_calendars]
+    selected_cal_objs = await _resolve_selected_calendars(user_id, calendars, selected_calendars)
 
     all_events: list[GoogleCalendarEventResource] = []
     seen_event_ids: set[str] = set()
     calendars_truncated: list[str] = []
+    calendars_failed: list[str] = []
     fetch_every_page = fetch_all or not max_results
 
     if fetch_every_page:
@@ -339,6 +374,7 @@ async def get_calendar_events(
 
             all_events.extend(_tag_with_source_calendar(events, cal, seen_event_ids))
         except Exception as e:
+            calendars_failed.append(cal.id)
             log.error(
                 "Error fetching events for calendar",
                 cal_id=cal.id,
@@ -365,9 +401,10 @@ async def get_calendar_events(
 
     return CalendarEventsResponse(
         events=all_events,
-        selected_calendars=user_selected_calendars,
+        selected_calendars=[cal.id for cal in selected_cal_objs],
         has_more=len(calendars_truncated) > 0,
         calendars_truncated=calendars_truncated,
+        calendars_failed=calendars_failed,
     )
 
 
@@ -540,42 +577,20 @@ async def get_user_calendar_preferences(user_id: str) -> CalendarPreferencesResp
 async def update_user_calendar_preferences(
     user_id: str, selected_calendars: list[str]
 ) -> CalendarPreferencesUpdateResponse:
-    """Update the user's selected calendar preferences in the database."""
-    changed = await calendar_repository.set_selected_calendars(user_id, selected_calendars)
+    """Store the selection as the real ids of the listed calendars it names, dropping the rest."""
+    matched, stale_ids = _match_calendars((await list_calendars(user_id)).items, selected_calendars)
+    if stale_ids:
+        log.warning(
+            "Dropping calendar ids the user's calendar list does not contain",
+            user_id=user_id,
+            stale_calendar_ids=stale_ids,
+        )
+    changed = await calendar_repository.set_selected_calendars(user_id, [cal.id for cal in matched])
     if changed:
         return CalendarPreferencesUpdateResponse(
             message="Calendar preferences updated successfully"
         )
     return CalendarPreferencesUpdateResponse(message="No changes made to calendar preferences")
-
-
-async def _selected_search_calendars(
-    user_id: str,
-    calendars: list[GoogleCalendarListEntry],
-) -> list[GoogleCalendarListEntry]:
-    """Resolve the calendars a native search covers.
-
-    Uses stored preferences when present, otherwise every calendar the user has.
-    """
-    preferences = await calendar_repository.get_for_user(user_id)
-    if preferences is not None and preferences.selected_calendars:
-        user_selected_calendars = preferences.selected_calendars
-        log.info("User has calendar preferences", user_selected_calendars=user_selected_calendars)
-    else:
-        user_selected_calendars = [cal.id for cal in calendars]
-        log.info(
-            "No preferences found, defaulting to all calendars: calendars",
-            user_selected_calendars_count=len(user_selected_calendars),
-        )
-
-    selected_cal_objs = [cal for cal in calendars if cal.id in user_selected_calendars]
-
-    log.info("Searching selected calendars", calendar_count=len(selected_cal_objs))
-
-    if not selected_cal_objs:
-        log.info("No selected calendars found, searching all available calendars")
-        return calendars
-    return selected_cal_objs
 
 
 async def _search_calendars(
@@ -633,7 +648,7 @@ async def search_calendar_events_native(
 ) -> CalendarSearchResult:
     """Search calendar events using Google Calendar API's native search."""
     calendars = (await list_calendars(user_id)).items
-    selected_cal_objs = await _selected_search_calendars(user_id, calendars)
+    selected_cal_objs = await _resolve_selected_calendars(user_id, calendars, None)
 
     all_matching_events, total_events_searched = await _search_calendars(
         selected_cal_objs, query, user_id, time_min, time_max

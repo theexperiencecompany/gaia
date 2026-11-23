@@ -1,6 +1,19 @@
+import { type ConversationView, SCREEN_ITEM_KIND } from "@shared/conversation";
 import { useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useLiveConversationStore } from "@/features/chat/live/liveConversationStore";
 import type { IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
+
+const MESSAGE_KINDS: ReadonlySet<string> = new Set([
+  SCREEN_ITEM_KIND.USER,
+  SCREEN_ITEM_KIND.REPLY,
+  SCREEN_ITEM_KIND.NOTICE,
+]);
+
+/** The messages this device holds of a conversation's screen. */
+const messageCount = (view: ConversationView | undefined): number =>
+  view?.items.filter((item) => MESSAGE_KINDS.has(item.kind)).length ?? 0;
 
 const toConversationRow = (conv: IConversation, messageCount: number) => ({
   conversation_id: conv.id,
@@ -10,7 +23,7 @@ const toConversationRow = (conv: IConversation, messageCount: number) => ({
   is_system_generated: conv.isSystemGenerated,
   system_purpose: conv.systemPurpose,
   is_unread: conv.isUnread,
-  has_live_approval: conv.hasLiveApproval ?? false,
+  awaiting_approval: conv.awaitingApproval ?? false,
   todo_id: conv.todoId ?? null,
   user_id: conv.userId,
   created_at: conv.createdAt.toISOString(),
@@ -23,31 +36,32 @@ const toConversationRow = (conv: IConversation, messageCount: number) => ({
 export type ConversationRow = ReturnType<typeof toConversationRow>;
 
 /**
- * The conversations the user browses: every one except a tracked todo's chat,
- * which is reached only from its todo (the server never lists it either, but a
- * client that opened it keeps it in its local store).
+ * The conversations the user browses: every one the server lists. A client that
+ * opened an unlisted chat (a todo's, a bot DM) keeps it in its local store.
  */
 export const useConversationList = () => {
   const conversations = useChatStore((state) => state.conversations);
-  const messagesByConversation = useChatStore(
-    (state) => state.messagesByConversation,
+  // Counts, compared shallowly: a streamed frame that adds no message leaves the list as it is.
+  const counts = useLiveConversationStore(
+    useShallow((state) =>
+      Object.fromEntries(
+        Object.entries(state.conversations).map(([id, live]) => [
+          id,
+          messageCount(live.view),
+        ]),
+      ),
+    ),
   );
 
-  // Memoized so consumers (ChatsList accordions) can safely depend on array
-  // identity — a fresh map() result per render caused an infinite effect loop.
+  // Memoized so consumers can depend on array identity.
   const list = useMemo(
     () =>
       conversations.flatMap((conv) =>
-        conv.todoId
+        conv.listed === false
           ? []
-          : [
-              toConversationRow(
-                conv,
-                messagesByConversation[conv.id]?.length || 0,
-              ),
-            ],
+          : [toConversationRow(conv, counts[conv.id] ?? 0)],
       ),
-    [conversations, messagesByConversation],
+    [conversations, counts],
   );
 
   return {
@@ -63,15 +77,14 @@ export const useConversationRow = (
   const conversation = useChatStore((state) =>
     state.conversations.find((conv) => conv.id === conversationId),
   );
-  const messageCount = useChatStore((state) =>
+  const count = useLiveConversationStore((state) =>
     conversationId
-      ? (state.messagesByConversation[conversationId]?.length ?? 0)
+      ? messageCount(state.conversations[conversationId]?.view)
       : 0,
   );
 
   return useMemo(
-    () =>
-      conversation ? toConversationRow(conversation, messageCount) : undefined,
-    [conversation, messageCount],
+    () => (conversation ? toConversationRow(conversation, count) : undefined),
+    [conversation, count],
   );
 };

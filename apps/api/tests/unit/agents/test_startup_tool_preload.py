@@ -209,10 +209,6 @@ class TestFactoryDoesNotBindIntegrationTools:
                 return_value=[],
             ),
             patch(
-                "app.agents.core.subagents.base_subagent.create_todo_pre_model_hook",
-                return_value=None,
-            ),
-            patch(
                 "app.agents.core.subagents.base_subagent.worker_pre_model_hooks",
                 return_value=[],
             ),

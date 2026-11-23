@@ -14,18 +14,36 @@ which ran 52 jobs per PR push between them, 24 of them for under a minute of
 work behind a runner's setup.
 
 - **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
-  `lint-node`, `lint-python`, `lint-mixed`, `repo-policy`, `ts-build-test`, the `unit-a` and
+  `lint-node` (with the repo-wide policy checks), `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
   `unit-b` slices, `test-mutation` on the changed modules (a survivor found
-  only in the queue is an ejection plus a fix round), `quality-gate`. The merge
+  only in the queue is an ejection plus a fix round), `web-e2e-screen` (the
+  screen-over-time Playwright flows on the sim stack, when `web:e2e-screen`'s
+  inputs changed), `quality-gate`. The merge
   queue (`merge_group`), master and dispatch run the full tier on top: the
-  integration, bridge and browser slices (regression-proof rides integration,
-  so it stays queue-only: the integration slice needs the services pool),
-  `python-audit`, `scan`, `docker-image`, and on master `coverage` and the
-  deploy phases. A PR reaches master only through the queue, so the slow checks
-  run once per merge, not once per push. `detect` decides the tier
-  (`tier` output) and `pytest.sh slices` cuts the slice matrix to it.
+  integration, bridge and browser slices (the regression-proof of a test that
+  needs services rides integration, so it stays queue-only; a test only the
+  service-free slices own is proven by lint-python's `ci:regression-proof` on
+  every push, `pytest.sh regression-proof --services false|true` either way,
+  with the same outcomes, including "cannot run on base" for a test tree that
+  does not collect there),
+  `python-audit`, `scan`, `docker-image` and `coverage`. A PR reaches master
+  only through the queue, so the slow checks run once per merge, not once per
+  push. `detect` decides the tier (`tier` output) and `pytest.sh slices` cuts
+  the slice matrix to it.
+- **Verified tier: master deploys the commit the queue tested.** GitHub
+  fast-forwards master to the group commit it tested, so a master push whose SHA
+  has a green `merge_group` run of ci.yml (`verdict.py queue-verified`, its one
+  owner; an unreadable API means the full tier, never verified) runs no check
+  lane: `nx_affected.outputs` keeps only the web bundle (`web-build`) and the
+  checks only a master push runs (analytics-sync, which publishes), the gate
+  passes naming the queue run, and `build-images` / `deploy-web` /
+  `trigger-build` start as soon as their artifacts exist. A direct push and a
+  dispatch take the full tier, which is also where a `__FULL__` whole-tree scan
+  still happens. `cache-warm` saves the uv cache on master, which no lane does
+  on a verified push: a merge-queue run's caches are scoped to its
+  `gh-readonly-queue` ref and no PR can restore them.
 - **Grouped jobs.** Every check inside `lint-node`, `lint-python`,
-  `lint-mixed`, `repo-policy`, `scan`, `python-audit` and `ts-build-test` is an
+  `lint-mixed`, `scan`, `python-audit` and `ts-build-test` is an
   nx target whose `metadata.ci` names its job, its status (`check`, `area`) and
   any `events`/`branch` it is limited to: `tools/ci/project.json` for the
   repo-wide checks, the code projects' own targets for `api:type-check`,
@@ -34,7 +52,7 @@ work behind a runner's setup.
   posts each as a `ci / <area> / <check>` commit status linked to the job
   (skipped on a dispatch, fork and Dependabot PRs, whose token cannot write
   statuses), writes a `<job>/<check>` verdict for each failed one and fails the
-  job. Only a check an action runs (gitleaks, semgrep, trivy) or that needs a
+  job. Only a check an action runs (semgrep, trivy) or that needs a
   secret (the PostHog ones) is a step, `runner: action`/`step` in its metadata.
 - **Never add a check twice.** One check, one nx target, one job.
 
@@ -49,13 +67,13 @@ the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
 every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`.
 Every pool is routed the same way:
 
-1. `ubuntu-latest` by default (public repo: 4 vCPU / 16 GB, 20 concurrent
-   jobs on the org's Free plan).
+1. `ubuntu-24.04` (`HOSTED_LINUX_IMAGE` in `runner.py`) by default (public
+   repo: 4 vCPU / 16 GB, 20 concurrent jobs on the org's Free plan).
 2. Once GitHub's hosted queue holds `HOSTED_SATURATED_QUEUE_DEPTH` (5) queued
    jobs or more — the 20-job cap is hit; override with the
    `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
    has an idle listener for every job of the pool (`class_demand` in
-   `runner.py`: light 7, heavy 5, services 9, handed out services first). A
+   `runner.py`: light 6, heavy 5, services 9, handed out services first). A
    busy box is never queued on; a new lane in a pool raises its count.
 3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
 
@@ -86,7 +104,10 @@ Consequences to keep in mind when editing a lane:
 - **The workspace persists.** Every checkout on the box uses `fetch-depth: 0`
   (`clean:` only off the box): a depth-1 checkout marks the persistent
   clone shallow and the next depth-0 fetch re-unshallows over a residential
-  uplink (measured 21-104 s).
+  uplink (measured 21-104 s). Off the box a full-history checkout is
+  blobless (`filter: blob:none`): every branch's commits and trees but only
+  HEAD's blobs, 38 MB instead of 783 MB, and a diff against the base fetches
+  the few blobs it reads. `test_workflow_box_signal.py` holds the two apart.
 - **Service containers are shared, not per job** — `scripts/ci/test-services.sh`
   namespaces one shared container set per runner instance; every lane that
   starts them must release its namespace in an `if: always()` teardown step
@@ -106,7 +127,7 @@ Consequences to keep in mind when editing a lane:
 - **What actually keeps fork code off the box is the repo's fork-PR approval
   policy** (all outside collaborators require approval before any workflow
   runs). `runner.py select` does send a PR whose head repo is not this one to
-  `ubuntu-latest` before it probes the runners API — but that is ROUTING, not a
+  the hosted image before it probes the runners API — but that is ROUTING, not a
   security boundary: on `pull_request` a fork supplies its own workflow file,
   so it can choose not to call the composite at all. Do not weaken the approval
   policy on the strength of that check. What keeps the box's PAT away from fork
@@ -160,7 +181,7 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    fails on a gate naming a task nx is never asked about and on a job that does
    not start when detect names it; `test_hook_scopes.py` holds the prek hooks that copy a check's
    files (api-types, analytics-types) equal to its task's inputs;
-   `test_nx_affected.py` pins what the manifests and lockfiles select. Only `repo-policy`'s gitleaks runs on every change.
+   `test_nx_affected.py` pins what the manifests and lockfiles select. Only gitleaks and bot-handles run on every change, so `lint-node` starts on every PR.
    A job or check skipped this way counts as PASSING; a failed `detect` fails
    the gate. A workflow-only (`.yml`) PR runs exactly the checks whose inputs
    name `.github` (harness-tests, tool-pins).
@@ -201,10 +222,10 @@ could silently skip production deploys).
 **A PR has no coverage gate.** diff-cover was retired with the slice split: a
 PR's slices run a test-impact selection, and a coverage percentage measured
 over a subset is not a coverage percentage. The full suite and the 80%
-combined gate run on master, which is the backstop — do not restore diff-cover
-to a PR lane.
+combined gate run in the merge queue (and on a dispatch or direct master push),
+before the merge — do not restore diff-cover to a PR lane.
 
-`test-python` (and master-only `coverage`) run pytest directly on the runner
+`test-python` (and `coverage`) run pytest directly on the runner
 against PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ started by
 `scripts/ci/test-services.sh` via the composite action
 `actions/setup-python-test-env`. Plain `docker run`, not GitHub `services:`,
@@ -216,7 +237,9 @@ native lanes on both the GitHub runners and a Mac, and removed. `mise ci:local`
 is the one local gate; locally, run test files with `mise test:one`, the
 real-infra tier with `mise test:python:real` and the browser stack with
 `mise test:python:browser`. The browser slice (`engines: true` in
-`test-slices.json`) needs Chromium and an Obscura build. In CI the engine
+`test-slices.json`) needs Chromium and an Obscura build, and on Linux the
+Fortress release the gaia image pins (`FORTRESS_BIN`), which only Fortress's own
+identity test launches. In CI the engine
 slices run as their own job, `test-python-engines` (test-python's steps by YAML
 alias), which needs `obscura-bin`: that job builds Obscura through
 `.github/actions/build-obscura` (the composite obscura-compat uses, one GHA cache
@@ -251,9 +274,10 @@ wider matrix cannot finish sooner. What it does cost is one check row per job
 (a 430-module diff produced 250 of them, which no reviewer can read past) and a
 full checkout + `uv sync` per job rather than per shard.
 
-Under the cap each module gets its own shard and the check is named after it,
-which is the common case and the most useful thing to read at a glance. Over
-it, modules pack in round-robin and the check says `shard N/M (K modules)`; the
+The plan makes the fewest shards whose estimated cost fits the shard budget
+(`scripts/ci/CLAUDE.md`), so a typical PR's handful of modules runs in one
+shard. A shard carrying one module is named after it; a packed one says
+`shard N/M (K modules)`; the
 step then names every failing module in an `::error::` annotation and the job
 summary, because "this shard is red" is useless without saying which module.
 
@@ -331,9 +355,13 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   `package.json#packageManager`, Python in `.python-version`, the Python lint
   and audit tools in the root `pyproject.toml`'s `lint` group (locked in
   `uv.lock`, run with `uv run --frozen --no-build --isolated --only-group lint`),
-  biome in `pnpm-lock.yaml`, and every remote action by commit SHA.
+  biome in `pnpm-lock.yaml`, every remote action by commit SHA, and the
+  GitHub-hosted Linux image as `HOSTED_LINUX_IMAGE` in `scripts/ci/runner.py`.
   `tools/lints/check_tool_pins.py` fails on a second copy (a `uvx tool@x`, an
-  action on a tag).
+  action on a tag, a `runs-on` naming another Ubuntu release) and on any
+  `*-latest` runner label: `ubuntu-latest` rolled to 26.04 job by job and broke
+  the Playwright browser install (run 45079269367). Moving to a new image is a
+  deliberate bump of that constant and every label the lint then names.
 - Never run a linter unpinned in a lane: ruff 0.16.0 shipped new rules
   (ISC004, RUF036) four minutes before a scheduled run and turned the lane
   red with zero code changes. Bump a lint-group pin deliberately and re-lock.

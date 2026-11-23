@@ -1,4 +1,4 @@
-"""A real Chrome launch opens its CDP connection even when the host's session bus never answers.
+"""A real Chrome launch: it announces plain Chrome, and opens its CDP connection when the session bus never answers.
 
 Regression for the merge-queue runs where every chromium host died with "timed out
 during opening handshake": the CI box hands its runners a desktop session bus, and
@@ -15,13 +15,17 @@ import sys
 
 import pytest
 
-from app.browser_host.engine import Engine
+from app.browser_host.engine import ChromiumBinary, Engine, launch_engine
 from app.constants.browser import BrowserEngine
 from tests.integration.real.browser._stack.stack import required_binary
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="Chrome dials D-Bus only on Linux"
 )
+
+
+def _chrome() -> ChromiumBinary:
+    return ChromiumBinary(path=required_binary("CHROMIUM_BIN", "google-chrome"), fortress=False)
 
 
 @pytest.fixture
@@ -38,11 +42,20 @@ def silent_session_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Itera
 
 @pytest.mark.usefixtures("silent_session_bus")
 async def test_a_chrome_launch_is_not_held_by_a_session_bus_that_never_answers() -> None:
-    engine = await Engine.launch(
-        BrowserEngine.CHROMIUM, required_binary("CHROMIUM_BIN", "google-chrome"), None
-    )
+    engine = await Engine.launch(BrowserEngine.CHROMIUM, _chrome(), None)
     try:
         assert engine.alive
         assert "Chrome/" in await engine.user_agent()
+    finally:
+        await engine.shutdown()
+
+
+async def test_a_default_chrome_launch_announces_plain_chrome_not_headless() -> None:
+    """Regression for #1610: with Fortress off the host announced HeadlessChrome, which sites answer with a CAPTCHA."""
+    engine, learned = await launch_engine(BrowserEngine.CHROMIUM, _chrome(), None)
+    try:
+        announced = await engine.user_agent()
+        assert "HeadlessChrome" not in announced
+        assert announced == learned
     finally:
         await engine.shutdown()

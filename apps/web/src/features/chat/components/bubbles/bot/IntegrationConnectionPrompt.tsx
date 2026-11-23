@@ -1,7 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Spinner } from "@heroui/spinner";
+import { Chip, Input, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
 import {
   type ConnectionPromptState,
@@ -9,7 +6,9 @@ import {
   PROMPT_ACTION_LABEL,
 } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useInlineIntegrationConnect } from "@/features/integrations/hooks/useInlineIntegrationConnect";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type {
@@ -19,15 +18,6 @@ import type {
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;
-}
-
-function cardIcon(integrationId: string) {
-  return getToolCategoryIcon(integrationId, {
-    size: 22,
-    width: 22,
-    height: 22,
-    showBackground: false,
-  });
 }
 
 interface IntegrationConnectCardProps {
@@ -51,14 +41,14 @@ function StatusChip({
   // Adding an account leaves the integration connected while the card asks for more.
   if (isConnected || (state === "add_account" && !failed)) {
     return (
-      <Chip size="sm" variant="flat" color="success">
+      <Chip size="sm" variant="soft" color="success">
         Connected
       </Chip>
     );
   }
   const isDanger = failed || state === "expired";
   return (
-    <Chip size="sm" variant="flat" color={isDanger ? "danger" : "warning"}>
+    <Chip size="sm" variant="soft" color={isDanger ? "danger" : "warning"}>
       {failed
         ? "Failed"
         : state === "expired"
@@ -108,23 +98,22 @@ function InlineConnectAction({
         {needsBearerToken && (
           <Input
             type="password"
-            size="sm"
-            className="max-w-xs"
+            className={inputVariants({ size: "sm", className: "max-w-xs" })}
             placeholder="Paste API token"
             autoComplete="off"
             value={token}
-            onValueChange={setToken}
-            isDisabled={connecting}
+            onChange={(e) => setToken(e.target.value)}
+            disabled={connecting}
           />
         )}
-        <Button
-          color={isDanger ? "warning" : "primary"}
-          isLoading={connecting}
+        <GaiaButton
+          variant={isDanger ? "danger-soft" : "primary"}
+          isPending={connecting}
           isDisabled={needsBearerToken && !token.trim()}
           onPress={() => connect(needsBearerToken ? token : undefined)}
         >
           {failed ? "Retry" : PROMPT_ACTION_LABEL[state]}
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );
@@ -161,7 +150,14 @@ function IntegrationConnectCard({
     <div className="w-fit max-w-2xl rounded-3xl bg-zinc-800/50 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
-          <div className="shrink-0 pt-0.5">{cardIcon(integration.id)}</div>
+          <div className="shrink-0 pt-0.5">
+            <IntegrationIcon
+              integrationId={integration.id}
+              iconUrl={integration.iconUrl}
+              category={integration.category}
+              size={22}
+            />
+          </div>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{integration.name}</span>
@@ -184,7 +180,7 @@ function IntegrationConnectCard({
             <span className="text-xs text-zinc-400">Already connected</span>
             <div className="flex flex-wrap gap-1.5">
               {connectedAccounts.map((name) => (
-                <Chip key={name} size="sm" variant="flat">
+                <Chip key={name} size="sm" variant="soft">
                   {name}
                 </Chip>
               ))}
@@ -227,7 +223,14 @@ export default function IntegrationConnectionPrompt({
 
   return (
     <CollapsibleListWrapper
-      icon={cardIcon(integration_id)}
+      icon={
+        <IntegrationIcon
+          integrationId={integration_id}
+          iconUrl={integration?.iconUrl}
+          category={integration?.category}
+          size={22}
+        />
+      }
       count={1}
       label={
         expired

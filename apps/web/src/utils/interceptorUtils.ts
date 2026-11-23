@@ -88,14 +88,20 @@ const handleForbiddenError = (
   }
 
   if (code === API_ERROR_CODES.INTEGRATION_NOT_CONNECTED) {
-    const { toolkit } = errorData as { toolkit?: string };
+    const toolkit = envelope?.toolkit;
+    const integrationId = envelope?.integration_id;
     toast.error(message || "Integration required.", {
       id: `integration-${toolkit || "default"}`,
       duration: Infinity,
       action: {
         label: "Reconnect",
         onClick: () => {
-          router.push("/integrations");
+          // ?connect= starts that integration's connect flow on arrival.
+          router.push(
+            integrationId
+              ? `/integrations?connect=${encodeURIComponent(integrationId)}`
+              : "/integrations",
+          );
         },
       },
     });
@@ -108,11 +114,9 @@ const handleForbiddenError = (
 
 /**
  * Maps the `subscription_required` 402 payload onto the paywall store's
- * offer shape. Shared by the axios interceptor (below) and the chat-stream
- * client (`chatApi.ts`, whose 402s never pass through axios) so both open
- * the paywall with the same fields.
+ * offer shape the axios interceptor (below) opens the paywall with.
  */
-export const subscriptionRequiredOfferFromDetail = (
+const subscriptionRequiredOfferFromDetail = (
   detail: SubscriptionRequiredDetail,
 ): UpgradeOffer => ({
   discountCode: detail.discount_code,
@@ -142,7 +146,6 @@ const handleSubscriptionRequiredError = (errorData: unknown): boolean => {
  * Renders the rate-limit upsell UI (feature-restricted / rate-limit toast)
  * for a 429 response body. Returns false when the body is not the backend's
  * rate_limit_exceeded shape so callers can fall back to a generic toast.
- * Shared by the axios interceptor and the chat-stream client.
  */
 export const handleRateLimitError = (errorData: unknown): boolean => {
   if (toErrorEnvelope(errorData)?.code !== "rate_limit_exceeded") {
@@ -184,7 +187,7 @@ export const handleRateLimitError = (errorData: unknown): boolean => {
     showTokenLimitToast(feature, plan_required);
   } else {
     showRateLimitToast({
-      title: "Rate Limit Exceeded",
+      title: "Usage limit reached",
       message: message || undefined,
       resetTime: reset_time,
       feature,

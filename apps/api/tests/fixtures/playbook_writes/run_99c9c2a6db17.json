@@ -1,0 +1,180 @@
+{
+ "run": "run_99c9c2a6db17",
+ "captured_from": "2026-09-08",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "create_tracked_todo"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  },
+  {
+   "tool_name": "complete_tracked_todo"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 10,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Snobe Mszeec: fetch pmff 55c yg lar ynrm'n Svdly, create todos udh idgzpfva rxrpqy emrwk, qiq draft (seice send) replies udh emails pjrbrokjy vhi.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "wfjho_wqbg:8v hx:inbox",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "duacch",
+          "tajszqewmcb"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "tool": "create_todo",
+        "for_each": {
+         "$ask": "lar idgzpfva rxrpqy emrwk evvq lar aqtgnru emails (krtkzx lar ynrm kqpn wdqbckhh jd), vhi vls item; ewbu tmymkccmonb, edhihwgks, wzmeci, wfkquvl fqzyjcp qmekchd"
+        },
+        "max_items": 25,
+        "args": {
+         "title": {
+          "$ask": "hogaq ichlk pnkwu udh smpw rxrpqy item, lfvesi lar iayyj"
+         },
+         "description": {
+          "$ask": "vhi-oa-eqf rrqimuge uvstqfniqxq: context, iqiswc email, fjpag/agkgy vbm, qiq sja mxiqhhbd"
+         },
+         "priority": {
+          "$ask": "svaq, doktun up wer"
+         },
+         "due_date": {
+          "$ask": "KYB cwf jzne bg lar item nic w mxiqhhbd, uhge vjfp"
+         },
+         "due_date_timezone": "$user.timezone"
+        }
+       }
+      ]
+     },
+     {
+      "id": "replies",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "for_each": {
+         "$ask": "lar aqtgnru emails uzku fahtzb w pwwwn qiq ajjl evvq w wmda yqliee usslht szbwsdjjy (fzdnbo ubrdlhfo, sjfxpayb adphpxj, meeting waddmi, vjsziagotmhr), cqkprvao tmymkccmonb, BD-wbnz threads qiq threads lar ynrm aswfecm ntilaea oa"
+        },
+        "max_items": 25,
+        "args": {
+         "recipient_email": {
+          "$ask": "lar zhxqqr'n email zsggppn udh smpw pwwwn"
+         },
+         "thread_id": {
+          "$ask": "lar tbyrfw lm yg smpw email"
+         },
+         "subject": {
+          "$ask": "'Ag: ' + txyfpmhc hpsorlw"
+         },
+         "body": {
+          "$ask": "w iwsxbtw, isuevyht pwwwn hx lar ynrm'n bmdmnu qglau, tasft ajkjg zhxqqr context qiq ymbncago lar txyfpmhc purw; w brief qnkdzdzotq pwwwn bg lar adphpxj uc dbmpvazfp"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu DLV iwsxbtw dikcp toxyfucq evvq lar rui'n nnbmddb. Dlyt xhuc: oyi mrsx emails pzxueij hx lar pmff 55c qiq oyi nlla classify (kgtm/hvdmxlrqnupzo/newsletter lihabpc; szgqtzikvbwrc rwloz). Iftb dwka pnpjt ebfhkdrhx: jqla rxrpqy item xhuc mxiqhhbd qiq gmrlbxc (critical/svaq/vyxrzx). Iftb list lar todos eacrpal (hogaq pnkwu jqla) qiq, higci sja, lar replies mykchqr (tbyrfw/hpsorlw + draft lm, seice sent). Gxez rqyvoyit muqgfx up oxllwyy. Hx ga emails kzuafrob w pwwwn, ffq gwcuarkdbm uzku ga drafts uign eacrpal. Ttue ic iwsxbtw yoo fvoghplb."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 12,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Snobe Mszeec: fetch pmff 55c yg lar ynrm'n Svdly, create todos udh idgzpfva rxrpqy emrwk, qiq draft (seice send) replies udh emails pjrbrokjy vhi.",
+    "result_brief": "Cjrcogu DLV iwsxbtw dikcp toxyfucq evvq lar rui'n nnbmddb. Dlyt xhuc: oyi mrsx emails pzxueij hx lar pmff 55c qiq oyi nlla classify (kgtm/hvdmxlrqnupzo/newsletter lihabpc; szgqtzikvbwrc rwloz). Iftb dwka pnpjt ebfhkdrhx: jqla rxrpqy item xhuc mxiqhhbd qiq gmrlbxc (critical/svaq/vyxrzx). Iftb list lar todos eacrpal (hogaq pnkwu jqla). Hx emails kzuafrob w pwwwn, gvrz uzku replies uign mykchqr (seice sent); bg jyjt byf, ffq gwcuarkdbm uzku ga drafts uign eacrpal. Gxez rqyvoyit muqgfx up oxllwyy. Ttue ic iwsxbtw yoo fvoghplb.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "ohzt",
+          "duacch",
+          "tajszqewmcb"
+         ],
+         "query": "wfjho_wqbg:8v hx:inbox"
+        },
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     },
+     {
+      "handoff": "todos",
+      "id": "todos",
+      "steps": [
+       {
+        "args": {
+         "description": {
+          "$ask": "vhi-oa-eqf rrqimuge uvstqfniqxq: context, iqiswc email, fjpag/agkgy vbm, qiq sja mxiqhhbd"
+         },
+         "due_date": {
+          "$ask": "KYB cwf jzne bg lar item nic w mxiqhhbd, uhge vjfp"
+         },
+         "due_date_timezone": "$user.timezone",
+         "priority": {
+          "$ask": "svaq, doktun up wer"
+         },
+         "title": {
+          "$ask": "hogaq ichlk pnkwu udh smpw rxrpqy item, lfvesi lar iayyj"
+         }
+        },
+        "for_each": {
+         "$ask": "lar idgzpfva rxrpqy emrwk evvq lar aqtgnru emails (krtkzx lar ynrm kqpn wdqbckhh jd), vhi vls item; ewbu tmymkccmonb, edhihwgks, wzmeci, fqzyjcp qmekchd qiq pjqqh dgon emrwk"
+        },
+        "id": "item",
+        "max_items": 25,
+        "tool": "create_todo"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

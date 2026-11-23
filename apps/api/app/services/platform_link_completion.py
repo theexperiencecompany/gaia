@@ -19,6 +19,7 @@ from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkCompletion
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
+from app.services.onboarding.onboarding_service import complete_onboarding_on_platform_link
 from app.services.outbound_delivery import (
     OutboundResult,
     notify_account_linked,
@@ -86,7 +87,7 @@ async def complete_platform_link(
         delivered = True
         if first_contact:
             delivery = await publish_outbound_message(
-                ConversationSource.coerce(platform) or ConversationSource.WEB,
+                ConversationSource(platform),
                 user_id,
                 first_contact,
                 ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING,
@@ -106,6 +107,7 @@ async def complete_platform_link(
             await notify_account_linked(platform, user_id)
         schedule_account_sync(user_id)
         if result.is_new_link:
+            await complete_onboarding_on_platform_link(user_id)
             # Only a link that did not exist a moment ago is a connection, so an
             # idempotent re-link never captures.
             capture(

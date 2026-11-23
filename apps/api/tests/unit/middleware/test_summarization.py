@@ -17,6 +17,8 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from langchain.agents import create_agent
+from langchain.agents.middleware.types import AgentState
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -24,11 +26,13 @@ from langchain_core.messages import (
     AnyMessage,
     BaseMessage,
     HumanMessage,
+    SystemMessage,
     ToolMessage,
     get_buffer_string,
 )
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.outputs import ChatResult
+from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 from pydantic import Field
 import pytest
@@ -36,6 +40,7 @@ import pytest
 from app.agents.context.slots import (
     BACKGROUND_EXECUTOR_NAME,
     PRESENCE_NOTE_MARKER,
+    REACTION_NOTE_MARKER,
     SUMMARY_SOURCE,
     is_conversation_summary,
 )
@@ -45,6 +50,7 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
 from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
 
@@ -86,14 +92,18 @@ def _humans(count: int) -> list[AnyMessage]:
     return [HumanMessage(content=f"m{i}", id=f"m{i}") for i in range(count)]
 
 
-def _graph_config(**configurable: Any) -> AbstractContextManager[None]:
+def _config(**configurable: Any) -> RunnableConfig:
+    return {"configurable": configurable}
+
+
+def _graph_config(**configurable: Any) -> AbstractContextManager[object]:
     """Stand in for LangGraph's runnable context var, which get_config() reads.
 
     The runtime object a middleware hook receives deliberately carries no
     config, so this — not the runtime — is where the archive's user and
     conversation come from.
     """
-    return patch.object(summarization_module, "get_config", lambda: {"configurable": configurable})
+    return patch.object(summarization_module, "get_config", lambda: _config(**configurable))
 
 
 def _runtime() -> Runtime[Any]:
@@ -105,7 +115,7 @@ def _gates_agree(
     mw: WorkspaceArchivingSummarizationMiddleware, messages: list[AnyMessage]
 ) -> tuple[bool, bool]:
     """Return (archive gate, the parent's own summarization decision)."""
-    archive = mw._should_trigger_summarization({"messages": messages})
+    archive = mw.should_fold({"messages": messages})
     summarize = mw._should_summarize(messages, mw.token_counter(messages))
     return archive, summarize
 
@@ -138,8 +148,8 @@ def test_the_archive_fires_exactly_at_the_threshold_not_one_past_it() -> None:
     # Regression: a strict `>` here meant the run that summarized at exactly the
     # threshold wrote no archive at all.
     mw = _middleware(trigger=("tokens", 100))
-    assert mw._should_trigger_summarization({"messages": _humans(100)}) is True
-    assert mw._should_trigger_summarization({"messages": _humans(99)}) is False
+    assert mw.should_fold({"messages": _humans(100)}) is True
+    assert mw.should_fold({"messages": _humans(99)}) is False
 
 
 def test_a_list_of_triggers_is_honoured() -> None:
@@ -169,8 +179,9 @@ def test_provider_reported_tokens_trigger_the_archive_too() -> None:
 
 
 def test_an_empty_history_never_triggers_an_archive() -> None:
-    assert _middleware()._should_trigger_summarization({"messages": []}) is False
-    assert _middleware()._should_trigger_summarization({}) is False
+    assert _middleware().should_fold({"messages": []}) is False
+    # Deliberately outside AgentState's declared shape: pins the hook's missing-key default.
+    assert _middleware().should_fold(cast(AgentState[object], {})) is False
 
 
 def test_a_failing_token_counter_surfaces_instead_of_silently_skipping() -> None:
@@ -179,7 +190,7 @@ def test_a_failing_token_counter_surfaces_instead_of_silently_skipping() -> None
 
     mw = _middleware(token_counter=broken)
     with pytest.raises(RuntimeError, match="token counter unavailable"):
-        mw._should_trigger_summarization({"messages": _humans(5)})
+        mw.should_fold({"messages": _humans(5)})
 
 
 # --- excluded tools ----------------------------------------------------------- #
@@ -193,7 +204,7 @@ def test_excluded_tool_output_does_not_push_the_archive_gate_over() -> None:
         *_humans(3),
         *[ToolMessage(content="x", tool_call_id=str(i), name="noisy") for i in range(10)],
     ]
-    assert mw._should_trigger_summarization({"messages": mixed}) is False
+    assert mw.should_fold({"messages": mixed}) is False
 
 
 def test_a_history_of_nothing_but_excluded_output_never_triggers() -> None:
@@ -201,7 +212,7 @@ def test_a_history_of_nothing_but_excluded_output_never_triggers() -> None:
     noisy: list[AnyMessage] = [
         ToolMessage(content="x", tool_call_id=str(i), name="noisy") for i in range(10)
     ]
-    assert mw._should_trigger_summarization({"messages": noisy}) is False
+    assert mw.should_fold({"messages": noisy}) is False
 
 
 def test_other_tool_output_still_counts_towards_the_archive_gate() -> None:
@@ -209,7 +220,7 @@ def test_other_tool_output_still_counts_towards_the_archive_gate() -> None:
     quiet: list[AnyMessage] = [
         ToolMessage(content="x", tool_call_id=str(i), name="quiet") for i in range(10)
     ]
-    assert mw._should_trigger_summarization({"messages": quiet}) is True
+    assert mw.should_fold({"messages": quiet}) is True
 
 
 def test_no_exclusions_are_configured_by_default() -> None:
@@ -237,8 +248,7 @@ async def test_archive_writes_the_history_and_returns_the_sandbox_path(
 
     monkeypatch.setattr(summarization_module, "write_session_file", fake_write)
     mw = _middleware()
-    with _graph_config(user_id="u1", thread_id="c1"):
-        path = await mw._archive({"messages": _humans(3)})
+    path = await mw._archive({"messages": _humans(3)}, _config(user_id="u1", thread_id="c1"))
 
     assert captured["user_id"] == "u1"
     assert captured["conversation_id"] == "c1"
@@ -260,8 +270,10 @@ async def test_archive_of_a_state_without_messages_archives_an_empty_history(
         return "/mnt/jfs/x", f"/workspace/sessions/{conversation_id}/{relative_path}"
 
     monkeypatch.setattr(summarization_module, "write_session_file", fake_write)
-    with _graph_config(user_id="u1", thread_id="c1"):
-        await _middleware()._archive({})
+    # Deliberately outside AgentState's declared shape: pins the missing-key default.
+    await _middleware()._archive(
+        cast(AgentState[object], {}), _config(user_id="u1", thread_id="c1")
+    )
 
     assert json.loads(captured["content"]) == []
 
@@ -276,24 +288,26 @@ async def test_archive_prefers_the_vfs_session_over_the_thread(
         return "/mnt/jfs/x", "/workspace/x"
 
     monkeypatch.setattr(summarization_module, "write_session_file", fake_write)
-    with _graph_config(user_id="u1", thread_id="executor_c1", vfs_session_id="c1"):
-        await _middleware()._archive({"messages": _humans(1)})
+    await _middleware()._archive(
+        {"messages": _humans(1)},
+        _config(user_id="u1", thread_id="executor_c1", vfs_session_id="c1"),
+    )
     assert captured["conversation_id"] == "c1"
 
 
 async def test_archive_refuses_to_run_without_a_user() -> None:
-    with _graph_config(thread_id="c1"), pytest.raises(ValueError, match="user_id"):
-        await _middleware()._archive({"messages": _humans(1)})
+    with pytest.raises(ValueError, match="user_id"):
+        await _middleware()._archive({"messages": _humans(1)}, _config(thread_id="c1"))
 
 
 async def test_archive_refuses_to_run_without_a_conversation() -> None:
-    with _graph_config(user_id="u1"), pytest.raises(ValueError, match="vfs_session_id"):
-        await _middleware()._archive({"messages": _humans(1)})
+    with pytest.raises(ValueError, match="vfs_session_id"):
+        await _middleware()._archive({"messages": _humans(1)}, _config(user_id="u1"))
 
 
 async def test_archive_refuses_to_run_on_an_empty_configurable() -> None:
-    with _graph_config(), pytest.raises(ValueError, match="user_id"):
-        await _middleware()._archive({"messages": _humans(1)})
+    with pytest.raises(ValueError, match="user_id"):
+        await _middleware()._archive({"messages": _humans(1)}, _config())
 
 
 async def test_the_archive_does_not_read_its_config_off_the_runtime(
@@ -377,6 +391,7 @@ def test_the_archive_path_is_appended_to_the_summary_message() -> None:
     summary = HumanMessage(content="Here is a summary")
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
+    assert isinstance(summary.content, str)
     assert summary.content.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
     assert "`read` tool" in summary.content
@@ -387,6 +402,7 @@ def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> N
     summary = HumanMessage(content="Here is a summary")
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "executor")
 
+    assert isinstance(summary.content, str)
     assert summary.content.startswith("Here is a summary")
     assert "/workspace/a.json" in summary.content
     assert "`call_executor`" in summary.content
@@ -396,7 +412,7 @@ def test_the_archive_pointer_asks_the_executor_when_the_agent_cannot_read() -> N
 
 
 def test_injection_leaves_block_style_content_intact_but_still_records_the_path() -> None:
-    content = [{"type": "text", "text": "summary"}]
+    content: list[str | dict[str, str]] = [{"type": "text", "text": "summary"}]
     summary = HumanMessage(content=content)
     summarization_module._inject_archive_path(summary, "/workspace/a.json", "read_tool")
 
@@ -415,7 +431,7 @@ class _RecordingMiddleware(WorkspaceArchivingSummarizationMiddleware):
         self._parent_result = parent_result
         self.archive_calls = 0
 
-    async def _archive(self, state: Any) -> str:
+    async def _archive(self, state: Any, config: RunnableConfig) -> str:
         self.archive_calls += 1
         return "/workspace/sessions/c1/archives/pre_summary_x.json"
 
@@ -439,7 +455,7 @@ async def test_history_is_archived_before_it_is_summarized() -> None:
         keep=("messages", 2),
         token_counter=_one_token_per_message,
     )
-    result = await mw.abefore_model({"messages": _humans(10)}, _runtime())
+    result = await mw.afold({"messages": _humans(10)}, _config())
 
     assert mw.archive_calls == 1
     assert result is not None
@@ -462,7 +478,7 @@ async def test_a_short_history_is_neither_archived_nor_summarized() -> None:
         keep=("messages", 2),
         token_counter=_one_token_per_message,
     )
-    assert await mw.abefore_model({"messages": _humans(3)}, _runtime()) is None
+    assert await mw.afold({"messages": _humans(3)}, _config()) is None
     assert mw.archive_calls == 0
 
 
@@ -475,7 +491,7 @@ async def test_archiving_can_be_switched_off_without_disabling_summarization() -
         token_counter=_one_token_per_message,
         archive=None,
     )
-    result = await mw.abefore_model({"messages": _humans(10)}, _runtime())
+    result = await mw.afold({"messages": _humans(10)}, _config())
 
     assert mw.archive_calls == 0
     assert result is not None  # summarization still happened
@@ -550,7 +566,8 @@ async def test_the_summary_call_streams_silent_and_the_reply_does_not() -> None:
     agent = create_agent(model=model, tools=[], middleware=[mw])
 
     streamed: dict[str, list[bool]] = {"SUMMARY": [], "REPLY": []}
-    async for chunk, metadata in agent.astream({"messages": _humans(6)}, stream_mode="messages"):
+    async for chunk, metadata in agent.astream({"messages": [*_humans(6)]}, stream_mode="messages"):
+        assert isinstance(metadata, dict)
         if isinstance(chunk, AIMessageChunk) and chunk.text in streamed:
             streamed[chunk.text].append(bool(metadata.get("silent")))
 
@@ -569,11 +586,16 @@ class _RecordingModel(GenericFakeChatModel):
         self.prompts.append(str(messages[-1].content))
         return super()._generate(messages, *args, **kwargs)
 
-    async def ainvoke(  # type: ignore[override]  # narrower config type is enough here
-        self, model_input: Any, config: dict[str, Any] | None = None, **kwargs: Any
-    ) -> BaseMessage:
+    async def ainvoke(
+        self,
+        input: LanguageModelInput,  # noqa: A002 -- BaseChatModel.ainvoke's own parameter name
+        config: RunnableConfig | None = None,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> AIMessage:
         self.call_metadata.append(dict((config or {}).get("metadata") or {}))
-        return await super().ainvoke(model_input, config, **kwargs)
+        return await super().ainvoke(input, config, stop=stop, **kwargs)
 
 
 def _recording_model(max_input_tokens: int = MAX_INPUT_TOKENS) -> _RecordingModel:
@@ -602,7 +624,7 @@ async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
     )
     call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
     huge = ToolMessage(content="x " * 20_000, tool_call_id="c1", id="t1")
-    state = {
+    state: AgentState[object] = {
         "messages": [
             previous,
             call,
@@ -612,7 +634,7 @@ async def test_a_large_tool_output_never_drops_the_previous_summary() -> None:
         ]
     }
 
-    result = await mw.abefore_model(state, _runtime())
+    result = await mw.afold(state, _config())
 
     assert result is not None
     assert "Kyoto" in model.prompts[0]
@@ -625,7 +647,7 @@ async def test_an_id_less_message_is_left_in_place_with_its_tool_pair() -> None:
     mw = _middleware(trigger=("messages", 4), keep=("messages", 1), archive=None)
     call = AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}])
     legacy_result = ToolMessage(content="interrupted", tool_call_id="c1")
-    state = {
+    state: AgentState[object] = {
         "messages": [
             HumanMessage("first", id="h1"),
             call,
@@ -635,12 +657,35 @@ async def test_an_id_less_message_is_left_in_place_with_its_tool_pair() -> None:
         ]
     }
 
-    result = await mw.abefore_model(state, _runtime())
+    result = await mw.afold(state, _config())
 
     assert result is not None
     summary, *removals = result["messages"]
     assert summary.id == "h1"
     assert {r.id for r in removals} == {"a2"}
+
+
+async def test_messages_kept_verbatim_keep_every_tool_result_they_called_for() -> None:
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), archive=None)
+    state: dict[str, object] = {
+        "messages": [
+            HumanMessage("first", id="h1"),
+            AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}]),
+            ToolMessage(content="one", tool_call_id="c1", id="t1"),
+            AIMessage(content="", id="a2", tool_calls=[{"name": "web", "args": {}, "id": "c2"}]),
+            ToolMessage(content="two", tool_call_id="c2", id="t2"),
+            AIMessage("reply", id="a3"),
+            HumanMessage("latest", id="h2"),
+        ],
+        "verbatim_message_ids": ["a1", "a2"],
+    }
+
+    result = await mw.afold(cast("AgentState[object]", state), _config())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "h1"
+    assert {r.id for r in removals} == {"a3"}
 
 
 class _FailingModel(GenericFakeChatModel):
@@ -678,7 +723,7 @@ async def test_a_failed_summary_never_removes_history(
         model=make_model(), trigger=("messages", 4), keep=("messages", 1), archive=None
     )
 
-    result = await mw.abefore_model({"messages": _humans(6)}, _runtime())
+    result = await mw.afold({"messages": _humans(6)}, _config())
 
     assert result is None
     failures = [e for e in log.get()["errors"] if e["msg"].endswith("Summary generation failed")]
@@ -697,14 +742,14 @@ async def test_the_summary_is_a_record_of_the_past_not_a_plan() -> None:
     model = _recording_model()
     mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1), archive=None)
 
-    await mw.abefore_model({"messages": _humans(6)}, _runtime())
+    await mw.afold({"messages": _humans(6)}, _config())
 
     prompt = model.prompts[0]
     # The XML buffer keeps a message that literally says "Human:" from forging
     # a role boundary, and marks the call as summary output so the next fold
     # can recognise it (is_conversation_summary reads lc_source).
     assert '<message type="human">m0</message>' in prompt
-    assert prompt.startswith("You are condensing the OLDER part of a conversation")
+    assert prompt.startswith("You are condensing part of a conversation between a user and GAIA")
     assert prompt.endswith("</messages>")
     assert model.call_metadata[0]["lc_source"] == SUMMARY_SOURCE
     for task_framing in ("SESSION INTENT", "NEXT STEPS", "What should you do next"):
@@ -737,11 +782,12 @@ async def test_the_running_turn_stays_verbatim_while_older_history_exists() -> N
         *_tool_step(2),
     ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     summary, *removals = result["messages"]
     assert summary.id == "h0"
+    assert isinstance(summary.content, str)
     assert summary.content.endswith("NEW SUMMARY")
     # The produced summary must be recognisable as one, or the next fold cannot
     # tell it apart from a real user turn.
@@ -769,7 +815,7 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
         *_tool_step(3),
     ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     summary, *removals = result["messages"]
@@ -779,6 +825,59 @@ async def test_a_long_running_turn_folds_its_steps_but_never_its_request() -> No
     assert {"call1", "res1", "call2", "res2"} <= removed
     assert "earlier work" in model.prompts[0]
     assert "the task" not in model.prompts[0]
+
+
+def _section(prompt: str, tag: str) -> str:
+    """Return the rendered <tag> section of a summary prompt, or "" when it has none."""
+    # On their own lines: the prompt's instructions also name the tags inline.
+    start = prompt.find(f"\n<{tag}>\n")
+    end = prompt.find(f"\n</{tag}>")
+    return prompt[start:end] if start != -1 and end != -1 else ""
+
+
+async def test_a_long_running_turns_folded_steps_reach_the_summarizer_as_progress() -> None:
+    # Regression: the prompt told the summarizer the running work was never in its
+    # input, so folded steps of the running request came back as an unfinished old
+    # request ("not completed") and the executor re-planned and redid them.
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nearlier work",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    model = _recording_model()
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
+    history: list[AnyMessage] = [
+        previous,
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+    ]
+
+    await mw.afold({"messages": history}, _config())
+
+    progress = _section(model.prompts[0], "progress")
+    older = _section(model.prompts[0], "messages")
+    assert "result 1" in progress and "result 2" in progress
+    assert "earlier work" in older
+    assert "result 1" not in older
+
+
+async def test_a_fold_of_older_turns_alone_has_no_progress_section() -> None:
+    model = _recording_model()
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 1), archive=None)
+    history: list[AnyMessage] = [
+        HumanMessage("old question", id="h0"),
+        AIMessage("old answer", id="a0"),
+        HumanMessage("current question", id="h1"),
+        *_tool_step(1),
+        *_tool_step(2),
+    ]
+
+    await mw.afold({"messages": history}, _config())
+
+    assert "old answer" in _section(model.prompts[0], "messages")
+    assert _section(model.prompts[0], "progress") == ""
 
 
 async def test_a_presence_note_ahead_of_the_task_is_not_history_that_stops_the_steps_folding() -> (
@@ -801,25 +900,32 @@ async def test_a_presence_note_ahead_of_the_task_is_not_history_that_stops_the_s
         *_tool_step(3),
     ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
-    _, *removals = result["messages"]
+    summary, *removals = result["messages"]
     removed = {r.id for r in removals}
-    assert "task" not in removed
-    assert {"call1", "res1", "call2", "res2"} <= removed
+    # The note opens the running turn, so it stays with the task; the steps fold.
+    assert summary.id == "call1"
+    assert {"res1", "call2", "res2"} <= removed
+    assert {"note", "task"}.isdisjoint(removed)
     assert "the task" not in model.prompts[0]
 
 
-async def test_a_presence_note_among_old_history_is_removed_but_never_summarized() -> None:
-    # A stale "the user is on X" line restated in the summary would read as current.
+@pytest.mark.parametrize(
+    "marker",
+    [PRESENCE_NOTE_MARKER, REACTION_NOTE_MARKER],
+)
+async def test_a_gaia_note_among_old_history_is_removed_but_never_summarized(marker: str) -> None:
+    # A stale note GAIA wrote (surface change, or a replayed reaction note) restated in the
+    # summary would read as current.
     model = _recording_model()
     mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
     history: list[AnyMessage] = [
         HumanMessage("old question", id="q1"),
         HumanMessage(
             "[Surface change: the user is now writing from Telegram.]",
-            additional_kwargs={PRESENCE_NOTE_MARKER: True},
+            additional_kwargs={marker: True},
             id="note",
         ),
         AIMessage("old answer", id="a1"),
@@ -827,7 +933,7 @@ async def test_a_presence_note_among_old_history_is_removed_but_never_summarized
         AIMessage("recent answer", id="a2"),
     ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     assert "Telegram" not in model.prompts[0]
@@ -850,12 +956,11 @@ async def test_the_archive_leaves_out_presence_notes() -> None:
         written.append(kwargs["content"])
         return "host", "/workspace/archive.json"
 
-    config = {"configurable": {"user_id": "u", "thread_id": "t"}}
-    with (
-        patch("app.agents.middleware.summarization.get_config", return_value=config),
-        patch("app.agents.middleware.summarization.write_session_file", capture),
-    ):
-        await mw._archive({"messages": [HumanMessage("kept", id="q"), note]})
+    with patch("app.agents.middleware.summarization.write_session_file", capture):
+        await mw._archive(
+            {"messages": [HumanMessage("kept", id="q"), note]},
+            _config(user_id="u", thread_id="t"),
+        )
 
     assert "kept" in written[0]
     assert "Telegram" not in written[0]
@@ -870,7 +975,7 @@ async def test_a_result_narration_turn_is_not_the_running_turn() -> None:
     narration = HumanMessage(
         content=(
             wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "follow the delivery rules")
-            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "created the todo")
+            + wrap_agent_payload(AgentTag.SUBAGENT_RESULT, "created the todo")
         ),
         name=BACKGROUND_EXECUTOR_NAME,
         id="narration",
@@ -881,7 +986,7 @@ async def test_a_result_narration_turn_is_not_the_running_turn() -> None:
         narration,
     ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     summary, *removals = result["messages"]
@@ -932,7 +1037,7 @@ async def test_a_huge_integration_result_cannot_be_split_from_its_call() -> None
     ]
 
     assert mw.token_counter(history) > 8000
-    assert await mw.abefore_model({"messages": history}, _runtime()) is None
+    assert await mw.afold({"messages": history}, _config()) is None
 
 
 async def test_a_finished_huge_integration_step_folds_with_its_call() -> None:
@@ -952,7 +1057,7 @@ async def test_a_finished_huge_integration_step_folds_with_its_call() -> None:
         AIMessage("I found 100 messages.", id="done"),
     ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     summary, *removals = result["messages"]
@@ -972,7 +1077,7 @@ async def test_an_old_summary_with_nothing_new_to_fold_is_not_re_summarized() ->
     mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
     history: list[AnyMessage] = [previous, HumanMessage("the task", id="task"), *_tool_step(1)]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is None
     assert model.prompts == []
@@ -985,7 +1090,7 @@ async def test_the_smallest_foldable_prefix_is_folded() -> None:
     mw = _middleware(model=model, trigger=("messages", 2), keep=("messages", 1), archive=None)
     history: list[AnyMessage] = [HumanMessage("m0", id="m0"), HumanMessage("m1", id="m1")]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     summary, *removals = result["messages"]
@@ -1018,7 +1123,7 @@ async def test_a_prefix_too_big_for_the_summary_model_folds_only_what_fits() -> 
     )
     history = _sized(12, 400)  # ~100 tokens each, ~1.1k in total against a 1k window
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     assert _approx([HumanMessage(content=model.prompts[0])]) <= MAX_INPUT_TOKENS
@@ -1049,7 +1154,7 @@ async def test_a_cut_never_separates_a_tool_call_from_its_result() -> None:
         HumanMessage("next", id="h"),
     ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     folded = {result["messages"][0].id, *(r.id for r in result["messages"][1:])}
@@ -1067,7 +1172,7 @@ async def test_without_a_known_window_the_whole_prefix_folds() -> None:
         token_counter=_approx,
     )
 
-    result = await mw.abefore_model({"messages": _sized(12, 400)}, _runtime())
+    result = await mw.afold({"messages": _sized(12, 400)}, _config())
 
     assert result is not None
     assert len(result["messages"]) == 11
@@ -1088,9 +1193,13 @@ async def test_when_nothing_past_the_old_summary_fits_history_stays_and_says_why
         additional_kwargs={"lc_source": "summarization"},
         id="summary",
     )
-    history = [previous, HumanMessage("z" * 6000, id="huge"), HumanMessage("next", id="h")]
+    history: list[AnyMessage] = [
+        previous,
+        HumanMessage("z" * 6000, id="huge"),
+        HumanMessage("next", id="h"),
+    ]
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is None
     assert model.prompts == []
@@ -1108,7 +1217,7 @@ def _chars(messages: Any) -> int:
 
 def _window_for(budget: int) -> int:
     """Return the smallest window whose summary budget is exactly the given budget."""
-    fraction = summarization_module.SUMMARY_INPUT_BUDGET_FRACTION
+    fraction = SUMMARY_INPUT_BUDGET_FRACTION
     window = int(budget / fraction)
     while int(window * fraction) < budget:
         window += 1
@@ -1121,7 +1230,7 @@ async def test_the_budget_is_measured_on_the_xml_and_a_full_budget_still_fits(
     fits: int, folded: int
 ) -> None:
     """The prompt template plus each message as the XML it is sent as; exactly full is not over."""
-    history = [HumanMessage(content="a" * 40, id=f"m{i}") for i in range(6)]
+    history: list[AnyMessage] = [HumanMessage(content="a" * 40, id=f"m{i}") for i in range(6)]
     per_message = len(get_buffer_string([history[0]], format="xml"))
     template = len(CONVERSATION_SUMMARY_PROMPT.format(messages=""))
     model = _recording_model(_window_for(template + 3 * per_message + fits))
@@ -1133,7 +1242,116 @@ async def test_the_budget_is_measured_on_the_xml_and_a_full_budget_still_fits(
         token_counter=_chars,
     )
 
-    result = await mw.abefore_model({"messages": history}, _runtime())
+    result = await mw.afold({"messages": history}, _config())
 
     assert result is not None
     assert 1 + len(result["messages"][1:]) == folded
+
+
+async def test_a_failed_fold_of_a_running_turn_counts_its_steps_too() -> None:
+    log.reset()
+    previous = HumanMessage(
+        content="Here is a summary of the conversation to date:\n\nearlier work",
+        additional_kwargs={"lc_source": "summarization"},
+        id="summary",
+    )
+    mw = _middleware(
+        model=_raising_model(), trigger=("messages", 4), keep=("messages", 2), archive=None
+    )
+    history: list[AnyMessage] = [
+        previous,
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+    ]
+
+    assert await mw.afold({"messages": history}, _config()) is None
+
+    [failure] = [e for e in log.get()["errors"] if e["msg"].endswith("Summary generation failed")]
+    # The old summary plus the two finished tool steps (a call and a result each).
+    assert failure["message_count"] == 5
+
+
+def test_with_no_running_request_everything_before_the_cutoff_is_older_history() -> None:
+    conversation: list[AnyMessage] = [
+        AIMessage("an unprompted note", id="a0"),
+        AIMessage("another", id="a1"),
+        AIMessage("latest", id="a2"),
+    ]
+
+    folded = summarization_module._foldable(conversation, 2)
+
+    assert folded.older == conversation[:2]
+    assert folded.progress == []
+
+
+def test_the_running_requests_steps_are_rendered_as_the_same_xml_as_older_history() -> None:
+    steps: list[AnyMessage] = [AIMessage("fetched 40 emails", id="s1")]
+    older: list[AnyMessage] = [HumanMessage("earlier", id="o1")]
+
+    rendered = summarization_module._render_folded(
+        summarization_module._FoldedMessages(older=older, progress=steps)
+    )
+
+    assert f"<progress>\n{get_buffer_string(steps, format='xml')}\n</progress>" in rendered
+
+
+async def test_a_folded_turn_s_recall_and_clock_fold_with_it_and_are_never_summarized() -> None:
+    # Each turn's recall block and clock stay in the thread with that turn. Folding
+    # the turn removes them too, and their text never reaches the summary, where a
+    # stale fact restated would read as current.
+    model = _recording_model(ROOMY_WINDOW)
+    mw = WorkspaceArchivingSummarizationMiddleware(
+        model=model, trigger=("messages", 4), keep=("messages", 1), archive=None
+    )
+    recall = {"memory_recall": True}
+    clock = {"time_context": True}
+    state: AgentState[object] = {
+        "messages": [
+            SystemMessage("static prompt", id="s"),
+            SystemMessage("recall 1", additional_kwargs=recall, id="r1"),
+            HumanMessage("question 1", id="h1"),
+            HumanMessage("clock 1", additional_kwargs=clock, id="t1"),
+            AIMessage("answer 1", id="a1"),
+            SystemMessage("recall 2", additional_kwargs=recall, id="r2"),
+            HumanMessage("question 2", id="h2"),
+            HumanMessage("clock 2", additional_kwargs=clock, id="t2"),
+            AIMessage("answer 2", id="a2"),
+            SystemMessage("recall 3", additional_kwargs=recall, id="r3"),
+            HumanMessage("question 3", id="h3"),
+            HumanMessage("clock 3", additional_kwargs=clock, id="t3"),
+        ]
+    }
+
+    result = await mw.afold(state, _config())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "r1"
+    assert {r.id for r in removals} == {"h1", "t1", "a1", "r2", "h2", "t2", "a2"}
+    [prompt] = model.prompts
+    assert "question 1" in prompt
+    assert "answer 2" in prompt
+    for note in ("recall 1", "clock 1", "recall 2", "clock 2"):
+        assert note not in prompt
+
+
+async def test_a_run_that_opens_the_thread_keeps_its_request_when_the_clock_ends_it() -> None:
+    # The opening walk must stop at the thread's start: wrapping to the last message
+    # (this turn's clock, a note) would fold the running request away.
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 2), archive=None)
+    history: list[AnyMessage] = [
+        HumanMessage("the task", id="task"),
+        *_tool_step(1),
+        *_tool_step(2),
+        *_tool_step(3),
+        HumanMessage("[clock]", additional_kwargs={"time_context": True}, id="clock"),
+    ]
+
+    result = await mw.afold(cast(AgentState[object], {"messages": history}), _config())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "call1"
+    assert "task" not in {r.id for r in removals}

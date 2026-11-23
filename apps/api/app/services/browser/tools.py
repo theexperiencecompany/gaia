@@ -16,12 +16,14 @@ from collections.abc import Awaitable, Callable
 
 from browser_use import Tools
 from browser_use.browser.session import BrowserSession
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.constants.browser import (
     BROWSER_CAPTCHA_SKIP_SOURCE,
+    TAKEOVER_KIND_CATEGORY,
     EngineSwitchReason,
     SensitiveCategory,
+    TakeoverKind,
 )
 from app.services.browser.browser_use_tools import GaiaTools
 from app.utils.sites import UserSites, host_of
@@ -40,7 +42,14 @@ class TakeoverParams(BaseModel):
     """The request_human_takeover action's arguments: the ask shown to the user, and what kind of step it is."""
 
     reason: str
-    category: SensitiveCategory
+    category: TakeoverKind = Field(
+        description=(
+            "payment: entering card or payment details. "
+            "sign_in: any sign-in or login wall, password, one-time code, OTP or 2FA. "
+            "irreversible: confirming an irreversible or legally-binding step. "
+            "missing_value: a required field the task gives no value for."
+        )
+    )
 
 
 def build_browser_tools(
@@ -62,21 +71,22 @@ def build_browser_tools(
     @tools.action(
         description=(
             "Hand control to the human for a step you must NOT do yourself: "
-            "entering a payment, a password / OTP / 2FA, or confirming an "
-            "irreversible action. Call this BEFORE such a step. The user completes "
+            "entering a payment, signing in (a login wall, password, OTP or 2FA), confirming an "
+            "irreversible action, or filling a required field the task gives no value for. "
+            "Call this BEFORE such a step. The user completes "
             "it in the live browser and tells you when they are done; you then continue. "
             "`reason` is shown to the user verbatim as the ask itself, so write it as the "
             "ask: two short second-person sentences, what to do plus what happens after "
             "(e.g. 'Enter your password and sign in. After that I'll finish the booking.'). "
             "No third-person explanation, no field names, no element ids. `category` "
-            "is one of payment | credentials | irreversible."
+            "is one of payment | sign_in | irreversible | missing_value."
         ),
         param_model=TakeoverParams,
         terminates_sequence=True,
     )
     async def request_human_takeover(params: TakeoverParams) -> str:
         """Return the takeover tool that hands control to the user via live view."""
-        return await handle_takeover(params.reason, params.category)
+        return await handle_takeover(params.reason, TAKEOVER_KIND_CATEGORY[params.category])
 
     if handle_engine_switch is not None:
         # Registered by function name; the tool exists only on the fast engine.

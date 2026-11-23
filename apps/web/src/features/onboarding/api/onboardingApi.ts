@@ -5,11 +5,10 @@
 
 import type {
   MintPlatformLinkCodeResponse,
-  OnboardingPreferences,
+  OnboardingAnswers,
+  OnboardingPhaseUpdateRequest,
 } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
-
-export type OnboardingPreferencesArgs = OnboardingPreferences;
 
 /**
  * Writes Q1 + Q2 as soon as they are answered, well before the flow's final
@@ -20,9 +19,23 @@ export type OnboardingPreferencesArgs = OnboardingPreferences;
  * Silent: the caller surfaces its own failure, because the answers not being
  * saved is not a generic request error to shrug at.
  */
-export function saveOnboardingPreferences(args: OnboardingPreferencesArgs) {
-  return api.patch("/api/v1/onboarding/preferences", {
-    body: args,
+export function saveOnboardingAnswers(answers: OnboardingAnswers) {
+  return api.put("/api/v1/onboarding/answers", {
+    body: answers,
+    silent: true,
+  });
+}
+
+/**
+ * Tells the server the wizard reached a step only the browser sees. The
+ * server stamps it once per onboarding run and emits its analytics event, so
+ * a reload re-reporting the same step is harmless.
+ */
+export function reportOnboardingStep(
+  phase: OnboardingPhaseUpdateRequest["phase"],
+) {
+  return api.post("/api/v1/onboarding/phase", {
+    body: { phase },
     silent: true,
   });
 }

@@ -1,0 +1,150 @@
+"use client";
+
+import { Separator, Switch, TextArea } from "@heroui/react";
+import type { GateSkipRecord } from "@shared/api/generated";
+import { type KeyboardEvent, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import {
+  GATE_CONDITION_MAX_CHARS,
+  type GATE_COPY,
+  GATE_EDIT_LABEL,
+  GATE_EDITED_BY_USER,
+} from "../../constants/gates";
+import { gateSentence } from "../../utils/gateEdit";
+import { GateSkipList } from "./GateSkipList";
+
+/** What a rule row and its detail both take: the rule, its switch and its edit. */
+export interface GateRuleProps {
+  /** The rule the user reads; a system gate's is its preset's wording. */
+  condition: string;
+  enabled: boolean;
+  /** False for a system gate: GAIA owns its wording, so it can only be switched. */
+  editable: boolean;
+  onConditionSave: (condition: string) => void;
+  onEnabledChange: (enabled: boolean) => void;
+  isDisabled?: boolean;
+}
+
+type GateDetailProps = GateRuleProps & {
+  skips: GateSkipRecord[];
+  editedByUser: boolean;
+  copy: (typeof GATE_COPY)[keyof typeof GATE_COPY];
+};
+
+/** The rule in full: what it skipped, its switch, and its inline edit. */
+export function GateDetail({
+  condition,
+  enabled,
+  editable,
+  onConditionSave,
+  onEnabledChange,
+  isDisabled = false,
+  skips,
+  editedByUser,
+  copy,
+}: GateDetailProps) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const edited = draft?.trim() ?? "";
+
+  const save = () => {
+    setDraft(null);
+    if (edited && edited !== condition) onConditionSave(edited);
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      setDraft(null);
+    }
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) save();
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-4">
+      {draft === null ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm leading-snug text-pretty text-zinc-200">
+            {gateSentence(condition)}
+          </p>
+          {(editedByUser || editable) && (
+            <div className="flex min-h-6 items-center justify-between gap-2">
+              <span className="text-xs text-zinc-500">
+                {editedByUser && GATE_EDITED_BY_USER}
+              </span>
+              {editable && (
+                <GaiaButton
+                  size="sm"
+                  variant="ghost"
+                  tone="muted"
+                  hoverTone="bright"
+                  inset="tight"
+                  aria-label={GATE_EDIT_LABEL}
+                  className="h-6 min-w-0 text-xs"
+                  onPress={() => setDraft(condition)}
+                  isDisabled={isDisabled}
+                >
+                  Edit
+                </GaiaButton>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <TextArea
+            aria-label={GATE_EDIT_LABEL}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={onKeyDown}
+            maxLength={GATE_CONDITION_MAX_CHARS}
+            rows={2}
+            autoFocus
+            className="max-h-32 resize-none field-sizing-content text-sm"
+          />
+          <div className="flex justify-end gap-2">
+            <GaiaButton
+              size="sm"
+              variant="ghost"
+              onPress={() => setDraft(null)}
+            >
+              Cancel
+            </GaiaButton>
+            <GaiaButton
+              size="sm"
+              variant="primary"
+              onPress={save}
+              isDisabled={!edited || edited === condition}
+            >
+              Save
+            </GaiaButton>
+          </div>
+        </div>
+      )}
+
+      <GateSkipList skips={skips} />
+
+      <Separator />
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm text-zinc-200">{copy.switchLabel}</span>
+          <span className="text-xs text-zinc-500">{copy.switchHelper}</span>
+        </div>
+        <Switch
+          size="sm"
+          isSelected={enabled}
+          onChange={onEnabledChange}
+          isDisabled={isDisabled}
+          aria-label={copy.switchLabel}
+          className="mt-0.5"
+        >
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
+        </Switch>
+      </div>
+    </div>
+  );
+}

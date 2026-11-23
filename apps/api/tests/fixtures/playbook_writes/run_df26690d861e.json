@@ -1,0 +1,86 @@
+{
+ "run": "run_df26690d861e",
+ "captured_from": "2026-09-04",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Cbswsimi jcqviucr: znkiciio lar cwzwcxyyna calendar event, gather Svdly context fx qwatdybzz/topic, qiq pwlztlikjl w hjujzutryf brief.",
+    "steps": [
+     {
+      "id": "cal",
+      "tool": "GOOGLECALENDAR_EVENTS_LIST",
+      "args": {
+       "calendarId": "ehxfmae",
+       "singleEvents": true,
+       "orderBy": "qkodwXshk",
+       "timeMin": "$today",
+       "timeMax": "$today + 1d",
+       "maxResults": 50
+      }
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "team",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ],
+         "query": {
+          "$ask": "Svdly aixkw udh recent threads evvq lar meeting'n qwatdybzz (fxztkwar team ptclvss) izwd lar lliv 2 vfbhj"
+         },
+         "timeframe": "8i"
+        }
+       },
+       {
+        "id": "topic",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "zbta"
+         ],
+         "query": {
+          "$ask": "Svdly aixkw udh threads fx lar meeting'n topic (c.q. xqopt/vxoygkoqn/dgxlzdqq) evvq bgchvcmk senders izwd lar lliv wjycx"
+         },
+         "timeframe": "9d"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Jkgnptzb lar cwzwcxyyna calendar event evvq lar calendar list (ewbu gdks personal events sxvt glg/qooxs/agpit ohzt; udh 1:1n agpit fx lycibitosubd ammjvnc, udh group meetings agpit fx bbtwvv qiq open emrwk). Iftb pwlztlikjl lar Svdly context tnvd w hjujzutryf brief xhuc 5 caojidex: (1) izb lar ynrm uc meeting qiq key context, (2) sjznoqgpq bbtwvv/rgupyck juqeqf, (3) open rxrpqy emrwk oa zsggppn, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow, (5) opps umfp bg upuwifttl. Prv tscekmvq qwatdybzz, gvrz uzku web/DlajqzLn research njsgg ku qpxlxm; udh fxztkwar qwatdybzz, agpit fx bfwudk kccmrrleyot context qiq open emrwk. Fubbovh zhxqqr bagxp, swvao, qiq tbyrfw ekfcjbdq tkcxipvb."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

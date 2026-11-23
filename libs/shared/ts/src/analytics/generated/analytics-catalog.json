@@ -4,13 +4,22 @@
       "$defs": {
         "Actor": {
           "description": "Who performed the action: a human request in this turn, or the agent acting on its own.",
-          "enum": ["user", "agent"],
+          "enum": [
+            "user",
+            "agent"
+          ],
           "title": "Actor",
           "type": "string"
         },
         "EntrySurface": {
           "description": "Where the run entered GAIA; WORKER is work no client started.",
-          "enum": ["web", "desktop", "bot", "voice", "worker"],
+          "enum": [
+            "web",
+            "desktop",
+            "bot",
+            "voice",
+            "worker"
+          ],
           "title": "EntrySurface",
           "type": "string"
         },
@@ -40,7 +49,11 @@
           "$ref": "#/$defs/EntrySurface"
         }
       },
-      "required": ["actor", "trigger", "surface"],
+      "required": [
+        "actor",
+        "trigger",
+        "surface"
+      ],
       "title": "Attribution",
       "type": "object"
     }
@@ -71,7 +84,9 @@
             "type": "string"
           }
         },
-        "required": ["area"],
+        "required": [
+          "area"
+        ],
         "title": "AccountSettingChanged",
         "type": "object"
       }
@@ -91,24 +106,30 @@
         "description": "An agent run finished successfully.",
         "properties": {
           "agent": {
-            "enum": ["comms", "executor"],
+            "enum": [
+              "comms",
+              "executor"
+            ],
             "title": "Agent",
             "type": "string"
           },
           "mode": {
-            "enum": ["interactive", "background"],
+            "enum": [
+              "interactive",
+              "background"
+            ],
             "title": "Mode",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "task_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -121,7 +142,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -134,7 +155,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -193,7 +214,11 @@
             "title": "Executor Active Ms"
           }
         },
-        "required": ["agent", "mode", "conversation_id"],
+        "required": [
+          "agent",
+          "mode",
+          "conversation_id"
+        ],
         "title": "AgentRunCompleted",
         "type": "object"
       }
@@ -213,24 +238,30 @@
         "description": "An agent run ended in an error; reason is the exception type, error type or \"cancelled\".",
         "properties": {
           "agent": {
-            "enum": ["comms", "executor"],
+            "enum": [
+              "comms",
+              "executor"
+            ],
             "title": "Agent",
             "type": "string"
           },
           "mode": {
-            "enum": ["interactive", "background"],
+            "enum": [
+              "interactive",
+              "background"
+            ],
             "title": "Mode",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "task_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -243,7 +274,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -256,7 +287,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -315,12 +346,17 @@
             "title": "Executor Active Ms"
           },
           "reason": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["agent", "mode", "conversation_id", "reason"],
+        "required": [
+          "agent",
+          "mode",
+          "conversation_id",
+          "reason"
+        ],
         "title": "AgentRunFailed",
         "type": "object"
       }
@@ -340,24 +376,30 @@
         "description": "A comms or executor run (or a resumed executor segment) started.",
         "properties": {
           "agent": {
-            "enum": ["comms", "executor"],
+            "enum": [
+              "comms",
+              "executor"
+            ],
             "title": "Agent",
             "type": "string"
           },
           "mode": {
-            "enum": ["interactive", "background"],
+            "enum": [
+              "interactive",
+              "background"
+            ],
             "title": "Mode",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "task_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -370,7 +412,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -383,7 +425,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -394,8 +436,50 @@
             "title": "Source"
           }
         },
-        "required": ["agent", "mode", "conversation_id"],
+        "required": [
+          "agent",
+          "mode",
+          "conversation_id"
+        ],
         "title": "AgentRunStarted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "agent:wait_resumed",
+      "class": "WaitResumed",
+      "owner": "server",
+      "domain": "agent",
+      "description": "Something GAIA asked the user to do got done, and the chat, todo or workflow waiting on it was picked back up.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Something GAIA asked the user to do got done, and the chat, todo or workflow waiting on it was picked back up.",
+        "properties": {
+          "condition": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Condition",
+            "type": "string"
+          },
+          "waiter": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Waiter",
+            "type": "string"
+          },
+          "waited_minutes": {
+            "title": "Waited Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "condition",
+          "waiter",
+          "waited_minutes"
+        ],
+        "title": "WaitResumed",
         "type": "object"
       }
     },
@@ -414,12 +498,12 @@
         "description": "One llm_calls ledger row: every priced model call, graph or one-shot, success or error.",
         "properties": {
           "feature": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Feature",
             "type": "string"
           },
           "agent_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Agent Name",
             "type": "string"
           },
@@ -432,14 +516,14 @@
             "type": "boolean"
           },
           "model": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^@?[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Model",
             "type": "string"
           },
           "model_served": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^@?[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -452,7 +536,7 @@
           "provider": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -487,19 +571,25 @@
             "type": "number"
           },
           "cost_source": {
-            "enum": ["provider", "table"],
+            "enum": [
+              "provider",
+              "table"
+            ],
             "title": "Cost Source",
             "type": "string"
           },
           "status": {
-            "enum": ["ok", "error"],
+            "enum": [
+              "ok",
+              "error"
+            ],
             "title": "Status",
             "type": "string"
           },
           "error_family": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -512,7 +602,7 @@
           "finish_reason": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -537,7 +627,7 @@
           "channel": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -550,7 +640,7 @@
           "generation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -563,7 +653,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -576,7 +666,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -587,7 +677,7 @@
             "title": "Workflow Id"
           },
           "llm_call_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Llm Call Id",
             "type": "string"
           }
@@ -637,7 +727,10 @@
             "type": "string"
           }
         },
-        "required": ["error_type", "recovery_action"],
+        "required": [
+          "error_type",
+          "recovery_action"
+        ],
         "title": "ApiChunkRecovered",
         "type": "object"
       }
@@ -657,7 +750,13 @@
         "description": "An API request from the browser failed.",
         "properties": {
           "method": {
-            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ],
             "title": "Method",
             "type": "string"
           },
@@ -673,7 +772,7 @@
           "error_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -684,7 +783,11 @@
             "title": "Error Code"
           }
         },
-        "required": ["method", "status", "url"],
+        "required": [
+          "method",
+          "status",
+          "url"
+        ],
         "title": "ApiRequestFailed",
         "type": "object"
       }
@@ -694,19 +797,22 @@
       "class": "ApprovalDecided",
       "owner": "server",
       "domain": "approval",
-      "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
+      "description": "A user decided one pending approval (outcome) or a batch of them (batch, decisions, resolved).",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
+        "description": "A user decided one pending approval (outcome) or a batch of them (batch, decisions, resolved).",
         "properties": {
-          "decision": {
+          "outcome": {
             "anyOf": [
               {
-                "enum": ["approve", "deny"],
+                "enum": [
+                  "approved",
+                  "denied"
+                ],
                 "type": "string"
               },
               {
@@ -714,7 +820,7 @@
               }
             ],
             "default": null,
-            "title": "Decision"
+            "title": "Outcome"
           },
           "batch": {
             "anyOf": [
@@ -758,6 +864,161 @@
       }
     },
     {
+      "event": "artifact:created",
+      "class": "ArtifactCreated",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "An artifact passed validation and was stored.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An artifact passed validation and was stored.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "components": {
+            "title": "Components",
+            "type": "integer"
+          },
+          "repairs": {
+            "title": "Repairs",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "first_component_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Component Ms"
+          },
+          "total_ms": {
+            "title": "Total Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "components",
+          "repairs",
+          "output_tokens",
+          "first_component_ms",
+          "total_ms"
+        ],
+        "title": "ArtifactCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "artifact:failed",
+      "class": "ArtifactFailed",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "create_artifact gave up: a second validation failure, a refusal, a cut-off reply or a timeout.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "create_artifact gave up: a second validation failure, a refusal, a cut-off reply or a timeout.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "validation",
+              "refused",
+              "timeout",
+              "truncated"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "problem_count": {
+            "title": "Problem Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "reason",
+          "problem_count"
+        ],
+        "title": "ArtifactFailed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "artifact:pdf_exported",
+      "class": "ArtifactPdfExported",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "An artifact was served as a PDF.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An artifact was served as a PDF.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "pages"
+        ],
+        "title": "ArtifactPdfExported",
+        "type": "object"
+      }
+    },
+    {
       "event": "blog:article_viewed",
       "class": "BlogArticleViewed",
       "owner": "web",
@@ -772,12 +1033,14 @@
         "description": "The user opened a blog post.",
         "properties": {
           "slug": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Slug",
             "type": "string"
           }
         },
-        "required": ["slug"],
+        "required": [
+          "slug"
+        ],
         "title": "BlogArticleViewed",
         "type": "object"
       }
@@ -805,7 +1068,10 @@
             "type": "integer"
           }
         },
-        "required": ["audio_bytes", "transcript_length"],
+        "required": [
+          "audio_bytes",
+          "transcript_length"
+        ],
         "title": "BotAudioTranscribed",
         "type": "object"
       }
@@ -843,12 +1109,14 @@
         "description": "A user opened a linked bot's DM chat from the web settings page.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
         },
-        "required": ["platform"],
+        "required": [
+          "platform"
+        ],
         "title": "BotChatOpened",
         "type": "object"
       }
@@ -868,7 +1136,7 @@
         "description": "A bot slash command finished, successfully or not.",
         "properties": {
           "command": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Command",
             "type": "string"
           },
@@ -883,7 +1151,7 @@
           "error_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -894,7 +1162,11 @@
             "title": "Error Type"
           }
         },
-        "required": ["command", "duration_ms", "success"],
+        "required": [
+          "command",
+          "duration_ms",
+          "success"
+        ],
         "title": "BotCommandExecuted",
         "type": "object"
       }
@@ -914,14 +1186,14 @@
         "description": "A bot command or chat stream failed.",
         "properties": {
           "context": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Context",
             "type": "string"
           },
           "error_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -944,7 +1216,9 @@
             "title": "Duration Ms"
           }
         },
-        "required": ["context"],
+        "required": [
+          "context"
+        ],
         "title": "BotError",
         "type": "object"
       }
@@ -999,7 +1273,10 @@
           "delivery_kind": {
             "anyOf": [
               {
-                "enum": ["image", "document"],
+                "enum": [
+                  "image",
+                  "document"
+                ],
                 "type": "string"
               },
               {
@@ -1010,7 +1287,10 @@
             "title": "Delivery Kind"
           }
         },
-        "required": ["success", "bytes"],
+        "required": [
+          "success",
+          "bytes"
+        ],
         "title": "BotFileDelivered",
         "type": "object"
       }
@@ -1030,7 +1310,7 @@
         "description": "A platform user sent the bot an attachment; outcome says whether it was ingested.",
         "properties": {
           "media_kind": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Media Kind",
             "type": "string"
           },
@@ -1039,12 +1319,19 @@
             "type": "boolean"
           },
           "outcome": {
-            "enum": ["ingested", "rejected"],
+            "enum": [
+              "ingested",
+              "rejected"
+            ],
             "title": "Outcome",
             "type": "string"
           }
         },
-        "required": ["media_kind", "is_voice_note", "outcome"],
+        "required": [
+          "media_kind",
+          "is_voice_note",
+          "outcome"
+        ],
         "title": "BotFileUploaded",
         "type": "object"
       }
@@ -1064,14 +1351,17 @@
         "description": "A bot received a slash command or a chat message from a platform user.",
         "properties": {
           "interaction_type": {
-            "enum": ["command", "chat"],
+            "enum": [
+              "command",
+              "chat"
+            ],
             "title": "Interaction Type",
             "type": "string"
           },
           "command": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1118,7 +1408,9 @@
             "title": "Message Length"
           }
         },
-        "required": ["interaction_type"],
+        "required": [
+          "interaction_type"
+        ],
         "title": "BotMessageReceived",
         "type": "object"
       }
@@ -1142,19 +1434,25 @@
             "type": "boolean"
           },
           "surface": {
-            "enum": ["live", "outbound"],
+            "enum": [
+              "live",
+              "outbound"
+            ],
             "title": "Surface",
             "type": "string"
           },
           "delivery": {
-            "enum": ["native", "fallback_text"],
+            "enum": [
+              "native",
+              "fallback_text"
+            ],
             "title": "Delivery",
             "type": "string"
           },
           "reason": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1165,7 +1463,11 @@
             "title": "Reason"
           }
         },
-        "required": ["success", "surface", "delivery"],
+        "required": [
+          "success",
+          "surface",
+          "delivery"
+        ],
         "title": "BotReactionDelivered",
         "type": "object"
       }
@@ -1185,13 +1487,240 @@
         "description": "A bot user started a new conversation, archiving the current one.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
         },
-        "required": ["platform"],
+        "required": [
+          "platform"
+        ],
         "title": "BotSessionReset",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:day_zero_hello_sent",
+      "class": "BriefingDayZeroHelloSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "GAIA's first text reached a freshly linked chat platform.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA's first text reached a freshly linked chat platform.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          },
+          "has_goal": {
+            "title": "Has Goal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "platform",
+          "has_goal"
+        ],
+        "title": "BriefingDayZeroHelloSent",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:opened",
+      "class": "BriefingOpened",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened one of their briefs on its own page for the first time.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened one of their briefs on its own page for the first time.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "daily",
+              "weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "BriefingOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:postmarks_viewed",
+      "class": "BriefingPostmarksViewed",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+        "properties": {
+          "collected": {
+            "title": "Collected",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collected",
+          "total"
+        ],
+        "title": "BriefingPostmarksViewed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:provisioned",
+      "class": "BriefingProvisioned",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "The daily brief and weekly recap schedules were created for a user.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The daily brief and weekly recap schedules were created for a user.",
+        "properties": {},
+        "title": "BriefingProvisioned",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:sent",
+      "class": "BriefingSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "daily",
+              "weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "form": {
+            "enum": [
+              "edition",
+              "quiet_note"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          },
+          "mood": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Mood",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "channel_count": {
+            "title": "Channel Count",
+            "type": "integer"
+          },
+          "signal_count": {
+            "title": "Signal Count",
+            "type": "integer"
+          },
+          "stamp_collected": {
+            "title": "Stamp Collected",
+            "type": "boolean"
+          },
+          "block_kinds": {
+            "items": {
+              "enum": [
+                "lead",
+                "items",
+                "chart",
+                "quote",
+                "progress",
+                "note"
+              ],
+              "type": "string"
+            },
+            "title": "Block Kinds",
+            "type": "array"
+          },
+          "chart_count": {
+            "title": "Chart Count",
+            "type": "integer"
+          },
+          "pool_item_count": {
+            "title": "Pool Item Count",
+            "type": "integer"
+          },
+          "series_count": {
+            "title": "Series Count",
+            "type": "integer"
+          },
+          "source_count": {
+            "title": "Source Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "form",
+          "family",
+          "mood",
+          "item_count",
+          "channel_count",
+          "signal_count",
+          "stamp_collected",
+          "block_kinds",
+          "chart_count",
+          "pool_item_count",
+          "series_count",
+          "source_count"
+        ],
+        "title": "BriefingSent",
         "type": "object"
       }
     },
@@ -1210,12 +1739,12 @@
         "description": "The agent moved an Obscura run to Chrome: the sites where the fast engine falls short.",
         "properties": {
           "reason": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Reason",
             "type": "string"
           },
           "engine": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Engine",
             "type": "string"
           },
@@ -1233,7 +1762,10 @@
             "title": "Host"
           }
         },
-        "required": ["reason", "engine"],
+        "required": [
+          "reason",
+          "engine"
+        ],
         "title": "BrowserEngineSwitched",
         "type": "object"
       }
@@ -1253,7 +1785,7 @@
         "description": "A human resolved a browser handoff: continued it or cancelled the run.",
         "properties": {
           "decision": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Decision",
             "type": "string"
           },
@@ -1262,7 +1794,10 @@
             "type": "boolean"
           }
         },
-        "required": ["decision", "with_note"],
+        "required": [
+          "decision",
+          "with_note"
+        ],
         "title": "BrowserHandoffResolved",
         "type": "object"
       }
@@ -1310,7 +1845,7 @@
           "source_browser": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1321,7 +1856,10 @@
             "title": "Source Browser"
           }
         },
-        "required": ["host_count", "cookie_count"],
+        "required": [
+          "host_count",
+          "cookie_count"
+        ],
         "title": "BrowserLoginsImported",
         "type": "object"
       }
@@ -1341,7 +1879,7 @@
         "description": "A browser run finished; captured at the end, never on start, so attempts never count as successes.",
         "properties": {
           "status": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Status",
             "type": "string"
           },
@@ -1362,7 +1900,7 @@
             "type": "integer"
           },
           "source": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Source",
             "type": "string"
           },
@@ -1437,7 +1975,7 @@
           "recurrence_frequency": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1621,48 +2159,27 @@
       "class": "ChatBackgroundUpdateResolved",
       "owner": "server",
       "domain": "chat",
-      "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
+      "description": "Comms resolved finished background work: it wrote a message about it, or stayed silent.",
       "previous_names": [],
       "budget_per_user_day": 100,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
+        "description": "Comms resolved finished background work: it wrote a message about it, or stayed silent.",
         "properties": {
           "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "enum": [
+              "message",
+              "silence"
+            ],
             "title": "Outcome",
             "type": "string"
-          },
-          "emoji": {
-            "anyOf": [
-              {
-                "pattern": "^(?:[0-9#*]\ufe0f?\u20e3|[^\\x00-\\x7F]{1,16})$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Emoji"
-          },
-          "delivery": {
-            "anyOf": [
-              {
-                "enum": ["message", "reaction", "badge", "fallback_text"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Delivery"
           }
         },
-        "required": ["outcome"],
+        "required": [
+          "outcome"
+        ],
         "title": "ChatBackgroundUpdateResolved",
         "type": "object"
       }
@@ -1691,7 +2208,10 @@
             "type": "boolean"
           }
         },
-        "required": ["item_id", "is_mode"],
+        "required": [
+          "item_id",
+          "is_mode"
+        ],
         "title": "ChatComposerPlusMenuClicked",
         "type": "object"
       }
@@ -1729,7 +2249,7 @@
           "system_purpose": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1740,7 +2260,9 @@
             "title": "System Purpose"
           }
         },
-        "required": ["is_system_generated"],
+        "required": [
+          "is_system_generated"
+        ],
         "title": "ChatConversationCreated",
         "type": "object"
       }
@@ -1762,7 +2284,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1804,12 +2326,14 @@
         "description": "A conversation's description changed, by the user or the auto-title task.",
         "properties": {
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           }
         },
-        "required": ["conversation_id"],
+        "required": [
+          "conversation_id"
+        ],
         "title": "ChatConversationRenamed",
         "type": "object"
       }
@@ -1833,12 +2357,15 @@
             "type": "boolean"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           }
         },
-        "required": ["starred", "conversation_id"],
+        "required": [
+          "starred",
+          "conversation_id"
+        ],
         "title": "ChatConversationStarred",
         "type": "object"
       }
@@ -1898,17 +2425,21 @@
             "type": "integer"
           },
           "resource_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Resource Type",
             "type": "string"
           },
           "content_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Content Type",
             "type": "string"
           }
         },
-        "required": ["size_bytes", "resource_type", "content_type"],
+        "required": [
+          "size_bytes",
+          "resource_type",
+          "content_type"
+        ],
         "title": "ChatFileUploaded",
         "type": "object"
       }
@@ -1928,7 +2459,7 @@
         "description": "A connect button on the new-chat integration grid was clicked.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -1938,7 +2469,10 @@
             "type": "string"
           }
         },
-        "required": ["integration_id", "source"],
+        "required": [
+          "integration_id",
+          "source"
+        ],
         "title": "ChatGridIntegrationConnectClicked",
         "type": "object"
       }
@@ -1958,18 +2492,14 @@
         "description": "A chat turn the user stopped before it finished.",
         "properties": {
           "stream_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Stream Id",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
-          },
-          "voice_mode": {
-            "title": "Voice Mode",
-            "type": "boolean"
           },
           "is_new_conversation": {
             "title": "Is New Conversation",
@@ -2022,7 +2552,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2036,7 +2566,6 @@
         "required": [
           "stream_id",
           "conversation_id",
-          "voice_mode",
           "is_new_conversation",
           "delegated",
           "queued"
@@ -2060,18 +2589,14 @@
         "description": "A chat turn reached its terminal state; executor-leg timings ride on agent:run_completed.",
         "properties": {
           "stream_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Stream Id",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
-          },
-          "voice_mode": {
-            "title": "Voice Mode",
-            "type": "boolean"
           },
           "is_new_conversation": {
             "title": "Is New Conversation",
@@ -2124,7 +2649,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2138,7 +2663,6 @@
         "required": [
           "stream_id",
           "conversation_id",
-          "voice_mode",
           "is_new_conversation",
           "delegated",
           "queued"
@@ -2180,17 +2704,23 @@
         "description": "A bot turn stopped at a gate; without it a refusal is indistinguishable from silence.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           },
           "reason": {
-            "enum": ["plan_required", "subscription_required"],
+            "enum": [
+              "plan_required",
+              "subscription_required"
+            ],
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["platform", "reason"],
+        "required": [
+          "platform",
+          "reason"
+        ],
         "title": "ChatMessageRefused",
         "type": "object"
       }
@@ -2201,7 +2731,9 @@
       "owner": "server",
       "domain": "chat",
       "description": "A chat turn passed every gate and was accepted, from any surface.",
-      "previous_names": ["chat:message_sent"],
+      "previous_names": [
+        "chat:message_sent"
+      ],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -2210,7 +2742,7 @@
         "description": "A chat turn passed every gate and was accepted, from any surface.",
         "properties": {
           "source": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Source",
             "type": "string"
           },
@@ -2219,7 +2751,7 @@
             "type": "boolean"
           },
           "stream_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Stream Id",
             "type": "string"
           },
@@ -2278,7 +2810,7 @@
           "tool_name": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2291,7 +2823,7 @@
           "tool_category": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2316,7 +2848,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2351,7 +2883,12 @@
             "title": "Is Reply"
           }
         },
-        "required": ["source", "has_files", "stream_id", "is_retry"],
+        "required": [
+          "source",
+          "has_files",
+          "stream_id",
+          "is_retry"
+        ],
         "title": "ChatMessageSubmitted",
         "type": "object"
       }
@@ -2389,17 +2926,20 @@
         "description": "A category tab was switched in the slash-command dropdown.",
         "properties": {
           "category": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Category",
             "type": "string"
           },
           "previous_category": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Previous Category",
             "type": "string"
           }
         },
-        "required": ["category", "previous_category"],
+        "required": [
+          "category",
+          "previous_category"
+        ],
         "title": "ChatSlashCommandCategoryChanged",
         "type": "object"
       }
@@ -2419,12 +2959,12 @@
         "description": "A tool was picked from the slash-command dropdown; the typed query is never sent.",
         "properties": {
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
           "tool_category": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Category",
             "type": "string"
           },
@@ -2441,7 +2981,10 @@
             "title": "Opened Via Button"
           }
         },
-        "required": ["tool_name", "tool_category"],
+        "required": [
+          "tool_name",
+          "tool_category"
+        ],
         "title": "ChatSlashCommandSelected",
         "type": "object"
       }
@@ -2465,7 +3008,9 @@
             "type": "boolean"
           }
         },
-        "required": ["is_open"],
+        "required": [
+          "is_open"
+        ],
         "title": "ChatToolsButtonClicked",
         "type": "object"
       }
@@ -2490,7 +3035,9 @@
             "type": "string"
           }
         },
-        "required": ["emoji"],
+        "required": [
+          "emoji"
+        ],
         "title": "ChatTurnReacted",
         "type": "object"
       }
@@ -2516,7 +3063,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2540,8 +3087,56 @@
             "title": "Blocked Reason"
           }
         },
-        "required": ["voice_mode_enabled"],
+        "required": [
+          "voice_mode_enabled"
+        ],
         "title": "ChatVoiceModeToggled",
+        "type": "object"
+      }
+    },
+    {
+      "event": "chat:work_stopped",
+      "class": "ChatWorkStopped",
+      "owner": "server",
+      "domain": "chat",
+      "description": "The user stopped a conversation: its reply in flight and the background work it had running.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user stopped a conversation: its reply in flight and the background work it had running.",
+        "properties": {
+          "executor_stopped": {
+            "title": "Executor Stopped",
+            "type": "boolean"
+          },
+          "pending_tasks": {
+            "title": "Pending Tasks",
+            "type": "integer"
+          },
+          "subagents": {
+            "title": "Subagents",
+            "type": "integer"
+          },
+          "approvals": {
+            "title": "Approvals",
+            "type": "integer"
+          },
+          "browser_jobs": {
+            "title": "Browser Jobs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "executor_stopped",
+          "pending_tasks",
+          "subagents",
+          "approvals",
+          "browser_jobs"
+        ],
+        "title": "ChatWorkStopped",
         "type": "object"
       }
     },
@@ -2626,7 +3221,9 @@
             "type": "boolean"
           }
         },
-        "required": ["triggered_by_wake_word"],
+        "required": [
+          "triggered_by_wake_word"
+        ],
         "title": "DesktopPopupOpened",
         "type": "object"
       }
@@ -2682,288 +3279,21 @@
         "description": "An authenticated host paired itself as a device.",
         "properties": {
           "client": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Client",
             "type": "string"
           },
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
         },
-        "required": ["client", "platform"],
+        "required": [
+          "client",
+          "platform"
+        ],
         "title": "DeviceSelfPaired",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:archived",
-      "class": "EmailArchived",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user archived messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user archived messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailArchived",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_composed",
-      "class": "EmailDraftComposed",
-      "owner": "server",
-      "domain": "email",
-      "description": "The assistant finished composing a draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "The assistant finished composing a draft.",
-        "properties": {},
-        "title": "EmailDraftComposed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_created",
-      "class": "EmailDraftCreated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user saved a new draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user saved a new draft.",
-        "properties": {},
-        "title": "EmailDraftCreated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_deleted",
-      "class": "EmailDraftDeleted",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user deleted a draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user deleted a draft.",
-        "properties": {},
-        "title": "EmailDraftDeleted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:draft_updated",
-      "class": "EmailDraftUpdated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user updated a draft.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user updated a draft.",
-        "properties": {},
-        "title": "EmailDraftUpdated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_applied",
-      "class": "EmailLabelApplied",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user applied a label to messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user applied a label to messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailLabelApplied",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_created",
-      "class": "EmailLabelCreated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user created a mail label.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user created a mail label.",
-        "properties": {},
-        "title": "EmailLabelCreated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_deleted",
-      "class": "EmailLabelDeleted",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user deleted a mail label.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user deleted a mail label.",
-        "properties": {},
-        "title": "EmailLabelDeleted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_removed",
-      "class": "EmailLabelRemoved",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user removed a label from messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user removed a label from messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailLabelRemoved",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:label_updated",
-      "class": "EmailLabelUpdated",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user updated a mail label.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user updated a mail label.",
-        "properties": {},
-        "title": "EmailLabelUpdated",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:marked_read",
-      "class": "EmailMarkedRead",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user marked messages as read.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user marked messages as read.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailMarkedRead",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:marked_unread",
-      "class": "EmailMarkedUnread",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user marked messages as unread.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user marked messages as unread.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailMarkedUnread",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:moved_to_inbox",
-      "class": "EmailMovedToInbox",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user moved messages back to the inbox.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user moved messages back to the inbox.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailMovedToInbox",
         "type": "object"
       }
     },
@@ -2990,7 +3320,10 @@
             "type": "integer"
           }
         },
-        "required": ["has_attachments", "attachment_count"],
+        "required": [
+          "has_attachments",
+          "attachment_count"
+        ],
         "title": "EmailReplied",
         "type": "object"
       }
@@ -3032,117 +3365,9 @@
             ],
             "default": null,
             "title": "Attachment Count"
-          },
-          "recipient_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Recipient Count"
           }
         },
         "title": "EmailSent",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:starred",
-      "class": "EmailStarred",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user starred messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user starred messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailStarred",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:trashed",
-      "class": "EmailTrashed",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user moved messages to the trash.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user moved messages to the trash.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailTrashed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:unstarred",
-      "class": "EmailUnstarred",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user unstarred messages.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user unstarred messages.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailUnstarred",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:untrashed",
-      "class": "EmailUntrashed",
-      "owner": "server",
-      "domain": "email",
-      "description": "A user restored messages from the trash.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user restored messages from the trash.",
-        "properties": {
-          "message_count": {
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": ["message_count"],
-        "title": "EmailUntrashed",
         "type": "object"
       }
     },
@@ -3161,14 +3386,18 @@
         "description": "A client error reached a boundary, or a chunk reload failed to recover.",
         "properties": {
           "error_type": {
-            "enum": ["global_error", "react_error_boundary", "chunk_load"],
+            "enum": [
+              "global_error",
+              "react_error_boundary",
+              "chunk_load"
+            ],
             "title": "Error Type",
             "type": "string"
           },
           "digest": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3192,7 +3421,9 @@
             "title": "Recovery Action"
           }
         },
-        "required": ["error_type"],
+        "required": [
+          "error_type"
+        ],
         "title": "ErrorOccurred",
         "type": "object"
       }
@@ -3219,7 +3450,7 @@
           "error_digest": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3232,7 +3463,7 @@
           "error_name": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3255,7 +3486,9 @@
             "title": "Is Chunk Error"
           }
         },
-        "required": ["error_type"],
+        "required": [
+          "error_type"
+        ],
         "title": "ErrorRouteErrorShown",
         "type": "object"
       }
@@ -3275,12 +3508,17 @@
         "description": "A user used a feature for the first time.",
         "properties": {
           "feature": {
-            "enum": ["voice_agent", "workflows"],
+            "enum": [
+              "voice_agent",
+              "workflows"
+            ],
             "title": "Feature",
             "type": "string"
           }
         },
-        "required": ["feature"],
+        "required": [
+          "feature"
+        ],
         "title": "FeatureDiscovered",
         "type": "object"
       }
@@ -3300,7 +3538,7 @@
         "description": "A user switched a user-facing flag in Settings.",
         "properties": {
           "flag": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Flag",
             "type": "string"
           },
@@ -3309,7 +3547,10 @@
             "type": "boolean"
           }
         },
-        "required": ["flag", "enabled"],
+        "required": [
+          "flag",
+          "enabled"
+        ],
         "title": "FeatureToggled",
         "type": "object"
       }
@@ -3329,7 +3570,7 @@
         "description": "A flag resolved on a path PostHog never saw; the complement of $feature_flag_called.",
         "properties": {
           "flag": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Flag",
             "type": "string"
           },
@@ -3349,7 +3590,11 @@
             "type": "string"
           }
         },
-        "required": ["flag", "enabled", "fallback_reason"],
+        "required": [
+          "flag",
+          "enabled",
+          "fallback_reason"
+        ],
         "title": "FeatureFlagEvaluated",
         "type": "object"
       }
@@ -3373,7 +3618,9 @@
             "type": "boolean"
           }
         },
-        "required": ["is_positive"],
+        "required": [
+          "is_positive"
+        ],
         "title": "FeedbackMessageSubmitted",
         "type": "object"
       }
@@ -3405,7 +3652,11 @@
             "type": "integer"
           }
         },
-        "required": ["collapsed", "steps_done", "steps_total"],
+        "required": [
+          "collapsed",
+          "steps_done",
+          "steps_total"
+        ],
         "title": "FirstStepsCollapsed",
         "type": "object"
       }
@@ -3425,7 +3676,7 @@
         "description": "A checklist row was clicked; completion is server-derived, but the click never reaches it.",
         "properties": {
           "step": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Step",
             "type": "string"
           },
@@ -3434,12 +3685,19 @@
             "type": "boolean"
           },
           "surface": {
-            "enum": ["dashboard", "widget"],
+            "enum": [
+              "dashboard",
+              "widget"
+            ],
             "title": "Surface",
             "type": "string"
           }
         },
-        "required": ["step", "done", "surface"],
+        "required": [
+          "step",
+          "done",
+          "surface"
+        ],
         "title": "FirstStepsStepClicked",
         "type": "object"
       }
@@ -3461,7 +3719,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3491,7 +3749,7 @@
         "description": "The user clicked the founder letter's discount offer.",
         "properties": {
           "discount_code": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Discount Code",
             "type": "string"
           },
@@ -3500,7 +3758,10 @@
             "type": "integer"
           }
         },
-        "required": ["discount_code", "discount_percent"],
+        "required": [
+          "discount_code",
+          "discount_percent"
+        ],
         "title": "FounderLetterDiscountCtaClicked",
         "type": "object"
       }
@@ -3522,7 +3783,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3576,7 +3837,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3591,7 +3852,10 @@
             "type": "integer"
           }
         },
-        "required": ["first_open", "discount_percent"],
+        "required": [
+          "first_open",
+          "discount_percent"
+        ],
         "title": "FounderLetterOpened",
         "type": "object"
       }
@@ -3613,7 +3877,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3643,12 +3907,12 @@
         "description": "A ledger approval card was registered, held for the run's drain or streamed.",
         "properties": {
           "approval_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Approval Id",
             "type": "string"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
@@ -3686,24 +3950,32 @@
         "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
         "properties": {
           "decision": {
-            "enum": ["approved", "denied"],
+            "enum": [
+              "approved",
+              "denied"
+            ],
             "title": "Decision",
             "type": "string"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
           "via": {
-            "enum": ["card", "batch", "chat", "auto"],
+            "enum": [
+              "card",
+              "batch",
+              "chat",
+              "auto"
+            ],
             "title": "Via",
             "type": "string"
           },
           "approval_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3738,7 +4010,11 @@
             "title": "Card Age Seconds"
           }
         },
-        "required": ["decision", "tool_name", "via"],
+        "required": [
+          "decision",
+          "tool_name",
+          "via"
+        ],
         "title": "HilDecisionSubmitted",
         "type": "object"
       }
@@ -3758,17 +4034,23 @@
         "description": "A parked todo or workflow run was re-queued after its approval was granted.",
         "properties": {
           "approval_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Approval Id",
             "type": "string"
           },
           "owner_run_type": {
-            "enum": ["todo", "workflow"],
+            "enum": [
+              "todo",
+              "workflow"
+            ],
             "title": "Owner Run Type",
             "type": "string"
           }
         },
-        "required": ["approval_id", "owner_run_type"],
+        "required": [
+          "approval_id",
+          "owner_run_type"
+        ],
         "title": "HilResumed",
         "type": "object"
       }
@@ -3778,17 +4060,17 @@
       "class": "HilRevoked",
       "owner": "server",
       "domain": "hil",
-      "description": "A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run.",
+      "description": "A pending ledger approval was closed undecided: withdrawn, cancelled by a Stop, or expired.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run.",
+        "description": "A pending ledger approval was closed undecided: withdrawn, cancelled by a Stop, or expired.",
         "properties": {
           "approval_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Approval Id",
             "type": "string"
           },
@@ -3797,12 +4079,26 @@
             "type": "integer"
           },
           "revoker": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Revoker",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "expired",
+              "cancelled",
+              "withdrawn"
+            ],
+            "title": "Outcome",
             "type": "string"
           }
         },
-        "required": ["approval_id", "ledger_version", "revoker"],
+        "required": [
+          "approval_id",
+          "ledger_version",
+          "revoker",
+          "outcome"
+        ],
         "title": "HilRevoked",
         "type": "object"
       }
@@ -3876,12 +4172,17 @@
         "description": "A member account was created on a self-host instance, emitted for the new member.",
         "properties": {
           "via": {
-            "enum": ["invite", "open"],
+            "enum": [
+              "invite",
+              "open"
+            ],
             "title": "Via",
             "type": "string"
           }
         },
-        "required": ["via"],
+        "required": [
+          "via"
+        ],
         "title": "InstanceMemberJoined",
         "type": "object"
       }
@@ -3901,12 +4202,17 @@
         "description": "A standing-instructions save was refused because another write landed first.",
         "properties": {
           "scope_kind": {
-            "enum": ["global", "integration"],
+            "enum": [
+              "global",
+              "integration"
+            ],
             "title": "Scope Kind",
             "type": "string"
           }
         },
-        "required": ["scope_kind"],
+        "required": [
+          "scope_kind"
+        ],
         "title": "InstructionsConflict",
         "type": "object"
       }
@@ -3917,7 +4223,9 @@
       "owner": "server",
       "domain": "instructions",
       "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
-      "previous_names": ["integration:instructions_updated"],
+      "previous_names": [
+        "integration:instructions_updated"
+      ],
       "budget_per_user_day": 30,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -3926,12 +4234,15 @@
         "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
         "properties": {
           "scope_kind": {
-            "enum": ["global", "integration"],
+            "enum": [
+              "global",
+              "integration"
+            ],
             "title": "Scope Kind",
             "type": "string"
           },
           "updated_by": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Updated By",
             "type": "string"
           },
@@ -3940,7 +4251,11 @@
             "type": "boolean"
           }
         },
-        "required": ["scope_kind", "updated_by", "cleared"],
+        "required": [
+          "scope_kind",
+          "updated_by",
+          "cleared"
+        ],
         "title": "InstructionsUpdated",
         "type": "object"
       }
@@ -3960,7 +4275,7 @@
         "description": "An account was authorized on a multi-account integration, or replaced one with its identity.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4002,7 +4317,7 @@
         "description": "One account of an integration was disconnected; 0 left means the integration went too.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4011,7 +4326,10 @@
             "type": "integer"
           }
         },
-        "required": ["integration_id", "account_count"],
+        "required": [
+          "integration_id",
+          "account_count"
+        ],
         "title": "IntegrationAccountRemoved",
         "type": "object"
       }
@@ -4031,7 +4349,7 @@
         "description": "An account of an integration was given a name, or had it cleared.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4040,7 +4358,10 @@
             "type": "boolean"
           }
         },
-        "required": ["integration_id", "cleared"],
+        "required": [
+          "integration_id",
+          "cleared"
+        ],
         "title": "IntegrationAccountRenamed",
         "type": "object"
       }
@@ -4060,14 +4381,14 @@
         "description": "A connect flow was started and the user sent off to authorize it.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
           "auth_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4080,7 +4401,7 @@
           "managed_by": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4104,7 +4425,9 @@
             "title": "Source"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationConnectInitiated",
         "type": "object"
       }
@@ -4124,14 +4447,17 @@
         "description": "An integration or platform account finished connecting.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
           "auth_type": {
             "anyOf": [
               {
-                "enum": ["bearer", "none"],
+                "enum": [
+                  "bearer",
+                  "none"
+                ],
                 "type": "string"
               },
               {
@@ -4144,7 +4470,10 @@
           "source": {
             "anyOf": [
               {
-                "enum": ["marketplace", "workspace"],
+                "enum": [
+                  "marketplace",
+                  "workspace"
+                ],
                 "type": "string"
               },
               {
@@ -4157,7 +4486,7 @@
           "managed_by": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4183,7 +4512,7 @@
           "provider": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4218,7 +4547,9 @@
             "title": "Is Reconnect"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationConnected",
         "type": "object"
       }
@@ -4238,12 +4569,14 @@
         "description": "A user deleted a custom integration.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomDeleted",
         "type": "object"
       }
@@ -4263,12 +4596,14 @@
         "description": "A user published a custom integration to the marketplace.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomPublished",
         "type": "object"
       }
@@ -4288,12 +4623,14 @@
         "description": "A user unpublished a custom integration.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomUnpublished",
         "type": "object"
       }
@@ -4313,12 +4650,14 @@
         "description": "A user edited a custom integration.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomUpdated",
         "type": "object"
       }
@@ -4338,12 +4677,14 @@
         "description": "An integration or platform account was disconnected.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationDisconnected",
         "type": "object"
       }
@@ -4363,7 +4704,7 @@
         "description": "A connect or disconnect request failed in the browser.",
         "properties": {
           "integration": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration",
             "type": "string"
           },
@@ -4382,7 +4723,7 @@
           "error_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4393,7 +4734,9 @@
             "title": "Error Code"
           }
         },
-        "required": ["integration"],
+        "required": [
+          "integration"
+        ],
         "title": "IntegrationError",
         "type": "object"
       }
@@ -4425,7 +4768,11 @@
             "type": "integer"
           }
         },
-        "required": ["stored_count", "set_up_count", "total_count"],
+        "required": [
+          "stored_count",
+          "set_up_count",
+          "total_count"
+        ],
         "title": "IntegrationInstanceSetupSaved",
         "type": "object"
       }
@@ -4445,7 +4792,7 @@
         "description": "Another account became an integration's primary, the one triggers and defaults use.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4454,7 +4801,10 @@
             "type": "integer"
           }
         },
-        "required": ["integration_id", "account_count"],
+        "required": [
+          "integration_id",
+          "account_count"
+        ],
         "title": "IntegrationPrimaryChanged",
         "type": "object"
       }
@@ -4474,12 +4824,14 @@
         "description": "A self-host admin removed a Composio toolkit they had enabled.",
         "properties": {
           "toolkit": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Toolkit",
             "type": "string"
           }
         },
-        "required": ["toolkit"],
+        "required": [
+          "toolkit"
+        ],
         "title": "IntegrationToolkitDisabled",
         "type": "object"
       }
@@ -4499,12 +4851,15 @@
         "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
         "properties": {
           "toolkit": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Toolkit",
             "type": "string"
           },
           "origin": {
-            "enum": ["code", "instance"],
+            "enum": [
+              "code",
+              "instance"
+            ],
             "title": "Origin",
             "type": "string"
           },
@@ -4513,7 +4868,11 @@
             "type": "boolean"
           }
         },
-        "required": ["toolkit", "origin", "composio_managed"],
+        "required": [
+          "toolkit",
+          "origin",
+          "composio_managed"
+        ],
         "title": "IntegrationToolkitEnabled",
         "type": "object"
       }
@@ -4533,7 +4892,11 @@
         "description": "An MCP server connection probe finished.",
         "properties": {
           "status": {
-            "enum": ["connected", "failed", "requires_oauth"],
+            "enum": [
+              "connected",
+              "failed",
+              "requires_oauth"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -4550,7 +4913,9 @@
             "title": "Tools Count"
           }
         },
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "title": "McpConnectionTested",
         "type": "object"
       }
@@ -4574,7 +4939,9 @@
             "type": "integer"
           }
         },
-        "required": ["deleted_count"],
+        "required": [
+          "deleted_count"
+        ],
         "title": "MemoryCleared",
         "type": "object"
       }
@@ -4630,12 +4997,14 @@
         "description": "A user deleted one memory.",
         "properties": {
           "memory_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Memory Id",
             "type": "string"
           }
         },
-        "required": ["memory_id"],
+        "required": [
+          "memory_id"
+        ],
         "title": "MemoryItemDeleted",
         "type": "object"
       }
@@ -4687,7 +5056,10 @@
           "location": {
             "anyOf": [
               {
-                "enum": ["desktop_login_page", "login_modal"],
+                "enum": [
+                  "desktop_login_page",
+                  "login_modal"
+                ],
                 "type": "string"
               },
               {
@@ -4712,7 +5084,11 @@
           "os": {
             "anyOf": [
               {
-                "enum": ["mac", "windows", "linux"],
+                "enum": [
+                  "mac",
+                  "windows",
+                  "linux"
+                ],
                 "type": "string"
               },
               {
@@ -4723,7 +5099,9 @@
             "title": "Os"
           }
         },
-        "required": ["destination"],
+        "required": [
+          "destination"
+        ],
         "title": "NavigationCtaClicked",
         "type": "object"
       }
@@ -4748,7 +5126,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "NavigationGithubClicked",
         "type": "object"
       }
@@ -4768,12 +5148,17 @@
         "description": "The user hovered a marketing navbar dropdown open.",
         "properties": {
           "menu": {
-            "enum": ["product", "resources"],
+            "enum": [
+              "product",
+              "resources"
+            ],
             "title": "Menu",
             "type": "string"
           }
         },
-        "required": ["menu"],
+        "required": [
+          "menu"
+        ],
         "title": "NavigationNavbarDropdownOpened",
         "type": "object"
       }
@@ -4793,17 +5178,26 @@
         "description": "The user clicked a plain link in the marketing navbar.",
         "properties": {
           "label": {
-            "enum": ["Pricing", "Docs"],
+            "enum": [
+              "Pricing",
+              "Docs"
+            ],
             "title": "Label",
             "type": "string"
           },
           "href": {
-            "enum": ["/pricing", "https://docs.heygaia.io"],
+            "enum": [
+              "/pricing",
+              "https://docs.heygaia.io"
+            ],
             "title": "Href",
             "type": "string"
           }
         },
-        "required": ["label", "href"],
+        "required": [
+          "label",
+          "href"
+        ],
         "title": "NavigationNavbarLinkClicked",
         "type": "object"
       }
@@ -4828,18 +5222,29 @@
               "/todos",
               "/integrations",
               "/workflows",
+              "/briefings",
               "/c"
             ],
             "title": "Destination",
             "type": "string"
           },
           "label": {
-            "enum": ["Home", "Tasks", "Integrations", "Workflows", "Chats"],
+            "enum": [
+              "Home",
+              "Tasks",
+              "Integrations",
+              "Workflows",
+              "Briefings",
+              "Chats"
+            ],
             "title": "Label",
             "type": "string"
           }
         },
-        "required": ["destination", "label"],
+        "required": [
+          "destination",
+          "label"
+        ],
         "title": "NavigationSidebarClicked",
         "type": "object"
       }
@@ -4931,14 +5336,20 @@
         "description": "The agent's send_notification sent one, or folded it into the reply already reaching the user.\n\ndestination is set only when the agent named no channel and GAIA chose where it goes.",
         "properties": {
           "outcome": {
-            "enum": ["sent", "folded_into_reply"],
+            "enum": [
+              "sent",
+              "folded_into_reply"
+            ],
             "title": "Outcome",
             "type": "string"
           },
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -4967,7 +5378,9 @@
             "title": "Destination Basis"
           }
         },
-        "required": ["outcome"],
+        "required": [
+          "outcome"
+        ],
         "title": "NotificationAgentSent",
         "type": "object"
       }
@@ -4987,7 +5400,7 @@
         "description": "A user applied one action to several notifications at once.",
         "properties": {
           "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Action",
             "type": "string"
           },
@@ -5000,7 +5413,11 @@
             "type": "integer"
           }
         },
-        "required": ["action", "successful", "total"],
+        "required": [
+          "action",
+          "successful",
+          "total"
+        ],
         "title": "NotificationBulkAction",
         "type": "object"
       }
@@ -5011,7 +5428,9 @@
       "owner": "server",
       "domain": "notification",
       "description": "A user marked a notification read.",
-      "previous_names": ["notification:dismissed"],
+      "previous_names": [
+        "notification:dismissed"
+      ],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -5024,7 +5443,9 @@
             "type": "integer"
           }
         },
-        "required": ["count"],
+        "required": [
+          "count"
+        ],
         "title": "NotificationRead",
         "type": "object"
       }
@@ -5062,7 +5483,7 @@
         "description": "A user clicked a notification in the notification center popover.",
         "properties": {
           "notification_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Notification Id",
             "type": "string"
           },
@@ -5072,7 +5493,10 @@
             "type": "string"
           }
         },
-        "required": ["notification_id", "source"],
+        "required": [
+          "notification_id",
+          "source"
+        ],
         "title": "NotificationViewed",
         "type": "object"
       }
@@ -5092,7 +5516,7 @@
         "description": "A lifecycle nurture email went out.",
         "properties": {
           "step": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Step",
             "type": "string"
           },
@@ -5101,7 +5525,10 @@
             "type": "integer"
           }
         },
-        "required": ["step", "day_offset"],
+        "required": [
+          "step",
+          "day_offset"
+        ],
         "title": "NurtureEmailSent",
         "type": "object"
       }
@@ -5121,12 +5548,17 @@
         "description": "A user came back from a failed or stalled checkout and asked for the plans again.",
         "properties": {
           "reason": {
-            "enum": ["declined", "confirmation_timeout"],
+            "enum": [
+              "declined",
+              "confirmation_timeout"
+            ],
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["reason"],
+        "required": [
+          "reason"
+        ],
         "title": "OnboardingCheckoutRetried",
         "type": "object"
       }
@@ -5136,18 +5568,18 @@
       "class": "OnboardingCompleted",
       "owner": "server",
       "domain": "onboarding",
-      "description": "A user submitted onboarding; the typed other need is free text, so only its presence travels.",
+      "description": "A user left the platform step and submitted onboarding; linked_platform is None when they skipped.",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user submitted onboarding; the typed other need is free text, so only its presence travels.",
+        "description": "A user left the platform step and submitted onboarding; linked_platform is None when they skipped.",
         "properties": {
           "needs": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Needs",
@@ -5156,9 +5588,25 @@
           "has_other_need": {
             "title": "Has Other Need",
             "type": "boolean"
+          },
+          "linked_platform": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Linked Platform"
           }
         },
-        "required": ["needs", "has_other_need"],
+        "required": [
+          "needs",
+          "has_other_need"
+        ],
         "title": "OnboardingCompleted",
         "type": "object"
       }
@@ -5168,22 +5616,64 @@
       "class": "OnboardingPhaseCompleted",
       "owner": "server",
       "domain": "onboarding",
-      "description": "A user reached an onboarding phase.",
+      "description": "A user reached a wizard step past the start; the answer shape rides only on questions_answered.",
       "previous_names": [],
-      "budget_per_user_day": 50,
+      "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
-        "additionalProperties": false,
-        "description": "A user reached an onboarding phase.",
-        "properties": {
-          "phase": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Phase",
+        "$defs": {
+          "OnboardingStep": {
+            "description": "A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached.",
+            "enum": [
+              "started",
+              "questions_answered",
+              "paywall_reached",
+              "paid_reveal_seen",
+              "first_chat_opened"
+            ],
+            "title": "OnboardingStep",
             "type": "string"
           }
         },
-        "required": ["phase"],
+        "additionalProperties": false,
+        "description": "A user reached a wizard step past the start; the answer shape rides only on questions_answered.",
+        "properties": {
+          "phase": {
+            "$ref": "#/$defs/OnboardingStep"
+          },
+          "needs": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Needs"
+          },
+          "has_other_need": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Has Other Need"
+          }
+        },
+        "required": [
+          "phase"
+        ],
         "title": "OnboardingPhaseCompleted",
         "type": "object"
       }
@@ -5221,12 +5711,14 @@
         "description": "A user wiped the wizard from the restart modal; only the browser knows the reset came from there.",
         "properties": {
           "from_stage": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "From Stage",
             "type": "string"
           }
         },
-        "required": ["from_stage"],
+        "required": [
+          "from_stage"
+        ],
         "title": "OnboardingRestarted",
         "type": "object"
       }
@@ -5251,7 +5743,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "OnboardingSkipped",
         "type": "object"
       }
@@ -5276,14 +5770,17 @@
           },
           "platforms": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Platforms",
             "type": "array"
           }
         },
-        "required": ["profile_count", "platforms"],
+        "required": [
+          "profile_count",
+          "platforms"
+        ],
         "title": "OnboardingSocialProfilesConfirmed",
         "type": "object"
       }
@@ -5291,23 +5788,17 @@
     {
       "event": "onboarding:started",
       "class": "OnboardingStarted",
-      "owner": "web",
+      "owner": "server",
       "domain": "onboarding",
-      "description": "The onboarding wizard mounted, after persisted state restored.",
+      "description": "A user opened the onboarding wizard for the first time this onboarding run.",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
-      "base_properties": null,
+      "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The onboarding wizard mounted, after persisted state restored.",
-        "properties": {
-          "has_saved_state": {
-            "title": "Has Saved State",
-            "type": "boolean"
-          }
-        },
-        "required": ["has_saved_state"],
+        "description": "A user opened the onboarding wizard for the first time this onboarding run.",
+        "properties": {},
         "title": "OnboardingStarted",
         "type": "object"
       }
@@ -5349,7 +5840,9 @@
             "type": "integer"
           }
         },
-        "required": ["summary_length"],
+        "required": [
+          "summary_length"
+        ],
         "title": "OnboardingWritingStyleSaved",
         "type": "object"
       }
@@ -5380,7 +5873,10 @@
             "type": "string"
           },
           "billing_cycle": {
-            "enum": ["monthly", "yearly"],
+            "enum": [
+              "monthly",
+              "yearly"
+            ],
             "title": "Billing Cycle",
             "type": "string"
           },
@@ -5396,7 +5892,11 @@
             "type": "string"
           }
         },
-        "required": ["source", "billing_cycle", "furthest_step"],
+        "required": [
+          "source",
+          "billing_cycle",
+          "furthest_step"
+        ],
         "title": "PaymentCheckoutAbandoned",
         "type": "object"
       }
@@ -5416,7 +5916,10 @@
         "description": "A user started a Dodo checkout, by redirect or the embedded overlay.",
         "properties": {
           "checkout_flow": {
-            "enum": ["redirect", "overlay"],
+            "enum": [
+              "redirect",
+              "overlay"
+            ],
             "title": "Checkout Flow",
             "type": "string"
           },
@@ -5435,7 +5938,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5448,7 +5951,7 @@
           "billing_cycle": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5461,7 +5964,7 @@
           "plan_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5472,7 +5975,9 @@
             "title": "Plan Id"
           }
         },
-        "required": ["checkout_flow"],
+        "required": [
+          "checkout_flow"
+        ],
         "title": "PaymentCheckoutStarted",
         "type": "object"
       }
@@ -5492,7 +5997,7 @@
         "description": "Dodo reported a failed payment for a GAIA user.",
         "properties": {
           "payment_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Payment Id",
             "type": "string"
           },
@@ -5551,7 +6056,10 @@
             "title": "Amount Usd Pre Tax"
           }
         },
-        "required": ["payment_id", "currency"],
+        "required": [
+          "payment_id",
+          "currency"
+        ],
         "title": "PaymentFailed",
         "type": "object"
       }
@@ -5571,7 +6079,7 @@
         "description": "Dodo reported a successful payment for a GAIA user.",
         "properties": {
           "payment_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Payment Id",
             "type": "string"
           },
@@ -5630,7 +6138,10 @@
             "title": "Amount Usd Pre Tax"
           }
         },
-        "required": ["payment_id", "currency"],
+        "required": [
+          "payment_id",
+          "currency"
+        ],
         "title": "PaymentSucceeded",
         "type": "object"
       }
@@ -5656,14 +6167,16 @@
                 "type": "string"
               },
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               }
             ],
             "title": "Feature"
           }
         },
-        "required": ["feature"],
+        "required": [
+          "feature"
+        ],
         "title": "PaywallBlocked",
         "type": "object"
       }
@@ -5699,7 +6212,6 @@
                   "workflow_autosend",
                   "workflow_activation",
                   "api_402",
-                  "chat_stream_402",
                   "composer_notice",
                   "rate_limit_card",
                   "rate_limit_toast",
@@ -5710,6 +6222,7 @@
                   "settings_upsell",
                   "settings_linked_accounts",
                   "settings_usage",
+                  "settings_briefings",
                   "desktop_popup_mirror"
                 ],
                 "type": "string"
@@ -5722,7 +6235,10 @@
             "title": "Source"
           }
         },
-        "required": ["dismissible", "has_discount_code"],
+        "required": [
+          "dismissible",
+          "has_discount_code"
+        ],
         "title": "PaywallModalViewed",
         "type": "object"
       }
@@ -5742,14 +6258,14 @@
         "description": "The user opened a pinned message from the pins page.",
         "properties": {
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "message_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5760,7 +6276,9 @@
             "title": "Message Id"
           }
         },
-        "required": ["conversation_id"],
+        "required": [
+          "conversation_id"
+        ],
         "title": "PinViewed",
         "type": "object"
       }
@@ -5780,12 +6298,14 @@
         "description": "A user copied their public profile card link.",
         "properties": {
           "holo_card_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Holo Card Id",
             "type": "string"
           }
         },
-        "required": ["holo_card_id"],
+        "required": [
+          "holo_card_id"
+        ],
         "title": "ProfileLinkCopied",
         "type": "object"
       }
@@ -5821,7 +6341,9 @@
             "title": "Has Picture Upload"
           }
         },
-        "required": ["changed_field_count"],
+        "required": [
+          "changed_field_count"
+        ],
         "title": "ProfileUpdated",
         "type": "object"
       }
@@ -5885,29 +6407,38 @@
       "class": "RateLimitHit",
       "owner": "server",
       "domain": "rate_limit",
-      "description": "A user ran into a tiered rate limit.",
-      "previous_names": ["rate_limit_hit"],
+      "description": "A request was refused by a usage limit: a feature count, a cost budget or a burst limit.",
+      "previous_names": [
+        "rate_limit_hit"
+      ],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user ran into a tiered rate limit.",
+        "description": "A request was refused by a usage limit: a feature count, a cost budget or a burst limit.",
         "properties": {
           "feature": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Feature",
             "type": "string"
           },
           "plan": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Plan",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
           },
           "origin": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5916,9 +6447,30 @@
             ],
             "default": null,
             "title": "Origin"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "enum": [
+                  "day",
+                  "month",
+                  "request",
+                  "burst"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Window"
           }
         },
-        "required": ["feature", "plan"],
+        "required": [
+          "feature",
+          "plan"
+        ],
         "title": "RateLimitHit",
         "type": "object"
       }
@@ -5938,7 +6490,7 @@
         "description": "The user opened a Reddit post from a chat tool card.",
         "properties": {
           "subreddit": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subreddit",
             "type": "string"
           },
@@ -5990,14 +6542,17 @@
             "type": "string"
           },
           "agent": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Agent",
             "type": "string"
           },
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -6026,7 +6581,10 @@
             "title": "Destination Basis"
           }
         },
-        "required": ["reminder_id", "agent"],
+        "required": [
+          "reminder_id",
+          "agent"
+        ],
         "title": "ReminderCompleted",
         "type": "object"
       }
@@ -6050,7 +6608,9 @@
             "type": "boolean"
           }
         },
-        "required": ["is_recurring"],
+        "required": [
+          "is_recurring"
+        ],
         "title": "ReminderCreated",
         "type": "object"
       }
@@ -6173,7 +6733,11 @@
             "type": "integer"
           }
         },
-        "required": ["mode", "query_length", "result_count"],
+        "required": [
+          "mode",
+          "query_length",
+          "result_count"
+        ],
         "title": "SearchPerformed",
         "type": "object"
       }
@@ -6193,19 +6757,22 @@
         "description": "A user picked a conversation or message result in the command menu.",
         "properties": {
           "result_type": {
-            "enum": ["conversation", "message"],
+            "enum": [
+              "conversation",
+              "message"
+            ],
             "title": "Result Type",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "message_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6216,7 +6783,10 @@
             "title": "Message Id"
           }
         },
-        "required": ["result_type", "conversation_id"],
+        "required": [
+          "result_type",
+          "conversation_id"
+        ],
         "title": "SearchResultClicked",
         "type": "object"
       }
@@ -6240,6 +6810,163 @@
       }
     },
     {
+      "event": "settings:briefing_editions_updated",
+      "class": "SettingsBriefingEditionsUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user chose which daily edition families their brief draws: how many off and favourited.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user chose which daily edition families their brief draws: how many off and favourited.",
+        "properties": {
+          "editions_off": {
+            "title": "Editions Off",
+            "type": "integer"
+          },
+          "editions_favourited": {
+            "title": "Editions Favourited",
+            "type": "integer"
+          },
+          "editions_total": {
+            "title": "Editions Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editions_off",
+          "editions_favourited",
+          "editions_total"
+        ],
+        "title": "SettingsBriefingEditionsUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefing_schedule_updated",
+      "class": "SettingsBriefingScheduleUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+        "properties": {
+          "frequency": {
+            "enum": [
+              "daily",
+              "weekdays",
+              "weekly_only",
+              "off"
+            ],
+            "title": "Frequency",
+            "type": "string"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "via": {
+            "enum": [
+              "settings",
+              "agent"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "frequency",
+          "hour",
+          "via"
+        ],
+        "title": "SettingsBriefingScheduleUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefs_off_blocked",
+      "class": "SettingsBriefsOffBlocked",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+        "properties": {
+          "workflow_count": {
+            "title": "Workflow Count",
+            "type": "integer"
+          },
+          "via": {
+            "enum": [
+              "settings",
+              "agent"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_count",
+          "via"
+        ],
+        "title": "SettingsBriefsOffBlocked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefs_off_resolved",
+      "class": "SettingsBriefsOffResolved",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+        "properties": {
+          "moved_to_now": {
+            "title": "Moved To Now",
+            "type": "integer"
+          },
+          "moved_to_silent": {
+            "title": "Moved To Silent",
+            "type": "integer"
+          },
+          "via": {
+            "enum": [
+              "settings",
+              "agent"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "moved_to_now",
+          "moved_to_silent",
+          "via"
+        ],
+        "title": "SettingsBriefsOffResolved",
+        "type": "object"
+      }
+    },
+    {
       "event": "settings:chat_channel_priority_updated",
       "class": "SettingsChatChannelPriorityUpdated",
       "owner": "server",
@@ -6254,7 +6981,7 @@
         "description": "A user reordered which platform GAIA texts first; platform names and count only.",
         "properties": {
           "first": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "First",
             "type": "string"
           },
@@ -6263,7 +6990,10 @@
             "type": "integer"
           }
         },
-        "required": ["first", "count"],
+        "required": [
+          "first",
+          "count"
+        ],
         "title": "SettingsChatChannelPriorityUpdated",
         "type": "object"
       }
@@ -6283,14 +7013,17 @@
         "description": "A desktop-only preference changed over Electron IPC, which never reaches the API.",
         "properties": {
           "setting": {
-            "enum": ["popup_shortcut", "app_icon"],
+            "enum": [
+              "popup_shortcut",
+              "app_icon"
+            ],
             "title": "Setting",
             "type": "string"
           },
           "app_icon_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6301,7 +7034,9 @@
             "title": "App Icon Id"
           }
         },
-        "required": ["setting"],
+        "required": [
+          "setting"
+        ],
         "title": "SettingsDesktopPreferenceChanged",
         "type": "object"
       }
@@ -6326,7 +7061,7 @@
           },
           "channels_enabled": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Channels Enabled",
@@ -6334,7 +7069,7 @@
           },
           "channels_disabled": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Channels Disabled",
@@ -6379,7 +7114,7 @@
             "anyOf": [
               {
                 "items": {
-                  "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                  "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                   "type": "string"
                 },
                 "type": "array"
@@ -6394,7 +7129,7 @@
           "voice_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6419,7 +7154,7 @@
           "mode": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6432,7 +7167,7 @@
           "tool_name": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6455,8 +7190,584 @@
             "title": "Require Approval"
           }
         },
-        "required": ["setting"],
+        "required": [
+          "setting"
+        ],
         "title": "SettingsPreferencesChanged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:quiet_hours_updated",
+      "class": "SettingsQuietHoursUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed their quiet hours: whether they are on and the local hours they span.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed their quiet hours: whether they are on and the local hours they span.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "start_hour": {
+            "title": "Start Hour",
+            "type": "integer"
+          },
+          "end_hour": {
+            "title": "End Hour",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "start_hour",
+          "end_hour"
+        ],
+        "title": "SettingsQuietHoursUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:access_changed",
+      "class": "ShortLinkAccessChanged",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user changed who one of their links opens for, or its expiry.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user changed who one of their links opens for, or its expiry.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "from_access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "From Access",
+            "type": "string"
+          },
+          "to_access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "To Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "from_access",
+          "to_access"
+        ],
+        "title": "ShortLinkAccessChanged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:content_published",
+      "class": "ShortLinkContentPublished",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file's bytes were stored as a snapshot its link serves.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file's bytes were stored as a snapshot its link serves.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "render_mode": {
+            "enum": [
+              "frame_active",
+              "image",
+              "image_svg",
+              "pdf",
+              "text",
+              "media",
+              "download"
+            ],
+            "title": "Render Mode",
+            "type": "string"
+          },
+          "size_bucket": {
+            "enum": [
+              "lt_100kb",
+              "lt_1mb",
+              "lt_10mb",
+              "gte_10mb"
+            ],
+            "title": "Size Bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "render_mode",
+          "size_bucket"
+        ],
+        "title": "ShortLinkContentPublished",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:content_restricted",
+      "class": "ShortLinkContentRestricted",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file was published, but may be served only to narrower access than the widest.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file was published, but may be served only to narrower access than the widest.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "executable",
+              "credential_form",
+              "repeat_takedowns"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "max_access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Max Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason",
+          "max_access"
+        ],
+        "title": "ShortLinkContentRestricted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:created",
+      "class": "ShortLinkCreated",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A heygaia.link was minted for one of the user's artifacts.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A heygaia.link was minted for one of the user's artifacts.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "owner_share",
+              "gaia_attached"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "has_expiry": {
+            "title": "Has Expiry",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_type",
+          "access",
+          "origin",
+          "has_expiry"
+        ],
+        "title": "ShortLinkCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:denied",
+      "class": "ShortLinkDenied",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone opened one of the user's links and was turned away (dead, sign-in needed, not granted).",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone opened one of the user's links and was turned away (dead, sign-in needed, not granted).",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "expired",
+              "revoked",
+              "removed",
+              "target_deleted",
+              "sign_in_required",
+              "forbidden"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkDenied",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:opened",
+      "class": "ShortLinkOpened",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\n    Unfurl bots building a chat preview never count.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\nUnfurl bots building a chat preview never count.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "viewer_signed_in": {
+            "title": "Viewer Signed In",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_type",
+          "access",
+          "viewer_signed_in"
+        ],
+        "title": "ShortLinkOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:publish_rejected",
+      "class": "ShortLinkPublishRejected",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file's bytes were not published; its link shows only its name and size.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file's bytes were not published; its link shows only its name and size.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "too_large",
+              "quota"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkPublishRejected",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:reported",
+      "class": "ShortLinkReported",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone reported one of the user's links.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone reported one of the user's links.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "phishing",
+              "malware",
+              "harassment",
+              "illegal",
+              "other"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "reporter_signed_in": {
+            "title": "Reporter Signed In",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason",
+          "reporter_signed_in"
+        ],
+        "title": "ShortLinkReported",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:revoked",
+      "class": "ShortLinkRevoked",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "One of the user's links was turned off: by them, or with their account.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "One of the user's links was turned off: by them, or with their account.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "owner",
+              "rotated",
+              "expired",
+              "takedown",
+              "target_deleted",
+              "account_removed"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkRevoked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:rotated",
+      "class": "ShortLinkRotated",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user replaced a link with a new URL; the old one stopped opening.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user replaced a link with a new URL; the old one stopped opening.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "access"
+        ],
+        "title": "ShortLinkRotated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:taken_down",
+      "class": "ShortLinkTakenDown",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "One of the user's links was removed for breaking GAIA's terms.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "One of the user's links was removed for breaking GAIA's terms.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "reports_threshold",
+              "admin"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkTakenDown",
         "type": "object"
       }
     },
@@ -6511,24 +7822,28 @@
         "description": "A skill was installed from GitHub, written inline, or learned by GAIA's agent.",
         "properties": {
           "target": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Target",
             "type": "string"
           },
           "source": {
-            "enum": ["github", "inline", "learned"],
+            "enum": [
+              "github",
+              "inline",
+              "learned"
+            ],
             "title": "Source",
             "type": "string"
           },
           "author": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Author",
             "type": "string"
           },
           "skill_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6539,7 +7854,11 @@
             "title": "Skill Id"
           }
         },
-        "required": ["target", "source", "author"],
+        "required": [
+          "target",
+          "source",
+          "author"
+        ],
         "title": "SkillInstalled",
         "type": "object"
       }
@@ -6577,17 +7896,20 @@
         "description": "A user uninstalled a skill.",
         "properties": {
           "skill_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Skill Id",
             "type": "string"
           },
           "target": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Target",
             "type": "string"
           }
         },
-        "required": ["skill_id", "target"],
+        "required": [
+          "skill_id",
+          "target"
+        ],
         "title": "SkillUninstalled",
         "type": "object"
       }
@@ -6607,17 +7929,20 @@
         "description": "A skill's instructions were edited, by the user or by GAIA's agent.",
         "properties": {
           "target": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Target",
             "type": "string"
           },
           "author": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Author",
             "type": "string"
           }
         },
-        "required": ["target", "author"],
+        "required": [
+          "target",
+          "author"
+        ],
         "title": "SkillUpdated",
         "type": "object"
       }
@@ -6637,7 +7962,7 @@
         "description": "A subscription became active.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
@@ -6654,7 +7979,7 @@
           "product_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6667,7 +7992,7 @@
           "billing_interval": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6727,7 +8052,11 @@
             "title": "Backfilled"
           }
         },
-        "required": ["subscription_id", "plan_name", "currency"],
+        "required": [
+          "subscription_id",
+          "plan_name",
+          "currency"
+        ],
         "title": "SubscriptionActivated",
         "type": "object"
       }
@@ -6765,22 +8094,26 @@
         "description": "A subscription was cancelled, now or at the next billing date.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
           "product_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
           "billing_interval": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Billing Interval",
             "type": "string"
           }
         },
-        "required": ["subscription_id", "product_id", "billing_interval"],
+        "required": [
+          "subscription_id",
+          "product_id",
+          "billing_interval"
+        ],
         "title": "SubscriptionCancelled",
         "type": "object"
       }
@@ -6800,22 +8133,26 @@
         "description": "A subscription expired and the user fell back to the free plan.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
           "product_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
           "billing_interval": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Billing Interval",
             "type": "string"
           }
         },
-        "required": ["subscription_id", "product_id", "billing_interval"],
+        "required": [
+          "subscription_id",
+          "product_id",
+          "billing_interval"
+        ],
         "title": "SubscriptionExpired",
         "type": "object"
       }
@@ -6835,17 +8172,27 @@
         "description": "A checkout returned without a subscription; a declined charge or lost webhook reaches no server.",
         "properties": {
           "source": {
-            "enum": ["onboarding", "payment_success_page"],
+            "enum": [
+              "onboarding",
+              "payment_success_page"
+            ],
             "title": "Source",
             "type": "string"
           },
           "reason": {
-            "enum": ["declined", "confirmation_timeout", "verification_error"],
+            "enum": [
+              "declined",
+              "confirmation_timeout",
+              "verification_error"
+            ],
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["source", "reason"],
+        "required": [
+          "source",
+          "reason"
+        ],
         "title": "SubscriptionFailed",
         "type": "object"
       }
@@ -6865,22 +8212,25 @@
         "description": "A subscription's renewal failed or Dodo put it on hold, so the user lost Pro.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
           "status": {
-            "enum": ["failed", "on_hold"],
+            "enum": [
+              "failed",
+              "on_hold"
+            ],
             "title": "Status",
             "type": "string"
           },
           "product_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
           "billing_interval": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Billing Interval",
             "type": "string"
           }
@@ -6915,7 +8265,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "SubscriptionPageViewed",
         "type": "object"
       }
@@ -6945,7 +8297,7 @@
           "plan_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6958,7 +8310,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6969,7 +8321,10 @@
             "title": "Source"
           }
         },
-        "required": ["price", "is_monthly"],
+        "required": [
+          "price",
+          "is_monthly"
+        ],
         "title": "SubscriptionPlanViewed",
         "type": "object"
       }
@@ -6989,17 +8344,17 @@
         "description": "A subscription renewed for another billing period.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
           "product_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
           "billing_interval": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Billing Interval",
             "type": "string"
           },
@@ -7059,7 +8414,7 @@
         "description": "A user submitted a support request; lengths and counts only, never the text.",
         "properties": {
           "request_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Request Type",
             "type": "string"
           },
@@ -7124,7 +8479,9 @@
             "type": "string"
           }
         },
-        "required": ["todo_id"],
+        "required": [
+          "todo_id"
+        ],
         "title": "TodosChatOpened",
         "type": "object"
       }
@@ -7144,7 +8501,7 @@
         "description": "A user created a todo.",
         "properties": {
           "priority": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Priority",
             "type": "string"
           },
@@ -7249,6 +8606,79 @@
       }
     },
     {
+      "event": "todos:open_state_repaired",
+      "class": "TodosOpenStateRepaired",
+      "owner": "server",
+      "domain": "todos",
+      "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A tracked todo run ended with no next step even after being sent back, so code set one.",
+        "properties": {
+          "todo_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "waiting_on": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Waiting On"
+          }
+        },
+        "required": [
+          "todo_id"
+        ],
+        "title": "TodosOpenStateRepaired",
+        "type": "object"
+      }
+    },
+    {
+      "event": "todos:ref_reopened",
+      "class": "TodosRefReopened",
+      "owner": "server",
+      "domain": "todos",
+      "description": "A create for an outside object reopened the completed tracked todo it already had.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A create for an outside object reopened the completed tracked todo it already had.",
+        "properties": {
+          "todo_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "ref_source": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Ref Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "todo_id",
+          "ref_source"
+        ],
+        "title": "TodosRefReopened",
+        "type": "object"
+      }
+    },
+    {
       "event": "todos:run_result_delivered",
       "class": "TodosRunResultDelivered",
       "owner": "server",
@@ -7263,7 +8693,7 @@
         "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
         "properties": {
           "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Outcome",
             "type": "string"
           },
@@ -7272,7 +8702,7 @@
             "type": "boolean"
           },
           "trigger_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Type",
             "type": "string"
           },
@@ -7283,7 +8713,7 @@
           "platform": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -7296,7 +8726,10 @@
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -7325,7 +8758,12 @@
             "title": "Destination Basis"
           }
         },
-        "required": ["outcome", "delivered", "trigger_type", "recurring"],
+        "required": [
+          "outcome",
+          "delivered",
+          "trigger_type",
+          "recurring"
+        ],
         "title": "TodosRunResultDelivered",
         "type": "object"
       }
@@ -7345,7 +8783,7 @@
         "description": "A trigger subscription could not be registered on a tracked todo.",
         "properties": {
           "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Name",
             "type": "string"
           },
@@ -7355,6 +8793,7 @@
               "todo_not_found",
               "invalid_conditions",
               "invalid_config",
+              "invalid_subscription",
               "registration_failed",
               "no_trigger_instance"
             ],
@@ -7362,7 +8801,10 @@
             "type": "string"
           }
         },
-        "required": ["trigger_name", "reason"],
+        "required": [
+          "trigger_name",
+          "reason"
+        ],
         "title": "TodosSubscriptionFailed",
         "type": "object"
       }
@@ -7382,17 +8824,17 @@
         "description": "A trigger subscription was stored on a tracked todo.",
         "properties": {
           "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Name",
             "type": "string"
           },
           "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Action",
             "type": "string"
           },
           "resolution": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Resolution",
             "type": "string"
           },
@@ -7463,7 +8905,7 @@
           "priority": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -7508,18 +8950,6 @@
             ],
             "default": null,
             "title": "Bulk Count"
-          },
-          "count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Count"
           }
         },
         "title": "TodosToggled",
@@ -7541,17 +8971,17 @@
         "description": "A subscribed trigger passed its conditions and cooldown and ran its action.",
         "properties": {
           "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Name",
             "type": "string"
           },
           "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Action",
             "type": "string"
           },
           "resolution": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Resolution",
             "type": "string"
           },
@@ -7618,7 +9048,7 @@
             "anyOf": [
               {
                 "items": {
-                  "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                  "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                   "type": "string"
                 },
                 "type": "array"
@@ -7633,7 +9063,7 @@
           "priority": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -7726,7 +9156,9 @@
             "type": "string"
           }
         },
-        "required": ["view_kind"],
+        "required": [
+          "view_kind"
+        ],
         "title": "TodosViewChanged",
         "type": "object"
       }
@@ -7746,17 +9178,20 @@
         "description": "A proxied dispatch failed before the tool ran; against tool:used{via=execute} it is retries per success.",
         "properties": {
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
           "reason": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["tool_name", "reason"],
+        "required": [
+          "tool_name",
+          "reason"
+        ],
         "title": "ToolExecuteFailed",
         "type": "object"
       }
@@ -7776,14 +9211,17 @@
         "description": "A tool ran; via splits bound calls from proxied execute calls, source marks MCP-app calls.",
         "properties": {
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
           "via": {
             "anyOf": [
               {
-                "enum": ["bound", "execute"],
+                "enum": [
+                  "bound",
+                  "execute"
+                ],
                 "type": "string"
               },
               {
@@ -7831,8 +9269,184 @@
             "title": "Account Is Primary"
           }
         },
-        "required": ["tool_name"],
+        "required": [
+          "tool_name"
+        ],
         "title": "ToolUsed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "trigger:gate_decided",
+      "class": "TriggerGateDecided",
+      "owner": "server",
+      "domain": "trigger",
+      "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\n    outcome is what the run did and reason is why, so a shadow gate (enforced\n    false) reports reason jev_skip with outcome run. Inside the user's quiet hours\n    an event is held for the morning or let through now; urgent_choice names why\n    a let-through one could not wait.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run. Inside the user's quiet hours\nan event is held for the morning or let through now; urgent_choice names why\na let-through one could not wait.",
+        "properties": {
+          "owner_type": {
+            "enum": [
+              "workflow",
+              "todo"
+            ],
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "trigger_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Trigger Name",
+            "type": "string"
+          },
+          "gate_kind": {
+            "enum": [
+              "authored",
+              "system"
+            ],
+            "title": "Gate Kind",
+            "type": "string"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gaia",
+                  "user"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Author"
+          },
+          "outcome": {
+            "enum": [
+              "run",
+              "skip",
+              "hold",
+              "bypass"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "jev_run",
+              "jev_skip",
+              "jev_urgent",
+              "jev_can_wait",
+              "free_run",
+              "jev_error",
+              "jev_timeout",
+              "jev_malformed",
+              "jev_unconfigured"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "urgent_choice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "incident",
+                  "service_down",
+                  "meeting",
+                  "can_wait"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Urgent Choice"
+          },
+          "enforced": {
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Latency Ms"
+          }
+        },
+        "required": [
+          "owner_type",
+          "trigger_name",
+          "gate_kind",
+          "outcome",
+          "reason",
+          "enforced"
+        ],
+        "title": "TriggerGateDecided",
+        "type": "object"
+      }
+    },
+    {
+      "event": "trigger:gate_edited",
+      "class": "TriggerGateEdited",
+      "owner": "server",
+      "domain": "trigger",
+      "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
+        "properties": {
+          "owner_type": {
+            "enum": [
+              "workflow",
+              "todo"
+            ],
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "added",
+              "edited",
+              "disabled",
+              "enabled",
+              "removed"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "gate_kind": {
+            "enum": [
+              "authored",
+              "system"
+            ],
+            "title": "Gate Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_type",
+          "action",
+          "gate_kind"
+        ],
+        "title": "TriggerGateEdited",
         "type": "object"
       }
     },
@@ -7887,12 +9501,14 @@
         "description": "A user fetched their usage summary.",
         "properties": {
           "plan_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Plan Type",
             "type": "string"
           }
         },
-        "required": ["plan_type"],
+        "required": [
+          "plan_type"
+        ],
         "title": "UsageQueried",
         "type": "object"
       }
@@ -7912,12 +9528,14 @@
         "description": "The user clicked Add to your GAIA on a use-case page.",
         "properties": {
           "use_case_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Use Case Id",
             "type": "string"
           }
         },
-        "required": ["use_case_id"],
+        "required": [
+          "use_case_id"
+        ],
         "title": "UseCasesClicked",
         "type": "object"
       }
@@ -7975,7 +9593,7 @@
           "login_method": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8032,7 +9650,10 @@
             "type": "boolean"
           }
         },
-        "required": ["method", "has_completed_onboarding"],
+        "required": [
+          "method",
+          "has_completed_onboarding"
+        ],
         "title": "UserSessionResumed",
         "type": "object"
       }
@@ -8054,7 +9675,7 @@
           "signup_method": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8098,7 +9719,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8130,7 +9751,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8206,12 +9827,14 @@
         "description": "The voice worker joined a room minted for a known GAIA user.",
         "properties": {
           "room": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Room",
             "type": "string"
           }
         },
-        "required": ["room"],
+        "required": [
+          "room"
+        ],
         "title": "VoiceSessionStarted",
         "type": "object"
       }
@@ -8233,7 +9856,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8281,14 +9904,18 @@
         "description": "The user opened the what's-new modal from the sidebar card or the settings menu.",
         "properties": {
           "source": {
-            "enum": ["sidebar_card", "settings_menu", "settings_menu_view_all"],
+            "enum": [
+              "sidebar_card",
+              "settings_menu",
+              "settings_menu_view_all"
+            ],
             "title": "Source",
             "type": "string"
           },
           "releaseId": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8311,7 +9938,9 @@
             "title": "Index"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "WhatsNewCardClicked",
         "type": "object"
       }
@@ -8331,12 +9960,14 @@
         "description": "The user dismissed the what's-new card until the next release.",
         "properties": {
           "releaseId": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Releaseid",
             "type": "string"
           }
         },
-        "required": ["releaseId"],
+        "required": [
+          "releaseId"
+        ],
         "title": "WhatsNewCardDismissed",
         "type": "object"
       }
@@ -8360,7 +9991,9 @@
             "type": "integer"
           }
         },
-        "required": ["unseenCount"],
+        "required": [
+          "unseenCount"
+        ],
         "title": "WhatsNewCardShown",
         "type": "object"
       }
@@ -8380,12 +10013,14 @@
         "description": "The user clicked through to the full release notes.",
         "properties": {
           "releaseId": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Releaseid",
             "type": "string"
           }
         },
-        "required": ["releaseId"],
+        "required": [
+          "releaseId"
+        ],
         "title": "WhatsNewDocsClicked",
         "type": "object"
       }
@@ -8410,7 +10045,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "WhatsNewModalOpened",
         "type": "object"
       }
@@ -8430,7 +10067,7 @@
         "description": "The user viewed one release in the what's-new modal.",
         "properties": {
           "releaseId": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Releaseid",
             "type": "string"
           },
@@ -8439,7 +10076,10 @@
             "type": "integer"
           }
         },
-        "required": ["releaseId", "index"],
+        "required": [
+          "releaseId",
+          "index"
+        ],
         "title": "WhatsNewSlideViewed",
         "type": "object"
       }
@@ -8468,7 +10108,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A workflow was created, by the user or generated for a todo; origin says which.",
-      "previous_names": ["workflows:created"],
+      "previous_names": [
+        "workflows:created"
+      ],
       "budget_per_user_day": 200,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8489,7 +10131,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8502,7 +10144,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8547,9 +10189,21 @@
             ],
             "default": null,
             "title": "Is Todo Workflow"
+          },
+          "delivery": {
+            "enum": [
+              "now",
+              "brief",
+              "silent"
+            ],
+            "title": "Delivery",
+            "type": "string"
           }
         },
-        "required": ["origin"],
+        "required": [
+          "origin",
+          "delivery"
+        ],
         "title": "WorkflowCreated",
         "type": "object"
       }
@@ -8578,7 +10232,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user deleted a workflow.",
-      "previous_names": ["workflows:deleted"],
+      "previous_names": [
+        "workflows:deleted"
+      ],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8596,7 +10252,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A workflow run was queued manually, or a background-triggered run completed.",
-      "previous_names": ["workflows:executed"],
+      "previous_names": [
+        "workflows:executed"
+      ],
       "budget_per_user_day": 200,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8607,7 +10265,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8620,7 +10278,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8641,7 +10299,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user published a workflow to the community.",
-      "previous_names": ["workflows:published"],
+      "previous_names": [
+        "workflows:published"
+      ],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8670,7 +10330,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8681,14 +10341,21 @@
             "title": "Workflow Id"
           },
           "outcome": {
-            "enum": ["delivered", "undelivered", "lookup_failed"],
+            "enum": [
+              "delivered",
+              "undelivered",
+              "lookup_failed"
+            ],
             "title": "Outcome",
             "type": "string"
           },
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -8719,7 +10386,7 @@
           "platform": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8730,7 +10397,9 @@
             "title": "Platform"
           }
         },
-        "required": ["outcome"],
+        "required": [
+          "outcome"
+        ],
         "title": "WorkflowResultDelivered",
         "type": "object"
       }
@@ -8741,7 +10410,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user asked for a workflow's steps to be regenerated.",
-      "previous_names": ["workflows:steps_regenerated"],
+      "previous_names": [
+        "workflows:steps_regenerated"
+      ],
       "budget_per_user_day": 25,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8758,7 +10429,10 @@
             "type": "integer"
           }
         },
-        "required": ["force_different_tools", "steps_count"],
+        "required": [
+          "force_different_tools",
+          "steps_count"
+        ],
         "title": "WorkflowStepsRegenerated",
         "type": "object"
       }
@@ -8769,7 +10443,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user unpublished a workflow.",
-      "previous_names": ["workflows:unpublished"],
+      "previous_names": [
+        "workflows:unpublished"
+      ],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8794,7 +10470,25 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user edited a workflow.",
-        "properties": {},
+        "properties": {
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": [
+                  "now",
+                  "brief",
+                  "silent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delivery"
+          }
+        },
         "title": "WorkflowUpdated",
         "type": "object"
       }
@@ -8814,17 +10508,20 @@
         "description": "A user opened a workflow card's use-case page; client-side routing the server never sees.",
         "properties": {
           "slug": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Slug",
             "type": "string"
           },
           "variant": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Variant",
             "type": "string"
           }
         },
-        "required": ["slug", "variant"],
+        "required": [
+          "slug",
+          "variant"
+        ],
         "title": "WorkflowCardNavigate",
         "type": "object"
       }

@@ -16,6 +16,7 @@ stubs the changes script to name ``app.py``.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -60,13 +61,16 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def run(
+    repo: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "tools/lints/check_plr_complexity.py", *args],
         cwd=repo,
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, **(env or {})},
     )
 
 
@@ -105,3 +109,23 @@ def test_update_round_trips_the_deferral_field(repo: Path) -> None:
     assert (
         f"app.py\tPLR0913\tdeferred-until={until.isoformat()}; {REASON}\n" in baseline.read_text()
     )
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+
+def test_a_commit_is_not_blocked_by_an_untracked_file(repo: Path) -> None:
+    """Prek stashes unstaged edits but not untracked files, so a scratch file must not count."""
+    (repo / "tools/lints/plr_complexity_baseline.txt").write_text("# header\napp.py\tPLR0913\n")
+    (repo / "scripts/ci/changes.sh").write_text("#!/bin/sh\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", "-A")
+    (repo / "scratch.py").write_text(APP_WITH_VIOLATION)
+
+    at_commit = run(repo, env={"PRE_COMMIT": "1"})
+    assert at_commit.returncode == 0, at_commit.stderr
+
+    outside_a_commit = run(repo, env={"PRE_COMMIT": ""})
+    assert outside_a_commit.returncode == 1
+    assert "scratch.py" in outside_a_commit.stderr

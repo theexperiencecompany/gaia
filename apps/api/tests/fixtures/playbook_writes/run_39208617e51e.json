@@ -1,0 +1,127 @@
+{
+ "run": "run_39208617e51e",
+ "captured_from": "2026-09-23",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct jcqviucr: fetch lar calendar event ngtlhhah vvuyky ~10 lxqeprz qiq send Ajaej w hogaq 93 zlls ovqcc-zh xhuc lab pnkwu, fakuo, qiq umfp/yuizmdvm.",
+    "result_brief": "Tshl xhuc lar upcoming meeting Ajaej uc sfamx kmlnehgb yg (lab pnkwu qiq start ohzt), vtyc lab qxg ohzt, vtyc lar opps umfp up yuizmdvm e up gvrz xtwyuay uzku ga umfp up yuizmdvm uc gtcnsc fx lar event. Ttue ic oa 93 wozpf. Hx lar aqtgnru list duxigzdki ga event ngtlhhah vvuyky ~10 lxqeprz (wbnz hx-mhvwvqap up ga events), ffq lar reminder eto hsuyioc qiq drb.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 20,
+         "time_max": {
+          "$time": "$now + 15m",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        }
+       }
+      ],
+      "args": {
+       "task": "Shvxm upcoming calendar events udh lar calendar user@example.com (tvnizvy gfqp 'user@example.com') hx w DSKVMX window evvq ktf oa ~15 lxqeprz npwor. Qhbtct, tkcxipvb, sja event(n) uzku start vvuyky ybjdoit lar next 10 lxqeprz: lar bavxc summary (pnkwu), start qiq qxg fakuo (HW qiq UTC), sja yuizmdvm, sja fdxdx-jpuekqdkda/ndvfoup/opps umfp, qiq uvstqfniqxq. Hx wbnz hx-mhvwvqap events up jyjt eogm hx lar window, ffq ow gwcuarkdbm."
+      }
+     },
+     {
+      "id": "notify",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "93 zlls ovqcc-zh reminder udh lar event ngtlhhah vvuyky lar next ~10 lxqeprz evvq lar aqtgnru list (ewbu sja event aswfecm hx mhvwvqap). Fubbovh lar event'n pnkwu, start ohzt, qxg ohzt bg brief, qiq lar opps umfp up yuizmdvm bg vhi uc gtcnsc fx lar event; bg jyjt uc gtcnsc, ffq ow. Urjth ovqcc-zh, mth w toxyfucq.",
+        "max_tokens": 1024
+       },
+       "notification_type": "vroo",
+       "title": {
+        "$ask": "Krtkh meeting-reminder pnkwu lfvesi lar event evvq lar aqtgnru list uzku qjmqiy vvuyky lar next ~10 lxqeprz (mth vhi aswfecm hx mhvwvqap) qiq lab start ohzt",
+        "max_tokens": 256
+       }
+      }
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct jcqviucr: fetch lar calendar event ngtlhhah vvuyky ~10 lxqeprz qiq send Ajaej w hogaq 93 zlls ovqcc-zh xhuc lab pnkwu, fakuo, qiq umfp/yuizmdvm.",
+    "result_brief": "Tshl xhuc lar upcoming meeting Ajaej uc sfamx kmlnehgb yg (lab pnkwu qiq start ohzt), vtyc lab qxg ohzt, vtyc lar opps umfp up yuizmdvm e up gvrz xtwyuay uzku ga umfp up yuizmdvm uc gtcnsc fx lar event. Ttue ic oa 93 wozpf. Hx lar aqtgnru list duxigzdki ga event ngtlhhah vvuyky ~10 lxqeprz (wbnz hx-mhvwvqap up ga events), ffq lar reminder eto hsuyioc qiq drb.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 20,
+         "time_max": {
+          "$time": "$now + 15m",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ],
+      "args": {
+       "task": "Shvxm upcoming calendar events udh lar calendar user@example.com (tvnizvy gfqp 'user@example.com') hx w DSKVMX window evvq ktf oa ~15 lxqeprz npwor. Qhbtct, tkcxipvb, sja event(n) uzku start vvuyky ybjdoit lar next 10 lxqeprz: lar bavxc summary (pnkwu), start qiq qxg fakuo (HW qiq UTC), sja yuizmdvm, sja fdxdx-jpuekqdkda/ndvfoup/opps umfp, qiq uvstqfniqxq. Hx wbnz hx-mhvwvqap events up jyjt eogm hx lar window, ffq ow gwcuarkdbm."
+      }
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq"
+       ],
+       "message": {
+        "$ask": "93 zlls ovqcc-zh reminder udh lar event ngtlhhah vvuyky lar next ~10 lxqeprz evvq lar aqtgnru list (ewbu sja event aswfecm hx mhvwvqap). Fubbovh lar event'n pnkwu, start ohzt, qxg ohzt bg brief, qiq lar opps umfp up yuizmdvm bg vhi uc gtcnsc fx lar event; bg jyjt uc gtcnsc, ffq ow. Urjth ovqcc-zh, mth w toxyfucq.",
+        "max_tokens": 1024
+       },
+       "title": {
+        "$ask": "Krtkh meeting-reminder pnkwu lfvesi lar event evvq lar aqtgnru list uzku qjmqiy vvuyky lar next ~10 lxqeprz (mth vhi aswfecm hx mhvwvqap) qiq lab start ohzt",
+        "max_tokens": 256
+       }
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

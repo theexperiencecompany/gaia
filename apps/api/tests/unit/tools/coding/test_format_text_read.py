@@ -7,6 +7,9 @@ only). The footer/total must be consistent.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+from app.agents.tools.coding import read_tool
 from app.agents.tools.coding.read_tool import _format_text_read
 
 
@@ -77,3 +80,78 @@ def test_lone_carriage_return_is_a_line_break() -> None:
     out = _format_text_read("/workspace/x", "a\rb\rc", 0, 2000, None)
     assert len(_numbered_lines(out)) == 3
     assert "\r" not in out
+
+
+def test_a_page_of_long_lines_stops_at_the_output_cap_and_offers_the_next_offset() -> None:
+    """Regression: 400 JSONL lines of whole emails came back as 1.2M chars (a 386k-token call)."""
+    line = "x" * 3_000
+    text = "\n".join(f"{index}{line}" for index in range(400))
+
+    out = read_tool._format_text_read("/workspace/mail.jsonl", text, 0, 400, None)
+
+    shown = _numbered_lines(out)
+    assert len(out) <= read_tool.MAX_READ_OUTPUT_CHARS + 200
+    assert 0 < len(shown) < 400
+    assert f"offset={len(shown) + 1}" in out
+
+
+def test_a_single_line_longer_than_the_cap_is_cut_and_paging_still_advances() -> None:
+    text = "y" * (read_tool.MAX_READ_OUTPUT_CHARS * 2) + "\nnext"
+
+    out = read_tool._format_text_read("/workspace/one.jsonl", text, 0, 10, None)
+
+    assert len(out) <= read_tool.MAX_READ_OUTPUT_CHARS + 300
+    assert "...[line cut: the rest of this line is not shown; use grep or query_json for it]" in out
+    assert "offset=2" in out
+
+
+def _two_lines_joined_to(total: int) -> str:
+    """Two lines whose numbered page ("     1\\t...\\n     2\\t...") is exactly total characters."""
+    first = 50_000 - len("     1\t")
+    second = total - 50_000 - 1 - len("     2\t")
+    return "a" * first + "\n" + "b" * second
+
+
+def test_a_page_exactly_at_the_cap_is_shown_whole() -> None:
+    text = _two_lines_joined_to(read_tool.MAX_READ_OUTPUT_CHARS)
+
+    out = read_tool._format_text_read("/workspace/x", text, 0, 10, None)
+
+    assert len(_numbered_lines(out)) == 2
+    assert "output capped" not in out
+
+
+def test_one_character_over_the_cap_holds_the_last_line_back() -> None:
+    text = _two_lines_joined_to(read_tool.MAX_READ_OUTPUT_CHARS + 1)
+
+    out = read_tool._format_text_read("/workspace/x", text, 0, 10, None)
+
+    assert len(_numbered_lines(out)) == 1
+    assert "offset=2" in out
+
+
+def test_the_read_event_counts_only_the_lines_shown() -> None:
+    text = _two_lines_joined_to(read_tool.MAX_READ_OUTPUT_CHARS + 1)
+    with patch.object(read_tool, "safe_emit") as emit:
+        read_tool._format_text_read("/workspace/x", text, 0, 10, None)
+
+    assert emit.call_args.args[0]["file_data"]["lines_returned"] == 1
+
+
+def test_a_page_ending_on_the_last_line_offers_no_more() -> None:
+    out = _format_text_read("/workspace/x", "a\nb\nc", 0, 3, None)
+
+    assert len(_numbered_lines(out)) == 3
+    assert "offset=" not in out
+
+
+def test_a_cut_last_line_offers_no_page_past_the_end() -> None:
+    text = "z" * (read_tool.MAX_READ_OUTPUT_CHARS * 2)
+
+    out = read_tool._format_text_read("/workspace/one.jsonl", text, 0, 10, None)
+
+    assert out.endswith(
+        f"[showing lines 1-1 of 1, output capped at {read_tool.MAX_READ_OUTPUT_CHARS} "
+        "characters; no lines follow]"
+    )
+    assert "offset=" not in out

@@ -1,12 +1,11 @@
-export const BOT_PLATFORMS = [
-  "telegram",
-  "whatsapp",
-  "imessage",
-  "slack",
-  "discord",
-] as const;
+import {
+  BOT_PLATFORM_IDS,
+  type BotPlatform,
+} from "@shared/constants/platforms";
 
-export type BotPlatform = (typeof BOT_PLATFORMS)[number];
+export type { BotPlatform };
+
+export const BOT_PLATFORMS = BOT_PLATFORM_IDS;
 
 export const BOT_PLATFORM_LABELS: Record<BotPlatform, string> = {
   telegram: "Telegram",

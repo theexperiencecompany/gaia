@@ -144,7 +144,7 @@ def _get_subagent_tools() -> dict[str, IndexedToolEntry]:
 
     Only MCP-managed integrations are indexed: their tools are issued per user
     in namespaces discovery never enters, so the pointer doc is the only way the
-    model learns their id to hand off. Provider/built-in integrations surface as
+    model learns their id to activate. Provider/built-in integrations surface as
     their own tools, so indexing them would resurrect the removed discovery surface.
     """
     subagent_tools: dict[str, IndexedToolEntry] = {}
@@ -156,7 +156,6 @@ def _get_subagent_tools() -> dict[str, IndexedToolEntry]:
         provider_name = subagent.name
         short_name = subagent.short_name or subagent.id
 
-        # Create comprehensive description matching handoff_tools pattern
         description = (
             f"{provider_name} ({short_name}). "
             f"{provider_name} specializes in {cfg.domain}. "
@@ -238,10 +237,9 @@ _BUILTIN_SUBAGENT_PREFIX = "subagent:"
 def _is_dynamic_subagent(composite_key: str, namespace: str) -> bool:
     """Identify a custom/device MCP subagent by its composite key and namespace.
 
-    True only for the "subagents" namespace, keyed by integration_id at connect time,
-    never a builtin "subagent:<id>". The store re-seed rebuilds only builtins
-    (all_subagents()), so treating these as stale would delete them on every restart
-    and strand the executor's handoff target for connected custom/device MCP servers.
+    True only for "subagents" entries keyed by integration_id, never a builtin
+    "subagent:<id>". The re-seed rebuilds only builtins, so calling these stale would
+    delete the pointer activate_integration needs on every restart.
     """
     if namespace != _SUBAGENTS_NAMESPACE:
         return False

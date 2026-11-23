@@ -59,10 +59,6 @@ services:
       # A custom MCP server added as localhost runs on the developer's machine,
       # which this container reaches as host.docker.internal.
       LOOPBACK_HOST_ALIAS: host.docker.internal
-      # Public base for the recap and step-screenshot links (served by THIS api).
-      # Left unset so it falls back to HOST; a friendly vhost such as
-      # browser.heygaia.io must reverse-proxy here, never to the browser host.
-      # BROWSER_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).
@@ -85,10 +81,6 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       CHROMADB_HOST: chromadb
       CHROMADB_PORT: "8000"
-      # E2B's watch_dir (inotify) cannot watch the FUSE-mounted JuiceFS
-      # ("cannot watch path on network filesystem"). Use the JuiceFS-native
-      # .accesslog tail instead — the Phase 0 verdict for this stack.
-      ARTIFACT_DETECTION_MODE: accesslog
       # Dev overrides the Infisical/cloud JUICEFS_META_URL_TEMPLATE (redis DB
       # numbers, {shard} = the DB index) with the local jfs-meta-redis service.
       # Prod keeps the cloud meta so the API host and the E2B sandboxes share
@@ -145,6 +137,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - gaia_network
       # Reaches browser-host:8930 on its isolated island.
@@ -315,6 +309,40 @@ services:
     networks:
       - gaia_network
 
+  # The release's data migrations (apps/api/scripts/post_deploy.py), run to the end
+  # before the dockered API or worker starts, as in production. Natively, `nx dev api`
+  # and `nx worker api` run them first through the api:migrate target.
+  migrate:
+    image: gaia
+    profiles: ["backend", "worker", "all"]
+    working_dir: /app/apps/api
+    env_file:
+      - ../../apps/api/.env
+    environment:
+      - GAIA_SERVICE_NAME=migrate
+      - PYTHONPATH=/app/apps/api
+      - UV_NO_SYNC=1
+      - POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/langgraph
+      - REDIS_URL=redis://redis:6379/0
+      - MONGO_DB=mongodb://mongo:27017/
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000
+    command: ["python", "-m", "scripts.post_deploy", "--apply"]
+    restart: "no"
+    volumes:
+      - ../../apps/api/app:/app/apps/api/app
+      - ../../apps/api/scripts:/app/apps/api/scripts
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   # Arq Worker (use profile to run in docker, otherwise run locally with mise)
   arq_worker:
     container_name: arq_worker
@@ -375,6 +403,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - gaia_network
       # The worker also drives browser tasks, so it needs the browser island too.
@@ -762,7 +792,8 @@ services:
   # gaia-browser-host — our own browser hosts for browser automation, two of them
   # off the same image: browser-host runs Obscura (a self-contained Rust CDP
   # server baked into the image) for users who opted in, and browser-host-chrome
-  # runs Chromium (headless-shell under /opt/browsers) for every default user,
+  # runs Chromium (headless-shell under /opt/browsers; Fortress, the image's
+  # Chromium fork, with BROWSER_HOST_FORTRESS=true) for every default user,
   # and takes Obscura runs that fall back. Each runs one long-lived engine, one
   # isolated context per session, a per-session CDP-filtering proxy and an
   # authenticated screencast live view. The API + worker reach them over the
@@ -845,8 +876,14 @@ services:
       BROWSER_ENGINE: chromium
       BROWSER_HOST_URL: http://browser-host-chrome:8931
       BROWSER_HOST_PORT: 8931
-      PLAYWRIGHT_BROWSERS_PATH: /opt/browsers
       BROWSER_HOST_KEY: ${BROWSER_HOST_KEY:-}
+      # Off by default. On, Fortress presents one pinned persona; a deployment sets
+      # the timezone and languages to its egress country's (blank: the persona's own).
+      BROWSER_HOST_FORTRESS: ${BROWSER_HOST_FORTRESS:-false}
+      FORTRESS_TIMEZONE: ${FORTRESS_TIMEZONE:-}
+      FORTRESS_LANGUAGES: ${FORTRESS_LANGUAGES:-}
+      # Fortress's license: set, its v3 engine; empty, its public v1 engine.
+      TILION_LICENSE_KEY: ${TILION_LICENSE_KEY:-}
     networks:
       - gaia_browser_net
     # Chromium writes its shared memory to /tmp (--disable-dev-shm-usage), so /dev/shm

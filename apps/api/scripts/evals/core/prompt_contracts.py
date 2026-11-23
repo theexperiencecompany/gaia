@@ -28,7 +28,6 @@ PROMPT_SOURCES: dict[str, tuple[str, str]] = {
     "comms": ("app.agents.prompts.comms_prompts", "COMMS_AGENT_PROMPT"),
     "executor": ("app.agents.prompts.comms_prompts", "EXECUTOR_AGENT_PROMPT"),
     "openui": ("app.agents.prompts.openui_prompts", "OPENUI_SURFACE_POLICY"),
-    "subagent_base": ("app.agents.prompts.subagent_prompts", "BASE_SUBAGENT_PROMPT"),
     "subagent_gmail": ("app.agents.prompts.subagent_prompts", "GMAIL_AGENT_SYSTEM_PROMPT"),
     "memory_extraction": ("app.agents.prompts.memory_prompts", "BASE_MEMORY_EXTRACTION_PROMPT"),
 }
@@ -216,7 +215,7 @@ CLAUSES: tuple[Clause, ...] = (
         name="acknowledge_exactly_once",
         source="comms",
         starts_at="## Actions: three moments",
-        ends_before="Needs a service they haven't connected",
+        ends_before="Writing the task, since the executor knows only what you write:",
         governs="the three moments: silent call, a reaction or one short ack, then the outcome",
         depends_on=("data/quality/bubbles.yaml", "data/quality/multiturn_extra.yaml"),
     ),
@@ -230,7 +229,7 @@ CLAUSES: tuple[Clause, ...] = (
     Clause(
         name="never_reproduce_internal_tags",
         source="comms",
-        starts_at="- Never write the internal tags",
+        starts_at="- Never write the internal tag",
         governs="the internal channel tags never appear in a user-facing reply",
         depends_on=("gate:internal_machinery",),
     ),
@@ -350,10 +349,11 @@ CLAUSES: tuple[Clause, ...] = (
     ),
     # -- subagents ---------------------------------------------------------
     Clause(
-        name="finish_task_carries_the_data",
-        source="subagent_base",
-        starts_at="- finish_task(result=...) MUST contain the ACTUAL data",
-        governs="a subagent returns every item, not a count or a couple of highlights",
+        name="result_carries_the_data",
+        source="executor",
+        starts_at="- Be factual, specific, and complete: include names, counts, IDs,",
+        ends_before="- Always carry the relevant IDs through",
+        governs="the executor's result carries every item, not a count or a couple of highlights",
         depends_on=("gate:communicate", "data/capability/multitool.yaml"),
     ),
     Clause(

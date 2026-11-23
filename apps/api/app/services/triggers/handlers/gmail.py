@@ -21,6 +21,7 @@ from app.models.composio_schemas import GmailEmailSentPayload, GmailNewMessagePa
 from app.models.webhook_models import ComposioTriggerEventIds
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
+from app.services.triggers.gmail_signals import gmail_message_signals
 from app.services.triggers.scope_catalog import TRIGGER_CONFIG_CLASSES
 from shared.py.wide_events import log
 
@@ -66,6 +67,11 @@ class GmailTriggerHandler(TriggerHandler):
 
     def trigger_names_for_event(self, event_type: str) -> list[str]:
         return [_EVENTS[event_type].trigger_name]
+
+    def event_signals(self, event_type: str, data: Mapping[str, object]) -> Mapping[str, object]:
+        if _EVENTS[event_type].trigger_name != GMAIL_NEW_MESSAGE_TRIGGER_NAME:
+            return {}
+        return gmail_message_signals(data)
 
     @property
     def registers_instances(self) -> bool:

@@ -1,0 +1,48 @@
+{
+ "run": "run_6b488890ccab",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status",
+   "tool_category": "integrations",
+   "args": {
+    "integration_names": [
+     "googlecalendar",
+     "gmail"
+    ]
+   },
+   "result_digest": "Zmlvvp Tvelkhjg: f Kze Jukrtjhyu\nSvdly: f Kze Jukrtjhyu"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 1,
+   "written": {
+    "description": "Nyoix Zmlvvp Tvelkhjg qiq Svdly mondsseazv status oa lhssshhoa bg lar cbtzoeidsetl toxyfucq jcqviucr qas tcocowl.",
+    "steps": [
+     {
+      "id": "status",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "googlecalendar",
+        "gmail"
+       ]
+      }
+     }
+    ],
+    "result_brief": "Cvouqs ptybmub Zmlvvp Tvelkhjg qiq Svdly hbe qtlgdynes oa AAKY. Hx juaebs (up yagc) lrqvtv hq Kze Jukrtjhyu, kfhta dczcgia uzku lar cbtzoeidsetl toxyfucq jcqviucr uc ayhogju cu Loyy 1 qiq ga cxzzzz duorguze, xuhbkmk, up toxyfucq bdmpzrhei sjuyg ku tbgkjtyjdd up yxhlihzsa e jd mth slfldlfbb sja yg ssjf. Hx yagc hbe qtlgdynes, tcocowl oa znkiciio today'n cxzzzz xiqnztk events qiq fmpvi urvstvngp; gvrz lar mondsseazv status yg jqla lniglmkhtgi gwcuarkdbm hx xillm iygp."
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "check_integrations_status#1",
+     "id": "status"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

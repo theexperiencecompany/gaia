@@ -137,6 +137,21 @@ def test_a_class_built_on_an_imported_library_typeddict_is_a_typeddict(
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [11]
 
 
+def test_a_class_built_on_a_parametrized_library_typeddict_is_a_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from langchain.agents.middleware.types import AgentState\n"
+        "class GaiaState(AgentState[object], total=False):\n"
+        "    ids: list\n"
+        "def f(state: GaiaState, plain: dict) -> None:\n"
+        "    a = state.get('ids')\n"
+        "    b = plain['ids']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [6]
+
+
 def test_a_loop_over_a_typeddict_collection_binds_a_typed_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -168,6 +183,79 @@ def test_a_loop_over_a_typeddict_collection_binds_a_typed_target(
         "        return [p['role'] for p in history]\n"
     )
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [15, 16, 19, 21]
+
+
+def test_a_typevar_bound_to_a_typeddict_is_a_declared_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mypy key-checks a read through a TypeVar against its TypedDict bound."""
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from collections.abc import Mapping\n"
+        "from typing import Any, TypedDict, TypeVar\n"
+        "class Doc(TypedDict):\n"
+        "    id: str\n"
+        "DocT = TypeVar('DocT', bound=Doc)\n"
+        "LooseT = TypeVar('LooseT', bound=Mapping[str, Any])\n"
+        "def f(doc: DocT, docs: list[DocT], loose: LooseT) -> None:\n"
+        "    a = doc['id']\n"
+        "    b = [d['id'] for d in docs]\n"
+        "    c = loose['id']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [10]
+
+
+def test_a_typevar_exemption_stays_in_the_module_that_binds_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another module's T of the same name is its own TypeVar, with its own bound."""
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    package = tmp_path / "apps" / "api" / "app" / "services"
+    package.mkdir(parents=True)
+    typed, loose = package / "typed.py", package / "loose.py"
+    typed.write_text(
+        "from typing import TypedDict, TypeVar\n"
+        "class Doc(TypedDict):\n"
+        "    id: str\n"
+        "T = TypeVar('T', bound=Doc)\n"
+        "def f(doc: T) -> str:\n"
+        "    return doc['id']\n"
+    )
+    loose.write_text(
+        "from collections.abc import Mapping\n"
+        "from typing import TypeVar\n"
+        "T = TypeVar('T', bound=Mapping[str, str])\n"
+        "def g(value: T) -> str:\n"
+        "    return value['id']\n"
+    )
+    found = scan([typed, loose])
+    assert {path: lines for (path, rule), lines in found.items() if rule == STRING_KEY_READ} == {
+        "apps/api/app/services/loose.py": [5]
+    }
+
+
+def test_a_typevar_name_bound_two_ways_in_one_module_is_never_exempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A class-scoped TypeVar shadows nothing at module level, and is no exemption either."""
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from collections.abc import Mapping\n"
+        "from typing import Generic, TypedDict, TypeVar\n"
+        "class Doc(TypedDict):\n"
+        "    id: str\n"
+        "T = TypeVar('T', bound=Mapping[str, str])\n"
+        "class Box(Generic[T]):\n"
+        "    T = TypeVar('T', bound=Doc)\n"
+        "def f(value: T) -> str:\n"
+        "    return value['id']\n"
+        "U = TypeVar('U', bound=Doc)\n"
+        "class Shadow:\n"
+        "    U = TypeVar('U', bound=Mapping[str, str])\n"
+        "def g(value: U) -> str:\n"
+        "    return value['id']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [9, 14]
 
 
 def test_a_loop_over_a_typeddict_mapping_binds_its_values(
@@ -298,3 +386,22 @@ def test_a_storage_state_from_anywhere_but_playwright_is_not_a_known_typeddict(
         "    a = state['cookies']\n"
     )
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [3]
+
+
+def test_a_typeddict_declared_in_the_shared_lib_is_a_declared_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    shared = tmp_path / "libs" / "shared" / "py" / "wire.py"
+    shared.parent.mkdir(parents=True)
+    shared.write_text("from typing import TypedDict\nclass Card(TypedDict):\n    name: str\n")
+    module = tmp_path / "apps" / "api" / "app" / "services" / "probe.py"
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "from shared.py.wire import Card\n"
+        "def f(card: Card, raw: dict[str, str]) -> str:\n"
+        "    a = card['name']\n"
+        "    return a + raw['name']\n"
+    )
+    found = scan([module], shape_sources=[shared])
+    assert found == {("apps/api/app/services/probe.py", STRING_KEY_READ): [4]}

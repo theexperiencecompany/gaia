@@ -22,10 +22,7 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture(autouse=True)
 def link_base(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL",
-        "https://browser.heygaia.io/",
-    )
+    monkeypatch.setattr("app.services.browser.links.settings.HOST", "https://api.heygaia.io/")
 
 
 def _code(link: str) -> str:
@@ -56,7 +53,7 @@ async def test_a_recap_link_opens_the_screenshots_the_run_uploaded_for_a_week(
 
     assert link is not None
     # A trailing slash on the base must not survive into a double slash before "replays".
-    assert link.startswith("https://browser.heygaia.io/replays/")
+    assert link.startswith("https://api.heygaia.io/api/v1/browser/replays/")
     assert await resolve_replay_code(_code(link)) == ReplayRecord(
         session_id="s1", shots=["https://cdn/1.jpg", "https://cdn/2.jpg"]
     )

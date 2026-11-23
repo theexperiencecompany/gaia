@@ -1,4 +1,4 @@
-"""Unit tests for app.agents.core.messages — construct_langchain_messages.
+"""Unit tests for app.agents.core.messages — comms_turn_messages.
 
 After the caching optimisation work, the message-construction contract is:
 
@@ -21,20 +21,18 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.context.assemble import AssembledContext
-from app.agents.context.slots import ONBOARDING_MARKER
 from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import (
     MessageAttachments,
     MessageScope,
-    construct_langchain_messages,
 )
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.constants.chat import ConversationSource
+from app.models.calendar_models import GoogleCalendarEventDateTime
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
+from app.models.workflow_models import WorkflowStep
+from shared.py.conversation_wire import ReplyToMessageData
+from tests._harness.context_chain import comms_turn_messages
 
 SYSTEM_MSG = SystemMessage(content="System prompt here")
 DYNAMIC_MSG = SystemMessage(
@@ -58,7 +56,7 @@ class _Returns(NamedTuple):
 
 
 def _patches(returns: _Returns = _Returns()) -> dict[str, Any]:
-    """Bundle context-manager patches for the helpers construct_langchain_messages calls."""
+    """Bundle context-manager patches for the helpers comms_turn_messages calls."""
     return {
         "create_system": patch(
             "app.agents.core.messages.create_system_message",
@@ -108,7 +106,7 @@ class TestConstructLangchainMessages:
         """The time HumanMessage is split off and appended last so minute ticks never shift the cacheable prefix."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="Hi there",
             )
 
@@ -131,7 +129,7 @@ class TestConstructLangchainMessages:
         )
         p = _patches(_Returns(memory_recall_msg=recall))
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="Hi there",
             )
 
@@ -146,9 +144,9 @@ class TestConstructLangchainMessages:
     async def test_create_system_receives_agent_type_and_source(self) -> None:
         p = _patches()
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="Hello",
-                scope=MessageScope(agent_type="executor", source="web"),
+                scope=MessageScope(agent_type="executor", source=ConversationSource.WEB),
             )
         mock_sys.assert_called_once()
         kwargs = mock_sys.call_args.kwargs
@@ -166,14 +164,14 @@ class TestConstructLangchainMessages:
             ),
         )
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(
                     user_id="uid-1",
                     user_name="Alice",
                     user_dict=user_dict,
                     agent_type="comms",
-                    source="whatsapp",
+                    source=ConversationSource.WHATSAPP,
                 ),
             )
 
@@ -198,7 +196,7 @@ class TestConstructLangchainMessages:
             ),
         )
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(
                     user_id="uid-1",
@@ -206,7 +204,7 @@ class TestConstructLangchainMessages:
                     user_dict=user_dict,
                     active_todo_id="todo-7",
                     execution_mode="background",
-                    source="slack",
+                    source=ConversationSource.SLACK,
                 ),
             )
 
@@ -220,7 +218,7 @@ class TestConstructLangchainMessages:
     async def test_a_user_with_no_onboarding_answers_carries_none_not_a_crash(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(user_id="uid-1", user_dict=AuthenticatedUser(user_id="uid-1")),
             )
@@ -234,7 +232,7 @@ class TestConstructLangchainMessages:
     async def test_an_unauthenticated_turn_carries_no_user_fields(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(user_dict=None),
             )
@@ -249,9 +247,9 @@ class TestConstructLangchainMessages:
         """The per-channel static prompt is selected via the source kwarg on create_system_message."""
         p = _patches()
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
-                scope=MessageScope(agent_type="comms", source="telegram"),
+                scope=MessageScope(agent_type="comms", source=ConversationSource.TELEGRAM),
             )
         assert mock_sys.call_args.kwargs["source"] == "telegram"
 
@@ -265,7 +263,7 @@ class TestContentPriority:
             id="wf-1",
             title="Test WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         p = _patches(_Returns(workflow_msg="WORKFLOW OUTPUT"))
         with (
@@ -276,7 +274,7 @@ class TestContentPriority:
             p["format_tool"],
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="run it",
                 scope=MessageScope(user_id="uid"),
                 attachments=MessageAttachments(selected_workflow=workflow),
@@ -292,8 +290,8 @@ class TestContentPriority:
             id="e-1",
             summary="Meeting",
             description="Team sync",
-            start={"dateTime": "2025-01-01T10:00:00Z"},
-            end={"dateTime": "2025-01-01T11:00:00Z"},
+            start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00:00Z"),
+            end=GoogleCalendarEventDateTime(dateTime="2025-01-01T11:00:00Z"),
         )
         p = _patches(_Returns(calendar_msg="CALENDAR OUTPUT"))
         with (
@@ -303,7 +301,7 @@ class TestContentPriority:
             p["format_tool"],
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="what about this",
                 attachments=MessageAttachments(selected_calendar_event=cal_event),
             )
@@ -320,7 +318,7 @@ class TestContentPriority:
             p["format_tool"] as mock_tool,
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="use this tool",
                 attachments=MessageAttachments(selected_tool="web_search"),
             )
@@ -337,7 +335,7 @@ class TestContentPriority:
             p["format_tool"] as mock_tool,
             p["format_files"],
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="search",
                 attachments=MessageAttachments(selected_tool="web_search", tool_category="search"),
             )
@@ -350,7 +348,7 @@ class TestContentPriority:
     async def test_user_content_fallback(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="plain text",
             )
 
@@ -366,7 +364,7 @@ class TestUserContentExtraction:
         """Regression: the maintenance sweep sends its prompt with no history, and every run raised."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(query="Is this tracked todo still alive?")
+            result = await comms_turn_messages(query="Is this tracked todo still alive?")
 
         assert result[2] == HumanMessage(content="Is this tracked todo still alive?")
 
@@ -375,14 +373,14 @@ class TestUserContentExtraction:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(query="")
+                await comms_turn_messages(query="")
 
     @pytest.mark.asyncio
     async def test_whitespace_only_content_raises(self) -> None:
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(
+                await comms_turn_messages(
                     query="   ",
                 )
 
@@ -397,7 +395,7 @@ class TestUserContentExtraction:
             )
         )
         with p["create_system"], p["build_dynamic"], p["get_uploads"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="",
                 scope=MessageScope(user_id="uid-1"),
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
@@ -413,7 +411,7 @@ class TestUserContentExtraction:
         p = _patches()
         with p["create_system"], p["build_dynamic"]:
             with pytest.raises(ValueError, match="No human message"):
-                await construct_langchain_messages(
+                await comms_turn_messages(
                     query="",
                     attachments=MessageAttachments(currently_uploaded_file_ids=[]),
                 )
@@ -430,7 +428,7 @@ class TestReplyContext:
             p["format_reply"] as mock_reply,
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="user content",
                 attachments=MessageAttachments(reply_to_message=reply),
             )
@@ -447,7 +445,7 @@ class TestReplyContext:
             p["format_reply"] as mock_reply,
             p["format_files"],
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hello",
             )
 
@@ -472,7 +470,7 @@ class TestFileContext:
             p["get_uploads"],
             p["format_files"] as mock_files,
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="check this",
                 scope=MessageScope(user_id="uid-1"),
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
@@ -500,7 +498,7 @@ class TestFileContext:
             p["get_uploads"] as get_uploads,
             p["format_files"] as mock_files,
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="check these",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1", "f2"]),
@@ -519,7 +517,7 @@ class TestFileContext:
             p["build_dynamic"],
             p["format_files"] as mock_files,
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=[]),
             )
@@ -535,7 +533,7 @@ class TestFileContext:
             p["build_dynamic"],
             p["format_files"],
         ):
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
             )
@@ -550,7 +548,7 @@ class TestFileContext:
             p["build_dynamic"],
             p["format_files"] as mock_files,
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hello",
                 attachments=MessageAttachments(currently_uploaded_file_ids=None),
             )
@@ -565,7 +563,7 @@ class TestTriggerContext:
             id="wf-1",
             title="Email WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         trigger = {"type": "gmail", "email_data": {"sender": "a@b.com"}}
         p = _patches()
@@ -575,7 +573,7 @@ class TestTriggerContext:
             p["format_workflow"] as mock_wf,
             p["format_files"],
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="run",
                 scope=MessageScope(user_id="uid"),
                 attachments=MessageAttachments(selected_workflow=workflow, trigger_context=trigger),
@@ -585,45 +583,25 @@ class TestTriggerContext:
         assert call_args[0][2] == trigger
 
 
-class TestTheOnboardingProbeSeesTheUsersActualMessage:
-    """The probe must receive the user's LATEST message, trimmed — not the first, not the assistant's reply."""
-
-    @staticmethod
-    def _probe() -> Any:
-        return patch(
-            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-            new_callable=AsyncMock,
-            return_value=None,
-        )
+class TestTheCommsContextKnowsWhereTheTurnIs:
+    """The new-user guidance reads the seeded thread and the mail facts off these two fields."""
 
     @pytest.mark.asyncio
-    async def test_it_receives_the_latest_user_message_trimmed(self) -> None:
+    async def test_the_conversation_and_the_onboarding_record_reach_the_sections(self) -> None:
+        onboarding = OnboardingSubdocument(completed=True, user_bio="Runs ops at a bakery.")
         p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
-            await construct_langchain_messages(
-                query="  what can you do?  ",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
+        with p["create_system"], p["build_dynamic"] as assemble, p["format_files"]:
+            await comms_turn_messages(
+                query="hi",
+                scope=MessageScope(
+                    user_id="uid-1",
+                    conversation_id="conv-1",
+                    user_dict=AuthenticatedUser(user_id="uid-1", onboarding=onboarding),
+                ),
             )
 
-        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="what can you do?")
-
-    @pytest.mark.asyncio
-    async def test_a_tool_only_turn_carries_no_user_message(self) -> None:
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            p["format_files"],
-            p["format_tool"],
-            self._probe() as probe,
-        ):
-            await construct_langchain_messages(
-                query="",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-                attachments=MessageAttachments(selected_tool="gmail"),
-            )
-
-        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
+        ctx = assemble.await_args.args[0]
+        assert (ctx.conversation_id, ctx.onboarding) == ("conv-1", onboarding)
 
     @pytest.mark.asyncio
     async def test_a_turn_with_neither_a_message_nor_a_tool_is_refused(self) -> None:
@@ -633,98 +611,10 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
             with pytest.raises(
                 ValueError, match=r"^No human message, selected tool or uploaded file$"
             ):
-                await construct_langchain_messages(
+                await comms_turn_messages(
                     query="",
                     scope=MessageScope(user_id="uid-1"),
                 )
-
-    @pytest.mark.asyncio
-    async def test_a_turn_outside_a_conversation_is_never_probed(self) -> None:
-        """Without a conversation there is no onboarding state to read, so the Mongo probe would query nothing."""
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
-            await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1"),
-            )
-
-        probe.assert_not_awaited()
-
-
-class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
-    """The onboarding prompt now has its own slot, arriving beside identity rather than instead of it.
-
-    It used to be stamped memory_message — the stable block's own marker — and
-    emitted after it, so the single-occupant slot kept the prompt and dropped
-    the identity block, losing name, timezone, preferences and integrations.
-    """
-
-    PROMPT = "Welcome! Ask about their inbox."
-
-    def _probe(self) -> Any:
-        return patch(
-            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-            new_callable=AsyncMock,
-            return_value=self.PROMPT,
-        )
-
-    async def _run(self) -> list[Any]:
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe():
-            return await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-            )
-
-    @pytest.mark.asyncio
-    async def test_the_prompt_reaches_the_model_verbatim(self) -> None:
-        onboarding = [
-            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
-        ]
-
-        assert len(onboarding) == 1
-        assert onboarding[0].content == self.PROMPT
-
-    @pytest.mark.asyncio
-    async def test_the_identity_block_is_still_there(self) -> None:
-        assert DYNAMIC_MSG in await self._run()
-
-    @pytest.mark.asyncio
-    async def test_the_prompt_does_not_claim_the_stable_blocks_slot(self) -> None:
-        """Carrying memory_message is what made it evict identity; the pruning node keeps only the latest holder."""
-        (onboarding,) = [
-            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
-        ]
-
-        assert onboarding.additional_kwargs.get("memory_message") is not True
-        assert onboarding.additional_kwargs.get("dynamic_context") is not True
-
-    @pytest.mark.asyncio
-    async def test_it_follows_the_stable_block_rather_than_replacing_it(self) -> None:
-        result = await self._run()
-        onboarding = next(m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER) is True)
-
-        assert result.index(onboarding) > result.index(DYNAMIC_MSG)
-
-    @pytest.mark.asyncio
-    async def test_an_ordinary_turn_carries_no_onboarding_message(self) -> None:
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            p["format_files"],
-            patch(
-                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-        ):
-            result = await construct_langchain_messages(
-                query="hi",
-                scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-            )
-
-        assert not [m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER)]
 
 
 class TestTheClockIsRenderedInTheUsersTimezone:
@@ -741,7 +631,7 @@ class TestTheClockIsRenderedInTheUsersTimezone:
                 return_value=HumanMessage(content="now", additional_kwargs={"time_context": True}),
             ) as clock,
         ):
-            await construct_langchain_messages(
+            await comms_turn_messages(
                 query="hi",
                 scope=MessageScope(
                     user_dict=AuthenticatedUser(user_id="", timezone="Asia/Kolkata")
@@ -758,9 +648,9 @@ class TestOpenuiVariantReachesTheModel:
     async def test_web_serves_the_openui_variant(self) -> None:
         p = _patches()
         with p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hi",
-                scope=MessageScope(user_id="uid-1", source="web"),
+                scope=MessageScope(user_id="uid-1", source=ConversationSource.WEB),
             )
 
         assert "## Output Format (this app renders rich components)" in result[0].content
@@ -769,9 +659,9 @@ class TestOpenuiVariantReachesTheModel:
     async def test_text_channel_serves_the_platform_variant(self) -> None:
         p = _patches()
         with p["build_dynamic"], p["format_files"]:
-            result = await construct_langchain_messages(
+            result = await comms_turn_messages(
                 query="hi",
-                scope=MessageScope(user_id="uid-1", source="whatsapp"),
+                scope=MessageScope(user_id="uid-1", source=ConversationSource.WHATSAPP),
             )
 
         assert "Platform Context" in result[0].content

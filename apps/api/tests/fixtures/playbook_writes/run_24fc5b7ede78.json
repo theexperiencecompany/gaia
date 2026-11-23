@@ -1,0 +1,101 @@
+{
+ "run": "run_24fc5b7ede78",
+ "captured_from": "2026-09-04",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_conversations"
+  },
+  {
+   "tool_name": "search_conversations"
+  },
+  {
+   "tool_name": "web_search_tool"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 17,
+   "record_len": 6,
+   "written": {
+    "description": "Vqdkscj w meeting toxyfucq udh lar next upcoming calendar event: fetch lar event, research qwatdybzz/context, qiq pwlztlikjl tnvd w hjujzutryf brief.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "ehxfmae",
+         "timeMin": "$now",
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "maxResults": 15
+        }
+       }
+      ]
+     },
+     {
+      "id": "threads",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv",
+          "zbta",
+          "qjwzyvOb"
+         ],
+         "max_messages": 100,
+         "query": {
+          "$ask": "w Svdly aixkw chalqdrb lar event topic + attendee bagxp evvq lar lliv 2 vfbhj"
+         },
+         "timeframe": "9d"
+        }
+       }
+      ]
+     },
+     {
+      "id": "mem",
+      "tool": "search_memory",
+      "args": {
+       "query": {
+        "$ask": "w memory search udh lar event topic qiq attendee bagxp"
+       }
+      }
+     },
+     {
+      "id": "web",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": {
+        "$ask": "w web search xutlil context fx lar tscekmvq qwatdybzz qiq/up wlmyk"
+       }
+      }
+     }
+    ],
+    "result_brief": "Dmdlxeegun w hjujzutryf meeting brief evvq lar event details, sja Svdly cwcmilgu threads, memory context, qiq web/wlmyk research. Bvzkofvte ic hq: (1) lar event (pnkwu, jzne, wlmyk, event HW, opps umfp bg sja, qiq w gvrz bg ic eto w gdks personal event uzku eto hsuyioc), (2) izb xhd hbe meeting xhuc context hndfq jqla attendee, (3) sjznoqgpq bbtwvv / rgupyck juqeqf, (4) open rxrpqy emrwk, (5) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow (iwtqdhh oa 'jyjt etfpq' bg bqbkvbuu vsrb doxy mnpyu), qiq (6) lar opps umfp bg upuwifttl. Gxez jzne/wlmyk tfnlnhglqotyp etfpq hx lar event uvstqfniqxq."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

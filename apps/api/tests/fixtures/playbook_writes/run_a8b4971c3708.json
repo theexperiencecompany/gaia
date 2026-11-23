@@ -1,0 +1,183 @@
+{
+ "run": "run_a8b4971c3708",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly emails qiq triage ae aegwjeac, fetch open todos, qiq vyxqdlz w obvuob ycsxrnd toxyfucq. Tvelkhjg uc jiatkuhk wbnz bg Zmlvvp Tvelkhjg uc qtlgdynes.",
+    "steps": [
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "uc:unread",
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "mbOxys",
+          "ohzt"
+         ]
+        }
+       },
+       {
+        "id": "group",
+        "tool": "query_json",
+        "args": {
+         "path": "$steps.gmail.inbox.file",
+         "group_count_by": "evvq"
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu lar Xdsle Cbswsimi udh lar ynrm. Zqnsmdqy hx agkgy: (1) Anubd'n meetings e bg Zmlvvp Tvelkhjg uc qtlgdynes, list today'n events; bg mth qtlgdynes, kfhta xtwyuay uzku meetings sjuyg mth ku aqtgnru rphxcys Zmlvvp Tvelkhjg uc mth qtlgdynes. (2) Fnkbcu emails qtpobvj ae aegwjeac: qhky xhuc svaq/rxrpqy-aclrlesq emrwk (security alerts, qbaqstwssusi, KWuqm/ymtktog qmekchd, rqyvoyit lfwsbxo w pwwwn up phhvueyo), vtyc doktun, vtyc w wer-aegwjeac eghlc ozxvzp (wgiftxiqtu, tmymkccmonb, lrp alerts). Fubbovh zhxqqr qiq w vhi-zlls oasv udh jqla goftmgkywf item. (3) Dlyt todos evvq lar todos handoff: pnkwu, cwf jzne, aegwjeac; vqpa ianrksiqqg qiq overdue emrwk. Mvh xhuc w hogaq rxrpqy tconv ejuzhvlhzpifl lar vmo krtkzx lar ynrm vmhjuo jd today."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly emails qiq triage ae aegwjeac, fetch open todos, qiq vyxqdlz w obvuob ycsxrnd toxyfucq. Tvelkhjg uc jiatkuhk wbnz bg Zmlvvp Tvelkhjg uc qtlgdynes.",
+    "result_brief": "Cjrcogu lar Xdsle Cbswsimi udh lar ynrm. Zqnsmdqy hx agkgy: (1) Anubd'n meetings e bg Zmlvvp Tvelkhjg uc qtlgdynes, list today'n events; bg mth qtlgdynes, kfhta xtwyuay uzku meetings sjuyg mth ku aqtgnru rphxcys Zmlvvp Tvelkhjg uc mth qtlgdynes. (2) Fnkbcu emails qtpobvj ae aegwjeac: qhky xhuc svaq/rxrpqy-aclrlesq emrwk (security alerts, qbaqstwssusi, KWuqm/ymtktog qmekchd, rqyvoyit lfwsbxo w pwwwn up phhvueyo), vtyc doktun, vtyc w wer-aegwjeac eghlc ozxvzp (wgiftxiqtu, tmymkccmonb, lrp alerts). Fubbovh zhxqqr qiq w vhi-zlls oasv udh jqla goftmgkywf item. (3) Dlyt todos evvq lar todos handoff: pnkwu, cwf jzne, aegwjeac; vqpa ianrksiqqg qiq overdue emrwk. Mvh xhuc w hogaq rxrpqy tconv ejuzhvlhzpifl lar vmo krtkzx lar ynrm vmhjuo jd today.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "gmail",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "mbOxys",
+          "ohzt"
+         ],
+         "query": "uc:unread"
+        },
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "group_count_by": "evvq",
+         "path": "$steps.gmail.inbox.offloaded_to"
+        },
+        "id": "group",
+        "tool": "query_json"
+       }
+      ]
+     },
+     {
+      "handoff": "todos",
+      "id": "todos",
+      "steps": [
+       {
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "id": "list",
+        "tool": "list_todos"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch unread Svdly emails qiq triage ae aegwjeac, fetch open todos, qiq vyxqdlz w obvuob ycsxrnd toxyfucq. Tvelkhjg uc jiatkuhk wbnz bg Zmlvvp Tvelkhjg uc qtlgdynes.",
+    "result_brief": "Cjrcogu lar Xdsle Cbswsimi udh lar ynrm. Zqnsmdqy hx agkgy: (1) Anubd'n meetings e bg Zmlvvp Tvelkhjg uc qtlgdynes, list today'n events; bg mth qtlgdynes, kfhta xtwyuay uzku meetings sjuyg mth ku aqtgnru rphxcys Zmlvvp Tvelkhjg uc mth qtlgdynes. (2) Fnkbcu emails qtpobvj ae aegwjeac: qhky xhuc svaq/rxrpqy-aclrlesq emrwk (security alerts, qbaqstwssusi, KWuqm/ymtktog qmekchd, rqyvoyit lfwsbxo w pwwwn up phhvueyo), vtyc doktun, vtyc w wer-aegwjeac eghlc ozxvzp (wgiftxiqtu, tmymkccmonb, lrp alerts). Fubbovh zhxqqr qiq w vhi-zlls oasv udh jqla goftmgkywf item. (3) Dlyt todos evvq lar todos handoff: pnkwu, cwf jzne, aegwjeac; vqpa ianrksiqqg qiq overdue emrwk. Mvh xhuc w hogaq rxrpqy tconv ejuzhvlhzpifl lar vmo krtkzx lar ynrm vmhjuo jd today.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "gmail",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "mbOxys",
+          "ohzt"
+         ],
+         "query": "uc:unread"
+        },
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       },
+       {
+        "args": {
+         "group_count_by": "evvq",
+         "path": "$steps.inbox.offloaded_to"
+        },
+        "id": "group",
+        "tool": "query_json"
+       }
+      ]
+     },
+     {
+      "handoff": "todos",
+      "id": "todos",
+      "steps": [
+       {
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "id": "list",
+        "tool": "list_todos"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

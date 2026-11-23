@@ -24,7 +24,7 @@ from app.models.composio_schemas import (
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
     GmailEmailSentPayload,
-    GmailNewMessagePayload,
+    GmailNewMessageEvent,
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
     GoogleDocsDocumentDeletedPayload,
@@ -55,6 +55,7 @@ _STRING = MatchableFieldType.STRING
 _INTEGER = MatchableFieldType.INTEGER
 _NUMBER = MatchableFieldType.NUMBER
 _STRING_LIST = MatchableFieldType.STRING_LIST
+_BOOLEAN = MatchableFieldType.BOOLEAN
 
 
 def _f(name: str, type_: MatchableFieldType, description: str, example: str) -> MatchableField:
@@ -62,7 +63,7 @@ def _f(name: str, type_: MatchableFieldType, description: str, example: str) -> 
 
 
 _GMAIL_NEW_MESSAGE = MatchableTrigger(
-    payload_model=GmailNewMessagePayload,
+    payload_model=GmailNewMessageEvent,
     fields=(
         _f("thread_id", _STRING, "Gmail thread the message belongs to", "18c9f0a1b2c3d4e5"),
         _f("message_id", _STRING, "Stable id of this message", "18c9f0a1b2c3d4e6"),
@@ -71,6 +72,26 @@ _GMAIL_NEW_MESSAGE = MatchableTrigger(
         _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
         _f("message_text", _STRING, "Plain-text body of the message", "Thanks, approved."),
         _f("label_ids", _STRING_LIST, "Gmail labels applied to the message", "INBOX"),
+        _f(
+            "continues_thread",
+            _BOOLEAN,
+            "The message joins a thread that already had messages; a cold 'Re:' starts a new one",
+            "true",
+        ),
+        _f("gmail_category", _STRING, "Gmail's inbox tab", "CATEGORY_PERSONAL"),
+        _f("has_list_unsubscribe", _BOOLEAN, "Carries a List-Unsubscribe header", "false"),
+        _f(
+            "bulk_or_auto_submitted",
+            _BOOLEAN,
+            "Marked bulk or auto-submitted by its headers",
+            "false",
+        ),
+        _f(
+            "sender_looks_automated",
+            _BOOLEAN,
+            "The sender reads as a no-reply or notification address",
+            "false",
+        ),
     ),
     excluded={
         "id": "Raw Gmail message id; match on message_id, which is the stable one.",
@@ -94,9 +115,11 @@ _GMAIL_EMAIL_SENT = MatchableTrigger(
         ),
         _f("to", _STRING, "To recipients", "alice@acme.com"),
         _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
+        _f("message_text", _STRING, "Plain-text body of the sent message", "Approved, thanks."),
     ),
     excluded={
         "sender": "Always the user themselves; it distinguishes nothing.",
+        "attachment_list": _OBJECT_LIST,
         "cc": "Covered by recipients, which lists To, Cc and Bcc together.",
         "bcc": "Covered by recipients, which lists To, Cc and Bcc together.",
         "message_timestamp": "Provider-formatted string; use the event's arrival time instead.",
@@ -175,6 +198,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         GMAIL_EMAIL_SENT_TRIGGER_NAME: _GMAIL_EMAIL_SENT,
         "calendar_event_created": MatchableTrigger(
             payload_model=GoogleCalendarEventCreatedPayload,
+            title_field="summary",
             fields=(
                 _f("event_id", _STRING, "Unique id of the event", "7k2m4n6p8q"),
                 _f("calendar_id", _STRING, "Calendar the event lives on", "primary"),
@@ -187,6 +211,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "calendar_event_starting_soon": MatchableTrigger(
             payload_model=GoogleCalendarEventStartingSoonPayload,
+            title_field="summary",
             fields=(
                 _f("event_id", _STRING, "Unique id of the event", "7k2m4n6p8q"),
                 _f("calendar_id", _STRING, "Calendar the event lives on", "primary"),
@@ -242,6 +267,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "google_sheets_new_sheet": MatchableTrigger(
             payload_model=GoogleSheetsNewSheetAddedPayload,
+            title_field="sheet_name",
             fields=(
                 _f("spreadsheet_id", _STRING, "Spreadsheet the sheet was added to", "1BxiMVs0XRA5"),
                 _f("sheet_name", _STRING, "New sheet tab name", "Q4"),
@@ -262,6 +288,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "github_pr_event": MatchableTrigger(
             payload_model=GitHubPullRequestEventPayload,
+            title_field="title",
             fields=(
                 _f("action", _STRING, "What happened to the PR", "opened"),
                 _f("number", _INTEGER, "PR number", "1096"),
@@ -274,6 +301,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "github_issue_added": MatchableTrigger(
             payload_model=GitHubIssueAddedEventPayload,
+            title_field="title",
             fields=(
                 _f("action", _STRING, "What happened to the issue", "opened"),
                 _f("issue_id", _INTEGER, "Unique issue id", "2841003911"),
@@ -324,6 +352,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "slack_channel_created": MatchableTrigger(
             payload_model=SlackChannelCreatedPayload,
+            title_field="name",
             fields=(
                 _f("id", _STRING, "New channel id", "C01ABCDEF"),
                 _f("name", _STRING, "New channel name", "proj-acme"),

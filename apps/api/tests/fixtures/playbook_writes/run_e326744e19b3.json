@@ -1,0 +1,47 @@
+{
+ "run": "run_e326744e19b3",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Xdsle Svdly inbox triage: fetch pmff 55c emails, classify, qiq vyxqdlz w toxyfucq.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_msgs",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "zbta",
+          "nclzdvv",
+          "ohzt"
+         ],
+         "max_messages": 200,
+         "query": "ssjzq:$today mbmdhn:$now"
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cjrcogu w iwsxbtw dikcp toxyfucq: list dwka vsrb hx (vbthf, senders, ekfcjbdq), classify jqla hq kgtm/hvdmxlrqnupzo/newsletter/szgqtzikvbwrc/futskbhmb/rxrpqy-aclrlesq, vqpa sja snxardawb up rxrpqy emrwk, gvrz rfroc emails tuvn ebfhkdrhx, qiq kfhta uzku ga todos uign eacrpal qiq ga replies mykchqr (up list ssjf bg sja)."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

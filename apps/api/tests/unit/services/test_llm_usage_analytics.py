@@ -139,8 +139,10 @@ def test_every_label_the_codebase_passes_has_a_feature() -> None:
                 continue
             for kw in node.keywords:
                 if kw.arg == "label" and isinstance(kw.value, ast.Constant):
-                    if feature_for_label(kw.value.value) is AIFeature.UNATTRIBUTED:
-                        unmapped.add(kw.value.value)
+                    label = kw.value.value
+                    assert isinstance(label, str), f"non-string label constant: {label!r}"
+                    if feature_for_label(label) is AIFeature.UNATTRIBUTED:
+                        unmapped.add(label)
 
     assert not unmapped, f"labels no AIFeature member claims: {sorted(unmapped)}"
 
@@ -195,6 +197,13 @@ def test_the_event_is_attributed_to_the_rows_user(posthog: Any) -> None:
     call = _captured(posthog)
     assert call["distinct_id"] == USER
     assert call["event"] == AiLlmCallCompleted.event
+
+
+@pytest.mark.regression
+def test_an_openrouter_alias_model_id_reaches_the_event(posthog: Any) -> None:
+    """Regression for GAIA-715: Jev's "~typesafe/jev-latest" failed the model pattern, so no Jev call was captured."""
+    capture_llm_call(_row(agent_name="browser_task", model_requested="~typesafe/jev-latest"))
+    assert _captured(posthog)["properties"]["model"] == "~typesafe/jev-latest"
 
 
 def test_the_rows_upstream_timing_and_context_ids_reach_the_event(posthog: Any) -> None:

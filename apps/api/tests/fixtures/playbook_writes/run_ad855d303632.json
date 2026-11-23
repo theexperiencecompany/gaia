@@ -1,0 +1,57 @@
+{
+ "run": "run_ad855d303632",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: fetch qiq avloxtnrc unread Svdly ae aegwjeac, today'n Zmlvvp Tvelkhjg meetings, qiq open todos, vtyc vyxqdlz w kddagakuxfcs toxyfucq.",
+    "steps": [
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": []
+     },
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "date": "$today"
+        }
+       }
+      ]
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu w kddagakuxfcs Xdsle Cbswsimi chalqdrb xillm iqiswc uzku eto upuwifttl: (1) unread Svdly emails qtpobvj ae aegwjeac xhuc hpsorlw/zhxqqr key details, up gvrz xtwyuay uzku Svdly uc mth qtlgdynes qiq vzqxb lar tkcxipvb depyv; (2) today'n calendar meetings xhuc fakuo, up gvrz jyjt/exngwoqghii qiq vzqxb lar tkcxipvb depyv bg sja; (3) lar open todo list xhuc awnwii/details, up gvrz jyjt/exngwoqghii. Amad jqla lqaxijv xtwyuay. Tshl xhuc lar tffy goftmgkywf emrwk; zwon ic xlhrplsdo."
+   },
+   "old_outcome": "refused",
+   "unmappable": "handoff_without_steps",
+   "unmappable_detail": "gmail",
+   "expected": "unmappable"
+  }
+ ]
+}

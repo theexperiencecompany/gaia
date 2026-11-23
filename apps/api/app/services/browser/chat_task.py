@@ -1,7 +1,7 @@
 """The browser tasks a chat controls, as the turn answering the user's message reads and steers them.
 
-Comms is the one reader of what the user says to a browser task: a frame
-tells it what runs or waits (nodes/browser_task_status.py) and its tools act
+Comms is the one reader of what the user says to a browser task: its turn
+context says what runs or waits (context/live_work.py) and its tools act
 on it (tools/browser_chat_tools.py). Every job here is found from the turn
 itself, never from an id the model wrote.
 """
@@ -61,19 +61,13 @@ class ChatBrowserTasks:
 
 
 def user_message_turn(configurable: AgentConfigurable) -> ChatTurn | None:
-    """Return the turn when it answers the user's own message; None for a narration or background run.
+    """Return the turn when it answers the user's own message; None for a background run.
 
-    A narration re-voices a result and a background run has nobody typing, so
-    neither may read the user's word into their browser task.
+    A background run has nobody typing, so it may not read the user's word into their browser task.
     """
     conversation_id = configurable.get("thread_id")
     user_id = configurable.get("user_id")
-    if (
-        configurable.get("is_result_narration")
-        or configurable.get("execution_mode") == "background"
-        or not conversation_id
-        or not user_id
-    ):
+    if configurable.get("execution_mode") == "background" or not conversation_id or not user_id:
         return None
     return ChatTurn(
         conversation_id=conversation_id,

@@ -8,13 +8,14 @@ to the user as literal text. This module is the single place that knows what a
 sentinel looks like; every outbound path splits through
 :func:split_message_bubbles rather than matching the literal token itself.
 
-The TypeScript half is libs/shared/ts/src/utils/messageBreakUtils.ts — the
-two must accept the same spellings.
+It is the only splitter: the server sends every client a reply's bubbles, live and
+settled, so no client parses the sentinel. A break inside a code block or a :::openui
+block would bisect it, so it reads as a newline there instead.
 """
 
 import re
 
-from app.constants.general import NEW_MESSAGE_BREAKER
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 #: Words of each accepted spelling, in order. Separators between them are
 #: matched leniently (``_``, ``-``, space, or nothing at all).
@@ -24,17 +25,12 @@ _SENTINEL_WORD_SEQUENCES: tuple[tuple[str, ...], ...] = (
 )
 
 _SEPARATOR = r"[\s_-]*"
-_OPEN = r"[<\[]\s*/?\s*"
-_CLOSE = r"\s*/?\s*[>\]]"
+_OPEN = r"[<\[]\s*(?:/\s*)?"
+_CLOSE_OPENING = r"\s*(?:/\s*)?"
+_CLOSE = _CLOSE_OPENING + r"[>\]]"
+_WHOLE_SPELLINGS = "|".join(_SEPARATOR.join(words) for words in _SENTINEL_WORD_SEQUENCES)
 
-MESSAGE_BREAK_SENTINEL_RE = re.compile(
-    _OPEN
-    + "(?:"
-    + "|".join(_SEPARATOR.join(words) for words in _SENTINEL_WORD_SEQUENCES)
-    + ")"
-    + _CLOSE,
-    re.IGNORECASE,
-)
+MESSAGE_BREAK_SENTINEL_RE = re.compile(_OPEN + f"(?:{_WHOLE_SPELLINGS})" + _CLOSE, re.IGNORECASE)
 
 
 def _word_prefixes(word: str) -> str:
@@ -58,18 +54,76 @@ def _partial_sequence(words: tuple[str, ...]) -> str:
     return f"{_word_prefixes(words[0])}(?:{pattern})?"
 
 
-#: A sentinel truncated by a chunk boundary, anchored to the end of the text.
-#: At least one character is required: a bare trailing ``<`` is ordinary text
-#: far more often than a half-received sentinel.
+#: A sentinel a chunk boundary cut short, or a whole one still missing its bracket, at
+#: the end of text. A bare trailing ``<`` is ordinary text far more often than a sentinel.
 PARTIAL_MESSAGE_BREAK_RE = re.compile(
-    _OPEN + "(?:" + "|".join(_partial_sequence(w) for w in _SENTINEL_WORD_SEQUENCES) + ")$",
+    _OPEN
+    + "(?:"
+    + "|".join(_partial_sequence(w) for w in _SENTINEL_WORD_SEQUENCES)
+    + f"|(?:{_WHOLE_SPELLINGS}){_CLOSE_OPENING}"
+    + ")$",
     re.IGNORECASE,
 )
+
+
+#: A streamed tail that may still become a break, down to a lone "<" or "[".
+_BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|{_OPEN}$", re.IGNORECASE)
+_BRACKET_RE = re.compile(r"[<\[]")
+
+_LEADING_BREAKS_RE = re.compile(rf"^(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*", re.IGNORECASE)
+
+
+def is_only_message_breaks(text: str) -> bool:
+    """Return whether text, possibly still streaming, holds nothing yet but breaks and whitespace."""
+    return not shown_so_far(MESSAGE_BREAK_SENTINEL_RE.sub("", text)).strip()
+
+
+def count_message_breaks(text: str) -> int:
+    """Return how many complete sentinels text contains."""
+    return len(MESSAGE_BREAK_SENTINEL_RE.findall(text))
+
+
+def strip_leading_message_breaks(text: str) -> str:
+    """Drop the run of sentinels a text opens with."""
+    return _LEADING_BREAKS_RE.sub("", text)
+
+
+def strip_trailing_message_breaks(text: str) -> str:
+    """Drop the run of sentinels a text closes with, and the whitespace around it."""
+    end = len(text.rstrip())
+    kept_end = end
+    for found in reversed(list(MESSAGE_BREAK_SENTINEL_RE.finditer(text))):
+        if found.end() != kept_end:
+            break
+        kept_end = found.start()
+        while kept_end and text[kept_end - 1].isspace():
+            kept_end -= 1
+    return text if kept_end == end else text[:kept_end]
+
+
+def strip_edge_message_breaks(text: str) -> str:
+    """Drop the run of sentinels a text opens or closes with, keeping the ones between bubbles."""
+    return strip_trailing_message_breaks(strip_leading_message_breaks(text))
 
 
 def strip_partial_message_break(text: str) -> str:
     """Drop a sentinel that a chunk boundary cut in half at the end of text."""
     return PARTIAL_MESSAGE_BREAK_RE.sub("", text)
+
+
+def shown_so_far(text: str) -> str:
+    """Return what of a reply still streaming a client may see: all of it but a break being written.
+
+    Each result extends the one before, so a client can append the difference.
+    """
+    # A stuttered break ("<NE" then "<NEW_MESSAGE_BREAK>") is dropped whole, so every tail is held.
+    # A tail holds one bracket, its first character: walk the brackets back from the end once.
+    end = len(text)
+    for bracket in reversed([found.start() for found in _BRACKET_RE.finditer(text)]):
+        if not _BREAK_TAIL_RE.fullmatch(text, bracket, end):
+            break
+        end = bracket
+    return text[:end]
 
 
 def append_message_bubble(message: str, bubble: str) -> str:
@@ -82,20 +136,119 @@ def append_message_bubble(message: str, bubble: str) -> str:
     return f"{message}{NEW_MESSAGE_BREAKER}{bubble}" if message else bubble
 
 
+_CODE_FENCE = "```"
+_OPENUI_OPEN = ":::openui"
+_OPENUI_CLOSE = "\n:::"
+
+
+def _code_fence_ranges(text: str) -> list[tuple[int, int]]:
+    """Return the [start, end) of every code block; an unclosed one runs to the end."""
+    ranges: list[tuple[int, int]] = []
+    start = text.find(_CODE_FENCE)
+    while start != -1:
+        close = text.find(_CODE_FENCE, start + len(_CODE_FENCE))
+        if close == -1:
+            ranges.append((start, len(text)))
+            break
+        # No break or fence overlaps a closing fence, so its end can't move one in or out.
+        end = close + len(_CODE_FENCE)  # pragma: no mutate
+        ranges.append((start, end))
+        start = text.find(_CODE_FENCE, end)
+    return ranges
+
+
+def _openui_close(text: str, start: int) -> int:
+    """Return where the block opened before start closes; a ::: that reopens openui nests."""
+    while (close := text.find(_OPENUI_CLOSE, start)) != -1:
+        after = close + len(_OPENUI_CLOSE)
+        if not text.startswith("openui", after):
+            return close
+        start = after
+    return -1
+
+
+def _openui_ranges(text: str) -> list[tuple[int, int]]:
+    """Return the [start, end) of every :::openui block; an unclosed one runs to the end."""
+    ranges: list[tuple[int, int]] = []
+    start = text.find(_OPENUI_OPEN)
+    while start != -1:
+        close = _openui_close(text, start + len(_OPENUI_OPEN))
+        if close == -1:
+            ranges.append((start, len(text)))
+            break
+        # No break or opener overlaps a close, so its end can't move one in or out.
+        end = close + len(_OPENUI_CLOSE)  # pragma: no mutate
+        ranges.append((start, end))
+        start = text.find(_OPENUI_OPEN, end)
+    return ranges
+
+
 def split_message_bubbles(text: str) -> list[str]:
     """Split assistant text into the bubbles the model asked for.
 
-    Splits on every sentinel spelling, drops a truncated trailing one, trims each
-    bubble and discards the empties a doubled sentinel leaves behind.
+    Splits on every sentinel spelling outside a code or :::openui block, drops a truncated
+    trailing one, trims each bubble and discards the empties a doubled sentinel leaves.
     """
     if not text:
         return []
-    bubbles = (
-        strip_partial_message_break(part).strip() for part in MESSAGE_BREAK_SENTINEL_RE.split(text)
-    )
+    fenced = [*_code_fence_ranges(text), *_openui_ranges(text)]
+    pieces: list[str] = []
+    piece = ""
+    cursor = 0  # pragma: no mutate — text[None:] is text[0:]
+    for found in MESSAGE_BREAK_SENTINEL_RE.finditer(text):
+        piece += text[cursor : found.start()]
+        cursor = found.end()
+        # A block opens with its marker, so no break starts exactly where one does.
+        if any(start <= found.start() < end for start, end in fenced):  # pragma: no mutate
+            piece += "\n"
+        else:
+            pieces.append(piece)
+            piece = ""
+    pieces.append(piece + text[cursor:])
+    bubbles = (strip_partial_message_break(part).strip() for part in pieces)
     return [bubble for bubble in bubbles if bubble]
 
 
 def normalize_message_breaks(text: str) -> str:
     """Rewrite text as its bubbles joined by exactly one canonical sentinel."""
     return NEW_MESSAGE_BREAKER.join(split_message_bubbles(text))
+
+
+_CAPTION_PARAGRAPH = "\n\n"
+
+
+def _cut_words(paragraph: str, limit: int) -> list[str]:
+    """Cut a paragraph longer than limit between words."""
+    chunks: list[str] = []
+    current = ""
+    for word in paragraph.split():
+        candidate = f"{current} {word}" if current else word
+        if len(candidate) > limit and current:
+            chunks.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def split_for_caption(text: str, *, limit: int) -> list[str]:
+    """Cut text into a first caption plus follow-up messages, each within limit chars.
+
+    Breaks fall between paragraphs (then words), never mid-word.
+    """
+    parts: list[str] = []
+    current = ""
+    for paragraph in text.split(_CAPTION_PARAGRAPH):
+        pieces = [paragraph] if len(paragraph) <= limit else _cut_words(paragraph, limit)
+        for piece in pieces:
+            candidate = f"{current}{_CAPTION_PARAGRAPH}{piece}" if current else piece
+            if len(candidate) > limit and current:
+                parts.append(current)
+                current = piece
+            else:
+                current = candidate
+    if current:
+        parts.append(current)
+    return parts

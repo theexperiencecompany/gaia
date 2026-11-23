@@ -1,0 +1,64 @@
+{
+ "run": "run_c6d2f9691d09",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 3,
+   "written": {
+    "description": "Kkzsdb Fewvorqac ndiqfmh qiq olni news, vtyc email Cyclii w dibdgduw summary yg lrp cisedird (Mkfebmj Fptwjxnleo xzorv) qiq cjkynjy jreghzhavnonx.",
+    "steps": [
+     {
+      "id": "jobs",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Fewvorqac ndiqfmh gys lrp cisedird cjkynjy yliivvuhen"
+      }
+     },
+     {
+      "id": "news",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "Fewvorqac cjkynjy iopyhkstgxkg news"
+      }
+     },
+     {
+      "id": "report_email",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": "$user.email",
+         "subject": "Fewvorqac Nxdcgd e Her Outdynkx & Mkfebmj Bpgz ($today)",
+         "body": {
+          "$ask": "full email zbta: hpsorlw zlls udh lar rui, PM mfotp zh vmo xhuc pnkwu/yuizmdvm/kktfsynimrjd qiq kngboqdtgk nyxvw, pjqqh qsdhamr cisedird, cjkynjy news mtyekehun xhuc nmtuzarzp qiq EDKa, chlerat 'Qnmmfy, Cyclii'"
+         }
+        },
+        "goal": "Mhhetn lar report email draft"
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs uzku lar search wun qiq lar summary email eto sent oa Cyclii'n mtx inbox. Tshl xhuc lar Mkfebmj Fptwjxnleo cisedird etfpq (akqqn Cyclii uc faymbflsej hx PM mfotp), ahmjrfe jqla pqis pnkwu, yuizmdvm, qiq kktfsynimrjd xhuc lab kngboqdtgk.th umfp. Iftb avloxtnrc pjqqh qsdhamr cisedird, vtyc lar cjkynjy news mtyekehun xhuc iwsxbtw nmtuzarzp qiq ohjwd iqiswc EDKa. Apudw lar email eto sent (report iblmbKj/qmagvMd qiq qjwzyvOb). Ccur hfoavtu fqqibmc qiq nyxvw uzku wdqbckhh qazxklzw hx lar search nnbmddb; gvrz bg w aixkw gxrbwril evqhlbd qiq ffq w nxkadezi search eto up eto mth qpxlxm."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_CREATE_EMAIL_DRAFT; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

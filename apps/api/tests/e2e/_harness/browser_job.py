@@ -12,8 +12,8 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 import inspect
-import json
 import tempfile
 from types import SimpleNamespace
 from typing import Any
@@ -22,27 +22,38 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentState
 from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
+from pydantic import BaseModel
 
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.agents.core.background.session import RunKind, create_session
+from app.agents.core.background.session import (
+    RunKind,
+    StreamSession,
+    create_session,
+    teardown_session,
+)
+from app.agents.core.background.session_writer import _collect as collect_into_session
 from app.browser_host.wire import SessionInfo
+from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
 from app.constants.agents import AgentTag
 from app.constants.browser import (
     BROWSER_ANSWER_AFTER_STEP,
     BROWSER_JOB_STREAM_ID_PREFIX,
+    TAKEOVER_KIND_CATEGORY,
     BrowserEngine,
     EngineSwitchReason,
-    SensitiveCategory,
+    TakeoverKind,
 )
-from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
-from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
+from app.services.browser.tools import EngineSwitchFn, TakeoverFn
+from app.services.conversation.work_log import WorkReport
+from app.services.outbound_delivery import OutboundResult
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
+from shared.py.conversation_wire import ToolDataEntry
 
 #: What the fake CDN hands back for a step screenshot, per step index.
 SHOT_URL_TEMPLATE = "https://cdn.test/shot-{index}.png"
@@ -162,7 +173,7 @@ class BrowserDouble:
         self.stop_observed = False
         #: What each takeover handed back to the agent — the user's note.
         self.takeover_notes: list[str | None] = []
-        self.takeover: Callable[[str, SensitiveCategory], Any] | None = None
+        self.takeover: TakeoverFn | None = None
         #: The next step to play: a run moved to the fallback engine picks up
         #: where the run on the dead engine stopped.
         self.next_step = 0
@@ -171,7 +182,7 @@ class BrowserDouble:
         #: Where the scripted browser is now, for the run's resume on a fallback engine.
         self.url: str | None = None
         #: The continue_in_full_browser action, when the run on this engine was offered it.
-        self.switch: Callable[[EngineSwitchReason], Any] | None = None
+        self.switch: EngineSwitchFn | None = None
 
     def agent(self, **kwargs: Any) -> _ScriptedAgent:
         return _ScriptedAgent(self, **kwargs)
@@ -223,7 +234,7 @@ class _ScriptedAgent:
         self._stopped = False
         self.state = kwargs.get("injected_agent_state") or _agent_state([])
         # Its steps are scripted results, not model outputs: nothing it read to report.
-        self.history = AgentHistoryList(history=[])
+        self.history: AgentHistoryList[BaseModel] = AgentHistoryList(history=[])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
@@ -289,7 +300,7 @@ class _ScriptedAgent:
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
 
-    async def _act(self, step: ScriptedStep) -> object:
+    async def _act(self, step: ScriptedStep) -> str | None:
         """Run the step's takeover or switch; return what a takeover answered."""
         if step.takeover is not None:
             return await self._hand_over(*step.takeover)
@@ -298,10 +309,10 @@ class _ScriptedAgent:
             await self._double.switch(step.switch)
         return None
 
-    async def _hand_over(self, reason: str, category: str) -> object:
+    async def _hand_over(self, reason: str, category: str) -> str:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
-        return await self._double.takeover(reason, SensitiveCategory(category))
+        return await self._double.takeover(reason, TAKEOVER_KIND_CATEGORY[TakeoverKind(category)])
 
     async def _wait_for_stop(self) -> None:
         """Sit on the page until the user's stop reaches the agent, as a real run would."""
@@ -338,17 +349,16 @@ class JobWorld:
         self.browser = double
         self.stream_id = stream_id
         self.enqueued: list[BrowserJobRequest] = []
-        self.chunks: list[str] = []
-        #: What reached the job's own stream, folded into the turn's message.
-        self.job_chunks: list[str] = []
+        self.chunks: list[dict[str, Any]] = []
+        #: What reached the job's own stream.
+        self.job_chunks: list[dict[str, Any]] = []
         #: What reached any other turn's stream, by stream id.
-        self.other_streams: dict[str, list[str]] = {}
+        self.other_streams: dict[str, list[dict[str, Any]]] = {}
         self.bot_messages: list[str] = []
-        self.bot_photos: list[str] = []
         #: Each executor run woken to tell an ending landed in its inbox, by conversation.
         self.woken: list[str] = []
-        #: What the job's stream saved into the turn's message: (message id, entries).
-        self.saved: list[tuple[str, list[dict[str, Any]]]] = []
+        #: What the job's logged work finished with: (task id, cards).
+        self.saved: list[tuple[str, list[ToolDataEntry]]] = []
         #: The conversation's executor inbox once the job settled: how its ending was told.
         self.told: list[InboxEntry] = []
         self.jobs: list[asyncio.Task[Any]] = []
@@ -363,21 +373,20 @@ class JobWorld:
         self.lease_renewals: list[str] = []
         #: Each job a stop asked ARQ to abort.
         self.aborted: list[str] = []
+        #: Stands in for the login store: each sign-in the job saved.
+        self.save_storage_state = AsyncMock()
+        #: Stands in for the task history: each run the job recorded.
+        self.record_browser_task = AsyncMock()
 
     def frames(self, stream_id: str | None = None) -> list[dict[str, Any]]:
-        """Return each SSE chunk the job's own stream (or a named one) carried, decoded."""
+        """Return each frame the job's own stream (or a named one) collected."""
         if stream_id is None:
             chunks = self.job_chunks
         elif stream_id == self.stream_id:
             chunks = self.chunks
         else:
             chunks = self.other_streams.get(stream_id, [])
-        # The stream's close is a sentinel, not a frame.
-        return [
-            json.loads(chunk.removeprefix("data: ").strip())
-            for chunk in chunks
-            if chunk != "data: [DONE]\n\n"
-        ]
+        return list(chunks)
 
     def cards(self, stream_id: str | None = None) -> list[dict[str, Any]]:
         """Return the browser card payloads a stream carried, in publish order."""
@@ -476,7 +485,7 @@ async def browser_job_world(
         world.aborted.append(job_id)
         return bool(running)
 
-    patches = [
+    patches: list[AbstractContextManager[object]] = [
         patch("app.db.redis.redis_cache.redis", redis),
         patch("app.services.browser.job_stop._abort_if_started", _abort),
         patch("app.services.browser.agent_run.Agent", double.agent),
@@ -489,17 +498,17 @@ async def browser_job_world(
         ),
         *_host_patches(world, scripted_host),
         # A world with a fallback host is an Obscura user's (Chrome behind it); any
-        # other runs on Chrome, the default engine.
+        # other runs on Chrome, the default engine. Jev stays off, its default.
         patch(
             "app.services.browser.job_runner.is_enabled",
-            AsyncMock(return_value=scripted_host.fallback_url is not None),
+            partial(_obscura_only, scripted_host.fallback_url is not None),
         ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
         patch("app.services.browser.agent_run.build_agent_llm", MagicMock(return_value=object())),
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
         patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),
-        patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
+        patch("app.services.browser.job_runner.record_browser_task", world.record_browser_task),
         patch("app.services.browser.job_runner.capture", MagicMock()),
         patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
         patch(
@@ -514,10 +523,11 @@ async def browser_job_world(
         for entered in patches:
             stack.enter_context(entered)
         # The turn's stream is live for the whole journey, as a chat turn's is while it streams.
-        await StreamManager.start_stream(stream_id, "conv-of-the-turn", "user-of-the-turn")
+        create_session(stream_id, RunKind.LIVE)
         try:
             yield world
         finally:
+            teardown_session(stream_id)
             for task in [*world.jobs, *wide_events._spawned_tasks]:
                 task.cancel()
             await asyncio.gather(*world.jobs, *wide_events._spawned_tasks, return_exceptions=True)
@@ -544,6 +554,7 @@ def _host_patches(
             cdp_ws="ws://browser.test/cdp",
             live_ws="ws://browser.test/live",
             engine=BrowserEngine.OBSCURA if on_obscura else BrowserEngine.CHROMIUM,
+            fortress=False,
         )
 
     def _kill_engine() -> None:
@@ -590,7 +601,7 @@ def _host_patches(
         patch("app.services.browser.session.host_client.renew_session_lease", _renew_host_lease),
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
-        patch("app.services.browser.session.save_storage_state", AsyncMock()),
+        patch("app.services.browser.session.save_storage_state", world.save_storage_state),
     ]
 
 
@@ -613,49 +624,41 @@ def long_waits_pass_quickly() -> Iterator[None]:
 def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextManager[object]]:
     """Record what reaches the user: the turn's and the job's streams, bot messages and photos, the message the cards fold into, and the executor run woken to tell the ending."""
 
-    async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
-        if chunk_stream_id == stream_id:
-            world.chunks.append(chunk)
-        elif chunk_stream_id.startswith(BROWSER_JOB_STREAM_ID_PREFIX):
-            world.job_chunks.append(chunk)
+    def _collect(session: StreamSession, data: dict[str, object]) -> None:
+        if session.stream_id == stream_id:
+            world.chunks.append(data)
+        elif session.stream_id.startswith(BROWSER_JOB_STREAM_ID_PREFIX):
+            world.job_chunks.append(data)
         else:
-            world.other_streams.setdefault(chunk_stream_id, []).append(chunk)
+            world.other_streams.setdefault(session.stream_id, []).append(data)
+        collect_into_session(session, data)
 
-    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
+    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> OutboundResult:
         world.bot_messages.extend(blocks)
-        return True
-
-    async def _outbound_photo(platform: Any, user_id: str, url: str, **kwargs: Any) -> bool:
-        world.bot_photos.append(url)
-        return True
+        return OutboundResult.PUBLISHED
 
     async def _wake(conversation_id: str, user: object) -> None:
         world.woken.append(conversation_id)
 
-    async def _save(conversation_id: str, **kwargs: Any) -> bool:
-        world.saved.append((kwargs["message_id"], list(kwargs["entries"])))
-        return True
-
-    conversations = MagicMock()
-    conversations.get_message = AsyncMock(
-        return_value=MessageModel(type="bot", response="", tool_data=[])
-    )
-    conversations.append_message_tool_data = _save
+    async def _finished(
+        conversation_id: str, user_id: str, task_id: str, outcome: Any, report: WorkReport
+    ) -> None:
+        world.saved.append((task_id, list(report.tool_data)))
 
     return [
+        patch("app.agents.core.background.session_writer._collect", _collect),
+        patch("app.services.outbound_delivery.publish_outbound_message", _outbound_message),
         patch(
-            "app.core.stream_manager.StreamManager.publish_chunk",
-            AsyncMock(side_effect=_publish_chunk),
-        ),
-        patch("app.services.browser.bot_delivery.publish_outbound_message", _outbound_message),
-        patch("app.services.browser.bot_delivery.publish_outbound_photo", _outbound_photo),
-        patch(
-            "app.services.browser.bot_delivery.create_live_view_link",
+            "app.services.browser.job_runner.create_live_view_link",
             AsyncMock(return_value=LIVE_VIEW_LINK),
         ),
         # A woken executor run is a graph run of its own; that it was woken is the telling.
         patch("app.workers.tasks.browser_tasks.wake_executor_for_inbox", _wake),
-        patch("app.services.folded_cards.conversation_repository", conversations),
+        patch(
+            "app.agents.core.background.folded_stream.record_work_carried",
+            AsyncMock(return_value=True),
+        ),
+        patch("app.agents.core.background.folded_stream.record_work_finished", _finished),
     ]
 
 
@@ -666,8 +669,8 @@ def _tools_of(double: BrowserDouble) -> Callable[..., object]:
         *,
         solve_captcha: bool,
         user_sites: object,
-        handle_takeover: Callable[[str, SensitiveCategory], Any],
-        handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
+        handle_takeover: TakeoverFn,
+        handle_engine_switch: EngineSwitchFn | None = None,
     ) -> object:
         double.takeover = handle_takeover
         double.switch = handle_engine_switch
@@ -699,6 +702,13 @@ class _Page:
 
 async def _shot_url(index: int) -> str:
     return SHOT_URL_TEMPLATE.format(index=index)
+
+
+async def _obscura_only(
+    obscura: bool, flag: FeatureFlag, user_id: str | None, default: bool | None = None
+) -> bool:
+    """Evaluate a browser flag as this world's user chose: Obscura as given, every other flag off."""
+    return obscura and flag is FeatureFlag.BROWSER_OBSCURA
 
 
 @asynccontextmanager

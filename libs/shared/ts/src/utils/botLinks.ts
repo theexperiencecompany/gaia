@@ -20,3 +20,20 @@ export function discordInviteUrl(applicationId: string): string {
 export function telegramBotUrl(username: string): string {
   return `https://t.me/${username}`;
 }
+
+/** Scopes the GAIA app requests when a workspace installs it. */
+const SLACK_BOT_SCOPES = [
+  "chat:write",
+  "commands",
+  "im:history",
+  "im:read",
+  "im:write",
+].join(",");
+
+/** The link that adds the GAIA app to a Slack workspace. */
+export function slackInstallUrl(clientId: string): string {
+  const url = new URL("https://slack.com/oauth/v2/authorize");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("scope", SLACK_BOT_SCOPES);
+  return url.toString();
+}

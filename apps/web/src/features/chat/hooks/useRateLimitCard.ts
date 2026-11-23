@@ -1,33 +1,12 @@
 import type { RateLimitData } from "@shared/chat";
-import { formatFeatureName, formatPlanName } from "@shared/utils";
+import {
+  formatFeatureName,
+  formatPlanName,
+  rateLimitResetInfo,
+} from "@shared/utils";
 
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-
-function getResetInfo(
-  resetTime?: string,
-): { label: string; detail: string } | null {
-  if (!resetTime) return null;
-  const reset = new Date(resetTime);
-  const diffMs = reset.getTime() - Date.now();
-  if (diffMs <= 0)
-    return {
-      label: "Resets very soon",
-      detail: "Your limit will refresh shortly.",
-    };
-  const diffMins = Math.ceil(diffMs / 60000);
-  if (diffMins > 60) {
-    const hours = Math.ceil(diffMins / 60);
-    return {
-      label: `Resets in ${hours} hour${hours !== 1 ? "s" : ""}`,
-      detail: `Available again at ${reset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-    };
-  }
-  return {
-    label: `Resets in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`,
-    detail: `Available again at ${reset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-  };
-}
 
 function getSubtitle(
   message: string | undefined,
@@ -49,7 +28,7 @@ export function useRateLimitCard(data: RateLimitData) {
   const isUpgradeRequired = !!plan_required;
   // Nothing to upgrade to on the top tier, nor where nothing is sold.
   const showUpgradeNudge = billingEnabled && current_plan !== "pro";
-  const resetInfo = getResetInfo(reset_time);
+  const resetInfo = rateLimitResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
   const planName = formatPlanName(plan_required);
   // The footer is either an "Upgrade to X" CTA or a neutral "View Plans" link.

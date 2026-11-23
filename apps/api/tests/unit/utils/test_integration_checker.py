@@ -1,12 +1,13 @@
 """Unit tests for the integration connect prompt (card + agent copy)."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode, IntegrationStatus
+from app.constants.waits import WaitCondition
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.mcp_config import MCPConfig
@@ -72,6 +73,9 @@ def _resolved_mcp(auth_type: str | None, integration_id: str = "posthog") -> Res
     )
 
 
+CHAT_RUN = {"conversation_id": "conv-1", "stream_id": "stream-1"}
+
+
 @contextmanager
 def _graph_run(
     category: str | None,
@@ -80,21 +84,24 @@ def _graph_run(
     expired: bool = False,
     execution_mode: str | None = None,
     frontend: str = _FAKE_FRONTEND,
+    run_ids: Mapping[str, object] | None = None,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
     category=None simulates no runnable context; expired is the stored status
     distinguishing a dead grant from one never set up. The status stub checks
-    its actual arguments so a wrong user/integration id fails loudly.
+    its actual arguments so a wrong user/integration id fails loudly. run_ids
+    are the run's own keys: its conversation, stream, step and thread.
     """
 
     async def _is_expired(user_id: str, integration_id: str) -> bool:
         return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
 
     writer = MagicMock()
-    configurable = {"source_category": category}
+    configurable: dict[str, object] = {"source_category": category}
     if execution_mode is not None:
         configurable["execution_mode"] = execution_mode
+    configurable.update(run_ids or {})
     config_patch = (
         patch(
             "app.utils.integration_checker.get_config",
@@ -167,6 +174,93 @@ class TestRequestIntegrationConnection:
             msg = await request_integration_connection("slack", "Slack", "user1")
         assert _MAGIC_LINK in msg
         assert writer.call_count == 0
+
+
+class TestConnectAskIsRemembered:
+    """The chat that shows the card is the one resumed when the user connects."""
+
+    async def test_showing_the_card_keeps_the_chat_waiting_on_the_integration(self) -> None:
+        with (
+            _graph_run("ui", run_ids=CHAT_RUN),
+            patch("app.utils.integration_checker.block_integration", AsyncMock(return_value=True)),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()) as remember,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        remember.assert_awaited_once()
+        run, user_id, condition, integration_id, name = remember.await_args.args
+        assert (run.conversation_id, run.stream_id) == ("conv-1", "stream-1")
+        assert (user_id, condition, integration_id, name) == (
+            _USER,
+            WaitCondition.INTEGRATION_CONNECTED,
+            "gmail",
+            "Gmail",
+        )
+
+    async def test_no_card_outside_a_run_means_no_chat_to_resume(self) -> None:
+        with (
+            _graph_run(None),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()) as remember,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        remember.assert_not_awaited()
+
+
+STEP = {"epoch": 2, "batch_start": 4, "cause_through": 5, "answers": ["u4"], "asked": True}
+
+
+class TestTheNeedIsLoggedOnTheStepsConversation:
+    """A first ask on a step run logs the need, so connecting continues the conversation."""
+
+    async def test_a_first_ask_logs_the_need_with_its_step(self) -> None:
+        with (
+            _graph_run(
+                "ui",
+                run_ids={**CHAT_RUN, "conversation_step": STEP, "thread_id": "conv-1"},
+            ),
+            patch("app.utils.integration_checker.block_integration", AsyncMock(return_value=True)),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_awaited_once_with(STEP, "conv-1", _USER, "gmail", "Gmail")
+
+    @pytest.mark.parametrize(
+        ("run_ids", "first_ask"),
+        [
+            ({"thread_id": "conv-1"}, True),
+            ({"conversation_step": STEP, "thread_id": ""}, True),
+            ({"conversation_step": STEP}, True),
+            ({"conversation_step": STEP, "thread_id": "conv-1"}, False),
+        ],
+        ids=["no-step", "empty-thread", "no-thread", "asked-before"],
+    )
+    async def test_nothing_is_logged_without_a_step_a_thread_or_a_first_ask(
+        self, run_ids: Mapping[str, object], first_ask: bool
+    ) -> None:
+        with (
+            _graph_run("ui", run_ids={**CHAT_RUN, **run_ids}),
+            patch(
+                "app.utils.integration_checker.block_integration",
+                AsyncMock(return_value=first_ask),
+            ),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_not_awaited()
+
+    async def test_nothing_is_logged_outside_a_run(self) -> None:
+        with (
+            _graph_run(None),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_not_awaited()
 
 
 class TestExpiredConnectionPrompt:
@@ -406,7 +500,9 @@ class TestExactCopyPerBranch:
             "to refresh access. A reconnect button has been shown to the user, and a "
             f"standalone authorization URL is available: {_MCP_AUTH_URL}. Relay that URL "
             "verbatim as a clickable link so the user can reconnect even if the card is not "
-            "visible, then try again."
+            "visible. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_ui_token_only(self) -> None:
@@ -424,7 +520,9 @@ class TestExactCopyPerBranch:
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. This integration authenticates with an API key, so no "
             "standalone authorization URL exists. A reconnect button has been shown to the "
-            "user; ask them to enter the API key there."
+            "user; ask them to enter the API key there. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_ui_unavailable(self) -> None:
@@ -438,8 +536,9 @@ class TestExactCopyPerBranch:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. A reconnect button has been shown to the user, but no "
-            "standalone authorization URL is available right now. Ask the user to click it, "
-            "then try again."
+            "standalone authorization URL is available right now. Ask the user to click it. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_bot_oauth(self) -> None:
@@ -509,8 +608,9 @@ class TestExactCopyPerBranch:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. A reconnect button has been shown to the user, so do NOT "
-            "include any URL in your reply, the UI card handles it. Ask the user to click it, "
-            "then try again."
+            "include any URL in your reply, the UI card handles it. Ask the user to click it. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
 
@@ -642,8 +742,9 @@ class TestAddAccountPrompt:
         assert msg == (
             "The user wants to add another Gmail account; their current accounts stay "
             "connected. A button to add the account has been shown to the user, so do NOT "
-            "include any URL in your reply, the UI card handles it. Ask the user to click it, "
-            "then try again."
+            "include any URL in your reply, the UI card handles it. Ask the user to click it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_a_bot_gets_the_single_use_link(self) -> None:
@@ -681,7 +782,7 @@ class TestAddAccountPrompt:
 class TestAccountReconnectPrompt:
     """One expired account is signed back in place, named on the card and in the link."""
 
-    _DEAD = make_integration_account("ca_work", "expired", label="work@acme.com")
+    _DEAD = make_integration_account("ca_work", IntegrationStatus.EXPIRED, label="work@acme.com")
 
     async def test_the_card_names_the_account_and_carries_its_id(self) -> None:
         # The integration itself stays connected while another account works.
@@ -704,7 +805,9 @@ class TestAccountReconnectPrompt:
             "The user's Gmail account work@acme.com lost its connection and must be signed in "
             f"again. {ACCOUNT_NEEDS_RECONNECT_HINT} A reconnect button has been shown to the "
             "user, so do NOT include any URL in your reply, the UI card handles it. Ask the "
-            "user to click it, then try again."
+            "user to click it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_a_background_run_records_which_account_lost_its_connection(self) -> None:
@@ -745,7 +848,9 @@ class TestExactCopyPerMode:
         assert msg == (
             "Gmail needs to be connected. A connect button has been shown to the user, so do "
             "NOT include any URL in your reply, the UI card handles it. Ask the user to click "
-            "it, then try again."
+            "it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_an_expired_connection_on_ui(self) -> None:
@@ -754,7 +859,9 @@ class TestExactCopyPerMode:
         assert msg.endswith(
             "Do NOT tell them to connect Gmail for the first time. A reconnect button has been "
             "shown to the user, so do NOT include any URL in your reply, the UI card handles "
-            "it. Ask the user to click it, then try again."
+            "it. Ask the user to click it. "
+            "Nothing more can be done with Gmail until they do, so do not call any Gmail tool again "
+            "this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_a_requested_reconnect_in_the_background(self) -> None:

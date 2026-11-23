@@ -15,6 +15,8 @@ __all__ = [
     "TodosCreated",
     "TodosDeleted",
     "TodosInboxDeskProvisioned",
+    "TodosOpenStateRepaired",
+    "TodosRefReopened",
     "TodosRunResultDelivered",
     "TodosSubscriptionFailed",
     "TodosSubscriptionRegistered",
@@ -29,6 +31,7 @@ SubscriptionFailureReason = Literal[
     "todo_not_found",
     "invalid_conditions",
     "invalid_config",
+    "invalid_subscription",
     "registration_failed",
     "no_trigger_instance",
 ]
@@ -77,7 +80,6 @@ class TodosToggled(ServerEvent):
     has_due_date: bool | None = None
     is_subtask: bool | None = None
     bulk_count: int | None = None
-    count: int | None = None
 
 
 class TodosDeleted(ServerEvent):
@@ -159,6 +161,28 @@ class TodosInboxDeskProvisioned(ServerEvent):
     event: ClassVar[str] = "todos:inbox_desk_provisioned"
     # One desk per user: provisioning repeats only on a reconnect race the insert dedupes.
     budget_per_user_day: ClassVar[int] = 2
+
+
+class TodosOpenStateRepaired(ServerEvent):
+    """A tracked todo run ended with no next step even after being sent back, so code set one."""
+
+    event: ClassVar[str] = "todos:open_state_repaired"
+    budget_per_user_day: ClassVar[int] = 20
+
+    todo_id: ObjectIdStr
+    # What the todo was waiting on when the run that left it without a next step woke.
+    waiting_on: Identifier | None = None
+
+
+class TodosRefReopened(ServerEvent):
+    """A create for an outside object reopened the completed tracked todo it already had."""
+
+    event: ClassVar[str] = "todos:ref_reopened"
+    budget_per_user_day: ClassVar[int] = 50
+
+    todo_id: ObjectIdStr
+    # Which kind of outside object came back: a Gmail thread, the Inbox desk.
+    ref_source: Identifier
 
 
 class ProjectsCreated(ServerEvent):

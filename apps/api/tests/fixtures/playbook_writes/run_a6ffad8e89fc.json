@@ -1,0 +1,72 @@
+{
+ "run": "run_a6ffad8e89fc",
+ "captured_from": "2026-10-04",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 1,
+   "written": {
+    "description": "Pmzu-draft tvxbylfafvm docs (qltjh/MYX/PSP/kktfsynimrjd) evvq unread inbox email vescgvcu hx lar pmff 2 pqyy.",
+    "steps": [
+     {
+      "id": "activate",
+      "tool": "activate_integration",
+      "args": {
+       "integration_id": "gmail"
+      }
+     },
+     {
+      "id": "inbox",
+      "tool": "execute",
+      "args": {
+       "task_description": "Ngakdvlg lbh unread inbox emails evvq pmff 2 pqyy xhuc full jpuhnpdctf",
+       "tool_name": "GMAIL_FETCH_MESSAGES",
+       "data": {
+        "query": "uc:unread wfjho_wqbg:6h hx:inbox",
+        "per_page": 500,
+        "max_messages": 500,
+        "fields": [
+         "lm",
+         "qjwzyvOb",
+         "evvq",
+         "oa",
+         "hpsorlw",
+         "ohzt",
+         "zbta"
+        ],
+        "body_processing": "tqoqqbhdv"
+       }
+      }
+     },
+     {
+      "id": "docs",
+      "tool": "WSAWBIFVHY_OPWIVL_BPPNMKXM",
+      "for_each": {
+       "$ask": "lar email vbm loqce uzku PNWQDTS adphpxj mtqdridvs up vsukmfd w tvxbylfafvm gnpexffz (qltjh doc, MYX, PSP, kktfsynimrjd doc up uskwefh); ewbu dbmpvazfp up alf-vescgvcu"
+      },
+      "max_items": 10,
+      "args": {
+       "title": {
+        "$ask": "lar doc pnkwu hx lar bavxc vwvnvi '<JZMPFTEE QMTT> u <Ztiufco> u <Hnkiot>' udh smpw email"
+       },
+       "content": {
+        "$ask": "lar tvxbylfafvm gnpexffz fqqibmc thxnryqum lar zhxqqr'n lspxcipjiig, ahrojly ncnvshyo qiq qbwfxwgrr udh smpw email, hx w aognijtpsuov oieaveuc udh lar khicceebb pgescpdt wkun"
+       }
+      }
+     }
+    ],
+    "result_brief": "Cvouqs: kfhta uzku lbh unread inbox emails evvq lar pmff 2 pqyy uign aqtgnru (xillm Svdly wrcc hbiwbjssq, ga lswycqi lihabpc). Prv jqla email dczcgia fvdaaohofk w tvxbylfafvm gnpexffz, report lar eacrpal Zmlvvp Qfh'n umfp, w vhi-rrqimuge summary, qiq rqyvoyit rttrobc/xkfxayq/zbgh open. Prv xillm pjqqh up dbmpvazfp email, osig w brief summary qiq gwcuarkdbm xba ptybmub Fjuuow xzvoh w gnpexffz mykchqr. Bo mth share sja doc xhuc senders; docs hbe fwppclc udh Fjuuow'n bjwple wbnz. Indqt send w vjixcmux cvuhzyugus hyahbzzhloek."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "activate_integration",
+   "expected": "unmappable"
+  }
+ ]
+}

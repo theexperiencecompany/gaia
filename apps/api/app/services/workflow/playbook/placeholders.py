@@ -26,13 +26,24 @@ PLACEHOLDER_ROOTS: frozenset[str] = frozenset(
 #: Longest root first so ``last_run`` is never matched as a shorter alternative.
 _ROOT_ALTERNATION = "|".join(sorted(PLACEHOLDER_ROOTS, key=len, reverse=True))
 
+#: How an offset's unit may be written, each spelling mapped to its ``timedelta`` keyword.
+#: Models write "15min" and "15 minutes" as often as "15m"; every spelling means one unit.
+OFFSET_UNITS: dict[str, str] = {
+    **dict.fromkeys(("w", "week", "weeks"), "weeks"),
+    **dict.fromkeys(("d", "day", "days"), "days"),
+    **dict.fromkeys(("h", "hr", "hrs", "hour", "hours"), "hours"),
+    **dict.fromkeys(("m", "min", "mins", "minute", "minutes"), "minutes"),
+    **dict.fromkeys(("s", "sec", "secs", "second", "seconds"), "seconds"),
+}
+_UNIT_ALTERNATION = "|".join(sorted(OFFSET_UNITS, key=len, reverse=True))
+
 #: One token: ``$``, a KNOWN root (ended by a non-identifier character, so
 #: ``$nowhere`` is text rather than ``$now`` + ``here``), an optional dotted
 #: path, and an optional signed offset and clock time for the two time roots.
 PLACEHOLDER_TOKEN = re.compile(
     rf"\$(?P<root>{_ROOT_ALTERNATION})(?![A-Za-z0-9_])"
     r"(?P<path>(?:\.[A-Za-z0-9_-]+)*)"
-    r"(?:\s*(?P<sign>[+-])\s*(?P<amount>\d+)(?P<unit>[wdhms])\b)?"
+    rf"(?:\s*(?P<sign>[+-])\s*(?P<amount>\d+)\s*(?P<unit>{_UNIT_ALTERNATION})\b)?"
     r"(?:\s+(?P<clock>[01]\d:[0-5]\d|2[0-3]:[0-5]\d)\b)?"
 )
 

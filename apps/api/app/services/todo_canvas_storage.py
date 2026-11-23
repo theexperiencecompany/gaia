@@ -22,10 +22,8 @@ from app.utils.canvas_vector_utils import delete_canvas_embedding, update_canvas
 from shared.py.wide_events import log, spawn_logged_task
 
 
-def build_vfs_label(todo_id: str, *, archived: bool = False) -> str:
+def build_vfs_label(todo_id: str) -> str:
     """Stable label used wherever the old VFS path was surfaced for display."""
-    if archived:
-        return f"/workspace/gaia-tasks/archive/{todo_id}"
     return f"/workspace/gaia-tasks/{todo_id}"
 
 

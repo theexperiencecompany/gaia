@@ -17,6 +17,7 @@ import type {
   Action,
   OnboardingState,
 } from "@/features/onboarding/state/types";
+import type { Message } from "@/features/onboarding/types";
 
 function apply(state: OnboardingState, ...actions: Action[]): OnboardingState {
   return actions.reduce(reducer, state);
@@ -27,6 +28,7 @@ const answeredQuestions = apply(
   { type: "answer", field: FIELD_NAMES.PROFESSION, value: "founder" },
   { type: "toggleNeed", value: "inbox" },
   { type: "submitNeeds" },
+  { type: "preferencesPersisted" },
 );
 
 describe("onboarding stage machine", () => {
@@ -43,6 +45,9 @@ describe("onboarding stage machine", () => {
 
     state = apply(state, { type: "toggleNeed", value: "inbox" });
     state = apply(state, { type: "submitNeeds" });
+    expect(getStage(state, paid)).toBe("questions");
+
+    state = apply(state, { type: "preferencesPersisted" });
     expect(getStage(state, paid)).toBe("paidReveal");
 
     state = apply(state, { type: "ackPaidReveal" });
@@ -50,6 +55,14 @@ describe("onboarding stage machine", () => {
 
     state = apply(state, { type: "skipPlatforms" });
     expect(getStage(state, paid)).toBe("chat");
+  });
+
+  it("holds answered questions until the answers are stored", () => {
+    // Past this point the link opener and the first chat read the stored
+    // answers; a failed save must not let the user on with them lost.
+    const unsaved = { ...answeredQuestions, preferencesPersisted: false };
+    expect(getStage(unsaved, false)).toBe("questions");
+    expect(getStage(unsaved, true)).toBe("questions");
   });
 
   it("parks an unpaid user on the payment stage", () => {
@@ -162,6 +175,9 @@ describe("Q2 multi-select", () => {
   });
 });
 
+const transcriptText = (message: Message): string[] =>
+  message.type === "bot" ? message.lines : [message.content];
+
 describe("transcript", () => {
   it("shows the profession label and the selected need labels", () => {
     const messages = getMessages({
@@ -170,7 +186,7 @@ describe("transcript", () => {
       selectedNeeds: answeredQuestions.selectedNeeds,
       otherNeed: "",
     });
-    const contents = messages.map((m) => m.content);
+    const contents = messages.flatMap(transcriptText);
     expect(contents).toContain("Founder / CEO");
     expect(contents).toContain("Inbox out of control");
   });
@@ -181,7 +197,7 @@ describe("transcript", () => {
       questionIndex: answeredQuestions.questionIndex,
       selectedNeeds: answeredQuestions.selectedNeeds,
       otherNeed: "chasing invoices",
-    }).map((m) => m.content);
+    }).flatMap(transcriptText);
     expect(contents.some((c) => c.startsWith("Founder, got it."))).toBe(true);
     expect(contents).toContain("Inbox out of control, chasing invoices");
   });
@@ -197,7 +213,7 @@ describe("transcript", () => {
       questionIndex: state.questionIndex,
       selectedNeeds: state.selectedNeeds,
       otherNeed: "",
-    }).map((m) => m.content);
+    }).flatMap(transcriptText);
     expect(contents).not.toContain("Inbox out of control");
   });
 });

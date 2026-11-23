@@ -1,123 +1,30 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Skeleton } from "@heroui/skeleton";
-import {
-  AlertCircleIcon,
-  CheckmarkCircle02Icon,
-  Clock04Icon,
-  Loading03Icon,
-} from "@icons";
+import { Skeleton } from "@heroui/react";
+import { Clock04Icon } from "@icons";
+import { formatDuration, formatRelativeDate } from "@shared/utils";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
-import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
+import { ExecutionStatusBadge } from "./ExecutionStatusBadge";
 import PanelHeader from "./workflow-modal/PanelHeader";
 
 interface WorkflowExecutionHistoryProps {
   workflowId: string;
 }
 
-/**
- * Human-relative label ("5m ago") for recent timestamps, or null when the
- * timestamp is older than a week and needs a calendar date — the caller then
- * formats it with a locale-aware formatter.
- */
-function getRelativeDateLabel(dateString: string): string | null {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffSecs = Math.floor((now.getTime() - date.getTime()) / 1000);
-  const diffMins = Math.floor(diffSecs / 60);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffSecs < 60) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return null;
-}
-
-function formatDuration(seconds: number | undefined): string {
-  if (!seconds) return "";
-  if (seconds < 60) return `Ran for ${Math.round(seconds)}s`;
-  if (seconds < 3600) return `Ran for ${Math.round(seconds / 60)}m`;
-  return `Ran for ${Math.round(seconds / 3600)}h`;
-}
-
-function ExecutionStatusBadge({
-  status,
-}: {
-  status: WorkflowExecution["status"];
-}) {
-  switch (status) {
-    case "success":
-      return (
-        <Chip
-          size="sm"
-          color="success"
-          variant="flat"
-          radius="sm"
-          startContent={<CheckmarkCircle02Icon className="h-3 w-3" />}
-        >
-          Success
-        </Chip>
-      );
-    case "failed":
-      return (
-        <Chip
-          size="sm"
-          color="danger"
-          variant="flat"
-          radius="sm"
-          startContent={<AlertCircleIcon className="h-3 w-3" />}
-        >
-          Failed
-        </Chip>
-      );
-    case "skipped":
-      return (
-        <Chip size="sm" color="default" variant="flat" radius="sm">
-          Skipped
-        </Chip>
-      );
-    case "running":
-      return (
-        <Chip
-          size="sm"
-          color="primary"
-          radius="sm"
-          variant="flat"
-          startContent={
-            <div className="animate-spin">
-              <Loading03Icon className="h-3 w-3" />
-            </div>
-          }
-        >
-          Running
-        </Chip>
-      );
-  }
-}
-
 function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
   const router = useRouter();
   const locale = useLocale();
 
-  // Calendar fallback for timestamps older than a week. The formatter gets an
-  // explicit locale (from the i18n provider, never an ambient runtime default)
-  // and is memoized, so the rendered text is identical on server and browser.
-  const calendarDateFormat = useMemo(
-    () => new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }),
-    [locale],
-  );
-
-  const relativeLabel = getRelativeDateLabel(execution.started_at);
+  // The locale comes from the i18n provider, never an ambient runtime default,
+  // so the rendered text is identical on server and browser.
+  const startedLabel = formatRelativeDate(execution.started_at, { locale });
 
   const handleViewClick = () => {
     if (execution.conversation_id) {
@@ -150,8 +57,9 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
             </span>
           )}
         </div>
+        {/* Two lines: a skip or a quiet-hours run leads with its reason. */}
         {execution.summary && (
-          <p className="text-xs text-zinc-400 line-clamp-1">
+          <p className="text-xs text-zinc-400 line-clamp-2">
             {execution.summary}
           </p>
         )}
@@ -162,10 +70,13 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
         )}
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-zinc-500">
-          {relativeLabel ??
-            calendarDateFormat.format(new Date(execution.started_at))}
-        </span>
+        {execution.status !== "running" && (
+          <ShareLinkControls
+            iconOnly
+            target={{ type: "workflow_run", id: execution.execution_id }}
+          />
+        )}
+        <span className="text-xs text-zinc-500">{startedLabel}</span>
         {isClickable && <ChevronRight className="h-4 w-4 text-zinc-500" />}
       </div>
     </div>
@@ -212,15 +123,15 @@ export default function WorkflowExecutionHistory({
         ))}
       </div>
       {hasMore && (
-        <Button
+        <GaiaButton
           size="sm"
-          variant="flat"
+          variant="default-soft"
           className="w-full"
           onPress={loadMore}
-          isLoading={isLoading}
+          isPending={isLoading}
         >
           Load More
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

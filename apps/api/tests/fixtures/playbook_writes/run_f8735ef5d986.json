@@ -1,0 +1,113 @@
+{
+ "run": "run_f8735ef5d986",
+ "captured_from": "2026-09-06",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 14,
+   "record_len": 3,
+   "written": {
+    "description": "Epzhnl LGS fqqibmc xbryx jcqviucr: research trending LGS neefxx, pwlztlikjl jxwvq fqqibmc foukvc, create w todo vls brief, update lar vxdvud todo'n canvas.",
+    "steps": [
+     {
+      "id": "research_topics",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "trending LGS neefxx 2026 ydcnjco edhihwgks fqqibmc eegrggmi"
+      }
+     },
+     {
+      "id": "research_keywords",
+      "tool": "web_search_tool",
+      "args": {
+       "query_text": "svaq-rihaqm LGS keywords 2026 search ckxwnl twvfjrlnbzlk trends"
+      }
+     },
+     {
+      "id": "create_briefs",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "t1",
+        "tool": "create_todo",
+        "args": {
+         "title": {
+          "$ask": "Zoeyt udh LGS fqqibmc brief #1, yzmij evvq lar research"
+         },
+         "description": {
+          "$ask": "Qvla fqqibmc brief #1: topic, oqgxkx keywords, drb-ktf, key dsbjiq, vwvnvi, sjznoqgpq ncnvshyo"
+         },
+         "labels": [
+          "LGS",
+          "fqqibmc"
+         ]
+        }
+       },
+       {
+        "id": "t2",
+        "tool": "create_todo",
+        "args": {
+         "title": {
+          "$ask": "Zoeyt udh LGS fqqibmc brief #2, yzmij evvq lar research"
+         },
+         "description": {
+          "$ask": "Qvla fqqibmc brief #2: topic, oqgxkx keywords, drb-ktf, key dsbjiq, vwvnvi, sjznoqgpq ncnvshyo"
+         },
+         "labels": [
+          "LGS",
+          "fqqibmc"
+         ]
+        }
+       },
+       {
+        "id": "t3",
+        "tool": "create_todo",
+        "args": {
+         "title": {
+          "$ask": "Zoeyt udh LGS fqqibmc brief #3, yzmij evvq lar research"
+         },
+         "description": {
+          "$ask": "Qvla fqqibmc brief #3: topic, oqgxkx keywords, drb-ktf, key dsbjiq, vwvnvi, sjznoqgpq ncnvshyo"
+         },
+         "labels": [
+          "LGS",
+          "fqqibmc"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "update_canvas",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": {
+        "$ask": "Vujmna bxwwhjl todo lm qnrad oa smpw rui"
+       },
+       "mode": "cbgbnfb",
+       "content": {
+        "$ask": "Qvla canvas umqzulyr: research dfelpkeu, fqqibmc xbryx, qiq lar jxwvq eacrpal todo APb"
+       }
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar jxwvq trending LGS neefxx tbgkjtyjdd smpw trrb (evvq lar eqf web bqbkvbuu), jqla xhuc lab yjhz cpxlc qiq mkdurfgnw. Iftb list lar jxwvq fqqibmc-brief todos eacrpal, jqla xhuc lab todo HW qiq lar brief pnkwu. Mnzme ae bvxsywftlq lar canvas udh lar vxdvud todo eto ksbcvnk xhuc lar dfelpkeu, xbryx, qiq eacrpal tasks."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "create_todo; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

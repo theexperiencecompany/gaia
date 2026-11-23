@@ -7,7 +7,7 @@ Type/lint errors here are expected: adapted from an external library.
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
-import functools
+import hashlib
 import math
 from typing import Any, cast
 
@@ -17,6 +17,7 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
+    AnyMessage,
     HumanMessage,
     MessageLikeRepresentation,
     ToolCall,
@@ -37,7 +38,9 @@ from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
+from pydantic import TypeAdapter
 
+from app.agents.core.outcome_review import leaves_a_todo_asleep, outcome_unbacked
 from app.agents.llm.client import (
     LLMInvokeOptions,
     _is_openai_wire,
@@ -55,15 +58,17 @@ from app.agents.middleware.completion import (
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
+from app.agents.tools.invocation import invoke_tool, invoke_tool_sync
 from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
 )
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import COMMS_AGENT_NAME, FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
+    OPENAI_PROMPT_CACHE_KEY_MAX_CHARS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
 )
@@ -75,12 +80,7 @@ from app.override.langgraph_bigtool.agent_config import (
     RetrieveToolsResponse,
     ToolRetrievalConfig,
 )
-from app.override.langgraph_bigtool.dynamic_tool_node import (
-    DynamicToolNode,
-    ToolNodeOptions,
-    format_tool_error,
-    hil_and_timeout_guarded_tool_call,
-)
+from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.override.langgraph_bigtool.hooks import (
     HookType,
     changed_hook_keys,
@@ -88,6 +88,7 @@ from app.override.langgraph_bigtool.hooks import (
     sync_execute_hooks,
 )
 from app.override.langgraph_bigtool.utils import (
+    NUDGE_CONTINUE_NODE,
     REMAINING_STEPS_KEY,
     State,
     dedupe_str_list,
@@ -97,14 +98,16 @@ from app.override.langgraph_bigtool.utils import (
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
-from app.utils.message_breaks import normalize_message_breaks
-from app.utils.multimodal import extract_text_content
+from app.utils.message_breaks import normalize_message_breaks, split_message_bubbles
+from app.utils.multimodal import MessageContent, extract_text_content
 from shared.py.wide_events import log
 
 #: Graph node that answers a tool call the model made without binding the
 #: tool. langgraph derives this same name from reject_unbound_tools itself,
 #: so the router, both edges, and the registration below must all agree.
 REJECT_UNBOUND_TOOLS_NODE = "reject_unbound_tools"
+
+_RETRIEVE_TOOLS_RESPONSE: TypeAdapter[RetrieveToolsResponse] = TypeAdapter(RetrieveToolsResponse)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -124,6 +127,7 @@ class _AgentDeps:
     pre_model_hooks: list[HookType] | None
     end_graph_hooks: list[HookType] | None
     require_finish_to_end: bool
+    turn_ending: Callable[[AIMessage, RunnableConfig], object | None] | None
 
 
 def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
@@ -134,9 +138,14 @@ def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfi
     )
 
 
+def _with_tools(model: Runnable, tools: Sequence[BaseTool | dict[str, Any]]) -> Runnable:
+    """Bind tools onto model; with none, the bare model, since providers reject an empty tools array."""
+    return model.bind_tools(tools) if tools else model  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
+
+
 def _prepare_fallback(
     llm: LanguageModelLike,
-    tools_to_bind: list[BaseTool],
+    tools_to_bind: Sequence[BaseTool | dict[str, Any]],
     model_configurations: AgentConfigurable,
 ) -> tuple[Callable[[], Runnable], "ModelLane"] | None:
     """Rebind this run onto the next configured provider; None if none exists.
@@ -150,10 +159,13 @@ def _prepare_fallback(
     fallback_lane = lane.fallback() if lane else None
     if fallback_lane is None:
         return None
-    # cast rather than an attr-defined suppression: the registry genuinely holds a
-    # tool-binding chat model, LanguageModelLike just doesn't declare bind_tools.
-    bindable = cast(BaseChatModel, llm)
-    return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
+    # Selected before bind_tools, as the primary is: on the bare alternatives
+    # bind_tools binds the DEFAULT provider, re-running the one that just failed.
+    # cast: the registry holds a tool-binding chat model LanguageModelLike doesn't declare.
+    bindable = cast(
+        BaseChatModel, llm.with_config(configurable=fallback_lane.rebind(model_configurations))
+    )
+    return (lambda: _with_tools(bindable, tools_to_bind), fallback_lane)
 
 
 def _bind_session_id(
@@ -175,8 +187,18 @@ def _bind_session_id(
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
     if key and _is_openai_wire(llm_with_tools):
-        return llm_with_tools.bind(prompt_cache_key=key)
+        return llm_with_tools.bind(prompt_cache_key=_fit_openai_cache_key(key))
     return llm_with_tools
+
+
+def _fit_openai_cache_key(key: str) -> str:
+    """Return key, or its sha256 hex digest (64 characters) when OpenAI's limit would reject it.
+
+    A digest of the same key is the same digest, so the chain still lands on one cache.
+    """
+    if len(key) <= OPENAI_PROMPT_CACHE_KEY_MAX_CHARS:
+        return key
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 def _agent_sticky_key(
@@ -289,9 +311,18 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
     return dedupe_tool_bindings(tools_to_bind)
 
 
+def _stored_comms_content(content: MessageContent) -> MessageContent:
+    """Return comms content as the thread keeps it: canonical breaks, and no text when it is breaks alone."""
+    if isinstance(content, str):
+        return normalize_message_breaks(content)
+    if split_message_bubbles(extract_text_content(content)):
+        return content
+    return [block for block in content if isinstance(block, dict) and block.get("type") != "text"]
+
+
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
-    if agent_name == "comms_agent" and isinstance(response.content, str):
-        response.content = normalize_message_breaks(response.content)
+    if agent_name == COMMS_AGENT_NAME:
+        response.content = _stored_comms_content(response.content)
 
     if not response.tool_calls and not response.content:
         response.content = "Empty response from model."
@@ -306,7 +337,7 @@ def _log_message_preview(state: State) -> None:
         for msg in recent_messages:
             role = msg.__class__.__name__
             # The text's length, not the raw content's: inline media is megabytes of base64.
-            content = extract_text_content(getattr(msg, "content", ""))
+            content = extract_text_content(msg.content)
             preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
@@ -352,8 +383,9 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
         tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
+        llm_with_tools = _bind_session_id(
+            _with_tools(_llm, tools_to_bind), model_configurations, deps.agent_name
+        )
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state, config)
         response = invoke_llm(
@@ -398,42 +430,47 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
 
-        tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
-        prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
-        # LLMAccountingMiddleware already charges this call; auxiliary metering
-        # here would book it a second time.
-        invoke_fn = functools.partial(
-            ainvoke_llm,
-            llm_with_tools,
-            fallback=prepared[0] if prepared else None,
-            config=config,
-            label=deps.agent_name,
-            options=LLMInvokeOptions(
-                meter_auxiliary=False,
-                fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
-                fallback_model=prepared[1].model if prepared else None,
-                sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
-            ),
-        )
+        tools_to_bind: list[BaseTool | dict[str, Any]] = [*_tools_to_bind(deps, state)]
+
+        async def invoke_fn(
+            messages: list[AnyMessage], tools: list[BaseTool | dict[str, Any]]
+        ) -> AIMessage:
+            llm_with_tools = _bind_session_id(
+                _with_tools(_llm, tools), model_configurations, deps.agent_name
+            )
+            prepared = _prepare_fallback(llm, tools, model_configurations)
+            # LLMAccountingMiddleware already charges this call; auxiliary metering
+            # here would book it a second time.
+            return cast(
+                AIMessage,
+                await ainvoke_llm(
+                    llm_with_tools,
+                    messages,
+                    fallback=prepared[0] if prepared else None,
+                    config=config,
+                    label=deps.agent_name,
+                    options=LLMInvokeOptions(
+                        meter_auxiliary=False,
+                        fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                        fallback_model=prepared[1].model if prepared else None,
+                        sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
+                    ),
+                ),
+            )
 
         _log_message_preview(state)
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
-            middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
-                tool for tool in tools_to_bind
-            ]
             response = await middleware_executor.wrap_model_invocation(
                 model=_llm,  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
                 state=state,
                 config=config,
                 store=store,
-                tools=middleware_tools_for_request,
+                tools=tools_to_bind,
                 invoke_fn=invoke_fn,
             )
         else:
-            response = await invoke_fn(state["messages"])
+            response = await invoke_fn(state["messages"], tools_to_bind)
 
         response = _finalize_model_response(response, deps.agent_name)
 
@@ -469,27 +506,23 @@ def _retrieval_call_kwargs(
 
 
 def _resolve_retrieval_result(
-    result: RetrieveToolsResponse,
+    output: object,
     tool_call_id: str,
     response_texts: dict[str, str],
 ) -> tuple[list[str], list[str]]:
-    """Split a retrieve_tools result into ids to bind vs ids to echo, recording response text by call id."""
-    # Handle both RetrieveToolsResult dict and plain list
-    if isinstance(result, dict):
-        tools_to_bind = [
-            tool_id for tool_id in result.get("tools_to_bind", []) if isinstance(tool_id, str)
-        ]
-        response = [tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)]
-        rendered = result.get("response_text")
-        if isinstance(rendered, str) and rendered:
-            response_texts[tool_call_id] = rendered
+    """Split a retrieve_tools output into ids to bind vs ids to echo, recording response text by call id.
+
+    Raises pydantic.ValidationError when the output is not a RetrieveToolsResponse.
+    """
+    result = _RETRIEVE_TOOLS_RESPONSE.validate_python(output)
+    if isinstance(result, list):
+        tools_to_bind = response = result
     else:
-        tools_to_bind = [
-            tool_id
-            for tool_id in (result if isinstance(result, list) else [])
-            if isinstance(tool_id, str)
-        ]
-        response = tools_to_bind
+        tools_to_bind = result["tools_to_bind"]
+        response = result["response"]
+        rendered = result.get("response_text")
+        if rendered:
+            response_texts[tool_call_id] = rendered
 
     # Filter out subagent: prefixed tools from binding
     filtered_bind = [tool_id for tool_id in tools_to_bind if not tool_id.startswith("subagent:")]
@@ -543,7 +576,9 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
         response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = _retrieval_call_kwargs(tool_call, deps.store_arg, store, config)
-            result = deps.retrieve_tools.invoke(kwargs, config=config)
+            result = invoke_tool_sync(
+                deps.retrieve_tools, kwargs, config, call_args=tool_call["args"]
+            )
             filtered_bind, response = _resolve_retrieval_result(
                 result, tool_call["id"], response_texts
             )
@@ -576,7 +611,9 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
             if tool_call_id is None:
                 raise ValueError("retrieve_tools call carries no id to answer it under")
             kwargs = _retrieval_call_kwargs(request.tool_call, deps.store_arg, store, config)
-            result = await retrieve_tools.ainvoke(kwargs, config=config)
+            result = await invoke_tool(
+                retrieve_tools, kwargs, config, call_args=request.tool_call["args"]
+            )
             response_texts: dict[str, str] = {}
             filtered_bind, response = _resolve_retrieval_result(
                 result, tool_call_id, response_texts
@@ -662,13 +699,13 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State: 
     """Answer each finish_task call with its result as the tool message."""
     messages = []
     for call in tool_calls:
-        args = call.get("args", {}) if isinstance(call, dict) else {}
-        result = args.get("result")
-        content = str(result) if result is not None else "Task completed."
+        result = call["args"].get("result")
+        # No result is no answer: the run reports it as unconfirmed, never as done.
+        content = str(result) if result is not None else ""
         messages.append(
             ToolMessage(
                 content=content,
-                tool_call_id=call.get("id", ""),
+                tool_call_id=call["id"] or "",
                 name=FINISH_TASK_NAME,
             )
         )
@@ -678,6 +715,12 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State: 
 async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
     """Async twin of finish_task_node for the async graph path."""
     return finish_task_node(tool_calls, store=store)
+
+
+def _owes_backed_outcome(state: State) -> bool:
+    # A finish_task whose declared outcome this run's tool calls do not back,
+    # while the completion nudge budget lasts. ask and blocked need no work.
+    return completion_nudges_spent(state) < MAX_COMPLETION_NUDGES and outcome_unbacked(state)
 
 
 def _owes_playbook_decision(state: State) -> bool:
@@ -700,7 +743,10 @@ def _after_finish_task(exit_node: str) -> Callable[[State], str]:
     def route(state: State) -> str:
         if _owes_playbook_decision(state):
             log.info(f"{LogTag.AGENT} finish_task without a playbook decision; nudging once")
-            return "nudge_continue"
+            return NUDGE_CONTINUE_NODE
+        if _owes_backed_outcome(state):
+            log.info(f"{LogTag.AGENT} finish_task outcome not backed by this run; nudging once")
+            return NUDGE_CONTINUE_NODE
         return exit_node
 
     return route
@@ -720,13 +766,7 @@ def nudge_continue_node(state: State) -> State:
 
 
 def _last_tool_calling_message(state: State) -> AIMessage | None:
-    """Find the AI message whose calls this turn is executing.
-
-    Not messages[-1]: a resume prepends a current-time HumanMessage
-    (_with_current_time), so the tool-calling message is no longer last once
-    approvals wakes. Must match hil/utils.current_tool_calls, or the two gate
-    different call sets.
-    """
+    """Find the AI message whose calls this turn is executing: the last one that made calls."""
     for message in reversed(state["messages"]):
         if isinstance(message, AIMessage) and message.tool_calls:
             return message
@@ -748,9 +788,7 @@ def _get_bound_tool_names(deps: _AgentDeps, state: State) -> set[str]:
         if tool_id in deps.tool_registry:
             bound.add(deps.tool_registry[tool_id].name)
     # Middleware tools (e.g. spawn_subagent, plan_tasks)
-    for tool in deps.middleware_tools:
-        if hasattr(tool, "name"):
-            bound.add(tool.name)
+    bound.update(tool.name for tool in deps.middleware_tools)
     return bound
 
 
@@ -812,10 +850,10 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
                 _owes_playbook_decision(state)
                 or (
                     completion_nudges_spent(state) < MAX_COMPLETION_NUDGES
-                    and work_looks_unfinished(state)
+                    and (work_looks_unfinished(state) or leaves_a_todo_asleep(state))
                 )
             ):
-                return "nudge_continue"
+                return NUDGE_CONTINUE_NODE
             return "end_graph_hooks" if deps.end_graph_hooks else END
         bound_names = _get_bound_tool_names(deps, state)
         canonical_to_bound = canonical_tool_name_map(bound_names)
@@ -850,16 +888,33 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
     return should_continue
 
 
+def _after_tools(
+    turn_ending: Callable[[AIMessage, RunnableConfig], object | None], exit_node: str
+) -> Callable[[State, RunnableConfig], str]:
+    """Route out of the tools node: end the turn after calls that end it, else back to the model.
+
+    A turn-ending call that failed goes back to the model like any failed call, to correct it.
+    """
+
+    def route(state: State, config: RunnableConfig) -> str:
+        message = _last_tool_calling_message(state)
+        if message is None or turn_ending(message, config) is None:
+            return "agent"
+        call_ids = {call["id"] for call in message.tool_calls}
+        failed = any(
+            isinstance(result, ToolMessage)
+            and result.tool_call_id in call_ids
+            and result.status == "error"
+            for result in state["messages"]
+        )
+        return "agent" if failed else exit_node
+
+    return route
+
+
 def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
     return DynamicToolNode(
         deps.tool_registry,
-        ToolNodeOptions(
-            # Parent-routed tools used to re-raise non-validation exceptions and
-            # crash the run; every failure now becomes an error ToolMessage,
-            # matching the middleware path (timeout wrapper exempts orchestration tools).
-            handle_tool_errors=format_tool_error,
-            awrap_tool_call=hil_and_timeout_guarded_tool_call,
-        ),
         middleware_executor=deps.middleware_executor,
         middleware_tools=deps.middleware_tools,
     )
@@ -873,14 +928,14 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         path_map.insert(0, "select_tools")
     if deps.require_finish_to_end:
         builder.add_node(
-            "nudge_continue",
+            NUDGE_CONTINUE_NODE,
             # Sync-only: the node ignores state and just emits the nudge, and
             # RunnableCallable runs a sync func on ainvoke when no async twin
             # is given — the twin was a pass-through with nothing to add.
             RunnableCallable(nudge_continue_node),
         )
-        builder.add_edge("nudge_continue", "agent")
-        path_map.append("nudge_continue")
+        builder.add_edge(NUDGE_CONTINUE_NODE, "agent")
+        path_map.append(NUDGE_CONTINUE_NODE)
     if deps.end_graph_hooks:
         builder.add_node("end_graph_hooks", _end_graph_hooks_node(deps.end_graph_hooks))
         builder.add_edge("end_graph_hooks", END)
@@ -892,13 +947,18 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         path_map=path_map,
     )
 
-    builder.add_edge("tools", "agent")
     exit_node = "end_graph_hooks" if deps.end_graph_hooks else END
+    if deps.turn_ending is not None:
+        builder.add_conditional_edges(
+            "tools", _after_tools(deps.turn_ending, exit_node), path_map=["agent", exit_node]
+        )
+    else:
+        builder.add_edge("tools", "agent")
     if deps.require_finish_to_end:
         builder.add_conditional_edges(
             FINISH_TASK_NAME,
             _after_finish_task(exit_node),
-            path_map=["nudge_continue", exit_node],
+            path_map=[NUDGE_CONTINUE_NODE, exit_node],
         )
     else:
         builder.add_edge(FINISH_TASK_NAME, exit_node)
@@ -942,6 +1002,7 @@ def create_agent(
         pre_model_hooks=hooks.pre_model_hooks,
         end_graph_hooks=hooks.end_graph_hooks,
         require_finish_to_end=hooks.require_finish_to_end,
+        turn_ending=hooks.turn_ending,
     )
 
     builder = StateGraph(State, context_schema=agent_cfg.context_schema)
@@ -950,8 +1011,8 @@ def create_agent(
     builder.add_node("agent", _model_node(deps))
     if retrieve_tools is not None:
         # Tool retrieval is a pure read, so the default retry predicate is
-        # safe. The tools node has NO retry policy: its exceptions come from
-        # parent-routed tools, and retrying could double-execute a side effect.
+        # safe. The tools node has NO retry policy: an exception it raises comes
+        # from a tool that may have run, and retrying could double-execute a side effect.
         builder.add_node(
             "select_tools",
             _select_tools_node(deps),

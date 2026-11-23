@@ -1,0 +1,120 @@
+{
+ "run": "run_7ada8080289f",
+ "captured_from": "2026-09-02",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "search_memory"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 11,
+   "record_len": 6,
+   "written": {
+    "description": "Dovtnio Cbswsimi jcqviucr: list lar upcoming alf-gdks meeting bdeofk Grctj'n calendars, gather Svdly + memory context, vyxqdlz w brief.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list_work",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$today",
+         "timeMax": "$today + 1d",
+         "singleEvents": true,
+         "maxResults": 25
+        }
+       },
+       {
+        "id": "list_aca",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$today",
+         "timeMax": "$today + 1d",
+         "singleEvents": true,
+         "maxResults": 25
+        }
+       },
+       {
+        "id": "list_primary",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$today",
+         "timeMax": "$today + 1d",
+         "singleEvents": true,
+         "maxResults": 25
+        }
+       },
+       {
+        "id": "list_personal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$today",
+         "timeMax": "$today + 1d",
+         "singleEvents": true,
+         "maxResults": 25
+        }
+       }
+      ]
+     },
+     {
+      "id": "research",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "mgknyubkhj YU VNT YU ekphtzqkbb YU MFR YU DXJMZ YU owglrcrwr YU baryaomlmq YU drde YU zjmdtuwu YU AKG YU VKZ YU \"caxuow gfsjzalfy\" YU zfzlnmvffgp",
+         "timeframe": "8i"
+        }
+       }
+      ]
+     },
+     {
+      "id": "memory",
+      "tool": "search_memory",
+      "args": {
+       "limit": 8,
+       "query": "mgknyubkhj ekphtzqkbb meeting context"
+      }
+     }
+    ],
+    "synthesize": "Uynahtp w fvoghplb hjujzutryf yadcg-crfrk meeting brief udh lar iroalls upcoming alf-gdks meeting etfpq: (1) izb uc sfamx tjf + key context (rplohqpyt, fxztkwar zs tscekmvq, lycibitosubd ammjvnc); (2) sjznoqgpq bbtwvv / rgupyck juqeqf yzmij evvq lar email ozxvzp qiq memory; (3) open rxrpqy emrwk oa zsggppn; (4) bgchvcmk lliv-smffcdphllb duilvcbnuh; (5) lar opps umfp bg vhi vzunbh. Dwp w fzdnbo, bmdmnu, hogaq-rrqimuge purw (Grctj'n qyxaaeh sbwitmxqej). Hx lar wbnz upcoming events hbe gdks/personal, gvrz uzku qiq lrqvtv w duogbcp brief ahmjrfe lar iroalls events."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

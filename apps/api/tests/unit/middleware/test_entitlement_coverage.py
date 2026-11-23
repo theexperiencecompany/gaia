@@ -29,6 +29,7 @@ from app.api.v1.middleware.entitlement_allowlist import (
 )
 from app.decorators.entitlements import SubscriptionRequiredException
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
 from tests.conftest import FAKE_USER, _create_test_app
 
 pytestmark = pytest.mark.unit
@@ -41,7 +42,7 @@ GATED_METHODS = ("get", "post", "put", "patch", "delete")
 # handler logic runs, so a PRO caller can be checked against a real paid route
 # without the test needing Mongo, Redis or an LLM.
 PRO_SAMPLE: tuple[tuple[str, str], ...] = (
-    ("POST", "/api/v1/chat-stream"),
+    ("POST", "/api/v1/conversations/c1/messages"),
     ("POST", "/api/v1/image/generate"),
     ("POST", "/api/v1/mcp/proxy/tool-call"),
     ("POST", "/api/v1/reminders"),
@@ -135,7 +136,7 @@ async def test_block_body_matches_the_documented_wire_contract(
     gated_client: AsyncClient,
 ) -> None:
     """The web's 402 interceptor matches on these four keys — all must be present."""
-    response = await gated_client.post("/api/v1/chat-stream")
+    response = await gated_client.post("/api/v1/conversations/c1/messages")
 
     assert response.status_code == 402
     body = response.json()
@@ -156,16 +157,22 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/blogs/count",
         "/api/v1/blogs/slug",
         "/api/v1/bot/auth-status/platform/platform_user_id",
-        "/api/v1/bot/chat-stream",
+        "/api/v1/bot/conversations/active",
+        "/api/v1/bot/conversations/conversation_id/delivered",
         "/api/v1/bot/create-link-token",
         "/api/v1/bot/delivery-failures",
         "/api/v1/bot/link-token-info/token",
         "/api/v1/bot/linked-users/platform",
+        "/api/v1/bot/messages",
         "/api/v1/bot/redeem-link-code",
         "/api/v1/bot/reset-session",
         "/api/v1/bot/settings/platform/platform_user_id",
+        "/api/v1/bot/stop",
         "/api/v1/bot/transcribe",
         "/api/v1/bot/unlink",
+        "/api/v1/browser/live/code/decision",
+        "/api/v1/browser/replays/code",
+        "/api/v1/browser/shots/code/index.jpg",
         "/api/v1/desktop/releases/latest",
         "/api/v1/device/pair/poll",
         "/api/v1/device/pair/start",
@@ -173,6 +180,16 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/device/servers/server_key",
         "/api/v1/device/token",
         "/api/v1/integrations/connect-link",
+        "/api/v1/l/slug",
+        "/api/v1/l/slug/content-token",
+        "/api/v1/l/slug/download",
+        "/api/v1/l/slug/meta",
+        "/api/v1/l/slug/opened",
+        "/api/v1/l/slug/pdf",
+        "/api/v1/l/slug/report",
+        "/api/v1/l/slug/rotate",
+        "/api/v1/l/state",
+        "/api/v1/l/unshare",
         "/api/v1/mcp/oauth/callback",
         "/api/v1/notifications/unregister-device",
         "/api/v1/notifications/unsubscribe",
@@ -186,6 +203,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/oauth/workos/desktop/callback",
         "/api/v1/oauth/workos/mobile/callback",
         "/api/v1/onboarding",
+        "/api/v1/onboarding/answers",
         "/api/v1/onboarding/personalization",
         "/api/v1/onboarding/phase",
         "/api/v1/onboarding/preferences",
@@ -237,6 +255,44 @@ async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: As
             json={"edited_summary": "short and warm", "profession": "founder"},
         )
     assert response.status_code == 402
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("free_caller")
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/l/abcdefghijk"),
+        ("GET", "/api/v1/l/abcdefghijk/download"),
+        ("POST", "/api/v1/l/abcdefghijk/opened"),
+    ],
+)
+async def test_a_shared_link_opens_by_its_capability_not_the_viewers_plan(
+    gated_client: AsyncClient, method: str, path: str
+) -> None:
+    """A signed-in viewer without a plan got the paywall for a link someone shared with them."""
+    response = await gated_client.request(method, path)
+
+    assert response.status_code != 402
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("free_caller")
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/browser/replays/a-code"),
+        ("GET", "/api/v1/browser/shots/a-code/1.jpg"),
+        ("POST", "/api/v1/browser/live/a-code/decision"),
+    ],
+)
+async def test_a_browser_link_answers_by_its_capability_not_the_callers_plan(
+    gated_client: AsyncClient, method: str, path: str
+) -> None:
+    """A recap, frame or live-view link carries its own authority; a signed-in lapsed user opening one got the paywall."""
+    response = await gated_client.request(method, path, json={"decision": "continue"})
+
+    assert response.status_code != 402
 
 
 @pytest.mark.usefixtures("free_caller")
@@ -292,7 +348,7 @@ async def test_pro_user_is_not_blocked(gated_client: AsyncClient, method: str, p
 # ---------------------------------------------------------------------------
 
 
-def _minimal_app(user: dict[str, Any] | None) -> FastAPI:
+def _minimal_app(user: AuthenticatedUser | None) -> FastAPI:
     app = FastAPI()
 
     @app.get("/api/v1/paid")
@@ -327,7 +383,11 @@ def test_production_middleware_order_puts_the_gate_inside_auth_and_cors() -> Non
     app = FastAPI()
     configure_middleware(app)
     # user_middleware is ordered outermost-first.
-    order = [middleware.cls.__name__ for middleware in app.user_middleware]
+    order = [
+        middleware.cls.__name__
+        for middleware in app.user_middleware
+        if isinstance(middleware.cls, type)
+    ]
 
     assert order.index("WorkOSAuthMiddleware") < order.index("EntitlementMiddleware")
     assert order.index("CORSMiddleware") < order.index("EntitlementMiddleware")

@@ -2,7 +2,8 @@
 
 Each scenario is one user's chat: a message to the bot endpoint, the comms and
 executor agents, the ARQ worker, a real browser host and engine, the fixture
-site, and the outbound queue the bot would send from. The models are scripted
+site, the self-host proxy a user's live view goes through, and the outbound
+queue the bot would send from. The models are scripted
 (see _stack/fake_models.py), so these prove the product's plumbing and its
 promises (one answer, no leaked secret, a stop that stops, a handoff that hands
 over), never a model's judgement; that is the browser eval's job.
@@ -20,36 +21,32 @@ import uuid
 import pytest
 
 from app.agents.core.background.executor_queue import get_lock_holder
-from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, BrowserSessionStatus, JobEnding
+from app.constants.browser import BrowserSessionStatus, JobEnding
 from app.db.repositories.browser_tasks import browser_task_repository
-from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove
+from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove, Text
 from tests.integration.real.browser._stack.fixture_site import (
     CAPTCHA_HEADING,
     DYNAMIC_TEXT,
     FORM_RECEIVED,
     LOGIN_FLASH,
     LOGIN_PASSWORD,
+    LOGIN_PASSWORD_AT,
     LOGIN_USER,
+    LOGIN_USERNAME_AT,
     NEW_WINDOW_HEADING,
     SECURE_HEADING,
 )
-from tests.integration.real.browser._stack.observe import Delivery, Transcript, wait_for
 from tests.integration.real.browser._stack.stack import (
     RUN_SECONDS,
     SCENARIO_SECONDS,
     BotUser,
     BrowserStack,
 )
+from tests.integration.real.browser._stack.transcript import Delivery, Transcript, wait_for
 
 pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.timeout(SCENARIO_SECONDS)]
 
 _PASSWORD = "gaia-test-123"  # pragma: allowlist secret
-
-
-@pytest.fixture(autouse=True)
-def _scenario_model_errors(stack: BrowserStack) -> None:
-    """Start each scenario with no model errors: one left over fails every scenario after it, its rerun too."""
-    stack.models.errors.clear()
 
 
 def _marker() -> str:
@@ -61,22 +58,14 @@ def _marker() -> str:
 _LIVE_LINK = re.compile(r"Open the live browser: (\S+)")
 #: Lines a run sends that are not anything it was asked: step captions and the closing recap link.
 _PROGRESS = re.compile(r"^(Step \d+ ·|📽 )")
-_LOGIN_JS = f"""(() => {{
-  document.querySelector('#username').value = '{LOGIN_USER}';
-  document.querySelector('#password').value = '{LOGIN_PASSWORD}';
-  document.querySelector('#login').submit();
-}})()"""
 
 
 def _told(transcript: Transcript) -> list[Delivery]:
-    """Return what the chat was told in words: no photo, no progress line, no handoff prompt."""
+    """Return what the chat was told in words: no photo, no progress line."""
     return [
         d
         for d in transcript.deliveries
-        if d.text
-        and not d.photo_url
-        and not _PROGRESS.match(d.text)
-        and BROWSER_HANDOFF_REPLY_PROMPT not in d.text
+        if d.text and not d.photo_url and not _PROGRESS.match(d.text)
     ]
 
 
@@ -121,6 +110,7 @@ async def test_a_form_is_filled_with_a_secret_and_the_answer_reaches_the_user_on
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     form = stack.site.url("/form")
@@ -188,6 +178,7 @@ async def test_content_that_appears_after_a_wait_is_read_once_it_is_there(
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/dynamic_loading")
@@ -215,8 +206,41 @@ async def test_content_that_appears_after_a_wait_is_read_once_it_is_there(
     assert len([d for d in _told(dm) if DYNAMIC_TEXT in d.text]) == 1, dm.texts
 
 
+async def test_without_jev_the_agent_alone_opens_the_start_page_and_does_the_task(
+    stack: BrowserStack,
+) -> None:
+    user = await stack.new_user()
+    dm = await stack.watch(user.telegram_id)
+    marker = _marker()
+    page = stack.site.url("/dynamic_loading")
+    stack.models.script(
+        marker,
+        agent=[
+            AgentStep([{"click": {"index": Text("Start")}}], wait_for="Start"),
+            AgentStep(
+                [{"done": {"text": f"The page now says {DYNAMIC_TEXT}", "success": True}}],
+                wait_for=DYNAMIC_TEXT,
+                require=(DYNAMIC_TEXT,),
+            ),
+        ],
+    )
+
+    conversation_id, job_id = await _start(
+        stack, user, f"Open {page}, click Start and tell me what loads. {marker}", page
+    )
+    result = await stack.finished(job_id)
+    await wait_for(dm, re.escape(DYNAMIC_TEXT), timeout=RUN_SECONDS)
+    await stack.settled(conversation_id)
+
+    assert result.success, result
+    assert stack.models.errors == []
+    assert stack.models.calls_for(marker, "jev") == 0
+    assert len([d for d in _told(dm) if DYNAMIC_TEXT in d.text]) == 1, dm.texts
+
+
 async def test_a_link_that_opens_a_new_window_is_followed_into_it(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/windows")
@@ -255,6 +279,7 @@ async def test_a_link_that_opens_a_new_window_is_followed_into_it(stack: Browser
 
 async def test_a_page_that_never_answers_does_not_freeze_the_run(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     hang, home = stack.site.url("/hang"), stack.site.url("/")
@@ -280,7 +305,7 @@ async def test_a_page_that_never_answers_does_not_freeze_the_run(stack: BrowserS
     conversation_id, job_id = await _start(
         stack,
         user,
-        f"Open {hang} and tell me what it shows; if it never loads, tell me the heading of {home}. {marker}",
+        f"Open {hang} and tell me what it shows; if it fails to load, tell me the heading of {home}. {marker}",
         hang,
     )
     result = await stack.finished(job_id)
@@ -293,6 +318,7 @@ async def test_a_page_that_never_answers_does_not_freeze_the_run(stack: BrowserS
 
 async def test_a_secret_is_never_typed_on_a_site_it_was_not_given_for(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/elsewhere")
@@ -337,6 +363,7 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     login = stack.site.url("/login")
     first = _marker()
@@ -349,7 +376,7 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
                     {
                         "request_human_takeover": {
                             "reason": "Sign in with your username and password. After that I'll read the page.",
-                            "category": "credentials",
+                            "category": "sign_in",
                         }
                     }
                 ]
@@ -378,8 +405,15 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
     prompt = await wait_for(dm, _LIVE_LINK.pattern, timeout=RUN_SECONDS)
     live_match = _LIVE_LINK.search(prompt.said)
     assert live_match is not None
-    await stack.in_live_page(job_id, _LOGIN_JS)
-    await stack.page_reaches(job_id, "/secure")
+    # The user signs in the only way they can: on the streamed screen, through the proxy.
+    async with stack.live_view(live_match.group(1)) as viewer:
+        assert (await viewer.frame(timeout=RUN_SECONDS)).path == "/login"
+        await viewer.click(*LOGIN_USERNAME_AT)
+        await viewer.type(LOGIN_USER)
+        await viewer.click(*LOGIN_PASSWORD_AT)
+        await viewer.type(LOGIN_PASSWORD)
+        await viewer.press_enter()
+        await viewer.until_on("/secure", timeout=RUN_SECONDS)
     assert await stack.decide_on_live_page(live_match.group(1), "continue") == 200
     result = await stack.finished(job_id)
     await wait_for(dm, LOGIN_FLASH, timeout=RUN_SECONDS)
@@ -415,6 +449,7 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/captcha")
@@ -447,15 +482,60 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
 
     assert result.status is BrowserSessionStatus.CANCELLED
     assert CAPTCHA_HEADING not in result.summary
-    # Cancel is a stop: the ending is STOPPED and nothing wakes to tell anything.
+    # Cancel is a stop: the ending is STOPPED and nothing wakes to tell a result. The tap is the
+    # user's word in the conversation (047cd53a26), so the one thing said after it is its answer.
     assert await stack.ending(job_id) is JobEnding.STOPPED
-    assert len(_told(dm)) == told_before, [d.text for d in _told(dm)]
+    after = _told(dm)[told_before:]
+    assert len(after) == 1, [d.text for d in _told(dm)]
+    assert CAPTCHA_HEADING not in after[0].said
+
+
+async def test_a_handoff_asked_after_a_sweep_still_reaches_the_user(stack: BrowserStack) -> None:
+    """Regression: the sweep logged a background run's work lost once its turn ended, so its later cards never showed."""
+    user = await stack.new_user()
+    dm = await stack.watch(user.telegram_id)
+    marker = _marker()
+    page = stack.site.url("/captcha")
+    swept = asyncio.Event()
+    stack.models.script(
+        marker,
+        agent=[
+            AgentStep(
+                [
+                    {
+                        "solve_captcha_with_help": {
+                            "challenge": "Tick I'm not a robot, then press Done."
+                        }
+                    }
+                ],
+                gate=swept,
+                patience=60,
+            ),
+        ],
+    )
+
+    conversation_id, job_id = await _start(
+        stack, user, f"Open {page}, get past the check and tell me what it says. {marker}", page
+    )
+    held_since = round(time.time() * 1000)
+    await _until(lambda: stack.swept_since(held_since), "a conversation sweep during the run")
+    swept.set()
+    prompt = await wait_for(dm, _LIVE_LINK.pattern, timeout=RUN_SECONDS)
+    live_match = _LIVE_LINK.search(prompt.said)
+    assert live_match is not None
+    assert await stack.decide_on_live_page(live_match.group(1), "cancel") == 200
+    result = await stack.finished(job_id)
+    await stack.settled(conversation_id)
+
+    assert result.status is BrowserSessionStatus.CANCELLED
+    assert stack.models.errors == []
 
 
 async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_over(
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     page = stack.site.url("/partner-offers")
@@ -536,6 +616,7 @@ async def test_a_stop_from_the_dm_ends_a_run_started_in_a_group_and_nothing_more
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     group_id = f"group-{uuid.uuid4().hex[:8]}"
     group = await stack.watch(group_id)
     dm = await stack.watch(user.telegram_id)
@@ -558,6 +639,7 @@ async def test_a_stop_from_the_dm_ends_a_run_started_in_a_group_and_nothing_more
 
 async def test_a_stop_said_in_chat_stops_the_run(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     _, conversation_id, job_id = await _a_run_that_waits(stack, user)
     told_before = len(_told(dm))
@@ -577,6 +659,7 @@ async def test_a_stop_said_in_chat_stops_the_run(stack: BrowserStack) -> None:
 
 async def test_what_the_user_adds_mid_run_reaches_the_run(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     token = f"also-{uuid.uuid4().hex[:6]}"
@@ -615,6 +698,7 @@ async def test_what_the_user_adds_mid_run_reaches_the_run(stack: BrowserStack) -
 
 async def test_a_run_whose_engine_dies_finishes_in_chrome(stack: BrowserStack) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     await stack.set_obscura(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
@@ -655,6 +739,7 @@ async def test_a_result_survives_its_worker_dying_right_after_the_run_ends(
     stack: BrowserStack,
 ) -> None:
     user = await stack.new_user()
+    await stack.set_jev(user)
     dm = await stack.watch(user.telegram_id)
     marker = _marker()
     home = stack.site.url("/")

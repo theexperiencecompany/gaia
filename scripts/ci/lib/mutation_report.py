@@ -2,9 +2,14 @@
 """mutation_report.py — the mutation gate's verdict, made triageable.
 
 Reached only through the mutation lane: `mutation.py` imports it for the
-per-module record and the shard's report to the gate, and `mutation.py replay`
-drives the one subcommand below; never an entrypoint of its own.
+per-module record and the shard's report to the gate, and drives the two
+subcommands below; never an entrypoint of its own.
 
+  survivors <source> [--json]
+           Print every surviving mutant from a shard.verdict.json, a record
+           directory, or a shard.log: `file:line`, the one-line change, the
+           full diff and the mapped tests. The actionable view of a red shard
+           without re-deriving mutmut's internals.
   replay   Re-apply one survivor's diff to a scratch copy of apps/api and run
            that module's mapped tests. mutmut's `__mutmut_13` numbering depends
            on the diff scope and cannot be regenerated on a laptop, so without
@@ -192,28 +197,29 @@ def parse_show_blocks(text: str) -> dict[str, str]:
     return diffs
 
 
+def _hunk_lines(diff: str) -> list[tuple[str, str]]:
+    """Split the diff's body into (marker, text): " " context, "-" removed, "+" added."""
+    body: list[tuple[str, str]] = []
+    for line in diff.splitlines():
+        if line.startswith(("---", "+++", "@@")):
+            continue
+        if line.startswith(("-", "+", " ")):
+            body.append((line[0], line[1:]))
+        elif not line:
+            body.append((" ", ""))
+    return body
+
+
 def diff_hunk(diff: str) -> tuple[list[str], list[str]]:
     """Return the diff's before/after line blocks, markers stripped.
 
     `before` is context + removed lines, `after` is context + added — the two
     texts that must swap for the mutation to be applied.
     """
-    before: list[str] = []
-    after: list[str] = []
-    for line in diff.splitlines():
-        if line.startswith(("---", "+++", "@@")):
-            continue
-        if line.startswith("-"):
-            before.append(line[1:])
-        elif line.startswith("+"):
-            after.append(line[1:])
-        elif line.startswith(" "):
-            before.append(line[1:])
-            after.append(line[1:])
-        elif not line:
-            before.append("")
-            after.append("")
-    return before, after
+    body = _hunk_lines(diff)
+    return [text for marker, text in body if marker != "+"], [
+        text for marker, text in body if marker != "-"
+    ]
 
 
 def changed_lines(diff: str) -> tuple[list[str], list[str]]:
@@ -315,20 +321,46 @@ def _clip(text: str, limit: int = 90) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def locate_hunk(source: list[str], before: list[str], hint: int | None) -> int:
-    """Index in `source` where this diff's before-block starts.
+def _indent(line: str) -> str:
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _block_indent(block: list[str], before: list[str]) -> str | None:
+    """Return the indent mutmut stripped from this block, or None when the block is not it.
+
+    `mutmut show` prints a method dedented to column 0, except a multi-line
+    string's continuation lines, which keep their file column. So each line
+    matches either re-indented or verbatim; the longest indent that fits wins.
+    """
+    candidates = {
+        _indent(file_line)[: len(_indent(file_line)) - len(_indent(diff_line))]
+        for file_line, diff_line in zip(block, before, strict=True)
+        if diff_line.strip() and _indent(file_line).endswith(_indent(diff_line))
+    }
+    for indent in sorted(candidates | {""}, key=len, reverse=True):
+        if all(
+            file_line.rstrip() in ((indent + diff_line).rstrip(), diff_line.rstrip())
+            for file_line, diff_line in zip(block, before, strict=True)
+        ):
+            return indent
+    return None
+
+
+def locate_hunk(source: list[str], before: list[str], hint: int | None) -> tuple[int, str]:
+    """Index in `source` where this diff's before-block starts, and the indent mutmut stripped.
+
+    `hint` is the line the block should start on.
 
     mutmut's `@@ -15,7 +15,7 @@` counts lines of its own per-function rewrite,
     not of the real file, so the hunk header cannot be trusted for a line
     number — the text is the only honest anchor. `hint` (the classifier's real
     line number) breaks ties when the block appears more than once.
     """
-    stripped = [line.rstrip() for line in before]
-    matches = [
-        index
-        for index in range(len(source) - len(stripped) + 1)
-        if [line.rstrip() for line in source[index : index + len(stripped)]] == stripped
-    ]
+    matches: list[tuple[int, str]] = []
+    for index in range(len(source) - len(before) + 1):
+        indent = _block_indent(source[index : index + len(before)], before)
+        if indent is not None:
+            matches.append((index, indent))
     if not matches:
         raise SystemExit(
             "mutation replay: this survivor's diff does not match the file on disk — "
@@ -341,21 +373,40 @@ def locate_hunk(source: list[str], before: list[str], hint: int | None) -> int:
             f"mutation replay: the diff matches {len(matches)} places in the file and the "
             "verdict carries no line number to disambiguate. Select the survivor by name."
         )
-    return min(matches, key=lambda index: abs(index + 1 - hint))
+    return min(matches, key=lambda match: abs(match[0] + 1 - hint))
 
 
 def apply_hunk(source: list[str], diff: str, hint: int | None) -> tuple[list[str], int]:
     """Return the file's lines with this mutation applied, and the mutated line number."""
-    before, after = diff_hunk(diff)
-    start = locate_hunk(source, before, hint)
-    patched = source[:start] + after + source[start + len(before) :]
-    removed, _ = changed_lines(diff)
-    offset = 0
-    if removed:
-        offset = next(
-            (i for i, line in enumerate(before) if line.rstrip() == removed[0].rstrip()), 0
-        )
-    return patched, start + offset + 1
+    before, _ = diff_hunk(diff)
+    body = _hunk_lines(diff)
+    leading_context = next((i for i, (marker, _) in enumerate(body) if marker != " "), 0)
+    start, indent = locate_hunk(source, before, None if hint is None else hint - leading_context)
+    file_lines = iter(source[start : start + len(before)])
+    block: list[str] = []
+    consumed = 0
+    mutated: int | None = None
+    prefixes: list[str] = []
+    added = 0
+    for marker, text in body:
+        if marker == "+":
+            prefix = prefixes[min(added, len(prefixes) - 1)] if prefixes else indent
+            added += 1
+            block.append(prefix + text if text.strip() else text)
+            continue
+        file_line = next(file_lines)
+        consumed += 1
+        if marker == " ":
+            block.append(file_line)
+            prefixes, added = [], 0
+            continue
+        if mutated is None:
+            mutated = start + consumed
+        if added:
+            prefixes, added = [], 0
+        # A line inside a multi-line string was printed at its file column, so its replacement is too.
+        prefixes.append("" if file_line.rstrip() == text.rstrip() else indent)
+    return source[:start] + block + source[start + len(before) :], mutated or start + 1
 
 
 def _survivor(
@@ -596,6 +647,98 @@ def _change_list(group: list[Survivor]) -> str:
     return "; ".join(dict.fromkeys(survivor.change for survivor in group))
 
 
+# --- the actionable view -----------------------------------------------------
+
+ACTIONABLE_STATUSES = ("survivors", "gap", "error", "timed_out")
+
+
+def is_actionable(verdict: ModuleVerdict) -> bool:
+    """Return True when this module needs a human or agent, not just a green tick."""
+    return verdict.status in ACTIONABLE_STATUSES or bool(verdict.survivors or verdict.gap_lines)
+
+
+def survivors_payload(verdicts: list[ModuleVerdict], source: Path) -> dict[str, object]:
+    """Return the JSON form: one record per actionable module, diffs included."""
+    actionable = [verdict for verdict in verdicts if is_actionable(verdict)]
+    return {
+        "schema_version": 1,
+        "source": str(source),
+        "survivor_count": sum(len(verdict.survivors) for verdict in actionable),
+        "module_count": len(actionable),
+        "modules": [verdict.to_dict() for verdict in actionable],
+    }
+
+
+def _module_head(verdict: ModuleVerdict) -> str:
+    """Return the module's one-line header: status, plus survivor counts when there are any."""
+    if verdict.status == "survivors":
+        groups = group_by_line(verdict.survivors)
+        return (
+            f"{verdict.module}  [{verdict.status}]  "
+            f"{len(verdict.survivors)} mutant(s) on {len(groups)} line(s)"
+        )
+    return f"{verdict.module}  [{verdict.status}]  {summary_line(verdict)}"
+
+
+def _survivor_block(
+    verdict: ModuleVerdict, source: Path, line_no: int | None, group: list[Survivor]
+) -> list[str]:
+    """Return one source line's survivors: where, what changed, the diff, the selector."""
+    lines = [f"  {verdict.path}:{line_no}" if line_no else f"  {verdict.path} (line unknown)"]
+    if group[0].source:
+        lines.append(f"      {group[0].source.strip()}")
+    for survivor in group:
+        if survivor.change:
+            lines.append(f"      change: {survivor.change}")
+        for diff_line in survivor.diff.splitlines():
+            lines.append(f"      {diff_line}" if diff_line else "")
+        lines.append(f"      [{survivor.name.rsplit('.', 1)[-1]}]")
+    selectors = (
+        [f"{verdict.path}:{line_no}"]
+        if line_no is not None
+        else [survivor.name for survivor in group]
+    )
+    for selector in selectors:
+        lines.append(f"      replay: python3 scripts/ci/mutation.py replay {source} {selector}")
+    return lines
+
+
+def _module_block(verdict: ModuleVerdict, source: Path, verbose: bool) -> list[str]:
+    """Return one module's full block: header, tests, gaps, survivors and re-run hint."""
+    lines = [_module_head(verdict)]
+    if verdict.testfiles:
+        lines.append(f"  tests: {' '.join(verdict.testfiles)}")
+    if verdict.gap_lines:
+        lines.append(
+            "  changed line(s) no test reaches: "
+            + ", ".join(str(number) for number in verdict.gap_lines)
+        )
+    for line_no, group in group_by_line(verdict.survivors):
+        lines.extend(_survivor_block(verdict, source, line_no, group))
+    if verdict.status in ("error", "timed_out") and verdict.reason:
+        lines.append(f"  {verdict.reason}")
+        lines.append(f"  re-run it alone: python3 scripts/ci/mutation.py module {verdict.module}")
+    if verbose and verdict.excluded:
+        lines.append(f"  {len(verdict.excluded)} survivor(s) excluded from the verdict:")
+        for entry in verdict.excluded:
+            lines.append(f"      {entry.name.rsplit('.', 1)[-1]} — {entry.reason}")
+    return lines
+
+
+def render_survivors(verdicts: list[ModuleVerdict], source: Path, verbose: bool = False) -> str:
+    """Return the actionable report: where each mutant is, what it changes, and its diff."""
+    actionable = [verdict for verdict in verdicts if is_actionable(verdict)]
+    total = sum(len(verdict.survivors) for verdict in actionable)
+    lines = [f"SURVIVORS — {total} surviving mutant(s) in {len(actionable)} module(s)  ({source})"]
+    if not actionable:
+        lines.append("  Every module passed: no survivors, no uncovered changed lines.")
+        return "\n".join(lines)
+    for verdict in actionable:
+        lines.append("")
+        lines.extend(_module_block(verdict, source, verbose))
+    return "\n".join(lines)
+
+
 def step_summary(verdicts: list[ModuleVerdict]) -> str:
     """Return the shard's own block: which modules it ran and how they came out.
 
@@ -751,17 +894,45 @@ def write_record_set(path: Path, verdicts: list[ModuleVerdict]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
 
+def _verdicts_from_json(path: Path) -> list[ModuleVerdict]:
+    """Read one record file, naming the path instead of a KeyError when it is not one."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"mutation: {path} is not a mutation record ({exc})") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"mutation: {path} is not a mutation record")
+    if "modules" in data:
+        items = data["modules"]
+        if not isinstance(items, list):
+            raise SystemExit(f"mutation: {path} is not a mutation record ('modules' is not a list)")
+        return [_record_from_dict(item, path) for item in items]
+    if "module" not in data:
+        raise SystemExit(
+            f"mutation: {path} is not a mutation record (no 'module'/'modules' key).\n"
+            "  Pass shard.verdict.json, a directory of module records, or shard.log."
+        )
+    return [_record_from_dict(data, path)]
+
+
+def _record_from_dict(data: dict[str, object], path: Path) -> ModuleVerdict:
+    """Turn one record object into a verdict, failing with its path on a malformed one."""
+    try:
+        return from_dict(data)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise SystemExit(f"mutation: {path} is not a mutation record (bad {exc})") from exc
+
+
 def load_verdicts(source: Path, api_prefix: str) -> list[ModuleVerdict]:
     """Read records from shard.verdict.json, a directory of them, or a shard log."""
     if source.is_dir():
-        return [from_dict(json.loads(path.read_text())) for path in sorted(source.glob("*.json"))]
+        return [
+            verdict
+            for path in sorted(source.glob("*.json"))
+            for verdict in _verdicts_from_json(path)
+        ]
     if source.suffix == ".json":
-        data = json.loads(source.read_text())
-        if not isinstance(data, dict):
-            raise SystemExit(f"mutation replay: {source} is not a mutation record")
-        if "modules" in data:
-            return [from_dict(item) for item in _as_list(data["modules"])]
-        return [from_dict(data)]
+        return _verdicts_from_json(source)
     return [
         verdict_from_section(module, section, api_prefix)
         for module, section in split_shard_log(source.read_text())
@@ -879,6 +1050,20 @@ def _fallback_testfiles(repo_root: Path, module: str) -> list[str]:
     return []
 
 
+def cmd_survivors(args: argparse.Namespace) -> int:
+    """Print every surviving mutant and its diff from a shard record, dir, or log."""
+    source = Path(args.source)
+    if not source.exists():
+        print(f"mutation survivors: {source} does not exist", file=sys.stderr)
+        return 1
+    verdicts = load_verdicts(source, args.api_prefix)
+    if args.json:
+        print(json.dumps(survivors_payload(verdicts, source), indent=2, ensure_ascii=False))
+    else:
+        print(render_survivors(verdicts, source, verbose=args.verbose))
+    return 0
+
+
 def cmd_replay(args: argparse.Namespace) -> int:
     """Reproduce one survivor locally: patch a scratch copy, run its tests, restore."""
     repo_root = Path(args.repo_root)
@@ -953,6 +1138,14 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
+    survivors = subparsers.add_parser("survivors", help="list surviving mutants and their diffs")
+    survivors.add_argument("source", help="shard.verdict.json, a record dir, or shard.log")
+    survivors.add_argument("--json", action="store_true", help="machine-readable output")
+    survivors.add_argument(
+        "--verbose", action="store_true", help="also list survivors excluded as equivalent/logging"
+    )
+    survivors.add_argument("--api-prefix", default="apps/api")
+
     replay = subparsers.add_parser("replay", help="reproduce one survivor locally")
     replay.add_argument("source", help="shard.verdict.json, a record dir, or shard.log")
     replay.add_argument("selector", help="a mutant id, or file.py:LINE")
@@ -963,6 +1156,8 @@ def main(argv: list[str]) -> int:
     replay.add_argument("--api-prefix", default="apps/api")
 
     args = parser.parse_args(argv)
+    if args.subcommand == "survivors":
+        return cmd_survivors(args)
     return cmd_replay(args)
 
 

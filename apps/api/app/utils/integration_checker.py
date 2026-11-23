@@ -16,6 +16,7 @@ from typing import Literal, NamedTuple
 
 from langgraph.config import get_config
 
+from app.agents.tools.run_record import block_integration
 from app.config.settings import settings
 from app.constants.cache import OAUTH_STATE_TTL
 from app.constants.integrations import (
@@ -23,6 +24,7 @@ from app.constants.integrations import (
     MANAGED_BY_MCP,
     ConnectMode,
 )
+from app.constants.waits import WaitCondition
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.agent_models import (
@@ -33,9 +35,11 @@ from app.models.agent_models import (
 from app.models.chat_models import SourceCategory
 from app.models.integration_models import IntegrationAccount
 from app.services.connect_link_service import build_connect_link_url
+from app.services.conversation.integration_log import record_integration_needed
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
+from app.services.wait_service import wait_for_user
 from shared.py.wide_events import log
 
 
@@ -50,6 +54,16 @@ def _current_run() -> AgentConfigurableView | None:
     except RuntimeError:
         return None
     return read_agent_configurable(config)
+
+
+async def _log_need(user_id: str, integration_id: str, integration_name: str) -> None:
+    """Log the need on a conversation the step runs, so the connect continues its work."""
+    run = _current_run()
+    if run is None or run.conversation_step is None or not run.thread_id:
+        return
+    await record_integration_needed(
+        run.conversation_step, run.thread_id, user_id, integration_id, integration_name
+    )
 
 
 class _StandaloneAuth(NamedTuple):
@@ -204,30 +218,35 @@ def _background_message(prompt: _Prompt) -> str:
 
 
 def _ui_message(prompt: _Prompt) -> str:
-    """Point at the card a UI client renders, relaying any standalone URL."""
+    """Point at the card a UI client renders, relaying any standalone URL, and end the integration's part of the run."""
     ask = prompt.ask
+    # The run that showed the card cannot succeed with this integration: the
+    # user's click starts a new turn, so retrying here only stacks failures.
+    stop = (
+        f"Nothing more can be done with {prompt.integration_name} until they do, so do not "
+        f"call any {prompt.integration_name} tool again this run; finish the rest of the task "
+        "and say what is waiting on them."
+    )
     if prompt.auth.kind == "oauth" and prompt.auth.url:
         return (
             f"{ask.lead} A {ask.button} has been shown to the user, and a standalone "
             f"authorization URL is available: {prompt.auth.url}. Relay that URL verbatim as a "
-            f"clickable link so the user can {ask.verb} even if the card is not visible, "
-            "then try again."
+            f"clickable link so the user can {ask.verb} even if the card is not visible. {stop}"
         )
     if prompt.auth.kind == "token_only":
         return (
             f"{ask.lead} This integration authenticates with an API key, so no standalone "
             f"authorization URL exists. A {ask.button} has been shown to the user; ask "
-            "them to enter the API key there."
+            f"them to enter the API key there. {stop}"
         )
     if prompt.auth.kind == "unavailable":
         return (
             f"{ask.lead} A {ask.button} has been shown to the user, but no standalone "
-            "authorization URL is available right now. Ask the user to click it, then "
-            "try again."
+            f"authorization URL is available right now. Ask the user to click it. {stop}"
         )
     return (
         f"{ask.lead} A {ask.button} has been shown to the user, so do NOT include any URL in "
-        f"your reply, the UI card handles it. Ask the user to click it, then try again."
+        f"your reply, the UI card handles it. Ask the user to click it. {stop}"
     )
 
 
@@ -269,6 +288,17 @@ async def _text_only_message(prompt: _Prompt) -> str:
     )
 
 
+async def _block_for_run(run: AgentConfigurableView | None, integration_id: str) -> bool:
+    """Block the integration for the rest of the run; False when the run already asked once.
+
+    invoke_tool refuses a blocked integration's calls, so the stop the agent is told
+    about does not depend on the model obeying it.
+    """
+    if run is None or not run.stream_id:
+        return True
+    return await block_integration(run.stream_id, integration_id)
+
+
 async def request_integration_connection(
     integration_id: str,
     integration_name: str,
@@ -290,11 +320,16 @@ async def request_integration_connection(
     ask = _ask(mode, expired, integration_name, account.display_name if account else None)
     run = _current_run()
     source_category = run.source_category if run is not None else None
+    adding = mode is ConnectMode.ADD_ACCOUNT
+    first_ask = await _block_for_run(run, integration_id) if not adding else True
 
     # None means no runnable context at all (e.g. the dev direct-invocation
-    # endpoints), so there is no stream for a card to travel on.
-    if source_category is not None:
-        adding = mode is ConnectMode.ADD_ACCOUNT
+    # endpoints), so there is no stream for a card to travel on. A run shows
+    # one card per integration however many calls hit the gap.
+    if source_category is not None and first_ask:
+        await wait_for_user(
+            run, user_id, WaitCondition.INTEGRATION_CONNECTED, integration_id, integration_name
+        )
         current_stream_writer()(
             {
                 "integration_connection_required": {
@@ -313,6 +348,9 @@ async def request_integration_connection(
                 }
             }
         )
+
+    if first_ask:
+        await _log_need(user_id, integration_id, integration_name)
 
     # Login-required but permanent: the fallback when no single-use link applies.
     integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"

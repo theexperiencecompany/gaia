@@ -20,10 +20,10 @@ from typing import Any, Literal, TypedDict
 from composio import Composio
 import composio_client
 
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.log_tags import LogTag
 from app.services.composio.account_scope import scoped_connected_account_id
-from app.services.composio.dead_account import ConnectedAccountGoneError, is_dead_account_error
+from app.services.composio.dead_account import is_dead_account_error
+from app.services.integrations.integration_accounts import toolkit_not_connected
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -157,7 +157,12 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
     except composio_client.NotFoundError as e:
         if not is_dead_account_error(e):
             raise _proxy_failure(request, e) from e
-        raise ConnectedAccountGoneError(request.toolkit, str(e)) from e
+        raise toolkit_not_connected(
+            request.toolkit,
+            "Composio has no connected account with the id this call ran as",
+            grant_died=True,
+            meta={"cause": str(e)},
+        ) from e
     except Exception as e:
         raise _proxy_failure(request, e) from e
 
@@ -166,21 +171,27 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
         # A provider 401 means Composio's token was rejected and refresh failed —
         # the integration needs reconnecting, not the GAIA session. Surface as 403
         # so the web client routes to reconnect instead of a false "sign in again".
-        gaia_status = 403 if status == 401 else (status if 400 <= status < 600 else 502)
+        provider = {
+            "endpoint": request.endpoint,
+            "method": request.method,
+            "provider_status": status,
+            "provider_response": response.data,
+        }
+        if status == 401:
+            raise toolkit_not_connected(
+                request.toolkit,
+                "The provider rejected the token and Composio's refresh failed",
+                grant_died=True,
+                meta=provider,
+            )
         raise AppError(
             message=f"{request.toolkit} API error ({status})",
             why="The provider rejected the request",
-            status_code=gaia_status,
-            code=INTEGRATION_NOT_CONNECTED if status == 401 else "",
+            status_code=status if 400 <= status < 600 else 502,
             public={"toolkit": request.toolkit},
             # The endpoint, the provider's status and its raw body are
             # diagnostics: the wide event gets them, the caller never does.
-            meta={
-                "endpoint": request.endpoint,
-                "method": request.method,
-                "provider_status": status,
-                "provider_response": response.data,
-            },
+            meta=provider,
         )
 
     # Normalize header keys to lowercase. Upstream APIs return mixed casing

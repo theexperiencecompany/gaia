@@ -7,15 +7,21 @@ every panel on /settings/usage has real data. Idempotent per (user, date/key).
 Run:  uv run --group backend python scripts/seed_usage_demo.py [email] [free|pro]
 """
 
+import argparse
 from datetime import UTC, datetime, timedelta
 import math
-import sys
 
 import pymongo
 import redis
 
-EMAIL = sys.argv[1] if len(sys.argv) > 1 else "aryan.k.randeriya@gmail.com"
-PLAN = sys.argv[2] if len(sys.argv) > 2 else "pro"
+_parser = argparse.ArgumentParser(
+    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+)
+_parser.add_argument("email", nargs="?", default="aryan.k.randeriya@gmail.com")
+_parser.add_argument("plan", nargs="?", choices=("free", "pro"), default="pro")
+_args = _parser.parse_args()
+EMAIL: str = _args.email
+PLAN: str = _args.plan
 NAME = "Aryan"
 
 mongo = pymongo.MongoClient("mongodb://127.0.0.1:27017", serverSelectionTimeoutMS=4000)

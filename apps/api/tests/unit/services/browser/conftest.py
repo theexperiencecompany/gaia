@@ -24,6 +24,7 @@ class FakeHostClient:
     def __init__(self) -> None:
         self.ids: list[str] = []
         self.engine = BrowserEngine.CHROMIUM
+        self.fortress = False
         self.states: dict[str, Any] = {}
         self.gone: set[str] = set()
         self.live = True
@@ -54,6 +55,7 @@ class FakeHostClient:
             cdp_ws=f"ws://host/cdp/{session_id}",
             live_ws=f"ws://host/live/{session_id}",
             engine=self.engine,
+            fortress=self.fortress,
         )
 
     async def delete_session(self, session_id: str, host_url: str) -> StorageState:

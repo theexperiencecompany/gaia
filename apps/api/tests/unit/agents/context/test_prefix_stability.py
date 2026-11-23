@@ -12,6 +12,8 @@ says exactly what the design requires: no byte at or before the end of the
 stable block may move between turns.
 """
 
+from datetime import timedelta
+
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 import pytest
 from tests._harness.context_chain import (
@@ -22,6 +24,7 @@ from tests._harness.context_chain import (
     common_prefix_len,
     effective_context,
     request_bytes,
+    seed_only,
     text_of,
 )
 from tests._harness.context_sources import ContextSources, memory
@@ -179,32 +182,69 @@ TOOL_TURN: list[AnyMessage] = [
 ]
 
 
-@pytest.mark.unit
-class TestAModelCallExtendsThePreviousOneOnOpenAI:
-    """OpenAI reuses an earlier request only whole.
+#: Every lane the request layout could once have depended on.
+PROVIDERS = [LLMProviderName.OPENAI, LLMProviderName.OPENROUTER, LLMProviderName.GEMINI]
 
-    Measured on gpt-5.6-luna: a call that began with the entire previous request
-    read it all from cache (36,062 of 36,065 tokens), while one where anything
-    trailed the conversation fell back to the tools and first system message
-    (23,814 tokens) on every step of a run.
+
+@pytest.mark.unit
+class TestAModelCallExtendsThePreviousOne:
+    """Every call begins with the previous call on its thread, on every provider.
+
+    OpenAI reuses an earlier request only whole. Measured on gpt-5.6-luna: a call
+    that began with the entire previous request read it all from cache (36,062 of
+    36,065 tokens), while one where anything trailed the conversation fell back to
+    the tools and first system message (23,814 tokens) on every step of a run.
     """
 
     @pytest.mark.regression
+    @pytest.mark.parametrize("provider", PROVIDERS)
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_the_next_call_begins_with_the_whole_previous_request(
-        self, tier: AgentTier
+        self, tier: AgentTier, provider: LLMProviderName
     ) -> None:
-        on_openai = bound_for(LLMProviderName.OPENAI)
+        lane = bound_for(provider)
         first = await effective_context(
-            tier, ContextSeed(sources=SOURCES, configurable_overrides=on_openai)
+            tier, ContextSeed(sources=SOURCES, configurable_overrides=lane)
         )
         next_call = await effective_context(
             tier,
-            ContextSeed(sources=SOURCES, configurable_overrides=on_openai, run_messages=TOOL_TURN),
+            ContextSeed(sources=SOURCES, configurable_overrides=lane, run_messages=TOOL_TURN),
         )
 
         assert request_bytes(next_call).startswith(request_bytes(first)), (
-            f"{tier.value}: the next call diverges at byte "
+            f"{tier.value}/{provider.value}: the next call diverges at byte "
             f"{common_prefix_len(request_bytes(first), request_bytes(next_call))} of "
-            f"{len(request_bytes(first))}, so OpenAI caches none of the run's own history"
+            f"{len(request_bytes(first))}, so the provider caches none of the run's own history"
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_the_next_turn_begins_with_the_whole_previous_request(
+        self, tier: AgentTier, provider: LLMProviderName
+    ) -> None:
+        """A new turn's recall and clock extend the thread; leading, they re-billed the history."""
+        lane = bound_for(provider)
+        first = await effective_context(
+            tier, ContextSeed(sources=SOURCES, configurable_overrides=lane)
+        )
+        turn_one = [
+            *await seed_only(tier, sources=SOURCES, configurable_overrides=lane),
+            AIMessage(content="Nothing pressing today."),
+        ]
+        next_turn = await effective_context(
+            tier,
+            ContextSeed(
+                sources=SOURCES,
+                configurable_overrides=lane,
+                query="and tomorrow?",
+                now=FIXED_NOW + timedelta(hours=2),
+                prior_messages=turn_one,
+            ),
+        )
+
+        assert request_bytes(next_turn).startswith(request_bytes(first)), (
+            f"{tier.value}/{provider.value}: the next turn diverges at byte "
+            f"{common_prefix_len(request_bytes(first), request_bytes(next_turn))} of "
+            f"{len(request_bytes(first))}, so the provider re-bills the whole history"
         )

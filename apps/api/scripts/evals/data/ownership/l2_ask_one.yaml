@@ -1,0 +1,106 @@
+# L2: readings with materially different outcomes. Ask exactly ONE targeted
+# question and create nothing on a guess.
+
+- id: own-l2-meeting-reminder
+  ticket: "Unknown meeting and no time: ask one question, set nothing."
+  prompt: "remind me about the meeting"
+  tags: [ownership, L2]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "reminder set", "all set"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l2-remind-later
+  ticket: "Neither subject nor time: one question, no reminder."
+  prompt: "remind me later"
+  tags: [ownership, L2]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "reminder set", "all set"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l2-book-it
+  ticket: "'Book it' with no context: ask what, do nothing."
+  prompt: "book it"
+  tags: [ownership, L2]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["booked", "confirmation number", "i've reserved"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l2-the-usual
+  ticket: "'The usual' is unknown: ask one question, invent nothing."
+  prompt: "schedule the usual for next week"
+  tags: [ownership, L2]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've scheduled", "all set", "it's on your calendar"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l2-every-few-days
+  ticket: "Cadence given but no subject: ask what to remind about."
+  prompt: "remind me every few days"
+  tags: [ownership, L2]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "reminder set", "all set"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l2-the-thing
+  ticket: "References a conversation that never happened: ask, don't fabricate."
+  prompt: "add the thing we talked about to my list"
+  tags: [ownership, L2]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've added", "added it", "it's on your list"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l2-pay-it
+  ticket: "Unknown bill and due date: one question, no reminder."
+  prompt: "remind me to pay it before it's due"
+  tags: [ownership, L2]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've set", "reminder set", "all set"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l2-update-team
+  ticket: "Outbound message with unknown content, audience and channel: one question, send nothing."
+  prompt: "send the update to the team"
+  tags: [ownership, L2, external]
+  expected:
+    category: l2_ask_one
+    ownership:
+      followup: forbidden
+      questions: {min: 1, max: 1}
+      max_words: 40
+    must_not_communicate: ["i've sent", "sent it", "update sent"]
+    score: {gates: [followup, question_budget, reply_brevity, must_not_communicate]}

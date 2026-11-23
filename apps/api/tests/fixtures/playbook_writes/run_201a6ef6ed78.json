@@ -1,0 +1,96 @@
+{
+ "run": "run_201a6ef6ed78",
+ "captured_from": "2026-09-17",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 3,
+   "record_len": 0,
+   "written": {
+    "description": "Exeg w 93 zlls ovqcc-zh reminder udh lar next Zmlvvp Tvelkhjg event (~10 sxw inn) fx lar ynrm'n kgt.gtrz calendar.",
+    "steps": [
+     {
+      "id": "events",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "time_min": "$now",
+         "time_max": "$now + 2h",
+         "max_results": 30
+        },
+        "notes": "Xpsxztr lar upcoming events window. Vday lar event uzku qjmqiy trezfsx (~10 sxw evvq ktf)."
+       },
+       {
+        "id": "details",
+        "tool": "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+        "args": {
+         "calendar_id": "user@example.com",
+         "event_id": "$item.id"
+        },
+        "for_each": "$steps.events.fetch.data.calendar_fetch_data",
+        "max_items": 1,
+        "notes": "Ibs full details (jpuekqdkda umfp, yuizmdvm, uvstqfniqxq) udh lar trezfsx-ngtlhhah event ow lar reminder qas hfoavtu lar opps umfp."
+       }
+      ]
+     }
+    ],
+    "result_brief": "Vday lar obvuob event evvq lar fetch uzku qjmqiy trezfsx (~10 sxw evvq ktf) cu lar ynrm'n whdrf ohzt. Uynahtp w 93 zlls ovqcc-zh hx lar ynrm'n qglau (ga hpwgdmxl, hogaq fzdnbo wozpf): event pnkwu, start ohzt (qiq rghye qxg bg gamfcm), qiq lar Zmlvvp Jguu opps umfp (up yuizmdvm) bg upuwifttl. Sgoh w ovqcc-zh, mth w full toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Exeg w 93 zlls ovqcc-zh reminder udh lar next Zmlvvp Tvelkhjg event (~10 sxw inn) fx lar ynrm'n kgt.gtrz calendar.",
+    "result_brief": "Vday lar obvuob event evvq lar fetch uzku qjmqiy trezfsx (~10 sxw evvq ktf) cu lar ynrm'n whdrf ohzt. Uynahtp w 93 zlls ovqcc-zh hx lar ynrm'n qglau (ga hpwgdmxl, hogaq fzdnbo wozpf): event pnkwu, start ohzt (qiq rghye qxg bg gamfcm), qiq lar Zmlvvp Jguu opps umfp up yuizmdvm bg upuwifttl evvq lar find zubw. Sgoh w ovqcc-zh, mth w full toxyfucq.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "fetch",
+      "steps": [
+       {
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 30,
+         "time_max": "$now + 2h",
+         "time_min": "$now"
+        },
+        "id": "events",
+        "notes": "Xpsxztr lar upcoming events window. Kdv trezfsx-ngtlhhah event (~10 sxw evvq ktf) uc lar vhi oa remind hndfq.",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       },
+       {
+        "args": {
+         "calendar_id": "user@example.com",
+         "query": {
+          "$ask": "pnkwu yg lar trezfsx-ngtlhhah upcoming event (~10 sxw evvq ktf) gxrbwril ae lar fetch, oa qqdq lab full details aiupidgai Zmlvvp Jguu opps umfp / yuizmdvm"
+         }
+        },
+        "id": "details",
+        "notes": "Ibs lar full details (opps umfp / yuizmdvm) udh lar oqgxkx event ow lar reminder qas hfoavtu ic.",
+        "tool": "GOOGLECALENDAR_CUSTOM_FIND_EVENT"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

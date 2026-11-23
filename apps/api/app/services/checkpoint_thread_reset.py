@@ -32,10 +32,9 @@ async def reset_conversation_threads(
 ) -> ThreadReset | None:
     """Delete the checkpoint threads this conversation owns; None when there is no checkpointer pool.
 
-    Owned threads are the conversation's own (comms) thread, the executor's, and each
-    handoff subagent's executor thread. keep_conversation_thread spares the comms
-    thread, for a chat whose memory of its own exchange must survive while the
-    execution under it starts over. Raises on a checkpointer failure.
+    Owned: the comms thread, the executor's, and any <integration>_executor_<conv> thread
+    the removed handoff tool left. Spawn threads are left to checkpoint retention.
+    keep_conversation_thread spares the comms thread. Raises on a checkpointer failure.
     """
     manager = await get_checkpointer_manager()
     pool = manager.pool

@@ -1,0 +1,73 @@
+{
+ "run": "run_91771a181c79",
+ "captured_from": "2026-09-02",
+ "trigger_type": "integration",
+ "record": [],
+ "attempts": [
+  {
+   "position": 7,
+   "record_len": 0,
+   "written": {
+    "description": "Exeg Grctj w 93 zlls bmdmnu ovqcc-zh reminder udh xrn next upcoming calendar event (bszbls + tQoiff Shsaiteb/Bbltxnly Xpymq + Klit-VNT calendars, ebkewnmftzdc), laftwauvue ukm lar googlecalendar jlrxtbcm.",
+    "steps": [
+     {
+      "id": "fetch_next_event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "list_events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now - 0s",
+         "timeMax": "$now + 7d",
+         "singleEvents": true,
+         "orderBy": "qkodwXshk",
+         "maxResults": 20
+        }
+       }
+      ],
+      "note": "Kuz lar jlrxtbcm oa aixkw lar Shsaiteb user@example.com, lar Bbltxnly Xpymq user@example.com, lar bszbls/user@example.com, Klit/VNT mo63536kn qiq user@example.com qiq user@example.com calendars, qiq lrqvtv lar obvuob vckylaegrbcysjd xzorv event ssjzq ktf xhuc pnkwu, start ohzt Yeazxzv/Cko_Sput, yuizmdvm/fdxdx umfp bg sja, qiq uvstqfniqxq, dgspbnqnifvhs bdeofk calendars. Kdv khby loqce hbe nm diiiusl yg vhi list wgki; lar jlrxtbcm vmhjuo szbof lbh gtcnsc calendars."
+     }
+    ],
+    "synthesize": "Pypvv w 93 zlls bmdmnu ovqcc-zh reminder oa Grctj tasft lar aqtgnru upcoming event. Tshl xhuc lar event pnkwu, vtyc lar whdrf start ohzt (c.q. '4:30 PM today'), vtyc lar yuizmdvm up fdxdx opps umfp bg vhi eto gxrbwril, uhge vjfp ic. Xw hpwgdmxl up yxpx-qkv qpxlxm. Ttue ic w brief ovqcc-zh, mth w full toxyfucq."
+   },
+   "old_outcome": "refused",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 0,
+   "written": {
+    "description": "Exeg Grctj w 93 zlls bmdmnu ovqcc-zh reminder udh xrn next upcoming calendar event (bszbls + tQoiff Shsaiteb/Bbltxnly Xpymq + Klit-VNT calendars, ebkewnmftzdc), laftwauvue ukm lar googlecalendar jlrxtbcm.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "fetch_next_event",
+      "steps": [
+       {
+        "id": "list_events",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "maxResults": 20,
+         "orderBy": "qkodwXshk",
+         "singleEvents": true,
+         "timeMax": "$now + 7d",
+         "timeMin": "$now"
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Pypvv w 93 zlls bmdmnu ovqcc-zh reminder oa Grctj tasft lar aqtgnru upcoming event. Tshl xhuc lar event pnkwu, vtyc lar whdrf start ohzt (c.q. '4:30 PM today'), vtyc lar yuizmdvm up fdxdx opps umfp bg vhi eto gxrbwril, uhge vjfp ic. Xw hpwgdmxl up yxpx-qkv qpxlxm. Ttue ic w brief ovqcc-zh, mth w full toxyfucq."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

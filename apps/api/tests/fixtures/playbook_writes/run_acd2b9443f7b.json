@@ -1,0 +1,55 @@
+{
+ "run": "run_acd2b9443f7b",
+ "captured_from": "2026-09-08",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_todo_context"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 9,
+   "record_len": 2,
+   "written": {
+    "description": "Jkgnptzb qiq assess lar upcoming Zmlvvp Tvelkhjg event uzku ckyxiautz lar Dovtnio Cbswsimi jcqviucr.",
+    "steps": [
+     {
+      "id": "assess_event",
+      "handoff": "googlecalendar",
+      "tool": "",
+      "args": {},
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+        "args": {
+         "time_min": "$now - 1h",
+         "time_max": "$now + 30d",
+         "max_results_per_calendar": 50
+        }
+       },
+       {
+        "tool": "query_json",
+        "args": {
+         "path": "vvvk_vcznxuk/HRWDPHJKMBUZBD_RLDDZU_RGRP_JLL_LYVXRNKMH_*.ajvqp",
+         "sort_by": "start",
+         "order": "dvm",
+         "limit": 8
+        }
+       }
+      ],
+      "result_brief": ""
+     }
+    ],
+    "result_brief": "Cvouqs rfroc upcoming event ckyxiautz lar rui (pnkwu, start ohzt, calendar, qwatdybzz, uvstqfniqxq, yuizmdvm/opps umfp). Hx ic uc w gdks personal event (ga qwatdybzz, ga uvstqfniqxq, ga yuizmdvm e c.q. w personal cwyup sxvt \"Kvkzfx Hki Ghf 4\"), report uzku ga toxyfucq uc qpxlxm qiq kojg ymgdt. Hx ic uc w wmda 1:1 up group meeting, xtccqjbq oa attendee research (gmail/memory/web udh tscekmvq, memory/todos udh fxztkwar) qiq vyxqdlz w hjujzutryf brief chalqdrb izb Grctj uc meeting + context, sjznoqgpq rgupyck juqeqf, open rxrpqy emrwk, bgchvcmk duilvcbnuh, qiq lar opps umfp."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

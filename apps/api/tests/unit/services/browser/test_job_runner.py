@@ -14,7 +14,9 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from app.config.feature_flags import FeatureFlag
+from app.config.settings import settings
 from app.constants.browser import (
+    BROWSER_JOB_CRASHED_SUMMARY,
     BROWSER_JOB_WORKER_STOPPED_SUMMARY,
     BROWSER_NO_CHROME_HOST,
     BROWSER_RESULT_REPLACED_REQUEST,
@@ -34,6 +36,7 @@ from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
     BrowserAction,
     BrowserActionOutput,
+    BrowserCardSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
@@ -48,7 +51,7 @@ from app.schemas.browser_job import (
     BrowserJobStatus,
     BrowserJobStopped,
 )
-from app.services.browser import job_runner as jr, job_teller as teller
+from app.services.browser import host_client, job_runner as jr, job_teller as teller
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
     BrowserSessionGone,
@@ -60,6 +63,7 @@ from app.services.browser.jobs import done_state, put_job_state
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.tasks import BrowserTaskRecord
+from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserTaskFinished
 from shared.py.wide_events import log, wide_task
@@ -339,8 +343,6 @@ class Harness:
         self.run_task: str | None = None
         self.record_calls: list[dict[str, Any]] = []
         self.spawn_names: list[str | None] = []
-        self.delivery_kwargs: list[dict[str, Any]] = []
-        self.delivered: list[tuple[str, Any]] = []
         self.handoffs_created: list[tuple[Any, ...]] = []
         self.handoffs_awaited: list[tuple[Any, ...]] = []
         self.cancel_checks: list[str] = []
@@ -363,7 +365,7 @@ class Harness:
     @property
     def cards(self) -> list[dict[str, Any]]:
         """The card payloads the run published, in order."""
-        return [w[BROWSER_TASK_EVENT] for w in self.writes]
+        return [w[BROWSER_TASK_EVENT] for w in self.writes if BROWSER_TASK_EVENT in w]
 
     @property
     def rows(self) -> list[dict[str, Any]]:
@@ -381,7 +383,7 @@ class Harness:
         cb: BrowserRunnerCallbacks = self.runner_kwargs["callbacks"]
         return cb
 
-    async def emit(self, snapshot: object) -> None:
+    async def emit(self, snapshot: BrowserCardSnapshot) -> None:
         await self.callbacks.emit(snapshot)
 
     async def is_cancelled(self) -> bool:
@@ -393,31 +395,11 @@ class Harness:
         outcome: HandoffOutcome = await self.callbacks.request_handoff(req, self.session)
         return outcome
 
-    async def action_results(self, step_index: int, outputs: object) -> None:
+    async def action_results(self, step_index: int, outputs: list[BrowserActionOutput]) -> None:
         # The job body wires this to the mirror's `results`; the runner calls it
         # from `on_step_end`. Driving it directly mirrors that call.
         assert self.callbacks.action_results is not None
         await self.callbacks.action_results(step_index, outputs)
-
-
-class RecordingDelivery:
-    def __init__(self, harness: Harness) -> None:
-        self._h = harness
-
-    async def step(self, snapshot: object) -> None:
-        self._h.delivered.append(("step", snapshot))
-
-    async def result(self, snapshot: object) -> None:
-        self._h.delivered.append(("result", snapshot))
-
-    async def handoff(self, snapshot: object) -> None:
-        self._h.delivered.append(("handoff", snapshot))
-
-    async def session(self, snapshot: object) -> None:
-        self._h.delivered.append(("session", snapshot))
-
-    async def note(self, text: str) -> None:
-        self._h.delivered.append(("note", text))
 
 
 async def _noop() -> None:
@@ -437,13 +419,13 @@ def _install(
     h = Harness()
     final = result if result is not None else _result(BrowserSessionStatus.COMPLETED, True, "Done")
 
-    async def _obscura_off(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+    async def _flags_off(flag: object, user_id: str | None, default: bool | None = None) -> bool:
         return False
 
-    # Chrome, the default engine, on the configured host; Obscura is an opt-in flag.
-    monkeypatch.setattr(jr, "is_enabled", _obscura_off)
-    monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
-    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", None)
+    # Chrome, the default engine, on the configured host, without Jev; both are opt-in flags.
+    monkeypatch.setattr(jr, "is_enabled", _flags_off)
+    monkeypatch.setattr(settings, "BROWSER_HOST_URL", PRIMARY_HOST)
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", None)
     monkeypatch.setattr(jr, "publish_frame_to_job", h.publish)
 
     async def _put_state(state: BrowserJobState) -> None:
@@ -505,19 +487,11 @@ def _install(
 
     monkeypatch.setattr(jr, "record_browser_task", _record)
 
-    real_spawn = jr.spawn_background_task
-
     def _spawn(coro: Any, **kwargs: Any) -> Any:
         h.spawn_names.append(kwargs.get("name"))
-        return real_spawn(coro, **kwargs)
+        return spawn_background_task(coro, **kwargs)
 
     monkeypatch.setattr(jr, "spawn_background_task", _spawn)
-
-    def _delivery(**kwargs: Any) -> RecordingDelivery:
-        h.delivery_kwargs.append(kwargs)
-        return RecordingDelivery(h)
-
-    monkeypatch.setattr(jr, "BotProgressDelivery", _delivery)
 
     async def _publish_event(job_id: str, payload: dict[str, Any]) -> None:
         h.feed_jobs.append(job_id)
@@ -547,7 +521,7 @@ def _install_handoff(
     monkeypatch.setattr(jr, "await_handoff", _await_handoff)
     # The host a paused session lives on, asked where its page is.
     monkeypatch.setattr(
-        jr.host_client, "get_session", AsyncMock(return_value=MagicMock(url="https://x/login"))
+        host_client, "get_session", AsyncMock(return_value=MagicMock(url="https://x/login"))
     )
 
     async def _no_wait_record(*args: Any) -> None:
@@ -708,7 +682,7 @@ async def test_a_crash_inside_the_run_is_one_failed_card_on_the_feed(
 
     out = await _run(h, _request(task="x"))
 
-    summary = jr.BROWSER_JOB_CRASHED_SUMMARY
+    summary = BROWSER_JOB_CRASHED_SUMMARY
     assert [c for c in h.cards if c["kind"] == "result"] == [_failed_card(summary)]
     assert out == _failed_message(summary)
     assert not summary.endswith(":")
@@ -734,7 +708,7 @@ async def test_a_crash_choosing_the_engine_is_one_failed_card_on_the_feed(
 
     event = await _run_event(h, _request(task="x"))
 
-    assert h.cards == [_failed_card(jr.BROWSER_JOB_CRASHED_SUMMARY)]
+    assert h.cards == [_failed_card(BROWSER_JOB_CRASHED_SUMMARY)]
     assert event["reason"] == BrowserRunFailure.RUN_CRASHED
     assert h.session_kwargs == {}
 
@@ -755,7 +729,7 @@ async def test_a_crash_with_an_empty_str_exception_still_reads_as_a_sentence(
 
     out = await _run(h, _request(task="x"))
 
-    summary = jr.BROWSER_JOB_CRASHED_SUMMARY
+    summary = BROWSER_JOB_CRASHED_SUMMARY
     assert [c for c in h.cards if c["kind"] == "result"] == [_failed_card(summary)]
     assert out == _failed_message(summary)
     assert not summary.rstrip().endswith(":")
@@ -1007,13 +981,13 @@ async def test_runner_is_configured_from_settings_and_config(
 ) -> None:
     """Every knob the runner gets must come from its own setting — not a neighbouring one, and not a hardcoded default."""
     h = _install(monkeypatch)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_MAX_STEPS", 7)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_MAX_ACTIONS_PER_STEP", 3)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_TASK_TIMEOUT_SECONDS", 111)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_STEP_TIMEOUT_SECONDS", 22)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 333)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_STREAM_SCREENSHOTS", False)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_SOLVE_CAPTCHA", False)
+    monkeypatch.setattr(settings, "BROWSER_USE_MAX_STEPS", 7)
+    monkeypatch.setattr(settings, "BROWSER_USE_MAX_ACTIONS_PER_STEP", 3)
+    monkeypatch.setattr(settings, "BROWSER_USE_TASK_TIMEOUT_SECONDS", 111)
+    monkeypatch.setattr(settings, "BROWSER_USE_STEP_TIMEOUT_SECONDS", 22)
+    monkeypatch.setattr(settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 333)
+    monkeypatch.setattr(settings, "BROWSER_USE_STREAM_SCREENSHOTS", False)
+    monkeypatch.setattr(settings, "BROWSER_USE_SOLVE_CAPTCHA", False)
 
     await _run(h, _request(conversation_id="conv-9", root_request_id="req-42"))
 
@@ -1029,6 +1003,7 @@ async def test_runner_is_configured_from_settings_and_config(
         handoff_timeout_seconds=333,
         stream_screenshots=False,
         solve_captcha=False,
+        jev=False,
     )
     assert isinstance(kwargs.pop("secrets"), RunSecrets)
     assert kwargs == {
@@ -1254,10 +1229,9 @@ async def test_the_watch_on_a_paused_browser_ends_with_the_handoff(
 ) -> None:
     """A watch left running would fail a later handoff's record, or the next run's, when the browser finally goes."""
     watches: list[asyncio.Task[None]] = []
-    real_spawn = jr.spawn_background_task
 
     def _spawn(coro: Any, **kwargs: Any) -> asyncio.Task[None]:
-        task: asyncio.Task[None] = real_spawn(coro, **kwargs)
+        task: asyncio.Task[None] = spawn_background_task(coro, **kwargs)
         if kwargs.get("name") == "browser_handoff_session_watch":
             watches.append(task)
         return task
@@ -1374,79 +1348,53 @@ async def test_history_is_recorded_for_a_failed_run_too(
 
 
 # ---------------------------------------------------------------------------
-# execute_browser_job — bot mirroring
+# execute_browser_job — the hand-off link a bot user takes over with
 # ---------------------------------------------------------------------------
 
 
-async def test_bot_delivery_is_built_for_the_originating_platform(
+def _mint_links(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, str]]:
+    minted: list[tuple[str, str, str]] = []
+
+    async def _mint(session_id: str, user_id: str, handoff_id: str) -> str:
+        minted.append((session_id, user_id, handoff_id))
+        return f"https://gaia.test/live/{handoff_id}"
+
+    monkeypatch.setattr(jr, "create_live_view_link", _mint)
+    return minted
+
+
+async def _ask_once(h: Harness) -> BrowserResultSnapshot:
+    await h.request_handoff(HandoffRequest(reason="verify"))
+    return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+
+async def test_a_bot_runs_pending_handoff_card_carries_a_link_minted_for_its_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    h = _install(monkeypatch)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_STREAM_SCREENSHOTS", False)
-    await _run(h, _bot_request(task="x"))
-    assert h.delivery_kwargs == [
-        {
-            "platform": ConversationSource.DISCORD,
-            "user_id": USER_ID,
-            "stream_screenshots": False,
-        }
+    minted = _mint_links(monkeypatch)
+    h = _install(monkeypatch, run_body=_ask_once)
+
+    await _run(h, _bot_request())
+
+    handoffs = [c for c in h.cards if c["kind"] == "handoff"]
+    [(session_id, user_id, handoff_id)] = minted
+    assert user_id == USER_ID
+    assert [(c["status"], c["live_view_url"]) for c in handoffs] == [
+        (HandoffStatus.PENDING.value, f"https://gaia.test/live/{handoff_id}"),
+        (HandoffStatus.COMPLETED.value, None),
     ]
+    assert handoffs[0]["session_id"] == session_id
+    assert handoffs[0]["handoff_id"] == handoff_id
 
 
-async def test_bot_run_without_a_known_platform_is_not_mirrored(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _install(monkeypatch)
-    await _run(h, _bot_request(conversation_source=None))
-    assert h.delivery_kwargs == []
+async def test_a_web_runs_handoff_mints_no_link(monkeypatch: pytest.MonkeyPatch) -> None:
+    minted = _mint_links(monkeypatch)
+    h = _install(monkeypatch, run_body=_ask_once)
 
+    await _run(h, _request())
 
-async def test_bot_run_without_a_user_is_not_mirrored(monkeypatch: pytest.MonkeyPatch) -> None:
-    h = _install(monkeypatch)
-    await _run(h, _bot_request(user_id=""))
-    assert h.delivery_kwargs == []
-
-
-async def test_bot_run_without_a_conversation_is_not_mirrored(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _install(monkeypatch)
-    await _run(h, _bot_request(conversation_id=""))
-    assert h.delivery_kwargs == []
-
-
-async def test_failed_mirror_is_logged_with_the_snapshot_that_failed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The card is already on the stream, so a platform outage is a logged warning — but it must say which snapshot and which error."""
-
-    class _Failing:
-        async def step(self, snapshot: object) -> None:
-            raise RuntimeError("rabbitmq down")
-
-        async def result(self, snapshot: object) -> None:
-            return None
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        await h.emit(BrowserStepSnapshot(index=1, goal="g"))
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(jr, "BotProgressDelivery", lambda **kwargs: _Failing())
-    fake_log = MagicMock()
-    monkeypatch.setattr(jr, "log", fake_log)
-
-    out = await _run(h, _bot_request(task="x"))
-
-    assert out == _completed_message("done")
-    assert [card["kind"] for card in h.cards] == ["step", "result"]
-    (error_call,) = fake_log.error.call_args_list
-    assert error_call.args == (f"{LogTag.BROWSER} Bot delivery failed; continuing browser task",)
-    assert error_call.kwargs == {
-        "error_type": "RuntimeError",
-        "error": "rabbitmq down",
-        "browser": {"snapshot_type": "BrowserStepSnapshot"},
-    }
+    assert minted == []
+    assert [c["live_view_url"] for c in h.cards if c["kind"] == "handoff"] == [None, None]
 
 
 async def test_the_session_the_run_opened_is_logged_onto_the_wide_event(
@@ -1482,7 +1430,7 @@ async def test_a_completed_login_takeover_marks_the_session_worth_saving(
             MagicMock(url="https://site.example/account"),
         ]
     )
-    monkeypatch.setattr(jr.host_client, "get_session", get_session)
+    monkeypatch.setattr(host_client, "get_session", get_session)
 
     await _run(h, _request(task="x"))
 
@@ -1518,7 +1466,7 @@ async def test_a_sign_in_whose_page_cannot_be_read_still_settles_its_card_and_sa
 
     h = _install(monkeypatch, run_body=body)
     get_session = AsyncMock(side_effect=[MagicMock(url="https://site.example/login"), host_says])
-    monkeypatch.setattr(jr.host_client, "get_session", get_session)
+    monkeypatch.setattr(host_client, "get_session", get_session)
     fake_log = MagicMock()
     monkeypatch.setattr(jr, "log", fake_log)
 
@@ -1563,7 +1511,7 @@ async def test_a_sign_in_asked_for_in_a_browser_already_lost_never_reaches_the_u
 
     h = _install(monkeypatch, run_body=body)
     monkeypatch.setattr(
-        jr.host_client, "get_session", AsyncMock(side_effect=BrowserSessionGone("gone"))
+        host_client, "get_session", AsyncMock(side_effect=BrowserSessionGone("gone"))
     )
 
     await _run(h, _request(task="x"))
@@ -1914,7 +1862,7 @@ async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_f
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
 
     h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 123)
+    monkeypatch.setattr(settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 123)
 
     await _run(h, _request(conversation_id="conv-9", conversation_source=source))
 
@@ -2045,45 +1993,22 @@ async def test_a_handoff_card_promises_a_saved_login_only_when_one_will_be_kept(
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
 
     h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(jr.settings, "BROWSER_PERSIST_LOGINS", persist_logins)
+    monkeypatch.setattr(settings, "BROWSER_PERSIST_LOGINS", persist_logins)
 
     await _run(h, _request())
 
     assert [c["saves_login"] for c in h.cards if c["kind"] == "handoff"] == [saves_login] * 2
 
 
-async def test_a_bot_user_is_sent_every_card_the_run_emits(
+async def test_a_stall_note_is_shown_on_the_runs_session_card(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING, session_id="s1")
-    step = BrowserStepSnapshot(index=1, goal="open")
-    final = _result(BrowserSessionStatus.COMPLETED, True, "done")
 
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        await h.emit(session)
-        await h.emit(step)
-        await h.request_handoff(HandoffRequest(reason="verify"))
-        await h.emit(final)
-        return final
-
-    h = _install(monkeypatch, run_body=body)
-
-    await _run(h, _bot_request())
-
-    kinds = [kind for kind, _ in h.delivered]
-    assert kinds == ["session", "step", "handoff", "handoff", "result"]
-    assert h.delivered[0][1] is session
-    assert h.delivered[1][1] is step
-    assert h.delivered[4][1] is final
-    assert [snap.status for kind, snap in h.delivered if kind == "handoff"] == [
-        HandoffStatus.PENDING,
-        HandoffStatus.COMPLETED,
-    ]
-
-
-async def test_a_stall_note_reaches_the_bot_user(monkeypatch: pytest.MonkeyPatch) -> None:
     async def body(h: Harness) -> BrowserResultSnapshot:
         assert h.callbacks.note is not None
+        await h.callbacks.note("Too early to show.")
+        await h.emit(session)
         await h.callbacks.note("Still loading the page.")
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
 
@@ -2091,7 +2016,11 @@ async def test_a_stall_note_reaches_the_bot_user(monkeypatch: pytest.MonkeyPatch
 
     await _run(h, _bot_request())
 
-    assert ("note", "Still loading the page.") in h.delivered
+    sessions = [c for c in h.cards if c["kind"] == "session"]
+    assert [(c["session_id"], c["detail"]) for c in sessions] == [
+        ("s1", None),
+        ("s1", "Still loading the page."),
+    ]
 
 
 async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_this_user(
@@ -2111,7 +2040,7 @@ async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_thi
         return True
 
     monkeypatch.setattr(jr, "is_enabled", _obscura_on)
-    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://fallback:8930")
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", "http://fallback:8930")
     h.session.engine = BrowserEngine.OBSCURA
 
     await _run(h, _request(user_id=OTHER_USER_ID))
@@ -2289,8 +2218,8 @@ def test_a_run_opens_on_its_engines_host_with_the_chrome_host_behind_obscura(
     engine: BrowserEngine,
     hosts: tuple[str, str | None],
 ) -> None:
-    monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
-    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", chrome_host)
+    monkeypatch.setattr(settings, "BROWSER_HOST_URL", PRIMARY_HOST)
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", chrome_host)
 
     assert jr.hosts_for(engine) == hosts
 
@@ -2317,7 +2246,7 @@ async def test_an_obscura_run_the_host_put_on_chrome_has_nowhere_to_move(
         return True
 
     monkeypatch.setattr(jr, "is_enabled", _obscura_on)
-    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
 
     event = await _run_event(h, _request())
 
@@ -2334,18 +2263,40 @@ async def test_the_engine_is_the_users_own_obscura_choice(
 
     async def _is_enabled(flag: object, user_id: str | None, default: bool | None = None) -> bool:
         asked.append((flag, user_id))
-        return opted_in
+        return opted_in and flag is FeatureFlag.BROWSER_OBSCURA
 
     monkeypatch.setattr(jr, "is_enabled", _is_enabled)
-    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
     h.session.engine = BrowserEngine(engine)
 
     event = await _run_event(h, _request(user_id=OTHER_USER_ID))
 
-    assert asked == [(FeatureFlag.BROWSER_OBSCURA, OTHER_USER_ID)]
+    assert (FeatureFlag.BROWSER_OBSCURA, OTHER_USER_ID) in asked
     assert h.session_kwargs["host_url"] == (PRIMARY_HOST if opted_in else "http://chrome:8930")
     # The engine the run is on is what the host reported for its session.
     assert event["browser"]["engine"] == engine
+
+
+@pytest.mark.parametrize("opted_in", [True, False])
+async def test_jev_operates_the_run_only_by_the_users_own_choice(
+    monkeypatch: pytest.MonkeyPatch, opted_in: bool
+) -> None:
+    h = _install(monkeypatch)
+    asked: list[tuple[object, str | None]] = []
+
+    async def _is_enabled(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        asked.append((flag, user_id))
+        return opted_in and flag is FeatureFlag.BROWSER_JEV
+
+    monkeypatch.setattr(jr, "is_enabled", _is_enabled)
+
+    event = await _run_event(h, _request(user_id=OTHER_USER_ID))
+
+    assert (FeatureFlag.BROWSER_JEV, OTHER_USER_ID) in asked
+    assert h.runner_kwargs["config"].jev is opted_in
+    # Jev's own choice, not the engine's: Obscura stays off.
+    assert h.session_kwargs["host_url"] == PRIMARY_HOST
+    assert event["browser"]["jev"] is opted_in
 
 
 async def test_a_credential_is_typed_only_on_the_site_named_for_it(

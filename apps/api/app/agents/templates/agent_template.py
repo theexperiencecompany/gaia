@@ -17,31 +17,46 @@ from typing import Final
 
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT, EXECUTOR_AGENT_PROMPT
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
+from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.agents.workspace.operational_docs import GAIA_CORE
 from app.constants.chat import ConversationSource
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.reactions import REACTION_PALETTE_BY_SURFACE
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
-# Output-format addendum for renderable channels (web, mobile, desktop).
-_OPENUI_ADDENDUM: Final[str] = (
-    "\n" + OPENUI_INSTRUCTIONS + "\n## Approvals in the app\n"
+# Approvals inside the app (web, mobile, desktop and a voice call) are decided on a card.
+_APP_APPROVALS: Final[str] = (
+    "\n## Approvals in the app\n"
     "An action that needs the user's go-ahead renders as an approval card they can "
     "approve or decline on screen. While one is pending, tell them an approval needs "
     "their decision and point them at the card; they decide from the card, so do not "
     "ask them to type a reply in chat.\n"
 )
 
+# Output-format addendum for renderable channels (web, mobile, desktop).
+_OPENUI_ADDENDUM: Final[str] = "\n" + OPENUI_INSTRUCTIONS + _APP_APPROVALS
 
-# Text-only channels have no approval card, so an action awaiting go-ahead must
-# invite a chat reply. Approval is permission, not execution: the action stays unrun
-# until the user decides, and the HIL resolver commits their yes/no reply.
+# A voice reply is spoken by text-to-speech, so it carries no markup or components.
+_VOICE_ADDENDUM: Final[str] = """
+
+## Platform Context (IMPORTANT)
+The user is talking to you on a voice call, and your reply is read aloud to them. Write only what a person would say out loud.
+
+OUTPUT RESTRICTIONS for a call:
+- NO markdown of any kind: no headings, bold, italics, tables, lists, code blocks or links. The speech engine reads symbols literally or drops them.
+- NO components, cards or rich UI in your reply. Describe a result in a sentence or two instead.
+- NO URLs read out. Say where they can find it in the app instead.
+- Keep it short and conversational, a few spoken sentences. Give the key fact first; offer more if they want it.
+"""
+
+# Text-only channels have no approval card, and GAIA asks there itself (the bot's
+# prompt, or a link to the app for work's own chat), so a reply never says what to answer.
 _MESSAGING_APPROVAL: Final[str] = (
     "APPROVALS ON THIS PLATFORM:\n"
     "- When an action needs the user's approval, it does not run until they decide. "
-    "There is no approval card or button here for them to see or click. Tell them "
-    "plainly to reply YES to approve or NO to decline; their Yes or No (or "
-    '"go ahead" / "no, don\'t") reply in the chat is what decides it, and GAIA then '
-    "carries the action out or leaves it undone.\n\n"
+    "There is no approval card or button here for them to see or click. GAIA asks them "
+    "itself, in its own message, so never tell them how to approve or what to reply. "
+    "Once they decide, GAIA carries the action out or leaves it undone.\n\n"
 )
 
 
@@ -94,9 +109,11 @@ WHAT TO DO INSTEAD:
 
 # Telegram's reaction API takes only a fixed emoji set; anything else reaches
 # the user as a separate text bubble instead of a reaction on their message.
-_TELEGRAM_REACTIONS: Final[str] = """
-
-REACTIONS ON TELEGRAM: a reaction attaches to their message only with one of 👍 ❤ 🔥 👏 😁 🤣 😭 🙏 👌 🎉 👀 💯 🤝 🤔 😢 🥰 😎 🤗. Pick from these; any other emoji arrives as a separate text message."""
+_TELEGRAM_REACTIONS: Final[str] = (
+    "\n\nREACTIONS ON TELEGRAM: a reaction attaches to their message only with one of "
+    f"{' '.join(REACTION_PALETTE_BY_SURFACE[ConversationSource.TELEGRAM])}. "
+    "Pick from these; any other emoji arrives as a separate text message."
+)
 
 
 _WHATSAPP_ADDENDUM: Final[str] = _text_only_addendum(
@@ -122,45 +139,35 @@ _SLACK_ADDENDUM: Final[str] = _text_only_addendum(
 )
 
 
-# Pre-assembled static comms prompts per channel. Each is a single Python
-# string literal that lives for the process lifetime, so the bytes sent to
-# the LLM are identical for every user on that channel.
-COMMS_PROMPT_BY_SOURCE: Final[dict[str, str]] = {
-    ConversationSource.WEB.value: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    ConversationSource.MOBILE.value: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    ConversationSource.DESKTOP.value: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM + _DESKTOP_ADDENDUM,
-    ConversationSource.WHATSAPP.value: COMMS_AGENT_PROMPT + _WHATSAPP_ADDENDUM,
-    ConversationSource.TELEGRAM.value: COMMS_AGENT_PROMPT + _TELEGRAM_ADDENDUM,
-    ConversationSource.DISCORD.value: COMMS_AGENT_PROMPT + _DISCORD_ADDENDUM,
-    ConversationSource.SLACK.value: COMMS_AGENT_PROMPT + _SLACK_ADDENDUM,
-    ConversationSource.IMESSAGE.value: COMMS_AGENT_PROMPT + _IMESSAGE_ADDENDUM,
+# One byte-identical prompt per surface a reply is read on, so the provider cache matches across users.
+COMMS_PROMPT_BY_SOURCE: Final[dict[ConversationSource, str]] = {
+    ConversationSource.WEB: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
+    ConversationSource.MOBILE: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
+    ConversationSource.DESKTOP: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM + _DESKTOP_ADDENDUM,
+    ConversationSource.VOICE: COMMS_AGENT_PROMPT + _APP_APPROVALS + _VOICE_ADDENDUM,
+    ConversationSource.WHATSAPP: COMMS_AGENT_PROMPT + _WHATSAPP_ADDENDUM,
+    ConversationSource.TELEGRAM: COMMS_AGENT_PROMPT + _TELEGRAM_ADDENDUM,
+    ConversationSource.DISCORD: COMMS_AGENT_PROMPT + _DISCORD_ADDENDUM,
+    ConversationSource.SLACK: COMMS_AGENT_PROMPT + _SLACK_ADDENDUM,
+    ConversationSource.IMESSAGE: COMMS_AGENT_PROMPT + _IMESSAGE_ADDENDUM,
 }
 
-# Default (web-style) static prompt used when ``source`` is unknown/None.
-COMMS_PROMPT_DEFAULT: Final[str] = COMMS_PROMPT_BY_SOURCE[ConversationSource.WEB.value]
 
+def get_comms_static_prompt(source: ConversationSource) -> str:
+    """Return the static comms prompt of the surface the reply is read on.
 
-def get_comms_static_prompt(source: str | None) -> str:
-    """Return the per-channel static comms prompt.
-
-    The choice of channel-specific static prompt means the provider's
-    implicit prompt cache can match byte-for-byte across all users on the
-    same channel. Unknown sources fall back to the web variant.
+    A background or workflow source is not a surface (comms_turn resolves where such a reply is read),
+    so it raises KeyError rather than reading as web.
     """
-    if not source:
-        return COMMS_PROMPT_DEFAULT
-    return COMMS_PROMPT_BY_SOURCE.get(source.strip().lower(), COMMS_PROMPT_DEFAULT)
-
-
-# Legacy name still imported by a few call sites. Kept as an alias for the
-# default web-style prompt; all per-channel users should go through
-# ``get_comms_static_prompt``.
-COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
+    return COMMS_PROMPT_BY_SOURCE[source]
 
 
 def get_executor_prompt() -> str:
     """Return the static executor prompt; GAIA_CORE is appended, not interpolated, for a stable provider cache."""
-    return EXECUTOR_AGENT_PROMPT + "\n\n" + INSTRUCTION_PRECEDENCE_RULES + "\n\n" + GAIA_CORE
+    return (
+        f"{EXECUTOR_AGENT_PROMPT}\n\n{INSTRUCTION_PRECEDENCE_RULES}\n\n"
+        f"{GAIA_CORE}\n\n{TODO_SYSTEM_PROMPT}"
+    )
 
 
 EXECUTOR_PROMPT_TEMPLATE: Final[str] = get_executor_prompt()

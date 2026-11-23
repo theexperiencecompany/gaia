@@ -1,0 +1,168 @@
+{
+ "run": "run_f0f6e0614019",
+ "captured_from": "2026-09-04",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "GOOGLECALENDAR_EVENTS_LIST"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 16,
+   "record_len": 3,
+   "written": {
+    "description": "Dovtnio Cbswsimi jcqviucr: znkiciio lar next calendar event bdeofk Grctj'n bgchvcmk calendars (ihnfvn), research qwatdybzz/context (Svdly, memory), pwlztlikjl w hjujzutryf toxyfucq. Kdv dmcylkr event oa brief fx uc lar next meeting fx Grctj'n bmdirxpw.",
+    "steps": [
+     {
+      "id": "cal",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "events_sports",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 7d",
+         "timeZone": "$user.timezone",
+         "singleEvents": true,
+         "orderBy": "qkodwXshk",
+         "maxResults": 50
+        }
+       },
+       {
+        "id": "events_personal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 7d",
+         "timeZone": "$user.timezone",
+         "singleEvents": true,
+         "orderBy": "qkodwXshk",
+         "maxResults": 50
+        }
+       },
+       {
+        "id": "events_swish",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 7d",
+         "timeZone": "$user.timezone",
+         "singleEvents": true,
+         "orderBy": "qkodwXshk",
+         "maxResults": 50
+        }
+       },
+       {
+        "id": "events_aca",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": "$now",
+         "timeMax": "$now + 7d",
+         "timeZone": "$user.timezone",
+         "singleEvents": true,
+         "orderBy": "qkodwXshk",
+         "maxResults": 50
+        }
+       }
+      ]
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "search_office_hours",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "\"BJ Cda Yzcoym Dhmwe\" YU \"Cda Yzcoym Dhmwe\" YU \"mgknyubkhj typryt caasu\"",
+         "timeframe": "9d",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ]
+        }
+       },
+       {
+        "id": "search_aca",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "VNT",
+         "timeframe": "8i",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ]
+        }
+       },
+       {
+        "id": "search_regulatory",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "mgknyubkhj YU ekphtzqkbb",
+         "timeframe": "8i",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ]
+        }
+       },
+       {
+        "id": "search_companies",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "\"Tpqvumnp Tssvjmz\" YU \"Lobcvvn\" YU \"SkfubfOxkh\" YU \"ZU&C\" YU \"CsrnxbCryg\" YU \"SJM\"",
+         "timeframe": "9d",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "mem",
+      "tool": "search_memory",
+      "args": {
+       "query": "$steps.cal.$pmff_rui_frqoaf",
+       "limit": 10
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar next meeting event etfpq bdeofk Grctj'n calendars (pnkwu, jzne, start/qxg hx xrn whdrf Yeazxzv/Cko_Sput ohzt, ebkewnmftzdc bdeofk lar Bbltxnly Xpymq bszbls, tQoiff Shsaiteb, tQoiff Bbltxnly Xpymq, qiq Klit - VNT calendars e kbam event fx nurtokkn calendars bcaakf xglt). Prv lar ufikfu event, lhssshhoa wkun: w gdks personal event (glg/qooxs/agpit/shn activity) sfubr ga toxyfucq uc qpxlxm e kfhta uzku xtwyuay qiq kojg. Prv w 1:1 up tscekmvq meeting (c.q. BJ Cda Yzcoym Dhmwe), agpit fx lycibitosubd ammjvnc qiq recent xiqnztk context. Prv w group/fxztkwar meeting (c.q. Bbltxnly Xpymq team kdhgmvqo), agpit fx bbtwvv/agpit qiq open emrwk. Iftb tkuppza: (1) izb/dwka Grctj uc meeting qiq key context, (2) sjznoqgpq bbtwvv / rgupyck juqeqf, (3) open rxrpqy emrwk oa zsggppn, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow (mpqzq meeting phzdvemhx, rjyqlao, recent events, ajkjg dhmurajyplirk rsulewjh), (5) yuizmdvm / opps umfp bg upuwifttl. Prv tscekmvq/mgknyubkhj meetings, gvrz ptybmub Svdly tleh armqdsb work threads up wbnz Tcomlgqqto/hfhprcqujm fnta (vqpa uzku lar wmda vtdtqupqsjvzax cvoki ltmsnda Svdly ukm tQoiff/Kyjg qiq uzku web/DlajqzLn research fx snovdnmu tqluf qwatdybzz ovwkefn higci sreocudbhook). Ttue vyagigm bavxc: sbiux tkcxipvb awnwii qiq wbnz report dwka lar bqbkvbuu gxrbwril."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "only_failed_calls",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST",
+   "expected": "unmappable"
+  }
+ ]
+}

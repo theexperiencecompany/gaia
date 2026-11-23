@@ -36,6 +36,8 @@ export {
 } from "./models";
 export type { Note, NoteCreate, NoteListResponse, NoteUpdate } from "./notes";
 export type {
+  BriefingFrequency,
+  BriefingScheduleState,
   ChannelPlatform,
   ChannelPreferences,
   InAppNotification,
@@ -44,9 +46,10 @@ export type {
   NotificationActionConfig,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "./notification";
 export {
+  EMAIL_CHANNEL_DESCRIPTION,
+  NOTIFICATION_CHANNELS,
   NotificationActionStyle,
   NotificationActionType,
   NotificationStatus,
@@ -88,7 +91,7 @@ export type {
   TodoLabel,
   TodoListResponse,
   TodoUpdate,
-  TriggerSubscription,
+  TriggerSubscriptionView,
 } from "./todo";
 export {
   ConditionMatch,
@@ -111,8 +114,6 @@ export type {
 export type {
   CommunityWorkflow,
   ContentCreator,
-  CreateWorkflowPayload,
-  ExecutionConfig,
   TriggerConfig,
   Workflow,
   WorkflowListResponse,

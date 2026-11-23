@@ -5,33 +5,48 @@ Subcommands:
   matrix                   Emit the changed app modules + their test files as
                            JSON — the input `plan` and `local` fan out from.
                            Fails loudly when changed app code has no test.
-  plan                     Emit the lane's GitHub Actions matrix — one shard
-                           per changed module, capped at MAX_SHARDS. Writes
-                           shards (the labels), shard_defs and count to
-                           $GITHUB_OUTPUT.
-  shard                    Run every module in $GROUP, in order; the shard's
-                           exit code is the last failing module's.
+  history                  Download the module durations this PR's earlier
+                           runs measured into $MUTATION_HISTORY_DIR, for plan.
+  plan                     Emit the lane's GitHub Actions matrix — as many
+                           shards as the cost (measured on an earlier run of
+                           the PR, else estimated) needs to fit
+                           SHARD_BUDGET_SECONDS each (the fewest that fit, at
+                           most MAX_SHARDS), balanced by cost. Writes shards (the
+                           labels), shard_defs and count to $GITHUB_OUTPUT.
+  shard                    Run every module in $GROUP, in order, each under a
+                           cap derived from its cost and the shard's deadline;
+                           the exit code is the last failing module's.
   module <mod> [tests] [ranges]
                            Mutate ONE module with mutmut and require the suite
                            to kill every mutant on the PR's changed lines.
                            This is the engine both `shard` and `local` drive.
   local [modules...]       Run the whole gate on this machine exactly as the
                            lane runs it, sized to the local CPU budget. Logs
-                           under verify-logs/mutation/.
+                           under verify-logs/mutation/; a module with survivors
+                           has its survivors view printed (`mise mutation:one`).
+  survivors <verdict|dir|shard.log> [--json]
+                           Print every surviving mutant from a shard artifact:
+                           `file:line`, the one-line change, its full diff and
+                           the mapped tests. This is what a red gate is asking
+                           you to change — no need to reverse-engineer mutmut.
   replay <verdict|dir|shard.log> <mutant-id|file.py:LINE>
                            Re-apply ONE survivor's diff to a scratch copy of
                            apps/api and run that module's mapped tests.
 
 Env contract:
   matrix  none directly; delegates the diff to `changes.sh files py`.
-  plan    GITHUB_OUTPUT (stdout-only when unset).
-  shard   GROUP (required, compact JSON array of {module,testfiles,ranges});
+  history GITHUB_REPOSITORY, PR_BRANCH, MUTATION_HISTORY_DIR, GH_TOKEN.
+  plan    GITHUB_OUTPUT (stdout-only when unset), MUTATION_HISTORY_DIR.
+  shard   GROUP (required, compact JSON array of {module,testfiles,ranges,mutants});
           SHARD_LOG (shard.log), GITHUB_STEP_SUMMARY. Writes <shard>.verdict.json
-          beside the log (the replay artifact) and one verdict per module through
+          beside the log (the replay artifact), <shard>.durations.json (each
+          started module's seconds, which the next plan reads) and one verdict per module through
           `verdict.py emit` into the directory `verdict.py dir` reports.
   module  MUTMUT_WORKDIR_BASE, MUTMUT_MAX_CHILDREN, MUTMUT_KEEP_WORKDIR,
-          MUTATION_VERDICT_DIR (where the module RECORD lands).
+          MUTATION_VERDICT_DIR (where the module RECORD lands),
+          MUTMUT_CAP_SECONDS (the cap the shard gave this module).
   local   MUTATION_JOBS, MUTATION_CPU_BUDGET, MUTMUT_MAX_CHILDREN.
+  survivors none.
   replay  none.
 
 Every exit path of `module` ends in one `Outcome`, and the record it writes is
@@ -42,15 +57,19 @@ missing record means the module was killed or crashed, and says so.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
+import dataclasses
 from dataclasses import dataclass, field
 from enum import StrEnum
+import fcntl
 import json
+import math
 import os
 from pathlib import Path
 import re
+import resource
 import shutil
 import signal
 import socket
@@ -62,29 +81,59 @@ from types import FrameType
 from typing import IO
 from urllib.parse import urlparse
 
-from lib import mutation_report as report
+from lib import mutation_report as report, runner_host
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 API_ROOT = REPO_ROOT / "apps" / "api"
 LIB = SCRIPT_DIR / "lib"
 
-# Bounded so the matrix stays clear of GitHub's 256-job limit (a skipped lane
-# counts as a pass), and equal to the workflow's max-parallel so every shard
-# starts at once. Six, not four: a 110-module diff at 4 shards ran out of clock
-# with every finished module clean (run 34476365942) — the shard has to fit.
-MAX_SHARDS = 6
+# Shards that run at once: the workflow's max-parallel and runner.py's
+# MUTATION_WAVE. More shards than that queue behind it.
+MUTATION_WAVE = 6
+# The most shards a plan makes: four waves, far under GitHub's 256-job matrix
+# limit (a matrix over it is refused, and a skipped lane counts as a pass).
+MAX_SHARDS = 24
 POOLS = ("unit", "services")
 # The one test tier that needs live Mongo and Redis: `plan` groups by it and
 # `shard` re-derives its own pool from it, through `needs_services`.
 SERVICES_TIER = "tests/contracts/"
 
-# A shard's per-module cap, enforced from outside the module process.
-MODULE_TIMEOUT_SECONDS = 1500
-# mutmut's own cap inside a module: ~10x the slowest honest module (1.2 min).
-MUTMUT_TIMEOUT_SECONDS = 720
+# A module's cost in shard seconds: a clean+stats run, then one pytest session
+# per mutant. Fitted to #1799's 212 graded modules (runs 43665639573, 43677307541);
+# services adds a per-file term because a contract module runs ONE mutant worker.
+MODULE_OVERHEAD_SECONDS = 20
+UNIT_SECONDS_PER_MUTANT = 0.30
+SERVICES_SECONDS_PER_MUTANT = 0.19
+SERVICES_SECONDS_PER_MUTANT_TEST = 0.061
+# The step's 30-minute timeout less the log tail and report: the shard starts
+# no module it cannot finish by then, so the step never kills it unreported.
+SHARD_DEADLINE_SECONDS = 1680
+# What the plan aims to fit in one shard: setup plus 420 s ends a shard before
+# ts-build-test (616 s median on a PR). Replaying #1799, 600 s kept the worst at 1133 s.
+SHARD_BUDGET_SECONDS = 420
+# mutmut's cap inside a module: CAP_FACTOR x its estimate, never under the old
+# fixed 720 s, never past what the deadline leaves after wrap-up.
+CAP_FACTOR = 3
+MUTMUT_CAP_FLOOR_SECONDS = 720
+MUTMUT_CAP_ENV = "MUTMUT_CAP_SECONDS"
+# Copy, results and classify around the mutmut run: the outer kill is the cap
+# plus this, and a module needs a floor's worth of deadline left to start.
+MODULE_WRAPUP_SECONDS = 180
+MIN_MODULE_CAP_SECONDS = 120
 KILLED_BY_CAP = 137
 MUTMUT_TIMED_OUT = 124
+# Of the memory this shard may use, the share split between mutmut and its
+# mutant workers. A mutant that loops while a test fake grows (conversation/
+# step.py on #1799: 1.1 GB to 8 GB in 50 s) gets MemoryError and is killed,
+# instead of OOM-killing the runner ("received a shutdown signal").
+MUTANT_MEMORY_SHARE = 0.8
+CGROUP_ROOT = Path("/sys/fs/cgroup")
+# What a shard measured, uploaded as its own small artifact so `history` never
+# downloads the multi-MB shard logs; the newest of this many earlier runs wins.
+DURATIONS_ARTIFACT = "mutation-durations"
+DURATIONS_FILE = "shard.durations.json"
+HISTORY_RUNS = 5
 # Per-mutant pytest timeout; timeout_func_only keeps fixture setup (a 30-40 s
 # app build when cold sessions start together) off the test's own budget.
 MUTANT_TEST_TIMEOUT = 120
@@ -94,6 +143,8 @@ PLUGIN_FENCE = (
 )
 PLAIN_RUN_ADDOPTS = f"addopts={PLUGIN_FENCE} --timeout=300"
 LOCAL_LOG_DIR = Path("verify-logs/mutation")
+# Held for a whole local run: each run clears LOCAL_LOG_DIR, which a second one would do mid-run.
+LOCAL_LOCK = Path("verify-logs/mutation.lock")
 SHARD_LOG_TAIL_BYTES = 200_000
 TMPFS = Path("/dev/shm")
 TMPFS_MIN_FREE_BYTES = 1 << 30
@@ -158,10 +209,31 @@ class ModuleWork:
     module: str
     testfiles: tuple[str, ...]
     ranges: str
+    mutants: int
+    # Seconds an earlier run of this PR took on the module; None plans from the estimate.
+    measured: float | None = None
 
     @property
     def needs_services(self) -> bool:
         return any(f.startswith(SERVICES_TIER) for f in self.testfiles)
+
+    @property
+    def cost(self) -> float:
+        """Return the shard seconds this module takes: as measured, else estimated."""
+        if self.measured is not None:
+            return self.measured
+        if not self.needs_services:
+            return MODULE_OVERHEAD_SECONDS + self.mutants * UNIT_SECONDS_PER_MUTANT
+        per_mutant = SERVICES_SECONDS_PER_MUTANT + len(self.testfiles) * (
+            SERVICES_SECONDS_PER_MUTANT_TEST
+        )
+        return MODULE_OVERHEAD_SECONDS + self.mutants * per_mutant
+
+    @property
+    def mutmut_cap(self) -> int:
+        """Return mutmut's cap for this module, before the shard's deadline shrinks it."""
+        scaled = max(CAP_FACTOR * self.cost, MUTMUT_CAP_FLOOR_SECONDS)
+        return int(min(scaled, SHARD_DEADLINE_SECONDS - MODULE_WRAPUP_SECONDS))
 
     @classmethod
     def from_matrix(cls, item: dict[str, object]) -> ModuleWork:
@@ -172,6 +244,7 @@ class ModuleWork:
             module=str(item["module"]),
             testfiles=tuple(str(f) for f in testfiles),
             ranges=_compact(item["changed_lines"]),
+            mutants=int(str(item["mutants"])),
         )
 
     @classmethod
@@ -179,20 +252,34 @@ class ModuleWork:
         testfiles = json.loads(item["testfiles"])
         if not isinstance(testfiles, list) or not all(isinstance(f, str) for f in testfiles):
             raise ValueError(f"testfiles of {item['module']} is not a JSON list of paths")
-        return cls(module=item["module"], testfiles=tuple(testfiles), ranges=item["ranges"])
+        return cls(
+            module=item["module"],
+            testfiles=tuple(testfiles),
+            ranges=item["ranges"],
+            mutants=int(item["mutants"]),
+            measured=float(item["seconds"]) if "seconds" in item else None,
+        )
 
     def to_group(self) -> dict[str, str]:
-        return {
+        group = {
             "module": self.module,
             "testfiles": _compact(list(self.testfiles)),
             "ranges": self.ranges,
+            "mutants": str(self.mutants),
         }
+        if self.measured is not None:
+            group["seconds"] = str(self.measured)
+        return group
 
 
 @dataclass(frozen=True)
 class Shard:
     pool: str
     work: tuple[ModuleWork, ...]
+
+    @property
+    def cost(self) -> float:
+        return sum(w.cost for w in self.work)
 
     def matrix_entry(self, number: int, total: int) -> dict[str, str]:
         # A lone module names its own check; a packed shard says how many it
@@ -215,6 +302,9 @@ class Shard:
 class ModuleRun:
     module: str
     exit_code: int
+    # Why the shard never started the module: its deadline left no room.
+    not_started: str = ""
+    seconds: float = 0.0
 
 
 @dataclass
@@ -246,9 +336,23 @@ def _say(*lines: str) -> None:
 
 
 def mutant_workers() -> int:
-    """Return half the threads: eight workers measured clean on the 16-thread box (2026-09-17)."""
+    """Return every thread, or half on the box, where three shards share 16 (clean, 2026-09-17)."""
     threads = os.cpu_count() or 2
-    return max(threads // 2, 1)
+    return max(threads // 2, 1) if runner_host.on_the_box() else threads
+
+
+def memory_available() -> int:
+    """Return the bytes this process may use: its cgroup v2 limit when one is set, else RAM."""
+    own = Path("/proc/self/cgroup").read_text().strip().removeprefix("0::/")
+    limit_file = CGROUP_ROOT / own / "memory.max"
+    if limit_file.is_file() and limit_file.read_text().strip() != "max":
+        return int(limit_file.read_text())
+    return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+
+
+def mutant_memory_cap(children: int) -> int:
+    """Return the per-process data limit that keeps mutmut and every worker inside the share."""
+    return int(memory_available() * MUTANT_MEMORY_SHARE / (children + 1))
 
 
 def workdir_base() -> Path:
@@ -291,14 +395,20 @@ def verdict_root() -> Path:
 
 def _detector_output(paths: Sequence[str]) -> str:
     """Return what lib/mutation_matrix.py prints for these candidate module paths."""
-    return subprocess.run(
+    detector = subprocess.run(
         [sys.executable, str(LIB / "mutation_matrix.py")],
         input="".join(f"{p}\n" for p in paths),
         stdout=subprocess.PIPE,
         text=True,
-        check=True,
+        check=False,
         cwd=REPO_ROOT,
-    ).stdout
+    )
+    if detector.returncode < 0:
+        raise SystemExit(f"mutation: the detector was killed by signal {-detector.returncode}")
+    if detector.returncode != 0:
+        # The detector has already said why on stderr.
+        raise SystemExit(detector.returncode)
+    return detector.stdout
 
 
 def _parse_matrix(text: str) -> list[ModuleWork]:
@@ -341,36 +451,124 @@ def cmd_matrix(_args: list[str]) -> int:
     return 0
 
 
-def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
-    """Split modules into at most MAX_SHARDS homogeneous shards, round-robin per pool.
+def _spread(work: Sequence[ModuleWork], count: int) -> list[tuple[ModuleWork, ...]]:
+    """Place the costliest module next onto the cheapest of `count` shards (LPT)."""
+    packed: list[list[ModuleWork]] = [[] for _ in range(count)]
+    loads = [0.0] * count
+    for item in sorted(work, key=lambda w: w.cost, reverse=True):
+        lightest = loads.index(min(loads))
+        packed[lightest].append(item)
+        loads[lightest] += item.cost
+    return [tuple(group) for group in packed]
 
-    The budget is the whole plan's: every live pool gets one shard and the
-    rest go to whichever pool carries the most modules per shard it has.
+
+def _shards_to_fit(work: Sequence[ModuleWork]) -> int:
+    """Return the fewest shards whose packing keeps each within SHARD_BUDGET_SECONDS.
+
+    A module over the budget on its own takes a shard alone: no shard count can split it.
+    """
+    alone = sum(w.cost > SHARD_BUDGET_SECONDS for w in work)
+    rest = sum(w.cost for w in work if w.cost <= SHARD_BUDGET_SECONDS)
+    count = max(alone + math.ceil(rest / SHARD_BUDGET_SECONDS), 1)
+    while count < len(work) and any(
+        len(group) > 1 and sum(w.cost for w in group) > SHARD_BUDGET_SECONDS
+        for group in _spread(work, count)
+    ):
+        count += 1
+    return min(count, len(work))
+
+
+def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
+    """Split modules into homogeneous shards that each fit the budget, balanced by cost.
+
+    Each pool gets the fewest shards that fit SHARD_BUDGET_SECONDS: every shard
+    pays a checkout, an install and a runner slot. A plan over MAX_SHARDS is cut
+    back to it, each spare shard going to the pool with the most cost per shard.
     """
     members = {
         "services": [m for m in modules if m.needs_services],
         "unit": [m for m in modules if not m.needs_services],
     }
     live = {pool: members[pool] for pool in POOLS if members[pool]}
-    counts = dict.fromkeys(live, 1)
-    while sum(counts.values()) < MAX_SHARDS:
-        hungry = [pool for pool in live if counts[pool] < len(live[pool])]
-        if not hungry:
-            break
-        counts[max(hungry, key=lambda pool: len(live[pool]) / counts[pool])] += 1
-    shards: list[Shard] = []
-    for pool in POOLS:
-        if pool not in live:
-            continue
-        packed: list[list[ModuleWork]] = [[] for _ in range(counts[pool])]
-        for index, work in enumerate(live[pool]):
-            packed[index % len(packed)].append(work)
-        shards.extend(Shard(pool, tuple(group)) for group in packed)
-    return shards
+    totals = {pool: sum(w.cost for w in live[pool]) for pool in live}
+    counts = {pool: _shards_to_fit(live[pool]) for pool in live}
+    if sum(counts.values()) > MAX_SHARDS:
+        counts = dict.fromkeys(live, 1)
+        while sum(counts.values()) < MAX_SHARDS:
+            hungry = [pool for pool in live if counts[pool] < len(live[pool])]
+            counts[max(hungry, key=lambda pool: totals[pool] / counts[pool])] += 1
+    return [
+        Shard(pool, group)
+        for pool in POOLS
+        if pool in live
+        for group in _spread(live[pool], counts[pool])
+    ]
+
+
+def measured_durations(history: Path) -> dict[str, float]:
+    """Read the seconds earlier runs measured per module; a newer run's measurement wins."""
+    durations: dict[str, float] = {}
+    if not history.is_dir():
+        return durations
+    runs = sorted((d for d in history.iterdir() if d.name.isdigit()), key=lambda d: -int(d.name))
+    for run in runs:
+        for path in sorted(run.glob(f"*/{DURATIONS_FILE}")):
+            for module, seconds in json.loads(path.read_text()).items():
+                durations.setdefault(module, float(seconds))
+    return durations
+
+
+def cmd_history(_args: list[str]) -> int:
+    """Land the durations this PR's earlier runs uploaded, one directory per run id."""
+    out = Path(os.environ["MUTATION_HISTORY_DIR"])
+    out.mkdir(parents=True, exist_ok=True)
+    branch = os.environ.get("PR_BRANCH", "")
+    if not branch:
+        print("mutation history: not a pull request — the plan uses the estimates")
+        return 0
+    repo = os.environ["GITHUB_REPOSITORY"]
+    # Same-repo runs only: a fork's run could upload any durations it liked.
+    listing = subprocess.run(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/actions/workflows/ci.yml/runs?branch={branch}"
+            f"&event=pull_request&per_page={HISTORY_RUNS}",
+            "--jq",
+            f'[.workflow_runs[] | select(.head_repository.full_name == "{repo}") | .id]',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listing.returncode != 0:
+        print(
+            f"::warning::mutation history: this PR's runs are unreadable "
+            f"({listing.stderr.strip()}); the plan uses the estimates"
+        )
+        return 0
+    # The run in progress stays in: it has uploaded nothing yet, and a re-run reads its first attempt.
+    earlier = [str(run) for run in json.loads(listing.stdout)][:HISTORY_RUNS]
+    for run in earlier:
+        # No such artifact (a run that mutated nothing) is not an error: the next run may have it.
+        subprocess.run(
+            ["gh", "run", "download", run, "--repo", repo, "-p", f"{DURATIONS_ARTIFACT}-*"]
+            + ["-D", str(out / run)],
+            capture_output=True,
+            check=False,
+        )
+    measured = measured_durations(out)
+    print(f"mutation history: {len(measured)} module(s) measured across {len(earlier)} run(s)")
+    return 0
 
 
 def cmd_plan(_args: list[str]) -> int:
-    modules = _parse_matrix(changed_matrix())
+    history = os.environ.get("MUTATION_HISTORY_DIR")
+    measured = measured_durations(Path(history)) if history else {}
+    modules = [
+        dataclasses.replace(work, measured=measured.get(work.module))
+        for work in _parse_matrix(changed_matrix())
+    ]
     shards = pack(modules)
     include = [shard.matrix_entry(n, len(shards)) for n, shard in enumerate(shards, start=1)]
     # The label alone is the matrix value, so the job row reads `mutation
@@ -385,11 +583,25 @@ def cmd_plan(_args: list[str]) -> int:
             handle.write(f"shard_defs={_compact(shard_defs)}\n")
             handle.write(f"count={len(include)}\n")
     if len(shards) < len(modules):
-        print(f"{len(modules)} module(s) packed into {len(shards)} shards (matrix job limit)")
+        waves = math.ceil(len(shards) / MUTATION_WAVE)
+        print(
+            f"{len(modules)} module(s) packed into {len(shards)} shards by estimated cost "
+            f"({waves} wave(s) of {MUTATION_WAVE})"
+        )
     else:
         print(f"{len(modules)} module(s) to mutate, one shard each")
-    for entry in include:
-        print(f"  [{entry['pool']:8}] {entry['label']}")
+    for entry, shard in zip(include, shards, strict=True):
+        known = sum(work.measured is not None for work in shard.work)
+        print(
+            f"  [{entry['pool']:8}] ~{int(shard.cost):>5}s  {entry['label']} "
+            f"({known} of {len(shard.work)} measured)"
+        )
+        if shard.cost > SHARD_BUDGET_SECONDS:
+            print(
+                f"::warning::mutation plan: {entry['label']} is estimated at {int(shard.cost)}s, "
+                f"over the {SHARD_BUDGET_SECONDS}s shard budget — the shard stops starting "
+                f"modules at {SHARD_DEADLINE_SECONDS}s and reports the rest as timed out"
+            )
     return 0
 
 
@@ -504,11 +716,27 @@ def shard_base() -> Iterator[Path | None]:
             shutil.rmtree(staged, ignore_errors=True)
 
 
-def run_module(work: ModuleWork, log_path: Path, env: dict[str, str]) -> ModuleRun:
-    """Run `module` for one entry as its own process group, killed at the per-module cap."""
+def module_cap(work: ModuleWork, seconds_left: float) -> int | None:
+    """Return mutmut's cap for this module given the shard's remaining time; None to not start it."""
+    cap = min(work.mutmut_cap, int(seconds_left - MODULE_WRAPUP_SECONDS))
+    return cap if cap >= MIN_MODULE_CAP_SECONDS else None
+
+
+def run_module(work: ModuleWork, log_path: Path, env: dict[str, str], deadline: float) -> ModuleRun:
+    """Run `module` for one entry as its own process group, under a cap that ends by the deadline."""
+    cap = module_cap(work, deadline - time.monotonic())
+    if cap is None:
+        reason = (
+            f"not started: the shard reached its {SHARD_DEADLINE_SECONDS}s deadline first "
+            f"(this module was estimated at {int(work.cost)}s) — nothing was proven here"
+        )
+        print(f"::error::mutation for {work.module} {reason}")
+        return ModuleRun(work.module, MUTMUT_TIMED_OUT, not_started=reason)
     with log_path.open("a") as log:
-        log.write(f"=== {work.module} ===\n")
+        # mutation_report reads the marker line back, so the estimate goes on its own line.
+        log.write(f"=== {work.module} ===\nestimated {int(work.cost)}s, mutmut cap {cap}s\n")
         log.flush()
+        started = time.monotonic()
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -520,22 +748,23 @@ def run_module(work: ModuleWork, log_path: Path, env: dict[str, str]) -> ModuleR
             ],
             stdout=log,
             stderr=subprocess.STDOUT,
-            env=env,
+            env={**env, MUTMUT_CAP_ENV: str(cap)},
             cwd=REPO_ROOT,
             start_new_session=True,
         )
         try:
-            rc = proc.wait(timeout=MODULE_TIMEOUT_SECONDS)
+            rc = proc.wait(timeout=cap + MODULE_WRAPUP_SECONDS)
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
             rc = KILLED_BY_CAP
+    seconds = round(time.monotonic() - started, 1)
     if rc in report.TIMEOUT_EXIT_CODES:
         print(
             f"::error::mutation for {work.module} exceeded its timeout and was killed "
             "— see the log for the last phase reached"
         )
-    return ModuleRun(work.module, rc)
+    return ModuleRun(work.module, rc, seconds=seconds)
 
 
 def _without_log_suffix(path: Path) -> str:
@@ -544,6 +773,8 @@ def _without_log_suffix(path: Path) -> str:
 
 
 def cmd_shard(_args: list[str]) -> int:
+    # The step's clock starts with this process, CPU-slot wait included.
+    deadline = time.monotonic() + SHARD_DEADLINE_SECONDS
     os.chdir(REPO_ROOT)
     raw = os.environ.get("GROUP", "")
     if not raw:
@@ -567,6 +798,7 @@ def cmd_shard(_args: list[str]) -> int:
     # Both names derive from SHARD_LOG: `local` runs one shard per module in
     # one directory, and fixed names would overwrite each other's record.
     shard_verdict = Path(_without_log_suffix(log_path) + ".verdict.json")
+    shard_durations = Path(_without_log_suffix(log_path) + ".durations.json")
     record_dir = Path(_without_log_suffix(log_path) + ".records")
     shutil.rmtree(record_dir, ignore_errors=True)
     record_dir.mkdir(parents=True)
@@ -582,7 +814,10 @@ def cmd_shard(_args: list[str]) -> int:
     with cpu_slots(children), shard_base() as base:
         if base is not None:
             env["MUTMUT_SHARD_BASE"] = str(base)
-        runs = [run_module(entry, log_path, env) for entry in work]
+        runs = [run_module(entry, log_path, env, deadline) for entry in work]
+    shard_durations.write_text(
+        json.dumps({run.module: run.seconds for run in runs if not run.not_started})
+    )
 
     # tail, never the whole file: a busy shard log is 13MB, and feeding that
     # through the runner's live-log pipe is where this step used to freeze.
@@ -595,7 +830,16 @@ def cmd_shard(_args: list[str]) -> int:
     verdicts = []
     for run in runs:
         record = record_dir / f"{report.module_slug(run.module)}.json"
-        if record.exists():
+        if run.not_started:
+            verdicts.append(
+                report.ModuleVerdict(
+                    module=run.module,
+                    status=Status.TIMED_OUT.value,
+                    path=f"apps/api/{run.module}",
+                    reason=run.not_started,
+                )
+            )
+        elif record.exists():
             verdicts.append(report.from_dict(json.loads(record.read_text())))
         else:
             verdicts.append(report.missing_record_verdict(run.module, run.exit_code, "apps/api"))
@@ -649,6 +893,21 @@ def _local_status(work: ModuleWork, rc: int, log_dir: Path) -> str:
 
 def cmd_local(args: list[str]) -> int:
     os.chdir(REPO_ROOT)
+    LOCAL_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with LOCAL_LOCK.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(
+                f"ERROR: another `mutation.py local` run is using {LOCAL_LOG_DIR}/ in this "
+                "checkout; wait for it, or pass every module to one run.",
+                file=sys.stderr,
+            )
+            return 2
+        return _run_local(args)
+
+
+def _run_local(args: list[str]) -> int:
     shutil.rmtree(LOCAL_LOG_DIR, ignore_errors=True)
     LOCAL_LOG_DIR.mkdir(parents=True)
     # Cleared once, and only this lane's subtree: a stale module from an earlier
@@ -681,7 +940,8 @@ def cmd_local(args: list[str]) -> int:
 
     def run_one(work: ModuleWork) -> tuple[ModuleWork, str]:
         slug = work.module.replace("/", "_")
-        with (LOCAL_LOG_DIR / f"{slug}.out").open("w") as out:
+        output = LOCAL_LOG_DIR / f"{slug}.out"
+        with output.open("w") as out:
             rc = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), "shard"],
                 env={
@@ -699,8 +959,12 @@ def cmd_local(args: list[str]) -> int:
         line = {
             "pass": f"  pass      {work.module}",
             "survivors": f"  SURVIVORS {work.module}  ({log})",
-            "error": f"  ERROR     {work.module}  (run produced no result; {log})",
+            # A refused shard never writes its log; the reason is in its output.
+            "error": f"  ERROR     {work.module}  (run produced no result; {output})",
         }[status]
+        if status == "error":
+            reasons = [r for r in output.read_text().splitlines() if r.startswith("::error::")]
+            line = "\n".join([line, *(f"            {reason}" for reason in reasons)])
         print(line, flush=True)
         return work, status
 
@@ -715,9 +979,13 @@ def cmd_local(args: list[str]) -> int:
             print(f"  {module}")
         print("  Retry these with MUTATION_JOBS=1 before believing anything about them.")
     if failed:
-        print("\nmutation: module(s) with survivors on changed lines:")
+        print("\nmutation: module(s) with survivors on changed lines:", flush=True)
         for module in failed:
-            print(f"  {module}")
+            record = LOCAL_LOG_DIR / f"{module.replace('/', '_')}.verdict.json"
+            subprocess.run(
+                [sys.executable, str(LIB / "mutation_report.py"), "survivors", str(record)],
+                check=False,
+            )
     if errored or failed:
         return 1
     print(f"mutation: all {len(modules)} module(s) clean")
@@ -849,6 +1117,11 @@ def configure_mutmut(request: ModuleRequest, workdir: Path) -> None:
     pyproject.write_text(text)
 
 
+def mutmut_cap_seconds() -> int:
+    """Return the cap the shard gave this module; a bare `module` run gets the floor."""
+    return int(os.environ.get(MUTMUT_CAP_ENV) or MUTMUT_CAP_FLOOR_SECONDS)
+
+
 def _tee(source: IO[bytes], log: IO[bytes]) -> None:
     for chunk in iter(source.readline, b""):
         log.write(chunk)
@@ -857,8 +1130,10 @@ def _tee(source: IO[bytes], log: IO[bytes]) -> None:
         sys.stderr.buffer.flush()
 
 
-def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, str]:
-    """Run mutmut in its own session, teed into mutmut.log; return its exit code and output."""
+def run_mutmut(
+    request: ModuleRequest, venv: Path, workdir: Path, deadline: float
+) -> tuple[int, str]:
+    """Run mutmut in its own session until `deadline` (monotonic), teed into mutmut.log."""
     children = os.environ.get("MUTMUT_MAX_CHILDREN") or str(mutant_workers())
     # Contract tests flush a Redis DB keyed on PYTEST_XDIST_WORKER, which mutmut
     # never sets: parallel mutants would flush each other's keys (a false kill).
@@ -901,11 +1176,15 @@ def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, 
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        if sys.platform == "linux":
+            # Before the stats run allocates; every forked mutant inherits it.
+            cap = mutant_memory_cap(int(children))
+            resource.prlimit(proc.pid, resource.RLIMIT_DATA, (cap, cap))
         assert proc.stdout is not None
         tee = threading.Thread(target=_tee, args=(proc.stdout, log), daemon=True)
         tee.start()
         try:
-            rc = proc.wait(timeout=MUTMUT_TIMEOUT_SECONDS)
+            rc = proc.wait(timeout=max(deadline - time.monotonic(), 0))
         except subprocess.TimeoutExpired:
             rc = MUTMUT_TIMED_OUT
         finally:
@@ -1122,13 +1401,30 @@ def _incomplete_run(module: str, workdir: Path, counts: Counter[str], total: int
             "the run was interrupted."
         )
     unbucketed = sum(n for status, n in counts.items() if status not in COUNTED_STATUSES)
-    if counts["segfault"] or unbucketed:
+    if unbucketed or (counts["segfault"] and not crashes_count_as_detected(counts)):
         return _error(
             f"MUTATION RUN INCOMPLETE — {counts['segfault']} segfault(s) and {unbucketed} "
             f"unbucketed mutant(s) of {total} reached NO verdict (on macOS see the NO_PROXY "
             "note in tests/conftest.py)."
         )
     return None
+
+
+def crashes_count_as_detected(counts: Counter[str]) -> bool:
+    """Say whether a crashed mutant counts as caught: on Linux, beside real verdicts.
+
+    Under the memory cap a runaway mutant can die as a segfault instead of MemoryError; the
+    suite failed, so it is detected, like a timeout. Off Linux a segfault is the fork crash,
+    and a module where nothing but crashes came back proves nothing either way.
+    """
+    return sys.platform == "linux" and bool(counts["killed"] or counts["survived"])
+
+
+def _crash_note(counts: Counter[str]) -> str:
+    return (
+        f"{counts['segfault']} mutant(s) crashed their test process (segfault) — counted as "
+        "detected, like a timeout"
+    )
 
 
 def _ungraded_outcome(
@@ -1211,6 +1507,9 @@ def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Pha
         )
     if not counts["killed"] and not counts["survived"]:
         return _ungraded_outcome(request, workdir, counts, total)
+    crashed = _crash_note(counts) if counts["segfault"] else ""
+    if crashed:
+        _say(f"NOTE: {crashed}.")
 
     phase("classify survivors")
     classified = _classified(request, venv, workdir, results, "survived")
@@ -1228,7 +1527,12 @@ def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Pha
         phase("collect survivor diffs")
         diffs = _survivor_diffs(venv, workdir, real)
         _say(diffs)
-    return Outcome(Status.SURVIVORS if real else Status.PASS, classified=classified, diffs=diffs)
+    return Outcome(
+        Status.SURVIVORS if real else Status.PASS,
+        reason=crashed,
+        classified=classified,
+        diffs=diffs,
+    )
 
 
 def _notes(classified: list[tuple[str, str]], uncovered_changed: list[str], no_tests: int) -> None:
@@ -1256,13 +1560,22 @@ def _notes(classified: list[tuple[str, str]], uncovered_changed: list[str], no_t
 
 
 def mutate(request: ModuleRequest, venv: Path, workdir: Path) -> Outcome:
+    # The cap runs from module launch, as run_module's kill does: that kill cannot
+    # reach mutmut's own session, so preparation must not push mutmut past it.
+    deadline = time.monotonic() + mutmut_cap_seconds()
     phase = Phases()
     phase("copy workdir")
     copy_workdir(request, workdir)
     configure_mutmut(request, workdir)
     phase("mutmut run")
     _say(f"mutating {request.module} (tests: {' '.join(request.testfiles)}) ...")
-    rc, log = run_mutmut(request, venv, workdir)
+    rc, log = run_mutmut(request, venv, workdir, deadline)
+    if rc == MUTMUT_TIMED_OUT:
+        return Outcome(
+            Status.TIMED_OUT,
+            f"mutmut ran past its {mutmut_cap_seconds()}s cap for {request.module} and was "
+            "stopped — nothing was proven here",
+        )
     if rc != 0:
         judged = failed_run_outcome(request, venv, workdir, log)
         if judged is not None:
@@ -1320,7 +1633,28 @@ def cmd_module(args: list[str]) -> int:
     return outcome.exit_code
 
 
-# ── replay ───────────────────────────────────────────────────────────────────
+# ── survivors / replay ───────────────────────────────────────────────────────
+
+
+def cmd_survivors(args: list[str]) -> int:
+    """Print every surviving mutant from a shard artifact, diffs included."""
+    if not args or not args[0]:
+        print(
+            "usage: mutation.py survivors <verdict.json|record-dir|shard.log> [--json]",
+            file=sys.stderr,
+        )
+        return 2
+    return subprocess.run(
+        [
+            sys.executable,
+            str(LIB / "mutation_report.py"),
+            "survivors",
+            *args,
+            "--api-prefix",
+            "apps/api",
+        ],
+        check=False,
+    ).returncode
 
 
 def cmd_replay(args: list[str]) -> int:
@@ -1350,12 +1684,14 @@ def cmd_replay(args: list[str]) -> int:
     ).returncode
 
 
-COMMANDS = {
+COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "matrix": cmd_matrix,
+    "history": cmd_history,
     "plan": cmd_plan,
     "shard": cmd_shard,
     "module": cmd_module,
     "local": cmd_local,
+    "survivors": cmd_survivors,
     "replay": cmd_replay,
 }
 

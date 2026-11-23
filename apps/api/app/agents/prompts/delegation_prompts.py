@@ -26,13 +26,7 @@ SUBAGENT_RESULT_ENTRY = "{name} (subagent {subagent_id}): {result}"
 
 SUBAGENT_FAILED_RESULT = "Error from {name}: {error}"
 
-SUBAGENT_PARKED_ENTRY = (
-    "{name} (subagent {subagent_id}) is waiting for the user's approval: {summaries}. "
-    "It resumes on its own once the user decides, and its result will arrive here. "
-    "Tell the user what is waiting on them; do not re-issue its task."
-)
-
-SUBAGENT_UNRESUMABLE_PARK = (
-    "{name} paused on an approval that carries no id, so no decision can ever resume "
-    "it. Its task did not finish."
+SUBAGENT_NARRATION_ONLY_RESULT = (
+    "The {name} subagent ended without running any tool; it only produced planning text: "
+    '"{text}". Re-issue the task with an explicit instruction to perform the action.'
 )

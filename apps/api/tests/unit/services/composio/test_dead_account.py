@@ -2,9 +2,7 @@
 
 import pytest
 
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
-from app.services.composio.dead_account import ConnectedAccountGoneError, is_dead_account_error
-from app.utils.errors import AppError
+from app.services.composio.dead_account import is_dead_account_error
 from tests.factories import make_composio_not_found
 
 DEAD_ACCOUNT_BODY = {
@@ -69,19 +67,3 @@ class TestDeadAccountClassifier:
     def test_a_dead_account_message_is_recognised_whatever_its_casing(self) -> None:
         error = make_composio_not_found(None, "No Active Connected Account for GMAIL")
         assert is_dead_account_error(error) is True
-
-
-class TestConnectedAccountGoneError:
-    def test_it_is_a_reconnect_error_the_web_already_handles(self) -> None:
-        error = ConnectedAccountGoneError("GMAIL", "Connected account not found")
-
-        assert isinstance(error, AppError)
-        assert (error.status_code, error.code, error.public, error.fix) == (
-            403,
-            INTEGRATION_NOT_CONNECTED,
-            {"toolkit": "GMAIL"},
-            "Reconnect the GMAIL account",
-        )
-        assert error.message == "The GMAIL connected account no longer exists"
-        assert error.why == "Composio has no connected account with the id this call ran as"
-        assert error.meta == {"cause": "Connected account not found"}

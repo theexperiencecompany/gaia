@@ -28,6 +28,7 @@ _SESSION = BrowserHostSession(
     cdp_url="ws://host/cdp",
     host_url="http://host",
     engine=BrowserEngine.OBSCURA,
+    fortress=False,
 )
 _WATCH = {"session_id": "s-1", "operation": "engine_watch"}
 

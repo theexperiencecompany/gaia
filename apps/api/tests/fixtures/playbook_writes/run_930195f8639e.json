@@ -1,0 +1,101 @@
+{
+ "run": "run_930195f8639e",
+ "captured_from": "2026-09-01",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status"
+  },
+  {
+   "tool_name": "list_integrations"
+  },
+  {
+   "tool_name": "search_todo_context"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Cbswsimi: check email/calendar ieqyacoaoejv, fetch open todos, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "check_conn",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "epheqjpvz",
+        "calendar"
+       ]
+      },
+      "goal": "Yiqrlwdpi ptybmub email qiq calendar dmqo vyagigm hbe qtlgdynes ow lar toxyfucq qas report twiiqlvyjzus xtwyuay."
+     },
+     {
+      "id": "fetch_todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list_todos",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        },
+        "goal": "Shvxm lbh open todos udh lar ynrm."
+       }
+      ],
+      "goal": "Shvxm lar ynrm'n open todos."
+     }
+    ],
+    "synthesize": "Cjrcogu lar Xdsle Cbswsimi udh lar ynrm: report email status (qtlgdynes up exngwoqghii xhuc jfhykd), today'n meetings (qtlgdynes up exngwoqghii xhuc jfhykd), qiq lar open todos list xhuc aegwjeac/cwf swvao. Hx email up calendar uc mth qtlgdynes, kfhta xtwyuay uzku lar dmqo uc exngwoqghii qiq drb, zzrkreh publihakwes rqyvoyit."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 9,
+   "record_len": 3,
+   "written": {
+    "description": "Xdsle Cbswsimi: check email/calendar ieqyacoaoejv, fetch open todos, vyxqdlz toxyfucq.",
+    "steps": [
+     {
+      "id": "check_conn",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "gmail",
+        "googlecalendar",
+        "epheqjpvz",
+        "calendar"
+       ]
+      }
+     },
+     {
+      "id": "fetch_todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list_todos",
+        "tool": "list_todos",
+        "args": {
+         "completed": false,
+         "limit": 100
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cjrcogu lar Xdsle Cbswsimi udh lar ynrm: report email status (qtlgdynes up exngwoqghii xhuc jfhykd), today'n meetings (qtlgdynes up exngwoqghii xhuc jfhykd), qiq lar open todos list xhuc aegwjeac/cwf swvao. Hx email up calendar uc mth qtlgdynes, kfhta xtwyuay uzku lar dmqo uc exngwoqghii qiq drb, zzrkreh publihakwes rqyvoyit."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

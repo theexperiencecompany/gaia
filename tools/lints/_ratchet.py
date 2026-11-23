@@ -123,8 +123,9 @@ def _remediation(
     relative = baseline.relative_to(REPO_ROOT).as_posix()
     if is_new:
         return "new", (
-            f"{fix_new}, or if it's a genuine one-off, justify it in review "
-            f"and add it to {relative} with --update"
+            f"{fix_new}, or, only on the founder's explicit approval, add it to "
+            f"{relative} with --update and write the approval above the new line "
+            "(scripts/ci/baselines.py growth fails a baseline that grows without one)"
         )
     if deferral is not None:
         return f"touched, deferral expired {deferral.until.isoformat()}", (

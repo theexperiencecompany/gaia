@@ -9,8 +9,13 @@
  */
 
 import type { AnalyticsId } from "@gaia/shared/analytics";
-import { BaseBotAdapter } from "@gaia/shared/bots";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  BaseBotAdapter,
+  type ChatRequest,
+  type ConversationSurface,
+  type LinkState,
+} from "@gaia/shared/bots";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PLATFORM_USER_ID = "123456789";
 const PLATFORM_DISTINCT_ID = "discord:123456789";
@@ -38,13 +43,16 @@ class TestAdapter extends BaseBotAdapter {
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
   }
+  protected async resumeSurface(): Promise<ConversationSurface> {
+    throw new Error("no restart under test");
+  }
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */
   }
   protected async sendOutboundFile(): Promise<void> {
     /* no file delivery under test */
   }
-  buildContext() {
+  override buildContext() {
     return {} as never;
   }
 
@@ -56,6 +64,22 @@ class TestAdapter extends BaseBotAdapter {
 
   resolve(platformUserId: string): Promise<AnalyticsId> {
     return this.resolveDistinctId(platformUserId);
+  }
+
+  link(platformUserId: string): Promise<LinkState> {
+    return this.linkState(platformUserId);
+  }
+
+  welcome(platformUserId: string): Promise<boolean> {
+    return this.shouldSendWelcome(platformUserId);
+  }
+
+  post(request: ChatRequest): Promise<void> {
+    return this.postAndFollow(
+      request,
+      {} as ConversationSurface,
+      async () => undefined,
+    );
   }
 }
 
@@ -186,5 +210,138 @@ describe("BaseBotAdapter.resolveDistinctId", () => {
       PLATFORM_DISTINCT_ID,
     );
     expect(analytics.alias).not.toHaveBeenCalled();
+  });
+});
+
+describe("BaseBotAdapter identity lookup bounds", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("gives up on a hung auth check and keys the event on the platform id", async () => {
+    vi.useFakeTimers();
+    const { adapter } = setup(vi.fn(() => new Promise(() => undefined)));
+
+    let resolved: AnalyticsId | undefined;
+    void adapter.resolve(PLATFORM_USER_ID).then((id) => {
+      resolved = id;
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(resolved).toBe(PLATFORM_DISTINCT_ID);
+  });
+
+  it("reuses the link check's answer, so a linked user costs one lookup, not two", async () => {
+    const checkAuthStatus = vi.fn(async () => ({
+      authenticated: true,
+      platform: "discord",
+      platform_user_id: PLATFORM_USER_ID,
+      user_id: GAIA_USER_ID,
+    }));
+    const { adapter } = setup(checkAuthStatus);
+
+    await adapter.link(PLATFORM_USER_ID);
+    await expect(adapter.resolve(PLATFORM_USER_ID)).resolves.toBe(GAIA_USER_ID);
+
+    expect(checkAuthStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("posts the message without waiting on the identity lookup", async () => {
+    vi.useFakeTimers();
+    const postMessage = vi.fn(() => new Promise(() => undefined));
+    const analytics = { capture: vi.fn(), alias: vi.fn() };
+    const adapter = new TestAdapter();
+    adapter.install(
+      {
+        checkAuthStatus: vi.fn(() => new Promise(() => undefined)),
+        postMessage,
+      },
+      analytics,
+    );
+
+    void adapter.post({
+      message: "hi",
+      platform: "discord",
+      platformUserId: PLATFORM_USER_ID,
+      channelId: "channel-1",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(analytics.capture).not.toHaveBeenCalled();
+    // The event still lands, on the platform id, once the bounded lookup gives up.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(analytics.capture).toHaveBeenCalledWith(
+      PLATFORM_DISTINCT_ID,
+      "bot:message_received",
+      { interaction_type: "chat", message_length: 2 },
+    );
+  });
+});
+
+describe("BaseBotAdapter link state", () => {
+  const linked = {
+    authenticated: true,
+    platform: "discord",
+    platform_user_id: PLATFORM_USER_ID,
+    user_id: GAIA_USER_ID,
+  };
+  const unlinked = {
+    authenticated: false,
+    platform: "discord",
+    platform_user_id: PLATFORM_USER_ID,
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks again for a user once seen linked, so a re-link code after unlinking is redeemed", async () => {
+    const checkAuthStatus = vi
+      .fn()
+      .mockResolvedValueOnce(linked)
+      .mockResolvedValueOnce(unlinked);
+    const { adapter } = setup(checkAuthStatus);
+
+    await expect(adapter.link(PLATFORM_USER_ID)).resolves.toBe("linked");
+    await expect(adapter.link(PLATFORM_USER_ID)).resolves.toBe("unlinked");
+  });
+
+  it("spares a known-linked user the round-trip on every message's welcome gate", async () => {
+    const checkAuthStatus = vi.fn(async () => linked);
+    const { adapter } = setup(checkAuthStatus);
+
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(false);
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(false);
+
+    expect(checkAuthStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("greets an unlinked user again after a fresh check saw them unlink", async () => {
+    const checkAuthStatus = vi
+      .fn()
+      .mockResolvedValueOnce(linked)
+      .mockResolvedValueOnce(unlinked)
+      .mockResolvedValueOnce(unlinked);
+    const { adapter } = setup(checkAuthStatus);
+
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(false);
+    await expect(adapter.link(PLATFORM_USER_ID)).resolves.toBe("unlinked");
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(true);
+  });
+
+  it("does not hold the turn on a hung auth check: the welcome gate gives up", async () => {
+    vi.useFakeTimers();
+    const { adapter } = setup(vi.fn(() => new Promise(() => undefined)));
+
+    const gate = adapter.welcome(PLATFORM_USER_ID);
+    let settled: boolean | undefined;
+    void gate.then((value) => {
+      settled = value;
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    // A failed check greets no one; it must not stall the message behind it.
+    expect(settled).toBe(false);
   });
 });

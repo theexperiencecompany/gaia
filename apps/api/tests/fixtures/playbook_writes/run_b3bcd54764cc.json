@@ -1,0 +1,50 @@
+{
+ "run": "run_b3bcd54764cc",
+ "captured_from": "2026-09-04",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "check_integrations_status"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Cbswsimi: check email/calendar lniglmkhtgi status, fetch open todos, vyxqdlz w ycsxrnd toxyfucq.",
+    "steps": [
+     {
+      "id": "integrations",
+      "tool": "check_integrations_status",
+      "args": {
+       "integration_names": [
+        "epheqjpvz",
+        "gmail",
+        "googlecalendar"
+       ]
+      }
+     },
+     {
+      "id": "todos",
+      "handoff": "todos",
+      "steps": [
+       {
+        "id": "list",
+        "tool": "list_todos",
+        "args": {
+         "completed": false
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cjrcogu lar Xdsle Cbswsimi udh lar ynrm. Cvouqs rfroc yg email (GdmpaBejc/Svdly) qiq calendar (Zmlvvp Tvelkhjg) integrations hbe qtlgdynes; udh sja mth qtlgdynes, kfhta dczcgia uzku unread emails qiq/up today'n meetings sjuyg mth ku aqtgnru. Mopl today'n meetings bg calendar uc qtlgdynes (jyjt bg mth). Tjhxavxyu unread emails ae aegwjeac xhuc research agpit bg email uc qtlgdynes (jyjt bg mth). Mopl open todos evvq lar todos zubw. Hx lar rui phg lar ihjp-plan wsvme lbqyq, report uzku xtwyuay. Valgcmk hq vhi kddagakuxfcs toxyfucq."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "list_todos; handoffs without calls: ['todos']",
+   "expected": "unmappable"
+  }
+ ]
+}

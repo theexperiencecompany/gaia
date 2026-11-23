@@ -18,7 +18,9 @@ from __future__ import annotations
 
 from typing import Final, Literal, NamedTuple, get_args
 
+from app.agents.prompts.todo_prompts import TODO_FEEDBACK_RULES
 from app.config.settings import settings
+from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
 
 # Topic docs: one self-contained file per concern, faithfully merged from
 # the prior GUIDE.md + gaia-* skill content.
@@ -107,7 +109,9 @@ Typical flow:
 """
 
 
-TRACKED_TODOS_DOC: Final[str] = """# Tracked todos: GAIA-managed todos with memory
+TRACKED_TODOS_DOC: Final[str] = "".join(
+    (
+        """# Tracked todos: GAIA-managed todos with memory
 
 Tracked todos are **GAIA-managed todos**: they show on the user's todos page, but
 GAIA owns them and keeps working notes as files (a recall doc plus a dated activity
@@ -224,8 +228,8 @@ nothing. So end with a factual report of what you did and what changed, and do
 NOT call `send_notification` to announce it, which sends it twice. Every run's
 outcome, sent or not, is recorded in activity.md.
 
-`notify_on_run` (on `create_tracked_todo` / `update_tracked_todo`, default on)
-turns that delivery off entirely. It is the user's setting: change it only when
+`delivery` (on `create_tracked_todo` / `update_tracked_todo`, default `now`)
+set to `silent` turns that delivery off entirely. It is the user's setting: change it only when
 they ask. A silent todo reaches the user only if the run deliberately calls
 `send_notification`.
 
@@ -234,16 +238,9 @@ notification above, which always fires.
 
 ## The user's feedback on a todo
 
-Feedback on how a todo should behave from now on ("Apply the user's feedback to
-this todo: ...") is kept in exactly one place, so every later run obeys it:
-- How this todo behaves (what it shows or skips, what it does on its own, how it
-  reports): one dated line in its canvas.md `Standing rules`. Rewrite a rule the
-  feedback changes; remove one only when the user retracts it.
-- How GAIA writes email, to one person or in general: the user's standing
-  instructions for Gmail (`update_user_instructions`, scope `gmail`), so chat
-  drafting obeys it too.
-- When it runs: `update_tracked_todo` with `recurrence` / `scheduled_at`.
-A sub-todo's run also obeys its parent's Standing rules.
+""",
+        TODO_FEEDBACK_RULES,
+        """
 
 ## Anti-patterns
 
@@ -254,7 +251,9 @@ A sub-todo's run also obeys its parent's Standing rules.
 - Appending activity to the end of canvas.md (it belongs in activity.md).
 - Not searching before creating.
 - Not writing learnings before completing.
-"""
+""",
+    )
+)
 
 
 USER_TODOS_DOC: Final[str] = """# Todos: the USER's own todo list
@@ -411,11 +410,12 @@ to announce one of them sends it to the user twice:
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
 - A finished **tracked todo** run is reported to the user's chat app when it
-  found something that matters, unless that todo has `notify_on_run` off. See
-  the `tracked-todos` doc.
+  found something that matters and cannot wait, or held for their next morning
+  brief when it can, unless that todo's `delivery` is `silent`. See the
+  `tracked-todos` doc.
 
 When one of these delivers the result, do not announce it again. A silent
-workflow, or a todo with `notify_on_run` off, delivers nothing, so there a
+workflow, or a todo whose `delivery` is `silent`, delivers nothing, so there a
 notification is the only way the user hears. Otherwise notify only for something
 genuinely separate and urgent.
 """
@@ -561,12 +561,14 @@ Offer to pause it instead, or point them to the app to delete.
 
 ## Results & notifications
 
-By default (`notify_on_completion` on) the final result is delivered
-automatically: posted as real messages into the user's linked messaging
-platforms (WhatsApp/Telegram/Discord/Slack) and surfaced as an in-app completion
-notification. A silent workflow delivers nothing on success; it only reaches the
-user if its own prompt sends something (e.g. an explicit `send_notification`).
-Failures always notify. So do NOT add a `send_notification` to announce a result
+Every workflow has a `delivery` mode that decides what a successful run does:
+`now` posts the result as real messages into the user's preferred messaging
+platform (WhatsApp/Telegram/Discord/Slack) and raises an in-app completion
+notification; `brief` holds it for the user's next brief and pushes nothing;
+`silent` keeps it in the workflow's conversation only. A `brief` or `silent`
+workflow reaches the user mid-run only if its own prompt sends something (e.g.
+an explicit `send_notification`). A run with nothing worth reporting reaches
+nobody in any mode. Failures always notify. So do NOT add a `send_notification` to announce a result
 that completion delivery already sends, and do NOT double-send if the prompt
 already messages the user. See the `notifications` doc for channel details.
 
@@ -598,7 +600,7 @@ If it returns `clarifying`, relay the question and retry with the answer. If
 """
 
 
-REMINDERS_DOC: Final[str] = """# Reminders: one-off and recurring time-based nudges
+REMINDERS_DOC: Final[str] = f"""# Reminders: one-off and recurring time-based nudges
 
 A reminder is a scheduled ping to the USER: "remind me to call Sam at 3pm",
 "ping me in 20 minutes", "every weekday at 9am tell me to stand up". It fires at
@@ -613,13 +615,13 @@ it just nudges. That is the line between a reminder and the rest:
 
 "Remind me", "ping me", "alert me", "set a timer", "notify me in N minutes" are
 reminders. "Every morning summarize my email" is a workflow.
+{PING_WITH_FOLLOW_THROUGH_RULE}
 
 ## How to use it
 
 Call the reminder tools directly: `create_reminder_tool`, `update_reminder_tool`,
 `list_user_reminders_tool`, `get_reminder_tool`, `search_reminders_tool`,
-`delete_reminder_tool`. They handle scheduling, recurrence, and timezones. There
-is no reminders subagent, so do not hand off for reminders.
+`delete_reminder_tool`. They handle scheduling, recurrence, and timezones.
 
 - **Timezone:** times are read in the user's home timezone unless they name
   another. Do not convert to UTC yourself.
@@ -867,11 +869,12 @@ these.
 | "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
 | "Always do X in every chat / clear my standing instructions" | `get_user_instructions(scope="global")`, then `update_user_instructions(scope="global", content=..., based_on_revision=...)` | `account` |
 | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
+| "Fewer / no briefs, weekdays only, brief me at 7" | `set_briefing_schedule(frequency, hour, brief_workflows_to)` | `account` |
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
-| "Stop showing me X / brief me at 7" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
+| "Stop showing me X" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Set a goal / make a roadmap / track progress on X" | break it into tracked todos | `tracked-todos` |
 | "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |
@@ -958,6 +961,7 @@ settings - plus a set of mutation tools that change the real thing.
 | Response style + home timezone | `account/preferences.json` | `update_preferences` |
 | Standing instructions (every conversation) | `account/custom-instructions.json` | `update_user_instructions(scope="global", ...)` |
 | Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
+| Brief frequency (daily/weekdays/weekly_only/off) + daily brief hour | - | `set_briefing_schedule(frequency, hour, brief_workflows_to)` |
 | Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
 
 Every account tool asks the user to confirm before it runs - ALWAYS, regardless

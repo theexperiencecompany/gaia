@@ -43,11 +43,8 @@ from app.agents.context.slots import (
 )
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.config.settings import settings
-from app.override.langgraph_bigtool.create_agent import (
-    AgentConfig,
-    ToolRetrievalConfig,
-    create_agent,
-)
+from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
+from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel
 
 # Fires summarization on the very first model call for a history this size.
@@ -161,7 +158,7 @@ GAIA_TRIGGER_MESSAGES = 10
 
 
 def _gaia_shaped_turn(turn: int) -> list[BaseMessage]:
-    """One request as construct_langchain_messages shapes it: prompt slots around the user turn."""
+    """One request as comms_turn_messages shapes it: prompt slots around the user turn."""
     return [
         SystemMessage(content=STATIC_PROMPT, id=f"static{turn}"),
         mark(SystemMessage(content="dynamic context", id=f"dyn{turn}"), DYNAMIC_CONTEXT_MARKER),
@@ -175,6 +172,10 @@ def _gaia_history() -> list[BaseMessage]:
     messages.append(AIMessage(content="assistant turn 0", id="a0"))
     for i in range(1, HISTORY_TURNS):
         messages.append(HumanMessage(content=f"user turn {i}", id=f"h{i}"))
+        # Each turn's clock stays in the thread beside its request.
+        messages.append(
+            mark(HumanMessage(content="[Current UTC Time]", id=f"time{i}"), TIME_CONTEXT_MARKER)
+        )
         messages.append(AIMessage(content=f"assistant turn {i}", id=f"a{i}"))
     return messages
 

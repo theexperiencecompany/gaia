@@ -6,6 +6,7 @@
  *
  * @module
  */
+import { BOT_URLS } from "../../constants/bots";
 import type { BotCommand, CommandExecuteParams } from "../types";
 
 /** `/help` command definition. */
@@ -38,7 +39,7 @@ export const helpCommand: BotCommand = {
             "`/settings`: your account and connected apps",
             "`/status`: check if you're linked",
             "`/new`: start a fresh conversation",
-            "`/stop`: cancel the current reply and reset",
+            "`/stop`: stop the current reply and any background work",
             "`/conversations`: pick up a past chat",
             "`/unlink`: disconnect your account",
           ].join("\n"),
@@ -53,7 +54,7 @@ export const helpCommand: BotCommand = {
         // The instance the bot serves: a self-hosted GAIA, not heygaia.io.
         { label: "Open GAIA", url: gaia.getFrontendUrl() },
         { label: "Docs", url: "https://docs.heygaia.io" },
-        { label: "Support", url: "https://discord.gg/gaia" },
+        { label: "Support", url: BOT_URLS.discord },
       ],
       timestamp: true,
     });

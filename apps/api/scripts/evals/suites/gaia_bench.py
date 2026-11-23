@@ -92,16 +92,6 @@ CONTRACT_LINE = (
     "where ... is a number or as few words as possible."
 )
 FINAL_ANSWER_RE = re.compile(r"\bfinal\s*answer\s*:\s*", re.IGNORECASE)
-# The dev direct-run endpoint wraps narration-only responses in an envelope
-# from subagent_runner.py ("The <agent> subagent ended without running any
-# tool..."); unwrap it so the recorded text is exactly what the agent said.
-DEV_WRAPPER_RE = re.compile(
-    r"^The .+ subagent ended without running any tool — it only produced "
-    r'planning text: "(.*)"\. Re-issue the handoff with an explicit '
-    r"instruction to perform the action\.$",
-    re.DOTALL,
-)
-
 TASK_FIELD_MAX = 20_000
 ATTACH_BUDGET = 18_000
 MIN_ATTACH_BUDGET = 500
@@ -818,18 +808,13 @@ class DevExecutorTransport:
     def _extract_message(payload: dict[str, object]) -> str:
         message = payload.get("message")
         if isinstance(message, str):
-            return DevExecutorTransport._unwrap_wrapper(message)
+            return message
         if isinstance(message, dict):
             for key in ("response", "text"):
                 value = message.get(key)
                 if isinstance(value, str):
-                    return DevExecutorTransport._unwrap_wrapper(value)
+                    return value
         return ""
-
-    @staticmethod
-    def _unwrap_wrapper(text: str) -> str:
-        match = DEV_WRAPPER_RE.match(text)
-        return match.group(1) if match else text
 
 
 # ---------------------------------------------------------------------------
@@ -937,23 +922,6 @@ def _run_self_test() -> int:
             "list: case-insensitive 'John, Paul' vs 'john,paul' (remove_punct=False)",
             question_scorer("John, Paul", "john,paul"),
             True,
-        ),
-        (
-            "extract: last marker inside executor wrapper prefix",
-            extract_final_answer(
-                DevExecutorTransport._unwrap_wrapper(
-                    "The executor_agent subagent ended without running any tool — it "
-                    'only produced planning text: "The capital of France is Paris.\n\n'
-                    'FINAL ANSWER: Paris". Re-issue the handoff with an explicit '
-                    "instruction to perform the action."
-                )
-            ),
-            "Paris",
-        ),
-        (
-            "extract: unwrap leaves plain text untouched",
-            DevExecutorTransport._unwrap_wrapper("plain reply"),
-            "plain reply",
         ),
         (
             "extract: plain marker",

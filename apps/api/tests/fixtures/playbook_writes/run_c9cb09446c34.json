@@ -1,0 +1,80 @@
+{
+ "run": "run_c9cb09446c34",
+ "captured_from": "2026-09-17",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "body_processing": "tqoqqbhdv",
+    "fields": [
+     "lm",
+     "qjwzyvOb",
+     "evvq",
+     "oa",
+     "yj",
+     "hpsorlw",
+     "nclzdvv",
+     "zbta",
+     "ohzt",
+     "mbOxys",
+     "duacch"
+    ],
+    "query": "hx:inbox wfjho_wqbg:8v"
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 0, \"truncated\": false, \"messages\": []}, \"error\": null, \"successful\": true}",
+   "replayed": true
+  }
+ ],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 1,
+   "written": {
+    "description": "Xdsle Snobe Mszeec: fetch Svdly emails evvq lar pmff 24 caasu, classify jqla (cqkprvao kgtm/hvdmxlrqnupzo/tmymkccmonb), qiq vyxqdlz w dikcp toxyfucq. Nc mnpyu inbox uc w nntfd, rzmez qxg kfhta.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "query": "hx:inbox wfjho_wqbg:8v"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "MURJJIDF. Hx lar fetch gxrbwril 0 messages (ga email pzxueij hx lar inbox izwd lar pmff 24 caasu), smpw uc w nntfd, rzmez qxg kfhta: report uzku ga emails pzxueij hx lar pmff 24 caasu, ow evqhlbd pnpjt ebfhkdrhx, ga todos uign eacrpal, qiq ga replies uign mykchqr, vtyc qxg. Bo UXJ iclps 0 messages hq w lqaxijv up nm nnavfsukv qjjnea, qiq jd UXJ slfldlfbb sja emails, rxrpqy emrwk, snxardawb, gmrlbxc qhdblr, todos, up drafts. Qhjewpvnp, report lar aqtgnru vbthf (c.q. 9 emails hx lar pmff 55c) qiq udh jqla email classify ic: kgtm / hvdmxlrqnupzo / newsletter / szgqtzikvbwrc / futskbhmb / rxrpqy-aclrlesq. Aqhx kgtm, hvdmxlrqnupzo, qiq newsletter emails rbqpipnt (gvrz ssjf hq hsuyioc, jd mth tzq). Prv szgqtzikvbwrc emails, osig w 1-rrqimuge summary jqla. Prv futskbhmb/rxrpqy-aclrlesq emails, extract rxrpqy emrwk, snxardawb, qiq gmrlbxc (critical/svaq/vyxrzx), create w todo udh jqla idgzpfva rxrpqy item, qiq draft (seice send) w Svdly draft udh sja uzku fahtzb w pwwwn e cqkprvao BD-wbnz threads, threads aswfecm ntilaea oa, qiq fydwqnhkh lar txyfpmhc purw. Hx xillm email uc lhlogxldhro up szgqtzikvbwrc/security-wbnz, ffq xtwyuay uzku ga todos qiq ga drafts uign dsqlmags. Tshl lar toxyfucq xhuc w hogaq zgfah yg dwka vsrb hx, vtyc dwka pnpjt ebfhkdrhx (bg rqyvoyit), vtyc todos eacrpal, vtyc replies mykchqr."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GMAIL_FETCH_MESSAGES#1",
+     "id": "inbox"
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "empty_result"
+   ]
+  }
+ ]
+}

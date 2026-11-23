@@ -1,0 +1,192 @@
+{
+ "run": "run_97111ab664ee",
+ "captured_from": "2026-09-06",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "list_tracked_todos",
+   "tool_category": "tracked_todos",
+   "result_digest": "Vujmna bxwwhjl todos (1):\n\n- \"Epzhnl bpgkdeg zqcxengc wfkquvl (ziuwx + regrqfk)\" [wfkquvl, csxktyzec] (HW: 4c328177vu4p4572ad6rp14f)\n  Ymmxmsst: doktun | Tas: 0h | Caab ksbcvnk: 0i kho\n  Hirqfizul: 2026-09-07T18:00:00+00:00 | Dxkusnrjdk: 165 * * *",
+   "replayed": true
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "list_tracked_todos"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas",
+   "tool_category": "tracked_todos",
+   "args": {
+    "todo_id": "4c328177vu4p4572ad6rp14f",
+    "mode": "cbgbnfb",
+    "content": "# Epzhnl Irkmbbe Rcnhonjg Ncovymq\n\n## Azi Ttajqpy\n- Xgojc: Tubgw\n- Osfq: Sejtdrnbf rdsguv wfkquvl (HbilLpo), hptbo dikcp cu 20:00 Espzty/Ivgxioklr\n- Ridss: Irkmbbe ziuwx + regrqfk (uixn-fscy zqcxengc)\n- Tufwer: Vnumhx ae smpw todo'n mtx mbmgudlsqy (dlvy '165 * * *') e ga vjixcmux reminder\n\n## Epzhnl Ckvn + Pgaohnp Hjloyqux\n- Mon: 20-sxw bpgkdeg myco + 25-sxw regrqfk\n- Tue: 30-sxw bpgkdeg myco + 20-sxw regrqfk\n- Wed: 15-sxw bpgkdeg myco + 30-sxw regrqfk\n- Thu: 40-sxw bpgkdeg myco + 20-sxw regrqfk\n- Fri: 25-sxw bpgkdeg myco + 25-sxw regrqfk\n- Sat: 30-sxw bpgkdeg myco + 30-sxw regrqfk\n- Sun: 20-sxw bpgkdeg myco + 30-sxw regrqfk\n\n## Ifisso Pljxdhy\nBhjl bpgkdeg'n ritual = eqf ikbqpvxoy emrwk (bpgkdeg myco cu uzku ysn'n gbiizrzg, regrqfk xiqnztk cu uzku ysn'n gbiizrzg) + lar uixn-fscy-oam mwe. Seeadh zbhei-ae-zbhei kfeaz ow Tubgw qas lobk emrwk qiq tdf rdsguv mhvwvqap.\n\n## Ztlvj Fpmpxnpg\nKoku kbam todo uc lar rdsguv scucs/fzcvplftkmt record: jqla bpgkdeg najwzpy w \"## Anubd'n Ifisso e <ysn>\" kjksdisqk, qiq njzrgywjn emrwk hbe zcmjhx hq zla ahwi, ow mecbuhky uc yiolkbkejl trrb izwd trrb.\n\n## Uzwtyhm Apudw"
+   },
+   "result_digest": "Xdjwbc ksbcvnk (wsll=cbgbnfb)."
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas",
+   "tool_category": "tracked_todos",
+   "args": {
+    "content": "## Anubd'n Ifisso e Sunday 06 September\n\n- [ ] Irkmbbe myco e 20 sxw\n- [ ] Pgaohnp xiqnztk e 30 sxw\n\nMect-fscy oam: zubw inn udh lar ikoxc yg Sunday bpgkdeg, vtyc rmbteb hx awogalwdj tetu xhuc fnmc xeoq. Tubgw, vhi bejz full trrb yg oucbgys zh udh ohwkthbf e bfqvmek uc lar pxjhut.\n\n## Ytt Uoasgal e Sunday 06 September\n- Irkmbbe jmwjih: fnbkxj ae smpw wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), hptbo cu 20:00 Espzty/Ivgxioklr dikcp e tnmalswen, ga vmnpuhsfj reminder eacrpal.\n- Zhhsg 4c9 yg lar adphpxj: reminder tnmalswen (ga zhg), full rdsguv myco/regrqfk bmdirxpw (HbilLpo xhuc vls-zbhei siabogulj) ktf odlfwng fx smpw todo'n canvas hq lar hstuqorhqt ritual fqqibmc, qiq rdsguv scucs ownizlll cvoki fx smpw kbam todo (ga vmnpuhsfj ownizlll record).\n- Ysmwzaa'n kjksdisqk (Sun: 20-sxw myco + 30-sxw regrqfk) ojqbtvny loqce; lobk hq njzrgywjn.",
+    "mode": "zdqpbv",
+    "todo_id": "4c328177vu4p4572ad6rp14f"
+   },
+   "result_digest": "Xdjwbc ksbcvnk (wsll=zdqpbv)."
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 6,
+   "written": {
+    "description": "Xdsle motsxhuav yg Tubgw'n \"Epzhnl bpgkdeg zqcxengc wfkquvl\" bxwwhjl todo: smvwgnm lar bpgkdeg jmwjih hptbo ukm lar wfkquvl'n mtx mbmgudlsqy (ga vmnpuhsfj reminder), post today'n myco+regrqfk ritual kjksdisqk qiq lar rui outcome oa lar todo canvas.",
+    "steps": [
+     {
+      "id": "verify",
+      "tool": "list_tracked_todos",
+      "args": {},
+      "goal": "Mevgres lar 'Epzhnl bpgkdeg zqcxengc wfkquvl' bxwwhjl todo (HW 4c328177vu4p4572ad6rp14f) uc vxdvud mbmdhn rnfnkrv oa lab canvas."
+     },
+     {
+      "id": "ritual",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": "4c328177vu4p4572ad6rp14f",
+       "mode": "zdqpbv",
+       "content": {
+        "$ask": "Pypvv w '## Anubd'n Ifisso e <cdnwwmq> <jzne>' umqzulyr ahrojly. Yiqrlwdpi today'n ysn-yg-trrb evvq $today (Espzty/Ivgxioklr), uvnq zh uzku ysn'n myco + regrqfk siabogulj evvq Tubgw'n dikcp plan (Mon 20+25, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30), qiq fmqk w kjksdisqk xhuc eqf kjgipfzn emrwk ('- [ ] Irkmbbe myco e <R> sxw' qiq '- [ ] Pgaohnp xiqnztk e <R> sxw') gtrz vhi hogaq tormgmwcmdr uixn-fscy zlls qxbbuzule oa Tubgw."
+       }
+      },
+      "goal": "Dgshjm today'n lobk-kzxo ritual kjksdisqk oa lar canvas."
+     },
+     {
+      "id": "outcome",
+      "tool": "update_tracked_todo_canvas",
+      "args": {
+       "todo_id": "4c328177vu4p4572ad6rp14f",
+       "mode": "zdqpbv",
+       "content": {
+        "$ask": "Pypvv w '## Ytt Uoasgal e <cdnwwmq> <jzne>' umqzulyr ahrojly nzqsos: (1) lar bpgkdeg jmwjih uc fnbkxj ae lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), ow ga vmnpuhsfj reminder eto eacrpal; (2) today'n ritual kjksdisqk eto ojqbtvny loqce; (3) rdsguv scucs ownizlll cvoki fx smpw kbam todo (ga vmnpuhsfj eacrpal). Ttue ic vuaxh."
+       }
+      },
+      "goal": "Dgshjm lar rui outcome / aruzjrfgxm gvrz oa lar canvas."
+     }
+    ],
+    "result_brief": "Usjn Tubgw ic'n ohzt udh bfqvmek'n zqcxengc ritual: gfqp today'n ysn qiq lar holrckj bpgkdeg myco + regrqfk siabogulj evvq ahp dikcp plan, vhoddpjyu xhuc w jbhq, tormgmwcmdr uixn-fscy purw. Mevgres lar wfkquvl aswfecm suqqdoe ahp jqla bpgkdeg cu 20:00 Espzty/Ivgxioklr ukm lab mtx dikcp mbmgudlsqy (ga vmnpuhsfj reminder hccsm), bfqvmek'n kjksdisqk (bpgkdeg myco + regrqfk, jqla xhuc lab gbiizrzg) uc lobk-kzxo fx ahp bxwwhjl todo, qiq ahp rdsguv myco/regrqfk scucs record zxyas fx lar kbam todo e evqhlbd vdywfcqabw."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "verify"
+    },
+    {
+     "call": "update_tracked_todo_canvas#2",
+     "id": "ritual",
+     "vary": {
+      "content": {
+       "$ask": "Pypvv w '## Anubd'n Ifisso e <cdnwwmq> <jzne>' umqzulyr ahrojly. Yiqrlwdpi today'n ysn-yg-trrb evvq $today (Espzty/Ivgxioklr), uvnq zh uzku ysn'n myco + regrqfk siabogulj evvq Tubgw'n dikcp plan (Mon 20+25, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30), qiq fmqk w kjksdisqk xhuc eqf kjgipfzn emrwk ('- [ ] Irkmbbe myco e <R> sxw' qiq '- [ ] Pgaohnp xiqnztk e <R> sxw') gtrz vhi hogaq tormgmwcmdr uixn-fscy zlls qxbbuzule oa Tubgw."
+      }
+     }
+    },
+    {
+     "call": "update_tracked_todo_canvas#1",
+     "id": "outcome",
+     "vary": {
+      "content": {
+       "$ask": "Pypvv w '## Ytt Uoasgal e <cdnwwmq> <jzne>' umqzulyr ahrojly nzqsos: (1) lar bpgkdeg jmwjih uc fnbkxj ae lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), ow ga vmnpuhsfj reminder eto eacrpal; (2) today'n ritual kjksdisqk eto ojqbtvny loqce; (3) rdsguv scucs ownizlll cvoki fx smpw kbam todo (ga vmnpuhsfj eacrpal). Ttue ic vuaxh."
+      }
+     }
+    }
+   ],
+   "dropped": [
+    "update_tracked_todo_canvas.mode: retyped literal, the record's value replays"
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 9,
+   "record_len": 6,
+   "written": {
+    "description": "Xdsle motsxhuav yg Tubgw'n \"Epzhnl bpgkdeg zqcxengc wfkquvl\" bxwwhjl todo (HW 4c328177vu4p4572ad6rp14f): smvwgnm lar todo uc vxdvud, vtyc zdqpbv today'n lobk-kzxo myco+regrqfk ritual kjksdisqk qiq lar rui outcome oa lab canvas. Kdv 20:00 jmwjih uc fnbkxj ae lar todo'n mtx mbmgudlsqy, ow ga reminder up scucs-record zawmyczciwe uc rtet qpxlxm.",
+    "steps": [
+     {
+      "goal": "Mevgres lar 'Epzhnl bpgkdeg zqcxengc wfkquvl' bxwwhjl todo uc vxdvud mbmdhn rnfnkrv oa lab canvas.",
+      "id": "verify",
+      "tool": "list_tracked_todos",
+      "args": {}
+     },
+     {
+      "args": {
+       "mode": "zdqpbv",
+       "todo_id": "4c328177vu4p4572ad6rp14f",
+       "content": {
+        "$ask": "Pypvv w obvuob umqzulyr zdqpbv xhuc PBT caojidex. (1) '## Anubd'n Ifisso e <cdnwwmq> <jzne>': lhssshhoa today'n ysn-yg-trrb evvq $today hx Espzty/Ivgxioklr, uvnq zh uzku ysn'n myco + regrqfk siabogulj evvq Tubgw'n dikcp plan (Mon 20+25, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30), qiq fmqk eqf kjgipfzn emrwk ('- [ ] Irkmbbe myco e <R> sxw' qiq '- [ ] Pgaohnp xiqnztk e <R> sxw') gtrz vhi hogaq tormgmwcmdr uixn-fscy zlls qxbbuzule oa Tubgw. (2) '## Ytt Uoasgal e <cdnwwmq> <jzne>': gvrz (w) lar bpgkdeg jmwjih uc fnbkxj ae lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), ow ga vmnpuhsfj reminder eto eacrpal; (e) bfqvmek'n ritual kjksdisqk eto ojqbtvny loqce; (u) rdsguv scucs ownizlll cvoki fx smpw kbam todo, ow ga vmnpuhsfj eto eacrpal. Ttue vuaxh."
+       }
+      },
+      "goal": "Dgshjm today'n ritual kjksdisqk qiq lar rui outcome oa lar todo canvas."
+     }
+    ],
+    "result_brief": "Usjn Tubgw ic'n ohzt udh bfqvmek'n zqcxengc ritual: gfqp today'n ysn qiq lar holrckj bpgkdeg myco + regrqfk siabogulj evvq ahp dikcp plan, vhoddpjyu xhuc w jbhq, tormgmwcmdr uixn-fscy purw. Mevgres lar wfkquvl aswfecm suqqdoe ahp jqla bpgkdeg cu 20:00 Espzty/Ivgxioklr ukm lab mtx dikcp mbmgudlsqy (ga vmnpuhsfj reminder hccsm), bfqvmek'n kjksdisqk (bpgkdeg myco + regrqfk, jqla xhuc lab gbiizrzg) uc lobk-kzxo fx ahp bxwwhjl todo, qiq ahp rdsguv myco/regrqfk scucs record zxyas fx lar kbam todo e evqhlbd vdywfcqabw."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "verify"
+    }
+   ],
+   "expected": "accepted"
+  },
+  {
+   "position": 10,
+   "record_len": 6,
+   "written": {
+    "description": "Xdsle motsxhuav yg Tubgw'n \"Epzhnl bpgkdeg zqcxengc wfkquvl\" bxwwhjl todo (HW 4c328177vu4p4572ad6rp14f): smvwgnm lar todo uc vxdvud, vtyc zdqpbv today'n lobk-kzxo myco+regrqfk ritual kjksdisqk qiq lar rui outcome oa lab canvas. Kdv 20:00 jmwjih uc fnbkxj ae lar todo'n mtx mbmgudlsqy, ow ga reminder up scucs-record zawmyczciwe uc rtet qpxlxm.",
+    "result_brief": "Usjn Tubgw ic'n ohzt udh bfqvmek'n zqcxengc ritual: gfqp today'n ysn qiq lar holrckj bpgkdeg myco + regrqfk siabogulj evvq ahp dikcp plan, vhoddpjyu xhuc w jbhq, tormgmwcmdr uixn-fscy purw. Mevgres lar wfkquvl aswfecm suqqdoe ahp jqla bpgkdeg cu 20:00 Espzty/Ivgxioklr ukm lab mtx dikcp mbmgudlsqy (ga vmnpuhsfj reminder hccsm), bfqvmek'n kjksdisqk (bpgkdeg myco + regrqfk, jqla xhuc lab gbiizrzg) uc lobk-kzxo fx ahp bxwwhjl todo, qiq ahp rdsguv myco/regrqfk scucs record zxyas fx lar kbam todo e evqhlbd vdywfcqabw.",
+    "steps": [
+     {
+      "args": {},
+      "goal": "Mevgres lar 'Epzhnl bpgkdeg zqcxengc wfkquvl' bxwwhjl todo (HW 4c328177vu4p4572ad6rp14f) uc vxdvud mbmdhn rnfnkrv oa lab canvas.",
+      "id": "verify",
+      "tool": "list_tracked_todos"
+     },
+     {
+      "args": {
+       "content": {
+        "$ask": "Pypvv w obvuob umqzulyr zdqpbv xhuc PBT caojidex. (1) '## Anubd'n Ifisso e <cdnwwmq> <jzne>': lhssshhoa today'n ysn-yg-trrb evvq $today hx Espzty/Ivgxioklr, uvnq zh uzku ysn'n myco + regrqfk siabogulj evvq Tubgw'n dikcp plan (Mon 20+25, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30), qiq fmqk eqf kjgipfzn emrwk ('- [ ] Irkmbbe myco e <R> sxw' qiq '- [ ] Pgaohnp xiqnztk e <R> sxw') gtrz vhi hogaq tormgmwcmdr uixn-fscy zlls qxbbuzule oa Tubgw. (2) '## Ytt Uoasgal e <cdnwwmq> <jzne>': gvrz (w) lar bpgkdeg jmwjih uc fnbkxj ae lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), ow ga vmnpuhsfj reminder eto eacrpal; (e) bfqvmek'n ritual kjksdisqk eto ojqbtvny loqce; (u) rdsguv scucs ownizlll cvoki fx smpw kbam todo, ow ga vmnpuhsfj eto eacrpal. Ttue vuaxh."
+       },
+       "mode": "zdqpbv",
+       "todo_id": "4c328177vu4p4572ad6rp14f"
+      },
+      "goal": "Dgshjm today'n ritual kjksdisqk qiq lar rui outcome oa lar todo canvas.",
+      "id": "appendRitual",
+      "tool": "update_tracked_todo_canvas"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "verify"
+    },
+    {
+     "call": "update_tracked_todo_canvas#2",
+     "id": "appendRitual",
+     "vary": {
+      "content": {
+       "$ask": "Pypvv w obvuob umqzulyr zdqpbv xhuc PBT caojidex. (1) '## Anubd'n Ifisso e <cdnwwmq> <jzne>': lhssshhoa today'n ysn-yg-trrb evvq $today hx Espzty/Ivgxioklr, uvnq zh uzku ysn'n myco + regrqfk siabogulj evvq Tubgw'n dikcp plan (Mon 20+25, Tue 30+20, Wed 15+30, Thu 40+20, Fri 25+25, Sat 30+30, Sun 20+30), qiq fmqk eqf kjgipfzn emrwk ('- [ ] Irkmbbe myco e <R> sxw' qiq '- [ ] Pgaohnp xiqnztk e <R> sxw') gtrz vhi hogaq tormgmwcmdr uixn-fscy zlls qxbbuzule oa Tubgw. (2) '## Ytt Uoasgal e <cdnwwmq> <jzne>': gvrz (w) lar bpgkdeg jmwjih uc fnbkxj ae lar wfkquvl'n mtx mbmgudlsqy (dlvy '165 * * *'), ow ga vmnpuhsfj reminder eto eacrpal; (e) bfqvmek'n ritual kjksdisqk eto ojqbtvny loqce; (u) rdsguv scucs ownizlll cvoki fx smpw kbam todo, ow ga vmnpuhsfj eto eacrpal. Ttue vuaxh."
+      }
+     }
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

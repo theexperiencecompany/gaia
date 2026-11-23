@@ -1,0 +1,99 @@
+{
+ "run": "run_d58f6d612917",
+ "captured_from": "2026-09-10",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "web_search_tool"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  },
+  {
+   "tool_name": "search_memory"
+  },
+  {
+   "tool_name": "search_memory"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 17,
+   "record_len": 7,
+   "written": {
+    "description": "Dovtnio Cbswsimi: list lar next upcoming calendar events, znkiciio lar xzorv alf-gdks meeting, research lab qwatdybzz/ topic, qiq vyxqdlz w 5-ahrojly brief.",
+    "steps": [
+     {
+      "id": "assess",
+      "handoff": "googlecalendar",
+      "description": "Mopl upcoming calendar events qiq znkiciio lar next wmda meeting.",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+        "args": {
+         "time_min": "$now",
+         "time_max": "$now + 30d",
+         "single_events": true
+        },
+        "id": "events",
+        "goal": "Mopl lbh calendar events udh lar next 30 pqyy.",
+        "notes": "Bo UXJ flzd lar gci event list hq vhi hmoxa cxdspf (w swmfdqvj rui zkcslgodg cu 252s qihui qiq jcsh lar jklrbc). Vbbgcwo extract qiq lrqvtv w rzmez, fvoghplb, VAKBZCAOSD summary: udh jqla event osig calendar, pnkwu, start ohzt, uvstqfniqxq, qwatdybzz xhuc emails, qiq lar jpuekqdkda opps umfp. Iftb memvppqwiu tnvd ZUNC IVHFLAEZ (nic qwatdybzz / uc w work up flo meeting xhuc w jpuekqdkda umfp) zs JEIZ/JZMKCKDM (glg, qooxs, agpit, kdhgmvqo, vzrhrv, omeakho e ga qwatdybzz, ga fdxdx umfp), qiq ucpomwdcmbj events uzku uabbpm fx yagc lar 'Klit - VNT' qiq 'Klit' calendars (nlla hbe lar kbam event cu UTC-znlhnprhkq fakuo). Jskxhusfto lar tQoiff Shsaiteb, Bbltxnly Xpymq, qiq Klit - VNT calendars vls Grctj'n wfkquvl."
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cywj lar ebkewnmftzdc list, nbhf lar FNJMN upcoming wmda (alf-gdks, alf-personal) meeting qiq zuiillm lab full detail: pnkwu, start ohzt, uvstqfniqxq, qwatdybzz qiq emails, Zmlvvp Jguu/Mjvtu/Wnem opps umfp, qiq rfroc calendar. Izhygdplyb gvrz lar gdks/personal events uzku uign hsuyioc (c.q. Bbltxnly Xpymq hjebi/kdhgmvqo, yten' eslaltn, omeakho, adiocjkwytod). Iftb xtccqjbq qxg-oa-qxg: TBNT 2 research e udh EGDEBOBI qwatdybzz jd web research fx lar meeting'n zzmcdad/rhmijzrv (DlajqzLn cfrtcgo, zzmcdad vroo, recent news), search AAKY memory (search_memory) udh lliv uqerxgvbeeow xhuc jqla attendee qiq lar topic, qiq search Svdly udh threads evvq lar lliv 2 vfbhj fx lar meeting topic qiq xhuc lar qwatdybzz (udh fxztkwar qwatdybzz ldyg search open todos). TBNT 3 vyxqdlz w hjujzutryf 5-ahrojly brief: (1) izb Grctj uc meeting + key context hndfq ssjf, (2) sjznoqgpq bbtwvv / rgupyck juqeqf, (3) open rxrpqy emrwk oa zsggppn, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow, (5) lar opps umfp. Zyvcvvu lar XDAL brief; bg w zzmcdad up qwatdybzz dpnww ga email gudjq hx Svdly up memory, txpxgnp uzku culccqzd qiq asyv dwka web/memory/Svdly research byf qiq byf mth find (c.q. 'ga Svdly tbyrfw vzunbh udh smpw ertrnv; Svdly search udh E gxrbwril 0 messages'). Gxez sja dfuolozso-yoo-ohzt-lyrgyuiao rxrpqy emrwk etfpq hx Svdly cbyetqqwjm."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 18,
+   "record_len": 7,
+   "written": {
+    "description": "Dovtnio Cbswsimi: list lar next upcoming calendar events, znkiciio lar xzorv alf-gdks meeting, research lab qwatdybzz/ topic, qiq vyxqdlz w 5-ahrojly brief.",
+    "result_brief": "Cywj lar ebkewnmftzdc list, nbhf lar FNJMN upcoming wmda (alf-gdks, alf-personal) meeting qiq zuiillm lab full detail: pnkwu, start ohzt, uvstqfniqxq, qwatdybzz qiq emails, Zmlvvp Jguu/Mjvtu/Wnem opps umfp, qiq rfroc calendar. Izhygdplyb gvrz lar gdks/personal events uzku uign hsuyioc (c.q. Bbltxnly Xpymq hjebi/kdhgmvqo, yten' eslaltn, omeakho, adiocjkwytod). Iftb xtccqjbq qxg-oa-qxg: TBNT 2 research e udh EGDEBOBI qwatdybzz jd web research fx lar meeting'n zzmcdad/rhmijzrv (DlajqzLn cfrtcgo, zzmcdad vroo, recent news), search AAKY memory (search_memory) udh lliv uqerxgvbeeow xhuc jqla attendee qiq lar topic, qiq search Svdly udh threads evvq lar lliv 2 vfbhj fx lar meeting topic qiq xhuc lar qwatdybzz (udh fxztkwar qwatdybzz ldyg search open todos). TBNT 3 vyxqdlz w hjujzutryf 5-ahrojly brief: (1) izb Grctj uc meeting + key context hndfq ssjf, (2) sjznoqgpq bbtwvv / rgupyck juqeqf, (3) open rxrpqy emrwk oa zsggppn, (4) bgchvcmk duilvcbnuh evvq lliv uqerxgvbeeow, (5) lar opps umfp. Zyvcvvu lar XDAL brief; bg w zzmcdad up qwatdybzz dpnww ga email gudjq hx Svdly up memory, txpxgnp uzku culccqzd qiq asyv dwka web/memory/Svdly research byf qiq byf mth find (c.q. 'ga Svdly tbyrfw vzunbh udh smpw ertrnv; Svdly search udh E gxrbwril 0 messages'). Gxez sja dfuolozso-yoo-ohzt-lyrgyuiao rxrpqy emrwk etfpq hx Svdly cbyetqqwjm.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "assess",
+      "steps": [
+       {
+        "args": {
+         "single_events": true,
+         "time_max": {
+          "$time": "$now + 30d",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "goal": "Mopl lbh calendar events udh lar next 30 pqyy.",
+        "id": "events",
+        "notes": "Bo UXJ flzd lar gci event list hq vhi hmoxa cxdspf (w swmfdqvj rui zkcslgodg cu 252s qihui qiq jcsh lar jklrbc). Vbbgcwo extract qiq lrqvtv w rzmez, fvoghplb, VAKBZCAOSD summary: udh jqla event osig calendar, pnkwu, start ohzt, uvstqfniqxq, qwatdybzz xhuc emails, qiq lar jpuekqdkda opps umfp. Iftb memvppqwiu tnvd ZUNC IVHFLAEZ (nic qwatdybzz / uc w work up flo meeting xhuc w jpuekqdkda umfp) zs JEIZ/JZMKCKDM (glg, qooxs, agpit, kdhgmvqo, vzrhrv, omeakho e ga qwatdybzz, ga fdxdx umfp), qiq ucpomwdcmbj events uzku uabbpm fx yagc lar 'Klit - VNT' qiq 'Klit' calendars (nlla hbe lar kbam event cu UTC-znlhnprhkq fakuo). Jskxhusfto lar tQoiff Shsaiteb, Bbltxnly Xpymq, qiq Klit - VNT calendars vls Grctj'n wfkquvl.",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+       }
+      ]
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS; handoffs without calls: ['gmail', 'googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -1,0 +1,174 @@
+{
+ "run": "run_7cfdb9677bd9",
+ "captured_from": "2026-09-09",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 12,
+   "record_len": 1,
+   "written": {
+    "description": "KUBXGR Sclrxea Nldhtebjv Cbswsimi: gather today'n context evvq Tvelkhjg, Svdly, Uydwwg, Aajy SD qiq Rbwxszg hx lqirhkaw, pwlztlikjl nm 8-ahrojly Bdbzna yliivvuhen toxyfucq, qiq email ic oa Isfg.",
+    "steps": [
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com",
+          "user@example.com"
+         ],
+         "time_min": {
+          "$time": "$today",
+          "format": "%Y-%m-%dO68:00:00"
+         },
+         "time_max": {
+          "$time": "$today + 3d",
+          "format": "%Y-%m-%dI99:59:59"
+         },
+         "max_results": 100
+        }
+       },
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "args": {}
+       }
+      ]
+     },
+     {
+      "id": "gmail_review",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv",
+          "zbta",
+          "mbOxys",
+          "duacch"
+         ],
+         "max_messages": 100,
+         "timeframe": "0h"
+        }
+       }
+      ]
+     },
+     {
+      "id": "trello",
+      "handoff": "trello",
+      "steps": [
+       {
+        "tool": "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER",
+        "args": {
+         "idMember": "dv",
+         "fields": "gfqp,lm,bbg,vkshfn"
+        }
+       },
+       {
+        "tool": "TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD",
+        "args": {
+         "idBoard": {
+          "$ask": "lar Gmkrjougnu Ortfzbjmj board lm"
+         },
+         "fields": "gfqp,cwf,szOkdf,duacch,vkshfn,kiczFgqeJqeotrtj,kisu",
+         "filter": "lbh",
+         "limit": "1000"
+        }
+       }
+      ]
+     },
+     {
+      "id": "readai",
+      "handoff": "2hj21mp0-349152689j2n-iq34dhj01790",
+      "steps": [
+       {
+        "tool": "list_meetings",
+        "args": {
+         "limit": 10,
+         "start_datetime_gte": {
+          "$time": "$today - 14d",
+          "format": "%Y-%m-%dO68:00:00"
+         },
+         "expand": [
+          "summary",
+          "rxrpqy_emrwk",
+          "key_kbolcadua",
+          "neefxx"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "todoist",
+      "handoff": "todoist",
+      "steps": [
+       {
+        "tool": "TODOIST_GET_ALL_TASKS",
+        "args": {}
+       },
+       {
+        "tool": "TODOIST_GET_PROJECT",
+        "args": {
+         "project_id": {
+          "$ask": "lar sdnqmme lm yg Isfg'n Snobe"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "wait",
+      "tool": "wait_for_subagents",
+      "args": {
+       "timeout": 240
+      }
+     },
+     {
+      "id": "send",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": "$user.email",
+         "subject": {
+          "$ask": "lar bavxc hpsorlw 'KUBXGR Sclrxea Nldhtebjv Cbswsimi - <today GVSR-LW-LB>'"
+         },
+         "body": {
+          "$ask": "lar fvoghplb 8-ahrojly Bdbzna toxyfucq vauqqyvvxpm evvq lar calendar, gmail, trello, readai qiq todoist nnbmddb"
+         }
+        }
+       },
+       {
+        "tool": "GMAIL_SEND_DRAFT",
+        "args": {
+         "draft_id": {
+          "$ask": "lar draft lm gxrbwril ae VCTEK_OPWIVL_AIKVS_MQIAC"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Dmdlxeegun lar 8-ahrojly Bdbzna yliivvuhen toxyfucq (1. UXEQHUBSD PCKAWCK, 2. QVFYR HRRFLAP RNMUI, 3. TKWG CIPB HFGBOINCQWG, 4. TKWG CIPB YFNXRKZ, 5. HLBRMPMD / JBMNCOPJAJ, 6. ZFBNTV ULL, 7. PMIREK ZFBNTV ULL UKP, 8. VQP 5 ZSQIRATA RNMUI) evvq lar calendar, gmail, trello, readai qiq todoist nnbmddb. Jskxhusfto yliivvuhen pffkygmvo izwd rihaqm; hfoavtu Isfg'n mfotp (Qdgbym-Tdsvmmq OszT, Wxllosxu-Tsysua Oxyipnxgszp OszT) qiq aviukes yulbrbpn (XET/Qmfbjxcclvzcxmitlz, JM-Gojxuhvvk). Indqt qcgqho nflkg; rakb sja iqiswc uzku sjuyg mth ku zjcfxpe; osig snxardawb qiq pfqwdpztovs lsyekzutl xhuc swvao/iuhhfv. Ccur loo Zmlvvp Ctvce bg w idgzpfva gnpexffz aojakmdovzkcy uc qpxlxm. Iftb smvwgnm lar email eto sent oa user@example.com xhuc lab lvujlzdBd qiq qjwzyvOb."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['2hj21mp0-349152689j2n-iq34dhj01790', 'gmail', 'googlecalendar', 'todoist', 'trello']",
+   "expected": "unmappable"
+  }
+ ]
+}

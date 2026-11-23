@@ -13,7 +13,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
-from app.core.websocket_manager import websocket_manager
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
@@ -36,6 +35,7 @@ from app.models.onboarding_models import (
 from app.models.user_models import (
     AuthenticatedUser,
     BioStatus,
+    OnboardingAnswers,
     OnboardingPhase,
     OnboardingPhaseUpdateRequest,
     OnboardingPreferences,
@@ -52,7 +52,9 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
+    record_onboarding_step,
     reset_onboarding,
+    save_onboarding_answers,
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
@@ -64,7 +66,6 @@ from app.services.onboarding.writing_style_service import (
 from app.utils.user_preferences_utils import WritingStylePromptFields
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import (
-    OnboardingPhaseCompleted,
     OnboardingReset,
     OnboardingSocialProfilesConfirmed,
     OnboardingWritingStyleExampleRegenerated,
@@ -201,79 +202,29 @@ async def get_onboarding_status(
 
 
 @router.post("/phase")
-async def update_onboarding_phase(
+async def report_onboarding_step(
     request: OnboardingPhaseUpdateRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> OnboardingPhaseUpdateResponse:
-    """
-    Update the user's onboarding phase.
-    Used to track progress through onboarding stages.
-    """
-    try:
-        user_id = user.user_id
-        phase = request.phase.value
+    """Stamp a wizard step the browser reached; a repeat report is a no-op."""
+    log.set(
+        user={"id": user.user_id}, onboarding={"operation": "report_step", "step": request.phase}
+    )
+    first_time = await record_onboarding_step(user.user_id, request.phase)
+    log.set_ns("onboarding", first_time=first_time)
+    return OnboardingPhaseUpdateResponse(phase=request.phase, first_time=first_time)
 
-        log.set(
-            user={"id": user_id},
-            onboarding={"operation": "update_step", "step": phase},
-        )
 
-        if not user_id or not isinstance(user_id, str):
-            log.error(
-                f"{LogTag.ONBOARDING} user_id is missing or not a string",
-                user_id_type=type(user_id).__name__,
-            )
-            raise HTTPException(status_code=400, detail="Invalid user_id")
-
-        log.info(f"{LogTag.ONBOARDING} Updating phase", user_id=user_id, phase=request.phase.value)
-
-        matched = await user_repository.set_onboarding_phase(user_id, request.phase)
-
-        if not matched:
-            log.warning(f"{LogTag.ONBOARDING} No document found for user", user_id=user_id)
-            raise HTTPException(status_code=404, detail="User not found")
-
-        capture(UserId(user_id), OnboardingPhaseCompleted(phase=phase))
-        log.set_ns("onboarding", phase_updated=True)
-
-        try:
-            await websocket_manager.broadcast_to_user(
-                user_id=user_id,
-                message={
-                    "type": "onboarding_phase_update",
-                    "data": {"phase": phase},
-                },
-            )
-            log.info(
-                f"{LogTag.ONBOARDING} Sent WebSocket notification for phase update",
-                phase=phase,
-                user_id=user_id,
-            )
-        except Exception as ws_error:
-            log.warning(
-                f"{LogTag.ONBOARDING} Failed to send WebSocket update",
-                user_id=user_id,
-                error_type=type(ws_error).__name__,
-                error=str(ws_error),
-            )
-
-        return OnboardingPhaseUpdateResponse(
-            success=True,
-            phase=request.phase,
-            message=f"Onboarding phase updated to {phase}",
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.ONBOARDING} Error updating onboarding phase",
-            user_id=user.user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Failed to update onboarding phase") from e
+@router.put("/answers")
+async def save_answers(
+    answers: OnboardingAnswers,
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> OnboardingResponse:
+    """Store the wizard's Q1 and Q2 as soon as they are confirmed."""
+    log.set(user={"id": user.user_id}, onboarding={"operation": "save_answers"})
+    updated_user = await save_onboarding_answers(user.user_id, answers)
+    schedule_account_sync(user.user_id)
+    return OnboardingResponse(success=True, message="Answers saved", user=updated_user)
 
 
 @router.patch("/preferences")
@@ -281,10 +232,7 @@ async def update_user_preferences(
     preferences: OnboardingPreferences,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> OnboardingResponse:
-    """
-    Update user's onboarding preferences.
-    This can be used from the settings page to update preferences after onboarding.
-    """
+    """Update the user's preferences from settings; the wizard's answers go to PUT /answers."""
     log.set(
         user={"id": user.user_id},
         onboarding={"operation": "update_personality"},

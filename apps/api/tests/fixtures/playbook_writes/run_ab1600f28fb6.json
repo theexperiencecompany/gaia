@@ -1,0 +1,46 @@
+{
+ "run": "run_ab1600f28fb6",
+ "captured_from": "2026-09-03",
+ "trigger_type": "schedule",
+ "record": [],
+ "attempts": [
+  {
+   "position": 4,
+   "record_len": 0,
+   "written": {
+    "description": "Shvxm qiq triage emails uzku pzxueij hx lar ynrm'n Svdly inbox izwd lar pmff 24 caasu.",
+    "steps": [
+     {
+      "id": "fetch",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "fetch_inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "body_processing": "tqoqqbhdv",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "yj",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "ssjzq:$now -  y2n mbmdhn:$now hx:inbox"
+        }
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cvouqs oyi mrsx emails pzxueij hx lar pmff 24 caasu qiq, udh jqla, lab kfxsfogoxeqyfs, sja rxrpqy emrwk/todos eacrpal, qiq sja replies mykchqr. Hx jyjt pzxueij, kfhta uzku xtwyuay."
+   },
+   "old_outcome": "accepted",
+   "unmappable": "empty_record",
+   "unmappable_detail": "no pickable call ran; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

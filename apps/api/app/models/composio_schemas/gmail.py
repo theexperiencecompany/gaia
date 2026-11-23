@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal, NotRequired, Self, TypedDict, get_ar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
 
+from app.constants.desk_buckets import DeskBucket
 from app.constants.email import (
     DEFAULT_SUMMARY_FIELDS,
     MESSAGE_FIELD_SYNONYMS,
@@ -21,9 +22,9 @@ from app.constants.email import (
 
 
 class GmailNewMessagePayload(BaseModel):
-    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger.
+    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger at the pinned toolkit 20261105_00.
 
-    Field set verified against Composio triggers_types API (2026-08).
+    Field set verified against Composio triggers_types API (2026-11).
     """
 
     attachment_list: list[Any] | None = Field(
@@ -44,16 +45,38 @@ class GmailNewMessagePayload(BaseModel):
     to: str | None = Field(None, description="Recipient email address")
 
 
-class GmailEmailSentPayload(BaseModel):
-    """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20260107_00.
+class GmailNewMessageEvent(GmailNewMessagePayload):
+    """A new-message payload plus the signals GAIA derives from it at dispatch (gmail_signals.py).
 
-    Field set verified against Composio triggers_types API (2026-09); the pinned
-    version carries no message body or attachment list.
+    A signal the payload cannot back (no headers, no thread id) is absent, never false.
     """
 
+    continues_thread: bool | None = Field(
+        None, description="The message joins a thread that already had messages"
+    )
+    gmail_category: str | None = Field(None, description="Gmail's inbox tab label, CATEGORY_*")
+    has_list_unsubscribe: bool | None = Field(None, description="Carries a List-Unsubscribe header")
+    bulk_or_auto_submitted: bool | None = Field(
+        None, description="Precedence bulk/list/junk, or Auto-Submitted other than no"
+    )
+    sender_looks_automated: bool | None = Field(
+        None, description="The sender address reads as a no-reply or notification sender"
+    )
+
+
+class GmailEmailSentPayload(BaseModel):
+    """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20261105_00.
+
+    Field set verified against Composio triggers_types API (2026-11).
+    """
+
+    attachment_list: list[Any] | None = Field(
+        None, description="List of attachments in the message"
+    )
     bcc: str | None = Field(None, description="Bcc recipients")
     cc: str | None = Field(None, description="Cc recipients")
     message_id: str | None = Field(None, description="Gmail message ID")
+    message_text: str | None = Field(None, description="Text content of the message")
     message_timestamp: str | None = Field(None, description="When it was sent, ISO 8601")
     payload: dict[str, Any] | None = Field(None, description="Raw Gmail payload")
     recipients: str | None = Field(
@@ -170,13 +193,6 @@ class FetchMessagesInput(BaseModel):
         ),
     )
     per_page: int = Field(default=100, ge=1, le=500, description="Gmail page size (max 500).")
-    offload: bool = Field(
-        default=False,
-        description=(
-            "true: write every message to a JSONL file and return only its digest, "
-            "however few match. For a scan you aggregate with query_json and never read."
-        ),
-    )
 
 
 class FetchThreadInput(BaseModel):
@@ -251,14 +267,6 @@ class GmailResourceId(BaseModel):
     id: str | None = None
 
 
-class GmailDraftEntry(BaseModel):
-    """One ``GMAIL_LIST_DRAFTS`` draft, read only for the message it wraps."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    message: dict[str, object] | None = None
-
-
 class GmailMessagePart(BaseModel):
     """One node of a Gmail message's MIME tree.
 
@@ -310,7 +318,6 @@ class GmailMessageView(BaseModel):
     snippet: str
     time: str
     is_read: bool = Field(serialization_alias="isRead")
-    has_attachment: bool = Field(serialization_alias="hasAttachment")
     attachments: list[GmailAttachmentMetadata]
     labels: list[str]
     cc: str
@@ -318,6 +325,10 @@ class GmailMessageView(BaseModel):
     content: GmailMessageContent | None = Field(
         default=None, exclude_if=lambda content: content is None
     )
+    # Read by the desk bucket's signals (List-Unsubscribe, Precedence); never on the wire.
+    headers: list[GmailHeader] = Field(default_factory=list, exclude=True)
+    # Set only on an Inbox desk run's own fetch, and kept whatever fields the fetch asked for.
+    bucket: DeskBucket | None = Field(default=None, exclude_if=lambda bucket: bucket is None)
 
 
 class GmailMessageRef(BaseModel):
@@ -364,30 +375,6 @@ class GmailProfile(BaseModel):
 # Custom Tool Result Shapes: in-process contracts between Gmail custom tools
 # and their helpers. TypedDicts, not models, because nothing validates them at
 # runtime — tools build them and hand them straight to the agent as JSON.
-
-
-class GmailReadRange(TypedDict):
-    """A ``read(offset, limit)`` call over an offloaded JSONL file."""
-
-    offset: int
-    limit: int
-
-
-class GmailReadChunk(TypedDict):
-    """One contiguous line range of an offloaded JSONL file, for one subagent."""
-
-    part: int
-    start_line: int
-    line_count: int
-    read: GmailReadRange
-
-
-class GmailReadPlan(TypedDict):
-    """How an offloaded JSONL file should be split across parallel subagent reads."""
-
-    total_lines: int
-    recommended_subagents: int
-    chunks: list[GmailReadChunk]
 
 
 class GmailBatchModifyResult(TypedDict):
@@ -484,17 +471,11 @@ class GmailContextSnapshot(TypedDict):
 
 
 class GmailFetchInlineResult(TypedDict):
-    """A fetch returned whole, as projected messages.
-
-    total_matched and hint appear only when a result too large to inline had
-    no session to offload into and was cut to the messages that fit.
-    """
+    """A fetch returned whole: projected messages, or every field once compaction will file them."""
 
     fetched_count: int
     truncated: bool
     messages: list[dict[str, object]]
-    total_matched: NotRequired[int]
-    hint: NotRequired[str]
 
 
 class GmailFetchPartialResult(TypedDict):
@@ -523,3 +504,11 @@ class GmailFetchThreadResult(TypedDict):
     total_messages: int
     truncated: bool
     threads: list[GmailThreadResult]
+    #: Asked-for threads Gmail answered 404 for (deleted, or moved since they were listed).
+    missing_thread_ids: list[str]
+
+
+class GmailFetchThreadInlineResult(GmailFetchInlineResult):
+    """GMAIL_FETCH_THREAD past the offload size: every message flat, and the threads Gmail no longer has."""
+
+    missing_thread_ids: list[str]

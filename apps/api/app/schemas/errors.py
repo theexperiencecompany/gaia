@@ -30,7 +30,7 @@ _UNKNOWN_STATUS_PHRASE = "Error"
 #: Declared envelope fields whose type an arbitrary context mapping could
 #: violate. A wrong type here would make ``model_validate`` raise inside an
 #: exception handler, so the key is dropped instead.
-_STRING_FIELDS = ("code", "why", "fix")
+_STRING_FIELDS = ("code", "why", "fix", "toolkit", "integration_id")
 
 
 class ValidationIssue(BaseModel):
@@ -53,6 +53,12 @@ class ErrorEnvelope(BaseModel):
     code: str | None = Field(default=None, description="Machine-readable error code.")
     why: str | None = None
     fix: str | None = None
+    toolkit: str | None = Field(
+        default=None, description="Composio toolkit an INTEGRATION_NOT_CONNECTED error is about."
+    )
+    integration_id: str | None = Field(
+        default=None, description="Integration an INTEGRATION_NOT_CONNECTED error asks to connect."
+    )
     errors: list[ValidationIssue] | None = Field(
         default=None, description="Field-level failures; present only on 422."
     )
@@ -170,12 +176,12 @@ def error_responses(descriptions: Mapping[int, str]) -> dict[int | str, dict[str
 
 
 # FastAPI documents a response ``model`` under the route's ``response_class``
-# media type, so a ``text/html`` route has to spell out that its error bodies
-# are still the JSON envelope (registered as a component by every other route).
+# media type, so a text/html or text/event-stream route has to spell out that its
+# error bodies are still the JSON envelope (registered as a component by every other route).
 _JSON_ENVELOPE_CONTENT: dict[str, Any] = {
     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}
 }
-HTML_ROUTE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+NON_JSON_ROUTE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: _JSON_ENVELOPE_CONTENT,
     "4XX": _JSON_ENVELOPE_CONTENT,
     "5XX": _JSON_ENVELOPE_CONTENT,

@@ -1,0 +1,502 @@
+{
+ "run": "run_f8d63cde5b7f",
+ "captured_from": "2026-09-22",
+ "trigger_type": "integration",
+ "record": [
+  {
+   "tool_name": "send_notification"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "steps": [
+     {
+      "id": "event",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        }
+       }
+      ]
+     },
+     {
+      "id": "notify",
+      "tool": "send_notification",
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 8,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 10,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 12,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 14,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 16,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 18,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 19,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%S.%fZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S.%fZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 21,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%S.%fZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%S.%fZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 23,
+   "record_len": 1,
+   "written": {
+    "description": "Dovtnio Kkkppnct: fetch lar calendar event ngtlhhah hx lar next miby, get lab opps umfp/yuizmdvm, qiq notify lar ynrm xhuc w hogaq ovqcc-zh.",
+    "result_brief": "Tshl xhuc lar meeting reminder uzku eto sent: lar event pnkwu qiq tcnn ic qjmqiy hx Ajaej'n whdrf ohzt, vtyc lar opps umfp up yuizmdvm. Ttue ic oa w ysrmk ovqcc-zh yg w jbo wozpf. Hx lar window gxrbwril ga event (fetch mnpyu), ffq xtwyuay uzku ga meeting eto etfpq qiq jd mth qcgqho vhi.",
+    "steps": [
+     {
+      "handoff": "googlecalendar",
+      "id": "event",
+      "steps": [
+       {
+        "args": {
+         "max_results": 10,
+         "time_max": {
+          "$time": "$now + 1h",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         },
+         "time_min": {
+          "$time": "$now",
+          "format": "%Y-%m-%dT%H:%M:%SZ"
+         }
+        },
+        "id": "fetch",
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS"
+       }
+      ]
+     },
+     {
+      "args": {
+       "channels": [
+        "ltbnq",
+        "uppkustc"
+       ],
+       "message": {
+        "$ask": "w iwsxbtw 93 zlls ovqcc-zh udh lar ynrm (Ajaej) xhuc lar event pnkwu, lab start ohzt (qiq qxg ohzt bg brief) hx xrn Yeazxzv/Fwt_Syitcin whdrf ohzt, qiq lar opps umfp up yuizmdvm evvq lar event details loqce. Qddp ic xhuc \\Ajaej fx lab mtx zlls."
+       },
+       "title": "Dovtnio Kkkppnct"
+      },
+      "id": "notify",
+      "tool": "send_notification"
+     }
+    ]
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS; handoffs without calls: ['googlecalendar']",
+   "expected": "unmappable"
+  }
+ ]
+}

@@ -434,7 +434,7 @@ class TestArgumentThatIsTheCalleeDefault:
 
     Deleting it cannot be killed, while re-valuing it can and must stay
     reported. Both directions are pinned on the real shapes from
-    _build_browser_config (crawl4ai) and seed_for_user (fingerprint).
+    _build_browser_config (crawl4ai) and an int.from_bytes byteorder.
     """
 
     _WRAPPED = (

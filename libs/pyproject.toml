@@ -11,6 +11,7 @@ dependencies = [
   "python-dotenv>=1.0.0",
   "infisicalsdk>=1.0.7",
   "posthog>=7.44.2",
+  "tenacity>=9.1.2",
 ]
 
 [dependency-groups]
@@ -26,3 +27,6 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["shared*"]
+
+[tool.setuptools.package-data]
+shared = ["bot-identity.json"]

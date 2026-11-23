@@ -14,10 +14,14 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from app.agents.core.background.executor_channel import drain_inbox_hook
-from app.agents.core.graph_builder.build_graph import build_executor_graph
+from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
+from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.middleware.factory import SubagentStackOptions
-from app.agents.middleware.subagent import SubagentMiddleware, spawner_of
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.constants.general import FINISH_TASK_NAME
 
 _MOD = "app.agents.core.graph_builder.build_graph"
 _CM_MOD = "app.agents.core.graph_builder.checkpointer_manager"
@@ -53,7 +57,6 @@ def _apply_patches(stack: ExitStack, overrides: dict | None = None):
             return_value=MagicMock(get_tool_dict=MagicMock(return_value={"tool_a": MagicMock()})),
         ),
         f"{_MOD}.create_todo_tools": MagicMock(return_value=[MagicMock(name="plan_tasks")]),
-        f"{_MOD}.create_todo_pre_model_hook": MagicMock(return_value=MagicMock(name="todo_hook")),
         f"{_MOD}.create_executor_middleware": MagicMock(return_value=[]),
         f"{_MOD}.create_comms_middleware": MagicMock(return_value=[]),
         f"{_MOD}.build_executor_child_tool_runtime_config": MagicMock(return_value={}),
@@ -430,6 +433,7 @@ class TestBuildCommsGraph:
             assert kwargs["agent_config"].agent_name == "comms_agent"
             assert kwargs["tools_config"].disable_retrieve_tools is True
             from app.agents.tools import memory_tools
+            from app.agents.tools.weather_tool import get_weather
             from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 
             # Comms binds these statically: retrieval is off, so a tool absent
@@ -444,6 +448,10 @@ class TestBuildCommsGraph:
                 "search_public_workflows",
                 web_search_tool.name,
                 fetch_webpages.name,
+                get_weather.name,
+                "answered",
+                "react",
+                "stay_silent",
                 *[memory_tool.name for memory_tool in memory_tools.tools],
             ]
 
@@ -497,9 +505,11 @@ class TestBuildCommsGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            # comms agent: filter_messages_node, executor_status_hook,
-            # browser_task_status_hook, manage_system_prompts_node
-            assert len(pre_model_hooks) == 4
+            assert pre_model_hooks == [
+                filter_messages_node,
+                drain_conversation_log_hook,
+                manage_system_prompts_node,
+            ]
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -567,7 +577,7 @@ class TestBuildExecutorGraph:
         assert "handoff" not in registry
 
     async def test_activate_integration_leads_the_initial_tool_set(self):
-        """activate_integration leads; the full initial set follows."""
+        """activate_integration leads, finish_task follows; the full initial set after."""
         from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
 
         with ExitStack() as stack:
@@ -579,7 +589,7 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
 
-        expected = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+        expected = ["activate_integration", FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
         assert kwargs["tools_config"].initial_tool_ids == expected
 
     async def test_no_join_tool_bound(self):
@@ -656,6 +666,7 @@ class TestBuildExecutorGraph:
             # one name survives. activate_integration leads unconditionally.
             assert kwargs["tools_config"].initial_tool_ids == [
                 "activate_integration",
+                "finish_task",
                 "execute",
                 "get_tool_schema",
                 "plan_tasks",
@@ -682,6 +693,8 @@ class TestBuildExecutorGraph:
                 "get_user_instructions",
                 "update_user_instructions",
                 "browser_task",
+                "create_artifact",
+                "read_run_record",
                 "write_playbook",
                 "decline_playbook",
                 "read_playbook",
@@ -718,7 +731,6 @@ class TestBuildExecutorGraph:
                     "list_running_subagents",
                     "message_subagent",
                     "cancel_subagent",
-                    "activate_integration",
                     "update_user_instructions",
                 },
                 tool_runtime_config=runtime_config,
@@ -726,7 +738,7 @@ class TestBuildExecutorGraph:
             ),
         }
 
-    async def test_executor_pre_model_hooks_includes_todo_hook_and_the_inbox_drain(self):
+    async def test_executor_pre_model_hooks_drain_the_inbox_and_carry_no_todo_hook(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
@@ -736,13 +748,14 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            # executor: filter_messages_node, adapt_media_node, todo_hook,
-            # drain_inbox_hook, manage_system_prompts_node
-            assert len(pre_model_hooks) == 5
-            # Named rather than counted: the drain is what lets work handed over
-            # mid-run reach the executor at all, and a count alone would stay
-            # green if it were swapped for anything else.
-            assert drain_inbox_hook in pre_model_hooks
+            # The drain is what lets work handed over mid-run reach the executor
+            # at all; the todo instructions live in its static prompt, not a hook.
+            assert pre_model_hooks == [
+                filter_messages_node,
+                adapt_media_node,
+                drain_inbox_hook,
+                manage_system_prompts_node,
+            ]
 
     async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
         """A caller that hands in a model gets that model, not a freshly built one — rebuilding could pick a provider with no key."""
@@ -780,7 +793,6 @@ class TestBuildExecutorGraph:
 
     async def test_subagent_middleware_wired_when_present(self):
         """When SubagentMiddleware is in the middleware stack, set_llm/set_tools/set_store are called."""
-        from app.agents.middleware.subagent import SubagentMiddleware
 
         mock_sub_mw = MagicMock(spec=SubagentMiddleware)
 
@@ -797,39 +809,6 @@ class TestBuildExecutorGraph:
         mock_sub_mw.set_llm.assert_called_once_with(deps["llm"])
         mock_sub_mw.set_tools.assert_called_once()
         mock_sub_mw.set_store.assert_called_once()
-
-    @pytest.mark.parametrize("in_memory", [True, False])
-    async def test_the_compiled_graph_names_the_spawner_it_was_built_with(
-        self, in_memory: bool
-    ) -> None:
-        """A parked spawn is rebuilt through spawner_of(executor graph), on either checkpointer."""
-        sub_mw = MagicMock(spec=SubagentMiddleware)
-        manager = MagicMock()
-        with ExitStack() as stack:
-            deps = _apply_patches(
-                stack,
-                {
-                    f"{_MOD}.create_executor_middleware": MagicMock(return_value=[sub_mw]),
-                    f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=manager),
-                },
-            )
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=in_memory
-            ) as graph:
-                assert spawner_of(graph) is sub_mw
-
-    @pytest.mark.parametrize("in_memory", [True, False])
-    async def test_a_graph_built_without_a_spawner_names_none(self, in_memory: bool) -> None:
-        manager = MagicMock()
-        with ExitStack() as stack:
-            deps = _apply_patches(
-                stack, {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=manager)}
-            )
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=in_memory
-            ) as graph:
-                with pytest.raises(KeyError):
-                    spawner_of(graph)
 
     async def test_no_subagent_middleware_logs_warning(self):
         """When SubagentMiddleware is not in the stack, a warning is logged."""
@@ -921,10 +900,8 @@ class TestBuildGraphs:
     @patch(f"{_MOD}.log")
     @patch(f"{_MOD}.build_comms_agent")
     @patch(f"{_MOD}.build_executor_agent")
-    @patch(f"{_MOD}.register_subagent_providers")
     def test_registers_both_agents(
         self,
-        mock_register_subagent,
         mock_build_executor,
         mock_build_comms,
         mock_log,
@@ -933,17 +910,14 @@ class TestBuildGraphs:
 
         build_graphs()
 
-        mock_register_subagent.assert_called_once()
         mock_build_executor.assert_called_once()
         mock_build_comms.assert_called_once()
 
     @patch(f"{_MOD}.log")
     @patch(f"{_MOD}.build_comms_agent")
     @patch(f"{_MOD}.build_executor_agent")
-    @patch(f"{_MOD}.register_subagent_providers")
     def test_calls_in_correct_order(
         self,
-        mock_register_subagent,
         mock_build_executor,
         mock_build_comms,
         mock_log,
@@ -951,21 +925,18 @@ class TestBuildGraphs:
         from app.agents.core.graph_builder.build_graph import build_graphs
 
         call_order: list[str] = []
-        mock_register_subagent.side_effect = lambda: call_order.append("register")
         mock_build_executor.side_effect = lambda: call_order.append("executor")
         mock_build_comms.side_effect = lambda: call_order.append("comms")
 
         build_graphs()
 
-        assert call_order == ["register", "executor", "comms"]
+        assert call_order == ["executor", "comms"]
 
     @patch(f"{_MOD}.log")
     @patch(f"{_MOD}.build_comms_agent")
     @patch(f"{_MOD}.build_executor_agent")
-    @patch(f"{_MOD}.register_subagent_providers")
     def test_logs_start_and_completion(
         self,
-        mock_register_subagent,
         mock_build_executor,
         mock_build_comms,
         mock_log,

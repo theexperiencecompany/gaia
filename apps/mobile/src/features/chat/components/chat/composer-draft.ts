@@ -1,3 +1,4 @@
+import type { SelectedWorkflowDataInput } from "@gaia/shared/api/generated";
 import type { ReplyToMessageData } from "../../types";
 
 interface SelectedTool {
@@ -5,10 +6,8 @@ interface SelectedTool {
   category: string;
 }
 
-export interface SelectedWorkflow {
-  id: string;
-  title: string;
-}
+/** The workflow picked in the composer, sent with the message as the server reads it. */
+export type SelectedWorkflow = SelectedWorkflowDataInput;
 
 /**
  * The unsent turn: what the user has typed plus the attachments-of-intent
@@ -18,8 +17,6 @@ export interface SelectedWorkflow {
  */
 export interface ComposerDraftState {
   inputValue: string;
-  /** Kept after a send so the thinking-message rotation can stay on-topic. */
-  lastUserMessage: string;
   selectedTool: SelectedTool | null;
   selectedWorkflow: SelectedWorkflow | null;
   replyingTo: ReplyToMessageData | null;
@@ -28,7 +25,7 @@ export interface ComposerDraftState {
 export type ComposerDraftAction =
   | { type: "inputChanged"; value: string }
   | { type: "conversationSwitched" }
-  | { type: "messageSent"; text: string }
+  | { type: "messageSent" }
   | { type: "toolSelected"; tool: SelectedTool }
   | { type: "toolRemoved" }
   | { type: "workflowSelected"; workflow: SelectedWorkflow }
@@ -40,7 +37,6 @@ export type ComposerDraftAction =
 
 export const initialComposerDraft: ComposerDraftState = {
   inputValue: "",
-  lastUserMessage: "",
   selectedTool: null,
   selectedWorkflow: null,
   replyingTo: null,
@@ -62,12 +58,7 @@ export function composerDraftReducer(
     case "conversationSwitched":
       return { ...state, inputValue: "", ...EMPTY_ATTACHMENTS };
     case "messageSent":
-      return {
-        ...state,
-        inputValue: "",
-        lastUserMessage: action.text,
-        ...EMPTY_ATTACHMENTS,
-      };
+      return { ...state, inputValue: "", ...EMPTY_ATTACHMENTS };
     case "toolSelected":
       return { ...state, selectedTool: action.tool, selectedWorkflow: null };
     case "toolRemoved":
@@ -87,13 +78,8 @@ export function composerDraftReducer(
     // `/new` only resets the typed text here: it also sets the active chat to
     // null, and the conversation-switch effect clears the attachments.
     case "newChatCommand":
-      return { ...state, inputValue: "", lastUserMessage: "" };
+      return { ...state, inputValue: "" };
     case "clearCommand":
-      return {
-        ...state,
-        inputValue: "",
-        lastUserMessage: "",
-        ...EMPTY_ATTACHMENTS,
-      };
+      return { ...state, inputValue: "", ...EMPTY_ATTACHMENTS };
   }
 }
