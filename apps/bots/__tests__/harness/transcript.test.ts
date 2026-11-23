@@ -51,3 +51,36 @@ describe("TranscriptRecorder", () => {
     expect(readFileSync(file, "utf8")).toBe("");
   });
 });
+
+describe("TranscriptRecorder.until", () => {
+  const sends = (events: readonly { type: string }[]) =>
+    events.filter((event) => event.type === "send").length;
+
+  it("resolves on the event that makes the condition hold, not before", async () => {
+    const recorder = new TranscriptRecorder("telegram");
+    let eventsWhenResolved: number | undefined;
+    const reached = recorder
+      .until((events) => sends(events) >= 2)
+      .then(() => {
+        eventsWhenResolved = recorder.getEvents().length;
+      });
+
+    recorder.record({ type: "send", messageId: "m1", text: "a", length: 1 });
+    recorder.record({ type: "typing", state: "start" });
+    await Promise.resolve();
+    expect(eventsWhenResolved).toBeUndefined();
+
+    recorder.record({ type: "send", messageId: "m2", text: "b", length: 1 });
+    await reached;
+    expect(eventsWhenResolved).toBe(3);
+  });
+
+  it("resolves at once when the condition already holds", async () => {
+    const recorder = new TranscriptRecorder("telegram");
+    recorder.record({ type: "typing", state: "start" });
+
+    await expect(
+      recorder.until((events) => events.length === 1),
+    ).resolves.toBeUndefined();
+  });
+});

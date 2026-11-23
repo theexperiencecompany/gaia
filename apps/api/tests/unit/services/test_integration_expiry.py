@@ -8,15 +8,17 @@ from collections.abc import Iterator
 from datetime import UTC
 from functools import partial
 from unittest.mock import AsyncMock, MagicMock, call, patch
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.integrations import IntegrationStatus
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
+from app.models.notification.details_models import IntegrationExpiredNotification
 from app.models.notification.notification_models import ActionStyle, NotificationType
 from app.services.integrations.integration_expiry import (
     AccountExpired,
@@ -51,7 +53,7 @@ def repo(fake_redis: object) -> Iterator[MagicMock]:
         *,
         accounts: list[IntegrationAccount],
         primary_account_id: str | None,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> UserIntegrationDocument:
         return UserIntegrationDocument(
@@ -114,7 +116,9 @@ class TestNoOpGuards:
         )
 
     async def test_an_already_expired_account_does_not_expire_again(self, repo: MagicMock) -> None:
-        repo.get_for_user.return_value = _record(make_integration_account("ca_1", status="expired"))
+        repo.get_for_user.return_value = _record(
+            make_integration_account("ca_1", status=IntegrationStatus.EXPIRED)
+        )
 
         outcome = await expire_account(
             USER_ID, INTEGRATION_ID, provider_account_id("ca_1"), trigger="webhook"
@@ -189,7 +193,8 @@ class TestOneAccountOfSeveral:
         self, repo: MagicMock, log: MagicMock
     ) -> None:
         repo.get_for_user.return_value = _record(
-            make_integration_account("ca_1"), make_integration_account("ca_2", status="expired")
+            make_integration_account("ca_1"),
+            make_integration_account("ca_2", status=IntegrationStatus.EXPIRED),
         )
 
         outcome = await expire_account(
@@ -221,17 +226,17 @@ class TestOneAccountOfSeveral:
 @pytest.fixture
 def announce_seams() -> Iterator[dict[str, MagicMock]]:
     with (
-        patch(f"{MODULE}.websocket_manager") as ws,
+        patch("app.services.integrations.user_integration_status.websocket_manager") as ws,
         patch(f"{MODULE}.notification_service") as notifications,
     ):
-        ws.broadcast_to_user = AsyncMock()
-        notifications.create_notification = AsyncMock()
+        ws.announce = AsyncMock()
+        notifications.notify = AsyncMock()
         yield {"ws": ws, "notify": notifications}
 
 
 def _expired(*, count: int = 1, integration_expired: bool = True) -> AccountExpired:
     return AccountExpired(
-        account=make_integration_account("ca_1", status="expired"),
+        account=make_integration_account("ca_1", status=IntegrationStatus.EXPIRED),
         account_count=count,
         was_primary=True,
         integration_expired=integration_expired,
@@ -239,32 +244,14 @@ def _expired(*, count: int = 1, integration_expired: bool = True) -> AccountExpi
 
 
 class TestTheAnnouncement:
-    async def test_an_open_page_flips_to_the_integrations_new_status(
-        self, announce_seams: dict[str, MagicMock]
-    ) -> None:
-        await announce_account_expiry(
-            USER_ID, INTEGRATION_ID, _expired(count=2, integration_expired=False), [], None
-        )
-
-        announce_seams["ws"].broadcast_to_user.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID, "status": "connected"},
-            },
-        )
-
-    async def test_an_open_page_flips_to_expired_once_every_account_is_dead(
+    async def test_an_open_page_re_reads_the_integration(
         self, announce_seams: dict[str, MagicMock]
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
 
-        announce_seams["ws"].broadcast_to_user.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID, "status": "expired"},
-            },
+        announce_seams["ws"].announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": "integration_status_update", "data": {"integration_id": INTEGRATION_ID}},
         )
 
     async def test_a_single_account_is_announced_by_integration_name(
@@ -272,8 +259,17 @@ class TestTheAnnouncement:
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
+        request = announce_seams["notify"].notify.await_args.args[0]
         assert request.content.title == "Notion disconnected"
+
+    async def test_each_lost_account_is_its_own_notification(
+        self, announce_seams: dict[str, MagicMock]
+    ) -> None:
+        await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
+
+        request = announce_seams["notify"].notify.await_args.args[0]
+        expected = f"gaia-notification:{USER_ID}:integration_expired:notion:ca_1"
+        assert request.id == str(uuid5(NAMESPACE_URL, expected))
 
     async def test_one_of_several_accounts_is_named_so_the_user_knows_which_to_reconnect(
         self, announce_seams: dict[str, MagicMock]
@@ -282,7 +278,7 @@ class TestTheAnnouncement:
             USER_ID, INTEGRATION_ID, _expired(count=2, integration_expired=False), [], None
         )
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
+        request = announce_seams["notify"].notify.await_args.args[0]
         assert request.content.title == "Notion (ca_1@acme.com) disconnected"
 
     async def test_it_is_an_in_app_warning_whose_button_signs_that_account_back_in(
@@ -290,15 +286,19 @@ class TestTheAnnouncement:
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), ["Digest"], None)
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
+        request = announce_seams["notify"].notify.await_args.args[0]
         assert request.user_id == USER_ID
         assert request.type == NotificationType.WARNING
-        assert [c.channel_type for c in request.channels] == [CHANNEL_TYPE_INAPP]
+        assert [c.channel_type for c in request.channels] == [NotificationChannel.INAPP]
         (action,) = request.content.actions
         assert action.label == "Reconnect"
         assert action.style == ActionStyle.PRIMARY
         assert action.config.redirect.url == f"/integrations?connect={INTEGRATION_ID}&account=ca_1"
-        assert request.metadata == {"integration_id": INTEGRATION_ID, "paused_workflows": 1}
+        assert request.details == IntegrationExpiredNotification(
+            kind=NotificationKind.INTEGRATION_EXPIRED,
+            integration_id=INTEGRATION_ID,
+            paused_workflows=1,
+        )
         assert request.content.body == (
             f"{GENERIC_LEAD} Your “Digest” workflow is paused until you reconnect."
         )
@@ -310,7 +310,7 @@ class TestTheAnnouncement:
             USER_ID, INTEGRATION_ID, _expired(), [], "refresh_token_revoked"
         )
 
-        body = announce_seams["notify"].create_notification.await_args.args[0].content.body
+        body = announce_seams["notify"].notify.await_args.args[0].content.body
         assert body.startswith("Your Notion account revoked GAIA's access.")
 
 

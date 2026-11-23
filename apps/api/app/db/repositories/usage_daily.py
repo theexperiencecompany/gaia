@@ -14,9 +14,17 @@ surviving.
 from collections.abc import Mapping
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.repositories.base import UserScopedDocument, UserScopedRepository
+from app.db.repositories.base import UserScopedRepository
+from app.models.document_models import UserScopedDocument
+
+
+class _UserWindowTotal(BaseModel):
+    """One user's row of the window-totals aggregate."""
+
+    user_id: str = Field(alias="_id")
+    total: int
 
 
 class UsageDailyDocument(UserScopedDocument):
@@ -86,7 +94,6 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
     document_model = UsageDailyDocument
     update_model = UsageDailyUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def increment(
         self, user_id: str, day: str, delta: UsageDailyIncrement, *, charged: bool = True
@@ -115,7 +122,6 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
         await self._apply_raw_update(
             {"user_id": user_id, "date": day},
             {"$inc": inc},
-            scope=user_id,
             return_document=False,
             upsert=True,
         )
@@ -139,7 +145,6 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
                     "cost_actual_at": actuals.at,
                 }
             },
-            scope=user_id,
             upsert=False,
         )
         return matched > 0
@@ -198,15 +203,16 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
 
     async def user_window_totals(self, window_start: str) -> list[tuple[str, int]]:
         """Every user's summed action count since window_start, one pass."""
-        return [
-            (str(row["_id"]), int(row["total"]))
-            async for row in self._raw_collection().aggregate(
+        rows = [
+            _UserWindowTotal.model_validate(raw)
+            async for raw in self._raw_collection().aggregate(
                 [
                     {"$match": {"date": {"$gte": window_start}}},
                     {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
                 ]
             )
         ]
+        return [(row.user_id, row.total) for row in rows]
 
 
 usage_daily_repository = UsageDailyRepository()

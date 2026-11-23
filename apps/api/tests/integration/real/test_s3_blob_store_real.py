@@ -25,6 +25,7 @@ from app.constants.files import S3_WRITE_PROBE_KEY, BlobKind, S3AddressingStyle
 from app.services.blob_store import blob_store, ensure_blob_store_ready, s3_blob_store
 from app.utils.errors import AppError
 from tests.conftest import FAKE_USER
+from tests.helpers import pick_free_port
 
 pytestmark = pytest.mark.skipif(
     shutil.which("docker") is None, reason="requires the docker CLI + daemon"
@@ -67,16 +68,17 @@ async def _wait_until_live(endpoint_url: str) -> None:
 @pytest.fixture
 async def minio() -> AsyncIterator[MinioServer]:
     name = f"gaia-test-minio-{uuid.uuid4().hex[:12]}"
+    # rootless docker's own pick counts up from 32768 blind to ports other daemons hold
+    host_port = pick_free_port()
     await _docker(
         "run", "-d", "--rm", "--name", name,
         "-e", f"MINIO_ROOT_USER={ACCESS_KEY}",
         "-e", f"MINIO_ROOT_PASSWORD={SECRET_KEY}",
-        "-p", "127.0.0.1::9000",
+        "-p", f"127.0.0.1:{host_port}:9000",
         MINIO_IMAGE, "server", "/data",
     )  # fmt: skip
     try:
-        host_port = (await _docker("port", name, "9000/tcp")).splitlines()[0]
-        server = MinioServer(endpoint_url=f"http://{host_port}")
+        server = MinioServer(endpoint_url=f"http://127.0.0.1:{host_port}")
         await _wait_until_live(server.endpoint_url)
         yield server
     finally:

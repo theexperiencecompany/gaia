@@ -6,7 +6,12 @@ import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
 import { apiEnvPath, detectSetupMode } from "./install-root.js";
 import type { LlmProvider } from "./llm-flags.js";
-import { collectMachineSecrets } from "./machine-secrets.js";
+import {
+  collectMachineSecrets,
+  ensureWebServerSecrets,
+} from "./machine-secrets.js";
+import { applyShareDomainApiEnv } from "./share-domains.js";
+import type { ShareDomains } from "./share-domains.types.js";
 
 const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -16,6 +21,8 @@ export interface EnvSetupOptions {
   llmProvider?: LlmProvider;
   /** Public domain from `gaia up --domain`; GAIA is served at https://<domain>. False on --no-domain. */
   domain?: envWriter.DomainFlag;
+  /** The share domains `gaia up` serves beside the domain; absent leaves the recorded ones. */
+  shareDomains?: ShareDomains;
 }
 
 export async function selectSetupMode(
@@ -108,6 +115,9 @@ export async function runEnvSetup(
   if (setupMode === "selfhost") {
     // Generated only for still-missing secrets; existing ones are kept.
     Object.assign(envValues, collectMachineSecrets(existingEnv));
+    if (options?.shareDomains) {
+      applyShareDomainApiEnv(envValues, options.shareDomains);
+    }
   }
 
   try {
@@ -117,7 +127,7 @@ export async function runEnvSetup(
       envValues,
       setupMode,
       portOverrides,
-      options?.domain,
+      { domain: options?.domain, shareDomains: options?.shareDomains },
     );
   } catch (e) {
     store.setError(e as Error);
@@ -304,7 +314,7 @@ async function writeAllEnvFiles(
   envValues: Record<string, string>,
   setupMode: envParser.SetupMode,
   portOverrides?: Record<number, number>,
-  domain?: envWriter.DomainFlag,
+  served: Pick<EnvSetupOptions, "domain" | "shareDomains"> = {},
 ): Promise<void> {
   // Write API .env
   store.setStatus("Saving GAIA's settings…");
@@ -325,9 +335,10 @@ async function writeAllEnvFiles(
         setupMode,
         {
           dockerSocketGid: getDockerSocketGid(),
-          domain,
+          ...served,
         },
       );
+      ensureWebServerSecrets(repoPath);
       store.setStatus("Saved Docker's settings");
     } catch (e) {
       throw new Error(

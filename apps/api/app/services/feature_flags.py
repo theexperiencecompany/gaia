@@ -20,7 +20,6 @@ from datetime import UTC, datetime
 from typing import NamedTuple
 
 from posthog import Posthog
-from pymongo.errors import PyMongoError
 
 from app.config.feature_flags import (
     FEATURE_FLAGS,
@@ -42,6 +41,7 @@ from app.constants.feature_flags import (
     FEATURE_USER_NOT_FOUND_WHY,
 )
 from app.core.lazy_loader import providers
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.users import user_repository
 from app.schemas.feature_flags import UserFeatureFlagListResponse, UserFeatureFlagResponse
 from app.services.analytics_service import analytics_day_start, capture, identify_user
@@ -88,7 +88,7 @@ async def _stored_choice(flag: FeatureFlag, user_id: str) -> bool | None:
     """Return the user's own choice for the flag, or None when they never made one or it cannot be read."""
     try:
         user = await user_repository.get(user_id)
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             "Feature flag stored choice unreadable, the rollout decides",
             flag=flag.value,
@@ -280,21 +280,6 @@ async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFla
 async def is_code_mode_enabled(user_id: str | None) -> bool:
     """Whether the user's bash runs get the gaia.execute client and a per-invocation token; off runs with no GAIA_EXECUTE_* env."""
     return await is_enabled(FeatureFlag.CODE_MODE, user_id)
-
-
-async def is_hil_ledger_enabled(user_id: str | None) -> bool:
-    """Whether the user's gated calls register PENDING in the approval ledger instead of parking the run; off keeps the barrier."""
-    return await is_enabled(FeatureFlag.HIL_LEDGER, user_id)
-
-
-async def is_jev_judge_enabled(user_id: str | None) -> bool:
-    """Whether the user's auto mode classifies with JEV first (LLM fallback on transport failure); off keeps the LLM judge."""
-    return await is_enabled(FeatureFlag.HIL_JEV_JUDGE, user_id)
-
-
-async def is_jev_reply_enabled(user_id: str | None) -> bool:
-    """Whether the user's chat replies to pending approvals are classified by JEV first (LLM fallback on transport failure)."""
-    return await is_enabled(FeatureFlag.HIL_JEV_REPLY, user_id)
 
 
 async def is_trigger_gates_enforced(user_id: str | None) -> bool:

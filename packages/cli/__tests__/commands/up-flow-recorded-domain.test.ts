@@ -9,7 +9,7 @@ mkdirSync(path.join(install, "packages", "cli", "selfhost"), {
 });
 writeFileSync(
   path.join(install, "packages", "cli", "selfhost", ".env"),
-  "WEB_HOST_PORT=80\nHTTPS_HOST_PORT=443\nGAIA_DOMAIN=gaia.test\nGAIA_VERSION=v0.7.0\n",
+  "WEB_HOST_PORT=80\nHTTPS_HOST_PORT=443\nGAIA_DOMAIN=gaia.test\nGAIA_LINK_DOMAIN=go.gaia.test\nGAIA_VERSION=v0.7.0\n",
 );
 
 const readiness = vi.hoisted(() => ({
@@ -99,6 +99,23 @@ describe("gaia up again on an install with a domain, without --domain", () => {
     expect(outcome.localCertificate).toBe(true);
     // Caddy redirects a LAN address to HTTPS for a host it has no certificate for.
     expect(outcome.lanUrls).toEqual([]);
+    // The recorded short-link domain is kept; the undecided one is never asked in a --yes run.
+    expect(envSetup.runEnvSetup).toHaveBeenLastCalledWith(
+      store,
+      install,
+      "selfhost",
+      {},
+      expect.objectContaining({ shareDomains: { link: "go.gaia.test" } }),
+    );
+  });
+
+  it("refuses --usercontent-domain naming GAIA's own domain before anything downloads", async () => {
+    const store = createStore();
+
+    await runUpFlow(store, { yes: true, usercontentDomain: "gaia.test" });
+
+    expect(store.currentState.error?.message).toMatch(/GAIA itself/);
+    expect(portChecks.runPortChecks).not.toHaveBeenCalled();
   });
 });
 
@@ -122,7 +139,7 @@ describe("gaia up --no-domain on an install with a domain", () => {
       install,
       "selfhost",
       {},
-      expect.objectContaining({ domain: false }),
+      expect.objectContaining({ domain: false, shareDomains: {} }),
     );
     expect(localName.setUpLocalName).toHaveBeenCalled();
     const outcome = store.currentState.data.upOutcome as UpOutcome;

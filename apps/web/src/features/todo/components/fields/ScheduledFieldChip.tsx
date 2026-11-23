@@ -1,8 +1,10 @@
 "use client";
 
-import { Button, Divider, Input } from "@heroui/react";
+import { Input, Separator } from "@heroui/react";
 import { Cancel01Icon, Clock01Icon } from "@icons";
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -22,22 +24,6 @@ export default function ScheduledFieldChip({
   // Use user's preferred timezone or fallback to browser timezone
   const normalizedTimezone = timezone?.trim();
   const userTimezone = normalizedTimezone || getBrowserTimezone();
-
-  // Intl formatters are expensive to build — memoize per timezone instead of
-  // rebuilding on every render.
-  const displayFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: userTimezone,
-      }),
-    [userTimezone],
-  );
 
   // Extracts the date portion (YYYY-MM-DD) in the user's timezone
   const dateInputFormatter = useMemo(
@@ -64,7 +50,10 @@ export default function ScheduledFieldChip({
   );
 
   const displayValue = value
-    ? displayFormatter.format(new Date(value))
+    ? formatDate(value, "dayTime", {
+        locale: FIXED_LOCALE,
+        timeZone: userTimezone,
+      })
     : undefined;
 
   const dateInputValue = value
@@ -136,8 +125,7 @@ export default function ScheduledFieldChip({
               type="date"
               value={dateInputValue}
               onChange={handleDateChange}
-              size="sm"
-              variant="flat"
+              variant="secondary"
               className="w-full"
               aria-label="Select scheduled date"
             />
@@ -145,62 +133,60 @@ export default function ScheduledFieldChip({
               type="time"
               value={timeInputValue}
               onChange={handleTimeChange}
-              size="sm"
-              variant="flat"
+              variant="secondary"
               className="w-full"
               aria-label="Select scheduled time"
             />
           </div>
 
           {/* Quick schedule options */}
-          <Button
-            variant="light"
+          <GaiaButton
+            variant="ghost"
+            tone="faint"
             fullWidth
-            radius="lg"
-            className="justify-start gap-2 px-3 text-zinc-500"
-            startContent={<Clock01Icon width={18} height={18} />}
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(1, onClose)}
           >
+            <Clock01Icon width={18} height={18} />
             In 1 hour
-          </Button>
-          <Button
-            variant="light"
+          </GaiaButton>
+          <GaiaButton
+            variant="ghost"
+            tone="faint"
             fullWidth
-            radius="lg"
-            className="justify-start gap-2 px-3 text-zinc-500"
-            startContent={<Clock01Icon width={18} height={18} />}
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(4, onClose)}
           >
+            <Clock01Icon width={18} height={18} />
             In 4 hours
-          </Button>
-          <Button
-            variant="light"
+          </GaiaButton>
+          <GaiaButton
+            variant="ghost"
+            tone="faint"
             fullWidth
-            radius="lg"
-            className="justify-start gap-2 px-3 text-zinc-500"
-            startContent={<Clock01Icon width={18} height={18} />}
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(24, onClose)}
           >
+            <Clock01Icon width={18} height={18} />
             Tomorrow
-          </Button>
+          </GaiaButton>
 
           {/* Clear option */}
           {value && (
             <>
-              <Divider className="my-1 bg-zinc-700" />
-              <Button
-                variant="light"
+              <Separator className="my-1" />
+              <GaiaButton
+                variant="ghost"
                 fullWidth
-                radius="lg"
                 className="justify-start gap-2 px-3 text-red-400"
-                startContent={<Cancel01Icon width={18} height={18} />}
                 onPress={() => {
                   onChange(undefined);
                   onClose();
                 }}
               >
+                <Cancel01Icon width={18} height={18} />
                 Clear schedule
-              </Button>
+              </GaiaButton>
             </>
           )}
         </div>

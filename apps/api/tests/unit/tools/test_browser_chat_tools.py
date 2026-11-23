@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 from arq.constants import abort_jobs_ss, in_progress_key_prefix
 import fakeredis.aioredis
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 import pytest
 
@@ -47,6 +48,7 @@ from app.services.browser.jobs import (
     set_latest_job,
     take_job_messages,
 )
+from app.utils.redis_utils import RedisPoolManager
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 from tests.browser_factories import make_browser_job_state
@@ -68,15 +70,15 @@ def arq(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> fakeredis.aioredis.FakeRedis:
     """ARQ's pool on the same fake Redis."""
-    monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     return fake_redis
 
 
-def _turn(conversation_id: str = CONVERSATION, **extra: Any) -> dict[str, Any]:
+def _turn(conversation_id: str = CONVERSATION, **extra: Any) -> RunnableConfig:
     return {"configurable": {"thread_id": conversation_id, "user_id": USER, **extra}}
 
 
-async def _say(chat_tool: BaseTool, args: dict[str, Any], config: dict[str, Any]) -> str:
+async def _say(chat_tool: BaseTool, args: dict[str, Any], config: RunnableConfig) -> str:
     return str(await chat_tool.ainvoke(args, config=config))
 
 
@@ -204,12 +206,8 @@ class TestBrowserStepDone:
         assert record is not None
         assert record.status is HandoffStatus.PENDING
 
-    @pytest.mark.parametrize(
-        "turn",
-        [_turn(is_result_narration=True), _turn(execution_mode="background")],
-        ids=["narration", "background"],
-    )
-    async def test_a_turn_with_no_user_message_settles_nothing(self, turn: dict[str, Any]) -> None:
+    async def test_a_background_turn_settles_nothing(self) -> None:
+        turn = _turn(execution_mode="background")
         await _running("job-1", CONVERSATION)
         handoff_id = await _paused("job-1", CONVERSATION)
 
@@ -283,13 +281,6 @@ class TestStopBrowserTask:
             True,
         )
 
-    async def test_a_narration_turn_stops_nothing(self) -> None:
-        await _running("job-1", CONVERSATION)
-
-        await _say(stop_browser_task, {}, _turn(is_result_narration=True))
-
-        assert await done_state("job-1") is None
-
     async def test_another_chats_job_is_out_of_reach(self) -> None:
         await _running("job-1", "conv-other")
 
@@ -330,10 +321,3 @@ class TestTellBrowserTask:
         record = await get_handoff(handoff_id)
         assert record is not None
         assert record.status is HandoffStatus.PENDING
-
-    async def test_a_narration_turn_tells_the_job_nothing(self) -> None:
-        await _running("job-1", CONVERSATION)
-
-        await _say(tell_browser_task, {"text": "use the blue one"}, _turn(is_result_narration=True))
-
-        assert await take_job_messages("job-1") == []

@@ -1,7 +1,9 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.context.slots import (
@@ -15,6 +17,7 @@ from app.agents.core.nodes.memory_node import (
     _format_messages_for_user_memory,
     _mark_ingested,
     _messages_to_ingest,
+    _precompute_next_turn_background,
     _store_user_memory_background,
     memory_node,
 )
@@ -24,6 +27,7 @@ from app.constants.memory import (
     MEMORY_INGEST_MARK_TTL,
     MemorySourceType,
 )
+from app.override.langgraph_bigtool.utils import State
 from app.utils.multimodal import extract_text_content
 from tests.helpers import WideEventRecorder
 
@@ -175,7 +179,10 @@ class TestThePresenceNoteIsNotTheUserSpeaking:
     """GAIA's surface-change note rides the thread as a HumanMessage; memory must never learn from it."""
 
     def test_the_note_never_reaches_the_extractor(self) -> None:
-        msgs = [_surface_change_note(), HumanMessage(content="my anniversary is October 19")]
+        msgs: list[AnyMessage] = [
+            _surface_change_note(),
+            HumanMessage(content="my anniversary is October 19"),
+        ]
 
         formatted = _format_messages_for_user_memory(msgs)
 
@@ -335,7 +342,7 @@ class TestExtractorInput:
     """What the extractor is shown: three roles, and only what is new."""
 
     @staticmethod
-    def _thread() -> list[AIMessage | HumanMessage | ToolMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             AIMessage(
@@ -381,7 +388,7 @@ class TestDeltaIngestion:
         assert context_count == 0
 
     async def test_a_second_run_only_sees_what_arrived_since(self) -> None:
-        messages = [
+        messages: list[AnyMessage] = [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             AIMessage(content="Noted.", id="m2"),
             HumanMessage(content="I also moved to Bangalore last week", id="m3"),
@@ -458,8 +465,10 @@ class TestSystemGeneratedConversations:
         retain.assert_awaited_once()
 
     async def test_the_conversation_id_reaches_the_background_task(self) -> None:
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1", "conversation_id": "c1"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {
+            "configurable": {"user_id": "u1", "thread_id": "t1", "conversation_id": "c1"}
+        }
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
@@ -474,11 +483,39 @@ class TestSystemGeneratedConversations:
 
 
 @pytest.mark.unit
+class TestNextTurnPrecompute:
+    async def _run(self, configurable: dict[str, str]) -> AsyncMock:
+        state = State(messages=[HumanMessage(content="hi")])
+        with (
+            patch(f"{NODE}.precompute_next_turn", new_callable=AsyncMock) as precompute,
+            patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock),
+        ):
+            await memory_node(state, {"configurable": configurable}, MagicMock())
+            await asyncio.sleep(0)
+        return precompute
+
+    async def test_even_a_turn_too_trivial_to_learn_from_pins_the_next_turns_memories(
+        self,
+    ) -> None:
+        precompute = await self._run({"user_id": "u1", "conversation_id": "c1"})
+
+        precompute.assert_awaited_once_with("u1", "c1", [HumanMessage(content="hi")])
+
+    @pytest.mark.parametrize("configurable", [{"user_id": "u1"}, {"conversation_id": "c1"}])
+    async def test_nothing_is_pinned_without_a_user_and_a_conversation(
+        self, configurable: dict[str, str]
+    ) -> None:
+        precompute = await self._run(configurable)
+
+        precompute.assert_not_awaited()
+
+
+@pytest.mark.unit
 class TestTheFencedTranscript:
     """The context/delta fence is prose inside a transcript, so a wrong marker row is invisible to any type checker."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),
@@ -542,7 +579,7 @@ class TestTheHighWaterMarkRead:
     """_messages_to_ingest decides what the extraction is billed for; an off-by-one here re-pays or drops disclosures."""
 
     @staticmethod
-    def _thread(count: int) -> list[HumanMessage]:
+    def _thread(count: int) -> list[AnyMessage]:
         return [HumanMessage(content=f"message {i}", id=f"m{i}") for i in range(count)]
 
     async def test_a_threadless_run_ingests_everything_as_new(self) -> None:
@@ -651,7 +688,7 @@ class TestTheIngestionHandoff:
     """What the background task passes to each collaborator: swap an id or prompt and extraction still "succeeds" wrongly."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),
@@ -976,8 +1013,8 @@ class TestWhatTheNodeSpawns:
     async def test_the_task_is_named_so_it_is_identifiable_in_flight(self) -> None:
         """An unnamed task is unattributable in a trace."""
         spawn, store = self._spawn_capture()
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {"configurable": {"user_id": "u1", "thread_id": "t1"}}
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock),
@@ -990,8 +1027,10 @@ class TestWhatTheNodeSpawns:
     async def test_the_subagent_s_extraction_prompt_reaches_the_task(self) -> None:
         """Drop the prompt and every integration turn extracts with generic hints."""
         spawn, store = self._spawn_capture()
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1", "subagent_id": "slack"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {
+            "configurable": {"user_id": "u1", "thread_id": "t1", "subagent_id": "slack"}
+        }
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
@@ -1006,8 +1045,10 @@ class TestWhatTheNodeSpawns:
     async def test_the_user_name_reaches_the_task(self) -> None:
         """Retain uses it to attribute first-person facts to a named person."""
         spawn, store = self._spawn_capture()
-        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
-        config = {"configurable": {"user_id": "u1", "thread_id": "t1", "user_name": "Sam"}}
+        state = State(messages=[HumanMessage(content="my anniversary is October 19")])
+        config: RunnableConfig = {
+            "configurable": {"user_id": "u1", "thread_id": "t1", "user_name": "Sam"}
+        }
 
         with (
             patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
@@ -1040,3 +1081,20 @@ class TestConversationSummaryIsNotUserSpeech:
             [self._summary, HumanMessage("hi there", id="h")]
         )
         assert [entry["role"] for entry in formatted] == ["gaia", "user"]
+
+
+class TestPrecomputeNextTurnBackground:
+    """The fire-and-forget precompute: its failure is recorded, never raised."""
+
+    async def test_a_failed_precompute_is_recorded_on_its_own_event_and_not_raised(self) -> None:
+        recorder = WideEventRecorder()
+        with (
+            patch(f"{NODE}.precompute_next_turn", new=AsyncMock(side_effect=RuntimeError("boom"))),
+            patch("shared.py.wide_events._loguru", recorder),
+        ):
+            await _precompute_next_turn_background("u1", "c1", [])
+
+        event = recorder.event("memory_precompute")
+        assert event["user"] == {"id": "u1"}
+        assert event["outcome"] == "failed"
+        assert event["errors"][0]["error_type"] == "RuntimeError"

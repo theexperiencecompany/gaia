@@ -1,61 +1,41 @@
 """
-Request coalescing utility for preventing thundering herd on cache miss.
+Request coalescing: concurrent callers for one key share a single run of the work.
 
-When multiple concurrent requests hit an expensive operation (like building
-the tools list) simultaneously, only one request executes the work while
-others wait for its result. This prevents redundant expensive work.
+Each waiter awaits the run shielded, so a waiter that is cancelled or out of
+its own budget leaves the run going for the others. The registry holds the task
+until it finishes, so it cannot be collected mid-flight.
 
-Coalescing is per-process, so N replicas can each run the work once. That is
-fine: the factories are idempotent and their cache writes are last-write-wins,
-so the cost is a duplicate upstream call, not a wrong result.
-
-Usage:
-    result = await coalesce_request(
-        key="global_tools",
-        factory=_build_global_tools
-    )
+Coalescing is per process and per event loop; the factories are idempotent with
+last-write-wins cache writes, so N replicas cost duplicate calls, not wrong results.
 """
 
 import asyncio
 from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar
-
-from app.constants.log_tags import LogTag
-from shared.py.wide_events import log
+import functools
+from typing import TypeVar, cast
 
 T = TypeVar("T")
 
-# In-flight requests: maps key -> task
-_pending_requests: dict[str, asyncio.Task[Any]] = {}
-_lock = asyncio.Lock()
+_Slot = tuple[asyncio.AbstractEventLoop, str]
+
+#: In-flight runs. Keyed by loop as well, so a task bound to a closed loop (tests,
+#: reloads) is never awaited from another.
+_pending_requests: dict[_Slot, asyncio.Task[object]] = {}
+
+
+def _forget(slot: _Slot, task: asyncio.Task[object]) -> None:
+    if _pending_requests.get(slot) is task:
+        del _pending_requests[slot]
 
 
 async def coalesce_request(key: str, factory: Callable[[], Coroutine[object, None, T]]) -> T:
-    """Coalesce concurrent requests for the same key.
-
-    The first request runs factory; concurrent requests for the same key
-    wait for and share its result, preventing a thundering herd on a
-    simultaneous cache miss.
-    """
-    log.set(operation="coalesce_request", coalesce_key=key)
-    task: asyncio.Task[T]
-    async with _lock:
-        if key in _pending_requests:
-            # Another request is already running, wait for it
-            log.debug(f"{LogTag.STARTUP} Request coalescing: waiting for in-flight", key=key)
-            task = _pending_requests[key]
-        else:
-            # We're the first, create the task
-            log.debug(f"{LogTag.STARTUP} Request coalescing: starting new request for", key=key)
-            coro = factory()
-            task = asyncio.create_task(coro)
-            _pending_requests[key] = task
-
-    try:
-        result = await task
-        return result
-    finally:
-        # Clean up only if we're the task owner
-        async with _lock:
-            if key in _pending_requests and _pending_requests[key] is task:
-                del _pending_requests[key]
+    """Join key's in-flight run, or start factory as it; return its result or raise its error."""
+    slot = (asyncio.get_running_loop(), key)
+    pending = _pending_requests.get(slot)
+    if pending is not None:
+        # One key always names one piece of work, so its task returns that work's type.
+        return await asyncio.shield(cast("asyncio.Task[T]", pending))
+    task = asyncio.ensure_future(factory())
+    _pending_requests[slot] = task
+    task.add_done_callback(functools.partial(_forget, slot))
+    return await asyncio.shield(task)

@@ -44,7 +44,7 @@ jobs:
     # The image pin waits up to 30 min for the release commit's build.
     timeout-minutes: 45
     # OIDC token enables npm provenance signing.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
@@ -170,7 +170,7 @@ jobs:
   # scripts/ci/release.sh connect-binaries.
   publish-binaries:
     name: Attach gaia-connect binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       # Uploading release assets writes to the release.

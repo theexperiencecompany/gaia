@@ -3,7 +3,7 @@
 #
 # TURN ENCODING — READ THIS BEFORE ADDING A CASE HERE:
 # turns go in `prompt`, separated by a line containing exactly `---`, which is
-# what ChatStreamTransport splits on (TURN_SEPARATOR = "\n---\n"). The
+# what ChatTransport splits on (TURN_SEPARATOR = "\n---\n"). The
 # `setup.turns` form used by hard.yaml does NOT reach the transport: load_cases
 # passes the whole leftover row as `Case.setup`, so a YAML `setup:` block lands
 # at `case.setup["setup"]["turns"]` while the transport reads

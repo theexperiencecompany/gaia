@@ -20,7 +20,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationEr
 
 from app.agents.tools.execute.unwrap import (
     ExecuteCallArgs,
-    execute_call_account,
+    execute_call_note,
     unwrap_execute_call,
 )
 from app.constants.execute import EXECUTE_TOOL_NAME
@@ -100,7 +100,7 @@ def _as_run(call: RecordedCall) -> RecordedCall:
             "tool_name": name,
             "args": args,
             "proxied": True,
-            "account": execute_call_account(call.tool_name, call.args),
+            "account": execute_call_note(call.tool_name, call.args, "account"),
         }
     )
 

@@ -11,6 +11,7 @@ import asyncio
 from typing import TypedDict, cast
 
 from app.constants.cache import MY_INTEGRATIONS_SNAPSHOT_KEY, ONE_DAY_TTL
+from app.constants.integrations import IntegrationStatus
 from app.decorators.caching import Cacheable
 from app.models.integration_models import UserIntegrationsListResponse
 from app.schemas.integrations.responses import (
@@ -18,6 +19,7 @@ from app.schemas.integrations.responses import (
     IntegrationToolsResponse,
     MyIntegrationItem,
     MyIntegrationsResponse,
+    MyIntegrationStatus,
 )
 from app.services.composio.auth_config_resolver import (
     composio_integrations,
@@ -91,16 +93,18 @@ def _apply_live_status_overlay(
     items: list[MyIntegrationItem] = []
     for item in snapshot.integrations:
         live = status_map.get(item.id)
-        if live is True and item.status != "connected":
-            items.append(item.model_copy(update={"status": "connected", "expired_at": None}))
+        if live is True and item.status != IntegrationStatus.CONNECTED:
+            items.append(
+                item.model_copy(update={"status": IntegrationStatus.CONNECTED, "expired_at": None})
+            )
             changed = True
         elif (
             live is False
-            and item.status == "connected"
+            and item.status == IntegrationStatus.CONNECTED
             and item.managed_by == "mcp"
             and item.requires_auth
         ):
-            items.append(item.model_copy(update={"status": "created"}))
+            items.append(item.model_copy(update={"status": IntegrationStatus.CREATED}))
             changed = True
         else:
             items.append(item)
@@ -140,7 +144,7 @@ def _build_my_integrations_response(
         ui = added_by_id.get(cfg.id.lower())
         # Mongo-only snapshot: not added means not connected here; liveness
         # arrives via the overlay in get_my_integrations, never here.
-        status = ui.status if ui is not None else "not_connected"
+        status: MyIntegrationStatus = ui.status if ui is not None else "not_connected"
         tool_count = (
             (len(ui.integration.tools) or counts.get(cfg.id.lower(), 0))
             if ui is not None
@@ -156,6 +160,7 @@ def _build_my_integrations_response(
                 managed_by=cfg.managed_by,
                 status=status,
                 expired_at=ui.expired_at if ui is not None else None,
+                tools_setup=ui.tools_setup if ui is not None else None,
                 requires_auth=cfg.requires_auth,
                 auth_type=cfg.auth_type,
                 is_featured=cfg.is_featured,
@@ -182,6 +187,7 @@ def _build_my_integrations_response(
                 managed_by=integ.managed_by,
                 status=ui.status,
                 expired_at=ui.expired_at,
+                tools_setup=ui.tools_setup,
                 requires_auth=integ.requires_auth,
                 auth_type=integ.auth_type,
                 is_featured=integ.is_featured,

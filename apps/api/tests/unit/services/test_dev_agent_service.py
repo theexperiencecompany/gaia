@@ -21,25 +21,11 @@ from app.models.user_models import OnboardingPreferences, OnboardingSubdocument
 from app.schemas.dev_schemas import DevAgentRunResponse
 from app.services.dev_agent_service import (
     _dev_base_configurable,
-    _reject_pause,
     run_executor_direct,
 )
 from app.utils.errors import AppError
 
 MODULE = "app.services.dev_agent_service"
-
-
-def test_a_paused_outcome_raises_conflict_instead_of_returning_empty_text() -> None:
-    paused = SubagentOutcome(text="", interrupt={"type": "hil_approval", "approval_id": "a1"})
-
-    with pytest.raises(AppError) as excinfo:
-        _reject_pause(paused, "executor_agent")
-
-    assert excinfo.value.status_code == 409
-
-
-def test_a_finished_outcome_passes_through() -> None:
-    _reject_pause(SubagentOutcome(text="done"), "executor_agent")
 
 
 class TestTheParentConfigurableADirectRunBuilds:
@@ -228,14 +214,3 @@ class TestRunExecutorDirect:
             await run_executor_direct("dev@gaia.local", "do it", "conv-1")
 
         assert excinfo.value.why == "prepare_executor_execution returned no context"
-
-    async def test_a_paused_executor_run_is_a_409(self) -> None:
-        ctx = SimpleNamespace(agent_name="executor_agent", configurable={"thread_id": "t"})
-        paused = SubagentOutcome(text="", interrupt={"type": "hil_approval", "approval_id": "a1"})
-        with (
-            _direct_run("prepare_executor_execution", (ctx, None), paused),
-            pytest.raises(AppError) as excinfo,
-        ):
-            await run_executor_direct("dev@gaia.local", "do it", "conv-1")
-
-        assert excinfo.value.status_code == 409

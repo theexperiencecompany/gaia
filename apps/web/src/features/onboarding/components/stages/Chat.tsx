@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import type { MutationStatus } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import {
@@ -30,7 +30,7 @@ export function Chat({ status }: { status: MutationStatus }) {
   return (
     <m.div className="mt-4 flex flex-col gap-3" {...MOTION_FADE_UP}>
       <OnboardingBotBubble
-        text={status === "error" ? FINISH_FAILED_MESSAGE : FINISHING_MESSAGE}
+        lines={[status === "error" ? FINISH_FAILED_MESSAGE : FINISHING_MESSAGE]}
       />
       {isWaitingOnServer(status) && (
         <Spinner

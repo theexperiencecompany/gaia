@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY, TOOL_RESULT_NOTE_SEPARATOR
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.schemas.common import ResponseModel
 
 #: How much of a tool's result is kept on the record. Enough to tell the next run
@@ -161,6 +161,21 @@ def _largest_sequence(
 _RESULT_DECODER = json.JSONDecoder()
 
 
+class ToolResultEnvelope(BaseModel):
+    """The failure flags a tool result may carry: GAIA tools' success, Composio's successful, and error."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    success: object = None
+    successful: object = None
+    error: object = None
+
+    @property
+    def failed(self) -> bool:
+        """Whether either flag is False or the error is non-empty."""
+        return self.success is False or self.successful is False or bool(self.error)
+
+
 def parse_result(text: str) -> object:
     """A tool result as JSON when it is a JSON document, and as its own text otherwise.
 
@@ -178,6 +193,30 @@ def parse_result(text: str) -> object:
     if rest.strip() and not rest.startswith(TOOL_RESULT_NOTE_SEPARATOR):
         return text
     return value
+
+
+class _ToolEnvelope(BaseModel):
+    """The failure fields of a tool's JSON envelope; a tool may set any, all or none.
+
+    object, not bool/str: only a literal False success means failure, and
+    error/message are quoted whatever their type, so nothing may be coerced.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    success: object = None
+    error: object = None
+    message: object = None
+
+
+def envelope_failure(value: object) -> str | None:
+    """Return what a JSON envelope says went wrong, or None when it reports no failure."""
+    if not isinstance(value, dict):
+        return None
+    envelope = _ToolEnvelope.model_validate(value)
+    if envelope.success is not False and not envelope.error:
+        return None
+    return str(envelope.error or envelope.message or "the tool reported success=false")
 
 
 def carries_no_data(value: object) -> bool:
@@ -245,6 +284,13 @@ def largest_list_len(value: object) -> int | None:
 # running, then exactly one terminal write. skipped means another run of the
 # same workflow was already in flight and delivered the result — not a failure.
 WorkflowExecutionStatus = Literal["running", "success", "failed", "skipped"]
+
+
+class RunMoment(BaseModel):
+    """When one execution started and how it stands: what a per-day run count reads."""
+
+    started_at: datetime
+    status: WorkflowExecutionStatus
 
 
 class RecordedCall(BaseModel):

@@ -27,7 +27,7 @@
 #
 #   Postgres  a database per lane        gaia_test_r<r>       (CREATE DATABASE)
 #   Redis     a 32-DB stripe per lane    GAIA_REDIS_DB_BASE=8+r*32
-#   MongoDB   a db-name prefix per lane  gaia_test_r<r>_gw<n>
+#   MongoDB   a db-name prefix per lane  gaia_test_r<r> (the app) + _gw<n>
 #   ChromaDB  a collection suffix        _r<r>   (Chroma has no namespaces)
 #   RabbitMQ  a vhost per lane           /r<r>
 #
@@ -492,7 +492,7 @@ _prepare_shared() {
   echo "Postgres: ${pg_db} created empty"
 
   flush_redis_stripe "$redis_base" || ci_warn "Redis: flushing the lane stripe failed — continuing"
-  drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}_* failed — continuing"
+  drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}[_*] failed — continuing"
   # Fatal, unlike the warnings around it: the lane's collections share one
   # server with every other lane's, so a listing that failed cleared nothing.
   reset_chroma "$chroma_suffix" || ci_die "ChromaDB: could not list collections to clear those ending in ${chroma_suffix}"
@@ -581,14 +581,15 @@ flush_redis_stripe() {
     "for db in \$(seq $base $((base + REDIS_STRIPE - 1))); do redis-cli -n \$db flushdb >/dev/null; done"
 }
 
-# Every worker database of this lane: gaia_test_r<lane>_gw0, _gw1, ...
+# Every database of this lane: the app's gaia_test_r<lane> (MONGO_DB_NAME, the one the
+# live-server fuzz boots on) and the workers' gaia_test_r<lane>_gw0, _gw1, ...
 drop_mongo_databases() {
   local lane="$1"
   docker exec "$MONGO_NAME" mongosh --quiet \
     -u gaia -p gaia --authenticationDatabase admin \
     --eval "db.adminCommand({listDatabases:1,nameOnly:true}).databases
       .map(d => d.name)
-      .filter(n => /^gaia_test_r${lane}_/.test(n))
+      .filter(n => /^gaia_test_r${lane}(_|$)/.test(n))
       .forEach(n => { db.getSiblingDB(n).dropDatabase(); print('dropped ' + n); })"
 }
 
@@ -666,9 +667,9 @@ cmd_reset() {
   fi
 
   if drop_mongo_databases "$lane"; then
-    echo "MongoDB: dropped gaia_test_r${lane}_* databases"
+    echo "MongoDB: dropped gaia_test_r${lane}[_*] databases"
   else
-    ci_warn "MongoDB: dropping gaia_test_r${lane}_* databases failed"
+    ci_warn "MongoDB: dropping gaia_test_r${lane}[_*] databases failed"
   fi
 
   reset_chroma "$suffix" || ci_warn "ChromaDB: resetting collections ending in ${suffix} failed"

@@ -1,0 +1,169 @@
+"""Idle wind-down: pause the whole loop when GAIA has nothing to work on.
+
+An idle day is a daily run that found no tracked work and no goal knowledge — the
+engine has nothing legitimate to report. On day IDLE_WARN_DAYS the brief warns
+plainly; on day IDLE_DORMANT_DAYS it says goodbye once and the loop goes
+dormant: the daily brief and the weekly digest both early-exit before any LLM
+call, so a goalless account costs a few Mongo reads a day.
+
+Reactivation is pull-based, checked at run start: any activity the user made on
+any surface since the loop wound down (users.last_active_at, the one activity record)
+wakes the loop on its next run, daily or weekly. The daily run climbs the ladder; for
+a weekly-only user the digest does. This ladder is about having nothing to report; a user who
+stops acknowledging briefs is the winback's to back off (briefing.lookback), never
+the dormant-owner pause's, which leaves the briefs alone. A new account's first
+week never climbs the ladder: its briefs help the user get started instead.
+"""
+
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+
+from app.constants.briefing import (
+    BRIEF_RUN_DAYS,
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    FIRST_WEEK_DAYS,
+    GOAL_QUESTION_REASK,
+    IDLE_DORMANT_DAYS,
+    IDLE_WARN_DAYS,
+    WindDown,
+)
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.users import user_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument, BriefingWindDown
+from app.models.user_models import UserDocument
+from app.utils.timezone import as_utc
+
+
+class GoalQuestion(StrEnum):
+    """What today's brief does about the goal it remembers."""
+
+    #: No goal is remembered; the voice asks for one: never asked, or asked GOAL_QUESTION_REASK ago.
+    NONE = "none"
+    #: Ask whether the goal is still live: never asked, or asked GOAL_QUESTION_REASK ago.
+    ASK = "ask"
+    #: Asked about the goal, or for one, inside the window: not again today, in any wording.
+    ASKED = "asked"
+
+
+@dataclass(frozen=True)
+class IdleLadder:
+    """Where today's run leaves the user on the ladder; wind_down is None off its rungs."""
+
+    first_week: bool
+    idle_days: int
+    wind_down: WindDown | None
+    goal_question: GoalQuestion = GoalQuestion.NONE
+
+
+def ladder_state(state: BriefingStateDocument) -> BriefingWindDown:
+    """Return the user's ladder marker with Mongo's naive UTC times made aware."""
+    marker = state.wind_down or BriefingWindDown()
+    return marker.model_copy(
+        update={
+            "wound_down_since": as_utc(marker.wound_down_since),
+            "goal_asked_at": as_utc(marker.goal_asked_at),
+        }
+    )
+
+
+def in_first_week(user: UserDocument, now: datetime) -> bool:
+    """Whether the account signed up under FIRST_WEEK_DAYS ago; an undated one never is."""
+    signed_up = as_utc(user.created_at)
+    return signed_up is not None and now - signed_up < timedelta(days=FIRST_WEEK_DAYS)
+
+
+def wind_down_stage(idle_days: int) -> WindDown | None:
+    if idle_days >= IDLE_DORMANT_DAYS:
+        return WindDown.FINAL
+    if idle_days == IDLE_WARN_DAYS:
+        return WindDown.WARN
+    return None
+
+
+async def latest_activity_since(user_id: str, since: datetime) -> datetime | None:
+    """Return when the user last acted on any surface, if at/after since; None when not since.
+
+    Read from Mongo, not the cached user, whose last_active_at can be days stale.
+    The cutoff must be timezone-aware.
+    """
+    dates = await user_repository.get_activity_dates(user_id)
+    last_active = as_utc(dates.last_active_at) if dates else None
+    return last_active if last_active is not None and last_active >= since else None
+
+
+async def is_wound_down(state: BriefingStateDocument) -> bool:
+    """Whether the loop is wound down with no activity since: its next run skips before reading anything."""
+    since = ladder_state(state).wound_down_since
+    return since is not None and await latest_activity_since(state.user_id, since) is None
+
+
+async def record_idle_day(user_id: str, prior: BriefingWindDown, idle: bool, date_str: str) -> int:
+    """Persist today's idle/active outcome; returns the consecutive idle count.
+
+    Same-day reruns don't double-count (the one-brief-per-day law applies to the
+    ladder too), and an active day for a user with no marker writes nothing.
+    """
+    if prior.date == date_str:
+        return prior.idle_days
+    if not idle and prior.idle_days == 0 and prior.date is None:
+        return 0
+    idle_days = prior.idle_days + 1 if idle else 0
+    await briefing_state_repository.set_idle_day(user_id, idle_days=idle_days, date_str=date_str)
+    return idle_days
+
+
+def goal_question(prior: BriefingWindDown, now: datetime, *, has_goal: bool) -> GoalQuestion:
+    """Say whether today's brief asks about the goal, or for one, or asked too recently to."""
+    asked = prior.goal_asked_at
+    if asked is not None and now - asked < GOAL_QUESTION_REASK:
+        return GoalQuestion.ASKED
+    return GoalQuestion.ASK if has_goal else GoalQuestion.NONE
+
+
+async def climb_idle_ladder(
+    user: UserDocument, prior: BriefingWindDown, date_str: str, *, has_news: bool, has_goal: bool
+) -> IdleLadder:
+    """Record today as idle or active, and return the rung it reached and today's goal question.
+
+    Idle is nothing to report and nothing to work toward: no goal, or a goal asked about with
+    the user away since. A new account's first week is never idle.
+    """
+    now = datetime.now(UTC)
+    first_week = in_first_week(user, now)
+    question = goal_question(prior, now, has_goal=has_goal)
+    ignored = (
+        question is GoalQuestion.ASKED
+        and prior.goal_asked_at is not None
+        and await latest_activity_since(user.id, prior.goal_asked_at) is None
+    )
+    idle = not has_news and not first_week and (not has_goal or ignored)
+    idle_days = await record_idle_day(user.id, prior, idle, date_str)
+    return IdleLadder(
+        first_week=first_week,
+        idle_days=idle_days,
+        wind_down=wind_down_stage(idle_days) if idle else None,
+        goal_question=question,
+    )
+
+
+async def climb_weekly_ladder(
+    user: UserDocument,
+    schedule: BriefingSchedule,
+    prior: BriefingWindDown,
+    date_str: str,
+    *,
+    has_news: bool,
+    has_goal: bool,
+) -> bool:
+    """Count an empty digest as idle for a user the weekly digest is the only brief of.
+
+    Return whether this digest is their goodbye: the IDLE_DORMANT_DAYS-th idle one in a row,
+    after which the loop winds down. A user with a daily brief climbs the ladder on it instead.
+    """
+    if DAILY_BRIEFING_WORKFLOW_KEY in BRIEF_RUN_DAYS[schedule.frequency]:
+        return False
+    idle = not has_news and not has_goal and not in_first_week(user, datetime.now(UTC))
+    idle_days = await record_idle_day(user.id, prior, idle, date_str)
+    return idle and idle_days >= IDLE_DORMANT_DAYS

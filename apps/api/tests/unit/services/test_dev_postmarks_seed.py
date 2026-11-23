@@ -1,0 +1,361 @@
+"""Dev brief seeding: the brief each seeded day becomes, and what is written for it."""
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+from datetime import date, timedelta
+from unittest.mock import AsyncMock, _Call, patch
+
+from bson import ObjectId
+import pytest
+
+from app.config.settings import settings
+from app.constants.briefing import (
+    DAILY_KICKER,
+    SECTION_NUMERALS,
+    WEEKLY_KICKER,
+    ArtFamily,
+    BriefAction,
+    BriefingKind,
+    BriefOutcome,
+    EditionFamily,
+    hue_for_day,
+)
+from app.constants.notifications import NotificationChannel
+from app.models.brief_composition_models import SectionBlock
+from app.models.brief_document_models import DeliveryStep, EditionRender
+from app.models.brief_payload_models import (
+    BriefingEvent,
+    BriefingMood,
+    BriefingPayload,
+    BriefingTallies,
+)
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
+from app.models.user_models import UserDocument
+from app.services import dev_postmarks_seed
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.artworks import artworks_for
+from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
+from app.services.render.image import RenderedImage
+from app.utils.errors import AppError
+
+MODULE = "app.services.dev_postmarks_seed"
+STORE = "app.services.briefing.store"
+SHORT_LINK = f"{settings.SHORTLINK_BASE_URL}/seededBrief"
+LAST_DAY = date(2026, 10, 1)
+# Unsorted on purpose, and more cities than seed days, so the cycle and the ordering show.
+CITIES = [f"city-{n:02d}" for n in (13, 2, 7, 1, 12, 4, 9, 3, 11, 5, 14, 8, 6, 10)]
+PACKED_THURSDAY = 1
+EMPTY_INBOX_DAY = 5
+
+
+@dataclass
+class Seeded:
+    rendered: list[tuple[BriefingPayload, str]]
+    owners: list[str]
+    upsert: AsyncMock
+    deliver: AsyncMock
+
+    def stored(self) -> list[_Call]:
+        """Return the upserts that store each brief with its edition, not the earlier one its link needs."""
+        return [call for call in self.upsert.await_args_list if call.args[0].edition]
+
+    def payloads(self) -> list[BriefingPayload]:
+        return [call.args[0].payload for call in self.stored()]
+
+
+@pytest.fixture
+def user() -> UserDocument:
+    return UserDocument.model_validate(
+        {"id": str(ObjectId()), "email": "dev@gaia.local", "name": "Ada"}
+    )
+
+
+@pytest.fixture
+def seeded() -> Iterator[Seeded]:
+    rendered: list[tuple[BriefingPayload, str]] = []
+    owners: list[str] = []
+
+    async def fake_render(payload: BriefingPayload, link: str | None) -> RenderedImage:
+        rendered.append((payload, link))
+        return RenderedImage(image=b"png")
+
+    async def fake_store(owner_id: str, briefing_id: str, png: bytes) -> str:
+        owners.append(owner_id)
+        return f"key-{briefing_id}"
+
+    with (
+        patch(f"{MODULE}.stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
+        patch(f"{STORE}.render_edition_png", side_effect=fake_render),
+        patch(f"{STORE}.store_edition", side_effect=fake_store),
+        patch(
+            f"{STORE}.attach_link",
+            AsyncMock(
+                return_value=ShortLink(
+                    slug="seededBrief",
+                    user_id="seed",
+                    target=RecordTarget(type=ShortLinkTargetType.BRIEFING, id="brief"),
+                )
+            ),
+        ),
+        patch(
+            f"{MODULE}.briefing_repository.briefing_id_for",
+            AsyncMock(side_effect=lambda user_id, date, kind: f"brief_{date}"),
+        ),
+        patch(
+            f"{MODULE}.briefing_repository.upsert_briefing",
+            AsyncMock(side_effect=lambda brief: brief),
+        ) as upsert,
+        patch(f"{MODULE}.briefing_repository.record_step", new_callable=AsyncMock) as deliver,
+    ):
+        yield Seeded(rendered, owners, upsert, deliver)
+
+
+async def test_each_city_gets_one_brief_on_consecutive_days_ending_at_the_anchor(
+    user, seeded
+) -> None:
+    await seed_dev_postmarks(user, len(CITIES))
+
+    payloads = seeded.payloads()
+    expected_days = [(LAST_DAY - timedelta(days=i)).isoformat() for i in range(len(CITIES))]
+    assert [p.stamp_city for p in payloads] == sorted(CITIES)
+    assert [p.date for p in payloads] == expected_days
+    assert [p.headline for p in payloads] == [
+        dev_postmarks_seed._SEED_DAYS[i % len(dev_postmarks_seed._SEED_DAYS)].headline
+        for i in range(len(CITIES))
+    ]
+    assert all(p.template_family == EditionFamily.POSTAL for p in payloads)
+    assert all(p.kicker == DAILY_KICKER for p in payloads)
+    assert all(p.recipient_name == "Ada" for p in payloads)
+    assert seeded.owners == [user.id] * len(CITIES)
+
+
+async def test_each_brief_is_rendered_then_upserted_and_marked_delivered_under_its_own_id(
+    user, seeded
+) -> None:
+    await seed_dev_postmarks(user, 3)
+
+    assert len({payload.date for payload, _ in seeded.rendered}) == 3
+    linked = seeded.upsert.await_args_list[::2]
+    for (payload, link), first_call, upsert_call, deliver_call in zip(
+        seeded.rendered,
+        linked,
+        seeded.stored(),
+        seeded.deliver.await_args_list,
+        strict=True,
+    ):
+        first, brief = first_call.args[0], upsert_call.args[0]
+        assert first.edition is None
+        assert (first.id, first.user_id, first.kind) == (brief.id, brief.user_id, brief.kind)
+        assert (brief.user_id, brief.date, brief.kind) == (user.id, payload.date, "daily")
+        assert brief.payload == payload
+        assert (link, brief.link) == (SHORT_LINK, SHORT_LINK)
+        assert brief.id == f"brief_{payload.date}"
+        assert brief.edition == EditionRender(key=f"key-brief_{payload.date}")
+        delivered = brief.delivery
+        assert delivered is not None
+        assert delivered.completed_at is not None
+        assert (set(delivered.done), delivered.push, delivered.completed_at.utcoffset()) == (
+            set(DeliveryStep),
+            True,
+            timedelta(0),
+        )
+        assert deliver_call.args == (
+            user.id,
+            f"brief_{payload.date}",
+            DeliveryStep.NOTIFICATION,
+            [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value],
+        )
+
+
+async def test_a_day_with_asks_and_work_reads_as_two_numbered_sections(user, seeded) -> None:
+    await seed_dev_postmarks(user, PACKED_THURSDAY + 1)
+
+    seed = dev_postmarks_seed._SEED_DAYS[PACKED_THURSDAY]
+    brief = seeded.payloads()[PACKED_THURSDAY]
+    day = LAST_DAY - timedelta(days=PACKED_THURSDAY)
+    assert [(s.numeral, s.title) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], "Waiting on you"),
+        (SECTION_NUMERALS[1], "Done overnight"),
+    ]
+    assert brief.blocks == [
+        SectionBlock(kind="items", section=0),
+        SectionBlock(kind="items", section=1),
+    ]
+    asks, work = brief.sections
+    assert [(i.action, i.text, i.kind) for i in asks.items] == [
+        (action, t, "you") for action, t in seed.needs_you
+    ]
+    assert [(i.outcome, i.text, i.kind) for i in work.items] == [
+        (outcome, t, "lookback") for outcome, t in seed.done
+    ] + [(BriefOutcome.STARTED, t, "gaia") for t in seed.running]
+    assert [(e.date, e.start, e.title, e.location) for e in brief.calendar] == [
+        (day.isoformat(), e.start, e.title, e.location) for e in seed.events
+    ]
+    assert brief.tallies.done_by_you == seed.done_by_you
+    assert brief.tallies.done_by_gaia == len(seed.done)
+    assert brief.hue == hue_for_day(day.timetuple().tm_yday)
+    assert (brief.lede, brief.mood, brief.caption) == (seed.lede, seed.mood, seed.caption)
+    assert brief.message == seed.lede
+    assert brief.generated_at == "7:58 AM"
+
+
+async def test_a_day_with_nothing_waiting_drops_the_asks_section(user, seeded) -> None:
+    await seed_dev_postmarks(user, EMPTY_INBOX_DAY + 1)
+
+    brief = seeded.payloads()[EMPTY_INBOX_DAY]
+    assert [(s.numeral, s.title) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], "Done overnight")
+    ]
+
+
+async def test_every_city_can_be_seeded_but_not_one_more(user, seeded) -> None:
+    with pytest.raises(AppError) as exc:
+        await seed_dev_postmarks(user, len(CITIES) + 1)
+
+    assert exc.value.status_code == 400
+    assert str(len(CITIES) + 1) in exc.value.message
+    assert exc.value.why is not None and str(len(CITIES)) in exc.value.why
+    assert exc.value.fix is not None and str(len(CITIES)) in exc.value.fix
+    assert seeded.rendered == []
+    seeded.upsert.assert_not_awaited()
+
+    await seed_dev_postmarks(user, len(CITIES))
+    assert len(seeded.payloads()) == len(CITIES)
+
+
+NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
+
+
+async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user, seeded) -> None:
+    await seed_dev_editions(user, 4)
+
+    kinds = [call.args[0].kind for call in seeded.stored()]
+    payloads = seeded.payloads()
+    assert kinds == [BriefingKind.DAILY] * 4 + [BriefingKind.WEEKLY]
+    assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], EditionFamily.WEEKLY]
+    assert [p.date for p in payloads[:4]] == [
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-04",
+        "2026-10-05",
+    ]
+    assert all(p.stamp_city is None for p in payloads)
+    weekly = payloads[-1]
+    assert weekly.week is not None and len(weekly.week.days) == 7
+    assert [
+        (s.title, [(i.text, i.action, i.outcome, i.kind) for i in s.items]) for s in weekly.sections
+    ] == [
+        (
+            "Waiting on you",
+            [
+                ("Offsite venue", BriefAction.REPLY, None, "you"),
+                ("New lease terms", BriefAction.APPROVE, None, "you"),
+            ],
+        ),
+        (
+            "Done overnight",
+            [
+                ("September expenses filed", None, BriefOutcome.FINISHED, "lookback"),
+                ("1:1 with Sam, now 3:30 PM", None, BriefOutcome.BOOKED, "lookback"),
+                ("October invoice to Acme", None, BriefOutcome.SENT, "lookback"),
+                ("Check-in for TP 1361", None, BriefOutcome.BOOKED, "lookback"),
+            ],
+        ),
+    ]
+    assert [(b.kind, b.section) for b in weekly.blocks] == [("items", 0), ("items", 1)]
+    assert seeded.deliver.await_count == 5
+
+
+async def test_the_weekly_recap_reads_as_its_own_issue_with_the_week_ahead(user, seeded) -> None:
+    await seed_dev_editions(user, 1)
+
+    weekly = seeded.payloads()[-1]
+    recap_day = date(2026, 10, 11)
+    assert (weekly.kicker, weekly.date) == (WEEKLY_KICKER, recap_day.isoformat())
+    assert [s.numeral for s in weekly.sections] == [SECTION_NUMERALS[0], SECTION_NUMERALS[1]]
+    assert (weekly.mood, weekly.caption) == (
+        BriefingMood.CLEAR,
+        "Two decisions and the week is closed.",
+    )
+    assert weekly.hue == hue_for_day(recap_day.timetuple().tm_yday)
+    assert (weekly.recipient_name, weekly.generated_at) == ("Ada", "7:58 AM")
+    # The lede's "closed 14 todos and I handled 22" is the tallies, read aloud.
+    assert weekly.tallies == BriefingTallies(done_by_you=14, done_by_gaia=22)
+    assert weekly.message == weekly.lede
+    assert weekly.week is not None
+    assert weekly.week.ahead == [
+        BriefingEvent(date="2026-10-12", start="10:00", title="Quarterly planning"),
+        BriefingEvent(date="2026-10-14", start="18:40", title="Flight to Lisbon"),
+    ]
+
+
+async def test_a_framed_family_is_seeded_hanging_a_painting_that_fits_it(user, seeded) -> None:
+    await seed_dev_editions(user, len(NON_POSTAL_FAMILIES))
+
+    hung = {p.template_family: p.artwork_id for p in seeded.payloads()}
+    for family in ArtFamily:
+        assert hung[family] in artworks_for(family)
+    assert {f for f, artwork_id in hung.items() if artwork_id} == set(ArtFamily)
+
+
+async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -> None:
+    await seed_dev_editions(user, 0)
+    seeded.upsert.assert_not_awaited()
+
+    with pytest.raises(AppError) as exc:
+        await seed_dev_editions(user, len(NON_POSTAL_FAMILIES) + 1)
+
+    assert exc.value.status_code == 400
+    assert seeded.rendered == []
+
+
+async def test_a_seed_count_past_the_daily_families_is_refused_naming_the_limit(
+    user, seeded
+) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
+
+    with pytest.raises(AppError) as raised:
+        await seed_dev_editions(user, families + 1)
+
+    assert raised.value.message == f"Cannot seed {families + 1} editions"
+    assert raised.value.why == f"there are only {families} daily edition families besides Air Mail"
+    assert raised.value.fix == f"ask for at most {families}"
+    seeded.upsert.assert_not_awaited()
+
+
+async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
+
+    await seed_dev_editions(user, families)
+
+    assert len(seeded.payloads()) == families + 1
+
+
+@pytest.mark.unit
+class TestSampleEditionPayload:
+    def test_air_mail_carries_a_stamp_and_a_framed_family_a_painting(self) -> None:
+        with patch(f"{MODULE}.stamp_weights", return_value={"paris": 1, "lisbon": 1}):
+            postal = dev_postmarks_seed.sample_edition_payload(EditionFamily.POSTAL, "Alex")
+        framed = dev_postmarks_seed.sample_edition_payload(EditionFamily.ALMANAC, "Alex")
+        plain = dev_postmarks_seed.sample_edition_payload(EditionFamily.SWISS, "Alex")
+
+        assert (postal.stamp_city, postal.artwork_id) == ("lisbon", None)
+        assert framed.stamp_city is None
+        assert framed.artwork_id == min(artworks_for(ArtFamily.ALMANAC))
+        assert (plain.stamp_city, plain.artwork_id) == (None, None)
+        assert [p.template_family for p in (postal, framed, plain)] == [
+            EditionFamily.POSTAL,
+            ArtFamily.ALMANAC,
+            "swiss",
+        ]
+        assert all(p.recipient_name == "Alex" for p in (postal, framed, plain))
+
+    async def test_the_sample_is_the_first_brief_the_editions_seed_stores(
+        self, user: UserDocument, seeded: Seeded
+    ) -> None:
+        await seed_dev_editions(user, 1)
+        first = seeded.payloads()[0]
+
+        sample = dev_postmarks_seed.sample_edition_payload(first.template_family, "Ada")
+
+        assert sample == first

@@ -40,7 +40,6 @@ PaywallSource = Literal[
     "workflow_autosend",
     "workflow_activation",
     "api_402",
-    "chat_stream_402",
     "composer_notice",
     "rate_limit_card",
     "rate_limit_toast",
@@ -51,6 +50,7 @@ PaywallSource = Literal[
     "settings_upsell",
     "settings_linked_accounts",
     "settings_usage",
+    "settings_briefings",
     # Not a surface: the desktop feed window mirroring a wall whose snapshot lost its source.
     "desktop_popup_mirror",
 ]

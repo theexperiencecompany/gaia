@@ -41,7 +41,7 @@ describe("reportFailure analytics", () => {
   it("sends the envelope's code, not its message", () => {
     reportFailure(
       "POST",
-      "/chat-stream?q=secret",
+      "/conversations/c1/messages?q=secret",
       envelopeError(422, "validation_error"),
       { silent: true },
       false,
@@ -49,7 +49,7 @@ describe("reportFailure analytics", () => {
 
     expect(mockTrack).toHaveBeenCalledWith("api:request_failed", {
       method: "POST",
-      url: "/chat-stream",
+      url: "/conversations/c1/messages",
       status: 422,
       error_code: "validation_error",
     });

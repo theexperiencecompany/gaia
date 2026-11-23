@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
+from app.constants.integrations import IntegrationStatus
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
     CommunityListResponse,
@@ -33,7 +34,7 @@ def _mine(
         category=category,
         source="platform",
         managed_by="composio",
-        status="connected" if connected else "not_connected",
+        status=IntegrationStatus.CONNECTED if connected else "not_connected",
         available=available,
     )
 

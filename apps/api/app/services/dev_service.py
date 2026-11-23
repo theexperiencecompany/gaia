@@ -21,6 +21,7 @@ from app.constants.payments import (
     DEV_SUBSCRIPTION_PREFIX,
 )
 from app.constants.platform_links import Platform
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.subscriptions import subscription_repository
@@ -40,9 +41,11 @@ from app.models.user_models import (
 from app.schemas.dev_schemas import (
     DeleteDevUserResponse,
     DevDeletedCounts,
+    SeedDevDataRequest,
     SeedDevDataResponse,
 )
 from app.services.conversation_service import create_conversation_service
+from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
 from app.services.payments.plan_cache import invalidate_plan_cache
@@ -130,16 +133,9 @@ async def attach_dev_file(
     return document
 
 
-async def seed_dev_data(
-    email: str,
-    todos: int,
-    conversations: int,
-    platform_links: list[str],
-    *,
-    pro: bool = False,
-) -> SeedDevDataResponse:
+async def seed_dev_data(request: SeedDevDataRequest) -> SeedDevDataResponse:
     """Create deterministic sample data for an existing dev user via real services."""
-    for platform in platform_links:
+    for platform in request.platform_links:
         if not Platform.is_valid(platform):
             raise create_error(
                 message=f"Unknown platform {platform!r}",
@@ -148,7 +144,7 @@ async def seed_dev_data(
                 status_code=400,
             )
 
-    user = await require_dev_user(email)
+    user = await require_dev_user(request.email)
     user_id = user.id
 
     # Same complete_onboarding() gate/phase/bio placeholder, minus background
@@ -163,7 +159,9 @@ async def seed_dev_data(
     # The seeded platform_user_id is part of the seed CONTRACT (harness clients
     # inject messages as it) — it is returned in the response, never re-derived
     # by consumers.
-    platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
+    platform_user_ids = {
+        platform: f"dev-{platform}-{user_id}" for platform in request.platform_links
+    }
 
     # Every link is checked before any is written, so another user's account is a 409
     # with nothing written; a different account of this user's own is replaced, since
@@ -185,7 +183,7 @@ async def seed_dev_data(
                     platform_user_id=platform_user_id,
                     profile={
                         "username": f"dev_{platform}",
-                        "display_name": user.name or email,
+                        "display_name": user.name or request.email,
                     },
                 )
                 for platform, platform_user_id in platform_user_ids.items()
@@ -194,13 +192,13 @@ async def seed_dev_data(
     except (PlatformAccountTakenError, AccountHasDifferentPlatformError) as e:
         raise link_conflict_error(e) from e
 
-    if pro:
+    if request.pro:
         await _grant_dev_pro(user_id)
 
     await asyncio.gather(
         *(
             TodoService.create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
-            for i in range(todos)
+            for i in range(request.todos)
         ),
         *(
             create_conversation_service(
@@ -211,26 +209,32 @@ async def seed_dev_data(
                 ),
                 AuthenticatedUser(user_id=user_id),
             )
-            for i in range(conversations)
+            for i in range(request.conversations)
         ),
     )
+    await seed_dev_postmarks(user, request.postmarks)
+    await seed_dev_editions(user, request.editions)
 
     log.info(
         f"{LogTag.DEV} seeded dev data",
-        email=email,
+        email=request.email,
         user_id=user_id,
-        todos=todos,
-        conversations=conversations,
-        platforms=platform_links,
+        todos=request.todos,
+        conversations=request.conversations,
+        postmarks=request.postmarks,
+        editions=request.editions,
+        platforms=request.platform_links,
     )
     return SeedDevDataResponse(
-        email=email,
+        email=request.email,
         user_id=user_id,
-        todos_created=todos,
-        conversations_created=conversations,
-        platforms_linked=platform_links,
+        todos_created=request.todos,
+        conversations_created=request.conversations,
+        postmarks_created=request.postmarks,
+        editions_created=request.editions,
+        platforms_linked=request.platform_links,
         platform_user_ids=platform_user_ids,
-        pro=pro,
+        pro=request.pro,
     )
 
 
@@ -277,6 +281,7 @@ async def delete_dev_user(email: str) -> DeleteDevUserResponse:
     todos_deleted = await todo_repository.delete_all_for_user(user_id)
     conversations_deleted = len(await conversation_repository.delete_all_for_user(user_id))
     projects_deleted = await project_repository.delete_all_for_user(user_id)
+    await briefing_state_repository.delete(user_id)
     user_deleted = int(await user_repository.delete(user_id))
 
     log.info(

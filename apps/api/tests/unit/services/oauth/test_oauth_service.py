@@ -48,13 +48,6 @@ def mock_user_repo():
 
 
 @pytest.fixture
-def mock_websocket_manager():
-    with patch("app.services.oauth.oauth_service.websocket_manager") as mock_ws:
-        mock_ws.broadcast_to_user = AsyncMock()
-        yield mock_ws
-
-
-@pytest.fixture
 def mock_redis_pool_manager(route_enqueue_via_pool):
     mock_pool = AsyncMock()
     mock_pool.enqueue_job = AsyncMock()
@@ -321,22 +314,22 @@ class TestStoreUserInfo:
         assert mock_user_repo.create.call_args.args[0].picture == ""
 
     @pytest.mark.regression
-    async def test_new_user_without_a_workos_name_gets_one_derived_from_the_email(
+    async def test_new_user_without_a_workos_name_stores_none_rather_than_one_guessed_from_the_email(
         self,
         mock_user_repo,
         mock_track_signup,
         mock_redis_pool_manager,
     ):
-        """WorkOS sends no name for email-code signups; storing "" left the user nameless forever."""
+        """WorkOS sends no name for email-code signups; a name guessed from the address got greeted as theirs."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
 
         await store_user_info("", "aryan.randeriya@test.com", None, auth_method=None)
 
-        assert mock_user_repo.create.call_args.args[0].name == "Aryan Randeriya"
-        assert mock_track_signup.call_args.kwargs["name"] == "Aryan Randeriya"
-        # The derived name is what the queued delivery reads back off the row to greet the user.
+        assert mock_user_repo.create.call_args.args[0].name is None
+        assert mock_track_signup.call_args.kwargs["name"] is None
+        # The queued delivery reads the name back off the row, so it greets without one.
         # Not assert_awaited_once_with: enqueue_worker_job also attaches the caller's trace id,
         # which is not this test's subject.
         assert mock_redis_pool_manager.enqueue_job.await_args.args == (
@@ -696,7 +689,6 @@ class TestHandleOAuthConnection:
         self,
         mock_user_repo,
         mock_record_account,
-        mock_websocket_manager,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
@@ -716,34 +708,6 @@ class TestHandleOAuthConnection:
         )
 
         mock_user_repo.set_bio_status.assert_awaited_once_with(user_id, BioStatus.PROCESSING)
-
-    async def test_gmail_connection_sends_websocket_update(
-        self,
-        mock_user_repo,
-        mock_record_account,
-        mock_websocket_manager,
-        mock_redis_pool_manager,
-        mock_enqueue_personalization,
-    ):
-        """Gmail with no_gmail bio_status should broadcast WebSocket update."""
-        user_id = "507f1f77bcf86cd799439011"
-        mock_user_repo.get.return_value = UserDocument(
-            onboarding={"completed": True, "bio_status": "no_gmail"}
-        )
-        config = make_integration_config(integration_id="gmail")
-        background_tasks = MagicMock()
-
-        await handle_oauth_connection(
-            user_id=user_id,
-            integration_config=config,
-            background_tasks=background_tasks,
-            connected_account_id="ca_new",
-        )
-
-        mock_websocket_manager.broadcast_to_user.assert_awaited_once()
-        call_args = mock_websocket_manager.broadcast_to_user.call_args
-        assert call_args.kwargs["user_id"] == user_id
-        assert call_args.kwargs["message"]["type"] == "bio_status_update"
 
     async def test_gmail_connection_skips_bio_update_when_already_completed(
         self,
@@ -974,31 +938,6 @@ class TestHandleOAuthConnection:
         assert resync_primary_bound_triggers not in scheduled
         assert resume_workflows_for_reconnected_integration not in scheduled
         gmail.assert_not_called()
-
-    async def test_websocket_failure_does_not_block_flow(
-        self,
-        mock_user_repo,
-        mock_record_account,
-        mock_redis_pool_manager,
-        mock_enqueue_personalization,
-    ):
-        """WebSocket broadcast failure should not block the OAuth flow."""
-        mock_user_repo.get.return_value = UserDocument(
-            onboarding={"completed": True, "bio_status": BioStatus.NO_GMAIL}
-        )
-        config = make_integration_config(integration_id="gmail")
-        background_tasks = MagicMock()
-
-        with patch("app.services.oauth.oauth_service.websocket_manager") as mock_ws:
-            mock_ws.broadcast_to_user = AsyncMock(side_effect=Exception("WS connection lost"))
-
-            # Should not raise
-            await handle_oauth_connection(
-                user_id="user123",
-                integration_config=config,
-                background_tasks=background_tasks,
-                connected_account_id="ca_new",
-            )
 
 
 # ---------------------------------------------------------------------------

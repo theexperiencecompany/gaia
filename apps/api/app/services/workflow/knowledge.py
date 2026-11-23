@@ -8,13 +8,14 @@ capabilities, and trigger config on demand. This keeps the per-run context small
 and the names accurate, instead of injecting the whole catalog every run.
 """
 
+from app.constants.integrations import IntegrationStatus
 from app.services.integrations.my_integrations import get_my_integrations
 
 
 async def build_connected_integrations_hint(user_id: str) -> str:
     """Return a compact block naming THIS user's connected integrations."""
     mine = (await get_my_integrations(user_id)).integrations
-    connected = [i for i in mine if i.status == "connected"]
+    connected = [i for i in mine if i.status == IntegrationStatus.CONNECTED]
 
     names = ", ".join(f"{i.name} (`{i.id}`)" for i in connected) if connected else "(none yet)"
 

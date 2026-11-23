@@ -1,10 +1,9 @@
 export type { ToolInfo } from "@shared/api/generated";
 
-import { api, type RequestOrigin } from "@/lib/api/typed";
+import { api } from "@/lib/api/typed";
 
-export const fetchAvailableTools = ({ background }: RequestOrigin = {}) =>
+export const fetchAvailableTools = () =>
   api.get("/api/v1/tools", {
     errorMessage: "Failed to fetch available tools",
     silent: true,
-    background,
   });

@@ -18,6 +18,7 @@ from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from pydantic import ValidationError
 import pytest
 
+from app.constants.integrations import ToolsSetup
 from app.models.integration_models import StoredIntegrationTool
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_client import MCPClient
@@ -525,6 +526,9 @@ class TestTokenExchange:
             ),
             patch("app.services.mcp.mcp_oauth.mcp_http_client") as mock_http_cls,
             patch.object(client, "connect", new=connect_mock),
+            patch(
+                "app.services.mcp.mcp_client.publish_tools_setup", new=AsyncMock(return_value=True)
+            ) as tools_setup,
         ):
             mock_http_instance = AsyncMock()
             mock_http_instance.post = AsyncMock(return_value=mock_http_response)
@@ -545,6 +549,12 @@ class TestTokenExchange:
 
         # The actual MCP connect runs in the background after the exchange returns.
         connect_mock.assert_awaited_once_with("exchange-int")
+        # The page is told tool discovery started before the connect is dispatched.
+        assert tools_setup.await_args_list[0].args == (
+            "test-user",
+            "exchange-int",
+            ToolsSetup.RUNNING,
+        )
         # Verify tokens were stored with correct values
         client.token_store.store_oauth_tokens.assert_awaited_once()
         call_kwargs = client.token_store.store_oauth_tokens.call_args[1]
@@ -1084,6 +1094,10 @@ class TestErrorHandling:
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.mcp.mcp_client.user_integration_repository.has_connected_before",
+                new=AsyncMock(return_value=False),
             ),
         ):
             with pytest.raises(ValueError, match="OAuth authorization required"):

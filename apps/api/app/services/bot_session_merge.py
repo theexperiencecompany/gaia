@@ -17,9 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from pymongo.errors import DuplicateKeyError
-
 from app.db.repositories.bot_sessions import bot_session_repository
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.bot_models import BotSessionDocument
 
 
@@ -109,7 +108,7 @@ def plan_merge(
 async def apply_merge(merge: SessionMerge) -> bool:
     """Write one planned merge. False when the world moved between plan and write.
 
-    A RENAME can hit DuplicateKeyError if something else claims the canonical
+    A RENAME can hit AlreadyExistsError if something else claims the canonical
     key first; a REPOINT's canonical row can vanish before the write lands.
     Either way, nothing is deleted — the next flagged message just replans.
     """
@@ -120,7 +119,7 @@ async def apply_merge(merge: SessionMerge) -> bool:
                 new_session_key=merge.canonical_key,
                 channel_id=dm_channel_of(merge.canonical_key),
             )
-        except DuplicateKeyError:
+        except AlreadyExistsError:
             return False
     if (
         merge.action is MergeAction.REPOINT

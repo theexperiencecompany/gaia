@@ -18,7 +18,8 @@ PRODUCTION_REQUIRED = frozenset(
         "ELEVENLABS_TTS_MODEL", "ELEVENLABS_VOICE_ID", "EMAIL_UNSUBSCRIBE_SECRET",
         "FIGMA_MCP_CLIENT_ID", "FIGMA_MCP_CLIENT_SECRET", "FIRECRAWL_API_KEY",
         "GAIA_BACKEND_URL", "GOOGLE_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
-        "JUICEFS_META_URL_TEMPLATE", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
+        "INTERNAL_API_TOKEN", "JUICEFS_META_URL_TEMPLATE", "LINK_CONTENT_BUCKET", "LIVEKIT_API_KEY",
+        "LIVEKIT_API_SECRET",
         "LIVEKIT_URL", "LLAMA_INDEX_KEY", "MCP_ENCRYPTION_KEY", "MONGO_DB",
         "NOTION_MCP_CLIENT_ID", "NOTION_MCP_CLIENT_SECRET", "OPENAI_API_KEY",
         "OPENROUTER_API_KEY", "OPENWEATHER_API_KEY", "POSTGRES_URL", "R2_ACCESS_KEY",
@@ -33,9 +34,17 @@ PRODUCTION_REQUIRED = frozenset(
 SELFHOST_REQUIRED = frozenset(
     {
         "AGENT_SECRET", "BOT_SESSION_TOKEN_SECRET", "CHROMADB_HOST", "CHROMADB_PORT",
-        "EMAIL_UNSUBSCRIBE_SECRET", "MONGO_DB", "POSTGRES_URL", "RABBITMQ_URL", "REDIS_URL",
+        "EMAIL_UNSUBSCRIBE_SECRET", "INTERNAL_API_TOKEN", "MONGO_DB", "POSTGRES_URL",
+        "RABBITMQ_URL", "REDIS_URL",
     }
 )  # fmt: skip
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("kind", [DeploymentKind.PRODUCTION, DeploymentKind.SELFHOST])
+def test_every_real_deployment_needs_the_web_servers_token(kind: DeploymentKind) -> None:
+    """Self-host's web server renders from one docker address too: without it every page is one anonymous viewer."""
+    assert "INTERNAL_API_TOKEN" in required_keys(baseline_profile(kind))
 
 
 def test_production_requires_exactly_what_it_always_has() -> None:

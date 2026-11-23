@@ -1,16 +1,17 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import {
   CONNECT_ACTION_LABEL,
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import { GoogleCalendarIcon } from "@/components/shared/icons";
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
+import { useCalendarEvents } from "@/features/calendar/hooks/useCalendarEvents";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { useWeeklyCalendarScroll } from "@/features/calendar/hooks/useWeeklyCalendarScroll";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
@@ -28,15 +29,8 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   onDateClick,
 }) => {
   // Hooks
-  const {
-    events,
-    loading,
-    error,
-    calendars,
-    selectedCalendars,
-    isInitialized,
-    loadEvents,
-  } = useSharedCalendar();
+  const { calendars, selectedCalendars, isLoadingCalendars, calendarsError } =
+    useSharedCalendar();
 
   const { getIntegrationStatus, connectIntegration } = useIntegrations();
   const calendarState = integrationConnectionState(
@@ -54,14 +48,23 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
 
   // Scrolling, virtualization, date-range and infinite-loading machinery
+  const { containerRef, scrollContainerRef, columnVirtualizer, extendedDates } =
+    useWeeklyCalendarScroll();
   const {
-    containerRef,
-    scrollContainerRef,
-    columnVirtualizer,
-    extendedDates,
-    isLoadingPast,
-    isLoadingFuture,
-  } = useWeeklyCalendarScroll({ selectedCalendars, isInitialized, loadEvents });
+    events,
+    isLoading: isLoadingEvents,
+    error: eventsError,
+    isLoadingFirstMonth: isLoadingPast,
+    isLoadingLastMonth: isLoadingFuture,
+  } = useCalendarEvents(selectedCalendars, extendedDates);
+  const loading = useMemo(
+    () => ({ calendars: isLoadingCalendars, events: isLoadingEvents }),
+    [isLoadingCalendars, isLoadingEvents],
+  );
+  const error = useMemo(
+    () => ({ calendars: calendarsError, events: eventsError }),
+    [calendarsError, eventsError],
+  );
 
   return (
     <div className="flex h-full w-full justify-center p-4 pt-4">
@@ -78,13 +81,13 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             <p className="text-sm text-zinc-500 text-center max-w-lg">
               View and manage your events in GAIA.
             </p>
-            <Button
-              color="primary"
+            <GaiaButton
               className="mt-4"
               onPress={() => connectIntegration("googlecalendar")}
+              variant="primary"
             >
               {connectLabel} Calendar
-            </Button>
+            </GaiaButton>
           </div>
         ) : (
           <div

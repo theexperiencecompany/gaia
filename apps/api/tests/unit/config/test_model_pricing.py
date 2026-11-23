@@ -29,6 +29,7 @@ from app.constants.llm import (
     MEMORY_MODEL_NAME,
     OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
     PAID_MODEL_NAME,
+    SIM_STUB_MODEL_NAME,
     VISION_MODEL_NAME,
     LLMProviderName,
 )
@@ -143,10 +144,10 @@ class TestEveryRuntimeModelIsPriced:
     ) -> None:
         """DEV_LLM_MODEL is whatever a developer points it at: one ERROR per call was 285 in one battery."""
         monkeypatch.setattr(settings, "ENV", "development")
-        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-9-unregistered")
 
         with patch("app.config.model_pricing.log") as mock_log:
-            pricing = get_model_pricing("gpt-6-luna")
+            pricing = get_model_pricing("gpt-9-unregistered")
 
         assert pricing == DEFAULT_PRICING
         mock_log.error.assert_not_called()
@@ -155,12 +156,20 @@ class TestEveryRuntimeModelIsPriced:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "production")
-        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-9-unregistered")
 
         with patch("app.config.model_pricing.log") as mock_log:
-            get_model_pricing("gpt-6-luna")
+            get_model_pricing("gpt-9-unregistered")
 
         mock_log.error.assert_called_once()
+
+    def test_the_sim_stub_model_is_free_and_does_not_log(self) -> None:
+        """Every call under GAIA_SIM_MODE names the stub's model; each one logged an ERROR."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing(SIM_STUB_MODEL_NAME)
+
+        assert pricing == ModelPricing(input_cost_per_1k=0.0, output_cost_per_1k=0.0)
+        mock_log.error.assert_not_called()
 
     def test_a_known_model_does_not_log(self) -> None:
         get_model_pricing(DEFAULT_MODEL_NAME)

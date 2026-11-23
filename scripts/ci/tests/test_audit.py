@@ -16,12 +16,14 @@ project and a standalone nested one, so discovery and staleness are both real.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import tarfile
 import textwrap
 from typing import Any
 
@@ -467,3 +469,235 @@ def test_a_pr_audit_is_never_narrowed_to_what_the_pr_added() -> None:
     """A CVE blocks every PR, as trivy's does: an advisory against what master ships is not a warning."""
     workflow = (SCRIPT.parents[2] / ".github" / "workflows" / "ci.yml").read_text()
     assert "AUDIT_SCOPE" not in workflow
+
+
+# --- secrets ----------------------------------------------------------------
+
+SARIF_FINDING = {
+    "runs": [
+        {
+            "results": [
+                {
+                    "ruleId": "generic-api-key",
+                    "message": {"text": "generic-api-key has detected secret"},
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": "scripts/ci/sim-stack.sh"},
+                                "region": {"startLine": 92},
+                            }
+                        }
+                    ],
+                }
+            ]
+        }
+    ]
+}
+
+
+def _gitleaks_release(tmp_path: Path, *, exit_code: int = 0) -> tuple[str, str]:
+    """Return a gitleaks release tarball's file:// URL and sha256; its binary records argv and exits exit_code."""
+    release = tmp_path / "release"
+    release.mkdir()
+    (release / "SARIF").write_text(json.dumps(SARIF_FINDING))
+    stub = release / "gitleaks"
+    stub.write_text(
+        textwrap.dedent(f"""\
+        #!/usr/bin/env bash
+        printf '%s\\n' "$@" > "{tmp_path / "argv"}"
+        for arg in "$@"; do
+          case "$arg" in --report-path=*) [ {exit_code} = 2 ] && cp "{release / "SARIF"}" "${{arg#--report-path=}}" ;; esac
+        done
+        exit {exit_code}
+        """)
+    )
+    stub.chmod(0o755)
+    archive = release / "gitleaks.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(stub, arcname="gitleaks")
+    return archive.as_uri(), hashlib.sha256(archive.read_bytes()).hexdigest()
+
+
+def _secrets(
+    tmp_path: Path, repo: Path, *args: str, exit_code: int = 0, **env: str
+) -> subprocess.CompletedProcess[str]:
+    url, sha256 = _gitleaks_release(tmp_path, exit_code=exit_code)
+    return subprocess.run(
+        ["bash", str(SCRIPT), "secrets", *args],
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": os.environ.get("HOME", "/tmp"),
+            "RUNNER_TEMP": str(tmp_path),
+            "GITLEAKS_CACHE": str(tmp_path / "cache"),
+            "GITLEAKS_RELEASE_URL": url,
+            "GITLEAKS_SHA256": sha256,
+            "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
+            "SECRETS_ROOT": str(repo),
+            **env,
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+
+def _log_opts(argv: Path) -> str:
+    return next(arg for arg in argv.read_text().splitlines() if arg.startswith("--log-opts="))
+
+
+@pytest.fixture
+def merged_branch_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    """Return (repo, base, side sha): the side commit reaches HEAD only through a merge."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "side")
+    (repo / "sim-stack.sh").write_text("KEY=not-really\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "side brings the key")
+    side = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "feature", base)
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "feature work")
+    _git(repo, "merge", "-q", "--no-ff", "--no-edit", "side")
+    return repo, base, side
+
+
+def test_secrets_scans_the_commits_a_merged_branch_brought_in(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    # The action's `--first-parent --no-merges` range never reached the side commit (#1723).
+    repo, base, side = merged_branch_repo
+    argv = tmp_path / "argv"
+
+    proc = _secrets(tmp_path, repo, "--lane", "lint-node/gitleaks", GAIA_PR_BASE=base)
+
+    assert proc.returncode == 0, proc.stderr
+    log_opts = _log_opts(argv)
+    assert log_opts == f"--log-opts={base}..HEAD"
+    assert side in _git(repo, "rev-list", log_opts.removeprefix("--log-opts="))
+
+
+def test_secrets_on_a_pr_scans_from_the_base_branch(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    repo, _, _ = merged_branch_repo
+    argv = tmp_path / "argv"
+
+    proc = _secrets(tmp_path, repo, "--lane", "lint-node/gitleaks", GAIA_PR_BASE="master")
+
+    assert proc.returncode == 0, proc.stderr
+    assert _log_opts(argv) == "--log-opts=master..HEAD"
+
+
+def test_secrets_on_a_push_scans_the_pushed_commits(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    repo, base, _ = merged_branch_repo
+    argv = tmp_path / "argv"
+
+    proc = _secrets(
+        tmp_path,
+        repo,
+        "--lane",
+        "lint-node/gitleaks",
+        GITHUB_EVENT_NAME="push",
+        PUSH_BEFORE_SHA=base,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert _log_opts(argv) == f"--log-opts={base}..HEAD"
+
+
+@pytest.mark.parametrize("before", ["", "0" * 40])
+def test_secrets_on_a_push_without_its_before_commit_fails(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str], before: str
+) -> None:
+    repo, _, _ = merged_branch_repo
+    argv = tmp_path / "argv"
+
+    proc = _secrets(
+        tmp_path,
+        repo,
+        "--lane",
+        "lint-node/gitleaks",
+        GITHUB_EVENT_NAME="push",
+        PUSH_BEFORE_SHA=before,
+    )
+
+    assert proc.returncode == 1
+    assert "PUSH_BEFORE_SHA" in proc.stderr
+    assert not argv.exists()
+
+
+def test_secrets_finding_fails_with_its_verdict(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    repo, base, _ = merged_branch_repo
+    proc = _secrets(tmp_path, repo, "--lane", "lint-node/gitleaks", exit_code=2, GAIA_PR_BASE=base)
+
+    assert proc.returncode == 1
+    doc = json.loads((tmp_path / "verdicts" / "lint-node" / "gitleaks.json").read_text())
+    assert doc["status"] == "fail"
+    assert [(f["file"], f["line"]) for f in doc["findings"]] == [("scripts/ci/sim-stack.sh", 92)]
+
+
+def test_secrets_scan_that_errors_is_never_a_pass(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    repo, base, _ = merged_branch_repo
+    proc = _secrets(tmp_path, repo, "--lane", "lint-node/gitleaks", exit_code=1, GAIA_PR_BASE=base)
+
+    assert proc.returncode == 1
+    assert "the scan itself failed (exit 1)" in proc.stderr
+
+
+def test_secrets_refuses_a_gitleaks_that_misses_its_pinned_sha256(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    repo, base, _ = merged_branch_repo
+
+    proc = _secrets(
+        tmp_path, repo, "--lane", "lint-node/gitleaks", GAIA_PR_BASE=base, GITLEAKS_SHA256="0" * 64
+    )
+
+    assert proc.returncode == 1
+    assert "does not match its pinned sha256" in proc.stderr
+    assert not (tmp_path / "argv").exists()
+
+
+def test_secrets_never_runs_a_cached_gitleaks_that_was_swapped(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    # The box's tool cache outlives the job, so an earlier job could have planted a scanner that passes.
+    repo, base, _ = merged_branch_repo
+    assert (
+        _secrets(tmp_path, repo, "--lane", "lint-node/gitleaks", GAIA_PR_BASE=base).returncode == 0
+    )
+    (cached,) = (tmp_path / "cache").iterdir()
+    planted = tmp_path / "planted"
+    planted.mkdir()
+    (planted / "gitleaks").write_text(f'#!/usr/bin/env bash\ntouch "{tmp_path}/planted-ran"\n')
+    (planted / "gitleaks").chmod(0o755)
+    with tarfile.open(cached, "w:gz") as tar:
+        tar.add(planted / "gitleaks", arcname="gitleaks")
+    shutil.rmtree(tmp_path / "release")
+
+    proc = _secrets(tmp_path, repo, "--lane", "lint-node/gitleaks", exit_code=2, GAIA_PR_BASE=base)
+
+    assert proc.returncode == 1
+    assert not (tmp_path / "planted-ran").exists()
+    assert (tmp_path / "verdicts" / "lint-node" / "gitleaks.json").is_file()
+
+
+def test_secrets_needs_the_lane_its_verdict_is_written_under(
+    tmp_path: Path, merged_branch_repo: tuple[Path, str, str]
+) -> None:
+    repo, base, _ = merged_branch_repo
+
+    proc = _secrets(tmp_path, repo, GAIA_PR_BASE=base)
+
+    assert proc.returncode == 1
+    assert "--lane <job>/<check> is required" in proc.stderr

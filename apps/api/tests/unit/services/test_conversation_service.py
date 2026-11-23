@@ -9,29 +9,36 @@ repository's own behaviour (user-scoping, source persistence, message stripping,
 pin semantics) is covered by the real-DB contract suite.
 """
 
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 from fastapi import HTTPException
 import pytest
 
+from app.config.settings import settings
+from app.db.repositories.short_links import short_link_repository
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
     ConversationSource,
     ConversationSyncItem,
-    MessageModel,
     SystemPurpose,
-    UpdateMessagesRequest,
 )
+from app.models.conversation_frame_models import EntryFrame
+from app.models.conversation_log_models import Reply, UserMessage
 from app.models.conversation_models import (
-    ConversationDocument,
     ConversationMessageHit,
     ConversationSummary,
+    LogPage,
+    StoredConversation,
 )
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.services import conversation_service
+from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -41,6 +48,7 @@ from app.services.conversation_service import (
     delete_todo_conversations,
     get_conversation,
     get_conversations,
+    get_entries_before,
     get_or_create_todo_conversation,
     get_starred_messages,
     mark_conversation_as_read,
@@ -49,9 +57,10 @@ from app.services.conversation_service import (
     require_owned_conversation,
     star_conversation,
     update_conversation_description,
-    update_messages,
 )
-from app.utils.errors import AppError
+from app.services.links.placeholders import link_placeholder
+from app.services.links.urls import build_url
+from app.utils.errors import AppError, ConversationIdTakenError, ConversationStoreError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
@@ -61,6 +70,7 @@ from shared.py.analytics.catalog.chat import (
     ChatMessagePinned,
     ChatMessageUnpinned,
 )
+from tests.factories import make_reply_item
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -92,20 +102,24 @@ def _no_analytics():
         yield
 
 
-def _document(**overrides) -> ConversationDocument:
+def _document(**overrides) -> StoredConversation:
     data = {
         "user_id": USER_ID,
         "conversation_id": "conv_abc",
+        "source": "web",
         "createdAt": "2026-01-01T00:00:00+00:00",
+        "state": {"head": 0, "display": "idle", "work": []},
     }
     data.update(overrides)
-    return ConversationDocument.model_validate(data)
+    return StoredConversation.model_validate(data)
 
 
 class TestCreateConversationService:
     async def test_creates_conversation_and_returns_response(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
-        conversation = ConversationModel(conversation_id="conv_abc", description="Test Chat")
+        conversation = ConversationModel(
+            conversation_id="conv_abc", description="Test Chat", source=ConversationSource.WEB
+        )
 
         result = await create_conversation_service(conversation, test_user)
 
@@ -121,19 +135,24 @@ class TestCreateConversationService:
     async def test_raises_403_when_no_user_id(self, mock_repo):
         with pytest.raises(HTTPException) as exc_info:
             await create_conversation_service(
-                ConversationModel(conversation_id="c"), AuthenticatedUser(user_id="")
+                ConversationModel(conversation_id="c", source=ConversationSource.WEB),
+                AuthenticatedUser(user_id=""),
             )
         assert exc_info.value.status_code == 403
 
-    async def test_raises_500_on_repository_error(self, mock_repo, test_user):
-        mock_repo.create.side_effect = Exception("DB connection failed")
-        with pytest.raises(HTTPException) as exc_info:
-            await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
-        assert exc_info.value.status_code == 500
+    async def test_an_id_another_user_holds_is_refused_as_a_conflict(self, mock_repo, test_user):
+        mock_repo.create.side_effect = ConversationIdTakenError(message="taken")
+        with pytest.raises(ConversationIdTakenError) as exc_info:
+            await create_conversation_service(
+                ConversationModel(conversation_id="c", source=ConversationSource.WEB), test_user
+            )
+        assert exc_info.value.status_code == 409
 
     async def test_captures_conversation_created(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
-        conversation = ConversationModel(conversation_id="conv_abc", description="Test Chat")
+        conversation = ConversationModel(
+            conversation_id="conv_abc", description="Test Chat", source=ConversationSource.WEB
+        )
 
         with patch("app.services.conversation_service.capture") as mock_capture:
             await create_conversation_service(conversation, test_user)
@@ -144,12 +163,14 @@ class TestCreateConversationService:
         )
 
     async def test_no_capture_on_repository_error(self, mock_repo, test_user):
-        mock_repo.create.side_effect = Exception("DB connection failed")
+        mock_repo.create.side_effect = ConversationStoreError(message="DB connection failed")
         with (
-            pytest.raises(HTTPException),
+            pytest.raises(ConversationStoreError),
             patch("app.services.conversation_service.capture") as mock_capture,
         ):
-            await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
+            await create_conversation_service(
+                ConversationModel(conversation_id="c", source=ConversationSource.WEB), test_user
+            )
         mock_capture.assert_not_called()
 
     async def test_persists_source_and_flags(self, mock_repo, test_user):
@@ -184,6 +205,129 @@ class TestGetConversation:
         assert exc_info.value.status_code == 404
 
 
+class TestTheScreenAPageProjectsTo:
+    """The screen a conversation's log page is shown as: its items, its paging, its own conversation."""
+
+    @staticmethod
+    def _page(**overrides: object) -> LogPage:
+        entry = EntryFrame(
+            seq=4,
+            at=datetime(2026, 1, 1, tzinfo=UTC),
+            entry=UserMessage(id="u4", text="hello", surface=ConversationSource.WEB),
+        )
+        data: dict[str, object] = {
+            "entries": [entry],
+            "state": {"head": 4, "display": "idle", "work": []},
+            "has_older": True,
+            "cursor": 4,
+        }
+        data.update(overrides)
+        return LogPage.model_validate(data)
+
+    async def test_an_older_page_carries_its_items_paging_and_conversation(
+        self, mock_repo, test_user
+    ):
+        mock_repo.read_entries_before.return_value = self._page()
+        loads: list[str] = []
+        real_load = ScreenTracker.load
+
+        async def load(conversation_id: str, entries: Any) -> ScreenTracker:
+            loads.append(conversation_id)
+            return await real_load(conversation_id, entries)
+
+        with patch.object(ScreenTracker, "load", load):
+            page = await get_entries_before("conv_abc", test_user, before_seq=9, limit=20)
+
+        assert loads == ["conv_abc"]
+        assert (page.has_older, page.cursor) == (True, 4)
+        assert len(page.items) == 1
+        mock_repo.read_entries_before.assert_awaited_once_with(
+            "conv_abc", user_id=USER_ID, before_seq=9, limit=20
+        )
+
+    async def test_an_older_page_of_someone_elses_conversation_is_not_found(
+        self, mock_repo, test_user
+    ):
+        mock_repo.read_entries_before.return_value = None
+
+        with pytest.raises(HTTPException) as raised:
+            await get_entries_before("conv_abc", test_user, before_seq=9, limit=20)
+
+        assert raised.value.status_code == 404
+        assert raised.value.detail == "Conversation not found or does not belong to the user"
+
+    async def test_a_loaded_conversation_projects_its_own_page(self, mock_repo, test_user):
+        page = self._page()
+        mock_repo.get.return_value = _document(
+            entries=[frame.model_dump() for frame in page.entries], has_older=True, cursor=4
+        )
+        loads: list[str] = []
+        real_load = ScreenTracker.load
+
+        async def load(conversation_id: str, entries: Any) -> ScreenTracker:
+            loads.append(conversation_id)
+            return await real_load(conversation_id, entries)
+
+        with patch.object(ScreenTracker, "load", load):
+            loaded = await get_conversation("conv_abc", test_user)
+
+        assert loads == ["conv_abc"]
+        assert (loaded.has_older, loaded.cursor, len(loaded.items)) == (True, 4, 1)
+
+
+_LINKED = RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+_LINKED_TEXT = f"the plan {link_placeholder(_LINKED)}"
+_LINKED_SHOWN = (f"the plan {build_url('ab12cd')}",)
+
+
+@pytest.fixture
+def live_link():
+    live = AsyncMock(return_value=ShortLink(slug="ab12cd", user_id=USER_ID, target=_LINKED))
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        yield live
+
+
+def _linked_reply_entries() -> list[dict[str, object]]:
+    reply = Reply(id="e4", reply_id="r4", attempt_id="a1", text=_LINKED_TEXT)
+    return [EntryFrame(seq=4, at=datetime(2026, 1, 1, tzinfo=UTC), entry=reply).model_dump()]
+
+
+class TestAReplysLinkReachesTheClientResolvedForItsUser:
+    """Each read a client renders from resolves the placeholders the log keeps, under the reader's id."""
+
+    async def test_a_loaded_conversation(self, mock_repo, test_user, live_link):
+        mock_repo.get.return_value = _document(entries=_linked_reply_entries())
+        loaded = await get_conversation("conv_abc", test_user)
+        assert [item.bubbles for item in loaded.items] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+    async def test_an_older_page(self, mock_repo, test_user, live_link):
+        mock_repo.read_entries_before.return_value = LogPage.model_validate(
+            {
+                "entries": _linked_reply_entries(),
+                "state": {"head": 4, "display": "idle", "work": []},
+            }
+        )
+        page = await get_entries_before("conv_abc", test_user, before_seq=9, limit=20)
+        assert [item.bubbles for item in page.items] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+    async def test_a_synced_row(self, mock_repo, test_user, live_link):
+        mock_repo.find_updated_since.return_value = [_document(entries=_linked_reply_entries())]
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
+        assert [item.bubbles for item in result.conversations[0].items] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+    async def test_a_pinned_message(self, mock_repo, test_user, live_link):
+        mock_repo.list_pinned_messages.return_value = [
+            ConversationMessageHit(conversation_id="conv_1", item=make_reply_item(_LINKED_TEXT))
+        ]
+        result = await get_starred_messages(test_user)
+        assert [hit.item.bubbles for hit in result.results] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+
 class TestStarConversation:
     async def test_stars(self, mock_repo, test_user):
         mock_repo.set_starred.return_value = True
@@ -207,24 +351,55 @@ class TestStarConversation:
         )
 
 
+@dataclass
+class Leftovers:
+    """What outlives a conversation's document, each cleanup patched at its seam."""
+
+    links: AsyncMock
+    artifacts: AsyncMock
+    sessions: AsyncMock
+    threads: AsyncMock
+
+    def cleaned(self) -> list[tuple[object, ...]]:
+        """Return the conversations each cleanup ran for, one row per cleanup."""
+        return [
+            tuple(c.args for c in mock.await_args_list)
+            for mock in (self.links, self.artifacts, self.sessions, self.threads)
+        ]
+
+
+@pytest.fixture
+def leftovers():
+    found = Leftovers(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    with (
+        patch.object(conversation_service, "revoke_conversation_links", new=found.links),
+        patch.object(
+            conversation_service.openui_artifact_repository,
+            "delete_for_conversation",
+            new=found.artifacts,
+        ),
+        patch.object(conversation_service, "delete_session_dir", new=found.sessions),
+        patch.object(conversation_service, "_cleanup_checkpoint_threads", new=found.threads),
+    ):
+        yield found
+
+
 class TestDeleteConversation:
-    async def test_deletes_single(self, mock_repo, test_user):
+    async def test_deletes_single(self, mock_repo, test_user, leftovers):
         mock_repo.delete.return_value = True
-        sessions = AsyncMock()
-        threads = AsyncMock()
-        with (
-            patch.object(conversation_service, "delete_session_dir", new=sessions),
-            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=threads),
-            patch("app.services.conversation_service.capture") as mock_capture,
-        ):
+        with patch("app.services.conversation_service.capture") as mock_capture:
             result = await delete_conversation("conv_abc", test_user)
         assert (result.conversation_id, result.message) == (
             "conv_abc",
             "Conversation deleted successfully",
         )
-        # What outlives the document goes with it: the session dir and the checkpoints.
-        sessions.assert_awaited_once_with(USER_ID, "conv_abc")
-        threads.assert_awaited_once_with("conv_abc")
+        # What outlives the document goes with it: its links, artifacts, session dir and checkpoints.
+        assert leftovers.cleaned() == [
+            ((USER_ID, "conv_abc"),),
+            ((USER_ID, "conv_abc"),),
+            ((USER_ID, "conv_abc"),),
+            (("conv_abc",),),
+        ]
         mock_capture.assert_called_once_with(
             UserId(USER_ID), ChatConversationDeleted(conversation_id="conv_abc")
         )
@@ -235,17 +410,16 @@ class TestDeleteConversation:
             await delete_conversation("nonexistent", test_user)
         assert exc_info.value.status_code == 404
 
-    async def test_delete_all_cleans_up_each_conversation(self, mock_repo, test_user):
+    async def test_delete_all_cleans_up_each_conversation_like_a_single_delete(
+        self, mock_repo, test_user, leftovers
+    ):
         mock_repo.delete_all_chats_for_user.return_value = ["conv_1", "conv_2"]
-        cleanup = AsyncMock()
-        with (
-            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
-            patch("app.services.conversation_service.capture") as mock_capture,
-        ):
+        with patch("app.services.conversation_service.capture") as mock_capture:
             result = await delete_all_conversations(test_user)
         assert result.message == "All conversations deleted successfully"
         mock_repo.delete_all_chats_for_user.assert_awaited_once_with(USER_ID)
-        assert [c.args for c in cleanup.await_args_list] == [("conv_1",), ("conv_2",)]
+        owned = ((USER_ID, "conv_1"), (USER_ID, "conv_2"))
+        assert leftovers.cleaned() == [owned, owned, owned, (("conv_1",), ("conv_2",))]
         mock_capture.assert_called_once_with(UserId(USER_ID), ChatConversationDeleted(count=2))
 
     async def test_delete_all_raises_404_when_none(self, mock_repo, test_user):
@@ -321,6 +495,11 @@ class TestListConversations:
 
         ids = [c.conversation_id for c in result.conversations]
         assert ids == ["s1", "a1"]  # starred first
+        # The server builds each row's link, so a bot's list command never spells the route.
+        assert [c.url for c in result.conversations] == [
+            f"{settings.FRONTEND_URL}/c/s1",
+            f"{settings.FRONTEND_URL}/c/a1",
+        ]
         assert result.page == 2 and result.limit == 10
         assert result.total == 1 + 25
         assert result.total_pages == 3  # 25 active / 10
@@ -337,85 +516,53 @@ class TestListConversations:
         assert mock_repo.count_active.call_args[0][0] == "user_1"
 
 
-class TestUpdateMessages:
-    async def test_appends_and_returns_ids(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = ["m1"]
-        request = UpdateMessagesRequest(
-            conversation_id="conv_abc", messages=[MessageModel(type="user", response="Hi")]
-        )
-        result = await update_messages(request, test_user)
-        assert result.message_ids == ["m1"]
-        assert result.conversation_id == "conv_abc"
-        assert mock_repo.append_messages.call_args.kwargs["user_id"] == USER_ID
-
-    async def test_raises_404_when_conversation_missing(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = None
-        request = UpdateMessagesRequest(
-            conversation_id="missing", messages=[MessageModel(type="user", response="Hi")]
-        )
-        with pytest.raises(HTTPException) as exc_info:
-            await update_messages(request, test_user)
-        assert exc_info.value.status_code == 404
+@pytest.fixture
+def mock_log_repo():
+    """Patch the log repository a pin amends through."""
+    repo = AsyncMock()
+    with patch.object(conversation_service, "conversation_log_repository", repo):
+        yield repo
 
 
 class TestPinMessage:
-    async def test_pins_message(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
+    @pytest.mark.parametrize(
+        ("pinned", "event"), [(True, ChatMessagePinned()), (False, ChatMessageUnpinned())]
+    )
+    async def test_a_pin_amends_the_logged_message_and_is_captured(
+        self, mock_repo, mock_log_repo, test_user, pinned, event
+    ):
+        mock_repo.exists.return_value = True
+        mock_log_repo.set_pinned.return_value = True
+        with patch("app.services.conversation_service.capture") as mock_capture:
+            result = await pin_message("conv_abc", "msg_1", pinned, test_user)
+        assert result.pinned is pinned
+        mock_repo.exists.assert_awaited_once_with("conv_abc", user_id=USER_ID)
+        mock_log_repo.set_pinned.assert_awaited_once_with(
+            "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=pinned
         )
-        mock_repo.set_message_pinned.return_value = True
-        result = await pin_message("conv_abc", "msg_1", True, test_user)
-        assert result.pinned is True
-        assert "pinned successfully" in result.message
-        mock_repo.get.assert_awaited_once_with("conv_abc", user_id=USER_ID)
-        mock_repo.set_message_pinned.assert_awaited_once_with(
-            "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=True
-        )
+        mock_capture.assert_called_once_with(UserId(USER_ID), event)
 
-    async def test_pin_captures_pinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
-        )
-        mock_repo.set_message_pinned.return_value = True
-        with patch(
-            "app.services.conversation_service.capture",
-        ) as mock_capture:
-            await pin_message("conv_abc", "msg_1", True, test_user)
-        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessagePinned())
-
-    async def test_unpin_captures_unpinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
-        )
-        mock_repo.set_message_pinned.return_value = True
-        with patch(
-            "app.services.conversation_service.capture",
-        ) as mock_capture:
-            await pin_message("conv_abc", "msg_1", False, test_user)
-        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessageUnpinned())
-
-    async def test_raises_404_conversation_not_found(self, mock_repo, test_user):
-        mock_repo.get.return_value = None
+    async def test_raises_404_conversation_not_found(self, mock_repo, mock_log_repo, test_user):
+        mock_repo.exists.return_value = False
         with pytest.raises(HTTPException) as exc_info:
             await pin_message("conv_abc", "msg_1", True, test_user)
         assert exc_info.value.status_code == 404
+        mock_log_repo.set_pinned.assert_not_awaited()
 
-    async def test_raises_404_message_not_found(self, mock_repo, test_user):
-        mock_repo.get.return_value = _document(
-            messages=[{"type": "bot", "response": "x", "message_id": "other"}]
-        )
-        with pytest.raises(HTTPException) as exc_info:
-            await pin_message("conv_abc", "missing", True, test_user)
+    async def test_raises_404_message_not_found(self, mock_repo, mock_log_repo, test_user):
+        mock_repo.exists.return_value = True
+        mock_log_repo.set_pinned.return_value = False
+        with patch("app.services.conversation_service.capture") as mock_capture:
+            with pytest.raises(HTTPException) as exc_info:
+                await pin_message("conv_abc", "missing", True, test_user)
         assert exc_info.value.status_code == 404
+        mock_capture.assert_not_called()
 
 
 class TestGetStarredMessages:
     async def test_returns_pinned(self, mock_repo, test_user):
         mock_repo.list_pinned_messages.return_value = [
-            ConversationMessageHit(
-                conversation_id="conv_1",
-                message={"type": "bot", "response": "test", "message_id": "m1", "pinned": True},
-            )
+            ConversationMessageHit(conversation_id="conv_1", item=make_reply_item("test"))
         ]
         result = await get_starred_messages(test_user)
         assert len(result.results) == 1
@@ -471,94 +618,64 @@ class TestBatchSyncConversations:
         assert result.conversations == []
         mock_repo.find_updated_since.assert_not_called()
 
-    async def test_reports_active_stream_of_an_up_to_date_conversation(self, mock_repo, test_user):
-        """A reloading client holding current history is sent no row, yet must still learn its turn is live."""
-        mock_repo.find_updated_since.return_value = []
-        mock_repo.owned_ids.return_value = {"conv_abc"}
-        resumable = AsyncMock(return_value="stream-1")
-        with patch.object(
-            conversation_service.stream_manager, "get_resumable_stream_id", new=resumable
-        ):
-            request = BatchSyncRequest(
-                conversations=[
-                    ConversationSyncItem(
-                        conversation_id="conv_abc", last_updated="2026-01-01T00:00:00+00:00"
-                    )
-                ]
-            )
-            result = await batch_sync_conversations(request, test_user)
-
-        assert result.conversations == []
-        assert result.active_streams == {"conv_abc": "stream-1"}
-        resumable.assert_awaited_once_with(USER_ID, "conv_abc")
-
-    async def test_returns_rows_and_active_streams(self, mock_repo, test_user):
+    async def test_returns_the_rows_without_internal_ids(self, mock_repo, test_user):
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]
         mock_repo.owned_ids.return_value = {"conv_abc"}
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value="stream-1"),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        loads: list[str] = []
+        real_load = ScreenTracker.load
+
+        async def load(conversation_id: str, entries: Any) -> ScreenTracker:
+            loads.append(conversation_id)
+            return await real_load(conversation_id, entries)
+
+        with patch.object(ScreenTracker, "load", load):
             result = await batch_sync_conversations(request, test_user)
+
+        # Each row's screen is projected for its own conversation.
+        assert loads == ["conv_abc"]
 
         assert len(result.conversations) == 1
         row = result.conversations[0]
         assert row.conversation_id == "conv_abc"
-        assert result.active_streams == {"conv_abc": "stream-1"}
         # The internal user_id/_id must not leak into a serialized sync row.
         serialized = row.model_dump()
         assert "user_id" not in serialized and "_id" not in serialized
 
     async def test_flagged_row_reaches_the_client(self, mock_repo, test_user):
         """The sidebar dot reads batch-sync rows: a dropped flag here is a missing dot no frontend mapping can recover."""
-        mock_repo.find_updated_since = AsyncMock(return_value=[_document(has_live_approval=True)])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(awaiting_approval=True)])
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
         (row,) = result.conversations
-        assert row.has_live_approval is True
+        assert row.awaiting_approval is True
 
     async def test_unflagged_row_reads_unset(self, mock_repo, test_user):
         mock_repo.find_updated_since = AsyncMock(return_value=[_document()])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
-        assert result.conversations[0].has_live_approval in (None, False)
+        assert result.conversations[0].awaiting_approval is False
 
-    async def test_a_todos_chat_tells_the_client_which_todo_it_belongs_to(
-        self, mock_repo, test_user
+    @pytest.mark.parametrize(
+        ("overrides", "listed"),
+        [
+            ({}, True),
+            ({"source": "web"}, True),
+            ({"todo_id": "todo-1"}, False),
+            ({"source": "telegram"}, False),
+        ],
+    )
+    async def test_a_row_says_whether_the_conversation_list_shows_it(
+        self, mock_repo, test_user, overrides: dict[str, str], listed: bool
     ):
-        """A client that opened a todo's chat keeps it in its own store; this is how it keeps it out of the list."""
-        mock_repo.find_updated_since = AsyncMock(return_value=[_document(todo_id="todo-1")])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        """A client keeps an unlisted chat cached instead of reading its absence from the list as a delete."""
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(**overrides)])
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
-        assert result.conversations[0].todo_id == "todo-1"
+        assert result.conversations[0].listed is listed
 
     async def test_an_asked_for_chat_the_user_no_longer_owns_comes_back_missing(
         self, mock_repo, test_user
@@ -629,23 +746,14 @@ class TestTrackedTodoChat:
         with pytest.raises(RuntimeError, match="todo-1"):
             await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
 
-    async def test_deleting_todos_cleans_up_after_each_of_their_chats(self, mock_repo):
+    async def test_deleting_todos_cleans_up_after_each_of_their_chats(self, mock_repo, leftovers):
         mock_repo.delete_for_todos.return_value = ["conv-1", "conv-2"]
-        cleanup = AsyncMock()
-        sessions = AsyncMock()
-        with (
-            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
-            patch.object(conversation_service, "delete_session_dir", new=sessions),
-            patch("app.services.conversation_service.capture") as mock_capture,
-        ):
+        with patch("app.services.conversation_service.capture") as mock_capture:
             await delete_todo_conversations(USER_ID, ["todo-1", "todo-2"])
 
         mock_repo.delete_for_todos.assert_awaited_once_with(USER_ID, ["todo-1", "todo-2"])
-        assert [c.args for c in cleanup.await_args_list] == [("conv-1",), ("conv-2",)]
-        assert [c.args for c in sessions.await_args_list] == [
-            (USER_ID, "conv-1"),
-            (USER_ID, "conv-2"),
-        ]
+        owned = ((USER_ID, "conv-1"), (USER_ID, "conv-2"))
+        assert leftovers.cleaned() == [owned, owned, owned, (("conv-1",), ("conv-2",))]
         # Not a conversation the user deleted: no chat analytics for it.
         mock_capture.assert_not_called()
 
@@ -673,31 +781,3 @@ class TestRequireOwnedConversation:
             "CONVERSATION_NOT_FOUND",
             "Conversation not found",
         )
-
-
-class TestConversationSizeCap:
-    """A chat thread is one Mongo document; past 16MB it can never be written again."""
-
-    async def test_a_chat_append_caps_history_by_default(self, monkeypatch) -> None:
-        from app.constants.chat import CONVERSATION_MAX_MESSAGES
-        from app.services import conversation_service
-
-        seen: dict[str, object] = {}
-
-        async def record(conversation_id: str, **kwargs: object) -> list[str]:
-            seen.update(kwargs)
-            return ["m1"]
-
-        monkeypatch.setattr(
-            "app.services.conversation_service.conversation_repository.append_messages", record
-        )
-
-        await conversation_service.update_messages(
-            UpdateMessagesRequest(
-                conversation_id="c1",
-                messages=[MessageModel(type="user", response="", message_id="m1")],
-            ),
-            user=AuthenticatedUser(user_id="u1"),
-        )
-
-        assert seen["max_messages"] == CONVERSATION_MAX_MESSAGES

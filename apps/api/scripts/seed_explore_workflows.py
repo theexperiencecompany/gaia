@@ -27,6 +27,7 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.collections import get_async_collection
 from app.models.workflow_models import (
     TriggerConfig,
@@ -1090,6 +1091,9 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         "steps": steps,
         "trigger_config": trigger_config.model_dump(mode="json"),
         "activated": True,
+        # A template never runs for anyone; a user who adds it picks their own
+        # delivery when they save their copy.
+        "delivery": WorkflowDelivery.NOW.value,
         "is_public": True,
         "is_explore": True,
         "use_case_categories": config.get("categories", ["featured"]),
@@ -1132,27 +1136,19 @@ def _write_backup_file(backup_file: str, existing: list[dict[str, Any]]) -> None
         json.dump(existing, f, indent=2, default=str)
 
 
-async def seed_explore_workflows(
-    dry_run: bool = False,
-    force: bool = False,
-    backup: bool = True,
-    user_id: str = SYSTEM_USER_ID,
-    prune: bool = False,
-) -> None:
-    """Seed the workflows collection with explore workflows."""
-    print("🚀 Starting explore workflows seeding...")
-
-    workflow_configs = get_all_workflows()
-    curated_slugs = {slugify(config["title"]) for config in workflow_configs}
-
+async def _print_current_state(seed_count: int) -> None:
+    """Print collection counts before seeding."""
     existing_explore = await workflows_collection.count_documents({"is_explore": True})
     existing_total = await workflows_collection.count_documents({})
 
     print("\n📊 Current State:")
     print(f"   📄 Total workflows: {existing_total}")
     print(f"   🔍 Explore workflows: {existing_explore}")
-    print(f"   ➕ Workflows to seed: {len(workflow_configs)}")
+    print(f"   ➕ Workflows to seed: {seed_count}")
 
+
+def _print_seed_plan(workflow_configs: list[dict[str, Any]]) -> None:
+    """Print the curated workflows to seed, grouped by category then listed."""
     categories: dict[str, int] = {}
     for config in workflow_configs:
         for cat in config.get("categories", ["featured"]):
@@ -1169,13 +1165,35 @@ async def seed_explore_workflows(
         print(f"   {i:2d}. [{trigger:8s}] {config['title']}")
         print(f"       Categories: {cats}")
 
+
+async def _print_prune_preview(curated_slugs: set[str]) -> None:
+    """Print the explore workflows a prune would remove."""
+    old_docs = await workflows_collection.find(
+        {"is_explore": True, "slug": {"$nin": list(curated_slugs)}}
+    ).to_list(length=None)
+    print(f"\n🗑️  Prune would remove {len(old_docs)} explore workflows not in the curated set:")
+    for doc in old_docs:
+        print(f"   • {doc.get('slug', '?')}")
+
+
+async def seed_explore_workflows(
+    dry_run: bool = False,
+    force: bool = False,
+    backup: bool = True,
+    user_id: str = SYSTEM_USER_ID,
+    prune: bool = False,
+) -> None:
+    """Seed the workflows collection with explore workflows."""
+    print("🚀 Starting explore workflows seeding...")
+
+    workflow_configs = get_all_workflows()
+    curated_slugs = {slugify(config["title"]) for config in workflow_configs}
+
+    await _print_current_state(len(workflow_configs))
+    _print_seed_plan(workflow_configs)
+
     if prune:
-        old_docs = await workflows_collection.find(
-            {"is_explore": True, "slug": {"$nin": list(curated_slugs)}}
-        ).to_list(length=None)
-        print(f"\n🗑️  Prune would remove {len(old_docs)} explore workflows not in the curated set:")
-        for doc in old_docs:
-            print(f"   • {doc.get('slug', '?')}")
+        await _print_prune_preview(curated_slugs)
 
     if dry_run:
         print("\n🔍 DRY RUN - No changes applied.")
@@ -1217,7 +1235,7 @@ async def seed_explore_workflows(
     print(f"   🔍 Explore workflows: {final_explore}")
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="Seed explore/discover workflows for GAIA (outcome-first curated set)",
@@ -1254,7 +1272,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-async def main():
+async def main() -> None:
     """Seed explore workflows."""
     args = parse_arguments()
 

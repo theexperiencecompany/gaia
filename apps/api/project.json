@@ -72,10 +72,19 @@
         "{projectRoot}/.venv"
       ]
     },
+    "migrate": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "uv run --group backend python -m scripts.post_deploy --apply",
+        "cwd": "{projectRoot}"
+      }
+    },
     "dev": {
       "executor": "nx:run-commands",
+      "dependsOn": [{ "projects": ["artifact-validate"], "target": "build" }, "migrate"],
       "options": {
-        "command": "uv run --group backend uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-8000} --reload --reload-dir app --log-level info --no-access-log",
+        "command": "bash ../../scripts/dev/require-worktree-env.sh && uv run --group backend uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-8000} --reload --reload-dir app --log-level info --no-access-log",
         "cwd": "{projectRoot}"
       }
     },
@@ -155,8 +164,9 @@
     },
     "worker": {
       "executor": "nx:run-commands",
+      "dependsOn": [{ "projects": ["artifact-validate"], "target": "build" }, "migrate"],
       "options": {
-        "command": "uv run --group backend arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG",
+        "command": "bash ../../scripts/dev/require-worktree-env.sh && uv run --group backend arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG",
         "cwd": "{projectRoot}"
       }
     },
@@ -172,6 +182,9 @@
         "{projectRoot}/tests/**/*",
         "{projectRoot}/pyproject.toml",
         "{projectRoot}/pytest.ini",
+        "{projectRoot}/scripts/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "{workspaceRoot}/scripts/ci/lib/**/*",
         "python",
         "^production",
         {
@@ -205,7 +218,7 @@
     "test:contracts": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/contracts -v --tb=short -n auto --maxprocesses=4",
+        "command": "USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/contracts -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -266,6 +279,9 @@
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
         "{projectRoot}/tests/helpers.py",
+        "{projectRoot}/scripts/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "{workspaceRoot}/scripts/ci/lib/**/*",
         "python",
         "^production",
         {
@@ -286,6 +302,9 @@
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
         "{projectRoot}/tests/helpers.py",
+        "{projectRoot}/scripts/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "{workspaceRoot}/scripts/ci/lib/**/*",
         "python",
         "^production",
         {

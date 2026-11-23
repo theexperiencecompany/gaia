@@ -156,23 +156,39 @@ def test_a_pr_push_runs_only_the_fast_tier(workflow: Workflow) -> None:
     (plan,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "plan"]
     assert "tier" not in plan["if"]
     (tier,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "tier"]
-    assert tier["env"]["TIER"] == "${{ github.event_name == 'pull_request' && 'fast' || 'full' }}"
+    assert tier["env"]["TIER"] == (
+        "${{ github.event_name == 'pull_request' && 'fast' || "
+        "steps.queue.outputs.queue_run != '' && 'verified' || 'full' }}"
+    )
 
 
-def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Workflow) -> None:
-    """Regression for run 40050150344: on a dispatch the action scans ALL history and fails on old findings."""
-    steps = [
-        mapping(step)
+def test_only_a_master_push_the_queue_passed_skips_the_check_lanes(workflow: Workflow) -> None:
+    # The verified tier is decided before the tier step, on a push only, by the
+    # one subcommand whose tests pin "anything but a green queue run is full".
+    steps = workflow["jobs"]["detect"]["steps"]
+    ids = [s.get("id") for s in steps]
+    assert ids.index("queue") < ids.index("tier") < ids.index("affected")
+    queue = steps[ids.index("queue")]
+    assert queue["if"] == "github.event_name == 'push'"
+    assert queue["run"].startswith("python3 scripts/ci/verdict.py queue-verified ")
+    affected = steps[ids.index("affected")]
+    assert affected["env"]["CI_TIER"] == "${{ steps.tier.outputs.tier }}"
+
+
+def test_the_secret_scan_runs_on_every_event_that_brings_commits_and_no_other(
+    workflow: Workflow,
+) -> None:
+    """Regression for master run 44961262551: the merge queue skipped gitleaks, and a verified push now runs none."""
+    uses = [
+        str(mapping(step).get("uses", ""))
         for job in mapping(workflow["jobs"]).values()
         for step in mapping(job).get("steps", [])
-        if "gitleaks/gitleaks-action" in str(mapping(step).get("uses", ""))
     ]
-    assert len(steps) == 1
-    assert "'ci:gitleaks'" in str(steps[0]["if"])
+    assert not [u for u in uses if "gitleaks" in u], "the action scans first-parent commits only"
     gitleaks = nx_affected.checks()["ci:gitleaks"]
-    assert gitleaks.events == ("pull_request", "push"), (
-        "an exclusion list lets workflow_dispatch through"
-    )
+    assert gitleaks.job == "lint-node"
+    # workflow_dispatch scans ALL history and fails on old findings (run 40050150344).
+    assert gitleaks.events == ("pull_request", "merge_group", "push")
 
 
 REPO = "theexperiencecompany/gaia"

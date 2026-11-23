@@ -124,7 +124,7 @@ class TestGetVoiceToken:
         assert metadata["identity"] == f"user_{USER_ID}"
         assert metadata["roomName"] == body["roomName"]
         assert metadata["voiceId"] == "voice-1"
-        # The voice worker replays this on chat-stream; it must pass the agent-token check.
+        # The voice worker sends with this on the send, barge-in and events routes.
         assert verify_agent_token(metadata["agentToken"]) == AgentTokenInfo(user_id=USER_ID)
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
@@ -144,6 +144,33 @@ class TestGetVoiceToken:
         # No stored voice → no voiceId key (the agent uses its default).
         assert "voiceId" not in metadata
         mock_get_voice.assert_awaited_once_with(USER_ID)
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("env", "agent_name"),
+        [
+            ("development", "gaia-voice-dev"),
+            ("production", "gaia-voice"),
+        ],
+    )
+    async def test_token_dispatches_only_its_environments_agent(
+        self,
+        mock_get_voice: AsyncMock,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        env: str,
+        agent_name: str,
+    ):
+        # Undispatched rooms were taken by another environment's worker on the shared LiveKit project.
+        self._enable_livekit(monkeypatch)
+        monkeypatch.setattr(settings, "ENV", env)
+        mock_get_voice.return_value = None
+        resp = await client.get(VOICE_BASE + "/token")
+        assert resp.status_code == 200
+        claims = _decode_token(resp.json()["participantToken"])
+        agents = claims["roomConfig"]["agents"]
+        assert [a["agentName"] for a in agents] == [agent_name]
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
     async def test_token_for_user_without_email_has_blank_participant_name(

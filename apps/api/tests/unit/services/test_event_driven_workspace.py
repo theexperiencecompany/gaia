@@ -21,6 +21,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.integrations import IntegrationStatus
+from app.constants.user_activity import ActivityStatus
+from app.models.integration_models import UserIntegrationDocument
 from app.models.user_models import UserDocument
 from app.services.integrations import user_integrations
 from app.services.integrations.user_integration_status import update_user_integration_status
@@ -32,10 +35,12 @@ from app.services.integrations_fs import sync_user_integrations
 from app.services.oauth.oauth_service import store_user_info
 from app.services.storage import juicefs
 from app.services.workspace_sync import (
+    WorkspaceSyncResult,
     init_system_subtree,
     resync_stale_user_workspaces,
     sync_stale_user_workspaces,
 )
+from tests.integration_account_factories import make_integration_record
 
 WS = "app.services.workspace_sync"
 IFS = "app.services.integrations_fs"
@@ -82,16 +87,28 @@ def wsync():
             new_callable=AsyncMock,
             return_value={"gmail"},
         ) as connected,
-        patch(f"{WS}._active_user_ids", new_callable=AsyncMock) as active_ids,
-        patch(f"{WS}._all_user_ids", new_callable=AsyncMock) as all_ids,
+        patch(f"{WS}.user_repository") as users,
     ):
+        by_status: dict[ActivityStatus, list[str]] = {}
+        users.find_activity_rows = AsyncMock(
+            side_effect=lambda status: [
+                SimpleNamespace(id=uid) for uid in by_status.get(status, [])
+            ]
+        )
+        users.list_all_ids = AsyncMock()
+
+        def set_active(ids: list[str]) -> None:
+            by_status[ActivityStatus.ACTIVE] = ids
+
         yield SimpleNamespace(
             is_mounted=is_mounted,
             read_marker=read_marker,
             provision=provision,
             connected=connected,
-            active_ids=active_ids,
-            all_ids=all_ids,
+            by_status=by_status,
+            find_by_status=users.find_activity_rows,
+            all_ids=users.list_all_ids,
+            set_active=set_active,
         )
 
 
@@ -102,50 +119,50 @@ async def _run_sync(**kwargs):
 async def test_no_mount_short_circuits(wsync):
     wsync.is_mounted.return_value = False
     result = await _run_sync()
-    assert result == {"scanned": 0, "synced": 0, "skipped": 0}
-    wsync.active_ids.assert_not_called()
+    assert result == WorkspaceSyncResult(scanned=0, synced=0, skipped=0)
+    wsync.find_by_status.assert_not_called()
     wsync.provision.assert_not_called()
 
 
 async def test_all_stale_provisioned(wsync):
-    wsync.active_ids.return_value = ["u1", "u2"]
+    wsync.set_active(["u1", "u2"])
     wsync.read_marker.side_effect = ["OLD", "OLD"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 2, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
     assert wsync.provision.await_count == 2
 
 
 async def test_current_marker_skipped(wsync):
-    wsync.active_ids.return_value = ["u1", "u2"]
+    wsync.set_active(["u1", "u2"])
     wsync.read_marker.side_effect = ["HASH_CURRENT", "HASH_CURRENT"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 0, "skipped": 2}
+    assert result == WorkspaceSyncResult(scanned=2, synced=0, skipped=2)
     wsync.provision.assert_not_called()
 
 
 async def test_mixed_stale_and_current(wsync):
-    wsync.active_ids.return_value = ["fresh", "stale"]
+    wsync.set_active(["fresh", "stale"])
     wsync.read_marker.side_effect = ["HASH_CURRENT", "OLD"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 1, "skipped": 1}
+    assert result == WorkspaceSyncResult(scanned=2, synced=1, skipped=1)
     wsync.provision.assert_awaited_once_with("stale", {"gmail"})
 
 
 async def test_force_ignores_marker(wsync):
-    wsync.active_ids.return_value = ["u1", "u2"]
+    wsync.set_active(["u1", "u2"])
     # read_marker must never be consulted when force=True
     wsync.read_marker.side_effect = AssertionError("marker read despite force")
     result = await _run_sync(force=True)
-    assert result == {"scanned": 2, "synced": 2, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
 
 
 async def test_one_user_failure_does_not_abort_batch(wsync):
-    wsync.active_ids.return_value = ["bad", "good"]
+    wsync.set_active(["bad", "good"])
     wsync.read_marker.side_effect = ["OLD", "OLD"]
     wsync.provision.side_effect = [RuntimeError("boom"), None]
     result = await _run_sync()
     # 'bad' raised, 'good' still provisioned; neither aborts the run.
-    assert result == {"scanned": 2, "synced": 1, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=1, skipped=0)
     assert wsync.provision.await_count == 2
 
 
@@ -153,20 +170,31 @@ async def test_active_only_false_uses_all_users(wsync):
     wsync.all_ids.return_value = ["a", "b", "c"]
     wsync.read_marker.side_effect = ["OLD", "OLD", "OLD"]
     result = await _run_sync(active_only=False)
-    assert result["scanned"] == 3
+    assert result.scanned == 3
     wsync.all_ids.assert_awaited_once()
-    wsync.active_ids.assert_not_called()
+    wsync.find_by_status.assert_not_called()
+
+
+async def test_active_only_syncs_active_and_idle_but_never_dormant(wsync):
+    wsync.by_status[ActivityStatus.ACTIVE] = ["active"]
+    wsync.by_status[ActivityStatus.IDLE] = ["idle"]
+    wsync.by_status[ActivityStatus.DORMANT] = ["dormant"]
+    wsync.read_marker.side_effect = ["OLD", "OLD"]
+    result = await _run_sync()
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
+    provisioned = [c.args[0] for c in wsync.provision.await_args_list]
+    assert provisioned == ["active", "idle"]
 
 
 async def test_empty_user_set(wsync):
-    wsync.active_ids.return_value = []
+    wsync.set_active([])
     result = await _run_sync()
-    assert result == {"scanned": 0, "synced": 0, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=0, synced=0, skipped=0)
     wsync.provision.assert_not_called()
 
 
 async def test_provision_receives_connected_ids(wsync):
-    wsync.active_ids.return_value = ["u1"]
+    wsync.set_active(["u1"])
     wsync.read_marker.side_effect = ["OLD"]
     wsync.connected.return_value = {"slack", "notion"}
     await _run_sync()
@@ -237,35 +265,41 @@ async def test_sync_user_integrations_empty_set_still_materializes():
 # ---------------------------------------------------------------------------
 
 
+def _record(integration_id: str, status: IntegrationStatus) -> UserIntegrationDocument:
+    return make_integration_record(
+        user_id="u", integration_id=integration_id, primary=None, status=status
+    )
+
+
+def _statuses(records: list[UserIntegrationDocument]) -> dict[str, IntegrationStatus]:
+    return {record.integration_id: record.status for record in records}
+
+
 @pytest.mark.parametrize(
     "docs, expected",
     [
         ([], set()),
-        ([{"integration_id": "gmail", "status": "connected"}], {"gmail"}),
-        ([{"integration_id": "gmail", "status": "created"}], set()),
-        ([{"status": "connected"}], set()),  # missing integration_id
+        ([("gmail", IntegrationStatus.CONNECTED)], {"gmail"}),
+        ([("gmail", IntegrationStatus.CREATED)], set()),
+        ([("gmail", IntegrationStatus.EXPIRED)], set()),
+        ([("x", IntegrationStatus.CONNECTED), ("x", IntegrationStatus.CONNECTED)], {"x"}),
         (
             [
-                {"integration_id": "x", "status": "connected"},
-                {"integration_id": "x", "status": "connected"},
-            ],
-            {"x"},
-        ),
-        (
-            [
-                {"integration_id": "a", "status": "connected"},
-                {"integration_id": "b", "status": "created"},
-                {"integration_id": "c", "status": "connected"},
+                ("a", IntegrationStatus.CONNECTED),
+                ("b", IntegrationStatus.CREATED),
+                ("c", IntegrationStatus.CONNECTED),
             ],
             {"a", "c"},
         ),
     ],
 )
-async def test_get_connected_integration_ids_filter(docs, expected):
+async def test_get_connected_integration_ids_filter(
+    docs: list[tuple[str, IntegrationStatus]], expected: set[str]
+) -> None:
     with patch(
         f"{UINT}.get_user_integration_records",
         new_callable=AsyncMock,
-        return_value=docs,
+        return_value=[_record(iid, status) for iid, status in docs],
     ):
         assert await get_connected_integration_ids("u") == expected
 
@@ -273,10 +307,9 @@ async def test_get_connected_integration_ids_filter(docs, expected):
 @asynccontextmanager
 async def _stale_posthog_credential() -> AsyncIterator[MagicMock]:
     """Workspace seams with posthog connected in Mongo but dead in Postgres."""
-    record = MagicMock()
-    record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
+    record = _record("posthog", IntegrationStatus.CONNECTED)
 
-    async def _list_for_user(user_id: str, *args: object, **kwargs: object) -> list[object]:
+    async def _list_for_user(user_id: str) -> list[UserIntegrationDocument]:
         return [record] if user_id == "u" else []
 
     with (
@@ -286,8 +319,6 @@ async def _stale_posthog_credential() -> AsyncIterator[MagicMock]:
             side_effect=_list_for_user,
         ),
         patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
-        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
-        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
     ):
         token_store_class.return_value.are_connected = AsyncMock(return_value={"posthog": False})
         yield token_store_class
@@ -298,7 +329,7 @@ async def test_user_integration_records_reflect_posthog_credential_status():
     async with _stale_posthog_credential() as token_store_class:
         result = await get_user_integration_records("u")
 
-    assert result == [{"integration_id": "posthog", "status": "created"}]
+    assert _statuses(result) == {"posthog": IntegrationStatus.CREATED}
     token_store_class.assert_called_once_with("u")
     token_store_class.return_value.are_connected.assert_awaited_once_with(["posthog"])
 
@@ -315,9 +346,9 @@ async def test_mcp_record_without_stored_config_keeps_its_status():
     """An MCP record with no stored config keeps its status without crashing."""
     with (
         patch(
-            f"{UINT}._get_cached_user_integration_records",
+            f"{UINT}.user_integration_repository.list_for_user",
             new_callable=AsyncMock,
-            return_value=[{"integration_id": "odd-mcp", "status": "connected"}],
+            return_value=[_record("odd-mcp", IntegrationStatus.CONNECTED)],
         ),
         patch(f"{UINT}.get_integration_by_id") as mock_lookup,
         patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
@@ -326,7 +357,7 @@ async def test_mcp_record_without_stored_config_keeps_its_status():
 
         result = await get_user_integration_records("u")
 
-    assert result == [{"integration_id": "odd-mcp", "status": "connected"}]
+    assert _statuses(result) == {"odd-mcp": IntegrationStatus.CONNECTED}
     token_store_class.assert_not_called()
 
 
@@ -357,8 +388,8 @@ async def test_custom_auth_filter_empty_list_skips_the_query():
 async def test_custom_and_platform_records_reconcile_independently():
     """Platform and custom checks share one credential batch but filter separately."""
     records = [
-        {"integration_id": "github", "status": "connected"},
-        {"integration_id": "custom-uuid", "status": "connected"},
+        _record("github", IntegrationStatus.CONNECTED),
+        _record("custom-uuid", IntegrationStatus.CONNECTED),
     ]
     custom_doc = MagicMock(integration_id="custom-uuid", managed_by="mcp", requires_auth=True)
 
@@ -370,7 +401,7 @@ async def test_custom_and_platform_records_reconcile_independently():
 
     with (
         patch(
-            f"{UINT}._get_cached_user_integration_records",
+            f"{UINT}.user_integration_repository.list_for_user",
             new_callable=AsyncMock,
             return_value=records,
         ),
@@ -382,8 +413,10 @@ async def test_custom_and_platform_records_reconcile_independently():
 
         result = await get_user_integration_records("u")
 
-    by_id = {record["integration_id"]: record["status"] for record in result}
-    assert by_id == {"github": "connected", "custom-uuid": "created"}
+    assert _statuses(result) == {
+        "github": IntegrationStatus.CONNECTED,
+        "custom-uuid": IntegrationStatus.CREATED,
+    }
     mock_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
     token_store_class.return_value.are_connected.assert_awaited_once_with(["custom-uuid"])
 
@@ -398,9 +431,10 @@ async def test_connect_schedules_sync():
     repo.set_status = AsyncMock(return_value=True)
     with (
         patch(f"{USTATUS}.user_integration_repository", repo),
+        patch(f"{USTATUS}.websocket_manager", announce=AsyncMock()),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
-        ok = await update_user_integration_status("u", "gmail", "connected")
+        ok = await update_user_integration_status("u", "gmail", IntegrationStatus.CONNECTED)
     assert ok is True
     sched.assert_called_once_with("u")
 
@@ -410,9 +444,10 @@ async def test_created_status_does_not_schedule_sync():
     repo.set_status = AsyncMock(return_value=True)
     with (
         patch(f"{USTATUS}.user_integration_repository", repo),
+        patch(f"{USTATUS}.websocket_manager", announce=AsyncMock()),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
-        await update_user_integration_status("u", "gmail", "created")
+        await update_user_integration_status("u", "gmail", IntegrationStatus.CREATED)
     sched.assert_not_called()
 
 

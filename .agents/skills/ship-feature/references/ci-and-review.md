@@ -16,8 +16,10 @@ lane's exact command; don't trust memory or this file for specifics.
 - **PR title check** (`pr-title.yml`, `Validate PR Title`) —
   Conventional Commit title; the allowed type list lives in that job.
 - **desktop-build** (ci.yml, calls `desktop-pr-build.yml`, behind
-  `quality-gate`) — packages Linux on a PR and every OS in the merge queue,
-  when nx says `desktop:build` (desktop, web, shared TS) is affected.
+  `quality-gate`) — packages Linux on a PR when `apps/desktop` or the
+  workflow changed (`ci:desktop-package`), and every OS in the merge queue
+  when anything `desktop:build` reads changed, web and shared TS included
+  (`ci:desktop-package-deps`).
 
 Jobs that are red by design or advisory (e.g. changelog-sync, security
 scanners marked `continue-on-error`) are excluded from the gates — check the

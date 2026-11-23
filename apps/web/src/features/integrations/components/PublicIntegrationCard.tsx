@@ -1,22 +1,19 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { Skeleton, Tooltip } from "@heroui/react";
 import {
   CheckmarkBadge01Icon,
   DateTimeIcon,
   GitForkIcon,
-  PackageOpenIcon,
   UserCircle02Icon,
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import { isPrivateBlobUrl } from "@/lib/privateBlob";
-
 import type { CommunityIntegration } from "../types";
+import { IntegrationIcon } from "./IntegrationIcon";
 
 function formatCloneCount(count: number): string {
   if (count >= 1000) {
@@ -29,64 +26,6 @@ function getCategoryLabel(category: string): string {
   return category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
 }
 
-// Component to handle integration icon with fallback on error
-const IntegrationIcon: React.FC<{
-  integrationId: string;
-  iconUrl?: string | null;
-}> = ({ integrationId, iconUrl }) => {
-  const [hasError, setHasError] = useState(false);
-
-  // First, try to get the icon from toolCategoryIcon (which checks known categories)
-  const categoryIcon = getToolCategoryIcon(integrationId, {
-    size: 100,
-    width: 28,
-    height: 28,
-    showBackground: false,
-  });
-
-  // If we have a category icon, use it directly
-  if (categoryIcon) {
-    return <>{categoryIcon}</>;
-  }
-
-  // Otherwise, try to use the iconUrl with error handling
-  if (iconUrl && !hasError) {
-    // SVGs can't go through the Next.js image optimizer — load them
-    // unoptimized straight from the source host.
-    const isSvg = iconUrl.toLowerCase().endsWith(".svg");
-    if (isSvg) {
-      return (
-        <Image
-          src={iconUrl}
-          alt="Integration icon"
-          width={28}
-          height={28}
-          unoptimized
-          className="aspect-square object-contain rounded-lg max-w-7 max-h-7 min-w-7 min-h-7"
-          onError={() => setHasError(true)}
-        />
-      );
-    }
-    return (
-      <Image
-        src={iconUrl}
-        alt="Integration icon"
-        width={100}
-        height={100}
-        className="aspect-square object-contain rounded-lg max-w-7 max-h-7 min-w-7 min-h-7"
-        onError={() => setHasError(true)}
-      />
-    );
-  }
-
-  // Fallback to PackageOpenIcon
-  return (
-    <div className="flex h-9 w-9 aspect-square items-center justify-center rounded-xl bg-zinc-700 text-sm font-medium text-zinc-300">
-      <PackageOpenIcon />
-    </div>
-  );
-};
-
 interface PublicIntegrationCardProps {
   integration: CommunityIntegration;
 }
@@ -95,13 +34,14 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
   integration,
 }) => {
   return (
-    <Link href={`/marketplace/${integration.slug}`}>
+    <Link href={marketplacePath(integration.slug)}>
       <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-colors select-none cursor-pointer hover:bg-zinc-700/50">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">
             <IntegrationIcon
               integrationId={integration.integrationId}
               iconUrl={integration.iconUrl}
+              size={28}
             />
           </div>
 
@@ -122,12 +62,8 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
 
         <div className="mt-auto flex items-center justify-between pt-1">
           {integration.source === "platform" ? (
-            <Tooltip
-              content="Built and maintained by the GAIA team"
-              size="sm"
-              placement="top"
-            >
-              <div className="flex items-center gap-1.5">
+            <Tooltip>
+              <Tooltip.Trigger className="flex items-center gap-1.5">
                 <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
                   <Image
                     src="/brand/gaia_logo.svg"
@@ -143,9 +79,12 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
                 <CheckmarkBadge01Icon
                   width={15}
                   height={15}
-                  className="shrink-0 text-primary"
+                  className="shrink-0 text-accent"
                 />
-              </div>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="top">
+                Built and maintained by the GAIA team
+              </Tooltip.Content>
             </Tooltip>
           ) : (
             <div className="flex items-center gap-2">

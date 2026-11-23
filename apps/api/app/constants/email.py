@@ -24,21 +24,22 @@ MessageFieldLiteral = Literal[
     "body",
     "time",
     "isRead",
-    "hasAttachment",
     "attachments",
     "labels",
 ]
 
-# Gmail API / snake_case spellings models send for a projected field (prod: "date"
+# Gmail API / Composio / snake_case spellings models send for a projected field (prod: "date"
 # alone was 61 refused GMAIL_FETCH_MESSAGES calls), read as the field they name.
 MESSAGE_FIELD_SYNONYMS: dict[str, MessageFieldLiteral] = {
     "date": "time",
     "internalDate": "time",
     "internal_date": "time",
     "message_id": "id",
+    "messageId": "id",
     "thread_id": "threadId",
     "labelIds": "labels",
     "label_ids": "labels",
+    "hasAttachment": "attachments",
 }
 
 # Curated per-message fields returned when the caller does not specify any:
@@ -53,7 +54,6 @@ DEFAULT_SUMMARY_FIELDS: list[MessageFieldLiteral] = [
     "snippet",
     "time",
     "isRead",
-    "hasAttachment",
     "labels",
 ]
 
@@ -112,6 +112,9 @@ SUPPORT_EMAIL = "support@heygaia.io"
 GAIA_GITHUB_ISSUES_URL = "https://github.com/theexperiencecompany/gaia/issues"
 FOUNDER_SENDER = f"Aryan from GAIA <{CONTACT_EMAIL}>"
 SUPPORT_SENDER = f"GAIA Support <{SUPPORT_EMAIL}>"
+# Notification and brief email; a self-host sends it from this mailbox at its own web domain.
+BRIEF_SENDER_MAILBOX = "brief"
+BRIEF_SENDER = f"{BRIEF_SENDER_MAILBOX}@heygaia.io"
 DISCORD_URL = "https://discord.heygaia.io"
 WHATSAPP_URL = "https://whatsapp.heygaia.io"
 TWITTER_URL = "https://twitter.com/trygaia"

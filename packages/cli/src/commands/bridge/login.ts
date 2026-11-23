@@ -2,14 +2,20 @@
 // this supplies the console-backed listener (today's exact pairing output) and
 // the CLI version. `isPaired` is re-exported unchanged.
 
+import { DEFAULT_API_URL } from "@gaia/shared/bridge-core/constants";
 import {
   isPaired,
   type LoginListener,
   runLogin as runLoginCore,
 } from "@gaia/shared/bridge-core/login";
-import { localOrigin } from "../../lib/endpoints.js";
-import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
+import { isInteractive } from "../../lib/non-tty.js";
+import {
+  notServingHelp,
+  notServingPrompt,
+  selfhostPairing,
+} from "../../lib/pairing-origin.js";
+import { confirm } from "../../lib/prompt.js";
 import { CLI_VERSION } from "../../lib/version.js";
 
 export { isPaired };
@@ -25,13 +31,24 @@ const consoleListener: LoginListener = {
   },
 };
 
-/** Where this machine's self-host install answers, when it has one. */
-async function selfhostInstallOrigin(): Promise<string | undefined> {
+/**
+ * The API to pair with: this machine's self-host install when it answers, else
+ * GAIA Cloud once the user agrees. A dead install never redirects silently —
+ * pairing decides which GAIA reaches this machine's files and MCP servers.
+ */
+async function resolveApi(): Promise<string | undefined> {
   const repoPath = findInstallRoot();
   if (!repoPath || (await detectSetupMode(repoPath)) !== "selfhost") {
     return undefined;
   }
-  return localOrigin("selfhost", readDockerComposePortOverrides(repoPath));
+
+  const pairing = await selfhostPairing(repoPath);
+  if (pairing.kind === "serving") return pairing.origin;
+
+  if (isInteractive() && (await confirm(notServingPrompt(pairing)))) {
+    return DEFAULT_API_URL;
+  }
+  throw new Error(notServingHelp(pairing));
 }
 
 /** Pairs with --api, else GAIA_API_URL, else this machine's self-host install, else GAIA Cloud. */
@@ -40,7 +57,7 @@ export async function runLogin(
 ): Promise<void> {
   const api =
     options.api ??
-    (process.env["GAIA_API_URL"] ? undefined : await selfhostInstallOrigin());
+    (process.env["GAIA_API_URL"] ? undefined : await resolveApi());
   await runLoginCore(consoleListener, {
     ...options,
     ...(api !== undefined ? { api } : {}),

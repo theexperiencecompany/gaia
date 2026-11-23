@@ -26,6 +26,7 @@ import pytest
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.constants.llm import LLM_RETRY_MAX_ATTEMPTS
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -112,6 +113,7 @@ def _make_create_request(
 ) -> CreateWorkflowRequest:
     """Build a CreateWorkflowRequest with defaults."""
     return CreateWorkflowRequest(
+        delivery=WorkflowDelivery.NOW,
         title=title,
         prompt=prompt,
         trigger_config=_make_trigger_config(trigger_type, **trigger_kwargs),
@@ -130,6 +132,7 @@ def _make_workflow(
 ) -> Workflow:
     """Build a Workflow model instance for testing."""
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=user_id,
         title=title,
@@ -301,6 +304,7 @@ class TestWorkflowValidation:
         """CreateWorkflowRequest rejects empty/whitespace title."""
         with pytest.raises(ValueError):
             CreateWorkflowRequest(
+                delivery=WorkflowDelivery.NOW,
                 title="   ",
                 prompt="valid prompt",
                 trigger_config=_make_trigger_config(),
@@ -310,6 +314,7 @@ class TestWorkflowValidation:
         """CreateWorkflowRequest rejects empty/whitespace prompt."""
         with pytest.raises(ValueError):
             CreateWorkflowRequest(
+                delivery=WorkflowDelivery.NOW,
                 title="Valid Title",
                 prompt="   ",
                 trigger_config=_make_trigger_config(),
@@ -492,10 +497,7 @@ class TestTriggerRegistration:
                 trigger_config=trigger_config,
             )
 
-        # _register_integration_triggers now returns (trigger_ids, integration_connected)
-        trigger_ids, connected = result
-        assert trigger_ids == ["trigger_id_1", "trigger_id_2"]
-        assert connected is True
+        assert result == ["trigger_id_1", "trigger_id_2"]
         mock_register.assert_awaited_once_with(
             user_id=FAKE_USER_ID,
             # The parameter is `owner_id` now: registration serves tracked todos
@@ -508,7 +510,7 @@ class TestTriggerRegistration:
         )
 
     async def test_register_skips_non_integration_triggers(self):
-        """_register_integration_triggers returns ([], True) for manual triggers."""
+        """_register_integration_triggers returns [] for manual triggers."""
         trigger_config = _make_trigger_config(trigger_type=TriggerType.MANUAL)
 
         result = await WorkflowService._register_integration_triggers(
@@ -517,8 +519,7 @@ class TestTriggerRegistration:
             trigger_config=trigger_config,
         )
 
-        # Non-integration triggers return ([], True) — trigger_ids empty, integration_connected True
-        assert result == ([], True)
+        assert result == []
 
     async def test_register_raises_when_trigger_name_missing(self):
         """_register_integration_triggers raises when integration trigger has no name."""
@@ -856,8 +857,9 @@ class TestQueueService:
         assert result is True
         args, kwargs = mock_pool.enqueue_job.call_args
         assert args == ("execute_workflow_by_id", FAKE_WORKFLOW_ID, {"source": "api"})
-        # A deterministic _job_id dedupes accidental duplicate enqueues.
-        assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
+        # A deterministic _job_id dedupes accidental duplicate enqueues: the task and 32 hex digits.
+        prefix, digest = kwargs["_job_id"].split(":")
+        assert (prefix, len(digest)) == ("execute_workflow_by_id", 32)
 
     async def test_queue_workflow_execution_deduped_enqueue_returns_true(self):
         """A None from enqueue_job means the same _job_id is already queued — deduped, which is success, not failure."""

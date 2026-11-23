@@ -94,12 +94,7 @@ class ImageCodec:
             raise InvalidImageError(
                 f"image is {len(data)} bytes; exceeds the {MAX_IMAGE_FILE_BYTES}-byte inline limit"
             )
-        mime_type, (width, height) = cls._probe(data)
-        if width * height > MAX_IMAGE_PIXELS:
-            raise InvalidImageError(
-                f"image is {width}x{height} ({width * height} pixels); "
-                f"exceeds the {MAX_IMAGE_PIXELS}-pixel inline limit"
-            )
+        mime_type, (width, height) = cls.probe(data)
 
         # Bytes and pixels are separate budgets, and either one alone can blow up
         # a request: providers bill images by pixel area, so a flat 8000x8000 PNG
@@ -114,22 +109,27 @@ class ImageCodec:
         return cls._encode(cls._transcode(data), TRANSCODE_MIME)
 
     @staticmethod
-    def _probe(data: bytes) -> tuple[str | None, tuple[int, int]]:
-        """Return the sniffed MIME and dimensions of a real image, or raise InvalidImageError.
+    def probe(data: bytes) -> tuple[str | None, tuple[int, int]]:
+        """Return a real image's sniffed MIME and dimensions from its header, never decoding its pixels.
 
-        The MIME comes off the decoded header, never from the caller — a file
-        extension and an MCP server's declared mimeType can both lie, and a block
-        whose mime_type contradicts its payload is rejected outright by the provider
-        (Gemini 400s on inline_data). None means a format with no safe MIME.
+        Raises InvalidImageError when it is not an image or has more than MAX_IMAGE_PIXELS,
+        so anything that decodes it next is bounded. The MIME comes off the header, never
+        the caller (a declared type can lie). None means a format with no safe MIME.
         """
         try:
             with Image.open(BytesIO(data)) as image:
                 sniffed = MIME_BY_PILLOW_FORMAT.get(image.format or "")
-                size = image.size
+                width, height = image.size
                 image.verify()  # invalidates `image` — read anything else first
-        except (OSError, Image.DecompressionBombError) as exc:
+        # verify() reports a bad chunk checksum as SyntaxError, not OSError.
+        except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
             raise InvalidImageError(f"not a decodable image: {exc}") from exc
-        return sniffed, size
+        if width * height > MAX_IMAGE_PIXELS:
+            raise InvalidImageError(
+                f"image is {width}x{height} ({width * height} pixels); "
+                f"exceeds the {MAX_IMAGE_PIXELS}-pixel limit"
+            )
+        return sniffed, (width, height)
 
     @staticmethod
     def _transcode(data: bytes) -> bytes:
@@ -145,7 +145,7 @@ class ImageCodec:
                 (DOWNSCALE_LONGEST_EDGE, DOWNSCALE_LONGEST_EDGE), Image.Resampling.LANCZOS
             )
         except (OSError, Image.DecompressionBombError) as exc:
-            # `verify()` in `_probe` only reads the header — a truncated or
+            # `verify()` in `probe` only reads the header — a truncated or
             # corrupt file gets past it and blows up here, on the full decode.
             raise InvalidImageError(f"image could not be re-encoded: {exc}") from exc
 

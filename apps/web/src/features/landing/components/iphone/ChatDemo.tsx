@@ -11,6 +11,8 @@ import type React from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { signupCtaHref } from "@/features/auth/utils/signupCta";
+import { BOT_LINKS } from "@/features/bots/constants";
 import { cn } from "@/lib/utils";
 import { vanityTarget } from "../../../../../vanity-redirects.mjs";
 
@@ -78,17 +80,21 @@ const DEMO_CTA: Record<
   ChatPlatform,
   { label: string; href: string; accent: string }
 > = {
-  imessage: { label: "Chat with GAIA", href: "/signup", accent: "#0A84FF" },
+  imessage: {
+    label: "Chat with GAIA",
+    href: signupCtaHref(),
+    accent: "#0A84FF",
+  },
   whatsapp: {
     label: "Chat on WhatsApp",
     href: vanityTarget("/whatsapp"),
     accent: "#25D366",
   },
   telegram: { label: "Chat on Telegram", href: "/bots", accent: "#037EE5" },
-  slack: { label: "Chat on Slack", href: "/slack-bot", accent: "#611F69" },
+  slack: { label: "Chat on Slack", href: BOT_LINKS.slack, accent: "#611F69" },
   discord: {
     label: "Chat on Discord",
-    href: "/discord-bot",
+    href: BOT_LINKS.discord,
     accent: "#5865F2",
   },
 };

@@ -22,6 +22,15 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
+// maplibre-gl 6 resolves its tile worker next to its own module URL, which a
+// bundled chunk does not serve, so vector and GeoJSON sources silently never
+// load. Upstream mapcn's fix: the worker from unpkg, pinned to this version.
+if (typeof window !== "undefined" && !MapLibreGL.getWorkerUrl()) {
+  MapLibreGL.setWorkerUrl(
+    `https://unpkg.com/maplibre-gl@${MapLibreGL.getVersion()}/dist/maplibre-gl-worker.mjs`,
+  );
+}
+
 const defaultStyles = {
   dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
@@ -196,9 +205,9 @@ function DefaultLoader() {
   return (
     <div className="bg-background/50 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-xs">
       <div className="flex gap-1">
-        <span className="bg-muted-foreground/60 size-1.5 animate-pulse rounded-full" />
-        <span className="bg-muted-foreground/60 size-1.5 animate-pulse rounded-full [animation-delay:150ms]" />
-        <span className="bg-muted-foreground/60 size-1.5 animate-pulse rounded-full [animation-delay:300ms]" />
+        <span className="bg-zinc-400/60 size-1.5 animate-pulse rounded-full" />
+        <span className="bg-zinc-400/60 size-1.5 animate-pulse rounded-full [animation-delay:150ms]" />
+        <span className="bg-zinc-400/60 size-1.5 animate-pulse rounded-full [animation-delay:300ms]" />
       </div>
     </div>
   );

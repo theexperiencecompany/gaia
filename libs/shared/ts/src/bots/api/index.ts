@@ -1,18 +1,29 @@
 import axios, { type AxiosInstance } from "axios";
-import type { DeliveryFailureReport } from "../../api/generated";
+import type {
+  ActiveBotConversation,
+  BotDeliveryRecorded,
+  BotDeliveryReport,
+  BotMessageAccepted,
+  ConversationStopResponse,
+  CreateWorkflowRequest,
+  DeliveryFailureReport,
+  TodoListResponse,
+  TodoModel,
+  TodoResponse,
+  TodoUpdateRequest,
+  WorkflowExecutionRequest,
+  WorkflowExecutionResponse,
+  WorkflowListResponse,
+  WorkflowResponse,
+  WorkflowWithIntegrations,
+} from "../../api/generated";
+import type { ConversationFrame } from "../../conversation/types";
 import type {
   AuthStatus,
   BotConversation,
   BotConversationListResponse,
-  BotCreateTodoRequest,
   BotFileData,
-  BotTodo,
-  BotTodoListResponse,
   BotUserContext,
-  BotWorkflow,
-  BotWorkflowExecutionRequest,
-  BotWorkflowExecutionResponse,
-  BotWorkflowListResponse,
   ChatRequest,
   RedeemedLinkCode,
   SettingsResponse,
@@ -20,13 +31,7 @@ import type {
 import { getErrorReason, getHttpStatus } from "../utils/logger";
 import { isOwnApiUrl } from "../utils/own-api";
 import { wideLog } from "../utils/wide-events";
-import {
-  type ApprovalUpdateHandler,
-  type MessageBoundaryHandler,
-  type NoticeHandler,
-  type ReactionHandler,
-  streamChat,
-} from "./chat-stream";
+import { readConversationEvents } from "./conversation-events";
 import {
   downloadApiBinaryRequest,
   downloadArtifactRequest,
@@ -186,35 +191,92 @@ export class GaiaClient {
   }
 
   /**
-   * Streams a chat response via SSE (authenticated users only).
+   * Posts a message into the user's bot session and returns at once with its seq;
+   * the reply arrives on the conversation's events stream.
    */
-  async chatStream(
-    request: ChatRequest,
-    onChunk: (text: string) => void | Promise<void>,
-    onDone: (fullText: string, conversationId: string) => void | Promise<void>,
-    onError: (error: Error) => void | Promise<void>,
-    onApprovalUpdate?: ApprovalUpdateHandler,
-    onMessageBoundary?: MessageBoundaryHandler,
-    onNotice?: NoticeHandler,
-    onReaction?: ReactionHandler,
-  ): Promise<string> {
-    return streamChat(
-      {
-        client: this.client,
-        userHeaders: (ctx) => this.userHeaders(ctx),
-        storeSessionToken: (ctx, token) => this.storeSessionToken(ctx, token),
-        clearSessionToken: (ctx) => this.clearSessionToken(ctx),
-      },
-      request,
-      onChunk,
-      onDone,
-      onError,
-      "/api/v1/bot/chat-stream",
-      onApprovalUpdate,
-      onMessageBoundary,
-      onNotice,
-      onReaction,
+  async postMessage(request: ChatRequest): Promise<BotMessageAccepted> {
+    const ctx = {
+      platform: request.platform,
+      platformUserId: request.platformUserId,
+    };
+    const accepted = await this.requestWithAuth(async () => {
+      const { data } = await this.client.post<BotMessageAccepted>(
+        "/api/v1/bot/messages",
+        {
+          message: request.message,
+          platform: request.platform,
+          platform_user_id: request.platformUserId,
+          channel_id: request.channelId,
+          is_dm: request.isDm ?? false,
+          ...(request.platformMessageId
+            ? { platform_message_id: request.platformMessageId }
+            : {}),
+          ...(request.fileIds && request.fileIds.length > 0
+            ? { file_ids: request.fileIds }
+            : {}),
+          ...(request.fileData && request.fileData.length > 0
+            ? { file_data: request.fileData }
+            : {}),
+        },
+        { headers: this.userHeaders(ctx) },
+      );
+      return data;
+    }, ctx);
+    this.storeSessionToken(ctx, accepted.session_token);
+    return accepted;
+  }
+
+  /** One connection to a conversation's events stream, after a seq or a stream id. */
+  conversationEvents(
+    ctx: BotUserContext,
+    conversationId: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<ConversationFrame> {
+    return readConversationEvents(
+      this.client,
+      this.userHeaders(ctx),
+      conversationId,
+      signal,
     );
+  }
+
+  /** The platform's conversations still answering or working, for a restarted bot to follow again. */
+  async listActiveConversations(
+    platform: string,
+  ): Promise<ActiveBotConversation[]> {
+    return this.request(async () => {
+      const { data } = await this.client.get<ActiveBotConversation[]>(
+        "/api/v1/bot/conversations/active",
+        {
+          params: { platform },
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+          },
+        },
+      );
+      return data;
+    });
+  }
+
+  /** Records how far the platform's follower delivered a conversation, the cursor a restart resumes from. */
+  async recordDelivered(
+    conversationId: string,
+    report: BotDeliveryReport,
+  ): Promise<BotDeliveryRecorded> {
+    return this.request(async () => {
+      const { data } = await this.client.put<BotDeliveryRecorded>(
+        `/api/v1/bot/conversations/${conversationId}/delivered`,
+        report,
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": report.platform,
+          },
+        },
+      );
+      return data;
+    });
   }
 
   /**
@@ -298,9 +360,9 @@ export class GaiaClient {
    * Lists all workflows for the authenticated user.
    * Uses the regular /api/v1/workflows endpoint via bot middleware auth.
    */
-  async listWorkflows(ctx: BotUserContext): Promise<BotWorkflowListResponse> {
+  async listWorkflows(ctx: BotUserContext): Promise<WorkflowListResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<BotWorkflowListResponse>(
+      const { data } = await this.client.get<WorkflowListResponse>(
         "/api/v1/workflows",
         { headers: this.userHeaders(ctx) },
       );
@@ -312,15 +374,11 @@ export class GaiaClient {
    * Creates a new workflow.
    */
   async createWorkflow(
-    request: {
-      name: string;
-      description: string;
-      steps?: Record<string, unknown>[];
-    },
+    request: CreateWorkflowRequest,
     ctx: BotUserContext,
-  ): Promise<BotWorkflow> {
+  ): Promise<WorkflowWithIntegrations> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post<{ workflow: BotWorkflow }>(
+      const { data } = await this.client.post<WorkflowResponse>(
         "/api/v1/workflows",
         request,
         { headers: this.userHeaders(ctx) },
@@ -335,9 +393,9 @@ export class GaiaClient {
   async getWorkflow(
     workflowId: string,
     ctx: BotUserContext,
-  ): Promise<BotWorkflow> {
+  ): Promise<WorkflowWithIntegrations> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<{ workflow: BotWorkflow }>(
+      const { data } = await this.client.get<WorkflowResponse>(
         `/api/v1/workflows/${encodeURIComponent(workflowId)}`,
         { headers: this.userHeaders(ctx) },
       );
@@ -346,16 +404,17 @@ export class GaiaClient {
   }
 
   /**
-   * Executes a workflow.
+   * Starts a run of a workflow.
    */
   async executeWorkflow(
-    request: BotWorkflowExecutionRequest,
+    workflowId: string,
     ctx: BotUserContext,
-  ): Promise<BotWorkflowExecutionResponse> {
+  ): Promise<WorkflowExecutionResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post<BotWorkflowExecutionResponse>(
-        `/api/v1/workflows/${encodeURIComponent(request.workflow_id)}/execute`,
-        { inputs: request.inputs },
+      const body: WorkflowExecutionRequest = {};
+      const { data } = await this.client.post<WorkflowExecutionResponse>(
+        `/api/v1/workflows/${encodeURIComponent(workflowId)}/execute`,
+        body,
         { headers: this.userHeaders(ctx) },
       );
       return data;
@@ -386,7 +445,7 @@ export class GaiaClient {
       completed?: boolean;
       project_id?: string;
     },
-  ): Promise<BotTodoListResponse> {
+  ): Promise<TodoListResponse> {
     return this.requestWithAuth(async () => {
       const queryParams = new URLSearchParams();
       if (params?.completed !== undefined) {
@@ -396,16 +455,11 @@ export class GaiaClient {
         queryParams.set("project_id", params.project_id);
       }
 
-      const { data } = await this.client.get(
+      const { data } = await this.client.get<TodoListResponse>(
         `/api/v1/todos?${queryParams.toString()}`,
         { headers: this.userHeaders(ctx) },
       );
-
-      // Map from regular API format (data/meta) to bot format (todos/total)
-      const todos = (data.data || data.todos || []).map(mapTodoResponse);
-      const total = data.meta?.total ?? data.total ?? todos.length;
-
-      return { todos, total };
+      return data;
     }, ctx);
   }
 
@@ -413,14 +467,16 @@ export class GaiaClient {
    * Creates a new todo.
    */
   async createTodo(
-    request: BotCreateTodoRequest,
+    request: TodoModel,
     ctx: BotUserContext,
-  ): Promise<BotTodo> {
+  ): Promise<TodoResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post("/api/v1/todos", request, {
-        headers: this.userHeaders(ctx),
-      });
-      return mapTodoResponse(data);
+      const { data } = await this.client.post<TodoResponse>(
+        "/api/v1/todos",
+        request,
+        { headers: this.userHeaders(ctx) },
+      );
+      return data;
     }, ctx);
   }
 
@@ -429,23 +485,26 @@ export class GaiaClient {
    */
   async updateTodo(
     todoId: string,
-    updates: Partial<BotCreateTodoRequest>,
+    updates: TodoUpdateRequest,
     ctx: BotUserContext,
-  ): Promise<BotTodo> {
+  ): Promise<TodoResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.put(
+      const { data } = await this.client.put<TodoResponse>(
         `/api/v1/todos/${encodeURIComponent(todoId)}`,
         updates,
         { headers: this.userHeaders(ctx) },
       );
-      return mapTodoResponse(data);
+      return data;
     }, ctx);
   }
 
   /**
    * Marks a todo as complete.
    */
-  async completeTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
+  async completeTodo(
+    todoId: string,
+    ctx: BotUserContext,
+  ): Promise<TodoResponse> {
     return this.updateTodo(todoId, { completed: true }, ctx);
   }
 
@@ -530,6 +589,37 @@ export class GaiaClient {
           },
         },
       );
+    });
+  }
+
+  /**
+   * Stops everything the chat's conversation is running (its reply, background
+   * work, approvals, browser task), keeping the session.
+   */
+  async stopConversation(
+    platform: string,
+    platformUserId: string,
+    channelId?: string,
+    isDm?: boolean,
+  ): Promise<ConversationStopResponse> {
+    return this.request(async () => {
+      const { data } = await this.client.post<ConversationStopResponse>(
+        "/api/v1/bot/stop",
+        {
+          platform,
+          platform_user_id: platformUserId,
+          channel_id: channelId ?? null,
+          is_dm: isDm ?? false,
+        },
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+            "X-Bot-Platform-User-Id": platformUserId,
+          },
+        },
+      );
+      return data;
     });
   }
 
@@ -728,21 +818,6 @@ export class GaiaClient {
 }
 
 /**
- * Maps a todo response from the regular API format to the bot-expected format.
- */
-function mapTodoResponse(data: Record<string, unknown>): BotTodo {
-  return {
-    id: (data.id as string) || "",
-    title: (data.title as string) || "",
-    description: data.description as string | undefined,
-    completed: (data.completed as boolean) || false,
-    priority: data.priority as "low" | "medium" | "high" | undefined,
-    due_date: data.due_date as string | undefined,
-    project_id: data.project_id as string | undefined,
-  };
-}
-
-/**
  * Maps a conversation response from the regular API format to the bot-expected format.
  */
 function mapConversationResponse(
@@ -751,6 +826,7 @@ function mapConversationResponse(
   return {
     conversation_id:
       (data.conversation_id as string) || (data.id as string) || "",
+    url: data.url as string,
     title: (data.title as string) || (data.description as string) || undefined,
     created_at: (data.createdAt as string) || (data.created_at as string) || "",
     updated_at: (data.updatedAt as string) || (data.updated_at as string) || "",

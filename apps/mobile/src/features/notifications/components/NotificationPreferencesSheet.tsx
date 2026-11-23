@@ -24,20 +24,15 @@ import {
   Switch,
   View,
 } from "react-native";
-import type { AnyIcon } from "@/components/icons";
-import {
-  AppIcon,
-  DiscordIcon,
-  Moon02Icon,
-  Settings01Icon,
-  SlackIcon,
-  TelegramIcon,
-  WhatsappIcon,
-} from "@/components/icons";
+import { AppIcon, Moon02Icon, Settings01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { inAppNotificationsApi } from "../api/inapp-notifications-api";
+import {
+  NOTIFICATION_CHANNEL_META,
+  type NotificationChannelMeta,
+} from "../constants/channels";
 import type {
   ChannelPlatform,
   ChannelPreferences,
@@ -46,6 +41,7 @@ import type {
   PlatformLink,
   PlatformLinksResponse,
 } from "../types/inapp-notification-types";
+import { NOTIFICATION_CHANNELS } from "../types/inapp-notification-types";
 
 const SNAP_POINTS: Array<string | number> = ["90%"];
 
@@ -62,45 +58,6 @@ const CHANNEL_LABELS: Record<keyof NotificationCategoryPreferences, string> = {
   push: "Push",
   in_app: "In-App",
 };
-
-interface PlatformChannelMeta {
-  id: ChannelPlatform;
-  name: string;
-  icon: AnyIcon;
-  iconColor: string;
-  iconBg: string;
-}
-
-const PLATFORM_CHANNELS: PlatformChannelMeta[] = [
-  {
-    id: "telegram",
-    name: "Telegram",
-    icon: TelegramIcon,
-    iconColor: "#2AABEE",
-    iconBg: "rgba(42,171,238,0.15)",
-  },
-  {
-    id: "discord",
-    name: "Discord",
-    icon: DiscordIcon,
-    iconColor: "#5865F2",
-    iconBg: "rgba(88,101,242,0.15)",
-  },
-  {
-    id: "whatsapp",
-    name: "WhatsApp",
-    icon: WhatsappIcon,
-    iconColor: "#25D366",
-    iconBg: "rgba(37,211,102,0.15)",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    icon: SlackIcon,
-    iconColor: "#E01E5A",
-    iconBg: "rgba(224,30,90,0.15)",
-  },
-];
 
 const PREFERENCES_QUERY_KEY = ["notification-preferences"] as const;
 const QUIET_HOURS_QUERY_KEY = ["quiet-hours"] as const;
@@ -233,9 +190,9 @@ function CategorySection({
 }
 
 interface ChannelRowProps {
-  meta: PlatformChannelMeta;
+  meta: NotificationChannelMeta;
   enabled: boolean;
-  isConnected: boolean;
+  isAvailable: boolean;
   link?: PlatformLink;
   onToggle: (val: boolean) => void;
   onConnect: () => void;
@@ -246,7 +203,7 @@ interface ChannelRowProps {
 function ChannelRow({
   meta,
   enabled,
-  isConnected,
+  isAvailable,
   link,
   onToggle,
   onConnect,
@@ -254,11 +211,13 @@ function ChannelRow({
   isUpdating,
 }: ChannelRowProps) {
   const handle = link?.username ?? link?.displayName ?? "";
-  const helper = isConnected
-    ? handle
-      ? `Connected as @${handle}`
-      : "Connected"
-    : "Connect in Linked Accounts to enable";
+  const helper = !meta.requiresLink
+    ? meta.description
+    : isAvailable
+      ? handle
+        ? `Connected as @${handle}`
+        : "Connected"
+      : "Connect in Linked Accounts to enable";
 
   return (
     <View>
@@ -306,7 +265,7 @@ function ChannelRow({
             >
               {helper}
             </Text>
-            {!isConnected && (
+            {!isAvailable && (
               <Pressable onPress={onConnect} hitSlop={6}>
                 <Text
                   style={{ fontSize: 12, color: "#00bbff", fontWeight: "600" }}
@@ -319,11 +278,11 @@ function ChannelRow({
         </View>
 
         <Switch
-          value={isConnected ? enabled : false}
+          value={isAvailable ? enabled : false}
           onValueChange={onToggle}
-          disabled={!isConnected || isUpdating}
+          disabled={!isAvailable || isUpdating}
           trackColor={{ false: "#3a3a3c", true: "rgba(0,187,255,0.6)" }}
-          thumbColor={isConnected && enabled ? "#00bbff" : "#71717a"}
+          thumbColor={isAvailable && enabled ? "#00bbff" : "#71717a"}
         />
       </View>
       {!isLast && (
@@ -550,20 +509,21 @@ function ChannelsSection({
 }: ChannelsSectionProps) {
   return (
     <SectionShell title="Channels">
-      {PLATFORM_CHANNELS.map((meta, idx) => {
-        const link = links[meta.id];
-        const isConnected = !!link?.platformUserId;
+      {NOTIFICATION_CHANNELS.map((channel, idx) => {
+        const meta = NOTIFICATION_CHANNEL_META[channel];
+        const link = links[channel];
+        const isAvailable = !meta.requiresLink || !!link?.platformUserId;
         return (
           <ChannelRow
-            key={meta.id}
+            key={channel}
             meta={meta}
-            enabled={channels[meta.id]}
-            isConnected={isConnected}
+            enabled={channels[channel]}
+            isAvailable={isAvailable}
             link={link}
-            onToggle={(val) => onChannelToggle(meta.id, val)}
+            onToggle={(val) => onChannelToggle(channel, val)}
             onConnect={onConnect}
-            isLast={idx === PLATFORM_CHANNELS.length - 1}
-            isUpdating={updatingChannel === meta.id}
+            isLast={idx === NOTIFICATION_CHANNELS.length - 1}
+            isUpdating={updatingChannel === channel}
           />
         );
       })}
@@ -681,12 +641,11 @@ export const NotificationPreferencesSheet =
       const channelMutation = useChannelMutation(queryClient);
 
       const prefs = prefsQuery.data ?? null;
-      const channels = channelsQuery.data ?? {
-        telegram: false,
-        discord: false,
-        whatsapp: false,
-        slack: false,
-      };
+      const channels =
+        channelsQuery.data ??
+        (Object.fromEntries(
+          NOTIFICATION_CHANNELS.map((channel) => [channel, false]),
+        ) as ChannelPreferences);
       const platformLinks = platformLinksQuery.data?.platform_links ?? {};
 
       const isLoading =
@@ -754,10 +713,10 @@ export const NotificationPreferencesSheet =
         [channelMutation],
       );
 
-      const handleConnect = useCallback(() => {
+      const handleConnect = () => {
         setIsOpen(false);
         router.push("/integrations");
-      }, [router]);
+      };
 
       const categoryEntries = useMemo(
         () => (prefs ? Object.entries(prefs.categories) : []),

@@ -1,0 +1,19 @@
+# A message sent while the reply to the one before it is still streaming. That
+# reply already shows text, so it is committed: it is never restarted or taken
+# back, and the new message is never folded into it. The new message gets its
+# own reply, after it.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/message-during-reply.yaml
+name: message during a streaming reply
+emulate: telegram
+user: bot-message-during-reply@gaia.local
+turns:
+  - burst:
+      - send: "one [[pace:500]] [[say:Alpha beta gamma delta epsilon zeta eta theta iota kappa.]]"
+      - send: "two [[say:Answer two.]]"
+        afterMs: 3000
+    settleMs: 30000
+    expect:
+      - bubbles: ["Alpha beta gamma delta epsilon zeta eta theta iota kappa.", "Answer two."]
+      - noTakeBacks: true

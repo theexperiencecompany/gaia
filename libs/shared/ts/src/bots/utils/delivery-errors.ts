@@ -8,11 +8,14 @@
  * the reply twice with a stale partial copy above it.
  */
 
-import { getHttpStatus } from "./logger";
+import { RETRY_POLICY, type RetryPolicy, withRetry } from "../../retry";
+import { classifyBotFailure, isTransientBotFailure } from "./failure-reasons";
+import { getHttpStatus, sanitizeErrorForLog } from "./logger";
+import { wideLog } from "./wide-events";
 
 /** How long to wait for a rate limit that did not say (platforms often omit it). */
 const RATE_LIMIT_DEFAULT_WAIT_MS = 1_000;
-/** Never sit on a bubble longer than this, whatever the platform asks for. */
+/** Never wait longer than this between retries, whatever the platform asks for. */
 const RATE_LIMIT_MAX_WAIT_MS = 30_000;
 
 /**
@@ -65,4 +68,25 @@ export function retryAfterMs(error: unknown): number | null {
     getHttpStatus(error) === 429 ||
     /too many requests|rate limit/i.test(errorText(error));
   return isRateLimited ? RATE_LIMIT_DEFAULT_WAIT_MS : null;
+}
+
+/**
+ * Runs one platform call under policy, retrying it in place while it fails transiently: after
+ * the platform's retry_after on a rate limit, plus the policy's backoff. A permanent failure
+ * (chat not found, bot blocked, a rejected request) throws at once, and so does the last
+ * failure once the policy's retries are spent.
+ */
+export function retryTransientPlatformCall<T>(
+  call: () => Promise<T>,
+  policy: RetryPolicy = RETRY_POLICY.PLATFORM_SEND,
+): Promise<T> {
+  return withRetry(policy, call, {
+    transient: (error) => isTransientBotFailure(classifyBotFailure(error)),
+    waitAsked: retryAfterMs,
+    onRetry: (error, attempt) =>
+      wideLog.warning("platform_call_retrying", {
+        ...sanitizeErrorForLog(error),
+        attempt,
+      }),
+  });
 }

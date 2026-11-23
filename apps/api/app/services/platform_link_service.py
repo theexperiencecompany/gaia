@@ -11,10 +11,12 @@ from datetime import UTC, datetime
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict
+from redis.exceptions import RedisError
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
 from app.constants.platform_links import (
+    DAY_ZERO_HELLO_TASK,
     IMESSAGE_PENDING_REGISTRATION_TTL,
     LINK_CONFLICT_ACCOUNT_HAS_OTHER,
     LINK_CONFLICT_PLATFORM_TAKEN,
@@ -44,11 +46,43 @@ from app.services.photon.photon_client import (
     register_shared_user,
     unregister_shared_user,
 )
+from app.utils.auth_utils import bot_user_cache_key
 from app.utils.errors import AppError, create_error
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotChatOpened
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
+
+# One job id per user: ARQ skips an id already queued, running or holding its result, so
+# two links landing together queue one hello instead of two workers both greeting.
+DAY_ZERO_HELLO_JOB_ID = "day_zero_hello:{user_id}"
+
+
+async def _enqueue_day_zero_hello(user_id: str, platform: str) -> None:
+    """Enqueue GAIA's first-hello job for a freshly linked chat platform, once per user.
+
+    Best-effort: a Redis outage must not fail the link, so it is logged and the
+    link proceeds.
+    """
+    try:
+        pool = await RedisPoolManager.get_pool()
+        await enqueue_worker_job(
+            pool,
+            DAY_ZERO_HELLO_TASK,
+            user_id,
+            platform,
+            _job_id=DAY_ZERO_HELLO_JOB_ID.format(user_id=user_id),
+        )
+    except RedisError as e:
+        log.warning(
+            "platform_link.day_zero_enqueue_failed",
+            user_id=user_id,
+            platform=platform,
+            error=str(e),
+        )
+
 
 PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
 
@@ -425,13 +459,13 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     log.audit(
         "platform account unlinked",
         actor=user_id,
+        resource=platform_user_id,
         provider=platform,
     )
     capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
 
     if platform_user_id:
-        cache_key = f"bot_user:{platform}:{platform_user_id}"
-        await redis_cache.client.delete(cache_key)
+        await redis_cache.client.delete(bot_user_cache_key(platform, platform_user_id))
 
     return result
 
@@ -546,6 +580,12 @@ class PlatformLinkService:
             await _clear_pending_imessage_registration(user_id, platform_user_id)
 
         previously_linked_same = prior_link is not None and prior_link.id == platform_user_id
+
+        # A brand-new chat link is the day-zero moment: greet the user once. The
+        # task guards itself (once ever, young account, still linked), so a
+        # same-id relink never re-greets.
+        if not previously_linked_same:
+            await _enqueue_day_zero_hello(user_id, platform)
 
         return PlatformLinkResult(
             status="linked",

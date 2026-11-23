@@ -3,8 +3,6 @@
 from datetime import UTC, datetime
 import random
 
-from bson import ObjectId
-
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from app.constants.log_tags import LogTag
@@ -111,9 +109,8 @@ async def get_user_metadata(user_id: str, user: UserDocument | None = None) -> U
 
         created_at = user.created_at
 
-        # Stable account number derived from the ObjectId creation timestamp.
-        oid = ObjectId(user_id)
-        account_number = int(oid.generation_time.timestamp()) % 1_000_000
+        # Stable account number derived from when the user id was minted.
+        account_number = int(user_repository.id_created_at(user_id).timestamp()) % 1_000_000
 
         # Format member since date. The isinstance guard stays: a document built
         # with model_construct (or a legacy row read outside the repository) can
