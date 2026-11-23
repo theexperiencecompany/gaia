@@ -66,6 +66,7 @@ constraint-dependencies = [
   "joserfc>=1.7.6",
   "mcp>=1.30.0",
   "oauthlib>=4.0.1",
+  "dnspython>=2.9.2",
   "pypdf>=6.21.4",
   "setuptools>=84.1.0",
 ]
