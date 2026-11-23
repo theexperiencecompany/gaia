@@ -307,16 +307,8 @@ cmd_alert_rule_tools() {
 
 cmd_evlog() {
 
-  # GAIA_PR_BASE first: on a stacked PR the event payload names the stack's
-  # trunk, so this ratchet would compare against the bottom of the stack and
-  # demand a score for every file the PRs below it touched. See the note at the
-  # top of changes.sh. CI sets GITHUB_BASE_REF; local runs (`mise ci:local`) do
-  # not, so mirror changes.sh's fallback (NX_BASE, then master) to keep the lane
-  # runnable locally instead of dying on an unbound variable under `set -u`.
-  NX_BASE_REF="${NX_BASE:-}"
-  BASE_REF="${GAIA_PR_BASE:-${GITHUB_BASE_REF:-${NX_BASE_REF#origin/}}}"
-  BASE_REF="${BASE_REF:-master}"
-  BASE_SHA=$(git merge-base "origin/$BASE_REF" HEAD)
+  # changes.sh owns the base: a branch, a remote ref or a merge group's sha.
+  BASE_SHA=$(git merge-base "$(bash "$REPO_ROOT/scripts/ci/changes.sh" base-rev)" HEAD)
   # Scratch lives under the job's own temp dir, never a fixed /tmp name: /tmp
   # is sticky and shared by every user on a self-hosted box, so a file left
   # behind by another runner user is unwritable (EACCES) for this one.
