@@ -210,6 +210,7 @@ export function makeGaiaSharedMock(
     createBotLogger,
     hashLogIdentifier,
     sanitizeErrorForLog,
+    setPlatformConnected: vi.fn(),
     wideLog,
     withWideEvent: vi.fn(
       (_task: string, _fields: unknown, fn: () => Promise<unknown>) => fn(),
