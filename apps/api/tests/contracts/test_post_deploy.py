@@ -97,13 +97,36 @@ async def test_a_claim_left_by_a_release_job_killed_at_its_cap_is_taken_over(
     steps: dict[str, AsyncMock], raw_collection
 ) -> None:
     """Regression: a 2h window blocked the re-run after deploy.sh's 1800s cap killed a step."""
-    killed_at_cap = datetime.now(UTC) - timedelta(minutes=36)
+    killed_at_cap = datetime.now(UTC) - timedelta(minutes=3)
     await raw_collection.insert_one(
         {"_id": "first", "claimed_at": killed_at_cap, "applied_at": None}
     )
 
     run = post_deploy.run_post_deploy(apply=True)
     assert await asyncio.wait_for(run, timeout=5) == ["first", "second"]
+
+
+async def test_a_step_running_past_the_stale_window_keeps_its_claim_from_a_second_runner(
+    steps: dict[str, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(post_deploy, "_CLAIM_HEARTBEAT", timedelta(milliseconds=20))
+    monkeypatch.setattr(post_deploy, "_STALE_CLAIM", timedelta(milliseconds=100))
+    monkeypatch.setattr(post_deploy, "_CLAIM_POLL", timedelta(milliseconds=10))
+
+    async def long_step(apply: bool) -> None:
+        await asyncio.sleep(0.5)
+
+    steps["first"].side_effect = long_step
+
+    first, second = await asyncio.wait_for(
+        asyncio.gather(
+            post_deploy.run_post_deploy(apply=True), post_deploy.run_post_deploy(apply=True)
+        ),
+        timeout=10,
+    )
+
+    assert steps["first"].await_count == 1
+    assert sorted([*first, *second]) == ["first", "second"]
 
 
 @pytest.mark.regression
