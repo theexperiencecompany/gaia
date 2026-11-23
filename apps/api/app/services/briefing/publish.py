@@ -52,6 +52,9 @@ class Sending:
     #: The placed items as signal memory keys them, marked shown once the brief went out.
     shown: list[Sighting] = field(default_factory=list)
     settlement: BriefSettlement = field(default_factory=BriefSettlement)
+    #: Code built the composition or the voice because the model's last answer failed its check.
+    composition_salvaged: bool = False
+    voice_salvaged: bool = False
 
 
 async def publish(
@@ -105,6 +108,8 @@ def _record_sent(
             pool_item_count=sending.pool.items,
             series_count=sending.pool.series,
             source_count=len(payload.sources_read),
+            composition_salvaged=sending.composition_salvaged,
+            voice_salvaged=sending.voice_salvaged,
         ),
     )
     log.set_ns("briefing", form=payload.form, channels=channels, pushed=sending.push)

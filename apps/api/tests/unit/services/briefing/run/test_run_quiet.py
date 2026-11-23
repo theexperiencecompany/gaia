@@ -338,5 +338,7 @@ class TestAQuietWeek:
                 pool_item_count=1,
                 series_count=0,
                 source_count=0,
+                composition_salvaged=False,
+                voice_salvaged=False,
             ),
         )

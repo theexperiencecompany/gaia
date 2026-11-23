@@ -34,7 +34,7 @@ from app.services.briefing.candidates.pool import (
     gather_candidates,
 )
 from app.services.briefing.clock import DayWindow, UserClock, resolve_clock
-from app.services.briefing.composition.compose import compose_brief
+from app.services.briefing.composition.compose import Composed, compose_brief
 from app.services.briefing.edition_draws import draw_edition
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
@@ -151,7 +151,7 @@ async def _run_today(
     log_composition(pool, laid)
     if run.standing.quiet_after_composing(laid, reads.calendar):
         return await _quiet(run, pool)
-    await _publish_edition(run, pool, laid, composed.values)
+    await _publish_edition(run, pool, laid, composed)
     return BriefingRunOutcome.SENT
 
 
@@ -289,10 +289,10 @@ def _facts(run: Run, pool: FactPool, laid: Laid, pooled: SlotValues) -> Facts:
     )
 
 
-async def _publish_edition(run: Run, pool: FactPool, laid: Laid, pooled: SlotValues) -> None:
+async def _publish_edition(run: Run, pool: FactPool, laid: Laid, composed: Composed) -> None:
     """Voice the brief over its facts, draw its edition, build its payload once and publish it."""
     user, clock, spec, standing, reads = run.user, run.clock, run.spec, run.standing, run.reads
-    facts = _facts(run, pool, laid, pooled)
+    facts = _facts(run, pool, laid, composed.values)
     voicing = await standing.voice(
         VoiceInputs(
             reads=reads.reads,
@@ -304,17 +304,17 @@ async def _publish_edition(run: Run, pool: FactPool, laid: Laid, pooled: SlotVal
     # Bounded: a stalled model call must fail the cron loudly, not hang the worker slot
     # (observed live 2026-08-07).
     async with asyncio.timeout(spec.voice_timeout_seconds):
-        voice, draft = await written_brief(user.id, voicing.prompt, voicing.writing)
-    links = await links_in(user.id, voice.message, facts)
+        voiced = await written_brief(user.id, voicing.prompt, voicing.writing)
+    links = await links_in(user.id, voiced.written.message, facts)
     edition = draw_edition(run.state, laid.blocks, spec.fixed_family)
     completed = reads.reads.completed.since(standing.since)
     payload = edition_payload(
         PayloadParts(
             clock=clock,
             kicker=spec.kicker,
-            prose=Prose(voice, draft, links),
+            prose=Prose(voiced.written, voiced.draft, links),
             facts=facts,
-            mood=standing.mood(draft),
+            mood=standing.mood(voiced.draft),
             edition=edition,
             new_stamp=await new_stamp(user.id, edition.stamp_city) if edition.stamp_city else None,
             recipient_name=display_name(user),
@@ -348,5 +348,7 @@ async def _publish_edition(run: Run, pool: FactPool, laid: Laid, pooled: SlotVal
                 if (seen := sighting(c)) is not None
             ],
             settlement=standing.settlement(),
+            composition_salvaged=composed.salvaged,
+            voice_salvaged=voiced.salvaged,
         ),
     )

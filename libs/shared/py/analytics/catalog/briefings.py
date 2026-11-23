@@ -46,6 +46,9 @@ class BriefingSent(ServerEvent):
     series_count: int
     #: Apps the brief read.
     source_count: int
+    #: Code salvaged the composition, or the voice, after the model's last answer failed its check.
+    composition_salvaged: bool
+    voice_salvaged: bool
 
 
 class BriefingOpened(ServerEvent):

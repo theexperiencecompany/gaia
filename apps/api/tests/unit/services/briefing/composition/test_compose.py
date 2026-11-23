@@ -184,7 +184,7 @@ class TestOneCall:
     ) -> None:
         composed = await compose_brief(USER, POOL, DAILY)
 
-        assert composed.written == _GOOD
+        assert (composed.written, composed.salvaged) == (_GOOD, False)
         chart = composed.rendered.blocks[1]
         assert isinstance(chart, ComposedChart)
         assert chart.takeaway == "Wednesday holds 7 hours."
@@ -432,6 +432,7 @@ class TestRetryThenFailLoud:
             ["Series A term sheet"],
         )
         assert model.await_count == 2
+        assert composed.salvaged
 
     async def test_a_salvaged_brief_heads_each_group_by_its_items_without_asking_a_model(
         self, model: AsyncMock, headings: AsyncMock
