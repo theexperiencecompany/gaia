@@ -5,14 +5,13 @@ device-token store and the websocket. Routing, the notification record, the
 per-channel claims, the bot DM session and its conversation log are real.
 """
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
 from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from arq.connections import ArqRedis
 from bson import ObjectId
 import httpx
 import pytest
@@ -41,9 +40,7 @@ from app.services.platform_link_service import PlatformLinkService
 from app.services.workflow.notifications import WorkflowRunResult, notify_workflow_result
 from app.tasks.reminder_tasks import _execute_static_reminder
 from app.utils.artifact_utils import FILE_LINKS
-from app.utils.redis_utils import RedisPoolManager
 from shared.py.conversation_wire import ReplyOutcome
-from tests.helpers import worker_redis_url
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
     RecordingEffects,
@@ -146,15 +143,6 @@ def _runtime() -> None:
             links=FILE_LINKS,
         )
     )
-
-
-@pytest.fixture
-async def arq_pool(redis_url: str, real_redis) -> AsyncIterator[ArqRedis]:
-    """Give each test's loop its own ARQ pool: linking Telegram queues the day-zero hello."""
-    pool = ArqRedis.from_url(worker_redis_url(redis_url))
-    with patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool)):
-        yield pool
-    await pool.aclose()
 
 
 @pytest.fixture(autouse=True)

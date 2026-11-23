@@ -46,7 +46,12 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 from app.models.notification.details_models import WorkflowFailedNotification
-from app.models.notification.notification_models import NotificationSourceEnum
+from app.models.notification.notification_models import (
+    NotificationRecord,
+    NotificationRequest,
+    NotificationSourceEnum,
+    NotificationStatus,
+)
 from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import (
@@ -62,7 +67,10 @@ from app.models.workflow_models import (
 )
 from app.override.langgraph_bigtool.utils import _replace_todos, dedupe_str_list
 from app.services.conversation.outcome import EntryOutcome
+from app.services.delivery.chat_channel import InApp
+from app.services.workflow.execution_service import WorkflowTurnFailed
 from app.services.workflow.scheduler import WorkflowScheduler
+from app.utils.notification.orchestrator import Notified
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 from shared.py.conversation_wire import ReplyOutcome
@@ -460,6 +468,12 @@ class _InMemoryExecutionRecords:
     async def get(self, execution_id: str, **_: object) -> WorkflowExecutionDocument | None:
         return self.records.get(execution_id)
 
+    async def get_for_user(
+        self, execution_id: str, user_id: str
+    ) -> WorkflowExecutionDocument | None:
+        record = self.records.get(execution_id)
+        return record if record is not None and record.user_id == user_id else None
+
     async def update(
         self, execution_id: str, update: WorkflowExecutionUpdate
     ) -> WorkflowExecutionDocument | None:
@@ -500,7 +514,8 @@ def _make_multi_step_workflow(user_id: str) -> Workflow:
 
 @pytest.mark.e2e
 # The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
-@pytest.mark.usefixtures("fake_redis")
+# The run's link is a real short link, written through this test's own Mongo client.
+@pytest.mark.usefixtures("fake_redis", "mongo_db")
 class TestWorkflowExecutionFailurePropagation:
     """E2E tests for the real workflow-execution path.
 
@@ -522,6 +537,7 @@ class TestWorkflowExecutionFailurePropagation:
         records = _InMemoryExecutionRecords()
         monkeypatch.setattr(workflow_executions_repository, "create", records.create)
         monkeypatch.setattr(workflow_executions_repository, "get", records.get)
+        monkeypatch.setattr(workflow_executions_repository, "get_for_user", records.get_for_user)
         monkeypatch.setattr(workflow_executions_repository, "update", records.update)
 
         recorded_stats: list[bool] = []
@@ -534,8 +550,16 @@ class TestWorkflowExecutionFailurePropagation:
 
         notifications: list[object] = []
 
-        async def _create_notification(request):
+        async def _create_notification(request: NotificationRequest) -> Notified:
             notifications.append(request)
+            record = NotificationRecord(
+                id=request.id,
+                user_id=request.user_id,
+                status=NotificationStatus.DELIVERED,
+                created_at=datetime.now(UTC),
+                original_request=request,
+            )
+            return Notified(record=record, target=InApp("no_chat_app"))
 
         monkeypatch.setattr(workflow_tasks.notification_service, "notify", _create_notification)
 
@@ -583,10 +607,18 @@ class TestWorkflowExecutionFailurePropagation:
             AsyncMock(return_value=UserActivityDates(last_active_at=datetime.now(UTC))),
         )
 
+        def serve(workflow: Workflow) -> None:
+            """Serve the workflow to the fire and to its run's link, two reads of one document."""
+            monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
+            monkeypatch.setattr(
+                workflow_repository, "get_for_user", AsyncMock(return_value=workflow)
+            )
+
         return {
             "records": records,
             "recorded_stats": recorded_stats,
             "notifications": notifications,
+            "serve": serve,
         }
 
     @staticmethod
@@ -652,9 +684,9 @@ class TestWorkflowExecutionFailurePropagation:
             monkeypatch, failing_step_title="Summarize the thread"
         )
 
-        monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
+        workflow_execution_env["serve"](workflow)
 
-        with pytest.raises(RuntimeError, match="Summarize the thread"):
+        with pytest.raises(WorkflowTurnFailed, match="Summarize the thread"):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
         assert completed == ["Read overnight email"], (
@@ -700,7 +732,7 @@ class TestWorkflowExecutionFailurePropagation:
         workflow = _make_multi_step_workflow(user_id=str(ObjectId()))
         completed = self._install_stepwise_agent(monkeypatch, failing_step_title=None)
 
-        monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
+        workflow_execution_env["serve"](workflow)
 
         result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
@@ -736,14 +768,14 @@ class TestWorkflowExecutionFailurePropagation:
         workflow = _make_multi_step_workflow(user_id=str(ObjectId()))
         self._install_stepwise_agent(monkeypatch, failing_step_title="Post to Slack")
 
-        monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
+        workflow_execution_env["serve"](workflow)
         monkeypatch.setattr(
             workflow_tasks.notification_service,
             "notify",
             AsyncMock(side_effect=RuntimeError("notification backend unreachable")),
         )
 
-        with pytest.raises(RuntimeError, match="Post to Slack"):
+        with pytest.raises(WorkflowTurnFailed, match="Post to Slack"):
             await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
         execution = workflow_execution_env["records"].only()

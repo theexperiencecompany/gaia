@@ -23,8 +23,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+from arq.connections import ArqRedis
 from bson import ObjectId
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,12 +55,14 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.conversation_models import ConversationDocument
 from app.models.payment_models import PlanType
+from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import _spawned_tasks
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
     log_history,
     pg_advisory_lock,
     pick_free_port,
+    worker_redis_url,
 )
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
@@ -97,6 +100,15 @@ async def _autouse_hil_approvals_collection(hil_approvals_collection) -> None:
 # ---------------------------------------------------------------------------
 # Per-test isolation: clean collections + patch app singletons
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def arq_pool(redis_url: str, real_redis: Redis) -> AsyncIterator[ArqRedis]:
+    """Give each test's loop its own ARQ pool: linking a chat platform queues the day-zero hello."""
+    pool = ArqRedis.from_url(worker_redis_url(redis_url))
+    with patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool)):
+        yield pool
+    await pool.aclose()
 
 
 @pytest.fixture
