@@ -7,6 +7,11 @@
 #                                           Download <url> to <dest> and check it,
 #                                           fetching again while it fails; the last
 #                                           mismatch fails the lane.
+#   fetch_cached <name> <url> <algo> <digest> <cache-dir>
+#                                           Print the path of <url>'s file in <cache-dir>,
+#                                           downloading it only when absent or no longer
+#                                           matching: the box's tool cache outlives the job
+#                                           that wrote it, so the pin is checked every run.
 
 # A corrupt 278 MB Fortress archive ejected four merge groups (9-11 Nov) while the asset matched its pin.
 DOWNLOAD_ATTEMPTS=3
@@ -29,4 +34,15 @@ fetch_verified() {
     ci_warn "$name: download ${attempt}/${DOWNLOAD_ATTEMPTS} failed or does not match its pinned ${algo}"
   done
   ci_die "$name does not match its pinned ${algo} after ${DOWNLOAD_ATTEMPTS} downloads"
+}
+
+fetch_cached() {
+  local name="$1" url="$2" algo="$3" digest="$4" cache="$5" file
+  file="$cache/${url##*/}"
+  if ! { [ -f "$file" ] && digest_matches "$algo" "$digest" "$file"; }; then
+    mkdir -p "$cache"
+    fetch_verified "$name" "$url" "$algo" "$digest" "$file.part"
+    mv -f "$file.part" "$file"
+  fi
+  echo "$file"
 }

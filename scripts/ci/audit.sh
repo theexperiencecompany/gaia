@@ -35,7 +35,8 @@
 #   pip               PIP_AUDIT_ROOT (tests), RUNNER_TEMP. Exit codes as pnpm's.
 #   playwright-pin    none.
 #   model-pin         none.
-#   alert-rule-tools  RUNNER_TEMP (required), GITHUB_PATH.
+#   alert-rule-tools  RUNNER_TEMP (required), GITHUB_PATH, ALERT_RULE_TOOLS_CACHE
+#                     (the tarballs' cache dir; default under RUNNER_TOOL_CACHE).
 #   evlog             GAIA_PR_BASE or GITHUB_BASE_REF (optional; falls back to
 #                     NX_BASE/master locally), RUNNER_TEMP; needs a fetch-depth: 0
 #                     checkout.
@@ -285,20 +286,23 @@ cmd_alert_rule_tools() {
   source "$(dirname "$0")/../../tools/alert-rules/tool-versions.env"
 
   BIN="${RUNNER_TEMP:?RUNNER_TEMP is required}/bin"
-  WORK="$(mktemp -d "${RUNNER_TEMP}/alert-rule-tools.XXXXXX")"
+  # The box's tool cache persists: the prometheus tarball alone took 1.4-3.6 min to fetch per run.
+  CACHE="${ALERT_RULE_TOOLS_CACHE:-${RUNNER_TOOL_CACHE:-$HOME/.cache}/alert-rule-tools}"
   mkdir -p "$BIN"
 
   echo "::group::install"
-  curl -sSL --proto '=https' -o "$WORK/pint.tar.gz" \
-    "https://github.com/cloudflare/pint/releases/download/v${PINT_VERSION}/pint-${PINT_VERSION}-linux-amd64.tar.gz"
-  tar -xzf "$WORK/pint.tar.gz" -C "$WORK"
-  install -m 0755 "$WORK/pint-linux-amd64" "$BIN/pint"
+  local pint prometheus prom_dir="prometheus-${PROMETHEUS_VERSION}.linux-amd64"
+  pint="$(fetch_cached "pint $PINT_VERSION" \
+    "https://github.com/cloudflare/pint/releases/download/v${PINT_VERSION}/pint-${PINT_VERSION}-linux-amd64.tar.gz" \
+    sha256 "$PINT_LINUX_AMD64_SHA256" "$CACHE")"
+  tar -xzf "$pint" -C "$BIN" pint-linux-amd64
+  mv -f "$BIN/pint-linux-amd64" "$BIN/pint"
 
-  curl -sSL --proto '=https' -o "$WORK/prometheus.tar.gz" \
-    "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
-  tar -xzf "$WORK/prometheus.tar.gz" -C "$WORK"
-  install -m 0755 "$WORK/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" "$BIN/promtool"
-  rm -rf "$WORK"
+  prometheus="$(fetch_cached "prometheus $PROMETHEUS_VERSION" \
+    "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/${prom_dir}.tar.gz" \
+    sha256 "$PROMETHEUS_LINUX_AMD64_SHA256" "$CACHE")"
+  tar -xzf "$prometheus" -C "$BIN" --strip-components=1 "${prom_dir}/promtool"
+  chmod 0755 "$BIN/pint" "$BIN/promtool"
   echo "::endgroup::"
 
   echo "$BIN" >> "$GITHUB_PATH"
@@ -420,12 +424,7 @@ install_gitleaks() {
   want="${GITLEAKS_SHA256:-$(gitleaks_sha256 "${os}_${arch}")}"
   url="${GITLEAKS_RELEASE_URL:-https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${os}_${arch}.tar.gz}"
   cache="${GITLEAKS_CACHE:-${RUNNER_TOOL_CACHE:-$HOME/.cache}/gitleaks}"
-  tarball="$cache/gitleaks_${GITLEAKS_VERSION}_${os}_${arch}.tar.gz"
-  if ! { [ -f "$tarball" ] && digest_matches sha256 "$want" "$tarball"; }; then
-    mkdir -p "$cache"
-    fetch_verified "gitleaks $GITLEAKS_VERSION (${os}_${arch})" "$url" sha256 "$want" "$dir/gitleaks.tar.gz"
-    mv -f "$dir/gitleaks.tar.gz" "$tarball"
-  fi
+  tarball="$(fetch_cached "gitleaks $GITLEAKS_VERSION (${os}_${arch})" "$url" sha256 "$want" "$cache")"
   tar -xzf "$tarball" -C "$dir" gitleaks
 }
 
