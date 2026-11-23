@@ -1,8 +1,9 @@
-# Re-run attempts stranded on an offline home runner. "Re-run failed jobs"
-# re-runs only the failed lanes: select-runner and runner-watchdog do not
-# re-run, so the lanes inherit the old home runs-on and queue forever when the
-# home listeners are offline. runner.py requeue-stranded force-cancels such an
-# attempt and re-runs it in full, so select chooses afresh. Force, not plain:
+# ci.yml runs stranded on an offline self-hosted label with no live watchdog.
+# "Re-run failed jobs" re-runs only the failed lanes: select-runner and
+# runner-watchdog do not re-run, so the lanes inherit the old runs-on and queue
+# forever when that label's listeners are offline; and a first attempt whose
+# watchdog hit its cap is unwatched too. runner.py requeue-stranded force-cancels
+# such a run and re-runs it in full, so select chooses afresh. Force, not plain:
 # a plain cancel runs quality-gate red, which drops a merge group from the queue.
 name: CI requeue stranded re-runs
 

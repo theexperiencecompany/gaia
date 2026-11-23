@@ -61,4 +61,17 @@ def test_a_download_that_never_matches_fails_and_caches_nothing(tmp_path: Path) 
     proc = fetch_cached(url, hashlib.sha256(b"pinned").hexdigest(), cache)
 
     assert proc.returncode != 0
-    assert not (cache / "tool.tar.gz").exists()
+    assert list(cache.iterdir()) == [], "neither the tarball nor a half-written download is left"
+
+
+def test_another_jobs_download_in_flight_is_not_this_jobs_file(tmp_path: Path) -> None:
+    """Box jobs share RUNNER_TOOL_CACHE; a fixed <file>.part let one move the other's half-written file."""
+    url, digest = release(tmp_path, b"pinned")
+    cache = tmp_path / "cache"
+    (cache / "tool.tar.gz.part").mkdir(parents=True)
+
+    proc = fetch_cached(url, digest, cache)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (cache / "tool.tar.gz").read_bytes() == b"pinned"
+    assert (cache / "tool.tar.gz.part").is_dir(), "the other job's download was left alone"

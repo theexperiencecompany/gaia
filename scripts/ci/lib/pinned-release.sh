@@ -37,12 +37,17 @@ fetch_verified() {
 }
 
 fetch_cached() {
-  local name="$1" url="$2" algo="$3" digest="$4" cache="$5" file
+  local name="$1" url="$2" algo="$3" digest="$4" cache="$5" file part
   file="$cache/${url##*/}"
   if ! { [ -f "$file" ] && digest_matches "$algo" "$digest" "$file"; }; then
     mkdir -p "$cache"
-    fetch_verified "$name" "$url" "$algo" "$digest" "$file.part"
-    mv -f "$file.part" "$file"
+    # Its own name: box jobs share the tool cache and download the same file at once.
+    part="$(mktemp "$file.XXXXXX")"
+    if ! (fetch_verified "$name" "$url" "$algo" "$digest" "$part"); then
+      rm -f "$part"
+      ci_die "$name: no download matched its pinned ${algo}"
+    fi
+    mv -f "$part" "$file"
   fi
   echo "$file"
 }

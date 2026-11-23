@@ -77,7 +77,8 @@ of it, so runs that start together compute the same answer for each other:
 1. No run ahead: every pool on `ubuntu-24.04` (`HOSTED_LINUX_IMAGE`). A lone run
    is unchanged and pays only the two listing calls.
 2. One or more ahead: `services` moves to the box (`gaia-home`) and `unit` to the
-   M4 (`CI_M4_LABEL`; unset means off; never a merge group) or else the box,
+   M4 (`CI_M4_LABEL`; unset means off; never a merge group; refused while more
+   than 2 listeners carry the label, since nothing there caps CPU per job) or else the box,
    when every job of the pool fits the machine's free slots: box `BOX_SLOTS` (4),
    M4 `M4_SLOTS` (2). Free slots are capacity minus what the runs ahead hold: a
    run whose `detect` finished holds its jobs that are not completed on that

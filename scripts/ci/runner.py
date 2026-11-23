@@ -14,9 +14,9 @@ Subcommands:
   watchdog            Re-dispatch or hand over this run once a self-hosted job
                       has stayed `queued` past the limit on a machine with no
                       live listener — one that died after `select` decided.
-  requeue-stranded    Force-cancel and fully re-run any re-run attempt whose lanes
-                      are stuck queued on a self-hosted label with no live
-                      listener (scheduled: ci-requeue.yml).
+  requeue-stranded    Force-cancel and fully re-run any ci.yml run whose lanes are
+                      stuck queued on a self-hosted label with no live listener
+                      and no live watchdog (scheduled: ci-requeue.yml).
   cancel-superseded   Force-cancel older queued/in-progress runs of this workflow
                       on this branch (per-SHA concurrency needs it); on a
                       merge group, every active merge_group run whose head is
@@ -113,6 +113,8 @@ HOSTED_LINUX_IMAGE = "ubuntu-24.04"
 DEFAULT_FALLBACK = json.dumps([HOSTED_LINUX_IMAGE])
 TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
 REQUEUE_WORKFLOW = "ci-requeue.yml"
+# The one workflow that routes jobs to self-hosted labels.
+CI_WORKFLOW = "ci.yml"
 SELF_HOSTED = "self-hosted"
 
 
@@ -298,6 +300,8 @@ class Machine:
     slots: int
     pools: frozenset[JobPool]
     takes_merge_groups: bool
+    # Registered listeners past which the machine is refused; None when its CPU is governed.
+    max_listeners: int | None
 
     def serves(self, run: Run, pool: JobPool) -> bool:
         return pool in self.pools and (run.event != "merge_group" or self.takes_merge_groups)
@@ -336,24 +340,36 @@ class Run:
         return self.trusted and self.event != "push"
 
 
-def active_runs(gh: GitHub, repo: str, workflow: str, me: Run) -> list[Run]:
-    """List the workflow's live runs in decision order, superseded ones dropped."""
+@dataclass(frozen=True)
+class Runs:
+    """The live runs in decision order, and the superseded ones still being cancelled."""
+
+    live: list[Run]
+    # Not ahead of anyone, but their self-hosted jobs run on while they are
+    # force-cancelled (and a cancelled pytest step wedges its listener for 5 min).
+    superseded: list[Run]
+
+
+def active_runs(gh: GitHub, repo: str, workflow: str, me: Run) -> Runs:
     found = {me.id: me}
     never_started = int(time.time()) - NEVER_STARTED_SECS
     for status in ("queued", "in_progress"):
         path = f"repos/{repo}/actions/workflows/{workflow}/runs?status={status}&per_page=100"
         for doc in records(gh.get(path), "workflow_runs"):
-            if status == "queued" and epoch(text_of(doc, "created_at")) < never_started:
-                continue
             run = Run.parse(doc, repo)
+            # run_started_at, not created_at: a re-run keeps its created_at.
+            if status == "queued" and epoch(run.started) < never_started:
+                continue
             found[run.id] = run
     ordered = sorted(found.values(), key=Run.order)
     newest = {(r.event, r.branch): r for r in ordered if r.event in SUPERSEDING_EVENTS}
-    return [
-        r
-        for r in ordered
-        if r.id == me.id or r.event not in SUPERSEDING_EVENTS or newest[(r.event, r.branch)] is r
-    ]
+
+    def is_live(r: Run) -> bool:
+        return (
+            r.id == me.id or r.event not in SUPERSEDING_EVENTS or newest[(r.event, r.branch)] is r
+        )
+
+    return Runs([r for r in ordered if is_live(r)], [r for r in ordered if not is_live(r)])
 
 
 @dataclass(frozen=True)
@@ -467,10 +483,10 @@ class Router:
     def route(self) -> dict[JobPool, Choice]:
         try:
             runs = active_runs(self.gh, self.repo, workflow_file(), self.me)
-            ahead = runs[: [r.id for r in runs].index(self.me.id)]
+            ahead = runs.live[: [r.id for r in runs.live].index(self.me.id)]
             if len(ahead) < HOSTED_RUNS or not self.me.movable:
                 return self.hosted("hosted-first", f"{len(ahead)} run(s) ahead")
-            free = self.free_slots(ahead)
+            free = self.free_slots(ahead, runs.superseded)
         except GitHubError as err:
             warn(f"run or job listing failed ({err}) — every pool stays on GitHub-hosted")
             return self.hosted("runs-unknown", "run or job listing unreadable")
@@ -494,15 +510,18 @@ class Router:
         )
         return Choice((self.blacksmith,), "blacksmith-last-resort", note)
 
-    def free_slots(self, ahead: list[Run]) -> dict[str, int]:
-        """Return each machine's free slots once every run ahead has taken what it holds."""
+    def free_slots(self, ahead: list[Run], superseded: list[Run]) -> dict[str, int]:
+        """Return each machine's free slots once every run ahead, and every run still being cancelled, has taken what it holds."""
         labels = frozenset(m.label for m in self.machines)
-        readable = [r for r in ahead if r.movable]
+        readable = [r for r in [*ahead, *superseded] if r.movable]
         with ThreadPoolExecutor(max_workers=JOB_READ_WORKERS) as pool:
             reads = pool.map(lambda r: read_held(self.gh, self.repo, r.id, labels), readable)
             held = dict(zip((r.id for r in readable), reads, strict=True))
         running = frozenset().union(*(h.running for h in held.values()))
         free = self.capacity(running)
+        for run in superseded:
+            for label, taken in held[run.id].slots.items() if run.id in held else ():
+                free[label] -= taken
         for position, run in enumerate(ahead):
             reading = held.get(run.id)
             if reading is not None and reading.settled:
@@ -523,6 +542,14 @@ class Router:
         capacity = {}
         for machine in self.machines:
             pool = pool_of(runners, machine.label)
+            if pool and machine.max_listeners is not None and pool.total > machine.max_listeners:
+                warn(
+                    f"`{machine.label}` has {pool.total} listeners for {machine.max_listeners} "
+                    "slots and nothing on it caps CPU per job — not routing to it until it has "
+                    f"at most {machine.max_listeners}"
+                )
+                capacity[machine.label] = 0
+                continue
             alive = pool.alive if pool else 0
             if not alive and machine.label in running:
                 log(
@@ -536,9 +563,11 @@ class Router:
 
 def machines_from_env(box: str) -> list[Machine]:
     """List the self-hosted machines in the order unit slices try them: the M4 first, when on."""
-    found = [Machine(box, BOX_SLOTS, frozenset({JobPool.UNIT, JobPool.SERVICES}), True)]
+    # The box's cpu-slots governor and static xdist shares hold its 10 listeners in check.
+    found = [Machine(box, BOX_SLOTS, frozenset({JobPool.UNIT, JobPool.SERVICES}), True, None)]
     if m4 := os.environ.get("M4_LABEL", ""):
-        found.insert(0, Machine(m4, M4_SLOTS, frozenset({JobPool.UNIT}), False))
+        # No governor there, and pytest sizes its workers by the whole VM.
+        found.insert(0, Machine(m4, M4_SLOTS, frozenset({JobPool.UNIT}), False, M4_SLOTS))
     return found
 
 
@@ -613,9 +642,16 @@ def cmd_select(_args: list[str]) -> int:
 
 # ── watchdog ──────────────────────────────────────────────────────────────
 
-# A box that dies after select leaves self-hosted jobs queued for up to 24 h.
-# Age runs from ELIGIBILITY (creation or the run's last progress, whichever is
-# later); a busy box and an unreadable runners probe both mean keep waiting.
+# A machine that dies after select leaves its jobs queued for up to 24 h. A
+# busy machine and an unreadable runners probe both mean keep waiting.
+
+# How long a self-hosted job may sit queued before its machine is judged; the
+# watchdog and requeue-stranded both read it, and ci.yml's watchdog cap covers it.
+QUEUE_LIMIT_SECS = 480
+WATCHDOG_POLL_SECS = 30
+# The re-dispatch and cancel calls after the last poll, with room to spare.
+WATCHDOG_MARGIN_SECS = 60
+WATCHDOG_JOB = "watchdog"
 
 
 @dataclass(frozen=True)
@@ -623,17 +659,14 @@ class Job:
     name: str
     status: str
     created: int
-    progress: int
     labels: tuple[str, ...]
 
     @classmethod
     def parse(cls, doc: Json) -> Job:
-        stamps = [epoch(text_of(doc, "started_at")), epoch(text_of(doc, "completed_at"))]
         return cls(
             name=field_of(doc, "name", str),
             status=field_of(doc, "status", str),
             created=epoch(text_of(doc, "created_at")),
-            progress=max(stamps),
             labels=tuple(_job_labels(doc)),
         )
 
@@ -646,11 +679,12 @@ class Job:
 
 
 def _stalled_job(jobs: list[Job], limit: int) -> Job | None:
-    last_progress = max((j.progress for j in jobs), default=0)
+    # A job is created when its needs resolve, so its own creation is its eligibility.
+    # Other jobs' progress says nothing: GitHub-hosted lanes run on beside a dead label.
     now = int(time.time())
     stalled = None
     for job in (j for j in jobs if j.status == "queued" and j.machine):
-        age = now - max(job.created, last_progress)
+        age = now - job.created
         ok(f"watchdog: '{job.name}' eligible for {age}s (limit {limit}s)")
         if age > limit:
             stalled = job
@@ -734,10 +768,7 @@ def _watch_once(gh: GitHub, run: str, me: str, limit: int) -> int | None:
         ok(f"watchdog: no lanes created yet (run {status}) — waiting")
         return None
     if not any(j.status == "queued" and j.machine for j in jobs):
-        # The slices select moves off GitHub are created only when detect finishes.
-        if not any(j.name == DETECT_JOB and j.status == "completed" for j in jobs):
-            ok("watchdog: detect has not finished, so the slice lanes do not exist yet — waiting")
-            return None
+        # It starts after detect, which is when the slices select moved off GitHub are created.
         ok("watchdog: every self-hosted lane was picked up")
         return 0
     stalled = _stalled_job(jobs, limit)
@@ -760,8 +791,8 @@ def _watch_once(gh: GitHub, run: str, me: str, limit: int) -> int | None:
 
 
 def cmd_watchdog(_args: list[str]) -> int:
-    limit = env_int("QUEUE_LIMIT_SECS", 480)
-    poll = env_int("POLL_SECS", 30)
+    limit = env_int("QUEUE_LIMIT_SECS", QUEUE_LIMIT_SECS)
+    poll = env_int("POLL_SECS", WATCHDOG_POLL_SECS)
     me = env_required("WATCHDOG_JOB_NAME")
     run = f"repos/{env_required('GITHUB_REPOSITORY')}/actions/runs/{env_required('GITHUB_RUN_ID')}"
     gh = GitHub.from_env()
@@ -798,41 +829,47 @@ def _requeue(gh: GitHub, run: str, wait: int, poll: int) -> bool:
     return True
 
 
-def _stranded_job(gh: GitHub, repo: str, run_id: int, limit: int) -> Job | None:
-    """Return a self-hosted job of the run queued past the limit, if any."""
+def _stranded_job(gh: GitHub, repo: str, run_id: int, limit: int, *, swept: bool) -> Job | None:
+    """Return a self-hosted job of the run queued past the limit; a sweep leaves a live watchdog's run to it."""
     now = int(time.time())
-    jobs = gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
+    jobs = [
+        Job.parse(j)
+        for j in gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
+    ]
+    if swept and any(j.name == WATCHDOG_JOB and j.status != "completed" for j in jobs):
+        return None
     stranded = None
-    for job in map(Job.parse, jobs):
+    for job in jobs:
         if job.status == "queued" and job.machine and now - job.created > limit:
             stranded = job
     return stranded
 
 
 def _requeue_candidates(gh: GitHub, repo: str) -> list[int]:
-    """Return the run a watchdog handed over, else every in-flight re-run attempt."""
+    """Return the run a watchdog handed over, else every in-flight ci.yml run (only it routes)."""
     if handed_over := os.environ.get("REQUEUE_RUN_ID"):
         return [int(handed_over)]
     return [
         field_of(run, "id", int)
         for status in ("queued", "in_progress")
         for run in gh.collect(
-            f"repos/{repo}/actions/runs?per_page=100&status={status}", "workflow_runs"
+            f"repos/{repo}/actions/workflows/{CI_WORKFLOW}/runs?per_page=100&status={status}",
+            "workflow_runs",
         )
-        if field_of(run, "run_attempt", int) > 1
     ]
 
 
 def cmd_requeue_stranded(_args: list[str]) -> int:
-    limit = env_int("QUEUE_LIMIT_SECS", 480)
+    limit = env_int("QUEUE_LIMIT_SECS", QUEUE_LIMIT_SECS)
     wait = env_int("CANCEL_WAIT_SECS", 180)
     poll = env_int("POLL_SECS", 10)
     repo = env_required("GITHUB_REPOSITORY")
     gh = GitHub.from_env()
+    swept = not os.environ.get("REQUEUE_RUN_ID")
     states: dict[str, HomeState] = {}
     failed = 0
     for run_id in _requeue_candidates(gh, repo):
-        stranded = _stranded_job(gh, repo, run_id, limit)
+        stranded = _stranded_job(gh, repo, run_id, limit, swept=swept)
         if stranded is None:
             continue
         label = stranded.machine

@@ -10,10 +10,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import itertools
+from pathlib import Path
 import subprocess
 
 from github_fake import FakeGitHub, Reply, Request, ago, run_runner, runner
 import pytest
+import runner as runner_mod
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 WATCHDOG = "watchdog"
 RUN = r"/actions/runs/1$"
@@ -199,21 +204,72 @@ def test_a_runners_body_without_runners_is_unknown_not_offline(github: FakeGitHu
     assert "not cancelling on an unknown" in proc.stderr
 
 
-def test_age_runs_from_eligibility_not_creation(github: FakeGitHub) -> None:
-    # `detect` finished 30 s ago, so `build` has only just become eligible.
+def test_a_lane_created_inside_the_limit_is_left_waiting(github: FakeGitHub) -> None:
+    # GitHub creates a job when its needs resolve (run 45103036609: every slice's
+    # created_at is detect's completed_at), so its own creation is its eligibility.
     proc = run_watchdog(
-        github,
-        Scenario(
-            jobs=[
-                job("detect", "completed", ago(900), started=ago(880), completed=ago(30)),
-                job("build", "queued", ago(900)),
-            ],
-            runners=OFFLINE,
-        ),
+        github, Scenario(jobs=[detect_done(), job("build", "queued", ago(30))], runners=OFFLINE)
     )
     assert github.posts() == []
     assert proc.returncode == 0
-    assert "eligible for 3" in proc.stdout  # ~30s, not ~900s
+    assert "eligible for 3" in proc.stdout  # ~30s
+
+
+def progressing_hosted_jobs() -> list[dict[str, object]]:
+    """GitHub-hosted lanes of the same run that keep starting and finishing beside a parked slice."""
+    return [
+        detect_done(),
+        job("lint-node", "completed", ago(600), started=ago(590), completed=ago(5), labels=HOSTED),
+        job("mutation (shard 1/2)", "in_progress", ago(600), started=ago(10), labels=HOSTED),
+    ]
+
+
+def test_a_slice_parked_on_a_dead_label_is_caught_while_hosted_lanes_progress(
+    github: FakeGitHub,
+) -> None:
+    """Every hosted start or finish reset the clock, so the parked slice never aged past the limit."""
+    slice_job = job("test-python (unit-a)", "queued", ago(600))
+    proc = run_watchdog(
+        github, Scenario(jobs=[*progressing_hosted_jobs(), slice_job], runners=OFFLINE)
+    )
+    assert github.posts() == ["dispatches", "cancel"], proc.stdout + proc.stderr
+
+
+def test_a_merge_group_parked_on_a_dead_label_is_handed_to_requeue(github: FakeGitHub) -> None:
+    slice_job = job("test-python (integration)", "queued", ago(600))
+    proc = run_watchdog(
+        github,
+        Scenario(
+            jobs=[*progressing_hosted_jobs(), slice_job], runners=OFFLINE, event_name="merge_group"
+        ),
+    )
+    assert github.posts() == ["dispatches"], proc.stdout + proc.stderr
+    dispatch = next(r for r in github.requests if r.path.endswith("/dispatches"))
+    assert dispatch.path.endswith("/actions/workflows/ci-requeue.yml/dispatches")
+
+
+def test_a_busy_box_beside_progressing_hosted_lanes_is_not_cancelled(github: FakeGitHub) -> None:
+    slice_job = job("test-python (unit-a)", "queued", ago(600))
+    busy = [runner("home-1", "online", "gaia-home", busy=True)]
+    proc = run_watchdog(
+        github, Scenario(jobs=[*progressing_hosted_jobs(), slice_job], runners=busy)
+    )
+    assert github.posts() == []
+    assert "the machine is busy, not dead" in proc.stderr
+
+
+def test_the_watchdog_outlives_its_queue_limit() -> None:
+    """It starts when detect has created the slices; 15 min from select once ended 1 s past the limit."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    watchdog = workflow["jobs"]["runner-watchdog"]
+    assert "detect" in watchdog["needs"]
+    budget = (
+        runner_mod.QUEUE_LIMIT_SECS
+        + runner_mod.WATCHDOG_POLL_SECS
+        + runner_mod.WATCHDOG_MARGIN_SECS
+    )
+    assert watchdog["timeout-minutes"] * 60 >= budget
+    assert "QUEUE_LIMIT_SECS" not in str(watchdog), "the limit has one owner: runner.py"
 
 
 def test_all_lanes_picked_up_exits_clean(github: FakeGitHub) -> None:
@@ -224,15 +280,6 @@ def test_all_lanes_picked_up_exits_clean(github: FakeGitHub) -> None:
     assert "every self-hosted lane was picked up" in proc.stdout
     assert github.posts() == []
     assert proc.returncode == 0
-
-
-def test_a_run_still_in_detect_keeps_watching(github: FakeGitHub) -> None:
-    """The slices that go to the box are created only once detect finishes on GitHub-hosted."""
-    detect = job("detect", "in_progress", ago(60), started=ago(55), labels=HOSTED)
-    proc = run_watchdog(github, Scenario(jobs=[detect], polls_before_exit=2))
-    assert "picked up" not in proc.stdout
-    assert "nothing left to watch" in proc.stdout
-    assert github.posts() == []
 
 
 def test_a_lane_queued_on_github_hosted_is_not_a_dead_box(github: FakeGitHub) -> None:

@@ -80,7 +80,7 @@ def active(github: FakeGitHub, *runs: dict[str, object]) -> None:
         jobs(github, int(str(run["id"])), ci_job("select-runner", "in_progress", [BLACKSMITH]))
 
 
-def listeners(github: FakeGitHub, *, box: int = 10, m4: int = 4) -> None:
+def listeners(github: FakeGitHub, *, box: int = 10, m4: int = runner_mod.M4_SLOTS) -> None:
     pool = [runner(f"gaia-home-{i}", "online", BOX_LABEL) for i in range(box)]
     pool += [runner(f"gaia-m4-{i}", "online", M4_LABEL) for i in range(m4)]
     github.on("GET", RUNNERS, Reply(200, {"runners": pool}))
@@ -295,6 +295,59 @@ def test_a_run_github_never_started_is_not_ahead(github: FakeGitHub) -> None:
     out = select(github, 8)
     assert out["unit"] == HOSTED
     assert not any("/runs/7/jobs" in r.path for r in github.requests)
+
+
+def test_a_rerun_of_an_old_run_still_queued_is_counted(github: FakeGitHub) -> None:
+    """A re-run keeps its created_at; cutting on it hid every re-run until its first job started."""
+    rerun = {
+        **ci_run(9, started=ago(20)),
+        "status": "queued",
+        "created_at": "2026-11-11T20:33:51Z",
+    }
+    github.on(
+        "GET", WORKFLOW_RUNS, Reply(200, {"workflow_runs": [rerun]}), query={"status": "queued"}
+    )
+    github.on(
+        "GET",
+        WORKFLOW_RUNS,
+        Reply(200, {"workflow_runs": [ci_run(10, started=ago(10))]}),
+        query={"status": "in_progress"},
+    )
+    jobs(github, 9, ci_job("select-runner", "queued", [BLACKSMITH]))
+    listeners(github)
+    out = select(github, 10)
+    assert out["unit"] == M4, "the re-run is ahead, so run 10 is second in line"
+
+
+def test_a_superseded_run_still_holding_box_jobs_keeps_their_slots(github: FakeGitHub) -> None:
+    """Its box jobs run on while they are force-cancelled (and the listener wedges for 5 min)."""
+    active(
+        github,
+        ci_run(190),
+        ci_run(191, branch="feat"),
+        ci_run(192, branch="feat"),
+        ci_run(193),
+    )
+    jobs(
+        github,
+        191,
+        ci_job("detect", "completed", [runner_mod.HOSTED_LINUX_IMAGE]),
+        ci_job("test-python (integration)", "in_progress", ["self-hosted", BOX_LABEL]),
+        ci_job("test-python (bridge)", "in_progress", ["self-hosted", BOX_LABEL]),
+        ci_job("test-python (unit-a)", "in_progress", ["self-hosted", BOX_LABEL]),
+    )
+    listeners(github, m4=0)
+    out = select(github, 193, M4_LABEL="")
+    assert out["unit"] == HOSTED, "three box slots are still busy with run 191's jobs"
+
+
+def test_an_m4_with_more_listeners_than_slots_is_refused(github: FakeGitHub) -> None:
+    """Nothing on the M4 caps CPU per job, so every listener beyond its slots oversubscribes it."""
+    active(github, ci_run(201), ci_run(202))
+    listeners(github, box=0, m4=4)
+    proc = run_select(github, 202)
+    assert outputs(proc)["unit"] == HOSTED
+    assert "gaia-m4" in proc.stderr
 
 
 def test_a_superseded_run_on_the_same_branch_is_not_ahead(github: FakeGitHub) -> None:

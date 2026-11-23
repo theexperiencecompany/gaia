@@ -26,6 +26,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 HOME = ["self-hosted", "gaia-home"]
 RUN = r"/actions/runs/77$"
+# Only ci.yml routes jobs to self-hosted labels.
+CI_RUNS = r"/actions/workflows/ci\.yml/runs$"
+
+
+def watchdog_job(status: str) -> dict[str, object]:
+    return {
+        "name": "watchdog",
+        "status": status,
+        "labels": ["ubuntu-24.04"],
+        "created_at": ago(900),
+    }
 
 
 def queued_job(name: str, labels: list[str], queued_for: int) -> dict[str, object]:
@@ -51,8 +62,8 @@ class Scenario:
 
 def sweep(github: FakeGitHub, scenario: Scenario) -> subprocess.CompletedProcess[str]:
     runs = {"workflow_runs": [{"id": 77, "run_attempt": scenario.run_attempt}]}
-    github.on("GET", r"/actions/runs$", Reply(200, {"workflow_runs": []}))
-    github.on("GET", r"/actions/runs$", Reply(200, runs), query={"status": "queued"})
+    github.on("GET", CI_RUNS, Reply(200, {"workflow_runs": []}))
+    github.on("GET", CI_RUNS, Reply(200, runs), query={"status": "queued"})
     github.on("GET", r"/actions/runs/77/jobs$", Reply(200, {"jobs": scenario.jobs}))
     github.on(
         "GET",
@@ -120,10 +131,19 @@ def test_the_sweep_runs_with_the_token_that_can_list_runners() -> None:
     assert "secrets.HOMELAB_GH_PAT" in step["env"]["GITHUB_TOKEN"]
 
 
-def test_a_first_attempt_is_left_to_its_own_watchdog(github: FakeGitHub) -> None:
-    sweep(github, Scenario(jobs=[queued_job("docker-image", HOME, 900)], run_attempt=1))
+def test_a_first_attempt_is_left_to_its_own_live_watchdog(github: FakeGitHub) -> None:
+    jobs = [watchdog_job("in_progress"), queued_job("docker-image", HOME, 900)]
+    sweep(github, Scenario(jobs=jobs, run_attempt=1))
 
     assert github.posts() == []
+
+
+def test_a_first_attempt_whose_watchdog_ended_is_rerun_by_the_sweep(github: FakeGitHub) -> None:
+    """The watchdog's job cap can end before a slice ages past the limit; the sweep is the backstop."""
+    jobs = [watchdog_job("completed"), queued_job("test-python (unit-a)", HOME, 900)]
+    proc = sweep(github, Scenario(jobs=jobs, run_attempt=1))
+
+    assert github.posts() == ["force-cancel", "rerun"], proc.stdout + proc.stderr
 
 
 def test_a_handed_over_first_attempt_is_rerun_in_full(github: FakeGitHub) -> None:
@@ -134,7 +154,7 @@ def test_a_handed_over_first_attempt_is_rerun_in_full(github: FakeGitHub) -> Non
 
     # Never a plain cancel: it would run quality-gate red and drop the merge group.
     assert github.posts() == ["force-cancel", "rerun"], proc.stdout + proc.stderr
-    assert not any(r.path.endswith("/actions/runs") for r in github.requests)
+    assert not any(r.path.endswith("/runs") for r in github.requests)
     assert proc.returncode == 0
 
 

@@ -148,10 +148,14 @@ jobs:
   # run that could not have finished anyway.
   runner-watchdog:
     name: watchdog
-    needs: [select-runner]
-    if: needs.select-runner.outputs.is_self_hosted == 'true'
+    # After detect, which is when the moved slices are created: started with
+    # select, its 15 min ended 1 s after a slice could first trip the limit.
+    needs: [select-runner, detect]
+    if: ${{ !cancelled() && needs.select-runner.outputs.is_self_hosted == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # runner.py QUEUE_LIMIT_SECS (480) + one poll (30) + the calls after it (60):
+    # 570 s. test_the_watchdog_outlives_its_queue_limit holds this to those constants.
+    timeout-minutes: 10
     permissions:
       actions: write # cancel the run
     steps:
