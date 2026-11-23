@@ -9,7 +9,7 @@ name: Self-host smoke
 # uploads, invites, roles, readiness and the code sandbox
 # (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). Both run in the merge
 # queue (the e2e only when the group touches what a self-hoster runs, nx task
-# ci:selfhost-e2e), on master and on dispatch: a PR push pays for neither.
+# cli:selfhost-e2e), on master and on dispatch: a PR push pays for neither.
 on:
   merge_group:
   push:
@@ -33,7 +33,7 @@ jobs:
   # --- Change detection (mirrors ci.yml#detect) ---
   # What nx says this change reaches (changes.sh affected), the same answer
   # ci.yml's detect gets: the smoke runs when api:test does, the end-to-end
-  # lane when ci:selfhost-e2e (tools/ci/project.json) does.
+  # lane when cli:selfhost-e2e (packages/cli/project.json) does.
   changes:
     name: Ask nx which checks this change reaches
     runs-on: ubuntu-24.04
@@ -43,7 +43,7 @@ jobs:
       actions: read
     outputs:
       tasks: ${{ steps.affected.outputs.tasks }}
-      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'merge_group' && contains(fromJSON(steps.affected.outputs.tasks), 'ci:selfhost-e2e')) }}
+      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'merge_group' && contains(fromJSON(steps.affected.outputs.tasks), 'cli:selfhost-e2e')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
