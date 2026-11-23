@@ -257,6 +257,7 @@ def record_fs_op(
     duration_ms: float,
     error: BaseException | None = None,
     byte_count: int = 0,
+    mode: str | None = None,
     **labels: str,
 ) -> None:
     """Record one completed FS op.
@@ -279,9 +280,11 @@ def record_fs_op(
         stats.last_error_type = type(error).__name__
     if labels:
         stats.labels.update(labels)
+    if mode is not None:
+        stats.labels["mode"] = mode
 
     try:
-        mode = labels.get("mode") or "none"
+        mode = mode or "none"
         status = "error" if error is not None else "ok"
         _FS_OP_DURATION_SECONDS.labels(operation=op, mode=mode, status=status).observe(
             duration_ms / 1000.0
