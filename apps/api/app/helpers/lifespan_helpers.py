@@ -1,6 +1,11 @@
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import NamedTuple
 
+from langfuse import get_client
+
+from app.config.langfuse import LANGFUSE_PROVIDER_NAME
+from app.config.settings import settings
 from app.core.lazy_loader import providers
 from app.core.websocket_broadcast_listener import (
     start_websocket_broadcast_listener,
@@ -152,6 +157,18 @@ async def close_mcp_client_pool() -> None:
                 log.info("MCP client pool closed")
     except Exception as e:
         log.error("Error closing MCP client pool", error=str(e), error_type=type(e).__name__)
+
+
+async def close_langfuse() -> None:
+    """Flush pending trace spans and stop Langfuse's exporter threads."""
+    try:
+        # Avoid building a client during shutdown.
+        if providers.is_initialized(LANGFUSE_PROVIDER_NAME):
+            # shutdown() blocks on the export; the loop must stay free for the other closers.
+            await asyncio.to_thread(get_client(public_key=settings.LANGFUSE_PUBLIC_KEY).shutdown)
+            log.info("Langfuse flushed and closed")
+    except Exception as e:
+        log.error("Error closing Langfuse", error=str(e), error_type=type(e).__name__)
 
 
 class StartupService(NamedTuple):
