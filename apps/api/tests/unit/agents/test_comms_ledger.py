@@ -108,3 +108,16 @@ def test_naming_no_message_is_refused_even_with_nothing_open(config: RunnableCon
     assert str(refused.value) == (
         "name messages still open in this conversation (open now: none); not open: no ids given"
     )
+
+
+@pytest.mark.regression
+def test_a_run_given_no_message_names_and_closes_nothing() -> None:
+    """A workflow fire's turn: its hand-off names nothing, so its work answers the fire itself."""
+    open_ledger("fire-run", {})
+    fire: RunnableConfig = {"configurable": {"comms_run": "fire-run"}}
+    try:
+        assert named(fire, []) is None
+        assert close(fire, Closing.HANDED, []) is None
+        assert drain("fire-run") == []
+    finally:
+        close_ledger("fire-run")
