@@ -36,6 +36,7 @@ from app.services.agent_lab import agents_home, lab_runs
 from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.notification_service import notification_service
+from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.services.sandbox.pool import PooledSandbox, refresh_sandbox_timeout
 from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks import sandbox_tasks
@@ -53,7 +54,7 @@ CAP_LOG_MESSAGE = f"{LogTag.SANDBOX} lab run hit the run cap; keep-warm stopped"
 
 def _make_entry() -> tuple[AsyncMock, PooledSandbox]:
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock()
+    sbx.pause = AsyncMock()
     sbx.files.write = AsyncMock()
     sbx.set_timeout = AsyncMock()
     sbx.sandbox_id = "sbx-1"
@@ -396,6 +397,16 @@ class TestKeepWarmTick:
         with tick.world({"lab": [_lab_todo(1)]}, minutes_left=50):
             await tick.run()
         tick.renew.assert_not_awaited()
+
+    async def test_a_local_sandbox_has_no_lifetime_cap_to_keep_warm(self) -> None:
+        acquired = _FakeAcquire([], "lab")
+        acquired.sbx = MagicMock(spec=LocalDockerSandbox)
+        with patch(f"{TASKS_MODULE}.acquire_sandbox", return_value=acquired):
+            with pytest.raises(TypeError) as raised:
+                await sandbox_tasks._keep_lab_sandbox("lab")
+        assert str(raised.value) == (
+            "agent-lab keep-warm reads E2B's lifetime cap; a local sandbox has none"
+        )
 
     def test_the_summary_counts_every_outcome(self) -> None:
         assert {o.value for o in LabTickOutcome} == {"kept", "paused", "left", "failed"}

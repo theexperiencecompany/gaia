@@ -78,7 +78,7 @@ def _fake_sandbox(sandbox_id: str = "sbx-1") -> AsyncMock:
     sbx.files.read = AsyncMock(return_value="")
     sbx.set_timeout = AsyncMock()
     sbx.kill = AsyncMock()
-    sbx.beta_pause = AsyncMock()
+    sbx.pause = AsyncMock()
     return sbx
 
 
@@ -558,6 +558,13 @@ async def test_an_empty_canary_file_reports_a_stale_filesystem() -> None:
     sbx = _fake_sandbox()
     sbx.files.read = AsyncMock(return_value="   \n")
     assert await lifecycle._read_canary(sbx) is None
+
+
+async def test_the_canary_is_read_from_its_fixed_path() -> None:
+    sbx = _fake_sandbox()
+    sbx.files.read = AsyncMock(return_value="ts-1\n")
+    assert await lifecycle._read_canary(sbx) == "ts-1"
+    sbx.files.read.assert_awaited_once_with(lifecycle.CANARY_PATH)
 
 
 async def test_canary_comparison_survives_a_trailing_newline_from_the_sandbox() -> None:
@@ -1354,7 +1361,7 @@ async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_h
         for p in reversed(stack):
             p.stop()
     try:
-        old.beta_pause.assert_awaited_once()
+        old.pause.assert_awaited_once()
         cls.connect.assert_awaited_once_with("sbx-1", timeout=LAB_LIFETIME, api_key="test-e2b-key")
         assert get_sandbox_pool().get(uid).sandbox is resumed
     finally:
@@ -1421,7 +1428,7 @@ async def test_an_idle_sandbox_is_paused_and_its_handle_dropped() -> None:
         assert await lifecycle.pause_idle_sandbox(uid) is True
     dlock.assert_called_once_with(uid)
     assert repo.get_for_user.await_args_list == [call(uid), call(uid)]
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
     repo.mark_paused.assert_awaited_once_with(uid, timestamp=NOW)
     assert pending.done()
     assert get_sandbox_pool().get(uid) is None
@@ -1436,7 +1443,7 @@ async def test_a_sandbox_used_inside_the_idle_window_is_left_running() -> None:
             assert await lifecycle.pause_idle_sandbox(uid) is False
     finally:
         get_sandbox_pool().evict(uid)
-    sbx.beta_pause.assert_not_awaited()
+    sbx.pause.assert_not_awaited()
 
 
 async def test_a_sandbox_in_use_on_this_replica_is_left_running() -> None:
@@ -1448,7 +1455,7 @@ async def test_a_sandbox_in_use_on_this_replica_is_left_running() -> None:
             assert await lifecycle.pause_idle_sandbox(uid) is False
     finally:
         get_sandbox_pool().evict(uid)
-    sbx.beta_pause.assert_not_awaited()
+    sbx.pause.assert_not_awaited()
 
 
 async def test_a_sandbox_that_is_not_running_is_left_alone() -> None:
@@ -1469,7 +1476,7 @@ async def test_a_sandbox_another_process_holds_is_connected_and_paused() -> None
         patch.object(lifecycle, "_connect_sandbox", AsyncMock(return_value=sbx)),
     ):
         assert await lifecycle.pause_idle_sandbox(_uid()) is True
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
 
 
 async def test_an_unpooled_agent_lab_sandbox_is_connected_for_its_lifetime_and_saved() -> None:
@@ -1521,7 +1528,7 @@ async def test_an_agent_lab_sandbox_saves_its_agents_home_before_pausing() -> No
     # A paused sandbox may never resume; the save is what a replacement restores.
     order: list[str] = []
     sbx = _fake_sandbox("sbx-1")
-    sbx.beta_pause = AsyncMock(side_effect=lambda: order.append("pause"))
+    sbx.pause = AsyncMock(side_effect=lambda: order.append("pause"))
     entry = PooledSandbox(sandbox=sbx, template_id="gaia-coder-8gb")
 
     async def record_save(_user_id: str, _sbx: object) -> bool:
