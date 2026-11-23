@@ -31,7 +31,7 @@ from app.models.brief_composition_models import (
     ComposedItems,
 )
 from app.models.brief_item_models import ItemState
-from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.brief_pool_models import DataSeries, GoalState, SeriesPoint, SeriesShape
 from app.services.briefing import checked_call
 from app.services.briefing.composition import compose, headings as heading_check
 from app.services.briefing.composition.compose import compose_brief, pool_values
@@ -602,6 +602,26 @@ class TestWhatSlotsRender:
         assert (facts[1].time, facts[1].count) == ("Nov 3", 3)
         assert facts[2].time == "11:00 AM"
         assert facts[3].time is None
+
+    def test_only_a_todo_a_goal_links_is_goal_work(self) -> None:
+        """Founder replay: the churned-subscriber email, linked to no goal, was named goal work."""
+        linked = "Email old users a discount code"
+        pool = FactPool(
+            items={
+                1: POOL.items[1].model_copy(update={"title": linked, "todo_id": "t1"}),
+                2: POOL.items[1].model_copy(update={"title": "Churn emails", "todo_id": "t2"}),
+                3: POOL.items[1].model_copy(update={"title": linked, "todo_id": None}),
+            },
+            series=[],
+            quotes=[],
+            goals=[GoalState(id="g1", statement="300 users", done=0, open=1, linked=[linked])],
+            context=_CONTEXT,
+            criteria={},
+        )
+
+        facts = pool_values(pool).facts
+
+        assert [facts[i].goal_work for i in (1, 2, 3)] == [True, False, False]
 
     def test_an_items_own_words_are_its_standing_then_its_detail_and_none_without_either(
         self,

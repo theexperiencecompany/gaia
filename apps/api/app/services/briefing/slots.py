@@ -56,8 +56,6 @@ class BriefFact:
     done_by: TodoCompleter | None = None
     #: A todo linked to a stated goal: only such work may be called the goal's.
     goal_work: bool = False
-    #: An earlier brief showed it as it stands, so its line dates it: prose may say it is "still" open.
-    seen_before: bool = False
 
 
 def candidate_fact(
@@ -82,7 +80,6 @@ def candidate_fact(
         app=candidate.app,
         done_by=candidate.finished_by,
         goal_work=goal_work,
-        seen_before=candidate.is_repeat,
     )
 
 

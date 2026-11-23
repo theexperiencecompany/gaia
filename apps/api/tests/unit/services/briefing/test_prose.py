@@ -220,104 +220,6 @@ class TestAVoiceThatRepeatsOrOverclaims:
         asked.assert_awaited_once()
 
 
-class TestAVoiceThatLinksFactsByCause:
-    """Founder replay: a failed LinkedIn connect was said to block a draft sequence no fact tied to it."""
-
-    _VALUES = SlotValues(
-        facts={
-            1: BriefFact(
-                title="LinkedIn connect failure",
-                words="401 auth checkpoint blocked the sender on Nov 20",
-            ),
-            2: BriefFact(title="YC founders outreach sequence", words="draft, awaiting approval"),
-        },
-        counts={},
-    )
-
-    async def test_a_cause_no_fact_it_names_states_is_sent_back_from_every_field(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        claimed = _voice(
-            headline="The LinkedIn auth error is holding up your outreach",
-            lede="A [failed connect](fact:1) is blocking [the sequence](fact:2).",
-            message="[The connect](fact:1) failed. Fix that and the outreach path opens up.",
-        )
-        asked = AsyncMock(side_effect=[claimed, _voice(message="[The connect](fact:1) failed.")])
-        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
-
-        await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
-
-        problems = [
-            f"the {field} says {claim!r}: that one thing causes, blocks or gates another, and no "
-            "fact it names says so; state each fact on its own, as its line does"
-            for field, claim in (
-                ("headline", "holding up"),
-                ("lede", "blocking"),
-                ("message", "opens up"),
-            )
-        ]
-        assert asked.await_args_list[1].args[1] == (
-            f"PROMPT\n\n{voice_correction_note(problems, claimed.model_dump_json(indent=2))}"
-        )
-
-    async def test_a_cause_the_named_facts_line_states_may_be_voiced(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        grounded = _voice(
-            message="[The sender](fact:1) is blocked until you clear the checkpoint.",
-        )
-        asked = AsyncMock(side_effect=[grounded])
-        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
-
-        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
-
-        assert voice == grounded
-
-    async def test_a_cause_another_fact_states_does_not_ground_this_one(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        borrowed = _voice(
-            message="[The connect](fact:1) failed. [The sequence](fact:2) is blocked."
-        )
-        asked = AsyncMock(side_effect=[borrowed, _voice(message="[The connect](fact:1) failed.")])
-        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
-
-        await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
-
-        assert asked.await_count == 2
-
-
-async def test_a_voice_calling_an_unlinked_todo_goal_work_is_sent_back(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Founder replay: the churned-subscriber email, linked to no goal, was voiced as goal work."""
-    values = SlotValues(
-        facts={
-            1: BriefFact(title="Reply to Dan"),
-            2: BriefFact(title="Churned-subscriber email"),
-            3: BriefFact(title="Old-user discount email", goal_work=True),
-        },
-        counts={},
-    )
-    claimed = _voice(
-        message="[Reply to Dan](fact:1) first. [The churn email](fact:2) is your goal work."
-    )
-    mended = _voice(message="[Reply to Dan](fact:1) first. [The email](fact:3) is goal work.")
-    asked = AsyncMock(side_effect=[claimed, mended])
-    monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
-
-    voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
-
-    problem = (
-        "the message ties facts 2 to a goal, but they are not linked to one; only a goal's "
-        "linked todos are its work, so name them in a sentence that does not speak of the goal"
-    )
-    assert asked.await_args_list[1].args[1] == (
-        f"PROMPT\n\n{voice_correction_note([problem], claimed.model_dump_json(indent=2))}"
-    )
-    assert voice == mended
-
-
 class TestAVoiceThatSaysATitleTwice:
     """Regression: "Northwind's invoice is still past due: Northwind invoice." echoed its title."""
 
@@ -548,7 +450,7 @@ class TestTheBriefsWideEvent:
 
 
 class TestALastVoiceThatStillBreaks:
-    """Founder brief_b4f24ff8d403: one goal sentence the retry repeated sent the whole brief plain."""
+    """Founder brief_b4f24ff8d403: one sentence the retry repeated sent the whole brief plain."""
 
     _VALUES = SlotValues(
         facts={
@@ -569,7 +471,7 @@ class TestALastVoiceThatStillBreaks:
         last = _voice(
             headline="A failed LinkedIn send",
             message="[The LinkedIn connect](fact:1) failed on an auth error. "
-            "[The churn email](fact:2) is your goal work. That one is worth an hour.\n\n"
+            "[The churn email](fact:2) usually waits on you. That one is worth an hour.\n\n"
             "Your calendar is open.",
         )
 
@@ -594,7 +496,7 @@ class TestALastVoiceThatStillBreaks:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         last = _voice(
-            headline="[The churn email](fact:2) is your goal work",
+            headline="[The churn email](fact:2) usually waits on you",
             message="[The churn email](fact:2) waits on a send.",
         )
 
@@ -610,8 +512,8 @@ class TestALastVoiceThatStillBreaks:
     async def test_it_goes_plain_only_with_neither_headline_nor_lede_left(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        goal = "[The churn email](fact:2) is your goal work."
-        last = _voice(headline=goal.rstrip("."), lede=goal)
+        unfounded = "[The churn email](fact:2) usually waits on you."
+        last = _voice(headline=unfounded.rstrip("."), lede=unfounded)
 
         voice = await self._salvaged(monkeypatch, last)
 
@@ -734,7 +636,7 @@ class TestASalvageCountsAndKeepsByField:
     def _last(self) -> BriefVoice:
         return _voice(
             headline=self._HEADLINE,
-            lede="It is a day. [The churn email](fact:2) is your goal work.",
+            lede="It is a day. [The churn email](fact:2) usually waits on you.",
             caption="Reply to the churn email",
             message=f"{self._KEPT_MESSAGE} [The churn email](fact:2) is a GAIA todo.",
         )

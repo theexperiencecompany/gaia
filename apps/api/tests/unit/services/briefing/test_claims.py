@@ -4,7 +4,7 @@ import pytest
 
 from app.constants.todos import TodoCompleter
 from app.models.brief_item_models import ItemState
-from app.services.briefing.claims import claim_problems, duration_problems, goal_problems
+from app.services.briefing.claims import claim_problems, points_back
 from app.services.briefing.slots import BriefFact, SlotValues
 
 pytestmark = pytest.mark.unit
@@ -219,164 +219,45 @@ class TestCreditForFinishedWork:
         assert claim_problems("message", written, self._VALUES) == []
 
 
-_FOUNDER = SlotValues(
-    facts={
-        1: BriefFact(title="YC founders outreach sequence", kind=ItemState.YOU),
-        2: BriefFact(title="Emails to churned subscribers", kind=ItemState.YOU, goal_work=True),
-        3: BriefFact(
-            title="Blueprint-grid site redesign", kind=ItemState.YOU, words="updated 4 days ago"
-        ),
-    },
-    counts={},
-)
-
-
-class TestAGoalClaimInOtherWords:
-    """Founder's Nov 22: "That's the one that feeds the 300-user goal" of a sequence no goal links."""
-
-    def test_a_sentence_that_points_back_is_held_to_the_last_ones_facts(self) -> None:
-        text = "[The sequence](fact:1) waits on you. That's the one that feeds the 300-user goal."
-
-        assert goal_problems("message", text, _FOUNDER) == [
-            "the message ties facts 1 to a goal, but they are not linked to one; only a goal's "
-            "linked todos are its work, so name them in a sentence that does not speak of the goal"
-        ]
-
-    def test_a_goal_word_in_the_named_facts_own_title_is_no_goal_claim(self) -> None:
-        """Dhruv replay 11-02 and weekly 11-08: "the daily-goals check-in is in progress" went plain."""
-        values = SlotValues(facts={10: BriefFact(title="Daily-goals check-in")}, counts={})
-        text = "Meanwhile, the nightly daily-goals check-in is in progress."
-
-        assert goal_problems("message", text, values) == []
-
-    def test_a_goal_sentence_about_its_own_work_or_no_fact_stands(self) -> None:
-        text = "Still aiming for 300 users? [The emails](fact:2) are that goal's work."
-
-        assert goal_problems("message", text, _FOUNDER) == []
-
-    def test_every_unlinked_fact_a_goal_sentence_names_is_listed(self) -> None:
-        text = "[The sequence](fact:1) and [the redesign](fact:3) feed the 300-user goal."
-
-        assert goal_problems("message", text, _FOUNDER) == [
-            "the message ties facts 1, 3 to a goal, but they are not linked to one; only a goal's "
-            "linked todos are its work, so name them in a sentence that does not speak of the goal"
-        ]
-
-
-class TestHowLongSomethingStood:
-    """Founder's Nov 22: "still sitting unread" and "for a while" of a sequence no line dates."""
+class TestPointsBack:
+    """A sentence that names no fact and opens on "that" or "it" speaks of the last one's."""
 
     @pytest.mark.parametrize(
-        ("text", "claim"),
-        [
-            ("Your YC founders sequence is still sitting unread", "still"),
-            (
-                "The outreach sequence has been waiting on your approval for a while.",
-                "been waiting",
-            ),
-            ("[The sequence](fact:1) is in draft. It has sat there for weeks.", "for weeks"),
-        ],
+        "text",
+        ["That's the one to do first.", "It has sat there for weeks."],
+        ids=["that", "it"],
     )
-    def test_a_duration_said_of_an_undated_fact_is_named(self, text: str, claim: str) -> None:
-        assert duration_problems("headline", text, _FOUNDER) == [
-            f"the headline says {claim!r} of facts 1, but their lines carry no date; say how "
-            "long something stood only where its line dates it"
-        ]
-
-    @pytest.mark.parametrize(
-        "values",
-        [
-            SlotValues(
-                facts={1: BriefFact(title="YC founders outreach sequence", seen_before=True)},
-                counts={},
-            ),
-            SlotValues(
-                facts={
-                    1: BriefFact(
-                        title="YC founders outreach sequence", time="Mon Nov 16", time_is_day=True
-                    )
-                },
-                counts={},
-            ),
-        ],
-    )
-    def test_a_fact_an_earlier_brief_showed_or_its_time_dates_may_be_still_open(
-        self, values: SlotValues
+    def test_a_sentence_opening_on_a_pointing_word_and_naming_no_fact_points_back(
+        self, text: str
     ) -> None:
-        assert duration_problems("headline", "The YC founders sequence is still open", values) == []
+        assert points_back(text, _VALUES) is True
 
     @pytest.mark.parametrize(
         "text",
         [
-            "[The redesign](fact:3) still has two comments to answer.",
-            "[The sequence](fact:1) is still running.",
-            "Want me to run [the sequence](fact:1) again?",
-            "The day is still clear.",
+            "That [payout](fact:1) failed.",
+            "That Stripe payout failed.",
+            "That payout from Stripe failed.",
+            "The day is clear.",
         ],
+        ids=["by-slot", "by-title", "by-its-words", "no-pointing-word"],
     )
-    def test_an_age_in_its_line_a_running_state_an_offer_or_no_fact_stands(self, text: str) -> None:
-        assert duration_problems("message", text, _FOUNDER) == []
-
-    def test_a_duration_word_the_facts_own_line_says_is_quoted(self) -> None:
-        values = SlotValues(
-            facts={1: BriefFact(title="Stripe card", words="Still waiting on delivery details")},
-            counts={},
-        )
-
-        assert (
-            duration_problems("message", "[Stripe](fact:1) says it is still waiting.", values) == []
-        )
-
-    def test_every_undated_fact_a_duration_sentence_names_is_listed(self) -> None:
-        text = "[The sequence](fact:1) and [the emails](fact:2) have waited for weeks."
-
-        assert duration_problems("message", text, _FOUNDER) == [
-            "the message says 'for weeks' of facts 1, 2, but their lines carry no date; say how "
-            "long something stood only where its line dates it"
-        ]
-
-    def test_a_duration_word_the_first_named_facts_line_ends_on_is_quoted(self) -> None:
-        values = SlotValues(
-            facts={
-                1: BriefFact(title="Stripe card", words="Waiting on delivery for a while"),
-                2: BriefFact(title="Board deck"),
-            },
-            counts={},
-        )
-        text = "[Stripe](fact:1) and [the deck](fact:2) have waited for a while."
-
-        assert duration_problems("message", text, values) == []
+    def test_a_sentence_naming_a_fact_or_opening_elsewhere_does_not(self, text: str) -> None:
+        assert points_back(text, _VALUES) is False
 
     @pytest.mark.parametrize(
-        "text",
-        [
-            "It has sat there for weeks.",
-            "[The sequence](fact:1) is in draft. The day has been quiet for weeks.",
-        ],
-        ids=["points-back-to-nothing", "names-nothing-and-points-nowhere"],
-    )
-    def test_a_sentence_naming_no_fact_takes_none_unless_it_points_back(self, text: str) -> None:
-        assert duration_problems("message", text, _FOUNDER) == []
-
-    @pytest.mark.parametrize(
-        ("title", "text"),
-        [
-            ("QA on Stripe", "Stripe is still pending."),
-            ("Pay tax", "Tax to pay is still due."),
-        ],
+        ("title", "named"),
+        [("QA on Stripe", False), ("Pay tax", True)],
         ids=["two-letter-words-do-not-count", "three-letter-words-count"],
     )
-    def test_a_title_named_by_its_words_of_three_letters_or_more(
-        self, title: str, text: str
+    def test_a_title_is_named_by_its_words_of_three_letters_or_more(
+        self, title: str, named: bool
     ) -> None:
         values = SlotValues(facts={1: BriefFact(title=title)}, counts={})
 
-        assert duration_problems("message", text, values) == [
-            "the message says 'still' of facts 1, but their lines carry no date; say how "
-            "long something stood only where its line dates it"
-        ]
+        assert points_back("That tax to pay and the QA.", values) is not named
 
     def test_stopwords_never_name_a_fact(self) -> None:
         values = SlotValues(facts={1: BriefFact(title="Reply to the investor")}, counts={})
 
-        assert duration_problems("message", "The investor has waited for a while.", values) == []
+        assert points_back("That one is for the investor.", values) is True
