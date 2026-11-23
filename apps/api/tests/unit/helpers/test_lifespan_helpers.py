@@ -356,7 +356,7 @@ class TestProcessResults:
 
     def test_failure_on_first_iteration(self) -> None:
         """A required service failure always raises RuntimeError."""
-        results = [RuntimeError("first")]
+        results: list[object] = [RuntimeError("first")]
         with pytest.raises(RuntimeError):
             _process_results(results, [_svc("svc_a")])
 

@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 from mcp.types import Tool
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 import pytest
 
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
@@ -12,12 +12,13 @@ def _args_schema(input_schema: dict[str, object]) -> type[BaseModel]:
         Tool(name="t", description="d", inputSchema=input_schema), MagicMock()
     )
     assert tool is not None
-    assert isinstance(tool.args_schema, type)
-    return tool.args_schema
+    schema = tool.args_schema
+    assert isinstance(schema, type) and issubclass(schema, BaseModel)
+    return schema
 
 
-@pytest.mark.regression
 class TestAToolSchemaWithBooleanSubschemas:
+    @pytest.mark.regression
     def test_a_true_items_schema_still_yields_a_usable_model(self) -> None:
         model = _args_schema(
             {
@@ -29,6 +30,7 @@ class TestAToolSchemaWithBooleanSubschemas:
 
         assert model(tags=["a", 1]).model_dump() == {"tags": ["a", 1]}
 
+    @pytest.mark.regression
     def test_a_boolean_property_schema_still_yields_a_usable_model(self) -> None:
         model = _args_schema(
             {
@@ -43,6 +45,7 @@ class TestAToolSchemaWithBooleanSubschemas:
             "name": "n",
         }
 
+    @pytest.mark.regression
     def test_boolean_combinator_members_still_yield_a_usable_model(self) -> None:
         model = _args_schema(
             {
@@ -54,7 +57,7 @@ class TestAToolSchemaWithBooleanSubschemas:
         assert model(value="v").model_dump() == {"value": "v"}
 
     def test_a_boolean_additional_properties_keyword_is_left_alone(self) -> None:
-        schema = {
+        schema: JsonValue = {
             "type": "object",
             "properties": {"name": {"type": "string"}},
             "additionalProperties": False,
@@ -62,4 +65,5 @@ class TestAToolSchemaWithBooleanSubschemas:
 
         fixed = SanitizingLangChainAdapter().fix_schema(schema)
 
+        assert isinstance(fixed, dict)
         assert fixed["additionalProperties"] is False

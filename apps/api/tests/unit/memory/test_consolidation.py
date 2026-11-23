@@ -5,6 +5,7 @@ the retry, the fact-check and the agenda rendering under test are real.
 """
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
@@ -28,7 +29,7 @@ from app.constants.memory import (
     MemorySourceType,
 )
 from app.db.repositories.errors import RepositoryError
-from app.memory import consolidation
+from app.memory import consolidation, pg_store
 from app.memory.consolidation import _get_user_name, consolidate, render_agenda_document
 from app.memory.schemas import ExtractedFact, VerifiedDocument
 from app.models.memory_db_models import MemoryRecord
@@ -53,7 +54,7 @@ def make_row(content: str = "sam is vegetarian", importance: float = 0.5) -> Mem
 
 
 @pytest.fixture
-def boundaries() -> MagicMock:
+def boundaries() -> Iterator[MagicMock]:
     """Patch every I/O edge of consolidate()/render_agenda_document()."""
     mocks = MagicMock()
     mocks.rewrite = AsyncMock(return_value="# About\n- something")
@@ -65,7 +66,7 @@ def boundaries() -> MagicMock:
     mocks.get_entities = AsyncMock(return_value=[])
     with (
         patch.multiple(
-            consolidation.pg_store,
+            pg_store,
             get_document=mocks.get_document,
             get_facts_for_consolidation=mocks.get_facts,
             get_agenda_memories=mocks.get_agenda,
