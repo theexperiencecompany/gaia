@@ -8,29 +8,67 @@ import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 import { toApiOrigin } from "./origin";
 
-/** A build waits out a briefly slow API and still fails on an outage; a visitor's render fails fast. */
-const BUILD_FETCH_POLICY = { timeoutMs: 30_000, retries: 3 } as const;
-const REQUEST_FETCH_POLICY = { timeoutMs: 10_000, retries: 0 } as const;
+/**
+ * A build waits out a briefly slow API and a rate limit window (a build without
+ * INTERNAL_API_TOKEN, as on a fork PR, shares one address's anonymous ceiling)
+ * and still fails on an outage; a visitor's render fails fast.
+ */
+const BUILD_FETCH_POLICY = {
+  timeoutMs: 30_000,
+  retries: 3,
+  rateLimitWaits: 5,
+} as const;
+const REQUEST_FETCH_POLICY = {
+  timeoutMs: 10_000,
+  retries: 0,
+  rateLimitWaits: 0,
+} as const;
+
+/** The API's app-wide ceilings are per minute; a longer Retry-After is a limit a build cannot wait out. */
+const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
+const TOO_MANY_REQUESTS = 429;
 
 function isProductionBuild(): boolean {
   return process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
 }
 
-/** Fetch the API with the phase's per-attempt timeout and the server's token, retrying timeouts and network errors. */
-export function serverFetch(request: Request): Promise<Response> {
-  const { timeoutMs, retries } = isProductionBuild()
+/** Seconds a 429 asks the caller to wait, or null when it names no wait a build can sit out. */
+function rateLimitWaitSeconds(response: Response): number | null {
+  const retryAfter = response.headers.get("Retry-After");
+  if (response.status !== TOO_MANY_REQUESTS || retryAfter === null) return null;
+  const seconds = Number(retryAfter);
+  return Number.isInteger(seconds) &&
+    seconds >= 0 &&
+    seconds <= MAX_RATE_LIMIT_WAIT_SECONDS
+    ? seconds
+    : null;
+}
+
+/**
+ * Fetch the API with the phase's per-attempt timeout and the server's token,
+ * retrying timeouts and network errors, and at build time waiting out a 429's
+ * Retry-After a bounded number of times before handing the 429 back.
+ */
+export async function serverFetch(request: Request): Promise<Response> {
+  const { timeoutMs, retries, rateLimitWaits } = isProductionBuild()
     ? BUILD_FETCH_POLICY
     : REQUEST_FETCH_POLICY;
-  return pRetry(
-    () => {
-      const attempt = request.clone();
-      for (const [name, value] of Object.entries(internalApiHeaders())) {
-        attempt.headers.set(name, value);
-      }
-      return fetch(attempt, { signal: AbortSignal.timeout(timeoutMs) });
-    },
-    { retries },
-  );
+  for (let waited = 0; ; waited++) {
+    const response = await pRetry(
+      () => {
+        const attempt = request.clone();
+        for (const [name, value] of Object.entries(internalApiHeaders())) {
+          attempt.headers.set(name, value);
+        }
+        return fetch(attempt, { signal: AbortSignal.timeout(timeoutMs) });
+      },
+      { retries },
+    );
+    const waitSeconds = rateLimitWaitSeconds(response);
+    if (waitSeconds === null || waited >= rateLimitWaits) return response;
+    await response.body?.cancel();
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+  }
 }
 
 /**
