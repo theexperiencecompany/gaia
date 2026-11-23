@@ -15,6 +15,7 @@ from collections import Counter
 from app.core.provider_registration import register_lazy_providers
 from app.db.repositories.users import user_repository
 from app.services.briefing.rollout import provision_existing_user
+from app.services.workflow.scheduler import workflow_scheduler
 from scripts._cli import apply_requested
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.context import analytics_context, worker_context
@@ -32,12 +33,17 @@ async def rollout(apply: bool) -> Counter[str]:
 
     # No app lifespan here: register the providers capture() and provisioning read.
     register_lazy_providers("main_app")
-    for done, user_id in enumerate(user_ids, start=1):
-        # A script is an entry point: each user's rollout reports through capture().
-        with analytics_context(worker_context(Trigger.SYSTEM)):
-            paths[(await provision_existing_user(user_id)).value] += 1
-        if done % 100 == 0:
-            print(f"  ...{done}/{len(user_ids)}")
+    # Nor a job queue: without one every workflow is stored but its schedule is never armed.
+    await workflow_scheduler.initialize()
+    try:
+        for done, user_id in enumerate(user_ids, start=1):
+            # A script is an entry point: each user's rollout reports through capture().
+            with analytics_context(worker_context(Trigger.SYSTEM)):
+                paths[(await provision_existing_user(user_id)).value] += 1
+            if done % 100 == 0:
+                print(f"  ...{done}/{len(user_ids)}")
+    finally:
+        await workflow_scheduler.close()
     print(f"[{mode}] done: {sum(paths.values())}/{len(user_ids)}; breakdown={dict(paths)}")
     return paths
 
