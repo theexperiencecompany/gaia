@@ -4,7 +4,9 @@ Renders each family in headless Chromium through the production document, then
 re-renders it in place with every option of every skin axis. For each state it reads
 the computed font-family and document.fonts for every text node, and asks Chromium
 (CSS.getPlatformFontsForNode) which font actually drew each run: a glyph from a
-system font is the bug, because macOS and Linux hosts ship different ones.
+system font is the bug, because macOS and Linux hosts ship different ones. Chromium
+picks a run's font from its computed font and its characters alone, so a run already
+asked about in this test is not asked again.
 """
 
 from __future__ import annotations
@@ -58,19 +60,39 @@ _UNRESOLVED_JS = """(allowed) => {
   }
   return bad;
 }"""
+# Marks each element whose own text runs pair a computed font with characters not yet asked about.
+_MARK_UNASKED_JS = """() => {
+  const asked = (window.__askedRuns ??= new Set());
+  document.querySelectorAll("[data-font-probe]").forEach((el) => el.removeAttribute("data-font-probe"));
+  let marked = 0;
+  for (const el of document.body.querySelectorAll("*")) {
+    if (el.closest("script, style")) continue;
+    const text = [...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.nodeValue).join("");
+    if (!text.trim()) continue;
+    const cs = getComputedStyle(el);
+    const run = [cs.font, cs.fontFamily, cs.fontVariant, cs.fontFeatureSettings, cs.fontVariationSettings,
+      cs.fontSynthesis, cs.textTransform, el.closest("[lang]")?.lang ?? "", text].join("|");
+    if (asked.has(run)) continue;
+    asked.add(run);
+    el.setAttribute("data-font-probe", "");
+    marked += 1;
+  }
+  return marked;
+}"""
 
 
-async def _system_fonts(cdp: CDPSession) -> dict[str, int]:
-    """Return every non-embedded font Chromium drew a glyph with, and how many glyphs."""
-    document = await cdp.send("DOM.getDocument", {"depth": -1})
+async def _system_fonts(page: Page, cdp: CDPSession) -> dict[str, int]:
+    """Return every non-embedded font Chromium drew a not-yet-asked run with, and how many glyphs."""
+    if not await page.evaluate(_MARK_UNASKED_JS):
+        return {}
+    document = await cdp.send("DOM.getDocument", {"depth": 0})
+    marked = await cdp.send(
+        "DOM.querySelectorAll",
+        {"nodeId": document["root"]["nodeId"], "selector": "[data-font-probe]"},
+    )
     used: dict[str, int] = {}
-    stack: list[dict[str, Any]] = [document["root"]]
-    while stack:
-        node = stack.pop()
-        stack.extend(node.get("children", []))
-        if node.get("nodeType") != 1 or node.get("nodeName") in ("SCRIPT", "STYLE", "HEAD"):
-            continue
-        fonts = await cdp.send("CSS.getPlatformFontsForNode", {"nodeId": node["nodeId"]})
+    for node_id in marked["nodeIds"]:
+        fonts = await cdp.send("CSS.getPlatformFontsForNode", {"nodeId": node_id})
         for font in fonts["fonts"]:
             if not font["isCustomFont"]:
                 used[font["familyName"]] = used.get(font["familyName"], 0) + font["glyphCount"]
@@ -88,7 +110,7 @@ async def _check_every_skin(page: Page, family: EditionFamily) -> list[str]:
         failures += [f"skin {i}: {line}" for line in unresolved]
         failures += [
             f"skin {i}: drew {n} glyphs in system font {name!r}"
-            for name, n in (await _system_fonts(cdp)).items()
+            for name, n in (await _system_fonts(page, cdp)).items()
         ]
     return failures
 
