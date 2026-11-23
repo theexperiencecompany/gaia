@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 import pytest
 
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.schemas.integrations.accounts import (
     IntegrationAccountsResponse,
@@ -19,7 +20,7 @@ def _record() -> UserIntegrationDocument:
     return UserIntegrationDocument(
         user_id="u1",
         integration_id="gmail",
-        status="connected",
+        status=IntegrationStatus.CONNECTED,
         accounts=[
             IntegrationAccount(
                 id="ca_work",
@@ -32,7 +33,7 @@ def _record() -> UserIntegrationDocument:
                 connected_account_id="ca_home",
                 label="me@gmail.com",
                 nickname="Personal",
-                status="expired",
+                status=IntegrationStatus.EXPIRED,
                 connected_at=CONNECTED_AT,
                 expired_at=EXPIRED_AT,
             ),

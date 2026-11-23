@@ -137,7 +137,9 @@ test.describe("self-host journey", () => {
   test("a chat message gets the stub's reply", async () => {
     const reply = "Hello from the self-host stub.";
     await sendChat(adminPage, `[[say:${reply}]]`);
-    await expect(visible(adminPage.getByText(reply)).first()).toBeVisible();
+    await expect(
+      visible(adminPage.getByText(reply, { exact: true })).first(),
+    ).toBeVisible();
   });
 
   test("a scripted tool call creates a todo", async () => {
@@ -147,7 +149,7 @@ test.describe("self-host journey", () => {
       `[[tool:create_todo {"title":"${title}"}]] [[say:Todo added.]]`,
     );
     await expect(
-      visible(adminPage.getByText("Todo added.")).first(),
+      visible(adminPage.getByText("Todo added.", { exact: true })).first(),
     ).toBeVisible();
 
     const todos = await adminPage.request.get("/api/v1/todos");
@@ -257,7 +259,7 @@ test.describe("self-host journey", () => {
       `[[tool:bash {"command":"echo $((6*7*1000003))"}]] [[say:Code ran.]]`,
     );
     await expect(
-      visible(adminPage.getByText("Code ran.")).first(),
+      visible(adminPage.getByText("Code ran.", { exact: true })).first(),
     ).toBeVisible();
     await expect(
       visible(adminPage.getByText("42000126")).first(),

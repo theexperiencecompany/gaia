@@ -37,6 +37,7 @@ from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.notification_service import notification_service
 from app.services.sandbox.pool import PooledSandbox, refresh_sandbox_timeout
+from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks import sandbox_tasks
 from app.workers.tasks.sandbox_tasks import LabTickOutcome
 from tests.helpers import captured_wide_event
@@ -162,6 +163,11 @@ def _fake_pool() -> ArqRedis:
     )
 
 
+def _job_context(pool: ArqRedis) -> ArqJobContext:
+    """Return the ARQ context the keep-warm tick reads, over the given pool."""
+    return {"redis": pool}
+
+
 class _Tick:
     """One keep-warm tick over fake boundaries, recording what it did."""
 
@@ -179,7 +185,9 @@ class _Tick:
 
     def cap_logs(self) -> list[Mapping[str, object]]:
         return [
-            call.kwargs for call in self.log_info.call_args_list if call.args == (CAP_LOG_MESSAGE,)
+            dict(call.kwargs)
+            for call in self.log_info.call_args_list
+            if call.args == (CAP_LOG_MESSAGE,)
         ]
 
     @contextmanager
@@ -229,7 +237,7 @@ class _Tick:
             yield
 
     async def run(self) -> str:
-        return await sandbox_tasks.refresh_lab_sandboxes({"redis": self.pool})
+        return await sandbox_tasks.refresh_lab_sandboxes(_job_context(self.pool))
 
 
 class TestKeepWarmTick:
@@ -241,7 +249,7 @@ class TestKeepWarmTick:
 
     async def test_no_agent_lab_template_means_nothing_to_keep(self) -> None:
         with patch(f"{TASKS_MODULE}.settings.E2B_AGENT_LAB_TEMPLATE_ID", None):
-            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _fake_pool()})
+            result = await sandbox_tasks.refresh_lab_sandboxes(_job_context(_fake_pool()))
         assert result == "Agent-lab template not configured; nothing to keep warm"
 
     async def test_a_live_run_is_kept_warm_and_saved_not_paused(self) -> None:
@@ -491,7 +499,7 @@ class TestReportSandboxEvent:
                 f"{EVENTS_MODULE}.todo_repository.find_active_by_user_and_trigger",
                 AsyncMock(return_value=todos),
             ) as find,
-            patch(f"{EVENTS_MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{EVENTS_MODULE}.record_todo_activity", AsyncMock()) as activity,
             patch(f"{EVENTS_MODULE}.fire_subscription", AsyncMock()) as fire,
         ):
             yield activity, fire, find

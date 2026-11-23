@@ -15,7 +15,7 @@
  * 3. Add a handler here following the same pattern
  * 4. Import and call it from each bot's command adapter
  */
-import type { Priority } from "../../api/generated";
+import type { CreateWorkflowRequest, Priority } from "../../api/generated";
 import type { GaiaClient } from "../api";
 import type { CommandContext } from "../types";
 import { recordBotFailure } from "./failure-reasons";
@@ -28,6 +28,13 @@ import {
   formatWorkflow,
   formatWorkflowList,
 } from "./formatters";
+
+/**
+ * A workflow created from a chat command delivers its runs to the chat it was
+ * asked for in: the user is on that platform, and the command has no option to
+ * choose otherwise. They can change it from the workflow afterwards.
+ */
+const BOT_WORKFLOW_DELIVERY = "now" satisfies CreateWorkflowRequest["delivery"];
 
 /**
  * Records a command's caught API failure on its wide event (reason, HTTP status,
@@ -153,6 +160,7 @@ export async function handleWorkflowCreate(
         title,
         prompt: instructions,
         trigger_config: { type: "manual", enabled: true },
+        delivery: BOT_WORKFLOW_DELIVERY,
       },
       ctx,
     );

@@ -40,7 +40,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.agent_config import StepTurnRef
+from app.models.agent_config import StepTurnRef, get_user_id
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.ownership_models import ExecutorIntent
 from app.models.work_cancel_models import WorkCancelled
@@ -168,6 +168,7 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
+    user_id = get_user_id(config)
     step: StepTurnRef = configurable["conversation_step"]
     # Checked before dispatch, closed only once handed: a failed hand-off still owes them.
     handled = named(config, for_messages)
@@ -188,9 +189,7 @@ async def call_executor(
     # reaches the executor here — as one recorded trace instead of the whole
     # replayed transcript. Empty for interactive chat and for a first run.
     workflow_id = base_configurable.get("workflow_id")
-    user_id = base_configurable.get("user_id")
-    is_workflow_run = bool(workflow_id and user_id)
-    last_run = await get_last_run_brief(workflow_id, user_id) if is_workflow_run else ""
+    last_run = await get_last_run_brief(workflow_id, user_id) if workflow_id else ""
     # Asked here, not at narration time: write_playbook is an executor tool that
     # comms (which narrates the result) cannot reach. The stopped-replay record
     # rides along verbatim for the same reason as the request: comms paraphrases.
@@ -198,7 +197,7 @@ async def call_executor(
         await playbook_check_brief(
             workflow_id, user_id, fallback_note=base_configurable.get("playbook_fallback")
         )
-        if is_workflow_run
+        if workflow_id
         else ""
     )
 
@@ -224,6 +223,7 @@ async def call_executor(
             task_id=task_id,
             configurable=configurable,
             conversation_id=conversation_id,
+            user_id=user_id,
             handoff=tool_call_id,
         )
     except Exception as e:
@@ -244,6 +244,7 @@ async def _dispatch_executor(
     task_id: str,
     configurable: AgentConfigurable,
     conversation_id: str,
+    user_id: str,
     handoff: str,
 ) -> str:
     """Core dispatch logic — acquire lock, queue if busy, or spawn; handoff is the comms tool call that asked."""
@@ -322,7 +323,7 @@ async def _dispatch_executor(
             if not await record_work_started(
                 configurable["conversation_step"],
                 conversation_id,
-                configurable.get("user_id", ""),
+                user_id,
                 task_id,
                 joins=held_task_id,
                 handoff=handoff,
@@ -347,7 +348,7 @@ async def _dispatch_executor(
     if not await record_work_started(
         configurable["conversation_step"],
         conversation_id,
-        configurable.get("user_id", ""),
+        user_id,
         task_id,
         handoff=handoff,
     ):
@@ -435,7 +436,7 @@ async def cancel_executor(
     if not conversation_id:
         return "No conversation context available."
 
-    user_id = configurable.get("user_id", "")
+    user_id = get_user_id(config)
     try:
         if task_ids:
             # A targeted cancel names executor tasks and leaves the browser run going.

@@ -10,9 +10,8 @@ from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
     TRIGGERED_ACCOUNT_SECTION,
-    WORKFLOW_AUTO_NOTIFY_SECTION,
+    WORKFLOW_DELIVERY_SECTIONS,
     WORKFLOW_EXECUTION_PROMPT,
-    WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
@@ -184,17 +183,12 @@ async def format_workflow_execution_message(
             tracked_todos_context=tracked_todos_ctx
         )
 
-    # Background workflow runs send an automatic completion notification unless
-    # opted out; tell the agent which mode it's in so it neither double-notifies
-    # nor stays silent. Interactive runs get neither section.
+    # Tell a background workflow run how its result reaches the user so it
+    # neither double-notifies nor stays silent. Interactive runs get no section.
     notification_section = ""
     if trigger.workflow_id:
-        notify_on_completion = (
-            workflow.notify_on_completion if workflow else trigger.workflow_notify_on_completion
-        )
-        notification_section = (
-            WORKFLOW_AUTO_NOTIFY_SECTION if notify_on_completion else WORKFLOW_SILENT_NOTIFY_SECTION
-        )
+        delivery = workflow.delivery if workflow else trigger.workflow_delivery
+        notification_section = WORKFLOW_DELIVERY_SECTIONS[delivery]
 
     common_args = {
         "workflow_title": workflow_title,

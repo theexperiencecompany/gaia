@@ -4,8 +4,8 @@ Pure stdlib — no third-party imports — so the parser and turn-counter can be
 unit-tested without booting the HTTP server or resolving the stub's runtime deps.
 
 A test authors its script inline, in the message it sends GAIA. The stub reads
-the LATEST user message in each chat-completions request and parses ordered
-directives out of it:
+the LATEST user message in each chat-completions request (or a Responses API
+request's input) and parses ordered directives out of it:
 
     [[tool:<name> <json-args>]]   one scripted tool call (repeatable, ordered)
     [[say:<text>]]                the final assistant reply (at most one, terminal)
@@ -866,3 +866,53 @@ def parse_request(body: dict[str, Any]) -> ChatRequest:
         stream=bool(body.get("stream")),
         available_tools=frozenset(name for name in tool_names if name),
     )
+
+
+#: The Responses API's text content parts; an image or a file carries no script.
+_RESPONSES_TEXT_PARTS = frozenset({"input_text", "output_text"})
+
+
+def _responses_message(item: object) -> dict[str, Any]:
+    """One Responses input item as a chat message: its role and its text parts joined."""
+    if not isinstance(item, dict):
+        raise DirectiveError(f"unsupported Responses input item: {item!r}")
+    content = item.get("content")
+    if isinstance(content, list):
+        content = "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") in _RESPONSES_TEXT_PARTS
+        )
+    return {"role": item.get("role", "user"), "content": content or ""}
+
+
+def parse_responses_request(body: dict[str, Any]) -> ChatRequest:
+    """Read a Responses API body as the chat request it scripts; instructions are never a script."""
+    raw_input = body.get("input")
+    if isinstance(raw_input, str):
+        messages = [{"role": "user", "content": raw_input}]
+    else:
+        messages = [_responses_message(item) for item in raw_input or []]
+    tool_names = {tool.get("name") for tool in body.get("tools") or [] if isinstance(tool, dict)}
+    return ChatRequest(
+        model=body.get("model") or "llm-stub",
+        messages=messages,
+        stream=bool(body.get("stream")),
+        available_tools=frozenset(name for name in tool_names if name),
+    )
+
+
+def resolve_text_response(
+    messages: Sequence[dict[str, Any]], available_tools: frozenset[str] = frozenset()
+) -> SayResponse:
+    """Resolve a Responses API call, which the stub answers with text alone.
+
+    Nothing in GAIA calls a Responses model with tools, so a scripted tool call
+    there is an authoring error the stub refuses rather than invent a wire shape for.
+    """
+    response = resolve_response(messages, available_tools)
+    if isinstance(response, ToolCallResponse):
+        raise DirectiveError(
+            f"the Responses route scripts say/fail only, got a call to {response.name!r}"
+        )
+    return response

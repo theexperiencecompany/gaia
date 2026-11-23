@@ -75,12 +75,14 @@ NODE_MIRRORS = (
     (REPO_ROOT / "infra/docker/ci-base.Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/web/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
+    (REPO_ROOT / "apps/api/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
 )
 # Every Dockerfile that must take its tag from the ARG rather than restating it.
 NODE_DOCKERFILES = (
     REPO_ROOT / "infra/docker/ci-base.Dockerfile",
     REPO_ROOT / "apps/web/Dockerfile",
     REPO_ROOT / "apps/bots/Dockerfile",
+    REPO_ROOT / "apps/api/Dockerfile",
 )
 # Bounded set of files that could reintroduce a hardcoded node version.
 NODE_LITERAL_SCAN = (
@@ -202,7 +204,7 @@ def _node_version() -> str | None:
 
 # ── pnpm: package.json#packageManager is the declaration ─────────────────────
 # corepack already treats that field as the source of truth, so the rest are
-# mirrors. Three of them cannot derive (the Dockerfiles run `corepack prepare`
+# mirrors. Four of them cannot derive (the Dockerfiles run `corepack prepare`
 # before package.json is in the image, and ci-base has no repo at all), so the
 # guard ties them back the same way it does for node.
 _PNPM_PACKAGE_MANAGER = re.compile(r'"packageManager"\s*:\s*"pnpm@(\d+\.\d+\.\d+)"')
@@ -213,6 +215,7 @@ _PNPM_MIRRORS = (
     ),
     (REPO_ROOT / "apps/web/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
+    (REPO_ROOT / "apps/api/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
 )
 _PNPM_ACTION_SETUP = "pnpm/action-setup"
 

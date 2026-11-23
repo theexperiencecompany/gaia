@@ -14,6 +14,7 @@ from fastapi import HTTPException, status
 from fastapi.exceptions import WebSocketException
 import pytest
 
+from app.api.v1.dependencies import oauth_dependencies
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_current_user_ws,
@@ -295,6 +296,15 @@ class TestGetCurrentUserWs:
         assert exc.value.reason == "dev bypass target has no Mongo user"
 
 
+class TestTimezoneBackfill:
+    async def test_the_header_zone_is_stored_through_the_one_timezone_writer(self) -> None:
+        """The writer also moves the briefs onto the new clock; a raw update would not."""
+        with patch(f"{_DEPS}.set_user_timezone", new_callable=AsyncMock) as store:
+            await oauth_dependencies._backfill_user_timezone("u1", "Asia/Kolkata")
+
+        store.assert_awaited_once_with("u1", "Asia/Kolkata")
+
+
 _LOCAL_USER_ID = "507f1f77bcf86cd799439011"
 
 
@@ -315,7 +325,7 @@ class TestGetCurrentUserWsLocalSession:
         lookup = AsyncMock(return_value=user_doc)
         with (
             patch("app.utils.local_auth_utils.resolve_session_token", resolve),
-            patch(f"{_DEPS}.user_repository.get", lookup),
+            patch("app.db.repositories.users.user_repository.get", lookup),
         ):
             user = await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
 
@@ -375,7 +385,7 @@ class TestGetCurrentUserWsLocalSession:
                 "app.utils.local_auth_utils.resolve_session_token",
                 AsyncMock(return_value=_LOCAL_USER_ID),
             ),
-            patch(f"{_DEPS}.user_repository.get", AsyncMock(return_value=None)),
+            patch("app.db.repositories.users.user_repository.get", AsyncMock(return_value=None)),
         ):
             async with captured_wide_event() as event:
                 with pytest.raises(WebSocketException) as exc:

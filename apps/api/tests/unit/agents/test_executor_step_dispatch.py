@@ -30,12 +30,13 @@ def _configurable() -> AgentConfigurable:
     return {"user_id": USER_ID, "thread_id": "conv-1", "conversation_step": STEP}
 
 
-async def _dispatch() -> str:
+async def _dispatch(configurable: AgentConfigurable | None = None) -> str:
     return await et._dispatch_executor(
         task="do the thing",
         task_id="task-1",
-        configurable=_configurable(),
+        configurable=configurable or _configurable(),
         conversation_id="conv-1",
+        user_id=USER_ID,
         handoff="call_1",
     )
 
@@ -50,6 +51,15 @@ async def test_a_refused_work_started_dispatches_nothing_and_frees_the_lock() ->
     spawn.assert_not_called()
     assert await redis_cache.client.get(BUSY_KEY) is None
     assert result == et._NOT_STARTED_STOPPED
+
+
+async def test_a_refused_work_started_frees_the_lock_its_stream_took() -> None:
+    with (
+        patch.object(et, "record_work_started", AsyncMock(return_value=False)),
+        patch.object(et, "spawn_background_task"),
+    ):
+        await _dispatch({**_configurable(), "stream_id": "stream-1"})
+    assert await redis_cache.client.get(BUSY_KEY) is None
 
 
 async def test_work_started_is_logged_before_the_run_spawns() -> None:

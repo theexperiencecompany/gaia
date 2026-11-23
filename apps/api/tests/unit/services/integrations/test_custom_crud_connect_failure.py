@@ -6,6 +6,7 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.models.integration_models import CreateCustomIntegrationRequest
+from app.schemas.integrations.responses import CustomIntegrationConnectionResult
 from app.services.integrations.custom_crud import create_and_connect_custom_integration
 
 INTEGRATION_ID = "custom-mcp-1"
@@ -51,7 +52,7 @@ async def test_a_failed_connect_is_answered_and_warned_with_the_servers_error(
     ):
         _, result = await create_and_connect_custom_integration("user-1", request, mcp_client)
 
-    assert result == {"status": "failed", "error": REFUSED}
+    assert result == CustomIntegrationConnectionResult(status="failed", error=REFUSED)
     log.error.assert_not_called()
     log.warning.assert_called_once_with(
         f"{LogTag.INTEGRATION} Custom integration connect failed",

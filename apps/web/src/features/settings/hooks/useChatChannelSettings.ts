@@ -1,67 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NotificationPlatform } from "@/features/notification/constants";
-import { chatChannelApi } from "@/features/settings/api/chatChannelApi";
+import {
+  chatChannelPriorityQuery,
+  preferencesApi,
+} from "@/features/settings/api/preferencesApi";
+import { preferenceKeys } from "@/features/settings/api/queryKeys";
 import {
   linkedInPriorityOrder,
-  moveChannel,
+  withChannelFirst,
 } from "@/features/settings/utils/chatChannelOrder";
 import { toast } from "@/lib/toast";
 
 interface UseChatChannelSettings {
-  /** The linked platforms in priority order — the rows the section renders. */
-  linkedOrder: NotificationPlatform[];
-  /** True while a reorder is in flight, so the arrows can't race each other. */
+  /** The linked platforms in priority order; the first is where GAIA texts first. Null until the stored order loads. */
+  linkedOrder: NotificationPlatform[] | null;
+  /** The stored order could not be read. */
+  loadFailed: boolean;
+  refetch: () => void;
+  /** True while a save is in flight, so two choices can't race each other. */
   saving: boolean;
-  move: (index: number, direction: "up" | "down") => Promise<void>;
+  putFirst: (platform: NotificationPlatform) => void;
 }
 
 /**
- * Owns "where GAIA texts you": the stored priority order, persisted
- * immediately and rolled back on failure.
+ * Owns which linked platform GAIA texts first: the stored priority order,
+ * persisted immediately and rolled back on failure.
  */
 export function useChatChannelSettings(
   linkedPlatforms: NotificationPlatform[],
 ): UseChatChannelSettings {
-  const [order, setOrder] = useState<NotificationPlatform[]>([]);
-  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+  const { data, isError, refetch } = useQuery(chatChannelPriorityQuery());
+  const order = data?.priority ?? null;
 
-  useEffect(() => {
-    chatChannelApi.fetchPriority().then((priority) => {
-      setOrder(priority.priority);
-    });
-  }, []);
+  const mutation = useMutation({
+    mutationFn: preferencesApi.updateChatChannelPriority,
+    onMutate: async (next) => {
+      await qc.cancelQueries({ queryKey: preferenceKeys.chatChannelPriority });
+      const previous = qc.getQueryData(preferenceKeys.chatChannelPriority);
+      qc.setQueryData(preferenceKeys.chatChannelPriority, { priority: next });
+      return { previous };
+    },
+    onError: (_error, _next, context) => {
+      qc.setQueryData(preferenceKeys.chatChannelPriority, context?.previous);
+      toast.error("Couldn't save where GAIA texts you first.");
+    },
+    onSuccess: (saved) =>
+      qc.setQueryData(preferenceKeys.chatChannelPriority, saved),
+  });
 
-  const linkedOrder = linkedInPriorityOrder(order, linkedPlatforms);
-
-  const move = async (index: number, direction: "up" | "down") => {
-    const nextLinked = moveChannel(linkedOrder, index, direction);
-    if (nextLinked === linkedOrder) return;
-    // Unlinked platforms stay at the tail, so relinking one later restores the
-    // position the user chose for it rather than dropping it to the default.
-    const linked = new Set(linkedPlatforms);
-    const unlinked = order.filter((platform) => !linked.has(platform));
-    const previous = order;
-    setOrder([...nextLinked, ...unlinked]);
-    setSaving(true);
-    try {
-      const saved = await chatChannelApi.updatePriority([
-        ...nextLinked,
-        ...unlinked,
-      ]);
-      setOrder(saved.priority);
-    } catch {
-      setOrder(previous);
-      toast.error("Couldn't save where GAIA texts you.");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const linkedOrder = order && linkedInPriorityOrder(order, linkedPlatforms);
 
   return {
     linkedOrder,
-    saving,
-    move,
+    loadFailed: isError,
+    refetch: () => void refetch(),
+    saving: mutation.isPending,
+    putFirst: (platform) => {
+      if (!order || linkedOrder?.[0] === platform) return;
+      mutation.mutate(withChannelFirst(order, linkedPlatforms, platform));
+    },
   };
 }

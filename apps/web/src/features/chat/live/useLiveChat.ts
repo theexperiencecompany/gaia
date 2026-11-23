@@ -8,7 +8,6 @@ import {
   sendingLoadingRow,
 } from "@shared/conversation";
 import { useEffect, useMemo } from "react";
-import { useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useChatStore } from "@/stores/chatStore";
 import { getRandomThinkingMessage } from "@/utils/playfulThinking";
 import { openConversation } from "./connection";
@@ -50,10 +49,9 @@ export interface LiveLoading {
   progress?: ToolProgress;
 }
 
-/** The loading row: shown whenever GAIA owes the user something, or a voice or upload flow is busy. */
+/** The loading row: shown whenever GAIA owes the user something. */
 function useLiveLoading(conversationId: string | null): LiveLoading {
   const { view, sends } = useLiveConversation(conversationId);
-  const aux = useAuxLoadingStore((state) => state.auxLoading);
   const row = sendingLoadingRow(view, sends);
   const { status } = row;
   // One playful line per thinking phase, not a new one per frame.
@@ -71,9 +69,6 @@ function useLiveLoading(conversationId: string | null): LiveLoading {
           : DISPLAY_STATUS_TEXT[status]),
       progress: row.progress ?? undefined,
     };
-  }
-  if (aux) {
-    return { isLoading: true, loadingText: aux.text };
   }
   return { isLoading: false, loadingText: "" };
 }

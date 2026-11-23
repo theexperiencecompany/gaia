@@ -524,9 +524,15 @@ class TestMCPConnectionFlow:
             client.token_store.get_oauth_token = AsyncMock(return_value=None)
             client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
 
-            with patch(
-                "app.services.mcp.mcp_client.update_user_integration_status",
-                new=AsyncMock(),
+            with (
+                patch(
+                    "app.services.mcp.mcp_client.update_user_integration_status",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "app.services.mcp.mcp_client.user_integration_repository.has_connected_before",
+                    new=AsyncMock(return_value=False),
+                ),
             ):
                 with pytest.raises(ValueError, match="OAuth authorization required"):
                     await client.connect("secure-integration")

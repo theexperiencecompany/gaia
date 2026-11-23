@@ -94,7 +94,8 @@ const pageErrors = new WeakMap<Page, string[]>();
 /**
  * Console errors from what the sim stack does not run, not from the chat failing:
  * PostHog, the :4747 desktop bridge, the notifications socket, a new chat's early
- * events stream, the dev stream recorder, and the GitHub desktop-release lookup.
+ * events stream, the dev stream recorder, the GitHub desktop-release lookup, and the
+ * image optimizer timing out on a release-notes image from docs.heygaia.io.
  */
 const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^Failed to load resource: .*\((?:https?:\/\/[^/]+\/ingest\/|http:\/\/localhost:4747\/)/,
@@ -107,6 +108,7 @@ const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^Failed to load resource: the server responded with a status of 502 .*\/api\/v1\/desktop\/releases\/latest\)$/,
   /^GET \/api\/v1\/desktop\/releases\/latest failed: ApiError: Could not reach GitHub/,
   /^Failed to resolve latest desktop release ApiError: Could not reach GitHub/,
+  /^Failed to load resource: the server responded with a status of 504 .*\/_next\/image\?url=https%3A%2F%2Fdocs\.heygaia\.io%2F/,
 ];
 
 /** Record every screen change on this page, across navigations and reloads (each document starts a fresh timeline), and every error the page raises. */

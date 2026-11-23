@@ -22,7 +22,7 @@ import sys
 import tempfile
 import time
 
-from .client import DEFAULT_API, DEFAULT_USER, GaiaClient
+from .client import DEFAULT_API, GaiaClient, add_user_argument
 from .observe import Store, WorkerLog, fire_and_observe
 from .scenarios import SCENARIOS, Context, Scenario
 
@@ -98,7 +98,7 @@ def _results_path(requested: Path) -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default=DEFAULT_API)
-    parser.add_argument("--user", default=DEFAULT_USER)
+    add_user_argument(parser)
     parser.add_argument("--worker-log", type=Path, required=True)
     parser.add_argument("--only", nargs="*", default=[], metavar="KEY")
     parser.add_argument("--out", type=Path, default=Path("playbook_drive.results.json"))

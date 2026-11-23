@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import AwareDatetime, BaseModel, Field, JsonValue, model_validator
 
 from app.constants.chat import ConversationSource
+from app.constants.notifications import ProactiveMessageClass
 from app.models.chat_models import ReactionBy
 from app.models.hil_models import ApprovalDescription
 from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
@@ -188,6 +189,8 @@ class TodoRun(BaseModel):
     wake: TodoRunWake
     report_form: TodoReportForm
     attribution: Attribution
+    # URGENT when an event the trigger gate let through quiet hours woke the run.
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
 
 
 class TodoWoke(_Entry):
@@ -205,6 +208,8 @@ class Notice(_Entry):
     origin: str
     tool_data: tuple[ToolDataEntry, ...] = ()
     follow_up_actions: tuple[str, ...] = ()
+    # A hosted image a chat platform shows as a photo, captioned with the first bubble.
+    image_url: str | None = None
 
 
 class WorkStarted(_Entry):

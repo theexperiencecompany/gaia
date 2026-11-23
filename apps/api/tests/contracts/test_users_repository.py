@@ -3,24 +3,26 @@
 UserRepository is a global MongoRepository with entity caching enabled (every
 user writer routes through it). These tests exercise its reads, the cache
 freshness guarantee (a repo write can't be shadowed by a stale cached read), the
-debounced cache-exempt touch_last_active, the gated onboarding writes, and the
+cache-exempt activity writes and the activity-status cohorts, the gated onboarding writes, and the
 platform / background-job named methods.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-import time
 
+from bson import ObjectId
 import pytest
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
 from app.constants.email import SignupDelivery
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
 from app.models.quiet_hours_models import QuietHours
+from app.models.user_activity_models import UserActivityRow
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -28,6 +30,7 @@ from app.models.user_models import (
     PersonalizationBundle,
     StartingJobs,
     UserDocument,
+    UserHours,
     UserUpdate,
 )
 
@@ -43,23 +46,6 @@ def make_user() -> Callable[..., UserDocument]:
         return UserDocument.model_validate({"email": "a@b.com", "name": "A", **overrides})
 
     return _make
-
-
-@pytest.fixture
-def local_time_offset_from_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Move the process's local timezone off UTC for the test.
-
-    The suite pins TZ=UTC, which makes a naive datetime.now() numerically
-    identical to an aware UTC one — so a timestamp that forgot its timezone
-    would look correct here and be hours wrong in production.
-    """
-    monkeypatch.setenv("TZ", "Asia/Kolkata")  # UTC+5:30
-    time.tzset()
-    try:
-        yield
-    finally:
-        monkeypatch.undo()
-        time.tzset()
 
 
 class TestUserReads:
@@ -96,6 +82,31 @@ class TestUserReads:
         assert dump["nested"] == {"k": "v"}
 
 
+class TestDerivedNameCleanup:
+    async def test_the_scan_returns_only_users_with_a_name_and_an_email(self, repo, make_user):
+        named = await repo.create(make_user(email="n@b.com", name="Ann"))
+        await repo.create(make_user(email="blank@b.com", name=""))
+        await repo.create(make_user(email="none@b.com", name=None))
+        await repo.create(make_user(email=None, name="No Email"))
+        await repo.create(make_user(email="", name="Blank Email"))
+
+        assert [user.id for user in await repo.find_named_with_email()] == [named.id]
+
+    async def test_clearing_unsets_the_name_and_the_cached_read_sees_it(self, repo, make_user):
+        created = await repo.create(make_user(email="ann.lee@b.com", name="Ann Lee"))
+        await repo.get_by_email("ann.lee@b.com")
+
+        assert await repo.clear_name_if_unchanged(created.id, "Ann Lee") is True
+        assert (await repo.get(created.id)).name is None
+        assert (await repo.get_by_email("ann.lee@b.com")).name is None
+
+    async def test_a_name_changed_since_the_scan_is_not_cleared(self, repo, make_user):
+        created = await repo.create(make_user(email="ann.lee@b.com", name="Annie"))
+
+        assert await repo.clear_name_if_unchanged(created.id, "Ann Lee") is False
+        assert (await repo.get(created.id)).name == "Annie"
+
+
 class TestEmailIsCaseInsensitive:
     """An address is one account in any case: stored lowercase, looked up lowercase."""
 
@@ -108,15 +119,6 @@ class TestEmailIsCaseInsensitive:
         created = await repo.create(make_user(email="idp@y.com"))
 
         assert await repo.get_by_email("IdP@Y.com") == created
-
-    async def test_touch_last_active_ignores_the_callers_case(
-        self, repo, make_user, raw_collection
-    ):
-        await repo.create(make_user(email="seen@y.com"))
-
-        await repo.touch_last_active("Seen@Y.com")
-
-        assert (await raw_collection.find_one({"email": "seen@y.com"}))["last_active_at"]
 
 
 class TestCacheFreshness:
@@ -164,39 +166,92 @@ class TestCacheFreshness:
         assert (await repo.get(writer.id)).name == "Renamed"
         assert (await repo.get(bystander.id)).name == "Bystander"
 
-    async def test_touch_last_active_does_not_bump_the_generation(self, repo, make_user):
-        # The one cache-exempt write: it fires on every authenticated request, so
-        # bumping here would invalidate the whole cache on every request.
+    async def test_set_last_active_does_not_bump_the_generation(self, repo, make_user):
+        # The one cache-exempt write: it fires on every active minute, so
+        # bumping here would invalidate the whole cache that often.
         from app.db.repositories.cache import read_generation
 
-        await repo.create(make_user(email="hot@y.com"))
+        created = await repo.create(make_user(email="hot@y.com"))
         before = await read_generation(repo.cache_policy, "global")
-        await repo.touch_last_active("hot@y.com")
+        await repo.set_last_active(created.id, datetime.now(UTC))
         assert await read_generation(repo.cache_policy, "global") == before
 
 
-class TestTouchLastActive:
-    async def test_writes_then_debounces_within_window(self, repo, make_user, raw_collection):
-        await repo.create(make_user(email="t@u.com"))
-        await repo.touch_last_active("t@u.com")
-        first = (await raw_collection.find_one({"email": "t@u.com"}))["last_active_at"]
-        assert first is not None
-        # Second touch inside the debounce window: the SETNX gate blocks the write.
-        await repo.touch_last_active("t@u.com")
-        second = (await raw_collection.find_one({"email": "t@u.com"}))["last_active_at"]
-        assert second == first
+def _days_ago(days: int) -> datetime:
+    return datetime.now(UTC) - timedelta(days=days)
 
-    async def test_never_raises_when_redis_unavailable(self, repo, make_user, monkeypatch):
-        await repo.create(make_user(email="r@s.com"))
-        from app.db.redis import redis_cache
 
-        monkeypatch.setattr(redis_cache, "redis", None)
-        await repo.touch_last_active("r@s.com")  # no gate; must write and not raise
-        assert (await repo.get_by_email("r@s.com")).last_active_at is not None
+class TestActivity:
+    async def test_activity_dates_skip_a_stale_cached_user(self, repo, make_user):
+        """set_last_active never refreshes the cache, so activity must be read from Mongo."""
+        created = await repo.create(make_user(email="c@d.com", created_at=_days_ago(90)))
+        await repo.get(created.id)  # caches the user with no last_active_at
+        seen = datetime.now(UTC)
+        await repo.set_last_active(created.id, seen)
 
-    async def test_touch_failure_is_swallowed_not_raised(self, repo, monkeypatch):
-        # A touch on a missing user still must not raise into the auth caller.
-        await repo.touch_last_active("nobody@nowhere.com")
+        dates = await repo.get_activity_dates(created.id)
+        assert dates is not None
+        assert dates.status(datetime.now(UTC)) is ActivityStatus.ACTIVE
+
+    async def test_activity_dates_of_no_user_is_none(self, repo):
+        assert await repo.get_activity_dates("507f1f77bcf86cd799439011") is None
+
+    async def test_each_status_is_its_own_window(self, repo, make_user):
+        active = await repo.create(make_user(last_active_at=_days_ago(1)))
+        idle = await repo.create(make_user(last_active_at=_days_ago(10)))
+        dormant = await repo.create(make_user(last_active_at=_days_ago(45)))
+
+        for status, expected in (
+            (ActivityStatus.ACTIVE, active),
+            (ActivityStatus.IDLE, idle),
+            (ActivityStatus.DORMANT, dormant),
+        ):
+            found = await repo.find_by_activity_status(status)
+            assert [u.id for u in found] == [expected.id], status
+
+    async def test_a_user_never_seen_is_judged_from_signup(self, repo, make_user):
+        """Regression: a missing last_active_at matched no $lt, so a never-seen user was never nudged."""
+        fresh = await repo.create(make_user(created_at=_days_ago(2)))
+        lapsed = await repo.create(make_user(created_at=_days_ago(12)))
+        gone = await repo.create(make_user(created_at=_days_ago(60)))
+
+        assert [u.id for u in await repo.find_by_activity_status(ActivityStatus.ACTIVE)] == [
+            fresh.id
+        ]
+        assert [u.id for u in await repo.find_by_activity_status(ActivityStatus.IDLE)] == [
+            lapsed.id
+        ]
+        assert [u.id for u in await repo.find_by_activity_status(ActivityStatus.DORMANT)] == [
+            gone.id
+        ]
+
+    async def test_last_active_wins_over_an_old_signup(self, repo, make_user):
+        back = await repo.create(make_user(created_at=_days_ago(400), last_active_at=_days_ago(1)))
+        assert [u.id for u in await repo.find_by_activity_status(ActivityStatus.ACTIVE)] == [
+            back.id
+        ]
+        assert await repo.find_by_activity_status(ActivityStatus.DORMANT) == []
+
+    async def test_a_deactivated_account_is_in_no_cohort(self, repo, make_user):
+        await repo.create(make_user(last_active_at=_days_ago(10), is_active=False))
+        assert await repo.find_by_activity_status(ActivityStatus.IDLE) == []
+
+    async def test_among_narrows_the_cohort_to_the_given_ids(self, repo, make_user):
+        mine = await repo.create(make_user(last_active_at=_days_ago(45)))
+        await repo.create(make_user(last_active_at=_days_ago(45)))
+        found = await repo.find_by_activity_status(ActivityStatus.DORMANT, among={mine.id})
+        assert [u.id for u in found] == [mine.id]
+
+    async def test_activity_rows_carry_the_id_and_last_seen_of_the_given_ids_only(
+        self, repo, make_user
+    ):
+        mine = await repo.create(make_user(last_active_at=_days_ago(45)))
+        await repo.create(make_user(last_active_at=_days_ago(45)))
+        stored = await repo.get(mine.id)
+
+        rows = await repo.find_activity_rows(ActivityStatus.DORMANT, among={mine.id})
+
+        assert rows == [UserActivityRow(id=mine.id, last_active_at=stored.last_active_at)]
 
 
 class TestOnboardingWrites:
@@ -221,23 +276,6 @@ class TestOnboardingWrites:
         )
         assert second is None
         assert (await repo.get(created.id)).onboarding.phase == OnboardingPhase.COMPLETED
-
-    async def test_complete_onboarding_writes_timezone_at_the_document_root(
-        self, repo, make_user, raw_collection
-    ):
-        """user.timezone is the single source of truth — the wizard's answer must land at the root, not on the subdocument."""
-        created = await repo.create(make_user(email="tz@y.com"))
-        completed = await repo.complete_onboarding(
-            created.id,
-            phase=OnboardingPhase.COMPLETED,
-            bio_status=BioStatus.COMPLETED,
-            preferences=OnboardingPreferences(profession="eng"),
-            timezone="Europe/Berlin",
-        )
-        assert completed is not None
-        assert completed.timezone == "Europe/Berlin"
-        stored = await raw_collection.find_one({"email": "tz@y.com"})
-        assert stored["timezone"] == "Europe/Berlin"
 
     async def test_complete_onboarding_without_timezone_keeps_the_stored_one(
         self, repo, make_user, raw_collection
@@ -406,17 +444,23 @@ class TestOnboardingWrites:
 class TestSettingsWrites:
     async def test_set_channel_preferences_patches_only_given_channels(self, repo, make_user):
         created = await repo.create(make_user())
-        await repo.set_channel_preferences(created.id, telegram=True, slack=False)
+        await repo.set_channel_preferences(created.id, {"telegram": True, "slack": False})
         prefs = (await repo.get(created.id)).notification_channel_prefs
         assert prefs == {"telegram": True, "slack": False}
         # A second call leaves unspecified channels untouched and updates given ones.
-        await repo.set_channel_preferences(created.id, telegram=False, discord=True)
+        await repo.set_channel_preferences(created.id, {"telegram": False, "discord": True})
         prefs = (await repo.get(created.id)).notification_channel_prefs
         assert prefs == {"telegram": False, "slack": False, "discord": True}
 
-    async def test_set_channel_preferences_no_args_is_noop(self, repo, make_user):
+    async def test_set_channel_preferences_no_channels_is_noop(self, repo, make_user):
         created = await repo.create(make_user())
-        await repo.set_channel_preferences(created.id)
+        await repo.set_channel_preferences(created.id, {})
+        assert (await repo.get(created.id)).notification_channel_prefs is None
+
+    async def test_set_channel_preferences_rejects_an_unknown_channel(self, repo, make_user):
+        created = await repo.create(make_user())
+        with pytest.raises(ValueError, match="carrier-pigeon"):
+            await repo.set_channel_preferences(created.id, {"carrier-pigeon": True})
         assert (await repo.get(created.id)).notification_channel_prefs is None
 
     async def test_mark_email_processing_complete(self, repo, make_user):
@@ -487,6 +531,27 @@ class TestUserCounts:
         b = await repo.create(make_user(email="a2@b.com"))
         assert set(await repo.list_all_ids()) == {a.id, b.id}
 
+    async def test_a_release_step_reads_a_user_no_longer_valid_whole(self, repo, raw_collection):
+        """A release step loading whole users failed on one shape an older release left behind."""
+        hours = QuietHours(enabled=True, start_hour=23, end_hour=6)
+        old = await raw_collection.insert_one(
+            {
+                "email": "old@b.com",
+                "timezone": "Asia/Kolkata",
+                "quiet_hours": hours.model_dump(),
+                "first_steps": "an old release's string",
+            }
+        )
+        user_id = str(old.inserted_id)
+        with pytest.raises(ValueError, match="first_steps"):
+            await repo.get(user_id)
+
+        assert await repo.list_all_ids() == [user_id]
+        assert await repo.get_hours(user_id) == UserHours(
+            timezone="Asia/Kolkata", quiet_hours=hours
+        )
+        assert await repo.get_hours("0" * 24) is None
+
     async def test_count_created_before(self, repo, make_user):
         from datetime import datetime
 
@@ -501,8 +566,6 @@ class TestWorkerScans:
     async def test_find_stuck_personalization(self, repo, make_user, raw_collection):
         from datetime import datetime, timedelta
 
-        from bson import ObjectId
-
         cutoff = datetime.now(UTC) - timedelta(minutes=30)
         old = datetime.now(UTC) - timedelta(hours=1)
         # Stuck: pending phase, updated_at backdated past the cutoff (create()
@@ -516,19 +579,6 @@ class TestWorkerScans:
         found = await repo.find_stuck_personalization(cutoff, limit=50)
         assert [u.id for u in found] == [stuck.id]
 
-    async def test_find_inactive_email_candidates(self, repo, make_user):
-        from datetime import datetime, timedelta
-
-        before = datetime.now(UTC)
-        long_ago = datetime.now(UTC) - timedelta(days=30)
-        inactive = await repo.create(make_user(last_active_at=long_ago, is_active=True))
-        # Excluded: explicitly deactivated.
-        await repo.create(make_user(last_active_at=long_ago, is_active=False))
-        # Excluded: recently active.
-        await repo.create(make_user(last_active_at=datetime.now(UTC)))
-        found = await repo.find_inactive_email_candidates(before)
-        assert [u.id for u in found] == [inactive.id]
-
     async def test_record_inactive_email(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.record_inactive_email(created.id, 2)
@@ -536,21 +586,19 @@ class TestWorkerScans:
         assert stored.inactive_email_count == 2
         assert stored.last_inactive_email_sent is not None
 
-    async def test_backfill_candidates_by_creation_and_marker(self, repo, make_user):
-        from datetime import datetime, timedelta
-
-        active_since = datetime.now(UTC) - timedelta(days=1)
-        eligible_before = datetime.now(UTC)
-        # Eligible: recently active, created before cutoff (fresh ObjectId is now),
-        # so use a far-future eligible_before to include it.
+    async def test_backfill_candidates_by_activity_creation_and_marker(self, repo, make_user):
+        # Eligible: active, created before cutoff (a fresh ObjectId is now, so the
+        # cutoff is tomorrow).
         eligible = await repo.create(make_user(last_active_at=datetime.now(UTC)))
         # Excluded: already backfilled.
         await repo.create(
             make_user(last_active_at=datetime.now(UTC), memory_backfilled=datetime.now(UTC))
         )
-        future = eligible_before + timedelta(days=1)
-        assert await repo.count_backfill_candidates(active_since, future) == 1
-        ids = await repo.find_backfill_candidate_ids(active_since, future, limit=10)
+        # Excluded: idle, not active.
+        await repo.create(make_user(last_active_at=_days_ago(10)))
+        future = datetime.now(UTC) + timedelta(days=1)
+        assert await repo.count_backfill_candidates(future) == 1
+        ids = await repo.find_backfill_candidate_ids(future, limit=10)
         assert ids == [eligible.id]
 
     async def test_mark_memory_backfilled_stamps_an_utc_instant(

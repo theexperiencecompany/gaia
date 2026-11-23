@@ -29,6 +29,7 @@ from app.models.conversation_frame_models import (
 )
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
 from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, ToolOutputPayload
+from app.services.links.placeholders import releasable_end
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import NodeMessagesUpdate, ToolCallView, format_tool_call_entry
 from app.utils.errors import ShownReplyRetriedError
@@ -306,11 +307,18 @@ async def _tool_message_payloads(
 
 
 def _stream_visible_text(state: GraphStreamState, message_id: str) -> str:
-    """Return the next piece of a streaming comms message a user may see, and mark it streamed."""
+    """Return the next piece of a streaming comms message a user may see, and mark it streamed.
+
+    A link placeholder still being written is held back, so each piece holds only whole ones;
+    they stay placeholders here and resolve only where a client is sent the screen.
+    """
     visible = shown_so_far(state.held.texts[message_id])
-    new = visible[len(state.released_text.get(message_id, "")) :]
-    if new:
-        state.released_text[message_id] = visible
+    sent = state.released_text.get(message_id, "")
+    visible = visible[: max(releasable_end(visible), len(sent))]
+    new = visible[len(sent) :]
+    if not new:
+        return ""
+    state.released_text[message_id] = visible
     return new
 
 

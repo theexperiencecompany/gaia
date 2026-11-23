@@ -24,12 +24,17 @@ from pydantic import ValidationError
 import redis
 
 from app.config.settings import settings
+from app.constants.briefing import BriefingFrequency
 from app.constants.chat import ConversationSource
 from app.models.chat_models import SystemPurpose
 from app.workers.config.worker_settings import WorkerSettings
 from shared.py.analytics import is_user_id
 from shared.py.analytics.catalog import CATALOG
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
+from shared.py.analytics.catalog.artifacts import (
+    ArtifactCreated,
+    ArtifactPdfExported,
+)
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.auth import UserActive
 from shared.py.analytics.catalog.billing import (
@@ -50,7 +55,24 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingPhaseCompleted,
     OnboardingStarted,
 )
-from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.catalog.settings import (
+    SettingsBriefingScheduleUpdated,
+    SettingsBriefsOffBlocked,
+    SettingsBriefsOffResolved,
+)
+from shared.py.analytics.catalog.short_links import (
+    ShortLinkAccessChanged,
+    ShortLinkCreated,
+    ShortLinkDenied,
+    ShortLinkOpened,
+    ShortLinkRevoked,
+    ShortLinkRotated,
+)
+from shared.py.analytics.catalog.todos import TodosCreated
+from shared.py.analytics.catalog.workflows import (
+    WorkflowCreated,
+    WorkflowExecuted,
+)
 from shared.py.analytics.context import POSTHOG_SESSION_PROPERTY
 
 from . import e2e_journeys as journeys
@@ -65,7 +87,6 @@ from .posthog_api import (
     reader,
 )
 
-DEFAULT_EMAIL = "analytics-e2e@gaia.local"
 # gaia-test receives each event within ~10s, but a query saw it only 6-10 min later (2026-10-09 runs).
 DEFAULT_TIMEOUT_S = 900
 POLL_INTERVAL_S = 10
@@ -240,6 +261,83 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(WorkflowCreated.event, BROWSER, True),
                 Expect(WorkflowExecuted.event, BROWSER, True),
                 *_workflow_run(),
+            ),
+        ),
+        Journey(
+            "briefing schedule",
+            journeys.briefing_schedule,
+            (
+                Expect(
+                    SettingsBriefingScheduleUpdated.event,
+                    BROWSER,
+                    True,
+                    (
+                        ("frequency", journeys.BRIEFING_SCHEDULE.frequency.value),
+                        ("hour", journeys.BRIEFING_SCHEDULE.hour),
+                        ("via", "settings"),
+                    ),
+                ),
+            ),
+        ),
+        Journey(
+            "briefs off guard",
+            journeys.briefs_off_guard,
+            (
+                Expect(WorkflowCreated.event, BROWSER, True),
+                Expect(
+                    SettingsBriefsOffBlocked.event,
+                    BROWSER,
+                    True,
+                    (("workflow_count", 1), ("via", "settings")),
+                ),
+                Expect(
+                    SettingsBriefsOffResolved.event,
+                    BROWSER,
+                    True,
+                    (("moved_to_now", 1), ("moved_to_silent", 0), ("via", "settings")),
+                ),
+                Expect(
+                    SettingsBriefingScheduleUpdated.event,
+                    BROWSER,
+                    True,
+                    (("frequency", BriefingFrequency.OFF.value), ("via", "settings")),
+                ),
+            ),
+        ),
+        Journey(
+            "artifact",
+            journeys.artifact,
+            (
+                Expect(ChatMessageSubmitted.event, BROWSER, True, (("source", web),)),
+                *_agent_turn(BROWSER, True, web),
+                Expect(ArtifactCreated.event, BROWSER_AGENT, True, (("kind", "dashboard"),)),
+                Expect(ShortLinkOpened.event, None, False, (("target_type", "openui_artifact"),)),
+                Expect(ArtifactPdfExported.event, None, False, (("kind", "dashboard"),)),
+            ),
+        ),
+        Journey(
+            "link share",
+            journeys.link_share,
+            (
+                # The todo it shares is created by the journey itself.
+                Expect(TodosCreated.event, BROWSER, True),
+                Expect(
+                    ShortLinkCreated.event,
+                    None,
+                    True,
+                    (("target_type", "todo_deliverable"), ("origin", "owner_share")),
+                ),
+                # The unfurl bot's fetch and the reader's same-day reopen never count.
+                Expect(ShortLinkOpened.event, None, False, (("target_type", "todo_deliverable"),)),
+                Expect(
+                    ShortLinkAccessChanged.event,
+                    None,
+                    True,
+                    (("from_access", "unlisted"), ("to_access", "owner")),
+                ),
+                Expect(ShortLinkDenied.event, None, False, (("reason", "forbidden"),)),
+                Expect(ShortLinkRotated.event, None, True, (("access", "owner"),)),
+                Expect(ShortLinkRevoked.event, None, True, (("reason", "owner"),)),
             ),
         ),
         Journey(
@@ -493,7 +591,7 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
         ),
         help="the local API the journeys drive",
     )
-    command.add_argument("--email", default=DEFAULT_EMAIL, help="the dev user each run recreates")
+    command.add_argument("--email", required=True, help="the dev user each run recreates")
     command.add_argument(
         "--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="ingestion wait, seconds"
     )

@@ -24,6 +24,7 @@ from app.db.mongodb.collections import get_async_collection
 from app.models.integrations.composio_hooks import ComposioToolResponse
 from app.services.workflow.playbook.placeholders import placeholder_tokens
 from app.utils.composio_hooks import hook_registry
+from scripts._cli import apply_requested
 
 STEPS_ROOT = "steps"
 LAST_RUN_ROOT = "last_run"
@@ -134,4 +135,4 @@ async def main(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(apply="--apply" in sys.argv))
+    asyncio.run(main(apply=apply_requested(__doc__)))

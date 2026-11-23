@@ -9,6 +9,7 @@ from app.config.deployment import (
     BlobStoreKind,
     DeploymentKind,
     InvalidDeploymentError,
+    LinkBase,
     OriginPolicy,
     baseline_profile,
     deployment_profile,
@@ -46,6 +47,7 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
     assert profile.blob_store is BlobStoreKind.CLOUDINARY
     assert profile.gaia_support is True
     assert profile.hosted_bots is True
+    assert profile.gaia_mail_domain is True
 
 
 def test_production_with_local_auth_is_refused() -> None:
@@ -90,6 +92,7 @@ def test_selfhost_has_no_plans_no_limits_and_a_credential_store() -> None:
     assert profile.blob_store is BlobStoreKind.LOCAL
     assert profile.gaia_support is False
     assert profile.hosted_bots is False
+    assert profile.gaia_mail_domain is False
 
 
 def test_selfhost_runs_the_local_code_sandbox_only_when_opted_in() -> None:
@@ -199,7 +202,7 @@ def test_a_blob_store_named_by_its_string_value_gets_the_enum_member() -> None:
         DeploymentKind.SELFHOST,
         "local",
         **args,
-        blob_store="cloudinary",  # type: ignore[arg-type]  # why: an assigned setting skips pydantic validation
+        blob_store="cloudinary",
     )
     by_member = deployment_profile(
         DeploymentKind.SELFHOST, "local", **args, blob_store=BlobStoreKind.CLOUDINARY
@@ -216,7 +219,7 @@ def test_production_refuses_a_local_blob_store_named_by_its_string_value() -> No
             "workos",
             unlimited_usage=False,
             local_code_sandbox=False,
-            blob_store="local",  # type: ignore[arg-type]  # why: an assigned setting skips pydantic validation
+            blob_store="local",
         )
 
 
@@ -310,6 +313,24 @@ def test_each_kind_exposes_its_own_network_surface(
     assert profile.https_only is https_only
     assert profile.private_network_endpoints is private_endpoints
     assert profile.dev_tools is dev_tools
+
+
+@pytest.mark.parametrize(
+    ("kind", "link_base"),
+    [
+        (DeploymentKind.PRODUCTION, LinkBase.GAIA_LINK_DOMAIN),
+        (DeploymentKind.DEVELOPMENT, LinkBase.INSTANCE_WEB_ROUTE),
+        (DeploymentKind.SELFHOST, LinkBase.INSTANCE_WEB_ROUTE),
+    ],
+)
+def test_only_production_serves_links_from_gaias_domain(
+    kind: DeploymentKind, link_base: LinkBase
+) -> None:
+    profile = deployment_profile(
+        kind, "workos", unlimited_usage=False, local_code_sandbox=False, blob_store=None
+    )
+
+    assert profile.link_base is link_base
 
 
 @pytest.mark.parametrize(

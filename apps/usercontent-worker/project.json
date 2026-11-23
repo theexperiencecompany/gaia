@@ -1,0 +1,48 @@
+{
+  "name": "usercontent-worker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "root": "apps/usercontent-worker",
+  "sourceRoot": "apps/usercontent-worker/src",
+  "projectType": "application",
+  "tags": ["scope:typescript"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm wrangler deploy --dry-run --outdir dist",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["production"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm vitest run --config vitest.config.ts",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check .",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check --write .",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

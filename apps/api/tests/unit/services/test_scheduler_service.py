@@ -657,6 +657,7 @@ class TestEnqueueTask:
             "test_job",
             "task1",
             _job_id=f"test_job:task1:{int(future.timestamp())}",
+            _queue_name=None,
             _defer_until=future,
         )
 

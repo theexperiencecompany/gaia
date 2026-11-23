@@ -4,9 +4,16 @@ It lives in its own module to keep the executor runner free of a circular
 import on workflow_tasks (which imports the agent stack).
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.constants.notifications import pick_workflow_done_copy
+from app.constants.chat import CONVERSATION_PATH
+from app.constants.notifications import (
+    NotificationKind,
+    ProactiveMessageClass,
+    pick_workflow_done_copy,
+)
+from app.models.notification.details_models import WorkflowCompletedNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -27,14 +34,18 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 
 
+@dataclass(frozen=True, slots=True)
+class WorkflowRunResult:
+    """What one finished run hands its notification: which run, where it ran, what it said."""
+
+    execution_id: str
+    conversation_id: str
+    text: str
+    message_class: ProactiveMessageClass
+
+
 async def notify_workflow_result(
-    *,
-    workflow_id: str,
-    workflow_title: str,
-    execution_id: str,
-    conversation_id: str,
-    user_id: str,
-    result_text: str,
+    *, workflow_id: str, workflow_title: str, user_id: str, run: WorkflowRunResult
 ) -> None:
     """Tell the user a run finished: the inbox gets a short heads-up, a chat app the result itself.
 
@@ -46,7 +57,7 @@ async def notify_workflow_result(
     )
     notified = await notification_service.notify(
         NotificationRequest(
-            id=notification_id(user_id, "workflow_result", execution_id),
+            id=notification_id(user_id, "workflow_result", run.execution_id),
             user_id=user_id,
             source=NotificationSourceEnum.WORKFLOW_COMPLETED,
             type=NotificationType.SUCCESS,
@@ -60,7 +71,7 @@ async def notify_workflow_result(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url=f"/c/{conversation_id}",
+                                url=CONVERSATION_PATH.format(conversation_id=run.conversation_id),
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )
@@ -68,8 +79,13 @@ async def notify_workflow_result(
                     )
                 ],
             ),
-            metadata={"workflow_id": workflow_id, "conversation_id": conversation_id},
-            message=result_text,
+            details=WorkflowCompletedNotification(
+                kind=NotificationKind.WORKFLOW_COMPLETED,
+                workflow_id=workflow_id,
+                conversation_id=run.conversation_id,
+            ),
+            message=run.text,
+            message_class=run.message_class,
         )
     )
     capture(

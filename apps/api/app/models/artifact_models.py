@@ -31,3 +31,4 @@ class ArtifactCard(BaseModel):
     event: str
     path: str
     content_type: str | None = None
+    short_url: str | None = None

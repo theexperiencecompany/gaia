@@ -2,38 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { NotificationPlatform } from "@/features/notification/constants";
 import {
   linkedInPriorityOrder,
-  moveChannel,
+  withChannelFirst,
 } from "@/features/settings/utils/chatChannelOrder";
 
 const order: NotificationPlatform[] = ["telegram", "whatsapp", "slack"];
-
-describe("moveChannel", () => {
-  it("swaps a platform with the one above it", () => {
-    expect(moveChannel(order, 1, "up")).toEqual([
-      "whatsapp",
-      "telegram",
-      "slack",
-    ]);
-  });
-
-  it("swaps a platform with the one below it", () => {
-    expect(moveChannel(order, 1, "down")).toEqual([
-      "telegram",
-      "slack",
-      "whatsapp",
-    ]);
-  });
-
-  it("returns the same reference when the move falls off either end", () => {
-    expect(moveChannel(order, 0, "up")).toBe(order);
-    expect(moveChannel(order, 2, "down")).toBe(order);
-  });
-
-  it("does not mutate the input", () => {
-    moveChannel(order, 1, "up");
-    expect(order).toEqual(["telegram", "whatsapp", "slack"]);
-  });
-});
 
 describe("linkedInPriorityOrder", () => {
   it("keeps the stored order and drops the unlinked platforms", () => {
@@ -48,5 +20,39 @@ describe("linkedInPriorityOrder", () => {
       "slack",
       "discord",
     ]);
+  });
+});
+
+describe("withChannelFirst", () => {
+  it("moves the chosen platform to the front and keeps the rest of the linked order", () => {
+    expect(
+      withChannelFirst(
+        ["telegram", "whatsapp", "slack"],
+        ["telegram", "whatsapp", "slack"],
+        "slack",
+      ),
+    ).toEqual(["slack", "telegram", "whatsapp"]);
+  });
+
+  it("keeps unlinked platforms at the tail so relinking restores their place", () => {
+    expect(
+      withChannelFirst(
+        ["discord", "telegram", "whatsapp"],
+        ["telegram", "whatsapp"],
+        "whatsapp",
+      ),
+    ).toEqual(["whatsapp", "telegram", "discord"]);
+  });
+
+  it("includes a linked platform the stored order never mentioned", () => {
+    expect(
+      withChannelFirst(["telegram"], ["telegram", "imessage"], "telegram"),
+    ).toEqual(["telegram", "imessage"]);
+  });
+
+  it("does not mutate the input", () => {
+    const stored: NotificationPlatform[] = ["telegram", "whatsapp"];
+    withChannelFirst(stored, stored, "whatsapp");
+    expect(stored).toEqual(["telegram", "whatsapp"]);
   });
 });

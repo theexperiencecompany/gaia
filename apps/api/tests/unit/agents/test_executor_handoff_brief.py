@@ -165,7 +165,13 @@ async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     ) as mock_dispatch:
         await call_executor.ainvoke(
             {"type": "tool_call", "id": "call_1", "name": call_executor.name, "args": tool_args},
-            config={"configurable": {"conversation_step": _ASKING_STEP, **configurable}},
+            config={
+                "configurable": {
+                    "conversation_step": _ASKING_STEP,
+                    "user_id": "u-1",
+                    **configurable,
+                }
+            },
         )
     return mock_dispatch.call_args.kwargs["task"]
 
@@ -300,6 +306,8 @@ class TestPreviousRunReachesTheExecutor:
 _SCRIPT = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
 _LAST_RUN = wrap_agent_payload(AgentTag.LAST_RUN, "status: completed\ncreate_reminder({})")
 _FALLBACK_NOTE = wrap_agent_payload(AgentTag.PLAYBOOK_FALLBACK, "Replay stopped at step 2.")
+# Every call_executor hand-off carries one, so it sits between the task and the definition of done.
+_INTENT = ExecutorIntent(desired_outcome="a reminder to stretch", time_horizon=TimeHorizon.ONE_SHOT)
 
 
 class TestTheSimStubRunsABriefsScriptOnce:
@@ -315,17 +323,13 @@ class TestTheSimStubRunsABriefsScriptOnce:
                 "acceptance_criteria": [],
                 "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
             },
+            {"acceptance_criteria": ["done"], "intent": _INTENT},
+            {"acceptance_criteria": [], "intent": _INTENT},
             {
                 "acceptance_criteria": ["done"],
                 "last_run": _LAST_RUN,
+                "intent": _INTENT,
                 "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
-            },
-            {
-                "acceptance_criteria": ["done"],
-                "intent": ExecutorIntent(
-                    desired_outcome="the scripted directives run",
-                    time_horizon=TimeHorizon.ONE_SHOT,
-                ),
             },
         ],
         ids=[
@@ -333,16 +337,16 @@ class TestTheSimStubRunsABriefsScriptOnce:
             "last-run",
             "last-run-no-criteria",
             "playbook-note",
-            "every-section",
             "intent",
+            "intent-no-criteria",
+            "every-section",
         ],
     )
     def test_a_brief_quoting_the_request_yields_one_tool_call(
         self, sections: dict[str, Any]
     ) -> None:
         stub = load_llm_stub_module("directives")
-        criteria = sections.pop("acceptance_criteria")
-        brief = compose_executor_brief(_SCRIPT, criteria, verbatim_request=_SCRIPT, **sections)
+        brief = compose_executor_brief(_SCRIPT, verbatim_request=_SCRIPT, **sections)
         tools = frozenset({"create_reminder"})
         turn: list[dict[str, object]] = [{"role": "user", "content": brief}]
         after_one: list[dict[str, object]] = [

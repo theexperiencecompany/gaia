@@ -8,8 +8,8 @@ import type { Components } from "streamdown";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
+import { MarkdownRenderer } from "@/features/chat";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import {
   InstructionsConflictNotice,
   MAX_INSTRUCTIONS_CHARS,

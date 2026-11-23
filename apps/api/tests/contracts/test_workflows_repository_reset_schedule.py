@@ -5,9 +5,7 @@ these are @pytest.mark.regression tests, so pytest.sh regression-proof
 runs them against the PR's base to prove they fail there. That file imports
 TaskRearm, which this PR introduces, so on base it cannot even be
 collected — and a collection error is not proof, it only shows the harness
-broke. Everything imported here resolves on both revisions:
-SystemWorkflowDefinition is defined in db.repositories.workflows on base
-and re-exported from it here, so this path is stable across the move.
+broke. Everything imported here resolves on both revisions.
 """
 
 from __future__ import annotations
@@ -18,8 +16,10 @@ import uuid
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
-from app.db.repositories.workflows import SystemWorkflowDefinition, WorkflowsRepository
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.workflows import WorkflowsRepository
 from app.models.workflow_models import (
+    SystemWorkflowDefinition,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
@@ -32,6 +32,7 @@ RESET_CRON = "0 9 * * *"
 
 def _scheduled_system_workflow() -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         user_id=f"u_{uuid.uuid4().hex[:12]}",
         title="Test Workflow",
         prompt="do the thing",

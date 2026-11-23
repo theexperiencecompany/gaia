@@ -41,7 +41,7 @@ def _support_notification(**overrides: object) -> SupportEmailNotification:
         "attachments": [],
     }
     data.update(overrides)
-    return SupportEmailNotification(**data)
+    return SupportEmailNotification.model_validate(data)
 
 
 @pytest.fixture
@@ -155,6 +155,19 @@ class TestResendProviderSend:
         await provider.send(EmailMessage(sender="s", to=["a@example.com"], subject="t", html="h"))
 
         assert m_send.call_args[0][1] is None
+
+    async def test_records_the_resend_message_id(self, mock_resend):
+        """The wide event carries Resend's id, so a delivery can be traced in Resend."""
+        m_settings, m_send, m_contact = mock_resend
+        m_send.return_value = {"id": "re_msg_123"}
+        provider = ResendEmailProvider()
+
+        async with captured_wide_event() as event:
+            await provider.send(
+                EmailMessage(sender="s", to=["a@example.com"], subject="t", html="h")
+            )
+
+        assert event["resend_message_id"] == "re_msg_123"
 
     async def test_failure_propagates(self, mock_resend):
         m_settings, m_send, m_contact = mock_resend

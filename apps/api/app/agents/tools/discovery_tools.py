@@ -10,17 +10,18 @@ an integration is not one of them -- that goes to the executor, whose
 ``connect_integration`` tool and integration checker are the one card source.
 """
 
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.config.settings import settings
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import build_search_patterns
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import read_agent_configurable
 from app.services.integrations.integration_search import (
     match_my_integrations,
     match_public_integrations,
@@ -55,9 +56,21 @@ class PublicWorkflowMatch(TypedDict):
     slug: str | None
 
 
-def _user_id_from(config: RunnableConfig) -> str | None:
-    configurable = agent_configurable(config)
-    return configurable.get("user_id") if configurable else None
+class IntegrationSearch(TypedDict):
+    """What find_integration hands the model: the matches, or why there are none."""
+
+    query: str
+    integrations: NotRequired[list[IntegrationMatch]]
+    error: NotRequired[str]
+
+
+class PublicWorkflowSearch(TypedDict):
+    """What search_public_workflows hands the model; the explore page is always linked."""
+
+    query: str
+    explore_url: str
+    workflows: NotRequired[list[PublicWorkflowMatch]]
+    error: NotRequired[str]
 
 
 def _one_line(text: str | None) -> str:
@@ -75,11 +88,11 @@ async def find_integration(
         "What the user is looking for: a product name ('notion', 'slack') or a "
         "capability ('email', 'crm', 'project management').",
     ],
-) -> dict[str, Any]:
+) -> IntegrationSearch:
     """Search GAIA's built-in integrations and the public marketplace."""
     try:
         log.set(tool={"name": "find_integration", "action": "search"})
-        user_id = _user_id_from(config)
+        user_id = read_agent_configurable(config).user_id
         if not user_id:
             return {"error": "User ID not found in configuration.", "query": query}
 
@@ -90,7 +103,7 @@ async def find_integration(
                 "id": item.id,
                 "name": item.name,
                 "description": _one_line(item.description),
-                "connected": item.status == "connected",
+                "connected": item.status == IntegrationStatus.CONNECTED,
                 "source": item.source,
             }
             for item in (await match_my_integrations(user_id, query))[:MAX_DISCOVERY_RESULTS]
@@ -129,7 +142,7 @@ async def search_public_workflows(
         "The outcome the user wants a template for, e.g. 'weekly investor "
         "update', 'morning briefing', 'triage my inbox'.",
     ],
-) -> dict[str, Any]:
+) -> PublicWorkflowSearch:
     """Search the featured and community public workflow templates."""
     explore_url = f"{settings.FRONTEND_URL.rstrip('/')}/workflows"
     try:

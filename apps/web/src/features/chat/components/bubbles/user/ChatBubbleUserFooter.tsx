@@ -1,8 +1,8 @@
 import { RedoIcon } from "@icons";
 import { SEND_NOT_DELIVERED } from "@shared/conversation";
+import { formatMessageTime } from "@shared/utils";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
-import { parseDate } from "@/utils/date/dateUtils";
 import ChatBubble_Actions from "../actions/ChatBubble_Actions";
 
 interface ChatBubbleUserFooterProps {
@@ -79,7 +79,7 @@ export function ChatBubbleUserFooter({
           className="flex flex-col text-xs text-zinc-400 select-text"
           suppressHydrationWarning
         >
-          {parseDate(date)}
+          {formatMessageTime(date)}
         </span>
       )}
       {text && (

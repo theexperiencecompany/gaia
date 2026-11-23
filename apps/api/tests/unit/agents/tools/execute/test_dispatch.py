@@ -26,7 +26,7 @@ from app.agents.tools.execute.dispatch import (
 )
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import ConnectMode
+from app.constants.integrations import ConnectMode, IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
@@ -81,7 +81,7 @@ def _gmail_accounts(
     return UserIntegrationDocument(
         user_id=USER_ID,
         integration_id="gmail",
-        status="connected",
+        status=IntegrationStatus.CONNECTED,
         accounts=list(accounts),
         primary_account_id=primary,
     )

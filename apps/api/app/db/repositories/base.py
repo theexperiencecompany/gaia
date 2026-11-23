@@ -19,6 +19,7 @@ from typing import Any, ClassVar, Generic, ParamSpec, TypeVar
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ValidationError
+from pydantic.main import IncEx
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import BulkWriteError, DuplicateKeyError, PyMongoError
 from pymongo.results import UpdateResult
@@ -28,6 +29,38 @@ from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.models.document_models import MongoDocument, UserScopedDocument
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
+
+
+def _defaulted_nones(model: BaseModel) -> dict[str, IncEx | bool]:
+    """Exclude spec for model's None fields whose default is None, at any depth.
+
+    Absent rather than null keeps a sparse index from indexing an unset field; a None
+    a field has no default for stays null, so the document validates back.
+    """
+    spec: dict[str, IncEx | bool] = {}
+    for name, field in type(model).model_fields.items():
+        value = getattr(model, name)
+        if value is None:
+            if field.default is None:
+                spec[name] = True
+        elif nested := _nested_defaulted_nones(value):
+            spec[name] = nested
+    return spec
+
+
+def _nested_defaulted_nones(value: object) -> IncEx | None:
+    if isinstance(value, BaseModel):
+        return _defaulted_nones(value) or None
+    if isinstance(value, list | tuple):
+        items = {i: spec for i, item in enumerate(value) if (spec := _nested_defaulted_nones(item))}
+        return items or None
+    if isinstance(value, dict):
+        entries = {
+            str(k): spec for k, item in value.items() if (spec := _nested_defaulted_nones(item))
+        }
+        return entries or None
+    return None
+
 
 TDoc = TypeVar("TDoc", bound=MongoDocument)
 TUserDoc = TypeVar("TUserDoc", bound=UserScopedDocument)
@@ -194,14 +227,18 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
 
     # ---- write/read cores (public methods below are thin wrappers) ----
 
+    def _storable(self, doc: TDoc) -> dict[str, Any]:
+        """Dump doc for an insert: no placeholder id (mirrors _id), and no None its default restores."""
+        exclude = _defaulted_nones(doc)
+        if self.identity_field != "id":
+            exclude["id"] = True
+        return doc.model_dump(exclude=exclude)
+
     async def create(self, doc: TDoc) -> TDoc:
         return await self._insert(doc)
 
     async def _insert(self, doc: TDoc) -> TDoc:
-        # Drop the placeholder id (mirrors _id) unless id is itself the business identity.
-        # exclude_none so an unset optional field is absent, not stored as null.
-        exclude = set() if self.identity_field == "id" else {"id"}
-        data = doc.model_dump(exclude=exclude, exclude_none=True)
+        data = self._storable(doc)
         now = datetime.now(UTC)
         fields = self.document_model.model_fields
         # Stamp created_at only when the caller didn't provide it (some domains,

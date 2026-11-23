@@ -9,21 +9,22 @@ idempotency marker), and notifies only when facts were actually learned.
 
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.constants.memory import (
-    MEMORY_BACKFILL_ACTIVE_DAYS,
     MEMORY_BACKFILL_ELIGIBLE_BEFORE,
     MEMORY_BACKFILL_MAX_CONVERSATIONS,
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
+from app.constants.notifications import NotificationKind
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage
 from app.models.conversation_models import StoredConversation
+from app.models.notification.details_models import MemoryReadyNotification
 from app.models.notification.notification_models import notification_id
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
@@ -121,7 +122,17 @@ class TestConversationDate:
         )
         assert _conversation_date(conversation) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
 
-    def test_garbage_falls_back_to_now(self):
+    def test_naive_created_at_is_assumed_utc(self):
+        conversation = _conversation(created_at="2026-01-01T10:00:00")
+        assert _conversation_date(conversation) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+
+    def test_unparseable_created_at_falls_back_to_naive_updated_at_as_utc(self):
+        conversation = _conversation(created_at="not-a-date").model_copy(
+            update={"updatedAt": datetime(2026, 2, 3, 4, 5)}
+        )
+        assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
+
+    def test_no_timestamp_falls_back_to_now(self):
         before = datetime.now(UTC)
         result = _conversation_date(_conversation(created_at="not-a-date"))
         after = datetime.now(UTC)
@@ -170,11 +181,12 @@ class TestBackfillActiveUsers:
 
         assert find.call_args.kwargs["limit"] == MEMORY_BACKFILL_MAX_USERS_PER_RUN
 
-    async def test_cutoffs_are_active_window_and_pre_launch(self):
+    async def test_the_launch_cutoff_reaches_the_cohort_query(self):
         pool = _pool()
-        before = datetime.now(UTC)
         with (
-            patch(f"{MODULE}.user_repository.count_backfill_candidates", AsyncMock(return_value=0)),
+            patch(
+                f"{MODULE}.user_repository.count_backfill_candidates", AsyncMock(return_value=0)
+            ) as count,
             patch(
                 f"{MODULE}.user_repository.find_backfill_candidate_ids",
                 AsyncMock(return_value=[]),
@@ -183,12 +195,8 @@ class TestBackfillActiveUsers:
         ):
             await backfill_active_users({})
 
-        after = datetime.now(UTC)
-        expected_lower = before - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
-        expected_upper = after - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
-        active_since = find.call_args.args[0]
-        assert expected_lower <= active_since <= expected_upper
-        assert find.call_args.args[1] == MEMORY_BACKFILL_ELIGIBLE_BEFORE
+        count.assert_awaited_once_with(MEMORY_BACKFILL_ELIGIBLE_BEFORE)
+        assert find.call_args.args == (MEMORY_BACKFILL_ELIGIBLE_BEFORE,)
 
     async def test_a_failed_enqueue_is_not_counted(self):
         pool = _pool()
@@ -344,7 +352,7 @@ class TestNotifyMemoryReady:
         # One id per user: a re-run backfill never tells them twice.
         assert request.id == notification_id(USER_ID, "memory_ready", USER_ID)
         assert request.user_id == USER_ID
-        assert request.metadata == {"source": "memory_backfill"}
+        assert request.details == MemoryReadyNotification(kind=NotificationKind.MEMORY_READY)
         (action,) = request.content.actions
         redirect = action.config.redirect
         assert redirect.url == "/settings/memory"

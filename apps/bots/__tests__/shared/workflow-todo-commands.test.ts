@@ -110,6 +110,7 @@ describe("/workflow", () => {
       title: "Standup",
       prompt: "Summarise what I did yesterday",
       trigger_config: { type: "manual", enabled: true },
+      delivery: "now",
     };
     expect(transport.post).toHaveBeenCalledWith(
       "/api/v1/workflows",

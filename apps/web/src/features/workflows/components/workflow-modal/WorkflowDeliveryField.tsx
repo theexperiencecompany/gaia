@@ -1,0 +1,86 @@
+"use client";
+
+import {
+  NO_DAILY_BRIEF_DELIVERY_REASON,
+  WORKFLOW_DELIVERIES,
+  WORKFLOW_DELIVERY_COPY,
+} from "@gaia/shared";
+import type { WorkflowDelivery } from "@shared/api/generated";
+import { BRIEFINGS_SETTINGS_PATH } from "@shared/constants/routes";
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { type Control, Controller } from "react-hook-form";
+import { briefingScheduleQuery } from "@/features/briefing";
+import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { DeliverySegments } from "../DeliverySegments";
+import WorkflowSection from "./WorkflowSection";
+
+const FIELD_LABEL = "When a run finishes";
+const UNCHOSEN_HINT = "Choose how you hear about each run.";
+
+interface WorkflowDeliveryFieldProps {
+  control: Control<WorkflowFormData>;
+  isDisabled?: boolean;
+}
+
+/**
+ * How each run's result reaches the user. A segmented control with no default:
+ * the choice is the user's to make, so nothing is preselected. Submitting
+ * without one focuses the first segment and names the missing choice. "Add to
+ * my brief" follows the briefing schedule and is unavailable without a daily brief.
+ */
+export default function WorkflowDeliveryField({
+  control,
+  isDisabled = false,
+}: WorkflowDeliveryFieldProps) {
+  const { data: schedule } = useQuery(briefingScheduleQuery());
+  const noDailyBrief = !!schedule && !schedule.has_daily_brief;
+  // Without a daily brief, the reason line below the control speaks for "brief".
+  const helperFor = (value: WorkflowDelivery | null) => {
+    if (!value) return UNCHOSEN_HINT;
+    if (value === "brief")
+      return noDailyBrief ? null : WORKFLOW_DELIVERY_COPY.brief.description;
+    return WORKFLOW_DELIVERY_COPY[value].description;
+  };
+
+  return (
+    <Controller
+      name="delivery"
+      control={control}
+      render={({ field, fieldState }) => {
+        const errorMessage = fieldState.error?.message;
+        const helper = helperFor(field.value);
+        return (
+          <WorkflowSection label={FIELD_LABEL}>
+            <DeliverySegments
+              label={FIELD_LABEL}
+              deliveries={WORKFLOW_DELIVERIES}
+              value={field.value}
+              onChange={field.onChange}
+              isDisabled={(delivery) =>
+                isDisabled || (delivery === "brief" && noDailyBrief)
+              }
+              firstRef={field.ref}
+              isInvalid={!!errorMessage}
+            />
+            {errorMessage ? (
+              <p className="px-1 pt-1 text-sm text-danger">{errorMessage}</p>
+            ) : (
+              helper && (
+                <p className="px-1 pt-1 text-sm text-zinc-400">{helper}</p>
+              )
+            )}
+            {noDailyBrief && (
+              <p className="px-1 text-sm text-zinc-400">
+                {NO_DAILY_BRIEF_DELIVERY_REASON}{" "}
+                <Link href={BRIEFINGS_SETTINGS_PATH} className="text-accent">
+                  Turn on daily briefs
+                </Link>
+              </p>
+            )}
+          </WorkflowSection>
+        );
+      }}
+    />
+  );
+}

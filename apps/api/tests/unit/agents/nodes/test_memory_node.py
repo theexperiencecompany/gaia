@@ -342,7 +342,7 @@ class TestExtractorInput:
     """What the extractor is shown: three roles, and only what is new."""
 
     @staticmethod
-    def _thread() -> list[AIMessage | HumanMessage | ToolMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             AIMessage(
@@ -515,7 +515,7 @@ class TestTheFencedTranscript:
     """The context/delta fence is prose inside a transcript, so a wrong marker row is invisible to any type checker."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),
@@ -579,7 +579,7 @@ class TestTheHighWaterMarkRead:
     """_messages_to_ingest decides what the extraction is billed for; an off-by-one here re-pays or drops disclosures."""
 
     @staticmethod
-    def _thread(count: int) -> list[HumanMessage]:
+    def _thread(count: int) -> list[AnyMessage]:
         return [HumanMessage(content=f"message {i}", id=f"m{i}") for i in range(count)]
 
     async def test_a_threadless_run_ingests_everything_as_new(self) -> None:
@@ -688,7 +688,7 @@ class TestTheIngestionHandoff:
     """What the background task passes to each collaborator: swap an id or prompt and extraction still "succeeds" wrongly."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),

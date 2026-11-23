@@ -76,6 +76,7 @@ from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.todos import TodoWakeKind
+from app.constants.workflows import WorkflowDelivery
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
 from app.db.redis import redis_cache
@@ -465,7 +466,7 @@ async def rig_for(
                 runner=CommsGraphRunner(
                     build_turn or _turn_builder(turns, user_id),
                     cancel_confirm_seconds=_CONFIRM_SECONDS,
-                    history_fold=create_comms_history_fold(model),
+                    history_fold=lambda: create_comms_history_fold(model),
                 ),
                 frames=frames,
                 effects=effects,
@@ -956,10 +957,10 @@ class _Budget:
 
 # Before the reply opens: accept 2, claim 1, unsettled 1, comms 1, pinned 2 (kept through summarization).
 # Redis includes one list-push PUBLISH per sync-clock advance (message, reply, settle), off the writer's path.
-# Measured at the production tick, so no tick-driven hint read is counted; the memory node's side work is not counted.
-PLAIN_TURN = _Budget(mongo=25, mongo_before_text=7, redis=30, redis_before_text=17)
+# At the production tick, no hint read or memory side work; after text, the follow-up read (head, entries).
+PLAIN_TURN = _Budget(mongo=27, mongo_before_text=7, redis=30, redis_before_text=17)
 # The same turn with the attempt also logging the work it hands the executor before any text (its push too).
-WORK_TURN = _Budget(mongo=44, mongo_before_text=15, redis=32, redis_before_text=20)
+WORK_TURN = _Budget(mongo=46, mongo_before_text=15, redis=32, redis_before_text=20)
 
 
 @dataclass(frozen=True)
@@ -2428,6 +2429,7 @@ def _workflow(user_id: str) -> Workflow:
         prompt="Fetch unread mail and summarise it",
         steps=[WorkflowStep(id="s1", title="Fetch mail", description="Read unread mail")],
         trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
+        delivery=WorkflowDelivery.NOW,
     )
 
 

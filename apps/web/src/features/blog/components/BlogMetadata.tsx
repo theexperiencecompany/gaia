@@ -1,5 +1,6 @@
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
+import { parseISO } from "date-fns";
 import type { Author } from "@/types/api/aboutApiTypes";
-import { formatRelativeDate } from "@/utils/date/dateUtils";
 
 import { AuthorTooltip } from "./AuthorTooltip";
 import CopyLinkButton from "./CopyLinkButton";
@@ -53,10 +54,13 @@ export default function BlogMetadata({
       <div>·</div>
       <div>
         <div className="text-zinc-400 flex items-center text-sm">
-          <span className="text-zinc-400">{formatRelativeDate(date)}</span>
+          <span className="text-zinc-400">
+            {formatDate(parseISO(date), "long", { locale: FIXED_LOCALE })}
+          </span>
           {showUpdated && (
             <span className="text-zinc-400">
-              &nbsp;(Updated {formatRelativeDate(updated)})
+              &nbsp;(Updated{" "}
+              {formatDate(parseISO(updated), "long", { locale: FIXED_LOCALE })})
             </span>
           )}
         </div>

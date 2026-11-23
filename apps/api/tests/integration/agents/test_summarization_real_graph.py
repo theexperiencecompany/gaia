@@ -693,7 +693,7 @@ def _history_fold(summarizer: BaseChatModel) -> CommsGraphRunner:
     async def no_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         raise AssertionError("a history fold builds no turn")
 
-    return CommsGraphRunner(no_turn, history_fold=fold)
+    return CommsGraphRunner(no_turn, history_fold=lambda: fold)
 
 
 async def _plan(

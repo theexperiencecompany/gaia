@@ -1,0 +1,55 @@
+"""Held results as candidates: what a workflow or todo run kept for the brief, the inbox desk's findings among them.
+
+A held report is carried by its first line alone: its body never reaches a prompt to be
+claimed from.
+"""
+
+from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefItemSource, BriefOutcome
+from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.db.repositories.todos import todo_repository
+from app.models.brief_candidate_models import BriefCandidate, HeldResult
+from app.models.brief_item_models import ItemState
+from app.models.brief_models import PendingBriefItemDocument
+from app.services.briefing.candidates.app_names import integration_name
+from app.services.briefing.formats import opening_line
+from app.services.briefing.held import held_text
+from app.services.todos.inbox_desk import INBOX_DESK_REF
+
+
+async def held_candidates(
+    user_id: str, held: list[PendingBriefItemDocument]
+) -> list[BriefCandidate]:
+    """Return each held result; the inbox desk's are Gmail findings, the rest GAIA's own work."""
+    if not held:
+        return []
+    desk = await todo_repository.find_latest_by_external_ref(user_id, INBOX_DESK_REF)
+    candidates: list[BriefCandidate] = []
+    for doc in held:
+        from_desk = (
+            desk is not None and doc.source is BriefItemSource.TODO and doc.source_id == desk.id
+        )
+        first = opening_line(doc.text)
+        if from_desk:
+            # The desk writes each finding as one self-contained line.
+            candidates.append(
+                BriefCandidate(
+                    origin=HeldResult(id=doc.id),
+                    source=GMAIL_INTEGRATION_ID,
+                    app=integration_name(GMAIL_INTEGRATION_ID),
+                    state=ItemState.NOTE,
+                    title=first or doc.source_title,
+                )
+            )
+            continue
+        candidates.append(
+            BriefCandidate(
+                origin=HeldResult(id=doc.id),
+                source=GAIA_SOURCE,
+                app=GAIA_APP_NAME,
+                state=ItemState.NOTE,
+                title=held_text(doc),
+                # Only a workflow result is held from a run that succeeded; a todo run's report says itself how it went.
+                outcome=BriefOutcome.FINISHED if doc.source is BriefItemSource.WORKFLOW else None,
+            )
+        )
+    return candidates

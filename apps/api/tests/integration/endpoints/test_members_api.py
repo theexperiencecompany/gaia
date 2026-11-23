@@ -19,6 +19,10 @@ from app.api.v1.endpoints.members import router as members_router
 from app.config.settings import settings
 from app.constants.auth import REGISTRATION_SETTINGS_KEY, InstanceRole
 from app.core.exception_handlers import register_exception_handlers
+from app.db.repositories.instance_settings import instance_settings_repository
+from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.local_invites import local_invites_repository
+from app.db.repositories.users import user_repository
 from app.models.auth_models import (
     ADMIN_CREDENTIAL_SLOT,
     LocalCredentialDocument,
@@ -28,6 +32,7 @@ from app.models.auth_models import (
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services import member_offboarding, members_service
+from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceInviteCreated
@@ -135,10 +140,10 @@ class Instance:
 @pytest.fixture
 def instance(monkeypatch: pytest.MonkeyPatch) -> Instance:
     store = Instance()
-    creds = members_service.local_credentials_repository
-    invites = members_service.local_invites_repository
-    settings_repo = members_service.instance_settings_repository
-    users = members_service.user_repository
+    creds = local_credentials_repository
+    invites = local_invites_repository
+    settings_repo = instance_settings_repository
+    users = user_repository
     monkeypatch.setattr(creds, "list_all", store.list_all)
     monkeypatch.setattr(creds, "get_by_user_id", store.get_by_user_id)
     monkeypatch.setattr(creds, "update", store.update_credential)
@@ -460,10 +465,11 @@ class TestRemoveMember:
                 getattr(member_offboarding, owner), attr, AsyncMock(return_value=found)
             )
         monkeypatch.setattr(
-            member_offboarding.WorkflowService,
+            WorkflowService,
             "deactivate_workflow",
             AsyncMock(side_effect=RuntimeError("composio down")),
         )
+        monkeypatch.setattr(member_offboarding, "revoke_all_links_for_user", AsyncMock())
         offboarding.side_effect = member_offboarding.stop_acting_for_removed_member
 
         resp = await admin_client.delete(f"{API}/{member.id}")

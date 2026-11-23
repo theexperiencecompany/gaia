@@ -1,4 +1,4 @@
-import type { ApprovalRequestData } from "@shared/chat";
+import { type ApprovalRequestData, ArtifactCardDataSchema } from "@shared/chat";
 import dynamic from "next/dynamic";
 import type React from "react";
 import type {
@@ -8,6 +8,7 @@ import type {
   ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
+import { ArtifactCard } from "@/features/chat/components/artifacts/ArtifactCard";
 import ConnectOptions from "@/features/chat/components/bubbles/bot/ConnectOptions";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
 import { DeviceApprovalPrompt } from "@/features/chat/components/bubbles/bot/DeviceApprovalPrompt";
@@ -43,6 +44,7 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import ApprovalRequestGroup from "../ApprovalRequestGroup";
+import { BriefMessageCard } from "../BriefMessageCard";
 import BrowserTaskSection from "../BrowserTaskSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
@@ -206,6 +208,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   google_docs_data: (data) => <GoogleDocsSection google_docs_data={data} />,
   code_data: (data) => <CodeExecutionSection code_data={data} />,
   artifact_data: (data) => <FileArtifactSection artifact_data={data} />,
+  artifact_done: (data) => (
+    <ArtifactCard card={ArtifactCardDataSchema.parse(data)} />
+  ),
 
   todo_data: (data) => (
     <TodoSection
@@ -228,6 +233,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   send_notification_data: (data) => (
     <SendNotificationSection send_notification_data={data} />
   ),
+  briefing_data: (data) => <BriefMessageCard data={data} />,
   connect_options: (data) => <ConnectOptions connect_options={data} />,
   integration_connection_required: (data) => {
     // Data can be a single item or an array (when grouped)

@@ -114,6 +114,8 @@ cmd_up() {
   export ENV=development
   export DEV_AUTH_BYPASS_EMAIL="$DEV_USER"
   export GAIA_SIM_MODE=1
+  # The suites drive the one dev user far faster than a person: past the per-user request ceiling.
+  export DEV_UNLIMITED_RATE_LIMITS=1
   export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
   # JEV (the approval reply classifier, reactions) is asked on the OpenRouter key, at the
   # stub's Decisions route; an unscripted call is refused there like an unpaid account.

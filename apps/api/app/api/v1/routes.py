@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     bot_conversations,
     bot_delivery_failures,
     bot_links,
+    briefings,
     browser,
     browser_live_view,
     calendar,
@@ -29,6 +30,7 @@ from app.api.v1.endpoints import (
     image,
     instructions,
     lab_events,
+    link_content,
     mail,
     mcp,
     mcp_proxy,
@@ -39,6 +41,7 @@ from app.api.v1.endpoints import (
     notification,
     oauth,
     onboarding,
+    openui_artifacts,
     payments,
     platform_auth,
     platform_links,
@@ -50,6 +53,7 @@ from app.api.v1.endpoints import (
     setup_composio,
     setup_composio_toolkits,
     shares,
+    short_links,
     skills,
     support,
     todos,
@@ -110,10 +114,14 @@ router.include_router(blob.router, tags=["Blob"])
 router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
 router.include_router(webhook_composio.router, tags=["Composio Webhook"])
+router.include_router(briefings.router, tags=["Briefings"])
 router.include_router(todos.router, tags=["Todos"])
 router.include_router(workflows.router, tags=["Workflows"])
 router.include_router(triggers.router, tags=["Triggers"])
 router.include_router(reminders.router, tags=["Reminders"])
+router.include_router(short_links.router)
+router.include_router(link_content.router)
+router.include_router(openui_artifacts.router)
 router.include_router(skills.router, tags=["Skills"])
 router.include_router(instructions.router, tags=["Instructions"])
 router.include_router(support.router, tags=["Support"])

@@ -17,6 +17,11 @@ from app.constants.analytics import (
     AT_MOST_ONCE_TASK_NAME,
     POSTHOG_PROVIDER_KEY,
 )
+from app.constants.briefing import (
+    BRIEF_COMPOSITION_LABEL,
+    BRIEF_HEADING_CHECK_LABEL,
+    BRIEF_VOICE_LABEL,
+)
 from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.utils.background_tasks import spawn_background_task
@@ -74,7 +79,7 @@ class AIFeature(StrEnum):
     VISION = "vision", ("image_to_text", "tool_media_vision", "vision_fallback")
     HIL = (
         "hil",
-        ("hil_tool_classification",),
+        ("hil_tool_classification", "hil_tool_read_only_classification"),
     )
     ONBOARDING = (
         "onboarding",
@@ -99,6 +104,10 @@ class AIFeature(StrEnum):
     FOLLOW_UPS = "follow_ups", ("follow_up_actions",)
     RESEARCH = "research", ("research_queries",)
     TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
+    BRIEFING = (
+        "briefing",
+        (BRIEF_COMPOSITION_LABEL, BRIEF_HEADING_CHECK_LABEL, BRIEF_VOICE_LABEL),
+    )
     MODERATION = "moderation", ("profanity",)
     BROWSER = "browser", ("browser_task",)
     TITLE_GENERATION = "title_generation", ("chatbot",)

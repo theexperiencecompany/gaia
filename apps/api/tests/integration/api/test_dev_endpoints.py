@@ -15,14 +15,31 @@ from fastapi.responses import JSONResponse
 import httpx
 import pytest
 
+from app.api.v1.endpoints.dev import run_briefing_now, seed_dev_user_data
 from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.briefing import BriefingKind, BriefingRunOutcome
 from app.constants.payments import DEV_PRO_PRODUCT_ID, DEV_PRO_TERM_DAYS
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.projects import project_repository
 from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionStatus
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
+from app.schemas.dev_schemas import (
+    DeleteDevUserResponse,
+    DevAgentRunResponse,
+    DevBriefingRunResponse,
+    DevDeletedCounts,
+    SeedDevDataRequest,
+    SeedDevDataResponse,
+)
+from app.services import dev_service
+from app.services.briefing.errors import BriefingGenerationError
 from app.services.platform_link_service import PlatformLinkService
+from app.utils.errors import AppError
+from tests.helpers import captured_wide_event
 
 DEV_EMAIL = "dev@gaia.local"
 
@@ -274,6 +291,8 @@ class TestDevRouterMounting:
                 user_id="u1",
                 todos_created=3,
                 conversations_created=2,
+                postmarks_created=12,
+                editions_created=5,
                 platforms_linked=["telegram"],
                 platform_user_ids={"telegram": "dev-telegram-u1"},
                 pro=True,
@@ -288,6 +307,8 @@ class TestDevRouterMounting:
                         "todos": 3,
                         "conversations": 2,
                         "platform_links": ["telegram"],
+                        "postmarks": 12,
+                        "editions": 5,
                         "pro": True,
                     },
                 )
@@ -296,8 +317,54 @@ class TestDevRouterMounting:
         body = response.json()
         assert body["todos_created"] == 3
         assert body["conversations_created"] == 2
+        assert body["postmarks_created"] == 12
+        assert body["editions_created"] == 5
         assert body["pro"] is True
-        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], pro=True)
+        mock_seed.assert_awaited_once_with(
+            SeedDevDataRequest(
+                email=DEV_EMAIL,
+                todos=3,
+                conversations=2,
+                platform_links=["telegram"],
+                postmarks=12,
+                editions=5,
+                pro=True,
+            )
+        )
+
+    async def test_seed_wide_event_records_the_requested_counts(self):
+        seeded = SeedDevDataResponse(
+            email=DEV_EMAIL,
+            user_id="u1",
+            todos_created=3,
+            conversations_created=2,
+            postmarks_created=12,
+            editions_created=0,
+            platforms_linked=[],
+            platform_user_ids={},
+            pro=False,
+        )
+        with patch(
+            "app.api.v1.endpoints.dev.seed_dev_data",
+            new_callable=AsyncMock,
+            return_value=seeded,
+        ):
+            async with captured_wide_event() as event:
+                await seed_dev_user_data(
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=3, conversations=2, postmarks=12, editions=4
+                    )
+                )
+
+        assert event["dev"] == {
+            "operation": "seed",
+            "email": DEV_EMAIL,
+            "todos": 3,
+            "conversations": 2,
+            "postmarks": 12,
+            "editions": 4,
+            "user_id": "u1",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -358,8 +425,8 @@ class TestDevServiceLogic:
         assert created[0].name == "Ada Lovelace"
         assert user.name == "Ada Lovelace"
 
-    async def test_mint_without_a_name_uses_the_signup_path_derivation(self):
-        """An unnamed mint gets the capitalised name real signup derives, not the raw email local part."""
+    async def test_mint_without_a_name_stores_no_name(self):
+        """An unnamed mint stores no name, as real signup does, rather than one guessed from the email."""
         from app.services import dev_service
 
         created: list[UserDocument] = []
@@ -384,8 +451,8 @@ class TestDevServiceLogic:
         ):
             user = await dev_service.mint_dev_user("ada.lovelace@gaia.local")
 
-        assert created[0].name == "Ada Lovelace"
-        assert user.name == "Ada Lovelace"
+        assert created[0].name is None
+        assert user.name is None
 
     async def test_seed_creates_expected_counts(self):
         """Seed calls the real create paths exactly N times each."""
@@ -400,7 +467,7 @@ class TestDevServiceLogic:
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
-            ),
+            ) as mock_get_by_email,
             patch.object(user_repository, "complete_onboarding", mock_complete),
             patch.object(
                 dev_service.TodoService, "create_todo", new_callable=AsyncMock
@@ -410,11 +477,21 @@ class TestDevServiceLogic:
             ) as mock_convo,
             patch.object(PlatformLinkService, "ensure_linkable", new_callable=AsyncMock),
             patch.object(PlatformLinkService, "link_account", new_callable=AsyncMock) as mock_link,
+            patch.object(dev_service, "seed_dev_postmarks", new_callable=AsyncMock) as mock_stamps,
+            patch.object(dev_service, "seed_dev_editions", new_callable=AsyncMock) as mock_editions,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=3, conversations=2, platform_links=["telegram", "slack"]
+                SeedDevDataRequest(
+                    email=DEV_EMAIL,
+                    todos=3,
+                    conversations=2,
+                    platform_links=["telegram", "slack"],
+                    postmarks=4,
+                    editions=3,
+                )
             )
 
+        mock_get_by_email.assert_awaited_once_with(DEV_EMAIL)
         assert mock_todo.await_count == 3
         assert [c.args[0].title for c in mock_todo.await_args_list] == [
             "Sample todo 1",
@@ -428,6 +505,10 @@ class TestDevServiceLogic:
         assert result.conversations_created == 2
         assert result.platforms_linked == ["telegram", "slack"]
         assert result.user_id == str(oid)
+        mock_stamps.assert_awaited_once_with(user, 4)
+        assert result.postmarks_created == 4
+        mock_editions.assert_awaited_once_with(user, 3)
+        assert result.editions_created == 3
 
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)
@@ -471,7 +552,9 @@ class TestDevServiceLogic:
             ) as mock_invalidate,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+                SeedDevDataRequest(
+                    email=DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+                )
             )
 
         assert result.pro is True
@@ -531,7 +614,9 @@ class TestDevServiceLogic:
             patch.object(PlatformLinkService, "unlink_account", side_effect=unlink_account),
         ):
             return await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+                SeedDevDataRequest(
+                    email=DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+                )
             )
 
     async def test_seed_links_the_seeded_identity_the_harness_injects_as(self):
@@ -593,7 +678,9 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=["myspace"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=1, conversations=0, platform_links=["myspace"]
+                    )
                 )
 
         assert exc.value.status_code == 400
@@ -629,7 +716,9 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                    )
                 )
 
         assert exc.value.status_code == 409
@@ -667,7 +756,12 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram", "slack"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL,
+                        todos=0,
+                        conversations=0,
+                        platform_links=["telegram", "slack"],
+                    )
                 )
 
         assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
@@ -682,11 +776,43 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=[]
+                    SeedDevDataRequest(email=DEV_EMAIL, todos=1, conversations=0, platform_links=[])
                 )
 
         assert exc.value.status_code == 404
         assert DEV_USER_MISSING_HINT in exc.value.fix
+
+    async def test_deleting_a_dev_user_removes_its_brief_state_and_reports_the_counts(self):
+        user_id = str(ObjectId())
+        user = UserDocument.model_validate({"id": user_id, "email": DEV_EMAIL})
+        with (
+            patch.object(
+                user_repository, "get_by_email", new_callable=AsyncMock, return_value=user
+            ),
+            patch.object(todo_repository, "list_for_user", new_callable=AsyncMock, return_value=[]),
+            patch.object(
+                todo_repository, "delete_all_for_user", new_callable=AsyncMock, return_value=3
+            ),
+            patch.object(
+                conversation_repository,
+                "delete_all_for_user",
+                new_callable=AsyncMock,
+                return_value=["c1", "c2"],
+            ),
+            patch.object(
+                project_repository, "delete_all_for_user", new_callable=AsyncMock, return_value=1
+            ),
+            patch.object(briefing_state_repository, "delete", new_callable=AsyncMock) as state,
+            patch.object(user_repository, "delete", new_callable=AsyncMock, return_value=True),
+        ):
+            result = await dev_service.delete_dev_user(DEV_EMAIL)
+
+        state.assert_awaited_once_with(user_id)
+        assert result == DeleteDevUserResponse(
+            email=DEV_EMAIL,
+            user_id=user_id,
+            deleted=DevDeletedCounts(todos=3, conversations=2, projects=1, user=1),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -829,3 +955,105 @@ class TestDevAttachments:
                 )
 
         assert response.status_code == 415, response.text
+
+
+class TestDevBriefingRun:
+    async def test_runs_the_kinds_pipeline_for_the_users_id(self):
+        run_brief = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        user = SimpleNamespace(id="u-brief")
+        with (
+            patch("app.api.v1.endpoints.dev.run_brief", run_brief),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ) as get_by_email,
+        ):
+            async with captured_wide_event() as event:
+                response = await run_briefing_now(BriefingKind.DAILY, DEV_EMAIL)
+
+        get_by_email.assert_awaited_once_with(DEV_EMAIL)
+        run_brief.assert_awaited_once_with("u-brief", BriefingKind.DAILY)
+        assert response == DevBriefingRunResponse(
+            user_id="u-brief", kind="daily", outcome=BriefingRunOutcome.SENT
+        )
+        assert event["dev"] == {
+            "operation": "run_briefing",
+            "kind": "daily",
+            "email": DEV_EMAIL,
+            "user_id": "u-brief",
+            "outcome": "sent",
+        }
+
+    async def test_an_unknown_kind_is_refused_by_the_route_itself(self, monkeypatch):
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        client = await _client(_build_app())
+        async with client:
+            response = await client.post(f"/api/v1/dev/briefing/monthly/{DEV_EMAIL}")
+
+        assert response.status_code == 422
+
+    async def test_an_unknown_email_is_a_404_naming_how_to_mint_it(self):
+        run_daily = AsyncMock()
+        with (
+            patch("app.api.v1.endpoints.dev.run_brief", run_daily),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            pytest.raises(AppError) as caught,
+        ):
+            await run_briefing_now(BriefingKind.DAILY, "ghost@gaia.local")
+
+        assert (caught.value.status_code, caught.value.code) == (404, "dev_user_not_found")
+        assert (caught.value.message, caught.value.fix) == (
+            "No GAIA user exists for 'ghost@gaia.local'",
+            "Mint it via POST /api/v1/dev/users",
+        )
+        run_daily.assert_not_awaited()
+
+    async def test_a_failed_generation_is_an_envelope_naming_the_reason(self, monkeypatch):
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        reason = "The brief's headline and lede contradict its items: x"
+        run_daily = AsyncMock(side_effect=BriefingGenerationError(reason))
+        with (
+            patch("app.api.v1.endpoints.dev.run_brief", run_daily),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(id="u-brief"),
+            ),
+        ):
+            client = await _client(_build_app())
+            async with client:
+                response = await client.post(f"/api/v1/dev/briefing/daily/{DEV_EMAIL}")
+
+        body = response.json()
+        assert response.status_code == 502
+        assert {k: body[k] for k in ("message", "why", "fix", "code")} == {
+            "message": "The daily briefing could not be generated",
+            "why": reason,
+            "fix": "Read the reason and rerun; a recurring one is a prompt or voice-check bug",
+            "code": "briefing_generation_failed",
+        }
+
+    async def test_a_failed_generation_carries_the_user_id_and_cause_for_the_wide_event(self):
+        failure = BriefingGenerationError("the lede contradicts the items")
+        with (
+            patch("app.api.v1.endpoints.dev.run_brief", AsyncMock(side_effect=failure)),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(id="u-brief"),
+            ),
+            pytest.raises(AppError) as caught,
+        ):
+            await run_briefing_now(BriefingKind.WEEKLY, DEV_EMAIL)
+
+        assert caught.value.meta == {"user_id": "u-brief"}
+        assert caught.value.__cause__ is failure

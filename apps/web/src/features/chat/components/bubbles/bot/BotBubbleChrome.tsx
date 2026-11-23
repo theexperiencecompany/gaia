@@ -4,10 +4,10 @@
  * ChatBubbleBot so the bubble itself stays readable.
  */
 
+import { formatMessageTime } from "@shared/utils";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import type { RefObject } from "react";
-
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
 import {
@@ -15,7 +15,6 @@ import {
   MESSAGE_BREAK_EASE_OUT_QUART,
 } from "@/features/chat/utils/messageBreakUtils";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import { parseDate } from "@/utils/date/dateUtils";
 
 import FollowUpActions from "./FollowUpActions";
 
@@ -98,7 +97,7 @@ export function BotBubbleFooter({
             className="flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400/40 select-text"
             suppressHydrationWarning
           >
-            {parseDate(date)}
+            {formatMessageTime(date)}
           </span>
         )}
 
