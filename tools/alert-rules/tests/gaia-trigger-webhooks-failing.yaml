@@ -1,0 +1,35 @@
+# gaia-trigger-webhooks-failing: fires when half of the trigger events fail; quiet when a tenth of the trigger events fail.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-trigger-webhooks-failing fires when half of the trigger events fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_trigger_webhook_total{job="gaia-api",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_trigger_webhook_total{job="gaia-api",outcome="ok"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-trigger-webhooks-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                Events from connected apps arrived and the workflows and tracked todos that react to them did not start, so a user's 'when I get an email from X' automation silently did nothing. The API logs 'Webhook background processing failed' or 'timed out' with the event type. Check Mongo and Redis health, then the last deploy.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-trigger-webhooks-failing
+
+  - name: gaia-trigger-webhooks-failing stays quiet when a tenth of the trigger events fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_trigger_webhook_total{job="gaia-api",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_trigger_webhook_total{job="gaia-api",outcome="ok"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-trigger-webhooks-failing
+        exp_alerts: []

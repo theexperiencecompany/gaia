@@ -1,0 +1,49 @@
+# gaia-api-dependencies-not-ready: fires when the blackbox_ready probe of http://gaia-backend:80/health/ready fails for 3 minutes.
+# Another job's failing probe must not fire it. The no-series path is Grafana-only
+# (noDataState: Alerting) and is not modelled by promtool.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-api-dependencies-not-ready fires when the probe fails
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_ready",instance="http://gaia-backend:80/health/ready"}'
+        values: '1x5 0x25'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-dependencies-not-ready
+        exp_alerts:
+          - exp_labels:
+              severity: 'critical'
+              service: 'api'
+              incident: 'availability'
+              job: 'blackbox_ready'
+              instance: 'http://gaia-backend:80/health/ready'
+            exp_annotations:
+              summary: 'The API readiness check has been failing for 3 minutes'
+              description: >-
+                The API is up but one of MongoDB, Postgres, Redis, RabbitMQ or ChromaDB did not answer it. MongoDB down means no sign-in, no conversations and no settings for anyone; the others have their own alerts, which will be in this thread if they are the cause. Read /health/ready from inside the stack: its body names the service that failed and the error.
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-api-dependencies-not-ready'
+
+  - name: gaia-api-dependencies-not-ready stays quiet inside the 3m dwell
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_ready",instance="http://gaia-backend:80/health/ready"}'
+        values: '1x5 0x25'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: gaia-api-dependencies-not-ready
+        exp_alerts: []
+
+  - name: gaia-api-dependencies-not-ready stays quiet when only another probe fails
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_ready",instance="http://gaia-backend:80/health/ready"}'
+        values: '1x30'
+      - series: 'probe_success{job="blackbox_api",instance="http://gaia-backend:80/health"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-dependencies-not-ready
+        exp_alerts: []

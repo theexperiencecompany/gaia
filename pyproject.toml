@@ -888,6 +888,8 @@ harness = [
   "pytest-xdist>=3.8.0",
   "defusedxml>=0.7.1",
   "pyyaml>=6.0.3",
+  # Parses the alert rules' PromQL for tools/lints/check_alert_metric_contract.py.
+  "promql-parser>=0.12.0",
   # Pinned in apps/api's dev group; the one workspace lock gives both the same.
   "pytest-rerunfailures",
 ]

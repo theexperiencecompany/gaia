@@ -1,0 +1,38 @@
+# gaia-scheduled-tasks-failing: fires when half of the workflow fires fail; quiet when two fires fail, under the three-failure floor.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-scheduled-tasks-failing fires when half of the workflow fires fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_scheduled_task_total{job="arq_worker",kind="workflow",outcome="failed"}'
+        values: '0+1x90'
+      - series: 'gaia_scheduled_task_total{job="arq_worker",kind="workflow",outcome="reaped"}'
+        values: '0x90'
+      - series: 'gaia_scheduled_task_total{job="arq_worker",kind="workflow",outcome="ok"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: gaia-scheduled-tasks-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: arq_worker
+              kind: workflow
+            exp_annotations:
+              description: >-
+                Reminders did not fire or scheduled workflows did not run, and the user is told nothing. Split the outcome label: failed is the task raising, so read the worker's 'Failed to execute task' errors for what they share; reaped is a task that was still EXECUTING after the stale threshold, which means the worker died or hung mid-task.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-scheduled-tasks-failing
+
+  - name: gaia-scheduled-tasks-failing stays quiet when two fires fail, under the three-failure floor
+    interval: 1m
+    input_series:
+      - series: 'gaia_scheduled_task_total{job="arq_worker",kind="workflow",outcome="failed"}'
+        values: '0x30 2x60'
+      - series: 'gaia_scheduled_task_total{job="arq_worker",kind="workflow",outcome="ok"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: gaia-scheduled-tasks-failing
+        exp_alerts: []

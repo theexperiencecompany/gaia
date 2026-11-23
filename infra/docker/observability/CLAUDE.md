@@ -38,6 +38,13 @@ local Prometheus (or read the exporter's docs for the exact version), then prove
 the rule's selector matches mechanically with pint's `promql/series` check
 before you open the PR — see "Linting rules with pint" below.
 
+For a metric GAIA's own code emits (the API, the worker, the voice agent, the
+bots), CI holds this for you: the `alert-rules` check fails when a rule queries
+a metric that is not registered and recorded by production code
+(`tools/lints/README.md` → alert-metric-contract). An exporter's metric has no
+such proof, so its exact name goes in that check's `EXPORTER_METRIC_ALLOWLIST`,
+a ratchet that grows only with the founder's approval.
+
 Watch for two specific traps that have already bitten us here:
 
 - **`up{job="postgres"}` and `up{job="redis"}` scrape the exporter sidecars, not
@@ -147,7 +154,7 @@ series, honouring the real `for` duration. The extractor's `--test-dir` check
 rejects any rule without one, so a rule "that provisions cleanly and never
 fires" can no longer ship. Run the whole verification pipeline — extract +
 coverage check, pint offline, `promtool check rules`, `promtool test rules` —
-in one command, and it is the same pipeline CI runs:
+and the metric contract — in one command, and it is the same pipeline CI runs:
 
 ```bash
 tools/alert-rules/verify.sh
@@ -196,11 +203,12 @@ translation is thrown away after each run. The extractor aborts on any rule it
 cannot translate rather than skipping it, because a rule that silently drops out
 of linting is the failure mode all of this exists to prevent.
 
-The `alert-rules` CI lane (and `tools/alert-rules/verify.sh`) runs four stages:
+The `alert-rules` CI lane (and `tools/alert-rules/verify.sh`) runs five stages:
 extraction with a `--test-dir` coverage check, `pint --offline`, `promtool
-check rules`, and `promtool test rules` against the per-rule fixtures in
-`tools/alert-rules/tests/`. The last one is what proves a rule can actually
-fire; the fixtures are required for every rule.
+check rules`, `promtool test rules` against the per-rule fixtures in
+`tools/alert-rules/tests/`, and the metric contract. The fixtures prove a rule
+can fire and are required for every rule; the contract proves the metric it
+watches is one our code still records.
 
 ```bash
 uv run tools/alert-rules/extract_promql.py -o /tmp/gaia-rules.yaml

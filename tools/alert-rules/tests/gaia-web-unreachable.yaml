@@ -1,0 +1,49 @@
+# gaia-web-unreachable: fires when the blackbox_web probe of https://heygaia.io/ fails for 3 minutes.
+# Another job's failing probe must not fire it. The no-series path is Grafana-only
+# (noDataState: Alerting) and is not modelled by promtool.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-web-unreachable fires when the probe fails
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_web",instance="https://heygaia.io/"}'
+        values: '1x5 0x25'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-web-unreachable
+        exp_alerts:
+          - exp_labels:
+              severity: 'critical'
+              service: 'web'
+              incident: 'availability'
+              job: 'blackbox_web'
+              instance: 'https://heygaia.io/'
+            exp_annotations:
+              summary: 'https://heygaia.io/ has not returned 200 for 3 minutes'
+              description: >-
+                Nobody can open the web app or the marketing site, and new users cannot sign up. The site is a Cloudflare Worker, so the API, the bots and the desktop app can be healthy while this fires. Check the last deploy-web run and the Worker in the Cloudflare dashboard, then Cloudflare's status page.
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-web-unreachable'
+
+  - name: gaia-web-unreachable stays quiet inside the 3m dwell
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_web",instance="https://heygaia.io/"}'
+        values: '1x5 0x25'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: gaia-web-unreachable
+        exp_alerts: []
+
+  - name: gaia-web-unreachable stays quiet when only another probe fails
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_web",instance="https://heygaia.io/"}'
+        values: '1x30'
+      - series: 'probe_success{job="blackbox_api",instance="https://api.heygaia.io/health"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-web-unreachable
+        exp_alerts: []

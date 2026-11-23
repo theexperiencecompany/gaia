@@ -1,0 +1,40 @@
+# gaia-bot-outbound-failing: fires when half of one platform's deliveries fail, for that platform only; quiet when a tenth of a platform's deliveries fail.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-bot-outbound-failing fires when half of one platform's deliveries fail, for that platform only
+    interval: 1m
+    input_series:
+      - series: 'gaia_bot_outbound_total{job="bots",instance="telegram-bot:3202",platform="telegram",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_bot_outbound_total{job="bots",instance="telegram-bot:3202",platform="telegram",outcome="ok"}'
+        values: '0+1x60'
+      - series: 'gaia_bot_outbound_total{job="bots",instance="slack-bot:3201",platform="slack",outcome="ok"}'
+        values: '0+9x60'
+      - series: 'gaia_bot_outbound_total{job="bots",instance="slack-bot:3201",platform="slack",outcome="failed"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-bot-outbound-failing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: bots
+              platform: telegram
+            exp_annotations:
+              description: >-
+                GAIA wrote replies, briefs or notifications for users on this platform and the bot could not send them. The messages are in that platform's dead-letter queue and can be replayed. The bot logs each one as a delivery failure with its reason: a revoked bot token, the platform's API down or rate limiting, or a message the platform rejects.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-bot-outbound-failing
+
+  - name: gaia-bot-outbound-failing stays quiet when a tenth of a platform's deliveries fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_bot_outbound_total{job="bots",instance="telegram-bot:3202",platform="telegram",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_bot_outbound_total{job="bots",instance="telegram-bot:3202",platform="telegram",outcome="ok"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-bot-outbound-failing
+        exp_alerts: []
