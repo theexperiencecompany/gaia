@@ -161,6 +161,10 @@ export class DiscordAdapter extends BaseBotAdapter {
     this.client.on(Events.ShardResume, () =>
       this.recordGatewayConnection(true),
     );
+    // ShardDisconnect fires only once a shard gives up, so a shard stuck retrying is caught here.
+    this.client.on(Events.ShardReconnecting, () =>
+      this.recordGatewayConnection(false),
+    );
     this.client.on(Events.ShardDisconnect, () =>
       this.recordGatewayConnection(false),
     );

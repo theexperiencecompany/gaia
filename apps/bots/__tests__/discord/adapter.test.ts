@@ -77,6 +77,7 @@ vi.mock("discord.js", () => {
       Error: "error",
       ShardResume: "shardResume",
       ShardDisconnect: "shardDisconnect",
+      ShardReconnecting: "shardReconnecting",
     },
     GatewayIntentBits: {
       Guilds: 1,
@@ -260,7 +261,11 @@ vi.mock("@gaia/shared/bots", async () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import type { OutboundFile, ReactionOutcome } from "@gaia/shared/bots";
+import {
+  type OutboundFile,
+  type ReactionOutcome,
+  setPlatformConnected,
+} from "@gaia/shared/bots";
 import { DiscordAdapter } from "../../discord/src/adapter";
 import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 import {
@@ -1929,5 +1934,35 @@ describe("DiscordAdapter - arrival order", () => {
     expect(
       postAndFollowSpy.mock.calls.map(([request]) => request.message),
     ).toEqual(["one", "two"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// gateway connection — a bot stuck reconnecting hears nothing, so it is not connected
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - gateway connection gauge", () => {
+  it.each([
+    ["ready", true],
+    ["shardResume", true],
+    ["shardReconnecting", false],
+    ["shardDisconnect", false],
+  ])("%s sets connected to %s", async (event, connected) => {
+    const adapter = new DiscordAdapter();
+    const client = { on: vi.fn(), once: vi.fn() };
+    (adapter as unknown as { client: typeof client }).client = client;
+    await (
+      adapter as unknown as { registerEvents: () => Promise<void> }
+    ).registerEvents();
+    const listener = client.on.mock.calls.find(
+      ([name]) => name === event,
+    )?.[1] as (() => void) | undefined;
+    expect(listener).toBeDefined();
+    vi.mocked(setPlatformConnected).mockClear();
+
+    listener?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(setPlatformConnected).toHaveBeenCalledWith("discord", connected);
   });
 });
