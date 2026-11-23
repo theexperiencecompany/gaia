@@ -37,6 +37,8 @@ TESTS_DIR = Path("apps/api/tests")
 # The repo has one base branch (CLAUDE.md); local runs diff against it so a
 # local mutation run scopes exactly like the PR lane does.
 LOCAL_BASE_BRANCH = "master"
+# The --scope answer for an excluded module; mutation.py reads it as "do not mutate".
+EXCLUDED_SCOPE = "excluded"
 # The nodes mutmut 3.7 rewrites, counted inside function bodies (it mutates
 # nothing else). On PR #1799's 132 graded modules the count's rank correlation
 # with the real mutant count was 0.92, at 1.04 real mutants per counted node.
@@ -484,6 +486,9 @@ def scope(module_rel: str) -> int:
     to prevent.
     """
     path = f"apps/api/{module_rel}"
+    if skips_excluded(module_rel):
+        print(EXCLUDED_SCOPE)
+        return 0
     merge_base = _merge_base()
     if not merge_base:
         print(

@@ -59,7 +59,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import chdir, contextmanager, suppress
+from contextlib import contextmanager, suppress
 import dataclasses
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -81,12 +81,14 @@ from types import FrameType
 from typing import IO
 from urllib.parse import urlparse
 
-from lib import mutation_matrix as matrix, mutation_report as report, runner_host
+from lib import mutation_report as report, runner_host
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 API_ROOT = REPO_ROOT / "apps" / "api"
 LIB = SCRIPT_DIR / "lib"
+# What lib/mutation_matrix.py --scope prints for a module exclusion() leaves out.
+EXCLUDED_SCOPE = "excluded"
 
 # Shards that run at once: the workflow's max-parallel and runner.py's
 # MUTATION_WAVE. More shards than that queue behind it.
@@ -324,6 +326,10 @@ class Outcome:
 
 class UsageError(Exception):
     """A `module` invocation that cannot run; exits 2."""
+
+
+class ExcludedModule(Exception):
+    """A `module` invocation on a module the lane leaves out; exits 0 without mutating."""
 
 
 def _compact(value: object) -> str:
@@ -1029,6 +1035,8 @@ class ModuleRequest:
                 # The detector has already said why on stderr.
                 raise SystemExit(1)
             ranges = scope.stdout.strip()
+            if ranges == EXCLUDED_SCOPE:
+                raise ExcludedModule(module)
         if ranges in ("", "[]"):
             raise UsageError(
                 f"mutation: empty line scope for {module} — refusing to run.\n"
@@ -1609,15 +1617,13 @@ def _terminate(signum: int, _frame: FrameType | None) -> None:
 
 def cmd_module(args: list[str]) -> int:
     record_dir = os.environ.get("MUTATION_VERDICT_DIR")
-    module = args[0].removeprefix("apps/api/") if args else ""
-    # exclusion() reads the module through a repo-relative path.
-    with chdir(REPO_ROOT):
-        if module.startswith("app/") and matrix.skips_excluded(module):
-            return 0
     try:
         request = ModuleRequest.from_args(args)
+    except ExcludedModule:
+        return 0
     except UsageError as exc:
         _say(str(exc))
+        module = args[0].removeprefix("apps/api/") if args else ""
         if record_dir and module.startswith("app/"):
             unrunnable = ModuleRequest(module=module, testfiles=(), ranges="")
             _record(unrunnable, Outcome(Status.ERROR, str(exc).splitlines()[0]), Path(record_dir))

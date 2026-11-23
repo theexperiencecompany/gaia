@@ -9,9 +9,7 @@ trees so the logic is proven without running mutmut.
 import io
 import json
 from pathlib import Path
-import signal
 import subprocess
-import sys
 
 import mutation
 import pytest
@@ -778,18 +776,19 @@ def test_an_excluded_module_is_skipped_before_the_test_file_requirement(
 
 
 def test_a_single_module_run_skips_a_module_the_lane_excludes(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
 ) -> None:
     def must_not_mutate(*_: object) -> None:
         raise AssertionError("mutmut started on a module the lane excludes")
 
     monkeypatch.setattr(mutation, "mutate", must_not_mutate)
-    monkeypatch.setattr(mutation, "venv_python", lambda: Path(sys.executable))
-    monkeypatch.setattr(signal, "signal", lambda *_: None)
-    monkeypatch.setenv("MUTMUT_MAX_CHILDREN", "1")
     monkeypatch.delenv("MUTATION_VERDICT_DIR", raising=False)
 
-    exit_code = mutation.cmd_module(["app/constants/waits.py", "tests/unit/constants/test_hil.py"])
+    exit_code = mutation.cmd_module(["app/constants/waits.py"])
 
     assert exit_code == 0
-    assert "app/constants/waits.py is outside the lane's scope" in capsys.readouterr().err
+    assert "app/constants/waits.py is outside the lane's scope" in capfd.readouterr().err
+
+
+def test_the_scope_answer_for_an_excluded_module_is_the_one_mutation_py_reads() -> None:
+    assert mm.EXCLUDED_SCOPE == mutation.EXCLUDED_SCOPE
