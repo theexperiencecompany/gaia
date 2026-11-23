@@ -78,6 +78,7 @@ vi.mock("discord.js", () => {
       ShardResume: "shardResume",
       ShardDisconnect: "shardDisconnect",
       ShardReconnecting: "shardReconnecting",
+      ShardReady: "shardReady",
     },
     GatewayIntentBits: {
       Guilds: 1,
@@ -1945,6 +1946,7 @@ describe("DiscordAdapter - gateway connection gauge", () => {
   it.each([
     ["ready", true],
     ["shardResume", true],
+    ["shardReady", true],
     ["shardReconnecting", false],
     ["shardDisconnect", false],
   ])("%s sets connected to %s", async (event, connected) => {

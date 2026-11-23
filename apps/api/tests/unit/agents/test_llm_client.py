@@ -2897,6 +2897,20 @@ class TestTheInvokeTimeoutIsEnforced:
         runnable.ainvoke = AsyncMock(side_effect=_never_answers)
         return runnable
 
+    async def test_a_provider_that_stops_answering_counts_as_a_failed_call(self) -> None:
+        labels = {"provider": "gemini", "outcome": "failed"}
+        before = REGISTRY.get_sample_value("gaia_llm_call_total", labels) or 0.0
+
+        with pytest.raises(TimeoutError):
+            await ainvoke_llm(
+                self._hanging_primary(),
+                [HumanMessage(content="hi")],
+                config=cast(RunnableConfig, {"configurable": {"provider": "gemini"}}),
+                options=LLMInvokeOptions(timeout=0.05, meter_auxiliary=False),
+            )
+
+        assert REGISTRY.get_sample_value("gaia_llm_call_total", labels) == before + 1
+
     async def test_a_provider_that_stops_answering_hits_the_ceiling(self) -> None:
         with pytest.raises(TimeoutError):
             await ainvoke_llm(

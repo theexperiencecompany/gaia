@@ -1,13 +1,12 @@
-"""deploy.sh verify-alert-rules: Grafana serves exactly the rules the repo declares.
+"""deploy.sh verify-alert-rules: the running Grafana image carries exactly the rules the repo declares.
 
 ``docker`` is a fake on PATH: ``ps`` names a grafana container and ``exec``
-prints the provisioning API's JSON from a file. The comparison is real.
+prints the rules file that container was built with. The comparison is real.
 Regression for the image that shipped 25 stale rules while the repo declared 37.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -18,21 +17,24 @@ DOCKER_STUB = """\
 #!/usr/bin/env bash
 case "$*" in
   *" ps -q "*) echo cid1 ;;
-  *" exec cid1 "*) cat "$STATE/served.json" ;;
+  *" exec cid1 "*) cat "$STATE/shipped.yaml" ;;
   *) echo "unexpected docker call: $*" >&2; exit 1 ;;
 esac
 """
+
+
+def _rules_file(uids: list[str]) -> str:
+    return "apiVersion: 1\ngroups:\n  - name: g\n    rules:\n" + "".join(
+        f"      - uid: {uid}\n        datasourceUid: prometheus\n" for uid in uids
+    )
 
 
 def _verify(
     tmp_path: Path, declared: list[str], served: list[str]
 ) -> subprocess.CompletedProcess[str]:
     rules = tmp_path / "alert-rules.yaml"
-    rules.write_text(
-        "apiVersion: 1\ngroups:\n  - name: g\n    rules:\n"
-        + "".join(f"      - uid: {uid}\n" for uid in declared)
-    )
-    (tmp_path / "served.json").write_text(json.dumps([{"uid": uid} for uid in served]))
+    rules.write_text(_rules_file(declared))
+    (tmp_path / "shipped.yaml").write_text(_rules_file(served))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     docker = bin_dir / "docker"

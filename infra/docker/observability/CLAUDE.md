@@ -12,7 +12,10 @@ gaia-infra), not bind-mounted — so any change ships only via a rebuild of
 `ghcr.io/theexperiencecompany/gaia-grafana`. The `docker-grafana` job in
 `build.yml` copies `alert-rules.yaml` from this repo into the gaia-infra build
 context before building, and `deploy.sh verify-alert-rules` fails the deploy
-when the uids Grafana serves differ from the file's.
+when the rules file in the running Grafana task carries different uids than this
+one. File provisioning never deletes a rule whose entry left the file: to remove
+a rule, delete its entry and add its uid under a top-level `deleteRules:` (`- orgId: 1`,
+`uid: <uid>`) for one release.
 
 ## Layout
 

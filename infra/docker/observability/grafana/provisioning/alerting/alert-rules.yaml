@@ -2557,7 +2557,7 @@ groups:
             model:
               refId: A
               expr: |
-                sum(increase(gaia_payment_webhook_total{job="gaia-api", outcome=~"abandoned|failed|error"}[1h]))
+                sum(increase(gaia_payment_webhook_total{job="gaia-api", outcome=~"abandoned|error"}[1h]))
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -2582,11 +2582,10 @@ groups:
             Prometheus is down or unreachable.{{ end }}
           description: >-
             Someone paid, cancelled or changed plan and GAIA did not record it:
-            at worst a paying user is still on the free plan. failed deliveries
-            are retried by Dodo and may land on their own; abandoned ones never
-            will and need the subscription fixed by hand. The API logs 'Webhook
-            abandoned' and 'Webhook not acknowledged' with the event type and
-            failure_reason.
+            at worst a paying user is still on the free plan. Dodo will not
+            retry these, so the subscription needs fixing by hand. A delivery
+            that failed but can still be retried is not counted here. The API
+            logs 'Webhook abandoned' with the event type and failure_reason.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-payment-webhook-failing
         labels:
           severity: critical

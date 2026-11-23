@@ -37,9 +37,9 @@
 #   verify-commit               Fail unless prod's /health (and each bot's,
 #                               when bots were deployed) serves the commit
 #                               baked into the deployed image. Writes commit=.
-#   verify-alert-rules          Fail unless the rule uids Grafana serves equal
-#                               the uids in the repo's alert-rules.yaml (read
-#                               from inside the running grafana container).
+#   verify-alert-rules          Fail unless the rules file in the running
+#                               grafana task carries exactly the uids in the
+#                               repo's alert-rules.yaml.
 #   changelog                   Commit subjects PREVIOUS..COMMIT (changes=).
 #   unwedge                     Force-cancel master runs parked on a deployment
 #                               gate nobody can release (no reviewers, no wait
@@ -78,8 +78,7 @@
 #           BOTS_IMAGE_TAG, VERIFY_TIMEOUT_SECS, VERIFY_CONSECUTIVE,
 #           VERIFY_POLL_SECS. Needs a GHCR login.
 #   verify-alert-rules  ALERT_RULES_FILE, GRAFANA_VERIFY_TIMEOUT_SECS,
-#           GRAFANA_VERIFY_POLL_SECS. Needs the `prod` docker context; reads the
-#           admin password from the grafana service's own Docker secret.
+#           GRAFANA_VERIFY_POLL_SECS. Needs the `prod` docker context.
 #   changelog  COMMIT, GITHUB_REPOSITORY, GITHUB_OUTPUT; PREVIOUS. Needs GH_TOKEN.
 #   unwedge GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_OUTPUT (required);
 #           STUCK_LIMIT_SECS. Needs actions:write. Writes reaped=<run ids>.
@@ -800,7 +799,7 @@ cmd_verify_commit() {
   echo "commit=$apps_sha" >> "$GITHUB_OUTPUT"
 }
 
-# alert_rule_uid_diff <expected uids> <served uids> — newline lists in, one
+# alert_rule_uid_diff <expected uids> <shipped uids> — newline lists in, one
 # `missing <uid>` / `extra <uid>` line per difference out; empty when equal.
 alert_rule_uid_diff() {
   comm -23 <(sort -u <<< "$1") <(sort -u <<< "$2") | sed 's/^/missing /'
@@ -808,37 +807,40 @@ alert_rule_uid_diff() {
 }
 
 _GRAFANA_SERVICE="gaia-prod_grafana"
-_GRAFANA_ADMIN_SECRET="/run/secrets/gaia_grafana_admin_password"
+_GRAFANA_RULES_FILE="/etc/grafana/provisioning/alerting/alert-rules.yaml"
 
-# served_alert_rule_uids — the uids Grafana's provisioning API lists, fetched
-# from inside the grafana container with the admin secret it already mounts.
-served_alert_rule_uids() {
+# alert_rule_uids — the rule uids in the rules file on stdin. Every rule opens its
+# list item with its uid; yq is not on every runner that runs this.
+alert_rule_uids() {
+  sed -nE 's/^[[:space:]]*-[[:space:]]+uid:[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*$/\1/p'
+}
+
+# shipped_alert_rule_uids — the uids in the rules file the running grafana task was
+# built with. Read off the image, so no Grafana login is involved.
+shipped_alert_rule_uids() {
   local cid
   cid=$(docker --context prod ps -q --filter "label=com.docker.swarm.service.name=$_GRAFANA_SERVICE")
   # none is a task not up yet, two is Swarm mid-roll: neither is the release to judge
   [[ "$(grep -c . <<< "$cid")" == 1 ]] || return 1
-  docker --context prod exec "$cid" sh -c \
-    'wget -qO- --header "Authorization: Basic $(printf "admin:%s" "$(cat '"$_GRAFANA_ADMIN_SECRET"')" | base64 | tr -d "\n")" http://localhost:3000/api/v1/provisioning/alert-rules' \
-    | jq -r '.[].uid'
+  docker --context prod exec "$cid" cat "$_GRAFANA_RULES_FILE" | alert_rule_uids
 }
 
 cmd_verify_alert_rules() {
   local file="${ALERT_RULES_FILE:-infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml}"
   [[ -s "$file" ]] || ci_die "deploy verify-alert-rules: $file is missing or empty"
-  local expected served="" diff
-  # every rule opens its list item with its uid; yq is not on every runner that runs this
-  expected=$(sed -nE 's/^[[:space:]]*-[[:space:]]+uid:[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*$/\1/p' "$file")
+  local expected shipped="" diff
+  expected=$(alert_rule_uids < "$file")
   [[ -n "$expected" ]] || ci_die "deploy verify-alert-rules: $file declares no rule uids"
   local deadline=$(( $(date +%s) + ${GRAFANA_VERIFY_TIMEOUT_SECS:-120} ))
   # the old task still answers while Swarm rolls the new one, so a difference is retried too
-  until served=$(served_alert_rule_uids) && diff=$(alert_rule_uid_diff "$expected" "$served") && [[ -z "$diff" ]]; do
+  until shipped=$(shipped_alert_rule_uids) && diff=$(alert_rule_uid_diff "$expected" "$shipped") && [[ -z "$diff" ]]; do
     if (( $(date +%s) >= deadline )); then
-      [[ -n "$served" ]] || ci_die "deploy verify-alert-rules: cannot read Grafana's rules from the $_GRAFANA_SERVICE container"
-      ci_die "deploy verify-alert-rules: Grafana serves different rules than $file (provisioning never deletes a rule whose entry vanished): ${diff//$'\n'/, }"
+      [[ -n "$shipped" ]] || ci_die "deploy verify-alert-rules: the $_GRAFANA_SERVICE task has no rules at $_GRAFANA_RULES_FILE"
+      ci_die "deploy verify-alert-rules: the running Grafana image carries different rules than $file: ${diff//$'\n'/, }"
     fi
     sleep "${GRAFANA_VERIFY_POLL_SECS:-5}"
   done
-  ci_ok "deploy verify-alert-rules: Grafana serves exactly the $(wc -l <<< "$expected" | tr -d ' ') rules in $file"
+  ci_ok "deploy verify-alert-rules: the running Grafana image carries exactly the $(wc -l <<< "$expected" | tr -d ' ') rules in $file"
 }
 
 cmd_served_commit() {

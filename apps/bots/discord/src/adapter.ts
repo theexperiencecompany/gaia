@@ -158,6 +158,8 @@ export class DiscordAdapter extends BaseBotAdapter {
     this.client.on(Events.ClientReady, () =>
       this.recordGatewayConnection(true),
     );
+    // A shard that re-identifies after a drop emits ShardReady, never ClientReady again.
+    this.client.on(Events.ShardReady, () => this.recordGatewayConnection(true));
     this.client.on(Events.ShardResume, () =>
       this.recordGatewayConnection(true),
     );

@@ -1193,6 +1193,7 @@ async def ainvoke_llm(
     call_configurable: AgentConfigurable = agent_configurable(config)
     user_id = call_configurable.get("user_id")
     provider = _call_provider(primary, config)
+    primary_counted = False
     # Wall time of the whole provider interaction, including retries and the
     # fallback attempt. Started before the timeout scope so a killed call still
     # reports how long it burned.
@@ -1211,6 +1212,7 @@ async def ainvoke_llm(
                     return reply
                 except LLM_FALLBACK_EXCEPTIONS as primary_error:
                     observe_llm_call_failed(provider, primary_error)
+                    primary_counted = True
                     # Runs under ``fallback_config``: reusing ``config`` made failover
                     # a no-op, since LangChain merges a passed config OVER a
                     # ``with_config`` one, putting the just-failed provider back.
@@ -1247,6 +1249,9 @@ async def ainvoke_llm(
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
             )
+            # The deadline fires outside the provider call, so a hung provider is counted here.
+            if isinstance(call_error, TimeoutError) and not primary_counted:
+                observe_llm_call_failed(provider, call_error)
             raise
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
