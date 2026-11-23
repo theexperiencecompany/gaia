@@ -702,6 +702,14 @@ file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
 `apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
 drift that motivated it.
 
+The GitHub-hosted runner image is pinned the same way. `HOSTED_LINUX_IMAGE` in
+`scripts/ci/runner.py` declares the Ubuntu release (it routes every
+`select-runner` pool); a literal `runs-on` cannot read it, so every
+`ubuntu-NN.NN` label in a workflow, composite or `scripts/ci` file must name
+the same release, and any `ubuntu-latest` / `macos-latest` / `windows-latest`
+label fails. `ubuntu-latest` rolled to 26.04 one job at a time and broke the
+Playwright browser install in the merge queue (run 45079269367).
+
 A pin only holds where mise resolves the binary. A prek hook inherits the PATH
 of whatever shell ran `git commit`, so every `repo: local` hook in every
 tracked `.pre-commit-config.yaml` starts with `mise exec --` (or `mise run`, or

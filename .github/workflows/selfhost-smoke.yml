@@ -36,7 +36,7 @@ jobs:
   # lane when ci:selfhost-e2e (tools/ci/project.json) does.
   changes:
     name: Ask nx which checks this change reaches
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -80,7 +80,7 @@ jobs:
     name: Self-host smoke (ENV=selfhost)
     needs: [changes]
     if: contains(fromJSON(needs.changes.outputs.tasks), 'api:test')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,7 +187,7 @@ jobs:
     name: Self-host end to end (gaia up + Playwright)
     needs: [changes]
     if: needs.changes.outputs.selfhost_e2e == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       E2E_OUT: ${{ github.workspace }}/selfhost-e2e

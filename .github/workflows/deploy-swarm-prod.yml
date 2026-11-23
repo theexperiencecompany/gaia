@@ -87,7 +87,7 @@ env:
 jobs:
   deploy:
     if: inputs.action == 'deploy' || inputs.action == 'verify'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -351,7 +351,7 @@ jobs:
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -501,7 +501,7 @@ jobs:
 
   notify-test:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'notify-test'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
