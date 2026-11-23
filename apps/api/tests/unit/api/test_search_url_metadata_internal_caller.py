@@ -1,7 +1,7 @@
 """POST /api/v1/fetch-url-metadata admits a signed-in user or GAIA's own web server, nothing else."""
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -20,6 +20,7 @@ EMAIL_TARGET = "mailto:ada@example.org"
 BODY = {"urls": [WEB_URL, EMAIL_TARGET]}
 PROFILES = "app.api.v1.endpoints.search.fetch_email_profiles"
 FETCH = "app.api.v1.endpoints.search.fetch_url_metadata"
+LOG = "app.api.v1.endpoints.search.log"
 
 
 def _preview(url: str, title: str) -> URLResponse:
@@ -96,3 +97,38 @@ async def test_signed_in_user_still_resolves_email_targets(
     assert response.status_code == 200
     assert set(response.json()["results"]) == {WEB_URL, EMAIL_TARGET}
     contact_lookup.assert_awaited_once_with(FAKE_USER.user_id, [EMAIL_TARGET])
+
+
+def _stamped_fields(log: MagicMock) -> dict[str, object]:
+    fields: dict[str, object] = {}
+    for call in log.set.call_args_list:
+        fields.update(call.kwargs)
+    return fields
+
+
+async def test_the_web_servers_request_is_logged_as_the_internal_caller(
+    client: AsyncClient, web_page: AsyncMock, contact_lookup: AsyncMock
+):
+    with patch(LOG) as log:
+        await client.post(URL, json=BODY, headers={INTERNAL_CALLER_HEADER: INTERNAL_TOKEN})
+
+    assert _stamped_fields(log) == {
+        "search": {"mode": "url_metadata"},
+        "caller": "internal_web_server",
+    }
+
+
+async def test_a_users_request_is_logged_under_their_id(
+    client: AsyncClient, test_app: FastAPI, web_page: AsyncMock, contact_lookup: AsyncMock
+):
+    test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+    try:
+        with patch(LOG) as log:
+            await client.post(URL, json=BODY)
+    finally:
+        test_app.dependency_overrides.pop(get_optional_user)
+
+    assert _stamped_fields(log) == {
+        "search": {"mode": "url_metadata"},
+        "user": {"id": FAKE_USER.user_id},
+    }

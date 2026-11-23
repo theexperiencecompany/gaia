@@ -853,16 +853,20 @@ class TestDebouncedScheduling:
 @pytest.mark.unit
 class TestUserNameLookup:
     async def test_a_database_failure_falls_back_to_the_generic_name_and_is_logged(self) -> None:
-        with (
-            patch(
+        async with captured_wide_event() as event:
+            with patch(
                 "app.memory.consolidation.user_repository.get",
                 AsyncMock(side_effect=RepositoryError("timeout")),
-            ),
-            patch("app.memory.consolidation.log") as mock_log,
-        ):
-            assert await _get_user_name(USER) == "the user"
-        kwargs = mock_log.warning.call_args.kwargs
-        assert (kwargs["user_id"], kwargs["error_type"]) == (USER, "RepositoryError")
+            ):
+                assert await _get_user_name(USER) == "the user"
+        assert event["warnings"] == [
+            {
+                "msg": "memory_consolidation_user_name_unavailable",
+                "user_id": USER,
+                "error": "timeout",
+                "error_type": "RepositoryError",
+            }
+        ]
 
     async def test_a_programming_error_propagates(self) -> None:
         with patch(
