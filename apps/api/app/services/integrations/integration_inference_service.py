@@ -28,7 +28,8 @@ from app.constants.integrations import (
 )
 from app.constants.log_tags import LogTag
 from app.models.db_oauth import MCPAuthType
-from app.models.integration_models import AuthType, Integration, StoredIntegrationTool
+from app.models.integration_models import Integration, StoredIntegrationTool
+from app.models.mcp_config import AuthType
 from app.models.oauth_models import IntegrationContent
 from app.services.integrations.integration_content_fallback import first_sentence, named_tools
 from shared.py.wide_events import log

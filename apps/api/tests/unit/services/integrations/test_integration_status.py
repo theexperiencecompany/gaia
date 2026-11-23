@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.models.integration_models import UserIntegrationDocument
 from app.services.integrations.integration_status import get_all_integrations_status
@@ -28,7 +29,7 @@ def bypass_cacheable():
         yield
 
 
-def _ui_doc(integration_id: str, status: str) -> UserIntegrationDocument:
+def _ui_doc(integration_id: str, status: IntegrationStatus) -> UserIntegrationDocument:
     """Build a UserIntegrationDocument as list_for_user would return it."""
     return UserIntegrationDocument(user_id="user123", integration_id=integration_id, status=status)
 
@@ -93,7 +94,7 @@ class TestGetAllIntegrationsStatus:
     ):
         """If user_integrations has status='connected', result should be True."""
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("notion", "connected")]
+            return_value=[_ui_doc("notion", IntegrationStatus.CONNECTED)]
         )
 
         integration = MagicMock()
@@ -118,7 +119,7 @@ class TestGetAllIntegrationsStatus:
     ):
         """If user_integrations has status != 'connected', result should be False."""
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("notion", "created")]
+            return_value=[_ui_doc("notion", IntegrationStatus.CREATED)]
         )
 
         integration = MagicMock()
@@ -143,7 +144,7 @@ class TestGetAllIntegrationsStatus:
         mock_composio_service,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("posthog", "connected")]
+            return_value=[_ui_doc("posthog", IntegrationStatus.CONNECTED)]
         )
         token_store = MagicMock()
         token_store.are_connected = AsyncMock(return_value={"posthog": False})
@@ -177,7 +178,7 @@ class TestGetAllIntegrationsStatus:
         mock_composio_service,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("posthog", "connected")]
+            return_value=[_ui_doc("posthog", IntegrationStatus.CONNECTED)]
         )
         token_store = MagicMock()
         token_store.are_connected = AsyncMock(return_value={"posthog": True})
@@ -210,7 +211,7 @@ class TestGetAllIntegrationsStatus:
     ) -> None:
         """GET paths overlay stale credentials without writing Mongo."""
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("posthog", "connected")]
+            return_value=[_ui_doc("posthog", IntegrationStatus.CONNECTED)]
         )
         token_store = MagicMock()
         token_store.are_connected = AsyncMock(return_value={"posthog": False})
@@ -243,7 +244,7 @@ class TestGetAllIntegrationsStatus:
         mock_integration_repo,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("custom-uuid", "connected")]
+            return_value=[_ui_doc("custom-uuid", IntegrationStatus.CONNECTED)]
         )
         token_store = MagicMock()
         token_store.are_connected = AsyncMock(return_value={"custom-uuid": False})
@@ -277,7 +278,7 @@ class TestGetAllIntegrationsStatus:
         mock_integration_repo,
     ) -> None:
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("custom-uuid", "connected")]
+            return_value=[_ui_doc("custom-uuid", IntegrationStatus.CONNECTED)]
         )
         token_store = MagicMock()
         token_store.are_connected = AsyncMock(return_value={"custom-uuid": True})
@@ -459,7 +460,7 @@ class TestGetAllIntegrationsStatus:
     ):
         """Test a mix of connected, disconnected, and unavailable integrations."""
         mock_user_integration_repo.list_for_user = AsyncMock(
-            return_value=[_ui_doc("notion", "connected")]
+            return_value=[_ui_doc("notion", IntegrationStatus.CONNECTED)]
         )
 
         # Composio returns twitter as connected
