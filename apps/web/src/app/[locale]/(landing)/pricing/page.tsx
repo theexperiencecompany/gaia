@@ -2,7 +2,6 @@ import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
-import type { Plan } from "@/features/pricing/api/pricingApi";
 import PricingPage from "@/features/pricing/components/PricingPage";
 import { getPlansServer } from "@/features/pricing/lib/serverPricingApi";
 import { faqData } from "@/lib/faq";
@@ -53,14 +52,7 @@ export default async function Pricing() {
 
   const combinedFaqSchema = generateFAQSchema([...pricingFAQs, ...faqData]);
 
-  // Fetch plans data server-side for SSR + ISR
-  let initialPlans: Plan[] = [];
-  try {
-    initialPlans = await getPlansServer();
-  } catch (error) {
-    console.error("Failed to fetch plans server-side:", error);
-    // Component will fallback to client-side fetching
-  }
+  const initialPlans = await getPlansServer();
 
   return (
     <>
