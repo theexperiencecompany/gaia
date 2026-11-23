@@ -521,14 +521,14 @@ class Router:
             return self.hosted("runs-unknown", "run or job listing unreadable")
         log(f"[select-runner] free slots: {free}")
         placed = plan_run(me, len(ahead), free, self.machines)
-        choices = self.hosted(
-            "no-free-slot", f"{len(ahead)} run(s) ahead; no self-hosted slot free"
-        )
+        note = f"{len(ahead)} run(s) ahead"
+        choices = self.hosted("no-slices", f"{note}; this run's tier has none in the pool")
         for pool, machine in placed.items():
-            if machine is not None:
-                choices[pool] = Choice(
-                    (SELF_HOSTED, machine.label), "self-hosted", f"{len(ahead)} run(s) ahead"
-                )
+            choices[pool] = (
+                Choice(self.fallback, "no-free-slot", f"{note}; no self-hosted slot free")
+                if machine is None
+                else Choice((SELF_HOSTED, machine.label), "self-hosted", note)
+            )
         return choices
 
     def read_jobs(self, runs: list[Run]) -> dict[int, Held]:

@@ -258,6 +258,17 @@ def test_a_merge_group_never_lands_on_the_m4(github: FakeGitHub) -> None:
     assert out["unit"] == out["services"] == HOSTED
 
 
+def test_a_pool_the_tier_does_not_run_is_not_reported_as_short_of_slots(github: FakeGitHub) -> None:
+    """A PR runs no services slice; its summary said `no-free-slot` beside a free box (run 45129102982)."""
+    active(github, ci_run(61), ci_run(62))
+    listeners(github)
+    proc = run_select(github, 62, M4_LABEL="")
+    assert outputs(proc)["unit"] == BOX
+    (services_row,) = [line for line in proc.stderr.splitlines() if line.startswith("| services |")]
+    assert "no-free-slot" not in services_row
+    assert "no-slices" in services_row
+
+
 def test_the_m4_is_off_until_its_label_is_set(github: FakeGitHub) -> None:
     active(github, ci_run(51), ci_run(52))
     listeners(github, box=0)
