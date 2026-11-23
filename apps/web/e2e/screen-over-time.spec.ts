@@ -49,9 +49,6 @@ import {
  * vanished or doubled — and that a reload shows exactly what was live.
  */
 
-// The flows share one dev user and flip its approval preferences: one at a time, in order.
-test.describe.configure({ mode: "default" });
-
 test.describe("screen over time — chat", () => {
   test.skip(
     !SIM_ENABLED,
