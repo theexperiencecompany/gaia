@@ -437,7 +437,7 @@ Why the repo-wide ruff task exists rather than relying on `nx run-many -t format
 
 Commit hooks catch most of this automatically (ruff, biome, custom lints, api-types, doc-comments, plr-complexity) — **if they are installed**. `mise run pre-commit:install` must have been run in this clone; `core.hooksPath` pointing at a shared hooks dir makes `prek install` refuse, and the symptom is that nothing local ever fails while CI keeps failing. If a local gate you expected to catch something passes cleanly, confirm the hooks exist before trusting it.
 
-For a fast pre-push check on the lanes that are reproducible offline, `mise ci:local --all` (without `--with-heavy`) runs the fast set, which includes the API pytest suite; `--with-heavy` adds the `python-audit` and `ts-build-test` jobs. During the work, the heavy lanes (mutation, ts-tests, semgrep, the full pytest suite) are CI's job: read a red PR with `mise ci:remote` instead of re-running them locally. The one exception is the single full-tier pass right before you enqueue (see "Before the merge queue" above).
+For a fast pre-push check on the lanes that are reproducible offline, `mise ci:local --all` (without `--with-heavy`) runs the fast set, which includes the API pytest suite; `--with-heavy` adds the `python-audit` and `ts-build-test` jobs. During the work, the heavy lanes (mutation, ts-tests, semgrep) are CI's job: read a red PR with `mise ci:remote` instead of re-running them locally. The one exception is the single full-tier pass right before you enqueue (see "Before the merge queue" above).
 
 ## Environment Variables
 
