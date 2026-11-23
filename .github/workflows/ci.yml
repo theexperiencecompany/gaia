@@ -737,6 +737,8 @@ jobs:
         env:
           JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          # web:build prerenders against the production API: count it against the web server's ceiling, not one runner address's.
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
         run: python3 scripts/ci/runner.py run-job ts-build-test
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -775,6 +777,8 @@ jobs:
     uses: ./.github/workflows/desktop-pr-build.yml
     permissions:
       contents: read
+    secrets:
+      INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
 
   # ── scan: Python SAST and the filesystem vulnerability scan ──────────────
   scan:
