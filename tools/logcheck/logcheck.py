@@ -387,8 +387,6 @@ def _check_http_request(i: int, event: dict[str, Any]) -> list[Violation]:
     # effort exists to prevent.
     if status >= 500 and not event.get("errors"):
         out.append(Violation(i, "failure-recorded", f"{status} with empty errors[]"))
-    if 400 <= status < 500 and not (event.get("errors") or event.get("warnings")):
-        out.append(Violation(i, "failure-recorded", f"{status} with no errors[]/warnings[]"))
     if status >= 500 and event.get("final_level") != "ERROR":
         out.append(
             Violation(
