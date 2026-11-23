@@ -160,7 +160,7 @@ describe("handleWorkflowGet", () => {
 });
 
 describe("handleWorkflowCreate", () => {
-  it("creates a manual workflow whose prompt is the instructions", async () => {
+  it("creates a manual workflow whose prompt is the instructions, delivered to the chat", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.createWorkflow).mockResolvedValue(
       serverWorkflow({ id: "new-wf", title: "New Flow" }),
@@ -173,11 +173,13 @@ describe("handleWorkflowCreate", () => {
         title: "New Flow",
         prompt: "Desc",
         trigger_config: { type: "manual", enabled: true },
+        delivery: "now",
       },
       ctx,
     );
     expect(result).toContain("✅ Workflow created!");
     expect(result).toContain("New Flow");
+    expect(result).not.toContain("BotWorkflow");
   });
 });
 

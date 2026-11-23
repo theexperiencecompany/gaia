@@ -21,6 +21,7 @@ from app.db.repositories.approval_ledger import (
     approval_ledger_repository,
     new_approval_id,
 )
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.hil_models import ApprovalProposal
 from shared.py.approvals import ActionResult, ApprovalOutcome
 
@@ -153,7 +154,7 @@ class TestRegister:
         _find_returns(collection, [], [])
         collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("dup"))
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.register(_PROPOSAL, new_approval_id())
 
     async def test_terminal_fingerprint_registers_fresh(
@@ -264,6 +265,21 @@ class TestClaims:
 
 @pytest.mark.unit
 class TestReads:
+    async def test_list_pending_for_user_reads_the_users_pending_rows_oldest_first(
+        self, repo: ApprovalLedgerRepository, collection: MagicMock
+    ) -> None:
+        cursor = MagicMock()
+        cursor.sort = MagicMock(return_value=cursor)
+        cursor.to_list = AsyncMock(return_value=[_doc()])
+        collection.find = MagicMock(return_value=cursor)
+
+        docs = await repo.list_pending_for_user("u1")
+
+        collection.find.assert_called_once_with({"user_id": "u1", "outcome": {"$type": "null"}})
+        cursor.sort.assert_called_once_with("created_at", 1)
+        cursor.to_list.assert_awaited_once_with(length=200)
+        assert [d.approval_id for d in docs] == ["ap_1"]
+
     async def test_find_live_queries_live_rows_newest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:

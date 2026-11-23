@@ -7,9 +7,8 @@ head's outbox until a flush copies it into conversation_entries; every read
 unions the two through _union_for, head first. A conversation reads as pages of
 its entries (_page); only search and pins project entries into messages.
 
-Caching is disabled (cache_policy = None). createdAt (ISO string) and
-updatedAt (BSON date) are a legacy camelCase pair; each mutating method that
-must advance the sync clock bumps updatedAt explicitly.
+Uncached. createdAt (ISO string) and updatedAt (BSON date) are a legacy camelCase pair;
+each mutating method that must advance the sync clock bumps updatedAt explicitly.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
-from typing import ClassVar
 
 from pymongo import ReplaceOne, UpdateOne
 from pymongo.errors import BulkWriteError, DuplicateKeyError
@@ -29,7 +27,6 @@ from app.constants.chat import (
 from app.constants.conversation import CONVERSATION_LIST_CHANGED_EVENT
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.base import UserScopedRepository
-from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
     AWAITING_APPROVAL,
     AWAITING_APPROVAL_STAGE,
@@ -70,9 +67,12 @@ from app.models.conversation_log_models import (
     TEXT_KINDS,
     EntryKind,
     LoggedEntry,
+    Notice,
+    Reply,
     UserMessage,
 )
 from app.models.conversation_models import (
+    BotReplyRow,
     BulkWriteDetails,
     ConversationDescriptionHit,
     ConversationDocument,
@@ -104,6 +104,8 @@ from shared.py.wide_events import spawn_logged_task
 #: A quote, a settle's quote, an approval, its work: the longest chain a message reads beside it.
 _BESIDE_PASSES = 4
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
+#: The entries that carry follow-up actions: GAIA's replies and notices.
+_FOLLOW_UP_KINDS: frozenset[str] = frozenset({EntryKind.REPLY, EntryKind.NOTICE})
 _NEWEST_FIRST: list[tuple[str, int]] = [("seq", -1)]
 _OUTBOX_FIELDS: dict[str, object] = {"conversation_id": 1, "user_id": 1, OUTBOX_FIELD: 1}
 _ENTRY_KEY_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
@@ -135,7 +137,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     update_model = ConversationUpdate
     uses_object_id = True
     identity_field = "conversation_id"
-    cache_policy: ClassVar[CachePolicy | None] = None
 
     # ---- conversation-list reads (projected: no messages) ----
 
@@ -180,33 +181,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 # A tracked todo's chat is its runs' log, not a chat the user had.
                 "todo_id": None,
             }
-        )
-
-    async def has_activity_since(self, user_id: str, since: datetime) -> bool:
-        """Whether the user touched any conversation at or after since.
-
-        The transport-agnostic usage signal (unlike users.last_active_at,
-        which only a WorkOS web login bumps). updatedAt is a BSON date and
-        createdAt an ISO string; Mongo does not compare across BSON types, so
-        each is compared against its own type rather than one shared filter.
-        """
-        return (
-            await self._count(
-                {
-                    "user_id": user_id,
-                    # Excludes system-generated conversations: counting a workflow's
-                    # own updatedAt bumps would let a user's automation vouch for
-                    # them as "active" forever, defeating the dormancy sweep.
-                    "is_system_generated": {"$ne": True},
-                    # Same for a tracked todo's chat, bumped by every run's report.
-                    "todo_id": None,
-                    "$or": [
-                        {"updatedAt": {"$gte": since}},
-                        {"createdAt": {"$gte": since.isoformat()}},
-                    ],
-                }
-            )
-            > 0
         )
 
     async def has_sent_message(self, user_id: str) -> bool:
@@ -268,7 +242,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     },
                 }
             },
-            scope=user_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -320,8 +293,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Replace the conversation's artifact registry; its list row and updatedAt are untouched."""
         owned = {"conversation_id": conversation_id, "user_id": user_id}
         update = {"$set": {"artifacts": list(entries)}}
-        # The repository is uncached, so the scope keys no cache entry: its mutants are equivalent.
-        await self._apply_raw_update_unfetched(owned, update, scope=user_id)  # pragma: no mutate
+        await self._apply_raw_update_unfetched(owned, update)
 
     # ---- targeted / projected reads ----
 
@@ -349,6 +321,47 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _SourceRow,
         )
         return None if row is None else row.source
+
+    async def list_bot_replies_since(
+        self, user_id: str, since: datetime, *, limit: int
+    ) -> list[BotReplyRow]:
+        """Return the newest limit messages the user sent on a bot platform after since, newest first.
+
+        The briefing engine's reply-sync read.
+        """
+        said = {
+            "kind": EntryKind.USER_MESSAGE.value,
+            "surface": {"$in": _BOT_SOURCE_VALUES},
+            "at": {"$gt": since},
+        }
+        rows = await self._find_entries(user_id, said)
+        newest_first = [row.logged.entry for row in reversed(rows)][:limit]
+        return [
+            BotReplyRow(source=entry.surface.value, text=entry.text)
+            for entry in newest_first
+            if isinstance(entry, UserMessage)
+        ]
+
+    async def get_recent_follow_up_actions(
+        self, user_id: str, conversation_id: str, *, window: int
+    ) -> list[str]:
+        """Return the follow-up actions GAIA's newest window messages offered, deduped in first-seen order.
+
+        The generator reads them so it does not repeat a suggestion.
+        """
+        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
+        if not heads:
+            return []
+        gaia_said = EntryWindow(limit=window, kinds=_FOLLOW_UP_KINDS)
+        [(_, stored)] = await self._union_for(heads, gaia_said)
+        seen: list[str] = []
+        for logged in map(logged_of, stored):
+            entry = logged.entry
+            if isinstance(entry, Reply | Notice):
+                for action in entry.follow_up_actions:
+                    if action not in seen:
+                        seen.append(action)
+        return seen
 
     async def owner_ids(self, conversation_id: str) -> set[str]:
         """Every user holding a conversation under this id; more than one means they share its agent thread."""
@@ -421,6 +434,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _ConversationIdRow,
         )
         return None if row is None else row.conversation_id
+
+    async def find_system_conversation(
+        self, user_id: str, purpose: SystemPurpose
+    ) -> ConversationDocument | None:
+        """Return the user's one system-generated conversation for a purpose, if it exists."""
+        # One conversation per purpose, so heads[0] is it whatever the limit.
+        heads = await self._read_heads(  # pragma: no mutate
+            {"user_id": user_id, "is_system_generated": True, "system_purpose": purpose.value},
+            limit=1,
+        )
+        return self._to_model(heads[0].fields) if heads else None
 
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[StoredConversation]:
         """Return the user's most recent conversations, each with its newest page of entries."""
@@ -620,13 +644,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _ConversationOwnerRow,
         )
         return {row.conversation_id: row.user_id for row in rows}
-
-    async def active_user_ids_since(self, cutoff: datetime) -> list[str]:
-        """User ids with a conversation updated since cutoff — the workspace sync sweep's active-user set.
-
-        Intentionally unscoped (a maintenance sweep).
-        """
-        return await self._distinct("user_id", {"updatedAt": {"$gte": cutoff}})
 
     # ---- internal helpers ----
 
@@ -908,7 +925,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             # Entries first: a delete that dies between the two leaves the head, which the user can
             # delete again, never entries a later head under the same id would inherit.
             await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(these)
-            # Conversations are uncached (cache_policy None): there is no cache entry to evict.
             await self._raw_collection().delete_many({**match, **these})
         return ids
 
@@ -955,7 +971,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             update,
-            scope=user_id,
             extra_filter={"user_id": user_id},
         )
         if not matched:

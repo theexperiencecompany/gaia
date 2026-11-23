@@ -50,6 +50,7 @@ from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.tools import EngineSwitchFn, TakeoverFn
 from app.services.conversation.work_log import WorkReport
+from app.services.outbound_delivery import OutboundResult
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
 from shared.py.conversation_wire import ToolDataEntry
@@ -632,9 +633,9 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
             world.other_streams.setdefault(session.stream_id, []).append(data)
         collect_into_session(session, data)
 
-    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
+    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> OutboundResult:
         world.bot_messages.extend(blocks)
-        return True
+        return OutboundResult.PUBLISHED
 
     async def _wake(conversation_id: str, user: object) -> None:
         world.woken.append(conversation_id)

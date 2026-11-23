@@ -18,25 +18,32 @@ from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.work_cancel import cancel_named_work
 from app.api.v1.endpoints.bot_links import _persist_first_contact
+from app.constants.briefing import BriefingKind
 from app.constants.chat import ConversationSource
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import RunningSubagent
 from app.models.bot_models import RedeemLinkCodeRequest
+from app.models.brief_document_models import EditionImage
+from app.models.brief_view_models import BriefCard
+from app.models.chat_models import SystemPurpose
 from app.models.conversation_log_models import (
     ApprovalDecided,
     Entry,
     Reply,
     ReplySettled,
     UserMessage,
+    WorkFinished,
     WorkOutcome,
 )
 from app.models.conversation_models import ConversationDocument
 from app.models.conversation_screen_models import NoticeItem, ScreenItem, WorkItem, WorkStatus
+from app.services.briefing.conversation import post_brief_message
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
 from app.services.conversation.screen import project_screen
+from app.services.conversation.sweeper import sweep_conversations
 from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
@@ -145,6 +152,43 @@ async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and
     assert state.unsettled_waking == ()
 
 
+async def test_a_delivered_brief_is_a_notice_with_its_edition_card_in_the_briefings_conversation(
+    mongo_log: MongoConversationLog,
+) -> None:
+    user_id = str(ObjectId())
+    card = BriefCard(
+        briefing_id="brief_1",
+        date="2026-10-23",
+        kind=BriefingKind.DAILY,
+        headline="Three decisions are waiting",
+        edition=EditionImage(image_url="https://cdn.test/brief_1.png", fold=0.3),
+        edition_name="Air Mail",
+        stamp_city_name="Bogota",
+        needs_you_count=3,
+    )
+
+    await post_brief_message(user_id, "brief_1", "Good morning, Ada.", card)
+    await post_brief_message(user_id, "brief_1", "Good morning, Ada.", card)
+    await post_brief_message(user_id, "brief_2", "A quiet day.", None)
+
+    found = await conversation_repository.find_system_conversation(user_id, SystemPurpose.BRIEFING)
+    assert found is not None
+    conversation_id = found.conversation_id
+    doc = await conversation_repository.get(conversation_id, user_id=user_id)
+    assert doc is not None
+    items = shown_items(conversation_id, doc)
+    assert [(item.kind, item.id, item_text(item)) for item in items] == [
+        ("notice", "brief:brief_1", "Good morning, Ada."),
+        ("notice", "brief:brief_2", "A quiet day."),
+    ]
+    assert [(entry["tool_name"], entry["data"]) for entry in item_cards(items[0])] == [
+        ("briefing_data", card.model_dump())
+    ]
+    assert item_cards(items[1]) == ()
+    state = await mongo_log.state(conversation_id, user_id)
+    assert state.unsettled_waking == ()
+
+
 async def test_the_first_contact_exchange_is_logged_and_wakes_no_reply(
     mongo_log: MongoConversationLog,
 ) -> None:
@@ -215,6 +259,27 @@ async def test_a_detached_runs_cards_sit_where_it_started_until_a_reply_answers_
     ]
     state = await mongo_log.state(conversation_id, user_id)
     assert (state.work, state.finished_work) == ((), ())
+
+
+async def test_a_detached_run_that_outlives_its_turn_is_not_reported_lost_while_it_runs(
+    mongo_log: MongoConversationLog,
+) -> None:
+    """Regression: a background browser run's work was logged lost by the first sweep after its turn ended."""
+    user_id = str(ObjectId())
+    conversation_id = await _chat(user_id, _turn("look it up"))
+    assert await open_folded_stream("job-1", conversation_id=conversation_id, user_id=user_id)
+    try:
+        report = await sweep_conversations()
+        state = await mongo_log.state(conversation_id, user_id)
+    finally:
+        await close_folded_stream("job-1", conversation_id=conversation_id, user_id=user_id)
+
+    assert report.lost_work == 0
+    assert [work.task_id for work in state.work] == ["job-1"]
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
+    assert [e.entry.outcome for e in entries or () if isinstance(e.entry, WorkFinished)] == [
+        WorkOutcome.DONE
+    ]
 
 
 async def test_a_stop_cancels_a_background_subagent_that_outlived_its_run(

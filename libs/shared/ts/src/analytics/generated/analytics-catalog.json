@@ -864,6 +864,161 @@
       }
     },
     {
+      "event": "artifact:created",
+      "class": "ArtifactCreated",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "An artifact passed validation and was stored.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An artifact passed validation and was stored.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "components": {
+            "title": "Components",
+            "type": "integer"
+          },
+          "repairs": {
+            "title": "Repairs",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "first_component_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Component Ms"
+          },
+          "total_ms": {
+            "title": "Total Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "components",
+          "repairs",
+          "output_tokens",
+          "first_component_ms",
+          "total_ms"
+        ],
+        "title": "ArtifactCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "artifact:failed",
+      "class": "ArtifactFailed",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "create_artifact gave up: a second validation failure, a refusal, a cut-off reply or a timeout.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "create_artifact gave up: a second validation failure, a refusal, a cut-off reply or a timeout.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "validation",
+              "refused",
+              "timeout",
+              "truncated"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "problem_count": {
+            "title": "Problem Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "reason",
+          "problem_count"
+        ],
+        "title": "ArtifactFailed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "artifact:pdf_exported",
+      "class": "ArtifactPdfExported",
+      "owner": "server",
+      "domain": "artifact",
+      "description": "An artifact was served as a PDF.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "An artifact was served as a PDF.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dashboard",
+              "report",
+              "plan",
+              "comparison",
+              "memo",
+              "document"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "pages"
+        ],
+        "title": "ArtifactPdfExported",
+        "type": "object"
+      }
+    },
+    {
       "event": "blog:article_viewed",
       "class": "BlogArticleViewed",
       "owner": "web",
@@ -1341,6 +1496,231 @@
           "platform"
         ],
         "title": "BotSessionReset",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:day_zero_hello_sent",
+      "class": "BriefingDayZeroHelloSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "GAIA's first text reached a freshly linked chat platform.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA's first text reached a freshly linked chat platform.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          },
+          "has_goal": {
+            "title": "Has Goal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "platform",
+          "has_goal"
+        ],
+        "title": "BriefingDayZeroHelloSent",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:opened",
+      "class": "BriefingOpened",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened one of their briefs on its own page for the first time.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened one of their briefs on its own page for the first time.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "daily",
+              "weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "BriefingOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:postmarks_viewed",
+      "class": "BriefingPostmarksViewed",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+        "properties": {
+          "collected": {
+            "title": "Collected",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collected",
+          "total"
+        ],
+        "title": "BriefingPostmarksViewed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:provisioned",
+      "class": "BriefingProvisioned",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "The daily brief and weekly recap schedules were created for a user.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The daily brief and weekly recap schedules were created for a user.",
+        "properties": {},
+        "title": "BriefingProvisioned",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:sent",
+      "class": "BriefingSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "daily",
+              "weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "form": {
+            "enum": [
+              "edition",
+              "quiet_note"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          },
+          "mood": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Mood",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "channel_count": {
+            "title": "Channel Count",
+            "type": "integer"
+          },
+          "signal_count": {
+            "title": "Signal Count",
+            "type": "integer"
+          },
+          "stamp_collected": {
+            "title": "Stamp Collected",
+            "type": "boolean"
+          },
+          "block_kinds": {
+            "items": {
+              "enum": [
+                "lead",
+                "items",
+                "chart",
+                "quote",
+                "progress",
+                "note"
+              ],
+              "type": "string"
+            },
+            "title": "Block Kinds",
+            "type": "array"
+          },
+          "chart_count": {
+            "title": "Chart Count",
+            "type": "integer"
+          },
+          "pool_item_count": {
+            "title": "Pool Item Count",
+            "type": "integer"
+          },
+          "series_count": {
+            "title": "Series Count",
+            "type": "integer"
+          },
+          "source_count": {
+            "title": "Source Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "form",
+          "family",
+          "mood",
+          "item_count",
+          "channel_count",
+          "signal_count",
+          "stamp_collected",
+          "block_kinds",
+          "chart_count",
+          "pool_item_count",
+          "series_count",
+          "source_count"
+        ],
+        "title": "BriefingSent",
         "type": "object"
       }
     },
@@ -4842,6 +5222,7 @@
               "/todos",
               "/integrations",
               "/workflows",
+              "/briefings",
               "/c"
             ],
             "title": "Destination",
@@ -4853,6 +5234,7 @@
               "Tasks",
               "Integrations",
               "Workflows",
+              "Briefings",
               "Chats"
             ],
             "title": "Label",
@@ -5840,6 +6222,7 @@
                   "settings_upsell",
                   "settings_linked_accounts",
                   "settings_usage",
+                  "settings_briefings",
                   "desktop_popup_mirror"
                 ],
                 "type": "string"
@@ -6427,6 +6810,163 @@
       }
     },
     {
+      "event": "settings:briefing_editions_updated",
+      "class": "SettingsBriefingEditionsUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user chose which daily edition families their brief draws: how many off and favourited.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user chose which daily edition families their brief draws: how many off and favourited.",
+        "properties": {
+          "editions_off": {
+            "title": "Editions Off",
+            "type": "integer"
+          },
+          "editions_favourited": {
+            "title": "Editions Favourited",
+            "type": "integer"
+          },
+          "editions_total": {
+            "title": "Editions Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editions_off",
+          "editions_favourited",
+          "editions_total"
+        ],
+        "title": "SettingsBriefingEditionsUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefing_schedule_updated",
+      "class": "SettingsBriefingScheduleUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+        "properties": {
+          "frequency": {
+            "enum": [
+              "daily",
+              "weekdays",
+              "weekly_only",
+              "off"
+            ],
+            "title": "Frequency",
+            "type": "string"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "via": {
+            "enum": [
+              "settings",
+              "agent"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "frequency",
+          "hour",
+          "via"
+        ],
+        "title": "SettingsBriefingScheduleUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefs_off_blocked",
+      "class": "SettingsBriefsOffBlocked",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+        "properties": {
+          "workflow_count": {
+            "title": "Workflow Count",
+            "type": "integer"
+          },
+          "via": {
+            "enum": [
+              "settings",
+              "agent"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_count",
+          "via"
+        ],
+        "title": "SettingsBriefsOffBlocked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefs_off_resolved",
+      "class": "SettingsBriefsOffResolved",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+        "properties": {
+          "moved_to_now": {
+            "title": "Moved To Now",
+            "type": "integer"
+          },
+          "moved_to_silent": {
+            "title": "Moved To Silent",
+            "type": "integer"
+          },
+          "via": {
+            "enum": [
+              "settings",
+              "agent"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "moved_to_now",
+          "moved_to_silent",
+          "via"
+        ],
+        "title": "SettingsBriefsOffResolved",
+        "type": "object"
+      }
+    },
+    {
       "event": "settings:chat_channel_priority_updated",
       "class": "SettingsChatChannelPriorityUpdated",
       "owner": "server",
@@ -6690,6 +7230,544 @@
           "end_hour"
         ],
         "title": "SettingsQuietHoursUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:access_changed",
+      "class": "ShortLinkAccessChanged",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user changed who one of their links opens for, or its expiry.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user changed who one of their links opens for, or its expiry.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "from_access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "From Access",
+            "type": "string"
+          },
+          "to_access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "To Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "from_access",
+          "to_access"
+        ],
+        "title": "ShortLinkAccessChanged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:content_published",
+      "class": "ShortLinkContentPublished",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file's bytes were stored as a snapshot its link serves.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file's bytes were stored as a snapshot its link serves.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "render_mode": {
+            "enum": [
+              "frame_active",
+              "image",
+              "image_svg",
+              "pdf",
+              "text",
+              "media",
+              "download"
+            ],
+            "title": "Render Mode",
+            "type": "string"
+          },
+          "size_bucket": {
+            "enum": [
+              "lt_100kb",
+              "lt_1mb",
+              "lt_10mb",
+              "gte_10mb"
+            ],
+            "title": "Size Bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "render_mode",
+          "size_bucket"
+        ],
+        "title": "ShortLinkContentPublished",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:content_restricted",
+      "class": "ShortLinkContentRestricted",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file was published, but may be served only to narrower access than the widest.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file was published, but may be served only to narrower access than the widest.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "executable",
+              "credential_form",
+              "repeat_takedowns"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "max_access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Max Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason",
+          "max_access"
+        ],
+        "title": "ShortLinkContentRestricted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:created",
+      "class": "ShortLinkCreated",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A heygaia.link was minted for one of the user's artifacts.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A heygaia.link was minted for one of the user's artifacts.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "owner_share",
+              "gaia_attached"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "has_expiry": {
+            "title": "Has Expiry",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_type",
+          "access",
+          "origin",
+          "has_expiry"
+        ],
+        "title": "ShortLinkCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:denied",
+      "class": "ShortLinkDenied",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone opened one of the user's links and was turned away (dead, sign-in needed, not granted).",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone opened one of the user's links and was turned away (dead, sign-in needed, not granted).",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "expired",
+              "revoked",
+              "removed",
+              "target_deleted",
+              "sign_in_required",
+              "forbidden"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkDenied",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:opened",
+      "class": "ShortLinkOpened",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\n    Unfurl bots building a chat preview never count.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\nUnfurl bots building a chat preview never count.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "viewer_signed_in": {
+            "title": "Viewer Signed In",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_type",
+          "access",
+          "viewer_signed_in"
+        ],
+        "title": "ShortLinkOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:publish_rejected",
+      "class": "ShortLinkPublishRejected",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file's bytes were not published; its link shows only its name and size.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file's bytes were not published; its link shows only its name and size.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "too_large",
+              "quota"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkPublishRejected",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:reported",
+      "class": "ShortLinkReported",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone reported one of the user's links.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone reported one of the user's links.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "phishing",
+              "malware",
+              "harassment",
+              "illegal",
+              "other"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "reporter_signed_in": {
+            "title": "Reporter Signed In",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason",
+          "reporter_signed_in"
+        ],
+        "title": "ShortLinkReported",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:revoked",
+      "class": "ShortLinkRevoked",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "One of the user's links was turned off: by them, or with their account.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "One of the user's links was turned off: by them, or with their account.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "owner",
+              "rotated",
+              "expired",
+              "takedown",
+              "target_deleted",
+              "account_removed"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkRevoked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:rotated",
+      "class": "ShortLinkRotated",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user replaced a link with a new URL; the old one stopped opening.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user replaced a link with a new URL; the old one stopped opening.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "access"
+        ],
+        "title": "ShortLinkRotated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:taken_down",
+      "class": "ShortLinkTakenDown",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "One of the user's links was removed for breaking GAIA's terms.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "One of the user's links was removed for breaking GAIA's terms.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "reports_threshold",
+              "admin"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ShortLinkTakenDown",
         "type": "object"
       }
     },
@@ -7872,18 +8950,6 @@
             ],
             "default": null,
             "title": "Bulk Count"
-          },
-          "count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Count"
           }
         },
         "title": "TodosToggled",
@@ -9123,10 +10189,20 @@
             ],
             "default": null,
             "title": "Is Todo Workflow"
+          },
+          "delivery": {
+            "enum": [
+              "now",
+              "brief",
+              "silent"
+            ],
+            "title": "Delivery",
+            "type": "string"
           }
         },
         "required": [
-          "origin"
+          "origin",
+          "delivery"
         ],
         "title": "WorkflowCreated",
         "type": "object"
@@ -9394,7 +10470,25 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user edited a workflow.",
-        "properties": {},
+        "properties": {
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": [
+                  "now",
+                  "brief",
+                  "silent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delivery"
+          }
+        },
         "title": "WorkflowUpdated",
         "type": "object"
       }

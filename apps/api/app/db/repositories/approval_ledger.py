@@ -1,6 +1,6 @@
 """Repository for the executor-free approval ledger (approval_ledger collection).
 
-One row per gated call envelope. Uncached (cache_policy = None): rows are
+One row per gated call envelope. Uncached: rows are
 decision state read at low volume, and every transition is a conditional write
 the entity cache could only misrepresent. A pending row leaves by the decision the
 conversation log took for it, and delivering_since leases that decision's hand-off.
@@ -43,7 +43,6 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
     document_model = ApprovalLedgerDocument
     update_model = ApprovalLedgerDocument
     uses_object_id = True
-    cache_policy = None
 
     async def register(self, proposal: ApprovalProposal, approval_id: str) -> str:
         """Insert a PENDING row under approval_id, or return the live duplicate's id.
@@ -216,6 +215,17 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
             if doc.live:
                 return doc
         return None
+
+    async def list_pending_for_user(self, user_id: str) -> list[ApprovalLedgerDocument]:
+        """Every approval still waiting on the user's decision, oldest first."""
+        cursor = (
+            self._raw_collection()
+            .find({"user_id": user_id, "outcome": {"$type": "null"}})
+            .sort("created_at", 1)
+        )
+        return [
+            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
+        ]
 
     async def find_latest_denied(
         self, fingerprint: str, conversation_id: str

@@ -354,6 +354,39 @@ def test_api_schema_fails_on_drift_with_the_one_line_fix(tmp_path: Path) -> None
     assert OPENAPI_JSON in process.stdout
 
 
+def test_api_schema_passes_a_regeneration_staged_for_the_commit(tmp_path: Path) -> None:
+    """Regression: the pre-commit hook read a staged regeneration as drift, so no commit could carry one."""
+    repo = _repo_beside_stubs(tmp_path)
+    _commit(repo, OPENAPI_JSON, '{"paths": {}}')
+    _commit(repo, GENERATED_TYPES, "export interface paths {}\n")
+    regenerated = '{"paths": {"/api/v1/new": {}}}'
+    (repo / OPENAPI_JSON).write_text(regenerated)
+    subprocess.run(["git", "add", OPENAPI_JSON], cwd=repo, check=True)
+    env = _stub_generators(tmp_path, regenerated, "export interface paths {}\n")
+
+    process = _run_env(repo, env, "api-schema")
+
+    assert process.returncode == 0, process.stdout + process.stderr
+
+
+def test_api_schema_fails_when_the_staged_file_is_not_what_regeneration_writes(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_beside_stubs(tmp_path)
+    _commit(repo, OPENAPI_JSON, '{"paths": {}}')
+    _commit(repo, GENERATED_TYPES, "export interface paths {}\n")
+    (repo / OPENAPI_JSON).write_text('{"paths": {"/hand-edited": {}}}')
+    subprocess.run(["git", "add", OPENAPI_JSON], cwd=repo, check=True)
+    env = _stub_generators(
+        tmp_path, '{"paths": {"/api/v1/new": {}}}', "export interface paths {}\n"
+    )
+
+    process = _run_env(repo, env, "api-schema")
+
+    assert process.returncode == 1, "a hand-edited staged openapi.json passed the drift gate"
+    assert OPENAPI_JSON in process.stdout
+
+
 def test_api_schema_write_regenerates_without_judging(tmp_path: Path) -> None:
     repo = _repo_beside_stubs(tmp_path)
     _commit(repo, OPENAPI_JSON, '{"paths": {}}')

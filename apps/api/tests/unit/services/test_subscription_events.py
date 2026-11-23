@@ -13,7 +13,6 @@ from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from dodopayments.types import Subscription
-from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants import payments as payment_constants
@@ -22,6 +21,7 @@ from app.constants.payments import (
     SUBSCRIPTION_WORKFLOW_SYNC_TASK,
     SubscriptionWorkflowSync,
 )
+from app.db.repositories.errors import RepositoryError
 from app.models.payment_models import SubscriptionDocument
 from app.models.webhook_models import DodoSubscriptionData
 from app.services.payments.payment_service import DodoPaymentService
@@ -1270,7 +1270,7 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
     ) -> None:
         """A redelivery reads the row as unchanged, so only the worker can come back for it."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
-            side_effect=[_row(last_event_at=None), PyMongoError("down")]
+            side_effect=[_row(last_event_at=None), RepositoryError("down")]
         )
         pool = object()
 
@@ -1299,7 +1299,7 @@ class TestEveryStatusTransitionSetsThePaidPersonProperties:
         self, mock_webhook_subscription_repository: MagicMock, posthog_client: MagicMock
     ) -> None:
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
-            side_effect=[_row(last_event_at=None), PyMongoError("down")]
+            side_effect=[_row(last_event_at=None), RepositoryError("down")]
         )
 
         with (

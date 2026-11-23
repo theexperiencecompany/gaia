@@ -1,7 +1,6 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
-from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.auth import get_current_user as get_request_user
@@ -10,7 +9,6 @@ from app.constants.bot import BotRequestFailure
 from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALID
 from app.constants.log_tags import LogTag
 from app.constants.platform_links import Platform
-from app.db.redis import redis_cache
 from app.decorators import (
     SubscriptionRequiredException,
     is_paid,
@@ -29,7 +27,6 @@ from app.models.bot_models import (
     UnlinkAccountResponse,
 )
 from app.models.conversation_send_models import BotMessageAccepted
-from app.models.integration_models import UserIntegrationDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import ConversationStopResponse
 from app.schemas.errors import error_responses
@@ -48,14 +45,14 @@ from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.platform_link_service import (
     PlatformLinkService,
+    disconnect_platform_account,
     platform_requires_upgrade,
 )
 from app.services.turn_timings import TurnStep, turn_step
-from app.utils.auth_utils import bot_user_cache_key, resolve_bot_user
+from app.utils.auth_utils import resolve_bot_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused
-from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -116,11 +113,6 @@ async def require_bot_api_key(request: Request) -> None:
             "Invalid or missing bot API key",
             BOT_API_KEY_INVALID,
         )
-
-
-# ``get_user_integration_records`` returns dumped documents; the settings route
-# validates them back into the document model where they enter the handler.
-_USER_INTEGRATION_RECORDS = TypeAdapter(list[UserIntegrationDocument])
 
 
 async def _bot_turn_refused(user_id: str, platform: str) -> bool:
@@ -299,10 +291,7 @@ async def get_settings(
 
     connected_integrations_list = []
     try:
-        integrations = _USER_INTEGRATION_RECORDS.validate_python(
-            await get_user_integration_records(user_id)
-        )
-        for integration_doc in integrations:
+        for integration_doc in await get_user_integration_records(user_id):
             integration_id = integration_doc.integration_id
             status = integration_doc.status
             if integration_id:
@@ -378,20 +367,8 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
             BOT_ACCOUNT_NOT_LINKED,
         )
 
-    user_id = user.user_id
-    await PlatformLinkService.unlink_account(user_id, platform)
-    log.audit(
-        "platform account unlinked",
-        actor=user_id,
-        resource=platform_user_id,
-        provider=platform,
-    )
-
-    await redis_cache.client.delete(bot_user_cache_key(platform, platform_user_id))
-
-    # Same event the web-side platform unlink emits — one user action, one name,
-    # regardless of which surface triggered it.
-    capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
+    # The settings page and the agent tool unlink through the same function: one audit, one event.
+    await disconnect_platform_account(user.user_id, platform)
     log.set(platform=platform, outcome="success")
     return UnlinkAccountResponse(success=True)
 

@@ -490,6 +490,47 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
     assert CAPTCHA_HEADING not in after[0].said
 
 
+async def test_a_handoff_asked_after_a_sweep_still_reaches_the_user(stack: BrowserStack) -> None:
+    """Regression: the sweep logged a background run's work lost once its turn ended, so its later cards never showed."""
+    user = await stack.new_user()
+    dm = await stack.watch(user.telegram_id)
+    marker = _marker()
+    page = stack.site.url("/captcha")
+    swept = asyncio.Event()
+    stack.models.script(
+        marker,
+        agent=[
+            AgentStep(
+                [
+                    {
+                        "solve_captcha_with_help": {
+                            "challenge": "Tick I'm not a robot, then press Done."
+                        }
+                    }
+                ],
+                gate=swept,
+                patience=60,
+            ),
+        ],
+    )
+
+    conversation_id, job_id = await _start(
+        stack, user, f"Open {page}, get past the check and tell me what it says. {marker}", page
+    )
+    held_since = round(time.time() * 1000)
+    await _until(lambda: stack.swept_since(held_since), "a conversation sweep during the run")
+    swept.set()
+    prompt = await wait_for(dm, _LIVE_LINK.pattern, timeout=RUN_SECONDS)
+    live_match = _LIVE_LINK.search(prompt.said)
+    assert live_match is not None
+    assert await stack.decide_on_live_page(live_match.group(1), "cancel") == 200
+    result = await stack.finished(job_id)
+    await stack.settled(conversation_id)
+
+    assert result.status is BrowserSessionStatus.CANCELLED
+    assert stack.models.errors == []
+
+
 async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_over(
     stack: BrowserStack,
 ) -> None:

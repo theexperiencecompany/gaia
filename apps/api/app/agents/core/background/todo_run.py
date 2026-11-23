@@ -207,6 +207,7 @@ def _finished_run(request: TodoRunRequest, task_id: str, outcome: EntryOutcome) 
         write_up=outcome.text,
         reply=outcome.settled.outcome,
         nothing_for_user=work.nothing_for_user,
+        message_class=run.message_class,
     )
 
 

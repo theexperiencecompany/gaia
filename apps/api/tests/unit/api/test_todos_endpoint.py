@@ -13,9 +13,14 @@ from zoneinfo import ZoneInfo
 from httpx import AsyncClient
 import pytest
 
+from app.constants.briefing import BriefingFrequency
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.constants.trigger_gates import GateAuthor
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
@@ -42,8 +47,9 @@ from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflow
 from app.utils.log_identifiers import user_text_shape
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
+from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
+from tests.briefing_helpers import briefs_on
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
@@ -216,12 +222,14 @@ class TestListTodos:
 class TestTodoAnalytics:
     """Analytics captures on todo endpoints without a service-layer capture.
 
-    Single-todo mutations are captured inside TodoService (covered by
-    test_todo_service.py); these assert the endpoint-only bulk and subtask
-    captures.
+    Single and bulk todo edits are captured inside TodoService (covered by
+    test_todo_service.py); these assert the endpoint-only bulk move and subtask
+    captures, and that the bulk edits leave theirs to the service.
     """
 
-    async def test_bulk_complete_captures_todo_completed(self, client: AsyncClient) -> None:
+    async def test_bulk_complete_leaves_the_capture_to_the_service(
+        self, client: AsyncClient
+    ) -> None:
         with (
             patch(
                 f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
@@ -241,7 +249,8 @@ class TestTodoAnalytics:
             user={"id": "507f1f77bcf86cd799439011"},
             todo={"operation": "bulk_complete", "bulk_count": 2},
         )
-        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosToggled(bulk_count=2))
+        # TodoService.bulk_update_todos captures what it wrote; the endpoint emits nothing.
+        mock_capture.assert_not_called()
         mock_bulk.assert_awaited_once_with(
             BulkUpdateRequest(
                 todo_ids=["todo-1", "todo-2"],
@@ -250,15 +259,13 @@ class TestTodoAnalytics:
             "507f1f77bcf86cd799439011",
         )
 
-    async def test_bulk_update_captures_todos_updated_on_the_caller(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_bulk_update_leaves_the_capture_to_the_service(self, client: AsyncClient) -> None:
         with (
             patch(
                 f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
                 new_callable=AsyncMock,
                 return_value=BulkOperationResponse(total=2, message="ok"),
-            ),
+            ) as mock_bulk,
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.put(
@@ -267,7 +274,15 @@ class TestTodoAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), TodosUpdated(bulk_count=2))
+        assert resp.json() == BulkOperationResponse(total=2, message="ok").model_dump(mode="json")
+        mock_bulk.assert_awaited_once_with(
+            BulkUpdateRequest(
+                todo_ids=["todo-1", "todo-2"],
+                updates=TodoUpdateRequest(priority=Priority.HIGH),
+            ),
+            "507f1f77bcf86cd799439011",
+        )
+        mock_capture.assert_not_called()
 
     async def test_toggle_subtask_captures_todo_completed(self, client: AsyncClient) -> None:
         doc = TodoDocument(
@@ -619,6 +634,68 @@ class TestGenerateTodoWorkflow:
         )
 
 
+class TestBriefDeliveryWithoutADailyBrief:
+    """A todo may deliver to the brief only while the user gets a daily brief, as a workflow may."""
+
+    @pytest.mark.parametrize(
+        ("frequency", "status"),
+        [
+            (BriefingFrequency.OFF, 409),
+            (BriefingFrequency.WEEKLY_ONLY, 409),
+            (BriefingFrequency.DAILY, 201),
+        ],
+    )
+    async def test_creating_a_brief_todo(
+        self, client: AsyncClient, frequency: BriefingFrequency, status: int
+    ) -> None:
+        with (
+            patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)),
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo",
+                new=AsyncMock(return_value=_todo_response()),
+            ) as create,
+        ):
+            resp = await client.post(
+                "/api/v1/todos", json={"title": "Watch prices", "delivery": "brief"}
+            )
+
+        assert resp.status_code == status
+        if status == 409:
+            assert resp.json()["code"] == BRIEFS_OFF
+            create.assert_not_called()
+
+    async def test_moving_a_todo_onto_the_brief_writes_nothing(self, client: AsyncClient) -> None:
+        with (
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
+            patch.object(todo_repository, "update", new=AsyncMock()) as update,
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"delivery": "brief"})
+
+        assert resp.status_code == 409
+        assert resp.json()["code"] == BRIEFS_OFF
+        update.assert_not_called()
+
+    async def test_moving_todos_onto_the_brief_in_bulk_writes_nothing(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
+            patch.object(todo_repository, "bulk_update", new=AsyncMock()) as bulk_update,
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["todo-1", "todo-2"], "updates": {"delivery": "brief"}},
+            )
+
+        assert resp.status_code == 409
+        assert resp.json()["code"] == BRIEFS_OFF
+        bulk_update.assert_not_called()
+
+
 class TestUpdateTodoWorkflowLink:
     async def test_linking_a_workflow_to_a_tracked_todo_is_409(self, client: AsyncClient) -> None:
         with patch(
@@ -703,11 +780,11 @@ class TestUpdateTodoTimeline:
     async def test_turning_a_tracked_todos_delivery_off_is_recorded_as_the_users(
         self, client: AsyncClient
     ) -> None:
-        recorded = await self._put(client, {"notify_on_run": False}, [GAIA_TRACKED_LABEL])
+        recorded = await self._put(client, {"delivery": "silent"}, [GAIA_TRACKED_LABEL])
 
         todo_id, user_id, update = recorded.await_args.args
         assert (todo_id, user_id) == ("todo-1", "507f1f77bcf86cd799439011")
-        assert update.notify_on_run is False
+        assert update.delivery is WorkflowDelivery.SILENT
         assert recorded.await_args.kwargs == {"by": "the user in the app"}
 
     async def test_a_classic_todo_has_no_timeline(self, client: AsyncClient) -> None:

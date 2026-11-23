@@ -2,9 +2,10 @@
 
 The run's work is logged in its todo's chat, and the reply the conversation step
 writes for that work is its write-up, guided by write_up_note. What reaches the
-user's chat app is decided here from that reply: a silent or failed one sends
-nothing, a report its todo's guidance forms goes as written, and any other goes as
-the reply wrote it. activity.md records what happened either way. A step the todo
+user is decided here from that reply: a silent or failed one sends nothing, a
+report its todo's guidance forms goes as written, and any other goes as the reply
+wrote it; the todo's stored delivery alone decides where, into the next brief or
+now. activity.md records what happened either way. A step the todo
 store fails is finished by a durable job, keyed by the run, never by running the
 todo again.
 """
@@ -12,11 +13,12 @@ todo again.
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
-from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants.briefing import BriefItemSource
 from app.constants.log_tags import LogTag
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
@@ -30,10 +32,13 @@ from app.constants.todos import (
     TodoRunDeliveryOutcome,
     TodoRunFinishFailure,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import TodoReportForm, TodoRun
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -44,8 +49,10 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
+from app.services.briefing.held import HeldSource, brief_will_carry, hold_for_brief
 from app.services.canvas_markdown import section_body
 from app.services.delivery.chat_channel import ProactiveTarget, proactive_destination
+from app.services.links.placeholders import resolve_link_placeholders
 from app.services.notification_service import notification_service
 from app.services.todo_activity import (
     recent_run_outcomes,
@@ -66,6 +73,7 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.NOTHING_TO_REPORT: "result not sent: the run found nothing for the user",
     TodoRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
     TodoRunDeliveryOutcome.SILENCED: "kept quiet: the write-up found it not worth a message",
+    TodoRunDeliveryOutcome.HELD_FOR_BRIEF: "result held for the next brief",
 }
 
 
@@ -104,6 +112,9 @@ class FinishedTodoRun(BaseModel):
     reply: ReplyOutcome
     #: The run's own finish_task declaration: result_text is its record, not a message.
     nothing_for_user: bool = False
+    #: URGENT when an event the trigger gate let through quiet hours woke the run.
+    #: Defaulted for a job queued before the class was carried.
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     #: Set once the message step is done; only the finish entry is left then.
     finish_entry: str | None = None
 
@@ -147,7 +158,7 @@ async def finish_todo_run(finished: FinishedTodoRun) -> FinishedTodoRun | None:
             entry, owner_id = sent
             finished = finished.model_copy(update={"finish_entry": entry, "user_id": owner_id})
         await record_run_finished(finished.todo_id, finished.user_id, finished.run_id, entry)
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.AGENT} the todo store failed a finished run's delivery",
             todo_id=finished.todo_id,
@@ -235,7 +246,7 @@ async def _send_once(finished: FinishedTodoRun) -> tuple[str, str] | None:
 def _held_back(finished: FinishedTodoRun, todo: TodoDocument) -> TodoRunDeliveryOutcome | None:
     """Name why a run's result goes nowhere, or None when it is sent."""
     # Read now, not when the run started: the run itself may have turned it off.
-    if not todo.notify_on_run:
+    if todo.delivery is WorkflowDelivery.SILENT:
         return TodoRunDeliveryOutcome.NOTIFY_OFF
     # Only a kind whose run guidance defines the declaration may silence itself with it.
     if finished.nothing_for_user and finished.report_form is TodoReportForm.AS_WRITTEN:
@@ -256,13 +267,24 @@ def _canvas_section(todo: TodoDocument | None, heading: str, max_chars: int) -> 
 
 
 async def _send(finished: FinishedTodoRun, todo: TodoDocument) -> _Resolution:
-    """Send the write-up, or the report itself when the todo's guidance forms it, through the one notify pipeline.
+    """Hold the result for the next brief, or send it now through the one notify pipeline.
 
-    Keyed by the run, so the durable job that retries a finish sends nothing twice.
+    It is the write-up, or the report itself when the todo's guidance forms it. A brief
+    todo's result goes now when no daily brief will run to carry it. Keyed by the run,
+    so the durable job that retries a finish sends nothing twice.
     """
     # A retelling drops the headings an as-written todo's guidance requires.
     as_written = finished.report_form is TodoReportForm.AS_WRITTEN
-    message = finished.result_text if as_written else finished.write_up
+    message = await resolve_link_placeholders(
+        todo.user_id, finished.result_text if as_written else finished.write_up
+    )
+    if todo.delivery is WorkflowDelivery.BRIEF and await brief_will_carry(todo.user_id):
+        await hold_for_brief(
+            todo.user_id,
+            HeldSource(BriefItemSource.TODO, todo.id, todo.title, finished.conversation_id),
+            message.splitlines(),
+        )
+        return _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
     notified = await notification_service.notify(
         NotificationRequest(
             id=notification_id(todo.user_id, "todo_run", finished.run_id),
@@ -271,8 +293,9 @@ async def _send(finished: FinishedTodoRun, todo: TodoDocument) -> _Resolution:
             content=NotificationContent(
                 title=todo.title, body="\n\n".join(split_message_bubbles(message))
             ),
-            metadata={"todo_id": todo.id},
+            details=TodoNotification(kind=NotificationKind.TODO, todo_id=todo.id),
             message=message,
+            message_class=finished.message_class,
         )
     )
     if notified.record.status is not NotificationStatus.DELIVERED:

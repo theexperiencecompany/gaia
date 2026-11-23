@@ -24,7 +24,7 @@ from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from mcp.shared.exceptions import McpError
-from mcp_use.client.exceptions import MCPError as McpUseError, OAuthAuthenticationError
+from mcp_use.client.exceptions import MCPError as McpUseError
 from pydantic import BaseModel, ConfigDict
 
 from app.agents.context.fetchers import build_provider_metadata_block
@@ -55,7 +55,7 @@ from app.models.subagent_models import Subagent
 from app.services.integrations.integration_accounts import get_account_record
 from app.services.integrations.user_integrations import check_user_has_integration
 from app.services.mcp.mcp_client import get_mcp_client
-from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError, StepUpAuthRequiredError
+from app.services.mcp.mcp_errors import MCP_SIGNED_OUT_ERRORS
 from app.services.user_instructions_service import get_instructions
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
@@ -83,12 +83,6 @@ class ActivationRecord(BaseModel):
     activated_integration: str | None = None
 
 
-# The server refused our credential: the user has to sign in again.
-_MCP_AUTH_ERRORS: tuple[type[Exception], ...] = (
-    MCPAuthorizationRequiredError,
-    StepUpAuthRequiredError,
-    OAuthAuthenticationError,
-)
 # What MCPClient.ensure_connected / connect raise when the server cannot be
 # reached or its session cannot be opened (ValueError: not connected in the DB,
 # integration not found, refused URL; RuntimeError: no session after reconnect).
@@ -100,7 +94,7 @@ _MCP_CONNECT_ERRORS: tuple[type[Exception], ...] = (
     McpError,
     McpUseError,
 )
-_MCP_ACTIVATION_ERRORS = (*_MCP_AUTH_ERRORS, *_MCP_CONNECT_ERRORS)
+_MCP_ACTIVATION_ERRORS = (*MCP_SIGNED_OUT_ERRORS, *_MCP_CONNECT_ERRORS)
 
 
 @dataclass(frozen=True)
@@ -204,7 +198,7 @@ async def _mcp_failure_text(
     target: Subagent | CustomMcpSubagent, user_id: str, error: Exception
 ) -> str:
     """Log a failed MCP connect and say what the model should do; auth failures show the connect card."""
-    auth_failed = isinstance(error, _MCP_AUTH_ERRORS)
+    auth_failed = isinstance(error, MCP_SIGNED_OUT_ERRORS)
     log.set_ns("activation", error_type=type(error).__name__)
     log.warning(
         f"{LogTag.AGENT} Activation could not connect the MCP server",

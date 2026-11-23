@@ -59,7 +59,7 @@ GAIA runs in a container, so `localhost` is not your machine. Use `http://host.d
 | Reading web pages | The built-in reader, a headless browser on your server | Firecrawl, which gets past sites that block bots | `FIRECRAWL_API_KEY` |
 | Running code | Off, until you turn on the local sandbox | E2B, a cloud sandbox | `E2B_API_KEY` |
 | File storage | Your server's disk | Cloudinary | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
-| Email | Off | Resend, for notifications and reminders by email | `RESEND_API_KEY` |
+| Email | Off | Resend, for notifications and reminders by email, sent from `brief@` your domain (a domain Resend has verified) unless `EMAIL_FROM` names another sender | `RESEND_API_KEY`, `EMAIL_FROM` |
 | Weather | Off | OpenWeather | `OPENWEATHER_API_KEY` |
 | Scanned documents | Text PDFs and Office files, read on your server | LlamaParse, which reads scanned pages and photos of text | `LLAMA_INDEX_KEY` |
 | Skill installs | 60 GitHub lookups an hour | A GitHub token, for 5000 an hour | `GITHUB_TOKEN` |

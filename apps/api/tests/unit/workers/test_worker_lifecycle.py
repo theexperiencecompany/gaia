@@ -1,12 +1,13 @@
 """Unit tests for ARQ worker lifecycle (startup, shutdown) and config."""
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 import importlib.util
 from pathlib import Path
 import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from arq.worker import Worker
 import pytest
 
 from app.services.conversation import runtime
@@ -22,19 +23,19 @@ from app.workers.lifecycle.shutdown import shutdown
 
 
 @pytest.fixture(autouse=True)
-def browser_worker_calls() -> Iterator[list[str]]:
-    """Record the browser worker's start/stop; a real one would consume the live Redis queue."""
+def queue_worker_calls() -> Iterator[list[str]]:
+    """Record the queue workers' start/stop; real ones would consume the live Redis queues."""
     calls: list[str] = []
 
-    def _start(ctx: dict) -> None:
+    def _start(ctx: dict, builders: object) -> None:
         calls.append("start")
 
     async def _stop(ctx: dict) -> None:
         calls.append("stop")
 
     with (
-        patch("app.workers.lifecycle.startup.start_browser_worker", _start),
-        patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
+        patch("app.workers.lifecycle.startup.start_queue_workers", _start),
+        patch("app.workers.lifecycle.shutdown.stop_queue_workers", _stop),
     ):
         yield calls
 
@@ -51,21 +52,26 @@ def built_runtime_ports(monkeypatch: pytest.MonkeyPatch) -> Iterator[MagicMock]:
 class TestWorkerStartup:
     """Tests for ARQ worker startup function."""
 
-    async def test_the_browser_worker_is_kept_in_the_ctx_that_shutdown_stops_it_from(
+    async def test_the_queue_workers_are_kept_in_the_ctx_that_shutdown_stops_them_from(
         self, ctx: dict
     ) -> None:
-        """Shutdown finds the running browser worker in arq's ctx; started on any other mapping it would never be stopped."""
-        seen: list[object] = []
+        """Shutdown finds the running queue workers in arq's ctx; started on any other mapping they would never be stopped."""
+        seen: list[tuple[object, tuple[str, ...]]] = []
+
+        def _start(context: object, builders: tuple[Callable[[], Worker], ...]) -> None:
+            seen.append((context, tuple(b.__name__ for b in builders)))
+
         with (
             patch("app.workers.lifecycle.startup.unified_startup", new_callable=AsyncMock),
-            patch("app.workers.lifecycle.startup.start_browser_worker", seen.append),
+            patch("app.workers.lifecycle.startup.start_queue_workers", _start),
         ):
             from app.workers.lifecycle.startup import startup
 
             await startup(ctx)
 
-        assert seen == [ctx]
-        assert seen[0] is ctx
+        [(started_on, builders)] = seen
+        assert started_on is ctx
+        assert builders == ("build_browser_worker", "build_brief_worker", "build_scout_worker")
 
     async def test_the_dead_letter_tap_is_kept_in_the_ctx_that_shutdown_stops_it_from(
         self, ctx: dict
@@ -83,18 +89,18 @@ class TestWorkerStartup:
         assert seen == [ctx]
         assert seen[0] is ctx
 
-    async def test_startup_starts_the_browser_worker_once_the_process_is_ready(
-        self, ctx: dict, browser_worker_calls: list[str]
+    async def test_startup_starts_the_queue_workers_once_the_process_is_ready(
+        self, ctx: dict, queue_worker_calls: list[str]
     ) -> None:
         async def _ready(context: str) -> None:
-            assert browser_worker_calls == []
+            assert queue_worker_calls == []
 
         with patch("app.workers.lifecycle.startup.unified_startup", _ready):
             from app.workers.lifecycle.startup import startup
 
             await startup(ctx)
 
-        assert browser_worker_calls == ["start"]
+        assert queue_worker_calls == ["start"]
 
     @pytest.fixture
     def ctx(self) -> dict:
@@ -188,18 +194,18 @@ class TestWorkerStartup:
 class TestWorkerShutdown:
     """Tests for ARQ worker shutdown function."""
 
-    async def test_shutdown_stops_the_browser_worker_before_tearing_services_down(
-        self, browser_worker_calls: list[str]
+    async def test_shutdown_stops_the_queue_workers_before_tearing_services_down(
+        self, queue_worker_calls: list[str]
     ) -> None:
         async def _teardown(context: str) -> None:
-            assert browser_worker_calls == ["stop"]
+            assert queue_worker_calls == ["stop"]
 
         with patch("app.workers.lifecycle.shutdown.unified_shutdown", _teardown):
             await shutdown({})
 
-        assert browser_worker_calls == ["stop"]
+        assert queue_worker_calls == ["stop"]
 
-    async def test_shutdown_stops_the_browser_worker_this_process_started(self) -> None:
+    async def test_shutdown_stops_the_queue_workers_this_process_started(self) -> None:
         """The running worker lives in ARQ's ctx; stopping any other leaves its jobs running."""
         stopped: list[dict] = []
 
@@ -208,7 +214,7 @@ class TestWorkerShutdown:
 
         ctx: dict[str, object] = {"startup_time": 0}
         with (
-            patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
+            patch("app.workers.lifecycle.shutdown.stop_queue_workers", _stop),
             patch("app.workers.lifecycle.shutdown.unified_shutdown", AsyncMock()),
         ):
             await shutdown(ctx)
@@ -243,6 +249,17 @@ class TestWorkerShutdown:
             await shutdown(ctx)
 
         mock_stop.assert_awaited_once_with()
+
+    async def test_shutdown_closes_the_render_browser(self) -> None:
+        with (
+            patch("app.workers.lifecycle.shutdown.unified_shutdown", new_callable=AsyncMock),
+            patch(
+                "app.workers.lifecycle.shutdown.close_chromium", new_callable=AsyncMock
+            ) as close_chromium,
+        ):
+            await shutdown({"startup_time": 100.0})
+
+        close_chromium.assert_awaited_once_with()
 
     async def test_shutdown_records_the_runtime_since_startup(self):
         """Startup's loop-clock reading reaches shutdown through ARQ's ctx and becomes the runtime."""

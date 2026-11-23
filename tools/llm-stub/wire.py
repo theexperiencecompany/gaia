@@ -131,7 +131,7 @@ def _words(text: str) -> list[str]:
     return [leading + words[0], *words[1:]] if words else [text]
 
 
-def _split(text: str, pieces: int) -> list[str]:
+def split_pieces(text: str, pieces: int) -> list[str]:
     if not text:
         return [""]
     size = max(1, -(-len(text) // pieces))  # ceil division
@@ -140,7 +140,7 @@ def _split(text: str, pieces: int) -> list[str]:
 
 def _content_pieces(text: str, pace_ms: int) -> list[str]:
     """Split text a word per chunk when paced, else into a few even pieces."""
-    return _words(text) if pace_ms else _split(text, _STREAM_PIECES)
+    return _words(text) if pace_ms else split_pieces(text, _STREAM_PIECES)
 
 
 def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterator[dict[str, Any]]:
@@ -171,7 +171,7 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
             },
             None,
         )
-        for piece in _split(arguments, _STREAM_PIECES):
+        for piece in split_pieces(arguments, _STREAM_PIECES):
             yield _chunk(
                 model,
                 completion_id,

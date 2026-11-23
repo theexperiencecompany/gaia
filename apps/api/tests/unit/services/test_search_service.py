@@ -13,15 +13,20 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.db.repositories.short_links import short_link_repository
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationMessageHit,
     ConversationSearchResults,
 )
 from app.models.notes_models import NoteSearchHit
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services import search_service
+from app.services.links.placeholders import link_placeholder
+from app.services.links.urls import build_url
 from app.services.search_service import search_messages
 from app.utils.log_identifiers import user_text_shape
+from shared.py.conversation_wire import ReplyItem
 from tests.factories import make_reply_item
 from tests.helpers import captured_wide_event
 
@@ -200,3 +205,25 @@ class TestSearchMessagesRegexEscaping:
         # And each repository is scoped to the caller.
         assert mock_conversation_repo.search.call_args[0][0] == FAKE_USER_ID
         assert mock_note_repo.search_by_plaintext.call_args[0][0] == FAKE_USER_ID
+
+
+async def test_a_found_reply_shows_its_link_read_under_the_searching_user(
+    mock_conversation_repo, mock_note_repo
+) -> None:
+    target = RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+    hit = ConversationMessageHit(
+        conversation_id="conv1", item=make_reply_item(f"the plan {link_placeholder(target)}")
+    )
+    mock_conversation_repo.search.return_value = ConversationSearchResults(
+        messages=[hit], conversations=[]
+    )
+    mock_note_repo.search_by_plaintext.return_value = []
+    live = AsyncMock(return_value=ShortLink(slug="ab12cd", user_id=FAKE_USER_ID, target=target))
+
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        results = await search_messages("plan", FAKE_USER_ID)
+
+    [message] = results.messages
+    assert isinstance(message.item, ReplyItem)
+    assert message.item.bubbles == (f"the plan {build_url('ab12cd')}",)
+    assert live.await_args.args[0] == FAKE_USER_ID

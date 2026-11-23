@@ -44,6 +44,7 @@ from app.models.todo_models import (
 from app.models.trigger_gate_models import GateEdit
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.briefing.errors import refuse_a_missing_brief
 from app.services.todo_activity import record_field_changes
 from app.services.todos.errors import TrackedTodoWorkflowError
 from app.services.todos.subscription_gate import edit_subscription_gate
@@ -176,6 +177,8 @@ async def create_todo(
             "project_id": todo.project_id,
         },
     )
+    # The REST body takes any delivery; the system's own todos (the Inbox desk) choose theirs.
+    await refuse_a_missing_brief(user.user_id, todo.delivery)
     try:
         return await TodoService.create_todo(todo, user.user_id)
     except AppError:
@@ -216,9 +219,7 @@ async def bulk_update_todos(
         todo={"operation": "bulk_update", "bulk_count": len(request.todo_ids)},
     )
     try:
-        result = await TodoService.bulk_update_todos(request, user.user_id)
-        capture(UserId(user.user_id), TodosUpdated(bulk_count=len(request.todo_ids)))
-        return result
+        return await TodoService.bulk_update_todos(request, user.user_id)
     except AppError:
         raise
     except Exception as e:
@@ -291,9 +292,7 @@ async def bulk_complete_todos(
         updates=TodoUpdateRequest(completed=True),
     )
     try:
-        result = await TodoService.bulk_update_todos(request, user.user_id)
-        capture(UserId(user.user_id), TodosToggled(bulk_count=len(todo_ids)))
-        return result
+        return await TodoService.bulk_update_todos(request, user.user_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

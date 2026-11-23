@@ -13,6 +13,7 @@
 @source "../../layout.tsx";
 @source "../../not-found.tsx";
 @source "../../../config/appConfig.tsx";
+@source "../../../config/site.ts";
 @source "../../../config/toolIconConfig.ts";
 @source "../../../hooks/useGitHubStars.ts";
 @source "../../../hooks/useOAuthSuccessToast.ts";
@@ -40,6 +41,7 @@
 @source "../../../lib/hubMetadata.ts";
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/imageDimensions.ts";
+@source "../../../lib/internalApiHeaders.ts";
 @source "../../../lib/marketingPages.ts";
 @source "../../../lib/queryClient.ts";
 @source "../../../lib/relatedInGroup.ts";

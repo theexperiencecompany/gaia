@@ -27,6 +27,10 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 import uuid
 
+from arq import create_pool
+from arq.connections import ArqRedis, RedisSettings
+from arq.constants import result_key_prefix
+from arq.jobs import deserialize_result
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import httpx
@@ -48,11 +52,14 @@ from app.db.repositories.subscriptions import subscription_repository
 from app.models.conversation_send_models import ActiveBotConversation, BotMessageAccepted
 from app.models.payment_models import PlanType, SubscriptionDocument
 from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.dev_schemas import SeedDevDataRequest
 from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.jobs import done_state, get_latest_job
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.tasks.conversation_sweep_tasks import conversation_sweep_cron
 from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import pick_free_port, worker_mongo_db_name, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
@@ -144,6 +151,7 @@ class BrowserStack:
         self.proxy: StackProcess | None = None
         self.redis: Redis | None = None
         self.mongo: MongoDB | None = None
+        self.arq: ArqRedis | None = None
         self._patches: pytest.MonkeyPatch = pytest.MonkeyPatch()
         self._claim: asyncio.Task[None] | None = None
 
@@ -202,7 +210,7 @@ class BrowserStack:
                 "proxy reaches the API", self.proxy.wait_healthy(f"{self.public_url}/api/v1/ping")
             ),
         )
-        self._lend_the_app_this_loops_clients()
+        await self._lend_the_app_this_loops_clients()
         await self.observer.start()
         say("ready")
 
@@ -256,6 +264,8 @@ class BrowserStack:
         self._patches.undo()
         if self.mongo is not None:
             self.mongo.client.close()
+        if self.arq is not None:
+            await self.arq.aclose()
         if self.redis is not None:
             await self.redis.flushdb()
             await self.redis.aclose()
@@ -299,8 +309,8 @@ class BrowserStack:
             "BROWSER_STATE_ENCRYPTION_KEY": self.state_key,
         }
 
-    def _lend_the_app_this_loops_clients(self) -> None:
-        """Point the app helpers this process calls (users, job state, handoffs, the plan cache) at the stack's own clients.
+    async def _lend_the_app_this_loops_clients(self) -> None:
+        """Point the app helpers this process calls (users, job state, handoffs, the plan cache, the job queue) at the stack's own clients.
 
         The app's Mongo and Redis clients are module globals that bind to the first
         event loop using them; a stack lives on its own loop and closes its clients
@@ -311,6 +321,8 @@ class BrowserStack:
         self.mongo = MongoDB(uri=settings.MONGO_DB, db_name=self.mongo_db_name)
         self._patches.setattr(collections, "_get_collection", self.mongo.get_collection)
         self._patches.setattr(redis_cache, "redis", cast(AsyncRedisCommands, self.redis))
+        self.arq = await create_pool(RedisSettings.from_dsn(self.redis_url))
+        self._patches.setattr(RedisPoolManager, "_pool", self.arq)
 
     # --- users and chats ------------------------------------------------------
 
@@ -318,7 +330,7 @@ class BrowserStack:
         """Mint a user through the real signup path, link a Telegram account, and make them PRO."""
         email = f"browser-stack-{uuid.uuid4().hex[:10]}@gaia.test"
         user = await mint_dev_user(email)
-        seeded = await seed_dev_data(email, todos=0, conversations=0, platform_links=[_TELEGRAM])
+        seeded = await seed_dev_data(SeedDevDataRequest(email=email, platform_links=[_TELEGRAM]))
         await _make_pro(user.id)
         return BotUser(user_id=user.id, telegram_id=seeded.platform_user_ids[_TELEGRAM])
 
@@ -447,6 +459,18 @@ class BrowserStack:
                 return
             await asyncio.sleep(1.0)
         raise AssertionError(f"{conversation_id} never went quiet within {timeout}s\n{self.logs()}")
+
+    async def swept_since(self, since_ms: int) -> bool:
+        """Whether a conversation sweep due after since_ms (epoch milliseconds) has finished without failing."""
+        prefix = f"{result_key_prefix}{conversation_sweep_cron().name}:"
+        # ARQ pickles its results, which the stack's decoding client cannot read.
+        async with Redis.from_url(self.redis_url) as raw:
+            for key in await raw.keys(f"{prefix}*"):
+                due = int(key.decode().removeprefix(prefix))
+                result = await raw.get(key)
+                if due > since_ms and result is not None and deserialize_result(result).success:
+                    return True
+        return False
 
     async def handoff_waiting(self, user: BotUser) -> bool:
         """Whether a bot run of this user is waiting on the user right now."""

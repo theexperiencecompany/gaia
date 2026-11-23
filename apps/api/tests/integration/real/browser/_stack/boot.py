@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import Literal
 
 from arq.worker import Worker
@@ -31,7 +32,10 @@ from app.services.conversation.runtime import install_runtime_ports
 from app.workers.browser_worker import browser_reaper_cron, build_browser_worker
 from app.workers.config.worker_settings import WorkerSettings
 from app.workers.tasks.conversation_sweep_tasks import conversation_sweep_cron
-from tests.integration.real.browser._stack.processes import REAPER_HEALTH_KEY
+from tests.integration.real.browser._stack.processes import (
+    REAPER_HEALTH_KEY,
+    SWEEP_RESULT_SECONDS,
+)
 
 
 async def start_app_services(context: Literal["main_app", "arq_worker"]) -> None:
@@ -56,7 +60,11 @@ async def serve_browser_queue() -> None:
     worker = build_browser_worker()
     reaper = Worker(
         functions=[],
-        cron_jobs=[browser_reaper_cron(), conversation_sweep_cron()],
+        cron_jobs=[
+            browser_reaper_cron(),
+            # Each sweep's kept result is how a test knows one has run.
+            replace(conversation_sweep_cron(), keep_result_s=SWEEP_RESULT_SECONDS),
+        ],
         redis_settings=WorkerSettings.redis_settings,
         handle_signals=False,
         health_check_key=REAPER_HEALTH_KEY,

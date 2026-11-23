@@ -28,6 +28,7 @@ from redis.exceptions import RedisError
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import QUIET_HOURS_CONTEXT_KEY
 from app.constants.triggers import PER_EMAIL_TRIGGER_NAMES
+from app.constants.workflows import EXECUTE_WORKFLOW_TASK
 from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import QuietHoursHold
@@ -42,7 +43,6 @@ TRIGGER_BATCH_KEY = "trigger_batch:{workflow_id}"
 # The drain at the end of one night's quiet hours, so every path that defers to it is one job.
 TRIGGER_BATCH_HELD_JOB_ID = "trigger_batch:{workflow_id}:held:{until}"
 
-WORKFLOW_BATCH_TASK = "execute_workflow_by_id"
 
 # Most events one batched run will carry. A run that swallowed an entire backlog
 # would blow the per-request token ceiling and fail wholesale, so the newest
@@ -189,7 +189,7 @@ async def buffer_trigger_event(
         data,
         window_seconds,
         BatchDrainJob(
-            function=WORKFLOW_BATCH_TASK,
+            function=EXECUTE_WORKFLOW_TASK,
             args=(workflow_id, {**context, "trigger_batch_key": key}),
             job_id=f"trigger_batch:{workflow_id}",
         ),
@@ -202,7 +202,7 @@ def _held_drain(workflow_id: str, until: datetime, context: Mapping[str, object]
     # Unmutated: the stamp's kind is a StrEnum, equal to its value in either mode.
     stamp = QuietHoursHold().model_dump(mode="json")  # pragma: no mutate
     return BatchDrainJob(
-        function=WORKFLOW_BATCH_TASK,
+        function=EXECUTE_WORKFLOW_TASK,
         args=(
             workflow_id,
             {
@@ -346,7 +346,7 @@ async def reschedule_if_refilled(
         batch_key,
         window_seconds,
         BatchDrainJob(
-            function=WORKFLOW_BATCH_TASK,
+            function=EXECUTE_WORKFLOW_TASK,
             args=(
                 workflow_id,
                 {

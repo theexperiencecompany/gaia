@@ -66,6 +66,8 @@
 set -euo pipefail
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/pinned-release.sh
+source "$(dirname "$0")/lib/pinned-release.sh"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
@@ -124,10 +126,6 @@ squirrel_platform() {
   echo "$os-$arch"
 }
 
-sha256_of() {
-  if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
-}
-
 # Print the path of the pinned squirrel binary, downloading it once per cache.
 install_squirrel() {
   local platform want dir bin
@@ -135,12 +133,11 @@ install_squirrel() {
   want="$(squirrel_sha256 "$platform")"
   dir="${SQUIRREL_CACHE:-${RUNNER_TOOL_CACHE:-$HOME/.cache}/squirrel}/$SQUIRREL_VERSION"
   bin="$dir/squirrel-$platform"
-  if [ ! -x "$bin" ] || [ "$(sha256_of "$bin")" != "$want" ]; then
+  if [ ! -x "$bin" ] || ! digest_matches sha256 "$want" "$bin"; then
     mkdir -p "$dir"
-    curl -fsSL --retry 3 --retry-all-errors -o "$bin.part" \
-      "https://github.com/squirrelscan/squirrelscan/releases/download/v$SQUIRREL_VERSION/squirrel-$SQUIRREL_VERSION-$platform"
-    [ "$(sha256_of "$bin.part")" = "$want" ] \
-      || ci_die "smoke-web: squirrel $SQUIRREL_VERSION ($platform) does not match its pinned sha256"
+    fetch_verified "smoke-web: squirrel $SQUIRREL_VERSION ($platform)" \
+      "https://github.com/squirrelscan/squirrelscan/releases/download/v$SQUIRREL_VERSION/squirrel-$SQUIRREL_VERSION-$platform" \
+      sha256 "$want" "$bin.part"
     chmod +x "$bin.part"
     mv -f "$bin.part" "$bin"
   fi

@@ -16,7 +16,9 @@ from pydantic import BaseModel, ConfigDict
 
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
 from app.models.conversation_frame_models import (
+    ArtifactDeltaEvent,
     ImageEvent,
     ReasoningEvent,
     StreamPayload,
@@ -26,6 +28,7 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
     ToolOutputEvent,
 )
+from app.models.openui_artifact_models import ArtifactCard, ArtifactDelta, ArtifactStatus
 from app.models.stream_events import SubagentEndPayload, SubagentStartPayload, ToolOutputPayload
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 
@@ -45,6 +48,7 @@ class _CardRefs(BaseModel):
 
     tool_call_id: str | None = None
     approval_id: str | None = None
+    stream_id: str | None = None
 
 
 class _TodoSource(BaseModel):
@@ -101,6 +105,8 @@ def fold_cards(
                 _take_todo_progress(cards, snapshot)
             case ImageEvent(image_data=made):
                 image = made
+            case ArtifactDeltaEvent(artifact_delta=delta):
+                _take_artifact_delta(cards, delta)
     return FoldedCards(tool_data=tuple(cards), image=image)
 
 
@@ -114,12 +120,18 @@ def _refs(card: ToolDataEntry) -> _CardRefs:
     return _CardRefs.model_validate(data) if isinstance(data, dict) else _CardRefs()
 
 
-def _approval_id(card: ToolDataEntry) -> str | None:
-    return _refs(card).approval_id if card["tool_name"] == APPROVAL_REQUEST_TOOL_NAME else None
+def _replaced_by(card: ToolDataEntry) -> tuple[str, str] | None:
+    """Return what a later frame of the same card replaces it by: its approval, or its artifact run."""
+    name, refs = card["tool_name"], _refs(card)
+    if name == APPROVAL_REQUEST_TOOL_NAME and refs.approval_id:
+        return name, refs.approval_id
+    if name == ARTIFACT_DONE_EVENT and refs.stream_id:
+        return name, refs.stream_id
+    return None
 
 
 def _take_card(cards: list[ToolDataEntry], card: ToolDataEntry) -> None:
-    """Route a subagent's call into its group; an approval's later frame replaces its earlier one in place."""
+    """Route a subagent's call into its group; an approval's or artifact's later frame replaces its earlier one in place."""
     subagent_id = card.get("subagent_id")
     if subagent_id and card["tool_name"] == TOOL_CALLS_CARD:
         _update_group(
@@ -128,13 +140,37 @@ def _take_card(cards: list[ToolDataEntry], card: ToolDataEntry) -> None:
             lambda group: {**group, "tool_calls": [*_calls(group), card["data"]]},
         )
         return
-    approval_id = _approval_id(card)
-    if approval_id is not None:
+    key = _replaced_by(card)
+    if key is not None:
         for index, held in enumerate(cards):
-            if _approval_id(held) == approval_id:
+            if _replaced_by(held) == key:
                 cards[index] = card
                 return
     cards.append(card)
+
+
+def _take_artifact_delta(cards: list[ToolDataEntry], delta: ArtifactDelta) -> None:
+    """Append a draft chunk to its artifact's streaming card, opening the card on the first chunk."""
+    key = (ARTIFACT_DONE_EVENT, delta.stream_id)
+    index = next((i for i, held in enumerate(cards) if _replaced_by(held) == key), None)
+    held = None if index is None else ArtifactCard.model_validate(cards[index]["data"])
+    if held is not None and held.status is not ArtifactStatus.STREAMING:
+        return  # The run already ended: a late chunk changes nothing.
+    draft = ArtifactCard(
+        stream_id=delta.stream_id,
+        kind=delta.kind,
+        title=delta.title,
+        status=ArtifactStatus.STREAMING,
+        program=(held.program if held is not None and held.program else "") + delta.delta,
+    )
+    card: ToolDataEntry = {
+        "tool_name": ARTIFACT_DONE_EVENT,
+        "data": draft.model_dump(exclude_none=True),
+    }
+    if index is None:
+        cards.append(card)
+    else:
+        cards[index] = card
 
 
 def _take_output(cards: list[ToolDataEntry], output: ToolOutputPayload) -> None:

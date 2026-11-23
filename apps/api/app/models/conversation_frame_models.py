@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import AwareDatetime, BaseModel, Field
 
 from app.models.conversation_log_models import ConversationState, DisplayState, Entry
+from app.models.openui_artifact_models import ArtifactDelta
 from app.models.stream_events import (
     FollowUpActionsFrame,
     MessageBoundaryPayload,
@@ -39,6 +40,7 @@ class StreamPayloadType(StrEnum):
     FOLLOW_UP_ACTIONS = "follow_up_actions"
     TODO_PROGRESS = "todo_progress"
     IMAGE_DATA = "image_data"
+    ARTIFACT_DELTA = "artifact_delta"
 
 
 class ResponseEvent(ResponseFrame):
@@ -128,6 +130,15 @@ class ImageEvent(BaseModel):
     image_data: ImageData
 
 
+class ArtifactDeltaEvent(BaseModel):
+    """A chunk of a create_artifact run's first draft, tagged; its card folds it."""
+
+    model_config = WIRE_CONFIG
+
+    type: Literal[StreamPayloadType.ARTIFACT_DELTA] = StreamPayloadType.ARTIFACT_DELTA
+    artifact_delta: ArtifactDelta
+
+
 StreamPayload = Annotated[
     ResponseEvent
     | ReasoningEvent
@@ -138,7 +149,8 @@ StreamPayload = Annotated[
     | SubagentEndEvent
     | FollowUpActionsEvent
     | TodoProgressEvent
-    | ImageEvent,
+    | ImageEvent
+    | ArtifactDeltaEvent,
     Field(discriminator="type"),
 ]
 

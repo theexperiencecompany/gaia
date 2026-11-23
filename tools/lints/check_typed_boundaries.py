@@ -62,6 +62,7 @@ STRING_KEY_READ = "TB002"
 # to the repo root; every entry states why.
 BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/db/repositories/base.py": "the Mongo document -> model boundary",
+    "apps/api/app/db/repositories/cached_base.py": "the cached half of the same boundary: a write filter is a Mongo document, and a cached finder's result type is any model",
     "apps/api/app/schemas/errors.py": "the error-body boundary: whatever detail a caller raised "
     "is parsed into ErrorEnvelope here once, and FastAPI types responses= as dict[str, Any]",
     "apps/api/app/override/": "vendored overrides of third-party library internals",
@@ -97,6 +98,8 @@ EXTERNAL_TYPEDDICTS = (
     "OutputTokenDetails",
     # composio.core.models._modifiers.ToolExecuteParams: what a before-execute hook receives.
     "ToolExecuteParams",
+    # resend.Emails.SendResponse: what Emails.send returns (its message id).
+    "SendResponse",
     # chromadb.api.types.GetResult: what Collection.get returns.
     "GetResult",
 )
@@ -118,6 +121,7 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "langchain_core.messages.content.ReasoningContentBlock",
         "langgraph.store.base.IndexConfig",
         "composio.core.models.tools.ToolExecutionResponse",
+        "playwright.async_api.FloatRect",
         "playwright.sync_api.StorageState",
         "playwright.sync_api.StorageStateCookie",
         "cdp_use.cdp.dom.commands.ResolveNodeReturns",

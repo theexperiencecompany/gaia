@@ -7,17 +7,20 @@ oauth_service.py and integration_service.py.
 
 from collections.abc import Awaitable
 
-from pymongo.errors import PyMongoError
-
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
-from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, ToolsSetup
+from app.constants.integrations import (
+    INTEGRATION_STATUS_UPDATE_EVENT,
+    IntegrationStatus,
+    ToolsSetup,
+)
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
 from app.core.websocket_manager import websocket_manager
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
-from app.models.integration_models import UserIntegrationStatus
 from app.services.conversation.integration_log import continue_after_connect
+from app.services.integrations.hook_registry import emit_connected
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.wait_service import report_wait_met
@@ -33,11 +36,12 @@ async def announce_integration_changed(user_id: str, integration_id: str) -> Non
 
 
 async def publish_connected(user_id: str, integration_id: str) -> None:
-    """Reflect a newly connected integration in the workspace VFS, on any open page, and to anything waiting on it."""
+    """Reflect a new connection in the workspace VFS, its hook subscribers, any open page and its waiters."""
     schedule_user_integrations_sync(user_id)
+    await emit_connected(user_id, integration_id)
     await announce_integration_changed(user_id, integration_id)
 
-    # Best-effort for the same reason: the connect itself already succeeded.
+    # Best-effort: the connect itself already succeeded.
     try:
         await continue_after_connect(user_id, integration_id)
     except Exception as e:
@@ -67,7 +71,7 @@ async def publish_tools_setup(
 async def update_user_integration_status(
     user_id: str,
     integration_id: str,
-    status: UserIntegrationStatus,
+    status: IntegrationStatus,
     expired_reason: str | None = None,
 ) -> bool:
     """Upsert user integration status; creates the record if it doesn't exist.
@@ -92,7 +96,7 @@ async def update_user_integration_status(
         integration_id=integration_id,
         status=status,
     )
-    if status == "connected":
+    if status == IntegrationStatus.CONNECTED:
         await publish_connected(user_id, integration_id)
     else:
         await announce_integration_changed(user_id, integration_id)
@@ -109,7 +113,7 @@ async def reconnect_or_unknown(
     """
     try:
         return await connected_before
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.INTEGRATION} Could not tell whether the connect is a reconnect",
             integration_id=integration_id,

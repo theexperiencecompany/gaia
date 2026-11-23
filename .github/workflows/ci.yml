@@ -6,13 +6,19 @@ name: CI
 # them, 24 of them for under a minute of work behind a runner's setup.
 #
 # Tiers, decided once by `detect` (`tier` output):
-#   fast — every PR push: select-runner, detect, lint-node, lint-python,
-#          lint-mixed, ts-build-test, test-python unit-a + unit-b, mutation of
-#          the changed modules, quality-gate.
-#   full — merge_group, master push, dispatch: everything above plus the
-#          integration/bridge/browser slices (regression-proof rides the
-#          integration slice), the dependency audit, the scans, the image
-#          build, and on master coverage and the deploy phases.
+#   fast — every PR push: select-runner, detect, lint-node (with the
+#          repo-wide policy checks), lint-python, lint-mixed, ts-build-test,
+#          test-python unit-a + unit-b, mutation of the changed modules,
+#          quality-gate.
+#   full — merge_group, a master push with no green queue run, dispatch:
+#          everything above plus the integration/bridge/browser slices
+#          (regression-proof for service-tier tests rides the integration
+#          slice; lint-python proves the unit-tier ones on every push), the dependency
+#          audit, the scans, the image build and coverage; on master the
+#          deploy phases.
+#   verified — a master push of a SHA a green merge_group run already checked
+#          (`verdict.py queue-verified`): no check lane runs; the images, the
+#          web bundle and the master-only publishing build, then deploy.
 # A PR enters master only through the merge queue, so the full tier gates every
 # merge: the slow checks run once per merge instead of once per push. Mutation
 # runs on the PR too: a survivor found only in the queue is an ejection plus a
@@ -90,8 +96,8 @@ jobs:
     # Measured 2026-10-22: a 13 s select-runner sat queued for 28 min in the
     # GitHub-hosted backlog while all 20 home listeners were idle. Point
     # CI_DISPATCH_RUNNER at a Blacksmith label to take it off that queue; unset
-    # keeps ubuntu-latest, so this is a one-variable rollback.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    # keeps ubuntu-24.04, so this is a one-variable rollback.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -142,7 +148,7 @@ jobs:
     name: watchdog
     needs: [select-runner]
     if: needs.select-runner.outputs.is_self_hosted == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       actions: write # cancel the run
@@ -183,6 +189,8 @@ jobs:
       statuses: read # reuse-plan reads each check's last status
     outputs:
       tier: ${{ steps.tier.outputs.tier }}
+      # The green merge_group run a verified master push relies on (empty otherwise).
+      queue_run_url: ${{ steps.queue.outputs.queue_run_url }}
       # The base every lane below diffs against: the PR's real parent (the
       # event payload names a stack's trunk — see scripts/ci/changes.sh), or
       # the commit a merge group was built on.
@@ -215,12 +223,23 @@ jobs:
           # depth-0 fetch on that runner then re-unshallows from GitHub
           # (measured 21-104 s).
           fetch-depth: 0
+          # Off the box, every branch's commits and trees but only HEAD's blobs
+          # (38 MB instead of 783 MB); a diff against the base fetches the few it reads.
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
+
+      # Before the tier: a master push the merge queue already passed checks nothing again.
+      - name: Did the merge queue already pass this commit
+        id: queue
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/verdict.py queue-verified --repo "$GITHUB_REPOSITORY" --workflow ci.yml --sha "$GITHUB_SHA"
 
       - name: Decide the tier
         id: tier
         env:
-          TIER: ${{ github.event_name == 'pull_request' && 'fast' || 'full' }}
+          TIER: ${{ github.event_name == 'pull_request' && 'fast' || steps.queue.outputs.queue_run != '' && 'verified' || 'full' }}
         shell: bash
         run: echo "tier=$TIER" | tee -a "$GITHUB_OUTPUT"
 
@@ -263,6 +282,8 @@ jobs:
         id: affected
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+          # verified keeps only what a deploy ships and what only a master push publishes.
+          CI_TIER: ${{ steps.tier.outputs.tier }}
           TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: bash scripts/ci/changes.sh affected
       # Each task's changed files, for changes.sh files --task (the task-files composite).
@@ -336,7 +357,9 @@ jobs:
           df -h . | head -n 5
           echo "probe: OK — fallback contract verified (job landed, did not queue forever)"
 
-  # ── lint-node: every TS/JS hygiene check, one setup ──────────────────────
+  # ── lint-node: every TS/JS hygiene check and the repo-wide policy checks ─
+  # The secret scan runs on every change (a key can land in a README), so the
+  # job always starts; uv is for tool-pins, which parses the prek configs as YAML.
   lint-node:
     name: lint-node
     needs: [select-runner, detect]
@@ -354,6 +377,8 @@ jobs:
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      # gitleaks scans the pushed commits on a push (audit.sh secrets).
+      PUSH_BEFORE_SHA: ${{ github.event.before }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -363,8 +388,10 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
+      - uses: ./.github/actions/setup-uv
       - uses: ./.github/actions/setup-node-pnpm
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
@@ -416,6 +443,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
@@ -517,6 +545,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
@@ -597,84 +626,6 @@ jobs:
           status: ${{ job.status }}
           name: lint-mixed
 
-  # ── repo-policy: the checks that hold for the whole tree, not one language ─
-  # The secret scan runs on every change (a key can land in a README), so the
-  # job always starts; it needs a checkout, node for bot-handles and uv for
-  # tool-pins, which parses the prek configs as YAML.
-  repo-policy:
-    name: repo-policy
-    needs: [select-runner, detect]
-    if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'repo-policy') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
-    # Job-level because a workflow-level `env:` cannot read `needs`.
-    env:
-      JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
-      REUSED: ${{ needs.detect.outputs.reused || '{}' }}
-      # run-job posts each check's status as it finishes; post-statuses the rest.
-      GH_TOKEN: ${{ github.token }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      # Not on a dispatch (an open PR sharing the head would lose its statuses),
-      # nor for a fork or Dependabot (read-only token).
-      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
-      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      statuses: write # one `ci / <area> / <check>` status per check
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/task-files
-      - uses: ./.github/actions/setup-uv
-      - uses: ./.github/actions/setup-node-pnpm
-
-      # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets); each check's status is posted as it finishes.
-      - name: Run this job's checks through nx
-        continue-on-error: true
-        env:
-          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
-          RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/runner.py run-job repo-policy
-
-      # Only the events that bring new commits, scanned as a range (ci:gitleaks's
-      # metadata.ci.events). A merge group's commits are the PR's, which the PR run
-      # scanned; a dispatch makes the action scan ALL history (4,747 old findings,
-      # run 40050150344). Dependabot runs get Dependabot secrets, so GITLEAKS_LICENSE is empty.
-      - name: gitleaks — secret scanning
-        id: gitleaks
-        continue-on-error: true
-        if: contains(fromJSON(needs.detect.outputs.job_tasks)['repo-policy'], 'ci:gitleaks') && github.actor != 'dependabot[bot]'
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-          # The default per-finding summary blows GitHub's 1024k step-summary
-          # cap on a history-touching diff; full results are in the sarif.
-          GITLEAKS_ENABLE_SUMMARY: false
-      # The action writes results.sarif in the workspace; each leak is a finding.
-      - name: gitleaks — read its findings into the verdict
-        if: always() && steps.gitleaks.outcome == 'failure'
-        run: python3 scripts/ci/verdict.py sarif --lane repo-policy/gitleaks results.sarif
-      # Every status run-job did not post (a step's check, a skip, a lost post),
-      # a verdict per failed check, then the job's.
-      - name: Post one commit status per check (fails if any check failed)
-        if: always()
-        env:
-          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
-          RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job repo-policy --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
-      - name: Upload the verdict
-        if: always()
-        uses: ./.github/actions/upload-verdict
-        with:
-          status: ${{ job.status }}
-          name: repo-policy
-
   # ── python-audit: dependency CVEs + import cost (slow by nature) ─────────
   python-audit:
     name: python-audit
@@ -704,6 +655,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
@@ -785,6 +737,8 @@ jobs:
         env:
           JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          # web:build prerenders against the production API: count it against the web server's ceiling, not one runner address's.
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
         run: python3 scripts/ci/runner.py run-job ts-build-test
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -814,12 +768,17 @@ jobs:
     secrets: inherit # pragma: allowlist secret
 
   # ── desktop-build: package the Electron app (Linux on a PR, every OS after) ─
+  # A PR packages only when the desktop app or this lane changed (ci:desktop-package);
+  # what reaches it through web runs in the queue (ci:desktop-package-deps).
+  # ts-build-test still builds desktop:build on every PR that reaches it.
   desktop-build:
     needs: [detect]
-    if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.tasks), 'desktop:build') || contains(fromJSON(needs.detect.outputs.jobs), 'desktop-build')) }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'desktop-build') }}
     uses: ./.github/workflows/desktop-pr-build.yml
     permissions:
       contents: read
+    secrets:
+      INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
 
   # ── scan: Python SAST and the filesystem vulnerability scan ──────────────
   scan:
@@ -929,7 +888,7 @@ jobs:
   obscura-bin:
     needs: [detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && needs.detect.outputs.engine_slices != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -957,8 +916,8 @@ jobs:
   # The suite is split by directory into slices that run concurrently, so the
   # wall clock is max(slice) instead of the sum. The fast tier runs unit-a and
   # unit-b; the full tier adds integration and bridge (services) and, in
-  # test-python-engines, browser. Each slice writes its own coverage on
-  # master; the `coverage` job combines them.
+  # test-python-engines, browser. Each full-tier slice writes its own
+  # coverage; the `coverage` job combines them.
   test-python:
     # Static: a job skipped before its matrix expands renders an expression in
     # its name literally. GitHub appends the matrix value: `test-python (unit-a)`.
@@ -977,6 +936,7 @@ jobs:
       SLICE_NODE: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].node }}
       SLICE_SERVICES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services }}
       SLICE_ENGINES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].engines }}
+      SLICE_CHROMIUM: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].chromium }}
       SLICE_SERIAL: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].serial }}
       SLICE_WORKERS: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].workers }}
       SLICE_AFTER: ${{ join(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].after, ' ') }}
@@ -1006,6 +966,7 @@ jobs:
         with:
           node: ${{ env.SLICE_NODE }}
           services: ${{ env.SLICE_SERVICES }}
+          chromium: ${{ env.SLICE_CHROMIUM }}
       # An engine slice runs real browser hosts: Chrome from the runner image and
       # Obscura as the obscura-bin job built it. A missing binary fails the slice.
       - name: Fetch the Obscura binaries the obscura-bin job built
@@ -1043,17 +1004,17 @@ jobs:
         run: python3 scripts/ci/test_impact.py select
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
       # enforced by the coverage job; one slice alone cannot reach it.
+      # Coverage is traced wherever the whole suite runs (every event but a PR's,
+      # whose slices are an impact selection): the gate and the test-impact map
+      # read it (C tracer: sysmon cannot record the per-test contexts the map needs).
       - name: Run Python tests (${{ matrix.slice }})
         # Explicit shell = `bash -eo pipefail`, so a `| tee` cannot swallow the
         # flake gate's exit code.
         shell: bash
         env:
-          # Coverage is traced only on master/dispatch runs, where the gate and
-          # the test-impact map read it (C tracer: sysmon cannot record the
-          # per-test contexts the map needs).
-          COVERAGE: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '1' || '' }}
+          COVERAGE: ${{ github.event_name != 'pull_request' && '1' || '' }}
           COVERAGE_FILE: .coverage.${{ matrix.slice }}
-          COV_CONTEXT: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'test' || '' }}
+          COV_CONTEXT: ${{ github.event_name != 'pull_request' && 'test' || '' }}
           HYPOTHESIS_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'ci' || 'ci-full' }}
           # serial lanes get -n 0 (the expression engine treats the string "0"
           # as falsy, hence the explicit flag); the box gets its static share,
@@ -1081,19 +1042,20 @@ jobs:
       # a test claiming to pin a bug that passes without the fix proves
       # nothing. Against the change's own base (a merge group's base commit),
       # never master: a stacked change would be charged with every regression
-      # test the changes below it added. The integration slice has the
-      # services it needs; its own verdict uploads below.
+      # test the changes below it added. Here only the tests that need the
+      # services this slice has; lint-python's ci:regression-proof proves the
+      # rest on every push. Its own verdict uploads below.
       - name: Changed regression tests must fail on base
         if: ${{ !cancelled() && env.SLICE_NAME == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
         working-directory: apps/api
         env:
           GAIA_VERDICT_DIR: ${{ runner.temp }}/regression-proof-verdicts
-        run: bash ../../scripts/ci/pytest.sh regression-proof "$(bash ../../scripts/ci/changes.sh base-rev)"
-      # ── Record the map (master / dispatch only) ──────────────────────────
+        run: bash ../../scripts/ci/pytest.sh regression-proof --services true "$(bash ../../scripts/ci/changes.sh base-rev)"
+      # ── Record the map (every whole-suite run: the queue, master, dispatch) ──
       # !cancelled(): a lane with a red test still produced a valid map, and a
       # missing map makes every PR run the whole slice.
       - name: Record test impact map
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
+        if: github.event_name != 'pull_request' && !cancelled()
         working-directory: apps/api
         run: |
           mkdir -p ../../.test-impact-map
@@ -1102,7 +1064,7 @@ jobs:
             --out "../../.test-impact-map/test-impact-map-$SLICE_NAME.json" \
             --sha "$GITHUB_SHA" --slice "$SLICE_NAME"
       - name: Upload test impact map
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
+        if: github.event_name != 'pull_request' && !cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-impact-map-${{ matrix.slice }}
@@ -1110,7 +1072,7 @@ jobs:
           include-hidden-files: true
           retention-days: 30
       - name: Upload coverage data
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-${{ matrix.slice }}
@@ -1169,7 +1131,7 @@ jobs:
   web-e2e-screen:
     needs: [detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'web-e2e-screen') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Boot (models, a cold Turbopack compile) plus the web suite, measured 8-15 min
     # locally; the bot scenarios add about 10.
     timeout-minutes: 50
@@ -1236,15 +1198,16 @@ jobs:
           status: ${{ job.status }}
           name: web-e2e-screen
 
-  # ── Coverage gate — master/dispatch only, off the test lanes' critical path ─
+  # ── Coverage gate — wherever the whole suite runs, off the slices' path ───
   # A PR HAS NO COVERAGE GATE, deliberately: its slices run a test-impact
   # SELECTION, and a coverage total over a subset fails honest PRs and passes
-  # dishonest ones. The full suite and the 80% combined gate run on master.
+  # dishonest ones. The merge queue runs every slice whole, so the 80% combined
+  # gate holds there, before the merge; a verified master push runs no slice.
   coverage:
     needs: [select-runner, detect, test-python, test-python-engines]
     # No `!cancelled()`: with a slice red there is no complete data to combine.
-    if: contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    if: contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
@@ -1272,7 +1235,7 @@ jobs:
           ls -la .coverage.*
           uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
-          echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
+          echo "coverage gate: fail-under=$FAIL_UNDER (whole-suite runs only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1381,8 +1344,8 @@ jobs:
       # Every module reports: this gate's value is the complete list.
       fail-fast: false
       # One wave of shards at once, equal to MUTATION_WAVE in mutation.py. The
-      # plan sizes the shard count by cost (up to MAX_SHARDS), so a costly diff
-      # queues further waves here instead of overloading a shard or the box. A
+      # plan makes the fewest shards its cost fits (up to MAX_SHARDS), so a costly
+      # diff queues further waves here instead of overloading a shard or the box. A
       # wave of 4 held shards 5-6 back ~13 min (run 40206323992) on
       # GitHub-hosted runners; on the box the CPU governor queues what it cannot fit.
       max-parallel: 6
@@ -1393,6 +1356,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       # A services shard installs through the composite that also brings up
       # Mongo and Redis and exports USE_REAL_SERVICES=1.
@@ -1472,7 +1436,7 @@ jobs:
   changelog-sync:
     needs: [detect, ts-build-test]
     if: ${{ !cancelled() && github.event_name != 'merge_group' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
@@ -1521,6 +1485,31 @@ jobs:
           echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
           exit 1
 
+  # ── Cache warm (verified master pushes only; never gates) ────────────────
+  # A PR restores caches saved on its own ref or on master, never the merge
+  # queue's (scoped to its gh-readonly-queue ref). A verified push runs no lint
+  # or test lane, so nothing else saves the uv cache on master; GitHub-hosted on
+  # purpose, since the box keeps ~/.cache/uv on disk and saves nothing.
+  cache-warm:
+    needs: [detect]
+    if: needs.detect.outputs.tier == 'verified'
+    runs-on: ubuntu-24.04
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          services: "false"
+          node: "false"
+          restore-models: "false"
+
   # ── Quality gate (the one required check) ────────────────────────────────
   quality-gate:
     name: quality-gate
@@ -1536,7 +1525,6 @@ jobs:
       - lint-node
       - lint-python
       - lint-mixed
-      - repo-policy
       - python-audit
       - ts-build-test
       - scan
@@ -1552,7 +1540,7 @@ jobs:
       # changelog-sync deliberately excluded: non-blocking, it opens a fix PR.
     # Required status check: it must report in seconds, so it rides the same
     # control-plane runner as the dispatcher, and it never waits on anything.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -1570,11 +1558,15 @@ jobs:
           path: ${{ runner.temp }}/verdicts
           merge-multiple: true
       - name: Say which tier this run checked
+        shell: bash
         env:
           TIER: ${{ needs.detect.outputs.tier }}
+          QUEUE_RUN_URL: ${{ needs.detect.outputs.queue_run_url }}
         run: |
           if [ "$TIER" = "fast" ]; then
             echo "### Tier: fast — integration, bridge and browser slices (and regression-proof with them), the dependency audit, the scans and the image build run in the merge queue" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$TIER" = "verified" ]; then
+            echo "quality-gate: this commit passed the merge queue in $QUEUE_RUN_URL; no check lane ran again" | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "### Tier: ${TIER:-none}" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -1588,7 +1580,7 @@ jobs:
           # the family the shards report under and how many detect planned, so
           # a shard cancelled before its upload cannot be spoken for by another.
           EXPECT: >-
-            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},repo-policy=${{ needs.repo-policy.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }},web-build=${{ needs.web-build.result }},desktop-build=${{ needs.desktop-build.result }},web-e2e-screen=${{ needs.web-e2e-screen.result }}
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }},web-build=${{ needs.web-build.result }},desktop-build=${{ needs.desktop-build.result }},web-e2e-screen=${{ needs.web-e2e-screen.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --out "$RUNNER_TEMP/gate-verdict"
       # Its own directory: the one above holds every lane's verdict, which this
       # job does not own.
@@ -1607,7 +1599,7 @@ jobs:
   # build-images reaches the same group.
   deploy-unwedge:
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Above unwedge's 15 min limit: it waits out a gate still inside it.
     timeout-minutes: 20
     permissions:
@@ -1687,8 +1679,37 @@ jobs:
     if: ${{ always() && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.quality-gate.result == 'success' && needs.web-build.result == 'success' }}
     uses: ./.github/workflows/deploy-web.yml
     permissions:
-      contents: write # seo-crawl pushes the branch of the baseline PR it opens
+      contents: read
       deployments: write
-      actions: read # IndexNow reads earlier runs' deploy jobs
-      pull-requests: write # seo-crawl opens that PR
+      actions: write # IndexNow reads earlier runs' deploy jobs; post-deploy-seo dispatches seo-crawl.yml
     secrets: inherit # pragma: allowlist secret
+
+  # ── Master only: ship the usercontent Worker (*.heygaia.link) ──────────
+  # Its build (a wrangler dry-run bundle) ran in ts-build-test behind the same
+  # gate. Off until vars.USERCONTENT_WORKER_DEPLOY is 'true': the heygaia.link
+  # zone, its wildcard DNS record and the INTERNAL_API_TOKEN and LINK_CONTENT_EDGE_TOKEN
+  # Worker secrets must exist first, or the deploy reds master. After turning it on, dispatch ci.yml on
+  # master once (a dispatch runs every task) to ship the first version.
+  deploy-usercontent-worker:
+    needs: [detect, quality-gate]
+    if: ${{ always() && vars.USERCONTENT_WORKER_DEPLOY == 'true' && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.quality-gate.result == 'success' && contains(fromJSON(needs.detect.outputs.tasks), 'usercontent-worker:build') }}
+    concurrency:
+      group: deploy-usercontent-worker
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Deploy to Cloudflare Workers (gaia-usercontent)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm --filter ./apps/usercontent-worker exec wrangler deploy --config wrangler.jsonc \
+            --tag "${GITHUB_SHA::7}" --message "GitHub Actions: ${GITHUB_ACTOR} run ${GITHUB_RUN_ID}"

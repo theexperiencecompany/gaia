@@ -1,6 +1,7 @@
 from app.utils.notification.channels.base import ChannelAdapter, TContent
 from app.utils.notification.channels.conversation import ConversationChannelAdapter
 from app.utils.notification.channels.discord import DiscordChannelAdapter
+from app.utils.notification.channels.email import EmailChannelAdapter
 from app.utils.notification.channels.external import ExternalPlatformAdapter
 from app.utils.notification.channels.imessage import ImessageChannelAdapter
 from app.utils.notification.channels.push import PushChannelAdapter
@@ -12,6 +13,7 @@ __all__ = [
     "ChannelAdapter",
     "ConversationChannelAdapter",
     "DiscordChannelAdapter",
+    "EmailChannelAdapter",
     "ExternalPlatformAdapter",
     "ImessageChannelAdapter",
     "PushChannelAdapter",

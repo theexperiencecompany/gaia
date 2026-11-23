@@ -4,15 +4,19 @@ from typing import cast
 
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
 from app.models.conversation_frame_models import (
+    ArtifactDeltaEvent,
     ImageEvent,
     ReasoningEvent,
+    StreamPayload,
     SubagentEndEvent,
     SubagentStartEvent,
     TodoProgressEvent,
     ToolDataEvent,
     ToolOutputEvent,
 )
+from app.models.openui_artifact_models import ArtifactDelta, ArtifactKind
 from app.models.stream_events import (
     ReasoningPayload,
     SubagentEndPayload,
@@ -285,3 +289,56 @@ def test_the_last_image_made_is_the_runs_image() -> None:
     first, last = ImageData(url="https://a", prompt="a"), ImageData(url="https://b", prompt="b")
     folded = fold_cards([ImageEvent(image_data=first), ImageEvent(image_data=last)])
     assert folded == FoldedCards(image=last)
+
+
+def draft(stream_id: str, text: str) -> ArtifactDeltaEvent:
+    return ArtifactDeltaEvent(
+        artifact_delta=ArtifactDelta(
+            stream_id=stream_id, kind=ArtifactKind.REPORT, title="Q3", delta=text
+        )
+    )
+
+
+def artifact(stream_id: str, status: str, **fields: str) -> dict[str, object]:
+    return {"stream_id": stream_id, "kind": "report", "title": "Q3", "status": status, **fields}
+
+
+def test_an_artifacts_draft_streams_into_one_card_that_its_done_frame_replaces() -> None:
+    """Regression: the runtime merge dropped draft streaming, so the card appeared only once ready."""
+    payloads: list[StreamPayload] = [
+        draft("s1", "root = "),
+        ToolDataEvent(tool_data=card("search", {"q": "a"})),
+        draft("s1", "Artifact()"),
+    ]
+    streaming = fold_cards(payloads)
+    done = ToolDataEvent(
+        tool_data=card(ARTIFACT_DONE_EVENT, artifact("s1", "ready", artifact_id="a1"))
+    )
+
+    assert streaming.tool_data == (
+        card(ARTIFACT_DONE_EVENT, artifact("s1", "streaming", program="root = Artifact()")),
+        card("search", {"q": "a"}),
+    )
+    assert fold_cards([*payloads, done, draft("s1", "late")]).tool_data == (
+        card(ARTIFACT_DONE_EVENT, artifact("s1", "ready", artifact_id="a1")),
+        card("search", {"q": "a"}),
+    )
+
+
+def test_two_artifacts_stream_into_their_own_cards() -> None:
+    folded = fold_cards([draft("s1", "a"), draft("s2", "b"), draft("s1", "c")])
+    assert folded.tool_data == (
+        card(ARTIFACT_DONE_EVENT, artifact("s1", "streaming", program="ac")),
+        card(ARTIFACT_DONE_EVENT, artifact("s2", "streaming", program="b")),
+    )
+
+
+def test_only_an_approval_or_artifact_card_is_replaced_by_its_id() -> None:
+    cards = [
+        card("search", {"approval_id": "a1"}),
+        card("search", {"approval_id": "a1"}),
+        card("weather", {"stream_id": "s1"}),
+        card("weather", {"stream_id": "s1"}),
+    ]
+    folded = fold_cards([ToolDataEvent(tool_data=shown) for shown in cards])
+    assert folded.tool_data == tuple(cards)

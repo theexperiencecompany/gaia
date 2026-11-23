@@ -19,6 +19,7 @@ import pytest
 from app.agents.core.background.todo_run_delivery import FinishedTodoRun, finish_todo_run
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.conversation import CONVERSATION_LIST_CHANGED_EVENT
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.todos import todo_repository
 from app.models.conversation_log_models import TodoReportForm
@@ -36,7 +37,7 @@ from app.services.hil.notify import notify_approval_pending
 from app.services.hil.utils import GatedApproval, GatedCall
 from app.services.integrations.integration_expiry import AccountExpired, announce_account_expiry
 from app.services.platform_link_service import PlatformLinkService
-from app.services.workflow.notifications import notify_workflow_result
+from app.services.workflow.notifications import WorkflowRunResult, notify_workflow_result
 from app.tasks.reminder_tasks import _execute_static_reminder
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import ReplyOutcome
@@ -96,7 +97,7 @@ def delivered() -> Iterator[Delivered]:
 
     real_client = httpx.AsyncClient
     tokens = MagicMock()
-    tokens.get_active_tokens = AsyncMock(return_value=[DEVICE_TOKEN])
+    tokens.list_active_tokens = AsyncMock(return_value=[DEVICE_TOKEN])
 
     async def broadcast(user_id: str, message: dict[str, object]) -> None:
         if message["type"] == CONVERSATION_LIST_CHANGED_EVENT:
@@ -113,10 +114,7 @@ def delivered() -> Iterator[Delivered]:
             "app.utils.notification.channels.push.httpx.AsyncClient",
             lambda **kw: real_client(transport=httpx.MockTransport(expo), **kw),
         ),
-        patch(
-            "app.utils.notification.channels.push.get_device_token_service",
-            return_value=tokens,
-        ),
+        patch("app.utils.notification.channels.push.device_token_repository", tokens),
         patch(
             "app.utils.notification.orchestrator.websocket_manager.broadcast_to_user",
             broadcast,
@@ -148,7 +146,7 @@ def _runtime() -> None:
 
 
 @pytest.fixture(autouse=True)
-async def _users(mongo_db, real_redis, conversations_collection):
+async def _users(mongo_db, real_redis, conversations_collection, arq_pool):
     oids = [LINKED_OID, UNLINKED_OID]
     await mongo_db["users"].delete_many({"_id": {"$in": oids}})
     await mongo_db["notifications"].delete_many({})
@@ -225,10 +223,13 @@ async def test_a_workflow_result_is_delivered_once_on_the_users_channel(
         await notify_workflow_result(
             workflow_id="wf-1",
             workflow_title="Morning brief",
-            execution_id="exec-1",
-            conversation_id="wf-conv-1",
             user_id=str(oid),
-            result_text="Three meetings today.",
+            run=WorkflowRunResult(
+                execution_id="exec-1",
+                conversation_id="wf-conv-1",
+                text="Three meetings today.",
+                message_class=ProactiveMessageClass.ROUTINE,
+            ),
         )
 
     (stored,) = await _notifications(mongo_db, str(oid))
@@ -246,9 +247,7 @@ async def test_a_workflow_result_is_delivered_once_on_the_users_channel(
 async def test_a_todo_run_result_is_delivered_once_on_the_users_channel(
     mongo_db, delivered: Delivered, oid: ObjectId, bot_messages: int
 ) -> None:
-    todo = await todo_repository.create(
-        TodoDocument(user_id=str(oid), title="Watch flight prices", notify_on_run=True)
-    )
+    todo = await todo_repository.create(TodoDocument(user_id=str(oid), title="Watch flight prices"))
     finished = FinishedTodoRun(
         run_id="run-1",
         todo_id=todo.id or "",

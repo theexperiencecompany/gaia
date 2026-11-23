@@ -11,6 +11,7 @@ armed for (scheduled_for) and rejects a fire whose stamp no longer matches
 the workflow's current trigger_config.next_run.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 import time
 from typing import Any
@@ -20,6 +21,7 @@ from uuid import uuid4
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.user_activity import ActivityStatus
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.user_models import UserDocument
 from app.services.conversation.runtime import install_runtime_ports
@@ -46,6 +48,16 @@ def _subscription_active_by_default():
 
 
 @pytest.fixture(autouse=True)
+def _active_owner():
+    """Default the owner to an active one so the dormant-owner gate stays out of the way of the stale-fire tests."""
+    with patch(
+        "app.workers.tasks.workflow_tasks.activity_status_of",
+        AsyncMock(return_value=ActivityStatus.ACTIVE),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _onboarded_user():
     """Default every test's user to a finished-onboarding one so the system-initiated-run gate stays out of the way."""
     user = UserDocument.model_validate({"onboarding": {"completed": True}})
@@ -57,10 +69,15 @@ def _onboarded_user():
 
 
 @pytest.fixture
-def scheduler() -> WorkflowScheduler:
-    svc = WorkflowScheduler()
-    svc.arq_pool = AsyncMock()
-    return svc
+def scheduler() -> Iterator[WorkflowScheduler]:
+    # A user workflow: its fires take the shared queue and start nothing ahead.
+    with patch(
+        "app.services.workflow.scheduler.workflow_repository.get",
+        AsyncMock(return_value=None),
+    ):
+        svc = WorkflowScheduler()
+        svc.arq_pool = AsyncMock()
+        yield svc
 
 
 @pytest.mark.unit

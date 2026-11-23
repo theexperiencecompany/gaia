@@ -20,14 +20,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 from pymongo import ReturnDocument
 import pytest
+import time_machine
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_AT_FIELD,
     FIRST_STEPS_COLLAPSED_FIELD,
 )
+from app.constants.user_activity import DORMANT_AFTER, IDLE_AFTER, ActivityStatus
 from app.db.repositories.users import UserRepository
 from app.models.quiet_hours_models import QuietHours
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import OnboardingPreferences, StartingJobs, UserDocument
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 from tests.helpers import captured_wide_event
@@ -181,7 +184,6 @@ class TestSetFirstStepsCollapsed:
         await repo.set_first_steps_collapsed(USER_ID, True)
 
         assert seen["return_document"] is False
-        assert seen["scope"] == REPO_GLOBAL_SCOPE
 
     async def test_reports_the_user_was_there_to_write_to(
         self, repo: UserRepository, collection: MagicMock
@@ -194,6 +196,27 @@ class TestSetFirstStepsCollapsed:
         self, repo: UserRepository, collection: MagicMock
     ) -> None:
         assert await repo.set_first_steps_collapsed(USER_ID, True) is False
+
+
+class TestClearNameIfUnchanged:
+    async def test_unsets_only_a_name_still_equal_to_the_scanned_one_reading_the_before_image(
+        self, repo: UserRepository
+    ) -> None:
+        seen: list[tuple[object, ...]] = []
+
+        async def _spy(filter_: object, update: object, **kwargs: object) -> None:
+            seen.append((filter_, update, kwargs))
+
+        repo._apply_raw_update = _spy  # type: ignore[method-assign]  # test observes the base seam
+
+        assert await repo.clear_name_if_unchanged(USER_ID, "Ann Lee") is False
+        assert seen == [
+            (
+                {"_id": ObjectId(USER_ID), "name": "Ann Lee"},
+                {"$unset": {"name": ""}},
+                {"return_document": False},
+            )
+        ]
 
 
 class _Cursor:
@@ -236,11 +259,10 @@ def _good(email: str) -> dict[str, Any]:
     "read",
     [
         lambda repo: repo.find_nurture_candidates(NOW),
-        lambda repo: repo.find_inactive_email_candidates(NOW),
-        lambda repo: repo.find_dormant_since(NOW),
+        lambda repo: repo.find_by_activity_status(ActivityStatus.IDLE),
         lambda repo: repo.find_stuck_personalization(NOW),
     ],
-    ids=["nurture", "inactive_email", "dormant", "stuck_personalization"],
+    ids=["nurture", "activity_status", "stuck_personalization"],
 )
 async def test_a_cohort_read_skips_one_malformed_row_and_keeps_the_rest(
     repo: UserRepository, collection: MagicMock, read: Callable[[UserRepository], Awaitable[Any]]
@@ -258,6 +280,91 @@ async def test_a_cohort_read_skips_one_malformed_row_and_keeps_the_rest(
     (warning,) = wide["warnings"]
     assert warning["collection"] == "users"
     assert warning["document_id"] == legacy["_id"]
+
+
+class TestActivityQueries:
+    @pytest.fixture(autouse=True)
+    def _frozen_at_now(self) -> Iterator[None]:
+        with time_machine.travel(NOW, tick=False):
+            yield
+
+    async def test_a_dormant_query_also_matches_a_user_with_neither_date(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find = MagicMock(return_value=_Cursor([]))
+
+        await repo.find_by_activity_status(ActivityStatus.DORMANT)
+
+        window = {"$lte": NOW - DORMANT_AFTER}
+        collection.find.assert_called_once_with(
+            {
+                "$or": [
+                    {"last_active_at": window},
+                    {"last_active_at": None, "created_at": window},
+                    {"last_active_at": None, "created_at": None},
+                ],
+                "is_active": {"$ne": False},
+            }
+        )
+
+    async def test_an_among_filter_skips_owners_that_are_not_user_ids(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        """A template or system todo owner raised InvalidId and failed the whole maintenance sweep."""
+        collection.find = MagicMock(return_value=_Cursor([]))
+
+        await repo.find_by_activity_status(ActivityStatus.DORMANT, among=[USER_ID, "system"])
+
+        assert collection.find.call_args.args[0]["_id"] == {"$in": [ObjectId(USER_ID)]}
+
+    async def test_an_active_query_never_matches_a_user_with_neither_date(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find = MagicMock(return_value=_Cursor([]))
+
+        await repo.find_by_activity_status(ActivityStatus.ACTIVE)
+
+        window = {"$gt": NOW - IDLE_AFTER}
+        collection.find.assert_called_once_with(
+            {
+                "$or": [
+                    {"last_active_at": window},
+                    {"last_active_at": None, "created_at": window},
+                ],
+                "is_active": {"$ne": False},
+            }
+        )
+
+    async def test_backfill_candidates_are_active_pre_launch_and_not_yet_backfilled(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.count_documents = AsyncMock(return_value=0)
+
+        await repo.count_backfill_candidates(NOW)
+
+        window = {"$gt": NOW - IDLE_AFTER}
+        collection.count_documents.assert_awaited_once_with(
+            {
+                "$or": [
+                    {"last_active_at": window},
+                    {"last_active_at": None, "created_at": window},
+                ],
+                "_id": {"$lt": ObjectId.from_datetime(NOW)},
+                "memory_backfilled": {"$exists": False},
+            }
+        )
+
+    async def test_activity_dates_read_only_the_two_dates(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one = AsyncMock(return_value={"created_at": NOW})
+
+        dates = await repo.get_activity_dates(USER_ID)
+
+        collection.find_one.assert_awaited_once_with(
+            {"_id": ObjectId(USER_ID)}, {"last_active_at": 1, "created_at": 1}
+        )
+        assert dates == UserActivityDates(created_at=NOW)
 
 
 class TestRecordOnboardingStep:
@@ -296,7 +403,6 @@ async def test_the_drafted_jobs_write_evicts_the_global_user_cache() -> None:
     raw.assert_awaited_once_with(
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
-        scope=REPO_GLOBAL_SCOPE,
     )
 
 
@@ -310,7 +416,6 @@ async def test_the_quiet_hours_write_sets_them_and_returns_the_updated_user() ->
     raw.assert_awaited_once_with(
         {"_id": ObjectId(USER_ID)},
         {"$set": {"quiet_hours": {"enabled": False, "start_hour": 23, "end_hour": 6}}},
-        scope=REPO_GLOBAL_SCOPE,
     )
 
 
@@ -329,6 +434,12 @@ class TestFindByEmailIgnoringCase:
         }
 
 
+def test_a_user_id_was_minted_at_the_time_its_object_id_carries() -> None:
+    assert UserRepository().id_created_at("507f1f77bcf86cd799439011") == datetime(
+        2012, 10, 17, 21, 13, 27, tzinfo=UTC
+    )
+
+
 class TestEmailLookupsAreCanonical:
     async def test_get_by_email_looks_up_the_lowercase_address(
         self, repo: UserRepository, collection: MagicMock
@@ -339,17 +450,6 @@ class TestEmailLookupsAreCanonical:
 
         assert found is not None
         assert collection.find_one.call_args.args[0] == {"email": "idp@example.com"}
-
-    async def test_touch_last_active_writes_to_the_lowercase_address(
-        self, repo: UserRepository
-    ) -> None:
-        with (
-            patch("app.db.repositories.users.redis_cache.redis", None),
-            patch.object(repo, "_update_fields_no_invalidate", new=AsyncMock()) as write,
-        ):
-            await repo.touch_last_active("Seen@Example.com")
-
-        assert write.await_args.args[0] == {"email": "seen@example.com"}
 
     def test_a_user_document_stores_its_address_lowercase(self) -> None:
         assert UserDocument(email="New.User@Example.com").email == "new.user@example.com"

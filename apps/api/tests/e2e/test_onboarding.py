@@ -54,6 +54,7 @@ from app.models.user_models import (
     PersonalizationBundle,
     StartingJobs,
     UserDocument,
+    UserUpdate,
 )
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.oauth_service import handle_oauth_connection
@@ -145,8 +146,6 @@ class _UserStore:
         doc = self.docs.get(user_id)
         if doc is None or (doc.get("onboarding") or {}).get("completed"):
             return None
-        if fields.get("timezone") is not None:
-            doc["timezone"] = fields["timezone"]
         sub = doc.setdefault("onboarding", {})
         sub.update(
             completed=True,
@@ -158,6 +157,13 @@ class _UserStore:
         sub.setdefault("preferences", {}).update(
             fields["preferences"].model_dump(exclude_unset=True)
         )
+        return await self.get(user_id)
+
+    async def update(self, user_id: str, update: UserUpdate) -> UserDocument | None:
+        doc = self.docs.get(user_id)
+        if doc is None:
+            return None
+        doc.update(update.model_dump(exclude_unset=True))
         return await self.get(user_id)
 
     async def clear_onboarding(self, user_id: str) -> None:
@@ -263,6 +269,8 @@ class _Externals:
     memories_cleared: int = 0
     integrations_connected: list[str] = field(default_factory=list)
     disconnected: list[str] = field(default_factory=list)
+    #: users whose daily brief and weekly digest workflows were provisioned
+    briefings_provisioned: list[str] = field(default_factory=list)
 
 
 #: The two conversations this flow seeds, by the description each carries. One
@@ -389,6 +397,10 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
     async def _disconnect(_user_id: str, integration_id: str) -> None:
         externals.disconnected.append(integration_id)
 
+    async def _provision_briefings(user_id: str) -> list[Any]:
+        externals.briefings_provisioned.append(user_id)
+        return []
+
     todo_repo = AsyncMock()
     todo_repo.delete_onboarding_todos.side_effect = lambda _uid: externals.todos_purged
     todo_repo.list_onboarding_todos.return_value = []
@@ -428,6 +440,10 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         patch(f"{SVC}.onboarding_service.user_integration_repository", integrations_repo),
         patch(f"{SVC}.onboarding_service.memory_engine", memory),
         patch(f"{SVC}.onboarding_service.disconnect_integration", _disconnect),
+        patch(f"{SVC}.onboarding_service.provision_briefing_workflows", _provision_briefings),
+        patch("app.services.user_timezone.user_repository", users),
+        # No briefing workflows exist before provisioning, so a timezone moves nothing.
+        patch("app.services.user_timezone.resync_briefing_schedules", AsyncMock()),
     ):
         stack.enter_context(patcher)
 
@@ -602,6 +618,15 @@ class TestSubmittingTheFormIsCompletion:
 
         assert response.status_code == 200
         assert users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.COMPLETED.value
+
+    async def test_the_user_is_given_the_daily_brief_and_weekly_digest(
+        self, client: AsyncClient, externals: _Externals
+    ):
+        """Completion is what provisions the briefs; without it a new user never gets one."""
+        response = await complete_submit(client)
+
+        assert response.status_code == 200
+        assert externals.briefings_provisioned == [USER_ID]
 
     async def test_no_job_is_queued_and_only_the_opener_is_seeded(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals

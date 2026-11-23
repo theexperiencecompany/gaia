@@ -33,7 +33,7 @@ vi.mock("@/features/workflows/lib/serverWorkflowsApi", () => ({
 import { renderToStaticMarkup } from "react-dom/server";
 import { generateMetadata } from "@/app/[locale]/(landing)/use-cases/[slug]/page";
 import UseCasesPage from "@/app/[locale]/(landing)/use-cases/page";
-import { getSiteUrl } from "@/lib/seo";
+import { SITE_URL } from "@/config/site";
 import { getSitemapEntries, SITEMAP_IDS } from "@/lib/sitemapData";
 
 const template = {
@@ -90,7 +90,7 @@ describe("community copies of an official template", () => {
     const entries = await getSitemapEntries(SITEMAP_IDS.COMMUNITY);
 
     expect(entries.map((e) => e.url)).toEqual([
-      `${getSiteUrl()}/use-cases/${original.slug}`,
+      `${SITE_URL}/use-cases/${original.slug}`,
     ]);
   });
 

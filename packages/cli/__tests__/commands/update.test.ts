@@ -159,6 +159,18 @@ describe("gaia update (release mode)", () => {
     expect(composeEnv()).toMatch(/^GAIA_VERSION=v1\.2\.4$/m);
   });
 
+  it("gives an install from before the web server's rate-limit token one, and keeps it", async () => {
+    await gitCheckoutInstall();
+    serveBundles(releases());
+    await applyReleaseUpdate(await planReleaseUpdate(install, "v1.2.3"), quiet);
+    const token = composeEnv().match(/^INTERNAL_API_TOKEN=([0-9a-f]{64})$/m);
+
+    await applyReleaseUpdate(await planReleaseUpdate(install, "v1.2.4"), quiet);
+
+    expect(token?.[1]).toBeDefined();
+    expect(composeEnv()).toContain(`INTERNAL_API_TOKEN=${token?.[1]}`);
+  });
+
   it("changes nothing when the release images cannot be pulled", async () => {
     await gitCheckoutInstall();
     serveBundles(releases());

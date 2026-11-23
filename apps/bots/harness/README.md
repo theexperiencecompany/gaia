@@ -15,7 +15,7 @@ diverges from the real adapter's.
 
 ```bash
 # one-shot: mint + link a dev user, inject one message, print + write the transcript
-nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
+nx run bot-harness:sim -- send --emulate telegram --user "$DEV_USER" --out t.jsonl "remind me tomorrow"
 
 # multi-turn scenario with transcript assertions
 nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
@@ -45,7 +45,7 @@ transcript, where they show up at `t≈50ms` belonging to nobody.
 
 ```bash
 # keep the outbound consumer alive 20s after the conversation goes idle
-nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local \
+nx run bot-harness:sim -- send --emulate telegram --user "$DEV_USER" \
   --settle 20000 --out t.jsonl "did those land in todoist?"
 ```
 

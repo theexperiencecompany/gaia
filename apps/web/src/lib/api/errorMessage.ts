@@ -10,3 +10,10 @@ export function apiErrorMessage(err: unknown): string | undefined {
     ? (err.envelope?.message ?? undefined)
     : undefined;
 }
+
+const HTTP_NOT_FOUND = 404;
+
+/** The API answered that what was asked for is not there; any other failure may be worth a retry. */
+export function isNotFound(err: unknown): boolean {
+  return err instanceof ApiError && err.status === HTTP_NOT_FOUND;
+}

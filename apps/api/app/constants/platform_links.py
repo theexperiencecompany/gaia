@@ -53,3 +53,9 @@ LINK_CONFLICT_ACCOUNT_HAS_OTHER = "account_has_other_platform_account"
 CHAT_LINK_PLATFORMS: frozenset[str] = frozenset(
     {Platform.TELEGRAM.value, Platform.WHATSAPP.value, Platform.IMESSAGE.value}
 )
+
+#: The ARQ task a brand-new chat link enqueues: GAIA's first hello on that platform.
+DAY_ZERO_HELLO_TASK = "send_day_zero_hello"
+
+# The web page where chat apps are linked and unlinked; mirrors libs/shared/ts/src/constants/routes.ts.
+LINKED_ACCOUNTS_SETTINGS_PATH = "/settings/linked-accounts"

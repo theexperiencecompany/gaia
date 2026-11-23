@@ -914,6 +914,13 @@ def test_a_woken_todo_and_a_notice_show_as_their_own_items() -> None:
     assert noticed.bubbles == tuple(split_message_bubbles("first\n\nsecond"))
 
 
+def test_a_notice_shows_the_image_it_was_logged_with() -> None:
+    said = Notice(id="n1", text="look", origin="reminder", image_url="https://img.example/n.png")
+    [noticed] = project_screen(CONVERSATION_ID, [logged(1, said)], TEST_FILE_LINKS)
+    assert isinstance(noticed, NoticeItem)
+    assert noticed.image_url == "https://img.example/n.png"
+
+
 _IMAGE = ImageData(url="https://img.example/2.png", prompt="a dog")
 
 

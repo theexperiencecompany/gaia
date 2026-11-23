@@ -23,7 +23,7 @@ permissions:
 jobs:
   enforce-master-ref:
     # Prevent manual runs from releasing off non-master refs.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Ensure workflow is running on master
         run: |
@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 10
     # Runs release-please and exposes per-component outputs for downstream workflows.
     needs: enforce-master-ref
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       releases_created: ${{ steps.release.outputs.releases_created }}
@@ -68,7 +68,7 @@ jobs:
   sync-release-uv-lock:
     timeout-minutes: 10
     needs: release-please
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,7 +88,7 @@ jobs:
     timeout-minutes: 10
     needs: release-please
     if: needs.release-please.outputs.releases_created == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -105,7 +105,7 @@ jobs:
     timeout-minutes: 70
     needs: release-please
     if: needs.release-please.outputs.cli_release_created == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # The script needs the repo checked out to run.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

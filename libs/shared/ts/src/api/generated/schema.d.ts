@@ -118,6 +118,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact
+         * @description One of the user's artifacts, program included.
+         */
+        get: operations["artifacts_get_artifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact Pdf
+         * @description One of the user's artifacts as an A4 PDF.
+         */
+        get: operations["artifacts_get_artifact_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -569,6 +609,154 @@ export interface paths {
          * @description Disconnect a platform account from the linked GAIA user.
          */
         post: operations["bot_unlink_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Briefings
+         * @description One page of the user's briefings archive (daily + weekly) as their cards, newest first.
+         */
+        get: operations["briefings_list_briefings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/{briefing_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Briefing
+         * @description Return one of the user's briefs; the first open marks it and emits briefing:opened.
+         */
+        get: operations["briefings_get_briefing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/editions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Briefing Editions
+         * @description Every daily edition family a brief can draw, and whether the user keeps it on or favours it.
+         */
+        get: operations["briefings_read_briefing_editions"];
+        /**
+         * Update Briefing Editions
+         * @description Replace which daily edition families are off or favourited; at least one must stay on.
+         */
+        put: operations["briefings_update_briefing_editions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/editions/{key}/{variant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Edition Image
+         * @description Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.
+         */
+        get: operations["briefings_get_edition_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/postmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Postmarks
+         * @description The Air Mail city stamps the user has collected, each linked to its brief.
+         */
+        get: operations["briefings_get_postmarks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Briefing Schedule
+         * @description How often the user's briefs come, the daily brief's hour on their clock, and whether they run.
+         */
+        get: operations["briefings_read_briefing_schedule"];
+        /**
+         * Update Briefing Schedule
+         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.
+         */
+        put: operations["briefings_update_briefing_schedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/stamps/{slug}.webp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stamp Art
+         * @description Serve a catalogued city's web-sized stamp art, the same file for everyone; any other slug is a 404.
+         */
+        get: operations["briefings_get_stamp_art"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2128,6 +2316,239 @@ export interface paths {
          * @description Remove an integration from the current user's workspace.
          */
         delete: operations["integrations_remove_integration_from_workspace"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Short Link Route
+         * @description Share an artifact you own: its live link, minted with the given settings when none is live.
+         *
+         *     Turns sharing back on for a target its owner had stopped sharing. The
+         *     target's own read under your account is the ownership check.
+         */
+        post: operations["short_links_create_short_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Short Link Route
+         * @description Open a link: its target's public view and any framed content, or the denial the viewer sees.
+         */
+        get: operations["short_links_resolve_short_link_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Link Settings Route
+         * @description Change who one of your live links opens for, or when it expires.
+         */
+        patch: operations["short_links_update_link_settings_route"];
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/content-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Content Token Route
+         * @description Sign a short-lived URL that loads the link's file from the content origin, after the link's access check.
+         */
+        post: operations["short_links_content_token_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Link File Route
+         * @description Save the file behind a link: always an attachment, so it never renders on this origin.
+         */
+        get: operations["short_links_download_link_file_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Link Preview Meta Route
+         * @description What a chat preview or the page's metadata may show for a link, for anyone. No auth.
+         */
+        get: operations["short_links_link_preview_meta_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Open Route
+         * @description Open the link from the viewer's browser once the page shows: what they see, counted as an open.
+         *
+         *     Not the resolve: public pages resolve during SSR, where neither the viewer's
+         *     session nor their browser is visible, and unfurl bots resolve them too.
+         */
+        post: operations["short_links_record_open_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Short Link Pdf Route
+         * @description What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for.
+         */
+        get: operations["short_links_get_short_link_pdf_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Link Route
+         * @description Report a link that breaks GAIA's terms; enough distinct reporters suspend it.
+         */
+        post: operations["short_links_report_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Link Route
+         * @description Replace one of your live links with a new URL; the old one stops opening at once.
+         */
+        post: operations["short_links_rotate_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get Share State Route
+         * @description Say whether one of your artifacts is shared, with its live link and settings. Never mints one.
+         *
+         *     A POST only because a target is a structured reference, which a query string cannot carry.
+         */
+        post: operations["short_links_get_share_state_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/unshare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Sharing Route
+         * @description Stop sharing one of your artifacts: its link goes dead immediately, and GAIA
+         *     attaches no new one until you share it again. Idempotent; says whether a link died.
+         */
+        post: operations["short_links_stop_sharing_route"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5142,6 +5563,9 @@ export interface paths {
         /**
          * Upload File Endpoint
          * @description Upload a file, persist metadata, and generate embeddings for images.
+         *
+         *     A client that cancelled while the file was being stored never learns its id, so
+         *     the stored file is deleted here instead of being left orphaned.
          */
         post: operations["file_upload_file_endpoint"];
         delete?: never;
@@ -5330,7 +5754,10 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Logout user and return logout URL for frontend redirection.
+         * @description Log the user out and return where the browser goes next.
+         *
+         *     return_url, a path on this site, is for switching accounts: the identity
+         *     provider's logout lands on the sign-in page, which then returns there.
          */
         post: operations["user_logout"];
         delete?: never;
@@ -6028,11 +6455,7 @@ export interface components {
         };
         /** AddUserIntegrationResponse */
         AddUserIntegrationResponse: {
-            /**
-             * Connectionstatus
-             * @enum {string}
-             */
-            connectionStatus: "created" | "connected" | "expired";
+            connectionStatus: components["schemas"]["IntegrationStatus"];
             /** Integrationid */
             integrationId: string;
             /** Message */
@@ -6151,6 +6574,21 @@ export interface components {
             label: string;
             /** Value */
             value: string;
+        };
+        /**
+         * ApprovalNotification
+         * @description A gated action waiting on the user's approval, in the conversation its card waits in.
+         */
+        ApprovalNotification: {
+            /** Approval Id */
+            approval_id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "approval";
         };
         /**
          * ApprovalOutcome
@@ -6284,6 +6722,13 @@ export interface components {
             /** Size Bytes */
             size_bytes: number;
         };
+        /**
+         * ArtifactKind
+         * @description What the artifact is; each kind has its own generated prompt
+         *     (apps/api/app/agents/prompts/artifacts/<kind>.txt, from libs/artifacts/src/kinds.ts).
+         * @enum {string}
+         */
+        ArtifactKind: "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
         /**
          * ArtifactRegistryEntry
          * @description One element of ``ConversationDocument.artifacts``.
@@ -6653,7 +7098,7 @@ export interface components {
         };
         /**
          * BlogPost
-         * @description Blog post response model with proper ID handling.
+         * @description Blog post response model.
          */
         BlogPost: {
             /** Author Details */
@@ -6922,6 +7367,486 @@ export interface components {
              * @description User's display name (null if not set)
              */
             user_name?: string | null;
+        };
+        /**
+         * BriefAction
+         * @description What a brief item asks the reader to do; set only on items that need them.
+         * @enum {string}
+         */
+        BriefAction: "approve" | "reply" | "review" | "retry" | "read" | "attend";
+        /**
+         * BriefCard
+         * @description A brief folded to its card: what the archive, a postmark, the notification and GAIA's chat message show.
+         */
+        BriefCard: {
+            /** Briefing Id */
+            briefing_id: string;
+            /**
+             * Date
+             * @description User-local YYYY-MM-DD.
+             */
+            date: string;
+            /** @description The edition image; None for a quiet note. */
+            edition: components["schemas"]["EditionImage"] | null;
+            /**
+             * Edition Name
+             * @description The daily edition family's name; None for the weekly recap and a quiet note.
+             */
+            edition_name: string | null;
+            /** Headline */
+            headline: string;
+            kind: components["schemas"]["BriefingKind"];
+            /**
+             * Needs You Count
+             * @description Items in the brief's Needs you section, as its edition lists them.
+             */
+            needs_you_count: number;
+            /**
+             * Stamp City Name
+             * @description Air Mail only: the stamp city's name.
+             */
+            stamp_city_name: string | null;
+        };
+        /**
+         * BriefDeliveryWorkflow
+         * @description A workflow whose results wait for the brief.
+         */
+        BriefDeliveryWorkflow: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefDeliveryWorkflowsConflict
+         * @description The 409 body when briefs cannot turn off: the workflows still delivering to the brief.
+         */
+        BriefDeliveryWorkflowsConflict: {
+            /**
+             * Code
+             * @description Machine-readable error code.
+             */
+            code?: string | null;
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+            /** Workflows */
+            workflows: components["schemas"]["BriefDeliveryWorkflow"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * BriefEditionNotification
+         * @description What a daily brief's or weekly recap's notification carries, for the in-app card and the email.
+         */
+        BriefEditionNotification: {
+            /**
+             * Brief Url
+             * @description The brief's heygaia.link.
+             */
+            brief_url: string;
+            card: components["schemas"]["BriefCard"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "briefing_daily" | "briefing_weekly";
+        };
+        /**
+         * BriefForm
+         * @description What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.
+         * @enum {string}
+         */
+        BriefForm: "edition" | "quiet_note";
+        /**
+         * BriefingEdition
+         * @description One daily edition family, and where the user put it.
+         */
+        BriefingEdition: {
+            choice: components["schemas"]["EditionChoice"];
+            family: components["schemas"]["EditionFamily"];
+            /** Name */
+            name: string;
+        };
+        /**
+         * BriefingEditions
+         * @description Every daily edition family a brief can draw, and where the user put each.
+         */
+        BriefingEditions: {
+            /** Editions */
+            editions: components["schemas"]["BriefingEdition"][];
+        };
+        /**
+         * BriefingEditionsUpdate
+         * @description Where the user puts each daily edition family; a family not named stays in the rotation.
+         */
+        BriefingEditionsUpdate: {
+            /** Choices */
+            choices: {
+                [key: string]: components["schemas"]["EditionChoice"];
+            };
+        };
+        /**
+         * BriefingEvent
+         * @description One calendar event on the user's own clock, read from their calendar.
+         */
+        BriefingEvent: {
+            /** Calendar */
+            calendar?: string | null;
+            /** Date */
+            date: string;
+            /** End */
+            end?: string | null;
+            /**
+             * Guests
+             * @default 0
+             */
+            guests?: number;
+            /** Location */
+            location?: string | null;
+            /** Organizer */
+            organizer?: string | null;
+            /** @default own */
+            response?: components["schemas"]["CalendarResponse"];
+            /** Start */
+            start?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingFrequency
+         * @description How often the user wants briefs: the one setting the briefing workflows follow.
+         * @enum {string}
+         */
+        BriefingFrequency: "daily" | "weekdays" | "weekly_only" | "off";
+        /**
+         * BriefingItem
+         * @description A single line inside a section, optionally bound to a todo.
+         *
+         *     It either asks something of the reader (action) or reports where a thing got to
+         *     (outcome), never both, under a short title and at most one detail line.
+         */
+        BriefingItem: {
+            action: components["schemas"]["BriefAction"] | null;
+            /** App */
+            app: string | null;
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+            /** Detail */
+            detail: string | null;
+            /** @default note */
+            kind: components["schemas"]["ItemState"];
+            /** Link */
+            link: string | null;
+            /** Offer */
+            offer: string | null;
+            outcome: components["schemas"]["BriefOutcome"] | null;
+            /** People */
+            people: string[];
+            /** Source */
+            source: string | null;
+            /** Text */
+            text: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * BriefingKind
+         * @description Which brief a run makes; keys the payload variant and the one-per-day constraint.
+         * @enum {string}
+         */
+        BriefingKind: "daily" | "weekly";
+        /**
+         * BriefingListResponse
+         * @description One page of the archive, newest first, and where the next page starts.
+         */
+        BriefingListResponse: {
+            /** Briefings */
+            briefings: components["schemas"]["BriefCard"][];
+            /**
+             * Next Cursor
+             * @description Pass as before to read the next page; None on the last page.
+             */
+            next_cursor: string | null;
+        };
+        /**
+         * BriefingMood
+         * @description The hero treatment a brief is drawn with; the voice picks one of the daily moods.
+         * @enum {string}
+         */
+        BriefingMood: "clear" | "packed" | "idle" | "winback" | "weekly";
+        /**
+         * BriefingPayload
+         * @description The structured briefing the run emits and every channel renders.
+         */
+        BriefingPayload: {
+            /**
+             * Artwork Id
+             * @description Exhibition, Broadsheet and Almanac editions only: the painting (an artworks/artworks.json slug) this brief hangs, so a re-render hangs it again.
+             */
+            artwork_id: string | null;
+            /**
+             * Blocks
+             * @description The brief as GAIA composed it, in reading order: each lead or items block names its section; charts, quotes, progress and notes carry their data. Empty on legacy rows.
+             */
+            blocks: (components["schemas"]["SectionBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["QuoteBlock"] | components["schemas"]["ProgressBlock"] | components["schemas"]["NoteBlock"])[];
+            /**
+             * Calendar
+             * @description Today's calendar events, in start order.
+             */
+            calendar: components["schemas"]["BriefingEvent"][];
+            /** Caption */
+            caption: string;
+            /** Date */
+            date: string;
+            /** @default edition */
+            form: components["schemas"]["BriefForm"];
+            /**
+             * Generated At
+             * @description User-local generation time, e.g. "6:02 AM".
+             */
+            generated_at: string | null;
+            /** Headline */
+            headline: string;
+            /**
+             * Hue
+             * @default 0
+             */
+            hue: number;
+            /** Kicker */
+            kicker: string;
+            /** Lede */
+            lede: string;
+            /**
+             * Message
+             * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
+             */
+            message: string | null;
+            mood: components["schemas"]["BriefingMood"];
+            /** @description Set when this brief's stamp is one the user had not collected before. */
+            new_stamp: components["schemas"]["NewStamp"] | null;
+            /**
+             * Recipient Name
+             * @description The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.
+             */
+            recipient_name: string | null;
+            /** Sections */
+            sections: components["schemas"]["BriefingSection"][];
+            /**
+             * Sources Read
+             * @description The apps the brief read, by display name.
+             */
+            sources_read: string[];
+            /** Sources Unavailable */
+            sources_unavailable: components["schemas"]["UnreadSource"][];
+            /**
+             * Stamp City
+             * @description Air Mail editions only: the city stamp (a stamps/cities.json slug) this brief carried. The Postmarks page reads it.
+             */
+            stamp_city: string | null;
+            /** Stats */
+            stats: components["schemas"]["BriefingStat"][];
+            tallies: components["schemas"]["BriefingTallies"] | null;
+            /** @description The edition template family this brief was drawn in, persisted so the archive re-renders identically forever; None for a quiet note, which is drawn in none. */
+            template_family: components["schemas"]["EditionFamily"] | null;
+            /**
+             * Uncomposed
+             * @description Everything the brief read that the composition left out, for its full page.
+             */
+            uncomposed: components["schemas"]["BriefPoolItem"][];
+            /**
+             * Undrawn
+             * @description Composed blocks the drawn edition cannot draw in its idiom (a chart on the Menu), moved out of blocks onto the brief's full page.
+             */
+            undrawn: (components["schemas"]["SectionBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["QuoteBlock"] | components["schemas"]["ProgressBlock"] | components["schemas"]["NoteBlock"])[];
+            week: components["schemas"]["BriefingWeek"] | null;
+        };
+        /**
+         * BriefingScheduleState
+         * @description The stored schedule and whether it runs: briefs on a schedule are a Pro feature.
+         */
+        BriefingScheduleState: {
+            /**
+             * Daily Brief Lands At
+             * @description The local time the daily brief lands, past quiet hours; None without one.
+             */
+            daily_brief_lands_at: string | null;
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Has Daily Brief
+             * @description The schedule's frequency runs a daily brief.
+             */
+            has_daily_brief: boolean;
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
+            /**
+             * Next Daily Brief At
+             * @description When the next daily brief runs (UTC); None while no daily brief runs.
+             */
+            next_daily_brief_at: string | null;
+            /**
+             * Paused For Plan
+             * @description The schedule sends briefs, but none run: the user is not on Pro.
+             */
+            paused_for_plan: boolean;
+        };
+        /**
+         * BriefingScheduleUpdate
+         * @description A new briefing schedule; turning briefs off also says where brief-delivery workflows go.
+         */
+        BriefingScheduleUpdate: {
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
+            /**
+             * Workflow Deliveries
+             * @description New delivery per workflow id, for workflows that deliver to the brief
+             */
+            workflow_deliveries?: {
+                [key: string]: "now" | "silent";
+            };
+        };
+        /**
+         * BriefingSection
+         * @description A group of items under the heading GAIA gave it, numbered in reading order.
+         */
+        BriefingSection: {
+            /** Items */
+            items: components["schemas"]["BriefingItem"][];
+            /** Numeral */
+            numeral: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingStat
+         * @description One tuple in the stat row (e.g. value="12" label="drafts staged").
+         */
+        BriefingStat: {
+            /** Delta */
+            delta: string | null;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * BriefingTallies
+         * @description Completed-todo counts behind the brief, computed from the todos store —
+         *     never parsed back out of stat labels, so every renderer agrees with them.
+         */
+        BriefingTallies: {
+            /** Done By Gaia */
+            done_by_gaia: number;
+            /** Done By You */
+            done_by_you: number;
+        };
+        /**
+         * BriefingView
+         * @description A brief as its owner opens it: its card, the stored brief, and what its edition left out.
+         */
+        BriefingView: {
+            card: components["schemas"]["BriefCard"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delivered Channels */
+            delivered_channels: string[];
+            left_out: components["schemas"]["EditionLeftOut"];
+            /** Opened At */
+            opened_at: string | null;
+            payload: components["schemas"]["BriefingPayload"];
+        };
+        /**
+         * BriefingWeek
+         * @description The real week behind the weekly recap: Monday-to-Sunday completions and the
+         *     calendar ahead. Every field is counted or read, never estimated.
+         */
+        BriefingWeek: {
+            /** Ahead */
+            ahead?: components["schemas"]["BriefingEvent"][];
+            /** Days */
+            days: components["schemas"]["BriefingWeekDay"][];
+        };
+        /**
+         * BriefingWeekDay
+         * @description Todos completed on one day of the week, by owner.
+         */
+        BriefingWeekDay: {
+            /** Gaia */
+            gaia: number;
+            /** You */
+            you: number;
+        };
+        /**
+         * BriefNoteNotification
+         * @description What a quiet note's notification carries: its kind alone, as it has no edition and no link.
+         */
+        BriefNoteNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "briefing_note";
+        };
+        /**
+         * BriefOutcome
+         * @description The state a reported brief item reached; set only on items that need nothing from the reader.
+         * @enum {string}
+         */
+        BriefOutcome: "approved" | "landed" | "drafted" | "booked" | "sent" | "finished" | "started" | "changed" | "failed";
+        /**
+         * BriefPoolItem
+         * @description A pool item the composition left out, in its source's own words, for the full brief page.
+         */
+        BriefPoolItem: {
+            /** App */
+            app: string;
+            /** Detail */
+            detail: string | null;
+            kind: components["schemas"]["ItemState"];
+            /** Title */
+            title: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
         };
         /**
          * BrowserImportRequest
@@ -7244,6 +8169,8 @@ export interface components {
          *     ``GET /calendar/events``).
          */
         CalendarEventsResponse: {
+            /** Calendars Failed */
+            calendars_failed?: string[];
             /** Calendars Truncated */
             calendars_truncated: string[];
             /** Events */
@@ -7322,6 +8249,12 @@ export interface components {
             message: string;
         };
         /**
+         * CalendarResponse
+         * @description How the calendar's owner stands on an event: their own, accepted, tentative or unanswered.
+         * @enum {string}
+         */
+        CalendarResponse: "own" | "accepted" | "tentative" | "needs_action" | "declined";
+        /**
          * CardsDelta
          * @description The reply's cards as they now stand, with the timeline they fold to.
          */
@@ -7396,6 +8329,10 @@ export interface components {
         /**
          * ChannelPreferences
          * @description User notification channel preferences.
+         *
+         *     One field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out
+         *     so FastAPI and mypy see real types, and a unit test pins the set against the
+         *     enum so the two cannot drift.
          */
         ChannelPreferences: {
             /**
@@ -7403,6 +8340,16 @@ export interface components {
              * @default true
              */
             discord: boolean;
+            /**
+             * Email
+             * @default true
+             */
+            email: boolean;
+            /**
+             * Imessage
+             * @default true
+             */
+            imessage: boolean;
             /**
              * Slack
              * @default true
@@ -7421,11 +8368,15 @@ export interface components {
         };
         /**
          * ChannelPreferencesUpdate
-         * @description Request body for updating channel preferences.
+         * @description Request body for updating channel preferences; omitted channels are untouched.
          */
         ChannelPreferencesUpdate: {
             /** Discord */
             discord?: boolean | null;
+            /** Email */
+            email?: boolean | null;
+            /** Imessage */
+            imessage?: boolean | null;
             /** Slack */
             slack?: boolean | null;
             /** Telegram */
@@ -7441,6 +8392,30 @@ export interface components {
             /** Priority */
             priority: ("whatsapp" | "telegram" | "discord" | "slack" | "imessage")[];
         };
+        /**
+         * ChartBlock
+         * @description A chart over real series, with the title and takeaway GAIA wrote for it.
+         */
+        ChartBlock: {
+            chart: components["schemas"]["ChartKind"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "chart";
+            /** Series */
+            series: components["schemas"]["DataSeries"][];
+            /** Takeaway */
+            takeaway: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ChartKind
+         * @description How a chart draws its series.
+         * @enum {string}
+         */
+        ChartKind: "bar" | "line" | "spark" | "stacked_bar";
         /**
          * CheckoutSource
          * @description Where in the product a checkout was started.
@@ -7775,6 +8750,19 @@ export interface components {
             status: "connected" | "redirect" | "error";
             /** Toolscount */
             toolsCount: number | null;
+        };
+        /**
+         * ContentTokenResponse
+         * @description A short-lived URL that loads a link's content from the content origin.
+         */
+        ContentTokenResponse: {
+            /** Content Url */
+            content_url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /**
          * ConversationActionResponse
@@ -8260,6 +9248,8 @@ export interface components {
          * @description Request model for creating a new workflow.
          */
         CreateWorkflowRequest: {
+            /** @description How a finished run's result reaches the user. Required: every creator (the user, the agent from the user's intent, a system definition) decides it explicitly. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short optional display description (1-2 sentences)
@@ -8297,12 +9287,6 @@ export interface components {
              * @default false
              */
             is_system_workflow?: boolean;
-            /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes.
-             * @default true
-             */
-            notify_on_completion?: boolean;
             /**
              * Prompt
              * @description Detailed execution instructions for the AI
@@ -8389,6 +9373,39 @@ export interface components {
             status: "created" | "connected" | "requires_oauth" | "failed";
             /** Toolscount */
             toolsCount?: number | null;
+        };
+        /**
+         * DataSeries
+         * @description Numeric history from one real source, counted or summed by code.
+         */
+        DataSeries: {
+            /**
+             * App
+             * @description The source's display name
+             */
+            app: string;
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @description What is counted: "Emails handled", "Meeting hours"
+             */
+            label: string;
+            /** Points */
+            points: components["schemas"]["SeriesPoint"][];
+            shape: components["schemas"]["SeriesShape"];
+            /**
+             * Shown Not Total
+             * @default false
+             */
+            shown_not_total: boolean;
+            /** Source */
+            source: string;
+            /**
+             * Unit
+             * @description What one y counts: "emails", "hours", "USD"; None when the source gives none
+             */
+            unit: string | null;
         };
         /**
          * DeactivationReason
@@ -8884,6 +9901,79 @@ export interface components {
              */
             status?: "success";
         };
+        /**
+         * DormantTodosNotification
+         * @description The digest of the user's todos left idle.
+         */
+        DormantTodosNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "dormant_todos";
+            /** Todo Count */
+            todo_count: number;
+        };
+        /**
+         * EditionChoice
+         * @description Where the user put a daily edition family: in the rotation, out of it, or a favourite.
+         * @enum {string}
+         */
+        EditionChoice: "on" | "off" | "favourite";
+        /**
+         * EditionFamily
+         * @description Every edition family a brief is drawn in, one per vendored explorer template.
+         *
+         *     WEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone
+         *     carries a city stamp. The editions package checks this set against the templates at import.
+         * @enum {string}
+         */
+        EditionFamily: "almanac" | "band" | "boardingpass" | "broadsheet" | "exhibition" | "flightplan" | "gradient" | "instrument" | "invoice" | "librarycard" | "memo" | "menu" | "metromap" | "playfair" | "postal" | "receipt" | "swiss" | "weekly";
+        /**
+         * EditionImage
+         * @description A brief's edition as a surface loads it: its signed URL, its fold and its paper.
+         */
+        EditionImage: {
+            /**
+             * Fold
+             * @description Share of the edition's height where its letter folds.
+             */
+            fold: number | null;
+            /**
+             * Image Url
+             * @description A signed URL that loads the edition image for a year.
+             */
+            image_url: string;
+            /**
+             * Paper
+             * @description The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.
+             */
+            paper: number[] | null;
+        };
+        /**
+         * EditionLeftOut
+         * @description What the rendered edition left to the brief's page, listed under it.
+         */
+        EditionLeftOut: {
+            /**
+             * Events
+             * @description The day's events past the rows it prints.
+             */
+            events: components["schemas"]["BriefingEvent"][];
+            /**
+             * Items
+             * @description The sections the edition could not draw, then the rows past its own.
+             */
+            items: components["schemas"]["BriefingItem"][];
+            /** Uncomposed */
+            uncomposed: components["schemas"]["UncomposedItem"][];
+        };
+        /**
+         * EditionVariant
+         * @description One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide.
+         * @enum {string}
+         */
+        EditionVariant: "png" | "jpg";
         /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
@@ -9546,6 +10636,17 @@ export interface components {
             trigger_name: "gmail_new_message";
         };
         /**
+         * GmailPersonalizedNotification
+         * @description GAIA personalised itself from the user's Gmail.
+         */
+        GmailPersonalizedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gmail_personalized";
+        };
+        /**
          * GmailPollInboxConfig
          * @description Config for interval-based Gmail polling.
          *
@@ -9565,6 +10666,36 @@ export interface components {
              * @enum {string}
              */
             trigger_name: "gmail_poll_inbox";
+        };
+        /**
+         * GoalState
+         * @description A goal the user stated, and the work linked to it, counted from their todos.
+         */
+        GoalState: {
+            /** Done */
+            done: number;
+            /**
+             * Done By Gaia
+             * @default 0
+             */
+            done_by_gaia: number;
+            /**
+             * Done By You
+             * @default 0
+             */
+            done_by_you: number;
+            /** Id */
+            id: string;
+            /** Linked */
+            linked: string[];
+            /** Open */
+            open: number;
+            /** Since */
+            since: string | null;
+            /** Stalled */
+            stalled: string[];
+            /** Statement */
+            statement: string;
         };
         /**
          * GoogleCalendarEventDateTime
@@ -9594,6 +10725,8 @@ export interface components {
          *     client reads.
          */
         GoogleCalendarEventResource: {
+            /** Attendees */
+            attendees?: components["schemas"]["GoogleCalendarPerson"][] | null;
             /** Calendarid */
             calendarId?: string | null;
             /** Calendartitle */
@@ -9607,6 +10740,9 @@ export interface components {
             htmlLink?: string | null;
             /** Id */
             id?: string | null;
+            /** Location */
+            location?: string | null;
+            organizer?: components["schemas"]["GoogleCalendarPerson"] | null;
             /** Recurrence */
             recurrence?: string[] | null;
             start?: components["schemas"]["GoogleCalendarEventDateTime"] | null;
@@ -9635,6 +10771,30 @@ export interface components {
             primary?: boolean | null;
             /** Summary */
             summary?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * GoogleCalendarPerson
+         * @description An event's organizer or one of its attendees; Google marks the calendar's owner self.
+         */
+        GoogleCalendarPerson: {
+            /** Displayname */
+            displayName?: string | null;
+            /** Email */
+            email?: string | null;
+            /**
+             * Resource
+             * @default false
+             */
+            resource?: boolean;
+            /** Responsestatus */
+            responseStatus?: string | null;
+            /**
+             * Self
+             * @default false
+             */
+            self?: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -10109,6 +11269,21 @@ export interface components {
             useCases?: string[];
         };
         /**
+         * IntegrationExpiredNotification
+         * @description An integration whose connection expired, and how many workflows it paused.
+         */
+        IntegrationExpiredNotification: {
+            /** Integration Id */
+            integration_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "integration_expired";
+            /** Paused Workflows */
+            paused_workflows: number;
+        };
+        /**
          * IntegrationFAQ
          * @description A single FAQ entry for the integration detail page.
          */
@@ -10143,11 +11318,8 @@ export interface components {
              * @description Integration name
              */
             name: string;
-            /**
-             * Status
-             * @description Integration status: 'created' or 'connected'
-             */
-            status: string;
+            /** @description Integration connection status */
+            status: components["schemas"]["IntegrationStatus"];
         };
         /**
          * IntegrationRef
@@ -10220,6 +11392,12 @@ export interface components {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
         };
+        /**
+         * IntegrationStatus
+         * @description Connection state of a user's integration, as stored and sent to clients.
+         * @enum {string}
+         */
+        IntegrationStatus: "created" | "connected" | "expired";
         /** IntegrationSuccessResponse */
         IntegrationSuccessResponse: {
             /** Integrationid */
@@ -10304,6 +11482,14 @@ export interface components {
             /** Id */
             id: string;
         };
+        /**
+         * ItemState
+         * @description How an item stands: a GAIA action, a user ask, a look-back, work that failed, a plain note.
+         *
+         *     An item's text is only its title, so no renderer repeats its state.
+         * @enum {string}
+         */
+        ItemState: "gaia" | "you" | "lookback" | "failed" | "note";
         JsonValue: unknown;
         /**
          * LabEventResponse
@@ -10367,6 +11553,66 @@ export interface components {
             trigger_name: "linear_issue_updated";
         };
         /**
+         * LinkAccess
+         * @description Who a link opens for.
+         * @enum {string}
+         */
+        LinkAccess: "public" | "unlisted" | "owner";
+        /**
+         * LinkContent
+         * @description The bytes a link frames from the content origin; the page asks for a content token to load them.
+         */
+        LinkContent: {
+            /** Content Id */
+            content_id: string;
+            /** Mime */
+            mime: string;
+            render: components["schemas"]["RenderMode"];
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * LinkDenial
+         * @description Why a link did not open; each is one ErrorEnvelope code and one page the viewer sees.
+         * @enum {string}
+         */
+        LinkDenial: "link_not_found" | "link_revoked" | "link_expired" | "link_removed" | "link_target_deleted" | "link_sign_in_required" | "link_forbidden";
+        /**
+         * LinkDenialEnvelope
+         * @description A link denial's body: code names the page the viewer sees.
+         */
+        LinkDenialEnvelope: {
+            code: components["schemas"]["LinkDenial"];
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /** Signed In As */
+            signed_in_as?: string | null;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * LinkedUsersResponse
          * @description Response model for the list of platform_user_ids linked on a platform.
          */
@@ -10376,6 +11622,23 @@ export interface components {
              * @description platform_user_ids of accounts linked to the platform.
              */
             platform_user_ids?: string[];
+        };
+        /**
+         * LinkEnvelope
+         * @description What opening a link returns: its access level, the target's public view and any framed content.
+         */
+        LinkEnvelope: {
+            access: components["schemas"]["LinkAccess"];
+            content: components["schemas"]["LinkContent"] | null;
+            /** Downloadable */
+            downloadable: boolean;
+            /** Is Owner */
+            is_owner: boolean;
+            /** Owner Target */
+            owner_target: (components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"]) | null;
+            target_type: components["schemas"]["ShortLinkTargetType"];
+            /** View */
+            view: components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicWorkspaceFile"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
         };
         /**
          * LinkPlatformRequest
@@ -10413,6 +11676,53 @@ export interface components {
              * @description Link status (e.g., 'linked')
              */
             status: string;
+        };
+        /**
+         * LinkPreviewMeta
+         * @description What a chat preview or a page's metadata may show for a link, by its access level and state.
+         *
+         *     title and description are real content only for a live public or unlisted
+         *     link; any other link carries the kind line or the dead-link line. image_url
+         *     is None when the preview card is generated from these fields.
+         */
+        LinkPreviewMeta: {
+            access: components["schemas"]["LinkAccess"] | null;
+            /** Description */
+            description: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Indexable */
+            indexable: boolean;
+            /** Live */
+            live: boolean;
+            target_type: components["schemas"]["ShortLinkTargetType"] | null;
+            /** Title */
+            title: string;
+        };
+        /** LinkReportRequest */
+        LinkReportRequest: {
+            reason: components["schemas"]["ReportReason"];
+            /** Turnstile Token */
+            turnstile_token?: string | null;
+        };
+        /**
+         * LinkSettings
+         * @description Who a link opens for and until when.
+         */
+        LinkSettings: {
+            /** @default unlisted */
+            access?: components["schemas"]["LinkAccess"];
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /**
+         * LinkSettingsUpdate
+         * @description Owner changes to a live link; an omitted field keeps its value.
+         */
+        LinkSettingsUpdate: {
+            access?: components["schemas"]["LinkAccess"] | null;
+            /** Expires At */
+            expires_at?: string | null;
         };
         /**
          * LinkTokenInfoResponse
@@ -11189,6 +12499,17 @@ export interface components {
             total_memories: number;
         };
         /**
+         * MemoryReadyNotification
+         * @description The user's memory was seeded from their past conversations.
+         */
+        MemoryReadyNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "memory_ready";
+        };
+        /**
          * MemoryRelationType
          * @description How a memory version relates to its parent in the supersession chain.
          * @enum {string}
@@ -11464,11 +12785,8 @@ export interface components {
              * @enum {string}
              */
             source: "platform" | "custom";
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "connected" | "created" | "expired" | "not_connected";
+            /** Status */
+            status: components["schemas"]["IntegrationStatus"] | "not_connected";
             /**
              * Toolcount
              * @default 0
@@ -11488,6 +12806,39 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * NewStamp
+         * @description A city stamp the user collected for the first time with this brief.
+         */
+        NewStamp: {
+            /** City */
+            city: string;
+            /**
+             * Collected
+             * @description Stamps collected, this one included.
+             */
+            collected: number;
+            /** Country */
+            country: string;
+            /**
+             * Total
+             * @description How many city stamps can be collected.
+             */
+            total: number;
+        };
+        /**
+         * NoteBlock
+         * @description A pattern GAIA noticed, a heads-up or a suggestion, rendered from its slots.
+         */
+        NoteBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "note";
+            /** Text */
+            text: string;
         };
         /** NoteModel */
         NoteModel: {
@@ -11546,6 +12897,8 @@ export interface components {
             follow_up_actions: string[];
             /** Id */
             id: string;
+            /** Image Url */
+            image_url: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -11710,14 +13063,14 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
+            /** Details */
+            details?: (components["schemas"]["BriefEditionNotification"] | components["schemas"]["BriefNoteNotification"] | components["schemas"]["TodoNotification"] | components["schemas"]["TodoFailedNotification"] | components["schemas"]["TodoTriggerFiredNotification"] | components["schemas"]["DormantTodosNotification"] | components["schemas"]["ReminderNotification"] | components["schemas"]["WorkflowCompletedNotification"] | components["schemas"]["WorkflowFailedNotification"] | components["schemas"]["WorkflowPausedNotification"] | components["schemas"]["IntegrationExpiredNotification"] | components["schemas"]["SystemWorkflowsProvisionedNotification"] | components["schemas"]["MemoryReadyNotification"] | components["schemas"]["GmailPersonalizedNotification"] | components["schemas"]["ApprovalNotification"]) | null;
             /** Id */
             id: string;
             /** Message */
             message?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
+            /** @default routine */
+            message_class?: components["schemas"]["ProactiveMessageClass"];
             /**
              * Priority
              * @default 3
@@ -11788,7 +13141,7 @@ export interface components {
          *     Distinct from ``NotificationRecord``: the record is the stored document (it
          *     nests the whole ``original_request``), while this is the flat shape the web
          *     and mobile clients actually read — ``content``/``source``/``type``/
-         *     ``metadata`` are lifted out of the request, and the channel entries are
+         *     ``details`` are lifted out of the request, and the channel entries are
          *     projected. It mirrors ``NotificationRecord`` in the frontend's
          *     ``notificationTypes.ts``.
          *
@@ -11807,12 +13160,10 @@ export interface components {
             created_at: string;
             /** Delivered At */
             delivered_at?: string | null;
+            /** Details */
+            details?: (components["schemas"]["BriefEditionNotification"] | components["schemas"]["BriefNoteNotification"] | components["schemas"]["TodoNotification"] | components["schemas"]["TodoFailedNotification"] | components["schemas"]["TodoTriggerFiredNotification"] | components["schemas"]["DormantTodosNotification"] | components["schemas"]["ReminderNotification"] | components["schemas"]["WorkflowCompletedNotification"] | components["schemas"]["WorkflowFailedNotification"] | components["schemas"]["WorkflowPausedNotification"] | components["schemas"]["IntegrationExpiredNotification"] | components["schemas"]["SystemWorkflowsProvisionedNotification"] | components["schemas"]["MemoryReadyNotification"] | components["schemas"]["GmailPersonalizedNotification"] | components["schemas"]["ApprovalNotification"]) | null;
             /** Id */
             id: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
             /** Read At */
             read_at?: string | null;
             source: components["schemas"]["NotificationSourceEnum"];
@@ -12065,13 +13416,8 @@ export interface components {
              * @description Whether onboarding was successful
              */
             success: boolean;
-            /**
-             * User
-             * @description Updated user data
-             */
-            user: {
-                [key: string]: unknown;
-            } | null;
+            /** @description Updated user data */
+            user: components["schemas"]["OnboardingUser"];
         };
         /**
          * OnboardingStatusResponse
@@ -12101,6 +13447,35 @@ export interface components {
          * @enum {string}
          */
         OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+        /**
+         * OnboardingUser
+         * @description The user an onboarding write updated: its id and the onboarding state it left.
+         */
+        OnboardingUser: {
+            onboarding: components["schemas"]["OnboardingStatusResponse"];
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * OpenUIArtifactResponse
+         * @description An artifact as its owner's viewer loads it.
+         */
+        OpenUIArtifactResponse: {
+            /** Conversation Id */
+            conversation_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /** Title */
+            title: string;
+        };
         /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
@@ -12532,10 +13907,63 @@ export interface components {
             status: "pending" | "approved" | "expired";
         };
         /**
+         * Postmark
+         * @description One collected Air Mail stamp: its city, where it sits, and the card of the brief it first came on.
+         *
+         *     The card carries that brief's edition, so the page can ready the letter before the
+         *     stamp is pressed without fetching the brief, which would mark it opened.
+         */
+        Postmark: {
+            card: components["schemas"]["BriefCard"];
+            /** City */
+            city: string;
+            /** City Slug */
+            city_slug: string;
+            /** Country */
+            country: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Stamp Url */
+            stamp_url: string;
+        };
+        /**
+         * PostmarksResponse
+         * @description The user's stamp collection, first arrival first.
+         */
+        PostmarksResponse: {
+            /** Postmarks */
+            postmarks: components["schemas"]["Postmark"][];
+            /**
+             * Total
+             * @description How many city stamps can be collected.
+             */
+            total: number;
+        };
+        /**
          * Priority
          * @enum {string}
          */
         Priority: "high" | "medium" | "low" | "none";
+        /**
+         * ProactiveMessageClass
+         * @description What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.
+         * @enum {string}
+         */
+        ProactiveMessageClass: "routine" | "user_timed" | "user_triggered" | "urgent";
+        /**
+         * ProgressBlock
+         * @description Where one of the user's goals stands.
+         */
+        ProgressBlock: {
+            goal: components["schemas"]["GoalState"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "progress";
+        };
         /**
          * ProjectCreate
          * @description Model for creating projects
@@ -12796,6 +14224,28 @@ export interface components {
             ok: boolean;
         };
         /**
+         * PublicBriefing
+         * @description A brief's front page, all anyone but its owner sees: never an item, a calendar entry or the edition.
+         *
+         *     The edition image draws every item, so it stays with the owner (BriefingView) too.
+         */
+        PublicBriefing: {
+            /** Date */
+            date: string;
+            /** Full Url */
+            full_url?: string | null;
+            /** Headline */
+            headline: string;
+            /** Kicker */
+            kicker: string;
+            kind: components["schemas"]["BriefingKind"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "briefing";
+        };
+        /**
          * PublicHoloCardResponse
          * @description Public-facing subset of a user's profile, keyed by user id (``card_id``).
          *
@@ -12889,6 +14339,29 @@ export interface components {
             tools?: components["schemas"]["IntegrationTool"][];
         };
         /**
+         * PublicOpenUIArtifact
+         * @description An artifact create_artifact made: its program, which the page renders as data.
+         */
+        PublicOpenUIArtifact: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /** Shared By */
+            shared_by: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "openui_artifact";
+            /** Title */
+            title: string;
+        };
+        /**
          * PublicSupportRequestCreate
          * @description A contact-form request that may come from a visitor with no GAIA session.
          */
@@ -12920,6 +14393,24 @@ export interface components {
             turnstile_token: string;
             /** @description Type of request (support or feature) */
             type: components["schemas"]["SupportRequestType"];
+        };
+        /**
+         * PublicTodoDeliverable
+         * @description A tracked todo's result: its title and the deliverable facet of its
+         *     canvas (``canvas_markdown.deliverable_markdown``), never the working sections.
+         */
+        PublicTodoDeliverable: {
+            /** Completed */
+            completed: boolean;
+            /** Content */
+            content: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "todo_deliverable";
+            /** Title */
+            title: string;
         };
         /**
          * PublicWorkflowCard
@@ -12963,6 +14454,33 @@ export interface components {
             trigger_config: components["schemas"]["TriggerConfig"] | null;
         };
         /**
+         * PublicWorkflowRun
+         * @description One workflow execution's outcome.
+         */
+        PublicWorkflowRun: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "success" | "failed" | "skipped";
+            /** Summary */
+            summary: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "workflow_run";
+            /** Workflow Title */
+            workflow_title: string;
+        };
+        /**
          * PublicWorkflowsResponse
          * @description Response model for listing public workflows.
          */
@@ -12991,6 +14509,30 @@ export interface components {
             id: string;
             /** Title */
             title: string;
+        };
+        /**
+         * PublicWorkspaceFile
+         * @description A file GAIA wrote in a conversation's workspace, as its link pinned it.
+         *
+         *     text is the file's text when it is shown as text (code, markdown, and HTML
+         *     source where the instance has no content origin); the page renders it
+         *     itself. Every other file is framed from the content origin (LinkEnvelope.content)
+         *     or offered as a download.
+         */
+        PublicWorkspaceFile: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "workspace_file";
+            /** Text */
+            text: string | null;
         };
         /** PublishIntegrationResponse */
         PublishIntegrationResponse: {
@@ -13075,6 +14617,38 @@ export interface components {
             start_hour: number;
         };
         /**
+         * QuoteBlock
+         * @description Someone's own words, set apart.
+         */
+        QuoteBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "quote";
+            quote: components["schemas"]["QuoteSpan"];
+        };
+        /**
+         * QuoteSpan
+         * @description Someone's own words, verbatim as their app holds them, with who wrote them and where.
+         */
+        QuoteSpan: {
+            /** App */
+            app: string;
+            /** Author */
+            author: string;
+            /** Id */
+            id: string;
+            /** Item Id */
+            item_id: number;
+            /** Source */
+            source: string;
+            /** Text */
+            text: string;
+            /** Url */
+            url: string | null;
+        };
+        /**
          * Reaction
          * @description An emoji on a user message; a field updated in place, never a state change.
          */
@@ -13146,6 +14720,19 @@ export interface components {
             tool_category?: string;
             /** Tool Name */
             tool_name: string;
+        };
+        /**
+         * RecordTarget
+         * @description A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id.
+         */
+        RecordTarget: {
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "briefing" | "openui_artifact" | "todo_deliverable" | "workflow_run";
         };
         /**
          * RecurrenceData
@@ -13345,6 +14932,19 @@ export interface components {
             policy: components["schemas"]["RegistrationPolicy"];
         };
         /**
+         * ReminderNotification
+         * @description A reminder that came due.
+         */
+        ReminderNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reminder";
+            /** Reminder Id */
+            reminder_id: string;
+        };
+        /**
          * ReminderResponse
          * @description Response model for reminder operations.
          *
@@ -13411,6 +15011,12 @@ export interface components {
             user_id: string;
         };
         /**
+         * RenderMode
+         * @description How a snapshot's bytes are shown, which fixes the headers the content origin serves them with.
+         * @enum {string}
+         */
+        RenderMode: "frame_active" | "image" | "image_svg" | "pdf" | "text" | "media" | "download";
+        /**
          * ReplyDeltaFrame
          * @description Streamed content of one comms attempt; reply_id is None until its reply entry exists.
          */
@@ -13440,6 +15046,8 @@ export interface components {
             opens_at: string;
             /** Path */
             path: string;
+            /** Short Url */
+            short_url?: string | null;
         };
         /**
          * ReplyItem
@@ -13503,6 +15111,11 @@ export interface components {
              */
             role: "user" | "assistant";
         };
+        /**
+         * ReportReason
+         * @enum {string}
+         */
+        ReportReason: "phishing" | "malware" | "harassment" | "illegal" | "other";
         /**
          * ResetSessionResponse
          * @description Response model for a bot session reset.
@@ -13625,6 +15238,12 @@ export interface components {
          * @enum {string}
          */
         ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
+        /**
+         * ScoutSkipReason
+         * @description Why a scout contributed nothing to this brief.
+         * @enum {string}
+         */
+        ScoutSkipReason: "failed" | "budget" | "backoff" | "source_failed" | "no_read_only_tools" | "unknown_integration" | "signed_out" | "out_of_time" | "free_plan" | "dormant";
         /**
          * ScreenFrame
          * @description The newest page of the screen; a client replaces what it holds from the first item's seq on.
@@ -13762,6 +15381,19 @@ export interface components {
             messages: components["schemas"]["MessageSearchResult"][];
             /** Notes */
             notes: components["schemas"]["NoteSearchResult"][];
+        };
+        /**
+         * SectionBlock
+         * @description A lead or items block, stored as the payload section it became (sections[section]).
+         */
+        SectionBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "items" | "lead";
+            /** Section */
+            section: number;
         };
         /**
          * SelectedCalendarEventData
@@ -13939,6 +15571,22 @@ export interface components {
             voice?: boolean;
         };
         /**
+         * SeriesPoint
+         * @description One computed point: a day or a category, and its value.
+         */
+        SeriesPoint: {
+            /** X */
+            x: string;
+            /** Y */
+            y: number;
+        };
+        /**
+         * SeriesShape
+         * @description How a series' points are laid out, which decides the charts that can draw it.
+         * @enum {string}
+         */
+        SeriesShape: "time_series" | "categorical";
+        /**
          * SetToolOverrideRequest
          * @description Body for setting or clearing one tool's approval override.
          */
@@ -14009,6 +15657,53 @@ export interface components {
              */
             wizard_dismissed: boolean;
         };
+        /**
+         * ShareLinkRequest
+         * @description Share one of the owner's artifacts: its live link, minted with settings when none is live.
+         */
+        ShareLinkRequest: {
+            settings?: components["schemas"]["LinkSettings"];
+            /** Target */
+            target: components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"];
+        };
+        /**
+         * ShortLinkResponse
+         * @description One live heygaia.link and its settings.
+         *
+         *     content_max_access is the widest level its file may be served at when the
+         *     file narrows it (a login form, an installer); None otherwise.
+         */
+        ShortLinkResponse: {
+            access: components["schemas"]["LinkAccess"];
+            content_max_access: components["schemas"]["LinkAccess"] | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Slug */
+            slug: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * ShortLinkShareState
+         * @description Whether one of the owner's artifacts is shared: its live link, or None.
+         */
+        ShortLinkShareState: {
+            link: components["schemas"]["ShortLinkResponse"] | null;
+        };
+        /**
+         * ShortLinkTargetRequest
+         * @description One of the owner's artifacts, to read or stop sharing.
+         */
+        ShortLinkTargetRequest: {
+            /** Target */
+            target: components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"];
+        };
+        /**
+         * ShortLinkTargetType
+         * @description Every kind of artifact a heygaia.link can point at.
+         * @enum {string}
+         */
+        ShortLinkTargetType: "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
         /**
          * SignupRequest
          * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
@@ -14409,6 +16104,14 @@ export interface components {
              * @description Notification title: short and human-readable, like a phone notification header (e.g. 'Drink water'). Shown directly to the user.
              */
             title: string;
+        };
+        /**
+         * StopSharingResult
+         * @description Whether stopping killed a live link; False when the artifact was not shared.
+         */
+        StopSharingResult: {
+            /** Revoked */
+            revoked: boolean;
         };
         /**
          * StoredIntegrationTool
@@ -14882,7 +16585,20 @@ export interface components {
          * @description Why a system-generated conversation was created.
          * @enum {string}
          */
-        SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
+        SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "briefing" | "other";
+        /**
+         * SystemWorkflowsProvisionedNotification
+         * @description Connecting an integration set up its system workflows.
+         */
+        SystemWorkflowsProvisionedNotification: {
+            /** Integration Display Name */
+            integration_display_name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "system_workflows_provisioned";
+        };
         /**
          * TimelineCard
          * @description A card rendered on its own below the thread; a grouped tool's calls arrive as one card.
@@ -14961,6 +16677,21 @@ export interface components {
             upcoming: number;
         };
         /**
+         * TodoFailedNotification
+         * @description A scheduled todo that stopped after using up its attempts.
+         */
+        TodoFailedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_failed";
+            /** Retry Count */
+            retry_count: number;
+            /** Todo Id */
+            todo_id: string;
+        };
+        /**
          * TodoistNewTaskCreatedConfig
          * @description Config for todoist_new_task_created trigger.
          */
@@ -15005,6 +16736,11 @@ export interface components {
              */
             created_at?: string;
             /**
+             * @description Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed.
+             * @default now
+             */
+            delivery?: components["schemas"]["WorkflowDelivery"];
+            /**
              * Description
              * @description Description of the todo item
              */
@@ -15035,12 +16771,6 @@ export interface components {
              * @description Labels for categorization
              */
             labels?: string[];
-            /**
-             * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
-             * @default true
-             */
-            notify_on_run?: boolean;
             /**
              * @description Priority level
              * @default none
@@ -15093,6 +16823,19 @@ export interface components {
             workflow_id?: string | null;
         };
         /**
+         * TodoNotification
+         * @description A notification about one todo: its run's result, or what its health check found.
+         */
+        TodoNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo";
+            /** Todo Id */
+            todo_id: string;
+        };
+        /**
          * TodoResponse
          * @description Complete todo response with all fields
          */
@@ -15114,6 +16857,11 @@ export interface components {
              * @description Creation timestamp
              */
             created_at: string;
+            /**
+             * @description Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed.
+             * @default now
+             */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Description of the todo item
@@ -15150,12 +16898,6 @@ export interface components {
              * @description Labels for categorization
              */
             labels: string[];
-            /**
-             * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
-             * @default true
-             */
-            notify_on_run: boolean;
             /**
              * Parent Todo Id
              * @description Read-only; the tracked todo this one is a sub-todo of, set by GAIA
@@ -15290,12 +17032,28 @@ export interface components {
             total?: number;
         };
         /**
+         * TodoTriggerFiredNotification
+         * @description An event a todo's trigger subscription watches fired.
+         */
+        TodoTriggerFiredNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_trigger_fired";
+            /** Subscription Id */
+            subscription_id: string;
+            /** Todo Id */
+            todo_id: string;
+        };
+        /**
          * TodoUpdateRequest
          * @description Model for updating todos - all fields optional for partial updates
          */
         TodoUpdateRequest: {
             /** Completed */
             completed?: boolean | null;
+            delivery?: components["schemas"]["WorkflowDelivery"] | null;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -15306,8 +17064,6 @@ export interface components {
             expires_at?: string | null;
             /** Labels */
             labels?: string[] | null;
-            /** Notify On Run */
-            notify_on_run?: boolean | null;
             priority?: components["schemas"]["Priority"] | null;
             /** Project Id */
             project_id?: string | null;
@@ -15746,6 +17502,28 @@ export interface components {
          */
         TriggerType: "manual" | "schedule" | "integration" | "scheduled_todo" | "todo_trigger";
         /**
+         * UncomposedItem
+         * @description What GAIA read but the composition left out, with the words for where it stands.
+         */
+        UncomposedItem: {
+            /** App */
+            app: string;
+            /** Detail */
+            detail: string | null;
+            kind: components["schemas"]["ItemState"];
+            /**
+             * State Label
+             * @description The item's state in a few words, as the brief page shows it.
+             */
+            state_label: string;
+            /** Title */
+            title: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
          * UnlinkAccountResponse
          * @description Response model for unlinking a platform account.
          */
@@ -15768,6 +17546,15 @@ export interface components {
              * @constant
              */
             status?: "success";
+        };
+        /**
+         * UnreadSource
+         * @description A connected app the brief could not read this time, and why.
+         */
+        UnreadSource: {
+            /** App */
+            app: string;
+            reason: components["schemas"]["ScoutSkipReason"];
         };
         /**
          * UpdateCustomIntegrationRequest
@@ -15999,6 +17786,7 @@ export interface components {
         UpdateWorkflowRequest: {
             /** Activated */
             activated?: boolean | null;
+            delivery?: components["schemas"]["WorkflowDelivery"] | null;
             /** Description */
             description?: string | null;
             /** @description Absent keeps the gate, null removes it, a value replaces it */
@@ -16009,8 +17797,6 @@ export interface components {
             icon_color?: string | null;
             /** Integration Ids */
             integration_ids?: string[] | null;
-            /** Notify On Completion */
-            notify_on_completion?: boolean | null;
             /** Prompt */
             prompt?: string | null;
             /** Steps */
@@ -16524,6 +18310,21 @@ export interface components {
             subagent_ids: string[];
         };
         /**
+         * WorkflowCompletedNotification
+         * @description A finished workflow run; its result is in the conversation.
+         */
+        WorkflowCompletedNotification: {
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_completed";
+            /** Workflow Id */
+            workflow_id: string;
+        };
+        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -16539,6 +18340,16 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * WorkflowDelivery
+         * @description How a finished workflow run's result reaches the user.
+         *
+         *     Failures always notify, whatever the mode: a broken workflow needs the user
+         *     now. A run whose narration decides there is nothing worth reporting reaches
+         *     nobody in any mode.
+         * @enum {string}
+         */
+        WorkflowDelivery: "now" | "brief" | "silent";
         /**
          * WorkflowExecution
          * @description A single workflow execution record.
@@ -16656,6 +18467,24 @@ export interface components {
             total: number;
         };
         /**
+         * WorkflowFailedNotification
+         * @description A workflow run that errored or that a limit stopped.
+         */
+        WorkflowFailedNotification: {
+            /**
+             * Error Type
+             * @description The exception's class name, when the worker saw it.
+             */
+            error_type: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_failed";
+            /** Workflow Id */
+            workflow_id: string;
+        };
+        /**
          * WorkflowFiredItem
          * @description The workflow card that started a run; the run's reply is its own item.
          */
@@ -16694,6 +18523,21 @@ export interface components {
              * @description Human-readable outcome
              */
             message: string;
+        };
+        /**
+         * WorkflowPausedNotification
+         * @description A workflow paused until the integrations it needs are connected.
+         */
+        WorkflowPausedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_paused";
+            /** Missing Integrations */
+            missing_integrations: string[];
+            /** Workflow Id */
+            workflow_id: string;
         };
         /**
          * WorkflowResponse
@@ -16848,6 +18692,8 @@ export interface components {
             current_step_index: number;
             /** @description Why the workflow is not activated. None means the user turned it off themselves — only system-paused workflows may be resumed automatically. */
             deactivated_reason: components["schemas"]["DeactivationReason"] | null;
+            /** @description How a finished run's result reaches the user: pushed now, held for the next brief, or kept silent in the workflow's conversation. Failures always notify. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short display description for cards/UI (1-2 sentences)
@@ -16925,12 +18771,6 @@ export interface components {
              * @description Required integrations the user has not connected yet.
              */
             missing_integrations: components["schemas"]["IntegrationRef"][] | null;
-            /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes. When False the run is silent (failures still notify) and the agent only notifies if the workflow's own instructions ask it to.
-             * @default true
-             */
-            notify_on_completion: boolean;
             /**
              * Occurrence Count
              * @description Number of times this task has been executed
@@ -17060,6 +18900,21 @@ export interface components {
             tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
+         * WorkspaceFileTarget
+         * @description A file GAIA wrote in one conversation's workspace, by its path under the workspace's files.
+         */
+        WorkspaceFileTarget: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Path */
+            path: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "workspace_file";
+        };
+        /**
          * WorkStatus
          * @description Where a piece of work stands: live, or how it ended.
          * @enum {string}
@@ -17133,6 +18988,7 @@ export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionReq
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovalDescription = components['schemas']['ApprovalDescription'];
 export type ApprovalDetail = components['schemas']['ApprovalDetail'];
+export type ApprovalNotification = components['schemas']['ApprovalNotification'];
 export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
 export type ApprovalRequested = components['schemas']['ApprovalRequested'];
 export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
@@ -17140,6 +18996,7 @@ export type ApprovalRequestEntryData = components['schemas']['ApprovalRequestEnt
 export type ApprovalStatus = components['schemas']['ApprovalStatus'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
+export type ArtifactKind = components['schemas']['ArtifactKind'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
@@ -17182,6 +19039,33 @@ export type BotDeliveryReport = components['schemas']['BotDeliveryReport'];
 export type BotMessageAccepted = components['schemas']['BotMessageAccepted'];
 export type BotSessionRequest = components['schemas']['BotSessionRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BriefAction = components['schemas']['BriefAction'];
+export type BriefCard = components['schemas']['BriefCard'];
+export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
+export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
+export type BriefEditionNotification = components['schemas']['BriefEditionNotification'];
+export type BriefForm = components['schemas']['BriefForm'];
+export type BriefingEdition = components['schemas']['BriefingEdition'];
+export type BriefingEditions = components['schemas']['BriefingEditions'];
+export type BriefingEditionsUpdate = components['schemas']['BriefingEditionsUpdate'];
+export type BriefingEvent = components['schemas']['BriefingEvent'];
+export type BriefingFrequency = components['schemas']['BriefingFrequency'];
+export type BriefingItem = components['schemas']['BriefingItem'];
+export type BriefingKind = components['schemas']['BriefingKind'];
+export type BriefingListResponse = components['schemas']['BriefingListResponse'];
+export type BriefingMood = components['schemas']['BriefingMood'];
+export type BriefingPayload = components['schemas']['BriefingPayload'];
+export type BriefingScheduleState = components['schemas']['BriefingScheduleState'];
+export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
+export type BriefingSection = components['schemas']['BriefingSection'];
+export type BriefingStat = components['schemas']['BriefingStat'];
+export type BriefingTallies = components['schemas']['BriefingTallies'];
+export type BriefingView = components['schemas']['BriefingView'];
+export type BriefingWeek = components['schemas']['BriefingWeek'];
+export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
+export type BriefNoteNotification = components['schemas']['BriefNoteNotification'];
+export type BriefOutcome = components['schemas']['BriefOutcome'];
+export type BriefPoolItem = components['schemas']['BriefPoolItem'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
@@ -17210,6 +19094,7 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
+export type CalendarResponse = components['schemas']['CalendarResponse'];
 export type CardsDelta = components['schemas']['CardsDelta'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
@@ -17217,6 +19102,8 @@ export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus
 export type ChannelPreferences = components['schemas']['ChannelPreferences'];
 export type ChannelPreferencesUpdate = components['schemas']['ChannelPreferencesUpdate'];
 export type ChannelPriorityList = components['schemas']['ChannelPriorityList'];
+export type ChartBlock = components['schemas']['ChartBlock'];
+export type ChartKind = components['schemas']['ChartKind'];
 export type CheckoutSource = components['schemas']['CheckoutSource'];
 export type CommunityIntegrationCreator = components['schemas']['CommunityIntegrationCreator'];
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
@@ -17235,6 +19122,7 @@ export type ConditionOperator = components['schemas']['ConditionOperator'];
 export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
+export type ContentTokenResponse = components['schemas']['ContentTokenResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
 export type ConversationEntriesPage = components['schemas']['ConversationEntriesPage'];
@@ -17265,6 +19153,7 @@ export type CredentialProviderName = components['schemas']['CredentialProviderNa
 export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
+export type DataSeries = components['schemas']['DataSeries'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];
 export type DecisionRefusal = components['schemas']['DecisionRefusal'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
@@ -17296,6 +19185,12 @@ export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DisplayState = components['schemas']['DisplayState'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
+export type DormantTodosNotification = components['schemas']['DormantTodosNotification'];
+export type EditionChoice = components['schemas']['EditionChoice'];
+export type EditionFamily = components['schemas']['EditionFamily'];
+export type EditionImage = components['schemas']['EditionImage'];
+export type EditionLeftOut = components['schemas']['EditionLeftOut'];
+export type EditionVariant = components['schemas']['EditionVariant'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
@@ -17334,10 +19229,13 @@ export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig']
 export type GmailMessagesResponse = components['schemas']['GmailMessagesResponse'];
 export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
+export type GmailPersonalizedNotification = components['schemas']['GmailPersonalizedNotification'];
 export type GmailPollInboxConfig = components['schemas']['GmailPollInboxConfig'];
+export type GoalState = components['schemas']['GoalState'];
 export type GoogleCalendarEventDateTime = components['schemas']['GoogleCalendarEventDateTime'];
 export type GoogleCalendarEventResource = components['schemas']['GoogleCalendarEventResource'];
 export type GoogleCalendarListEntry = components['schemas']['GoogleCalendarListEntry'];
+export type GoogleCalendarPerson = components['schemas']['GoogleCalendarPerson'];
 export type GoogleDocsDocumentDeletedConfig = components['schemas']['GoogleDocsDocumentDeletedConfig'];
 export type GoogleDocsDocumentUpdatedConfig = components['schemas']['GoogleDocsDocumentUpdatedConfig'];
 export type GoogleDocsNewDocumentConfig = components['schemas']['GoogleDocsNewDocumentConfig'];
@@ -17367,26 +19265,38 @@ export type IntegrationAccountResponse = components['schemas']['IntegrationAccou
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
+export type IntegrationExpiredNotification = components['schemas']['IntegrationExpiredNotification'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
+export type IntegrationStatus = components['schemas']['IntegrationStatus'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type ItemState = components['schemas']['ItemState'];
 export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
 export type LinearIssueUpdatedConfig = components['schemas']['LinearIssueUpdatedConfig'];
+export type LinkAccess = components['schemas']['LinkAccess'];
+export type LinkContent = components['schemas']['LinkContent'];
+export type LinkDenial = components['schemas']['LinkDenial'];
+export type LinkDenialEnvelope = components['schemas']['LinkDenialEnvelope'];
 export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
+export type LinkEnvelope = components['schemas']['LinkEnvelope'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
+export type LinkPreviewMeta = components['schemas']['LinkPreviewMeta'];
+export type LinkReportRequest = components['schemas']['LinkReportRequest'];
+export type LinkSettings = components['schemas']['LinkSettings'];
+export type LinkSettingsUpdate = components['schemas']['LinkSettingsUpdate'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
 export type LiveTask = components['schemas']['LiveTask'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
@@ -17427,6 +19337,7 @@ export type MemoryGraphResponse = components['schemas']['MemoryGraphResponse'];
 export type MemoryKind = components['schemas']['MemoryKind'];
 export type MemoryListResponse = components['schemas']['MemoryListResponse'];
 export type MemoryOverviewResponse = components['schemas']['MemoryOverviewResponse'];
+export type MemoryReadyNotification = components['schemas']['MemoryReadyNotification'];
 export type MemoryRelationType = components['schemas']['MemoryRelationType'];
 export type MemorySearchResult = components['schemas']['MemorySearchResult'];
 export type MemorySourceType = components['schemas']['MemorySourceType'];
@@ -17443,6 +19354,8 @@ export type ModalConfig = components['schemas']['ModalConfig'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
+export type NewStamp = components['schemas']['NewStamp'];
+export type NoteBlock = components['schemas']['NoteBlock'];
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
@@ -17477,6 +19390,8 @@ export type OnboardingResetResponse = components['schemas']['OnboardingResetResp
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
+export type OnboardingUser = components['schemas']['OnboardingUser'];
+export type OpenUIArtifactResponse = components['schemas']['OpenUIArtifactResponse'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PartialReply = components['schemas']['PartialReply'];
@@ -17501,7 +19416,11 @@ export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
 export type PollPairingResponse = components['schemas']['PollPairingResponse'];
+export type Postmark = components['schemas']['Postmark'];
+export type PostmarksResponse = components['schemas']['PostmarksResponse'];
 export type Priority = components['schemas']['Priority'];
+export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
+export type ProgressBlock = components['schemas']['ProgressBlock'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
@@ -17513,21 +19432,29 @@ export type ProviderListResponse = components['schemas']['ProviderListResponse']
 export type ProviderPreset = components['schemas']['ProviderPreset'];
 export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
+export type PublicBriefing = components['schemas']['PublicBriefing'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicOpenUIArtifact = components['schemas']['PublicOpenUIArtifact'];
 export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
+export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
+export type PublicWorkflowRun = components['schemas']['PublicWorkflowRun'];
 export type PublicWorkflowsResponse = components['schemas']['PublicWorkflowsResponse'];
 export type PublicWorkflowStep = components['schemas']['PublicWorkflowStep'];
+export type PublicWorkspaceFile = components['schemas']['PublicWorkspaceFile'];
 export type PublishIntegrationResponse = components['schemas']['PublishIntegrationResponse'];
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
+export type QuoteBlock = components['schemas']['QuoteBlock'];
+export type QuoteSpan = components['schemas']['QuoteSpan'];
 export type Reaction = components['schemas']['Reaction'];
 export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
+export type RecordTarget = components['schemas']['RecordTarget'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
 export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest'];
@@ -17540,12 +19467,15 @@ export type RegisterServerResponse = components['schemas']['RegisterServerRespon
 export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
+export type ReminderNotification = components['schemas']['ReminderNotification'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
+export type RenderMode = components['schemas']['RenderMode'];
 export type ReplyDeltaFrame = components['schemas']['ReplyDeltaFrame'];
 export type ReplyFile = components['schemas']['ReplyFile'];
 export type ReplyItem = components['schemas']['ReplyItem'];
 export type ReplyOutcome = components['schemas']['ReplyOutcome'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
+export type ReportReason = components['schemas']['ReportReason'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
 export type RetractFrame = components['schemas']['RetractFrame'];
@@ -17558,6 +19488,7 @@ export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfil
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
 export type ScheduleRejection = components['schemas']['ScheduleRejection'];
+export type ScoutSkipReason = components['schemas']['ScoutSkipReason'];
 export type ScreenFrame = components['schemas']['ScreenFrame'];
 export type ScreenInsertFrame = components['schemas']['ScreenInsertFrame'];
 export type ScreenUpdateFrame = components['schemas']['ScreenUpdateFrame'];
@@ -17566,6 +19497,7 @@ export type SearchIntegrationsResponse = components['schemas']['SearchIntegratio
 export type SearchMode = components['schemas']['SearchMode'];
 export type SearchResultItem = components['schemas']['SearchResultItem'];
 export type SearchResultsResponse = components['schemas']['SearchResultsResponse'];
+export type SectionBlock = components['schemas']['SectionBlock'];
 export type SelectedCalendarEventData = components['schemas']['SelectedCalendarEventData'];
 export type SelectedWorkflowDataInput = components['schemas']['SelectedWorkflowDataInput'];
 export type SelectedWorkflowDataOutput = components['schemas']['SelectedWorkflowDataOutput'];
@@ -17576,9 +19508,16 @@ export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SendMessageRequest = components['schemas']['SendMessageRequest'];
+export type SeriesPoint = components['schemas']['SeriesPoint'];
+export type SeriesShape = components['schemas']['SeriesShape'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
+export type ShareLinkRequest = components['schemas']['ShareLinkRequest'];
+export type ShortLinkResponse = components['schemas']['ShortLinkResponse'];
+export type ShortLinkShareState = components['schemas']['ShortLinkShareState'];
+export type ShortLinkTargetRequest = components['schemas']['ShortLinkTargetRequest'];
+export type ShortLinkTargetType = components['schemas']['ShortLinkTargetType'];
 export type SignupRequest = components['schemas']['SignupRequest'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
@@ -17600,6 +19539,7 @@ export type StartPairingResponse = components['schemas']['StartPairingResponse']
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
 export type StateFrame = components['schemas']['StateFrame'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
+export type StopSharingResult = components['schemas']['StopSharingResult'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
@@ -17626,19 +19566,23 @@ export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type SystemWorkflowsProvisionedNotification = components['schemas']['SystemWorkflowsProvisionedNotification'];
 export type TimelineCard = components['schemas']['TimelineCard'];
 export type TimelineStep = components['schemas']['TimelineStep'];
 export type TimelineStepKind = components['schemas']['TimelineStepKind'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
+export type TodoFailedNotification = components['schemas']['TodoFailedNotification'];
 export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskCreatedConfig'];
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
+export type TodoNotification = components['schemas']['TodoNotification'];
 export type TodoResponse = components['schemas']['TodoResponse'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
+export type TodoTriggerFiredNotification = components['schemas']['TodoTriggerFiredNotification'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
 export type TodoWakeKind = components['schemas']['TodoWakeKind'];
 export type TodoWokeItem = components['schemas']['TodoWokeItem'];
@@ -17664,8 +19608,10 @@ export type TriggerOptionsResponse = components['schemas']['TriggerOptionsRespon
 export type TriggerSubscriptionStatus = components['schemas']['TriggerSubscriptionStatus'];
 export type TriggerSubscriptionView = components['schemas']['TriggerSubscriptionView'];
 export type TriggerType = components['schemas']['TriggerType'];
+export type UncomposedItem = components['schemas']['UncomposedItem'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
+export type UnreadSource = components['schemas']['UnreadSource'];
 export type UpdateCustomIntegrationRequest = components['schemas']['UpdateCustomIntegrationRequest'];
 export type UpdateDescriptionRequest = components['schemas']['UpdateDescriptionRequest'];
 export type UpdateDescriptionResponse = components['schemas']['UpdateDescriptionResponse'];
@@ -17702,14 +19648,18 @@ export type VoiceSelectionResponse = components['schemas']['VoiceSelectionRespon
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkCancelled = components['schemas']['WorkCancelled'];
+export type WorkflowCompletedNotification = components['schemas']['WorkflowCompletedNotification'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
+export type WorkflowDelivery = components['schemas']['WorkflowDelivery'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
 export type WorkflowExecutionsResponse = components['schemas']['WorkflowExecutionsResponse'];
+export type WorkflowFailedNotification = components['schemas']['WorkflowFailedNotification'];
 export type WorkflowFiredItem = components['schemas']['WorkflowFiredItem'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
+export type WorkflowPausedNotification = components['schemas']['WorkflowPausedNotification'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
 export type WorkflowStatusResponse = components['schemas']['WorkflowStatusResponse'];
 export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
@@ -17717,6 +19667,7 @@ export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
 export type WorkItem = components['schemas']['WorkItem'];
+export type WorkspaceFileTarget = components['schemas']['WorkspaceFileTarget'];
 export type WorkStatus = components['schemas']['WorkStatus'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
@@ -18067,6 +20018,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HILPreferencesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenUIArtifactResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
                 };
             };
             /** @description Unprocessable Entity */
@@ -19198,6 +21247,461 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnlinkAccountResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_list_briefings: {
+        parameters: {
+            query?: {
+                /** @description The previous page's next_cursor; omit for the first page. */
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_briefing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                briefing_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingView"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_read_briefing_editions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingEditions"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_update_briefing_editions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefingEditionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingEditions"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_edition_image: {
+        parameters: {
+            query: {
+                /** @description The signature the brief's edition URL carries. */
+                t: string;
+            };
+            header?: never;
+            path: {
+                key: string;
+                variant: components["schemas"]["EditionVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_postmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostmarksResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_read_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingScheduleState"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_update_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefingScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingScheduleState"];
+                };
+            };
+            /** @description Briefs cannot turn off while workflows deliver to the brief */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDeliveryWorkflowsConflict"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_stamp_art: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": unknown;
                 };
             };
             /** @description Unprocessable Entity */
@@ -23584,6 +26088,849 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationSuccessResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_create_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Target not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_resolve_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkEnvelope"];
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_update_link_settings_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_content_token_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentTokenResponse"];
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_download_link_file_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_link_preview_meta_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkPreviewMeta"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_record_open_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkEnvelope"];
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_short_link_pdf_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_report_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_rotate_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_share_state_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkShareState"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_stop_sharing_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopSharingResult"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -32106,7 +35453,9 @@ export interface operations {
     };
     user_logout: {
         parameters: {
-            query?: never;
+            query?: {
+                return_url?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

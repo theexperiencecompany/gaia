@@ -1,0 +1,1081 @@
+"""The mint loop's branches: slug collisions, losing a concurrent mint, exhaustion, and GAIA-attached failures.
+
+The repository is mocked at the seam; the unique indexes these branches race
+against are enforced for real in tests/contracts/test_short_links_repository.py,
+and the full share/open/revoke flow runs over real Mongo in
+tests/integration/real/test_links_real.py.
+"""
+
+from collections.abc import Iterator
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
+import hashlib
+import re
+from typing import Final
+from unittest.mock import AsyncMock, MagicMock, call, patch
+
+from prometheus_client import REGISTRY as METRICS
+import pytest
+import time_machine
+
+from app.config.settings import settings
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
+from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, SLUG_UNIQUE_INDEX
+from app.models.short_link_models import (
+    ContentRestriction,
+    LinkAccess,
+    LinkContent,
+    LinkEnvelope,
+    LinkSettings,
+    LinkSettingsUpdate,
+    LinkSnapshot,
+    LinkTarget,
+    LinkViewer,
+    LinkViewerKind,
+    PublicTodoDeliverable,
+    RecordTarget,
+    RenderMode,
+    RevokeReason,
+    ShortLink,
+    ShortLinkTargetType,
+    ShortLinkUpdate,
+    WorkspaceFileTarget,
+)
+from app.services.analytics_service import analytics_day_start
+from app.services.links.errors import LinkDeniedError, LinkTargetNotFoundError
+from app.services.links.registry import REGISTRY
+from app.services.links.service import (
+    MAX_SLUG_ATTEMPTS,
+    ShortLinkExhaustedError,
+    attach_link,
+    link_response,
+    live_share_link,
+    record_open,
+    resolve,
+    revoke_conversation_links,
+    revoke_deleted_targets,
+    rotate,
+    share,
+    update_settings,
+)
+from app.services.links.spec import PreviewFacts, SnapshotSource
+from app.utils.errors import AppError
+from app.utils.log_identifiers import hash_link_viewer, hash_short_link_slug
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.short_links import (
+    ShortLinkAccessChanged,
+    ShortLinkCreated,
+    ShortLinkDenied,
+    ShortLinkOpened,
+    ShortLinkRotated,
+)
+from tests.helpers import captured_wide_event
+
+_SVC = "app.services.links.service"
+TODO: Final = ShortLinkTargetType.TODO_DELIVERABLE
+TODO_T = RecordTarget(type=TODO, id="t1")
+OWNER = "507f1f77bcf86cd799439011"
+# 11 base62 characters: the capability must survive guessing.
+SLUG_SHAPE = re.compile(r"[A-Za-z0-9]{11}")
+
+
+def _dup(index: str) -> AlreadyExistsError:
+    """Build the AlreadyExistsError the repository raises for Mongo's duplicate key on index."""
+    msg = f"E11000 duplicate key error collection: gaia.short_links index: {index} dup key: {{ x: 1 }}"
+    return AlreadyExistsError(f"DuplicateKeyError: {msg}")
+
+
+def _link(slug: str, **overrides: object) -> ShortLink:
+    data: dict[str, object] = {
+        "slug": slug,
+        "user_id": OWNER,
+        "target": TODO_T,
+    }
+    data.update(overrides)
+    return ShortLink.model_validate(data)
+
+
+@pytest.fixture
+def repo():
+    with (
+        patch(f"{_SVC}.short_link_repository") as repo,
+        patch(f"{_SVC}._snapshot_for", AsyncMock(return_value=None)),
+        patch(f"{_SVC}._release_snapshot", AsyncMock()),
+    ):
+        repo.get_live_for_target = AsyncMock(return_value=None)
+        repo.get_latest_for_target = AsyncMock(return_value=None)
+        repo.create = AsyncMock()
+        yield repo
+
+
+@pytest.fixture
+def capture():
+    with patch(f"{_SVC}.capture") as capture:
+        yield capture
+
+
+async def _share() -> ShortLink:
+    return await share(OWNER, TODO_T, LinkSettings())
+
+
+def _mints(outcome: str) -> float:
+    return METRICS.get_sample_value("gaia_link_mint_total", {"outcome": outcome}) or 0.0
+
+
+class TestShare:
+    async def test_an_existing_live_link_is_reused_not_reminted(self, repo):
+        repo.get_live_for_target.return_value = _link("existing")
+
+        assert (await _share()).slug == "existing"
+        repo.create.assert_not_awaited()
+
+    async def test_a_first_mint_stores_a_fresh_capability_slug_for_the_owner(self, repo, capture):
+        repo.create.side_effect = lambda link: link
+
+        minted = await _share()
+
+        (stored,), _ = repo.create.await_args
+        assert SLUG_SHAPE.fullmatch(stored.slug)
+        assert (stored.user_id, stored.target) == (OWNER, TODO_T)
+        assert stored.revoked is False
+        assert minted.slug == stored.slug
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkCreated(
+                target_type=TODO.value, access="unlisted", origin="owner_share", has_expiry=False
+            ),
+        )
+
+    async def test_losing_a_concurrent_mint_hands_out_the_winners_link(self, repo):
+        repo.get_live_for_target.side_effect = [None, _link("winner")]
+        repo.create.side_effect = _dup(LIVE_TARGET_UNIQUE_INDEX)
+
+        assert (await _share()).slug == "winner"
+        assert repo.create.await_count == 1
+
+    async def test_the_winner_revoked_before_the_reread_mints_again(self, repo):
+        repo.create.side_effect = [_dup(LIVE_TARGET_UNIQUE_INDEX), _link("fresh")]
+
+        assert (await _share()).slug == "fresh"
+        assert repo.create.await_count == 2
+
+    async def test_a_slug_collision_draws_another_slug(self, repo):
+        repo.create.side_effect = [_dup(SLUG_UNIQUE_INDEX), _link("second")]
+
+        assert (await _share()).slug == "second"
+        assert repo.create.await_count == 2
+        first, second = (call.args[0].slug for call in repo.create.await_args_list)
+        assert first != second
+
+    async def test_an_unrecognised_unique_violation_propagates(self, repo):
+        repo.create.side_effect = _dup("some_other_index")
+
+        with pytest.raises(AlreadyExistsError):
+            await _share()
+
+    async def test_slug_exhaustion_fails_loudly(self, repo):
+        repo.create.side_effect = _dup(SLUG_UNIQUE_INDEX)
+
+        async with captured_wide_event() as event:
+            with pytest.raises(ShortLinkExhaustedError) as raised:
+                await _share()
+
+        assert str(raised.value) == (
+            f"Could not mint a unique slug for user {OWNER} after {MAX_SLUG_ATTEMPTS} attempts"
+        )
+        assert repo.create.await_count == MAX_SLUG_ATTEMPTS
+        assert event["errors"] == [{"msg": "short_link.slug_exhausted", "user_id": OWNER}]
+
+
+class TestGaiaAttachedLinks:
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            RepositoryError("ServerSelectionTimeoutError: no primary"),
+            ShortLinkExhaustedError("no slug"),
+        ],
+    )
+    async def test_a_failed_mint_costs_only_the_link(self, repo, failure):
+        repo.get_latest_for_target.side_effect = failure
+
+        async with captured_wide_event() as event:
+            assert await attach_link(OWNER, TODO_T) is None
+
+        assert event["errors"][0]["msg"] == "short_link.mint_failed"
+
+    async def test_a_failed_mint_is_counted_where_the_alert_reads_it(self, repo):
+        """The link-mint alert reads gaia_link_mint_total{outcome="failed"}; nothing emitted it, so it could never fire."""
+        repo.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
+        before = _mints("failed")
+
+        assert await attach_link(OWNER, TODO_T) is None
+
+        assert _mints("failed") == before + 1
+
+    async def test_a_minted_link_is_counted(self, repo):
+        repo.create.side_effect = lambda link: link
+        before = _mints("minted")
+
+        assert await attach_link(OWNER, TODO_T) is not None
+
+        assert _mints("minted") == before + 1
+
+    async def test_a_storage_outage_is_not_swallowed_as_a_failed_mint(self, repo):
+        outage = AppError(message="storage down", status_code=503, code="workspace_storage_offline")
+        repo.get_latest_for_target.side_effect = outage
+
+        with pytest.raises(AppError) as raised:
+            await attach_link(OWNER, TODO_T)
+
+        assert raised.value is outage
+
+    async def test_a_first_attachment_mints_as_gaia_attached_for_the_owner_alone(
+        self, repo, capture
+    ):
+        repo.create.side_effect = lambda link: link
+
+        link = await attach_link(OWNER, TODO_T)
+
+        assert link is not None
+        assert link.access is LinkAccess.OWNER
+        assert capture.call_args.args[1].origin == "gaia_attached"
+        assert capture.call_args.args[1].access == "owner"
+
+    async def test_a_brief_item_attaches_at_the_briefs_access(self, repo):
+        repo.create.side_effect = lambda link: link
+
+        link = await attach_link(OWNER, TODO_T, access=LinkAccess.UNLISTED)
+
+        assert link is not None
+        assert link.access is LinkAccess.UNLISTED
+
+
+FILE: Final = ShortLinkTargetType.WORKSPACE_FILE
+FILE_T = WorkspaceFileTarget(type=FILE, conversation_id="conv-1", path="q3.html")
+NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+SOURCE = SnapshotSource(
+    filename="q3.html", declared_mime="text/html", size_bytes=11, data=b"<h1>Q3</h1>"
+)
+VIEW = PublicTodoDeliverable(
+    target_type=ShortLinkTargetType.TODO_DELIVERABLE,
+    title="Q3 plan",
+    completed=True,
+    content="Ship it",
+)
+IP, UA = "203.0.113.9", "Mozilla/5.0"
+RECIPIENT = LinkViewer(user_id=None, ip=IP, user_agent=UA)
+AS_OWNER = LinkViewer(user_id=OWNER, ip=IP, user_agent=UA)
+
+
+def _snap(content_id: str | None, **overrides: object) -> LinkSnapshot:
+    data: dict[str, object] = {
+        "filename": "q3.html",
+        "mime": "image/png",
+        "size_bytes": 11,
+        "render": RenderMode.IMAGE,
+        "content_id": content_id,
+    }
+    data.update(overrides)
+    return LinkSnapshot.model_validate(data)
+
+
+OLD = _snap("o" * 26)
+FRESH = _snap("f" * 26)
+
+
+@dataclass
+class Specs:
+    todo_project: AsyncMock
+    todo_preview: AsyncMock
+    file_project: AsyncMock
+    file_source: AsyncMock
+
+
+def _assert_projected(
+    project: AsyncMock, snapshot: LinkSnapshot | None, viewer: LinkViewerKind
+) -> None:
+    """Assert project read the link as served (its snapshot as given) for viewer."""
+    project.assert_awaited_once()
+    served, target, kind = project.await_args.args
+    assert (served.user_id, served.snapshot, target, kind) == (
+        OWNER,
+        snapshot,
+        served.target,
+        viewer,
+    )
+
+
+@dataclass
+class Store:
+    links: MagicMock
+    publish: AsyncMock
+    delete_snapshot: AsyncMock
+
+
+@pytest.fixture
+def specs() -> Iterator[Specs]:
+    fakes = Specs(
+        todo_project=AsyncMock(return_value=VIEW),
+        todo_preview=AsyncMock(return_value=PreviewFacts(title="Q3 plan", image_url=None)),
+        file_project=AsyncMock(return_value=VIEW),
+        file_source=AsyncMock(return_value=SOURCE),
+    )
+    registry = {
+        TODO: replace(REGISTRY[TODO], project=fakes.todo_project, preview=fakes.todo_preview),
+        FILE: replace(REGISTRY[FILE], project=fakes.file_project, source=fakes.file_source),
+    }
+    with patch(f"{_SVC}.REGISTRY", registry):
+        yield fakes
+
+
+@pytest.fixture
+def store(specs: Specs) -> Iterator[Store]:
+    """Patch the link collection and the content store at their seams; service.py's logic runs for real."""
+    with (
+        patch(f"{_SVC}.short_link_repository") as links,
+        patch(f"{_SVC}.publish", AsyncMock(return_value=FRESH)) as publish_,
+        patch(f"{_SVC}.delete_snapshot", AsyncMock()) as delete_,
+    ):
+        links.get_live_for_target = AsyncMock(return_value=None)
+        links.get_latest_for_target = AsyncMock(return_value=None)
+        links.get_by_slug = AsyncMock(return_value=None)
+        links.create = AsyncMock(side_effect=lambda link: link)
+        links.revoke = AsyncMock(return_value=None)
+        links.update_live = AsyncMock(return_value=None)
+        links.live_pins_content = AsyncMock(return_value=False)
+        yield Store(links=links, publish=publish_, delete_snapshot=delete_)
+
+
+@pytest.fixture
+def frozen() -> Iterator[None]:
+    with time_machine.travel(NOW, tick=False):
+        yield
+
+
+def _stored(store: Store) -> ShortLink:
+    (stored,), _ = store.links.create.await_args
+    assert isinstance(stored, ShortLink)
+    return stored
+
+
+def _url(slug: str) -> str:
+    return f"{settings.SHORTLINK_BASE_URL}/{slug}"
+
+
+def _written(store: Store) -> tuple[str, dict[str, object]]:
+    """Return the slug and the $set fields update_live writes: only what the update set."""
+    (user_id, slug, update), _ = store.links.update_live.await_args
+    assert user_id == OWNER
+    return slug, update.model_dump(exclude_unset=True)
+
+
+def _denied_dedupe(slug: str, viewer_key: str, reason: str) -> Dedupe:
+    return Dedupe(
+        key=f"{hash_short_link_slug(slug)}:{viewer_key}:{reason}:2026-11-13",
+        occurred_at=analytics_day_start(NOW),
+    )
+
+
+class TestMintSnapshot:
+    async def test_a_file_link_pins_the_owners_file_as_published_now(
+        self, store: Store, specs: Specs
+    ) -> None:
+        await share(OWNER, FILE_T, LinkSettings())
+
+        specs.file_source.assert_awaited_once_with(OWNER, FILE_T)
+        store.publish.assert_awaited_once_with(OWNER, FILE, SOURCE)
+        assert _stored(store).snapshot == FRESH
+
+    async def test_a_file_gone_before_the_mint_is_not_found(
+        self, store: Store, specs: Specs
+    ) -> None:
+        specs.file_source.return_value = None
+
+        with pytest.raises(LinkTargetNotFoundError):
+            await share(OWNER, FILE_T, LinkSettings())
+
+        store.publish.assert_not_awaited()
+        store.links.create.assert_not_awaited()
+
+    async def test_a_non_file_target_is_checked_to_exist_and_pins_nothing(
+        self, store: Store, specs: Specs
+    ) -> None:
+        await share(OWNER, TODO_T, LinkSettings())
+
+        specs.todo_preview.assert_awaited_once_with(OWNER, TODO_T, None)
+        assert _stored(store).snapshot is None
+
+    async def test_a_non_file_target_the_owner_lacks_is_not_found(
+        self, store: Store, specs: Specs
+    ) -> None:
+        specs.todo_preview.return_value = None
+
+        with pytest.raises(LinkTargetNotFoundError):
+            await share(OWNER, TODO_T, LinkSettings())
+
+        store.links.create.assert_not_awaited()
+
+
+class TestMint:
+    async def test_the_link_stores_exactly_the_requested_settings(
+        self, store: Store, frozen: None
+    ) -> None:
+        expiry = NOW + timedelta(days=1)
+        requested = LinkSettings(access=LinkAccess.PUBLIC, expires_at=expiry)
+
+        with patch(f"{_SVC}.capture") as capture:
+            minted = await share(OWNER, TODO_T, requested)
+
+        stored = _stored(store)
+        assert (stored.access, stored.expires_at) == (LinkAccess.PUBLIC, expiry)
+        assert minted == stored
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkCreated(
+                target_type=TODO.value, access="public", origin="owner_share", has_expiry=True
+            ),
+        )
+
+    async def test_an_insert_failure_releases_the_published_snapshot_and_reraises(
+        self, store: Store
+    ) -> None:
+        store.links.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
+
+        with pytest.raises(RepositoryError):
+            await share(OWNER, FILE_T, LinkSettings())
+
+        store.links.live_pins_content.assert_awaited_once_with(FRESH.content_id)
+        store.delete_snapshot.assert_awaited_once_with(OWNER, FRESH)
+
+    async def test_bytes_another_live_link_still_pins_are_kept(self, store: Store) -> None:
+        store.links.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
+        store.links.live_pins_content.return_value = True
+
+        with pytest.raises(RepositoryError):
+            await share(OWNER, FILE_T, LinkSettings())
+
+        store.delete_snapshot.assert_not_awaited()
+
+    async def test_a_snapshot_with_no_stored_bytes_has_nothing_to_release(
+        self, store: Store
+    ) -> None:
+        store.publish.return_value = _snap(None)
+        store.links.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
+
+        with pytest.raises(RepositoryError):
+            await share(OWNER, FILE_T, LinkSettings())
+
+        store.links.live_pins_content.assert_not_awaited()
+        store.delete_snapshot.assert_not_awaited()
+
+    async def test_losing_a_concurrent_mint_releases_the_snapshot_it_published(
+        self, store: Store
+    ) -> None:
+        winner = _link("winner", target=FILE_T)
+        store.links.get_live_for_target.side_effect = [None, winner]
+        store.links.create.side_effect = _dup(LIVE_TARGET_UNIQUE_INDEX)
+
+        assert await share(OWNER, FILE_T, LinkSettings()) is winner
+
+        store.delete_snapshot.assert_awaited_once_with(OWNER, FRESH)
+        assert store.links.get_live_for_target.await_args_list == [
+            call(OWNER, FILE_T),
+            call(OWNER, FILE_T),
+        ]
+
+
+class TestLiveLink:
+    async def test_an_unexpired_live_link_is_handed_back_untouched(
+        self, store: Store, frozen: None
+    ) -> None:
+        live = _link("live1", expires_at=NOW + timedelta(seconds=1))
+        store.links.get_live_for_target.return_value = live
+
+        assert await live_share_link(OWNER, TODO_T) is live
+
+        store.links.get_live_for_target.assert_awaited_once_with(OWNER, TODO_T)
+        store.links.revoke.assert_not_awaited()
+
+    async def test_a_link_past_its_expiry_is_revoked_and_its_bytes_released(
+        self, store: Store, frozen: None
+    ) -> None:
+        live = _link("old1", target=FILE_T, expires_at=NOW, snapshot=OLD)
+        store.links.get_live_for_target.return_value = live
+
+        assert await live_share_link(OWNER, FILE_T) is None
+
+        store.links.revoke.assert_awaited_once_with(OWNER, "old1", RevokeReason.EXPIRED)
+        store.delete_snapshot.assert_awaited_once_with(OWNER, OLD)
+
+    async def test_sharing_a_target_whose_link_expired_mints_a_fresh_one(
+        self, store: Store, frozen: None
+    ) -> None:
+        store.links.get_live_for_target.return_value = _link("old1", expires_at=NOW)
+
+        minted = await share(OWNER, TODO_T, LinkSettings())
+
+        assert SLUG_SHAPE.fullmatch(minted.slug)
+        store.links.create.assert_awaited_once()
+
+
+class TestGaiaAttachedSharingRules:
+    @pytest.mark.parametrize(
+        "latest",
+        [
+            {"revoked": True, "revoked_reason": RevokeReason.OWNER},
+            {"revoked": True, "revoked_reason": RevokeReason.EXPIRED},
+            {"revoked": True, "revoked_reason": RevokeReason.TAKEDOWN},
+            {"suspended": True},
+            {"expires_at": NOW},
+        ],
+    )
+    async def test_sharing_the_owner_turned_off_stays_off(
+        self, store: Store, frozen: None, latest: dict[str, object]
+    ) -> None:
+        store.links.get_latest_for_target.return_value = _link("old1", **latest)
+
+        assert await attach_link(OWNER, TODO_T) is None
+
+        store.links.create.assert_not_awaited()
+
+    @pytest.mark.parametrize("reason", [RevokeReason.ROTATED, RevokeReason.TARGET_DELETED])
+    async def test_a_link_gaia_retired_does_not_stop_a_fresh_attachment(
+        self, store: Store, frozen: None, reason: RevokeReason
+    ) -> None:
+        store.links.get_latest_for_target.return_value = _link(
+            "old1", revoked=True, revoked_reason=reason
+        )
+
+        attached = await attach_link(OWNER, TODO_T)
+
+        assert attached is not None
+        assert attached.slug == _stored(store).slug
+        store.links.get_latest_for_target.assert_awaited_once_with(OWNER, TODO_T)
+
+    async def test_a_live_link_is_attached_at_its_own_url(self, store: Store, frozen: None) -> None:
+        store.links.get_latest_for_target.return_value = _link("live1")
+
+        attached = await attach_link(OWNER, TODO_T)
+        assert attached is not None
+        assert attached.slug == "live1"
+        store.links.create.assert_not_awaited()
+
+    async def test_a_failed_mint_logs_what_failed_and_where(self, store: Store) -> None:
+        store.links.get_latest_for_target.side_effect = RepositoryError(
+            "ServerSelectionTimeoutError: no primary"
+        )
+
+        async with captured_wide_event() as event:
+            assert await attach_link(OWNER, TODO_T) is None
+
+        assert event["errors"] == [
+            {
+                "msg": "short_link.mint_failed",
+                "user_id": OWNER,
+                "target_type": TODO.value,
+                "error_type": "RepositoryError",
+                "error": "ServerSelectionTimeoutError: no primary",
+            }
+        ]
+
+
+class TestRefreshOnAttach:
+    async def _attach(self, store: Store, link: ShortLink) -> str | None:
+        store.links.get_latest_for_target.return_value = link
+        attached = await attach_link(OWNER, FILE_T)
+        return _url(attached.slug) if attached else None
+
+    async def test_an_unchanged_file_keeps_its_snapshot(self, store: Store, frozen: None) -> None:
+        assert SOURCE.data is not None
+        pinned = _snap("o" * 26, digest=hashlib.sha256(SOURCE.data).hexdigest())
+        link = _link("live1", target=FILE_T, snapshot=pinned)
+
+        assert await self._attach(store, link) == _url("live1")
+
+        store.publish.assert_not_awaited()
+        store.links.update_live.assert_not_awaited()
+
+    async def test_a_changed_file_moves_the_link_on_and_releases_the_old_bytes(
+        self, store: Store, specs: Specs, frozen: None
+    ) -> None:
+        link = _link("live1", target=FILE_T, snapshot=OLD)
+        store.links.update_live.return_value = link.model_copy(update={"snapshot": FRESH})
+
+        assert await self._attach(store, link) == _url("live1")
+
+        specs.file_source.assert_awaited_once_with(OWNER, FILE_T)
+        store.publish.assert_awaited_once_with(OWNER, FILE, SOURCE)
+        store.links.update_live.assert_awaited_once_with(
+            OWNER, "live1", ShortLinkUpdate(snapshot=FRESH)
+        )
+        store.delete_snapshot.assert_awaited_once_with(OWNER, OLD)
+
+    async def test_a_link_that_died_meanwhile_keeps_its_bytes_and_the_fresh_ones_go(
+        self, store: Store, frozen: None
+    ) -> None:
+        link = _link("live1", target=FILE_T, snapshot=OLD)
+        store.links.update_live.return_value = None
+
+        await self._attach(store, link)
+
+        store.delete_snapshot.assert_awaited_once_with(OWNER, FRESH)
+
+    async def test_a_file_deleted_since_keeps_the_pinned_snapshot(
+        self, store: Store, specs: Specs, frozen: None
+    ) -> None:
+        specs.file_source.return_value = None
+        link = _link("live1", target=FILE_T, snapshot=OLD)
+
+        assert await self._attach(store, link) == _url("live1")
+
+        store.publish.assert_not_awaited()
+
+
+class TestUpdateSettings:
+    @pytest.mark.parametrize(
+        "found",
+        [
+            None,
+            _link("s1", user_id="507f1f77bcf86cd799439099"),
+            _link("s1", revoked=True, revoked_reason=RevokeReason.OWNER),
+            _link("s1", expires_at=NOW),
+        ],
+    )
+    async def test_only_the_owners_live_link_can_change(
+        self, store: Store, frozen: None, found: ShortLink | None
+    ) -> None:
+        store.links.get_by_slug.return_value = found
+
+        with pytest.raises(LinkTargetNotFoundError) as raised:
+            await update_settings(OWNER, "s1", LinkSettingsUpdate(access=LinkAccess.PUBLIC))
+
+        assert raised.value.message == "Link not found"
+        store.links.get_by_slug.assert_awaited_once_with("s1")
+        store.links.update_live.assert_not_awaited()
+
+    @pytest.mark.parametrize("expiry", [NOW, NOW - timedelta(seconds=1)])
+    async def test_an_expiry_not_in_the_future_is_refused(
+        self, store: Store, frozen: None, expiry: datetime
+    ) -> None:
+        store.links.get_by_slug.return_value = _link("s1")
+
+        with pytest.raises(AppError) as raised:
+            await update_settings(OWNER, "s1", LinkSettingsUpdate(expires_at=expiry))
+
+        error = raised.value
+        assert (error.message, error.fix, error.status_code, error.code) == (
+            "That expiry is already in the past",
+            "Pick a time from now on, or no expiry",
+            422,
+            "link_expiry_in_past",
+        )
+        store.links.update_live.assert_not_awaited()
+
+    async def test_an_empty_change_is_refused(self, store: Store, frozen: None) -> None:
+        store.links.get_by_slug.return_value = _link("s1")
+
+        with pytest.raises(AppError) as raised:
+            await update_settings(OWNER, "s1", LinkSettingsUpdate())
+
+        error = raised.value
+        assert (error.message, error.fix, error.status_code, error.code) == (
+            "Nothing to change",
+            "",
+            422,
+            "link_settings_empty",
+        )
+
+    async def test_a_new_expiry_is_set_alone_and_counts_no_access_change(
+        self, store: Store, frozen: None
+    ) -> None:
+        link = _link("s1")
+        expiry = NOW + timedelta(hours=1)
+        updated = link.model_copy(update={"expires_at": expiry})
+        store.links.get_by_slug.return_value = link
+        store.links.update_live.return_value = updated
+
+        with patch(f"{_SVC}.capture") as capture:
+            result = await update_settings(OWNER, "s1", LinkSettingsUpdate(expires_at=expiry))
+
+        assert result is updated
+        assert _written(store) == ("s1", {"expires_at": expiry})
+        capture.assert_not_called()
+
+    async def test_widening_access_writes_only_access_and_is_counted(
+        self, store: Store, frozen: None
+    ) -> None:
+        link = _link("s1", expires_at=NOW + timedelta(days=1))
+        store.links.get_by_slug.return_value = link
+        store.links.update_live.return_value = link.model_copy(update={"access": LinkAccess.PUBLIC})
+
+        with patch(f"{_SVC}.capture") as capture:
+            await update_settings(OWNER, "s1", LinkSettingsUpdate(access=LinkAccess.PUBLIC))
+
+        assert _written(store) == ("s1", {"access": LinkAccess.PUBLIC})
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkAccessChanged(
+                target_type=TODO.value, from_access="unlisted", to_access="public"
+            ),
+        )
+
+    async def test_a_link_that_died_mid_change_is_not_found(
+        self, store: Store, frozen: None
+    ) -> None:
+        store.links.get_by_slug.return_value = _link("s1")
+        store.links.update_live.return_value = None
+
+        with pytest.raises(LinkTargetNotFoundError) as raised:
+            await update_settings(OWNER, "s1", LinkSettingsUpdate(access=LinkAccess.PUBLIC))
+
+        assert raised.value.message == "Link not found"
+
+
+class TestDeletedTargets:
+    async def test_each_live_link_dies_as_target_deleted_and_drops_its_bytes(self, store: Store):
+        pinned = _link("file", target=FILE_T, snapshot=OLD)
+        page = _link("page", target=FILE_T.model_copy(update={"path": "a.md"}))
+        raced = _link("raced", target=FILE_T.model_copy(update={"path": "b.png"}), snapshot=FRESH)
+        targets: list[LinkTarget] = [pinned.target, page.target, raced.target]
+        store.links.live_for_targets = AsyncMock(return_value=[pinned, page, raced])
+        # "raced" died between the read and the revoke: its bytes are someone else's to drop.
+        store.links.revoke = AsyncMock(
+            side_effect=lambda _u, slug, _r: None if slug == "raced" else pinned
+        )
+
+        revoked = await revoke_deleted_targets(OWNER, targets)
+
+        assert revoked == 2
+        store.links.live_for_targets.assert_awaited_once_with(OWNER, targets)
+        assert store.links.revoke.await_args_list == [
+            call(OWNER, slug, RevokeReason.TARGET_DELETED) for slug in ("file", "page", "raced")
+        ]
+        store.delete_snapshot.assert_awaited_once_with(OWNER, OLD)
+
+    async def test_a_conversation_revokes_what_each_type_finds_inside_it(self, store: Store):
+        inside = AsyncMock(return_value=[FILE_T])
+        registry = {
+            TODO: REGISTRY[TODO],
+            FILE: replace(REGISTRY[FILE], in_conversation=inside),
+        }
+        store.links.live_for_targets = AsyncMock(return_value=[])
+
+        with patch(f"{_SVC}.REGISTRY", registry):
+            await revoke_conversation_links(OWNER, "conv-1")
+
+        inside.assert_awaited_once_with(OWNER, "conv-1")
+        store.links.live_for_targets.assert_awaited_once_with(OWNER, [FILE_T])
+
+
+class TestRotate:
+    async def test_the_new_url_carries_the_revoked_docs_settings_and_file(
+        self, store: Store, frozen: None
+    ) -> None:
+        read = _link(
+            "s1",
+            id="doc1",
+            access=LinkAccess.OWNER,
+            target=FILE_T,
+            snapshot=OLD,
+            created_at=NOW - timedelta(days=3),
+        )
+        revoked = read.model_copy(
+            update={
+                "snapshot": FRESH,
+                "updated_at": NOW,
+                "revoked": True,
+                "revoked_at": NOW,
+                "revoked_reason": RevokeReason.ROTATED,
+            }
+        )
+        store.links.get_by_slug.return_value = read
+        store.links.revoke.return_value = revoked
+
+        with patch(f"{_SVC}.capture") as capture:
+            minted = await rotate(OWNER, "s1")
+
+        store.links.get_by_slug.assert_awaited_once_with("s1")
+        store.links.revoke.assert_awaited_once_with(OWNER, "s1", RevokeReason.ROTATED)
+        stored = _stored(store)
+        assert minted is stored
+        assert SLUG_SHAPE.fullmatch(stored.slug)
+        assert stored.model_dump(exclude={"slug"}) == {
+            **revoked.model_dump(exclude={"slug"}),
+            "id": "",
+            "created_at": NOW,
+            "updated_at": None,
+            "revoked": False,
+            "revoked_at": None,
+            "revoked_reason": None,
+        }
+        capture.assert_called_once_with(
+            UserId(OWNER), ShortLinkRotated(target_type=FILE.value, access="owner")
+        )
+
+    async def test_a_link_revoked_before_the_rotation_is_not_found(
+        self, store: Store, frozen: None
+    ) -> None:
+        store.links.get_by_slug.return_value = _link("s1")
+        store.links.revoke.return_value = None
+
+        with pytest.raises(LinkTargetNotFoundError) as raised:
+            await rotate(OWNER, "s1")
+
+        assert raised.value.message == "Link not found"
+        store.links.create.assert_not_awaited()
+
+    async def test_a_share_racing_the_rotation_is_a_conflict(
+        self, store: Store, frozen: None
+    ) -> None:
+        link = _link("s1")
+        store.links.get_by_slug.return_value = link
+        store.links.revoke.return_value = link.model_copy(update={"revoked": True})
+        store.links.create.side_effect = _dup(LIVE_TARGET_UNIQUE_INDEX)
+
+        with pytest.raises(AppError) as raised:
+            await rotate(OWNER, "s1")
+
+        error = raised.value
+        assert (error.message, error.fix, error.status_code, error.code) == (
+            "This was shared again while the link was being replaced",
+            "Reload to see its current link",
+            409,
+            "link_rotate_conflict",
+        )
+
+
+class TestResolve:
+    async def test_an_unknown_slug_is_not_found_and_counted_for_no_one(self, frozen: None) -> None:
+        with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
+            await resolve(None, RECIPIENT)
+
+        assert (raised.value.code, raised.value.status_code) == ("link_not_found", 404)
+        capture.assert_not_called()
+
+    async def test_a_browser_open_of_a_dead_link_is_denied_and_counted_once_a_day_per_viewer(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        link = _link("s1", revoked=True, revoked_reason=RevokeReason.OWNER)
+        viewer = LinkViewer(user_id=None, ip=IP, user_agent=UA, signed_in_as="me@x.com")
+
+        with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
+            await record_open(link, viewer)
+
+        assert (raised.value.code, raised.value.public) == ("link_revoked", {})
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkDenied(target_type=TODO.value, reason="revoked"),
+            _denied_dedupe("s1", hash_link_viewer(IP, UA), "revoked"),
+        )
+        specs.todo_project.assert_not_awaited()
+
+    async def test_a_signed_in_stranger_is_told_who_they_are_signed_in_as(
+        self, frozen: None
+    ) -> None:
+        link = _link("s1", access=LinkAccess.OWNER)
+        viewer = LinkViewer(user_id="u-eve", ip=IP, user_agent=UA, signed_in_as="eve@x.com")
+
+        with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
+            await record_open(link, viewer)
+
+        assert (raised.value.code, raised.value.public) == (
+            "link_forbidden",
+            {"signed_in_as": "eve@x.com"},
+        )
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkDenied(target_type=TODO.value, reason="forbidden"),
+            _denied_dedupe("s1", "u-eve", "forbidden"),
+        )
+
+    async def test_a_server_side_forbidden_read_also_says_who_they_are_signed_in_as(
+        self, frozen: None
+    ) -> None:
+        link = _link("s1", access=LinkAccess.OWNER)
+        viewer = LinkViewer(user_id="u-eve", ip=IP, user_agent=UA, signed_in_as="eve@x.com")
+
+        with pytest.raises(LinkDeniedError) as raised:
+            await resolve(link, viewer)
+
+        assert raised.value.public == {"signed_in_as": "eve@x.com"}
+
+    async def test_a_browser_open_of_a_deleted_target_is_denied_and_counted(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        specs.todo_project.return_value = None
+
+        with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
+            await record_open(_link("s1"), RECIPIENT)
+
+        assert raised.value.code == "link_target_deleted"
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkDenied(target_type=TODO.value, reason="target_deleted"),
+            _denied_dedupe("s1", hash_link_viewer(IP, UA), "target_deleted"),
+        )
+
+    @pytest.mark.parametrize(
+        "link",
+        [
+            _link("s1", revoked=True, revoked_reason=RevokeReason.OWNER),
+            _link("s1", access=LinkAccess.OWNER),
+        ],
+    )
+    async def test_a_server_side_read_is_denied_but_counts_nothing(
+        self, specs: Specs, frozen: None, link: ShortLink
+    ) -> None:
+        with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError):
+            await resolve(link, RECIPIENT)
+
+        capture.assert_not_called()
+
+    async def test_a_recipient_sees_the_view_and_none_of_the_owners_controls(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        envelope = await resolve(_link("s1", expires_at=NOW + timedelta(hours=1)), RECIPIENT)
+
+        assert envelope == LinkEnvelope(
+            access=LinkAccess.UNLISTED,
+            target_type=TODO,
+            view=VIEW,
+            content=None,
+            downloadable=False,
+            is_owner=False,
+            owner_target=None,
+        )
+        _assert_projected(specs.todo_project, None, LinkViewerKind.RECIPIENT)
+
+    async def test_the_owner_opens_a_file_framed_with_their_share_controls(
+        self, specs: Specs, frozen: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.test")
+        monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
+        link = _link("s1", target=FILE_T, snapshot=FRESH, expires_at=NOW + timedelta(hours=1))
+
+        envelope = await resolve(link, AS_OWNER)
+
+        assert envelope == LinkEnvelope(
+            access=LinkAccess.UNLISTED,
+            target_type=FILE,
+            view=VIEW,
+            content=LinkContent(
+                content_id="f" * 26, mime="image/png", size_bytes=11, render=RenderMode.IMAGE
+            ),
+            downloadable=True,
+            is_owner=True,
+            owner_target=FILE_T,
+        )
+        _assert_projected(specs.file_project, FRESH, LinkViewerKind.OWNER)
+
+    async def test_bytes_capped_below_the_links_access_are_withheld_from_the_view(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        capped = _snap("f" * 26, max_access=LinkAccess.UNLISTED)
+        link = _link("s1", access=LinkAccess.PUBLIC, target=FILE_T, snapshot=capped)
+
+        envelope = await resolve(link, RECIPIENT)
+
+        _assert_projected(
+            specs.file_project,
+            capped.model_copy(update={"content_id": None}),
+            LinkViewerKind.RECIPIENT,
+        )
+        assert (envelope.content, envelope.downloadable) == (None, False)
+
+    @pytest.mark.parametrize(
+        "dead",
+        [
+            {"revoked": True, "revoked_reason": RevokeReason.OWNER},
+            {"expires_at": NOW},
+        ],
+    )
+    async def test_the_owner_opens_a_turned_off_file_without_its_bytes(
+        self, specs: Specs, frozen: None, monkeypatch: pytest.MonkeyPatch, dead: dict[str, object]
+    ) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.test")
+        monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
+        link = _link("s1", target=FILE_T, snapshot=FRESH, **dead)
+
+        envelope = await resolve(link, AS_OWNER)
+
+        _assert_projected(
+            specs.file_project, FRESH.model_copy(update={"content_id": None}), LinkViewerKind.OWNER
+        )
+        assert (envelope.content, envelope.downloadable, envelope.is_owner) == (None, False, True)
+
+
+class TestRecordOpen:
+    async def test_a_recipients_browser_gets_the_view_and_one_open_a_day(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        viewer = LinkViewer(user_id="u-ana", ip=IP, user_agent=UA)
+
+        with patch(f"{_SVC}.capture") as capture:
+            async with captured_wide_event() as event:
+                envelope = await record_open(_link("s1"), viewer)
+
+        assert (envelope.view, envelope.is_owner, envelope.owner_target) == (VIEW, False, None)
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkOpened(target_type=TODO.value, access="unlisted", viewer_signed_in=True),
+            _denied_dedupe("s1", "u-ana", "opened"),
+        )
+        assert event["short_link"] == {"viewer_kind": "recipient"}
+
+    @pytest.mark.parametrize(
+        ("viewer", "kind"),
+        [
+            (AS_OWNER, "owner"),
+            (LinkViewer(user_id=None, ip=IP, user_agent="Slackbot 1.0"), "unfurl_bot"),
+        ],
+    )
+    async def test_the_owner_and_unfurl_bots_are_never_counted(
+        self, specs: Specs, frozen: None, viewer: LinkViewer, kind: str
+    ) -> None:
+        with patch(f"{_SVC}.capture") as capture:
+            async with captured_wide_event() as event:
+                envelope = await record_open(_link("s1"), viewer)
+
+        capture.assert_not_called()
+        assert envelope.is_owner is (kind == "owner")
+        assert event["short_link"] == {"viewer_kind": kind}
+
+    async def test_a_viewer_the_link_does_not_open_for_gets_its_denial(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        with patch(f"{_SVC}.capture"), pytest.raises(LinkDeniedError) as raised:
+            await record_open(_link("s1", access=LinkAccess.OWNER), RECIPIENT)
+
+        assert raised.value.code == "link_sign_in_required"
+        specs.todo_project.assert_not_awaited()
+
+
+class TestLinkResponse:
+    def test_a_restricted_file_names_the_widest_level_it_may_be_served_at(self) -> None:
+        expires = NOW + timedelta(days=1)
+        link = _link(
+            "abcdefghijk",
+            access=LinkAccess.OWNER,
+            expires_at=expires,
+            snapshot=_snap(
+                "c" * 26,
+                max_access=LinkAccess.OWNER,
+                restricted_by=ContentRestriction.EXECUTABLE,
+            ),
+        )
+
+        assert link_response(link).model_dump() == {
+            "url": f"{settings.SHORTLINK_BASE_URL}/abcdefghijk",
+            "slug": "abcdefghijk",
+            "access": LinkAccess.OWNER,
+            "expires_at": expires,
+            "content_max_access": LinkAccess.OWNER,
+        }
+
+    @pytest.mark.parametrize(
+        "snapshot", [None, _snap("c" * 26, max_access=LinkAccess.OWNER)], ids=["none", "open"]
+    )
+    def test_a_link_whose_file_nothing_narrowed_names_no_level(
+        self, snapshot: LinkSnapshot | None
+    ) -> None:
+        assert link_response(_link("abcdefghijk", snapshot=snapshot)).content_max_access is None

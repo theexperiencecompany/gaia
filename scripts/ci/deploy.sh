@@ -9,8 +9,11 @@
 #                               $GITHUB_OUTPUT.
 #   stack                       `docker stack deploy` the production Swarm stack
 #                               from the private gaia-infra checkout at .infra/.
-#   migrate                     Before the rollout, run a one-shot Swarm job on
-#                               the NEW apps image asking whether any
+#   migrate                     Before the rollout, run the release's data
+#                               migrations (apps/api/scripts/post_deploy.py) as
+#                               a one-shot Swarm job on the NEW apps image; a
+#                               failure stops the deploy with nothing touched.
+#                               Then run one asking whether any
 #                               conversation still needs the migration catch-up.
 #                               None: return, and the rollout runs with no
 #                               downtime. Some: scale the old writers to 0, run
@@ -50,9 +53,10 @@
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
 #   migrate GITHUB_OUTPUT (required); GAIA_IMAGE_TAG as `stack`;
-#           MIGRATE_CHECK_TIMEOUT_SECS, MIGRATE_CATCH_UP_TIMEOUT_SECS,
-#           MIGRATE_WRITERS_TIMEOUT_SECS, MIGRATE_POLL_SECS. Needs the `prod`
-#           docker context and a GHCR login (the job pulls the image).
+#           MIGRATE_RELEASE_TIMEOUT_SECS, MIGRATE_CHECK_TIMEOUT_SECS,
+#           MIGRATE_CATCH_UP_TIMEOUT_SECS, MIGRATE_WRITERS_TIMEOUT_SECS,
+#           MIGRATE_POLL_SECS. Needs the `prod` docker context and a GHCR
+#           login (the job pulls the image).
 #   retag   from-env: APPS_IMAGE_TAG / BOTS_IMAGE_TAG / GRAFANA_IMAGE_TAG.
 #           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK;
 #           re-points every service on one of our repos, grafana included.
@@ -220,7 +224,9 @@ _cmd_swarm_stack() {
   esac
 }
 
-# The pre-rollout conversation migration (cmd_migrate). The new API refuses to
+# The pre-rollout migrations (cmd_migrate). First the release step
+# (apps/api/scripts/post_deploy.py) runs every pending data migration while the
+# old build still serves. Then the new API refuses to
 # boot while any conversation holds data the conversation log does not match,
 # and the old build writes that data until it stops, so a catch-up runs only
 # with the old writers down. Bots and the voice agent write conversations
@@ -228,6 +234,7 @@ _cmd_swarm_stack() {
 _MIGRATE_TEMPLATE="gaia-prod_gaia-backend"
 _MIGRATE_WRITERS=(gaia-prod_gaia-backend gaia-prod_arq_worker)
 _MIGRATE_SCRIPT=(python -m scripts.migrate_conversations)
+_MIGRATE_RELEASE_STEP=(python -m scripts.post_deploy --apply)
 # CATCH_UP_NEEDED_EXIT in apps/api/scripts/migrate_conversations.py.
 _MIGRATE_CATCH_UP_NEEDED=3
 # Job services not yet removed, and the `svc=replicas` pairs that put stopped
@@ -372,6 +379,10 @@ cmd_migrate() {
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
   _MIGRATE_IMAGE="$GHCR_NAMESPACE/${APPS_IMAGE_REPOS[0]}:${GAIA_IMAGE_TAG:-latest}"
   trap _migrate_on_exit EXIT
+
+  _migrate_job release "${MIGRATE_RELEASE_TIMEOUT_SECS:-1800}" "${_MIGRATE_RELEASE_STEP[@]}"
+  [[ "$_MIGRATE_JOB_EXIT" = 0 ]] \
+    || ci_die "deploy migrate: the release's migrations failed (exit $_MIGRATE_JOB_EXIT) — nothing was stopped or rolled out"
 
   _migrate_job check "${MIGRATE_CHECK_TIMEOUT_SECS:-600}" "${_MIGRATE_SCRIPT[@]}" --check
   case "$_MIGRATE_JOB_EXIT" in
@@ -885,7 +896,7 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,75p' "$0" >&2
+  sed -n '2,79p' "$0" >&2
 }
 
 main() {

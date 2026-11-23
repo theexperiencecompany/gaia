@@ -4,7 +4,8 @@ import NextLink from "next/link";
 import type { ComponentProps } from "react";
 import { Focusable } from "react-aria-components";
 
-import { type ButtonVariants, buttonVariants } from "./buttonVariants";
+import { buttonVariants } from "./buttonVariants";
+import type { ButtonVariants } from "./buttonVariants.types";
 
 type LinkButtonProps = Omit<ComponentProps<typeof NextLink>, "className"> &
   ButtonVariants & { className?: string };
@@ -19,6 +20,7 @@ export function LinkButton({
   tone,
   hoverTone,
   inset,
+  elevation,
   size,
   isIconOnly,
   fullWidth,
@@ -34,6 +36,7 @@ export function LinkButton({
           tone,
           hoverTone,
           inset,
+          elevation,
           size,
           isIconOnly,
           fullWidth,

@@ -13,6 +13,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, Asyn
 import pytest
 from scripts.migrate_approval_vocabulary import LEDGER
 from scripts.migrate_conversation_entries import __main__ as entries
+from scripts.migrate_conversation_entries.migration import HeadRef, conversation_entries_migration
 from scripts.migrate_conversations import CATCH_UP_NEEDED_EXIT, check, migrate_conversations
 
 from app.db.mongodb.indexes import UNMIGRATED_HEAD_KEYS, UNMIGRATED_HEAD_OPTIONS
@@ -208,3 +209,41 @@ async def test_the_catch_up_after_a_full_pass_visits_only_the_heads_written_sinc
     assert sorted(re.findall(r"\[merged\] (c-\d+)", out)) == sorted(written)
     assert f"Verified {len(written)} conversations: 0 with mismatches." in out
     assert elapsed < _CATCH_UP_SECONDS
+
+
+@pytest.mark.regression
+async def test_a_trim_that_failed_an_earlier_catch_up_verifies_and_clears_its_failure(
+    raw_collection: AsyncIOMotorCollection,
+    db: AsyncIOMotorDatabase,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    conversation_id = await _legacy(raw_collection)
+    later = [
+        {"type": "bot", "response": "first", "message_id": "m2", "date": _DATE},
+        {"type": "user", "response": "again", "message_id": "m3", "date": _DATE},
+        {"type": "bot", "response": "second", "message_id": "m4", "date": _DATE},
+    ]
+    await raw_collection.update_one(
+        {"conversation_id": conversation_id}, {"$push": {"messages": {"$each": later}}}
+    )
+    assert await migrate_conversations(db) == 0
+    # The old build keeps a todo chat to its newest messages on every append.
+    await raw_collection.update_one(
+        {"conversation_id": conversation_id}, {"$pop": {"messages": -1}}
+    )
+    head = await raw_collection.find_one({"conversation_id": conversation_id})
+    assert head is not None
+    ref = HeadRef(str(head["_id"]), conversation_id, USER)
+    # An earlier catch-up merged the trimmed array, then recorded its verify failure.
+    await conversation_entries_migration.migrate(ref, apply=True)
+    await conversation_entries_migration.mark_failed(ref, "verify: 1 mismatches")
+    capsys.readouterr()
+
+    assert await migrate_conversations(db) == 0
+
+    out = capsys.readouterr().out
+    assert "Verified 1 conversations: 0 with mismatches." in out
+    assert out.splitlines()[-1] == "Every conversation is in this build's shape."
+    assert await conversation_entries_migration.first_failed() is None
+    await refuse_unmigrated_conversations()
+    assert await check(db) == 0

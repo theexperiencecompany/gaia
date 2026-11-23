@@ -24,8 +24,8 @@ from app.constants.todos import (
     TODO_STATS_LABEL_LIMIT,
 )
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
-from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedUserScopedRepository, cached_query
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     DueRange,
@@ -101,11 +101,15 @@ def _external_ref_filter(ref: ExternalRef) -> dict[str, object]:
     }
 
 
+def _own_open_query(user_id: str) -> dict[str, object]:
+    return {"user_id": user_id, "completed": False, "labels": {"$nin": [GAIA_TRACKED_LABEL]}}
+
+
 def _first_count(buckets: list[_FacetCount]) -> int:
     return buckets[0].count if buckets else 0
 
 
-class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
+class TodosRepository(CachedUserScopedRepository[TodoDocument, TodoUpdate]):
     """The todos collection repository (user-scoped, cached)."""
 
     collection_name = "todos"
@@ -407,6 +411,32 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             }
         )
 
+    async def list_completed_since(self, user_id: str, *, since: datetime) -> list[TodoDocument]:
+        """Return todos completed at or after since (UTC), newest completion first.
+
+        Used as the briefing's look-back set.
+        """
+        return await self._find(
+            {"user_id": user_id, "completed": True, "completed_at": {"$gte": since}},
+            sort=[("completed_at", -1)],
+        )
+
+    async def list_external_ref_activity_since(
+        self, user_id: str, source: ExternalRefSource, *, since: datetime
+    ) -> list[TodoDocument]:
+        """Return the user's todos about one kind of outside object opened or completed since (UTC)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "external_ref.source": source.value,
+                "$or": [{"created_at": {"$gte": since}}, {"completed_at": {"$gte": since}}],
+            }
+        )
+
+    async def list_open_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """Return the user's own (non-tracked) open todos, most-recently-updated first."""
+        return await self._find(_own_open_query(user_id), sort=[("updated_at", -1)], limit=limit)
+
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.
 
@@ -579,21 +609,19 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
 
         One generation bump invalidates the whole scope.
         """
-        return await self._bulk_set([(tid, update) for tid in todo_ids], scope=user_id)
+        return await self._bulk_set([(tid, update) for tid in todo_ids], user_id=user_id)
 
     async def bulk_delete(self, user_id: str, todo_ids: list[str]) -> int:
         """Delete many of the user's todos in one round trip, returning the count deleted."""
-        return await self._bulk_delete(todo_ids, scope=user_id)
+        return await self._bulk_delete(todo_ids, user_id=user_id)
 
     async def delete_all_for_user(self, user_id: str) -> int:
         """Delete every todo owned by user_id (dev-data reset); returns the count."""
-        return await self._delete_many({"user_id": user_id}, scope=user_id)
+        return await self._delete_many({"user_id": user_id})
 
     async def delete_onboarding_todos(self, user_id: str) -> int:
         """Delete the user's onboarding-seeded todos; returns the count deleted."""
-        return await self._delete_many(
-            {"user_id": user_id, "labels": ONBOARDING_LABEL}, scope=user_id
-        )
+        return await self._delete_many({"user_id": user_id, "labels": ONBOARDING_LABEL})
 
     async def move_todos_to_project(
         self, user_id: str, from_project_id: str, to_project_id: str
@@ -613,7 +641,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$addToSet": {"labels": {"$each": labels}}},
-            scope=user_id,
         )
 
     async def add_references(
@@ -623,7 +650,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$addToSet": {"references": {"$each": references}}},
-            scope=user_id,
         )
 
     async def add_subtask(
@@ -633,7 +659,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$push": {"subtasks": subtask.model_dump()}},
-            scope=user_id,
         )
 
     async def remove_subtask(
@@ -643,7 +668,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$pull": {"subtasks": {"id": subtask_id}}},
-            scope=user_id,
         )
 
     async def set_subtask_fields(
@@ -664,7 +688,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": fields},
-            scope=user_id,
             array_filters=[{"elem.id": subtask_id}],
         )
 
@@ -679,7 +702,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": {"workflow_id": workflow_id}},
-            scope=user_id,
             extra_filter={"labels": {"$ne": GAIA_TRACKED_LABEL}},
         )
 
@@ -688,7 +710,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$unset": {"workflow_id": ""}},
-            scope=user_id,
         )
 
     async def replace_note_fields(
@@ -708,7 +729,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         extra: dict[str, object] = {"user_id": user_id}
         if expected_updated_at is not None:
             extra["updated_at"] = expected_updated_at
-        return await self._apply_update(todo_id, user_id, extra, update, touch=touch)
+        return await self._apply_update(todo_id, extra, update, touch=touch)
 
     async def add_trigger_subscription(
         self, todo_id: str, *, user_id: str, subscription: TriggerSubscription
@@ -743,9 +764,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 }
             }
         ]
-        return await self._apply_pipeline_update(
-            self._scoped_filter(todo_id, user_id), pipeline, scope=user_id
-        )
+        return await self._apply_pipeline_update(self._scoped_filter(todo_id, user_id), pipeline)
 
     async def remove_trigger_subscriptions(
         self, todo_id: str, *, user_id: str, subscription_ids: Collection[str]
@@ -759,7 +778,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$pull": {"trigger_subscriptions": {"id": {"$in": ids}}}},
-            scope=user_id,
             extra_filter={"trigger_subscriptions.id": {"$in": ids}},
             return_document=False,
         )
@@ -775,7 +793,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": {"trigger_subscriptions": []}},
-            scope=user_id,
             extra_filter={"trigger_subscriptions.0": {"$exists": True}},
             return_document=False,
         )
@@ -792,7 +809,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 },
                 "$addToSet": {"labels": BLOCKING_LABEL},
             },
-            scope=user_id,
             array_filters=[{"watch.id": {"$in": list(subscription_ids)}}],
         )
 
@@ -808,7 +824,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": {"trigger_subscriptions.$[watch].gate": gate.model_dump()}},
-            scope=user_id,
             extra_filter={"trigger_subscriptions": {"$elemMatch": watch}},
             array_filters=[{f"watch.{field}": value for field, value in watch.items()}],
         )
@@ -828,7 +843,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 },
                 "$inc": {"trigger_subscriptions.$[watch].gate.skipped_count": 1},
             },
-            scope=user_id,
             extra_filter={
                 "trigger_subscriptions": {
                     "$elemMatch": {"id": subscription_id, "gate": {"$ne": None}}
@@ -858,7 +872,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         resumed = await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$set": fields},
-            scope=user_id,
             array_filters=array_filters,
         )
         if resumed is None:
@@ -866,7 +879,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         unblocked = await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$pull": {"labels": BLOCKING_LABEL}},
-            scope=user_id,
             extra_filter={
                 "labels": BLOCKING_LABEL,
                 "trigger_subscriptions": {
@@ -880,16 +892,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         self, todo_id: str, user_id: str, *, update: TodoUpdate
     ) -> TodoDocument | None:
         """Apply update only while the todo is still completed (compare-and-set); None otherwise."""
-        return await self._apply_update(
-            todo_id, user_id, {"user_id": user_id, "completed": True}, update
-        )
+        return await self._apply_update(todo_id, {"user_id": user_id, "completed": True}, update)
 
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
     ) -> TodoDocument | None:
         """Apply update only while scheduled_at is still expected (compare-and-set); None otherwise."""
         return await self._apply_update(
-            todo_id, user_id, {"user_id": user_id, "scheduled_at": expected}, update
+            todo_id, {"user_id": user_id, "scheduled_at": expected}, update
         )
 
     async def append_text_field(
@@ -919,9 +929,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         pipeline: list[dict[str, object]] = [
             {"$set": {field: value, "updated_at": datetime.now(UTC)}}
         ]
-        return await self._apply_pipeline_update(
-            self._scoped_filter(todo_id, user_id), pipeline, scope=user_id
-        )
+        return await self._apply_pipeline_update(self._scoped_filter(todo_id, user_id), pipeline)
 
 
 def _same_active_watch(watch: str, subscription: TriggerSubscription) -> dict[str, object]:

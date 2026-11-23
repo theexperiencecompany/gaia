@@ -4,12 +4,13 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.constants.notifications import APPROVAL_PUSH_CATEGORY, CHANNEL_TYPE_PUSH
+from app.db.repositories.device_tokens import device_token_repository
+from app.models.notification.details_models import ApprovalNotification
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
     NotificationSourceEnum,
 )
-from app.services.device_token_service import get_device_token_service
 from app.utils.notification.channels.base import ChannelAdapter
 
 _EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
@@ -55,17 +56,25 @@ class PushChannelAdapter(ChannelAdapter[PushMessage]):
         return notification.source is NotificationSourceEnum.APPROVAL
 
     async def transform(self, notification: NotificationRequest) -> PushMessage:
-        """Carry the notification id and its metadata, so a tap opens what it is about."""
+        """Carry the notification id and the approval it asks for, so a tap opens it."""
+        details = notification.details
+        if not isinstance(details, ApprovalNotification):
+            raise TypeError(f"push notification {notification.id} carries no approval details")
         return PushMessage(
             title=notification.content.title,
             body=notification.content.body,
             category_id=APPROVAL_PUSH_CATEGORY,
-            data={"notification_id": notification.id, **notification.metadata},
+            data={
+                "notification_id": notification.id,
+                "type": APPROVAL_PUSH_CATEGORY,
+                "conversation_id": details.conversation_id,
+                "approval_id": details.approval_id,
+            },
         )
 
     async def deliver(self, content: PushMessage, user_id: str) -> ChannelDeliveryStatus:
         """Post the message to Expo in batches and retire the tokens Expo says are gone."""
-        tokens = await get_device_token_service().get_active_tokens(user_id)
+        tokens = await device_token_repository.list_active_tokens(user_id)
         if not tokens:
             return self._skipped("push: no registered device")
         messages = [
@@ -91,7 +100,7 @@ class PushChannelAdapter(ChannelAdapter[PushMessage]):
                     )
                 )
         if dead_tokens:
-            await get_device_token_service().deactivate_tokens(dead_tokens)
+            await device_token_repository.deactivate(dead_tokens)
         return self._success()
 
 

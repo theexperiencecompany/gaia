@@ -4,7 +4,6 @@ import { DISPLAY_STATE } from "@shared/conversation";
 import { useCallback, useEffect } from "react";
 import { liveConversation } from "@/features/chat/live/liveConversationStore";
 import { useElectron } from "@/hooks/useElectron";
-import { useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useChatStore } from "@/stores/chatStore";
 
 /**
@@ -21,7 +20,7 @@ export function usePopupDismissGuard(): () => void {
     const id = useChatStore.getState().activeConversationId;
     const busy =
       id !== null && liveConversation(id).view.display !== DISPLAY_STATE.IDLE;
-    if (busy || useAuxLoadingStore.getState().auxLoading) return;
+    if (busy) return;
     dismissPopup();
   }, [dismissPopup]);
 }

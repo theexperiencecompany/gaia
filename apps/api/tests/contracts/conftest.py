@@ -14,10 +14,12 @@ Isolation, so the default -n 4 xdist run is safe:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Coroutine, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Iterator
 from datetime import UTC, datetime
 import os
 from pathlib import Path
+import re
+import time
 from typing import Any
 import uuid
 
@@ -59,6 +61,11 @@ def redis_url() -> str:
     return os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
+def fixture_sibling(coll: AsyncIOMotorCollection, name: str) -> AsyncIOMotorCollection:
+    """Return the collection standing in for name beside the fixture collection coll."""
+    return coll.database[f"{coll.name}_{name}"]
+
+
 @pytest.fixture
 async def raw_collection(
     mongodb_url: str, monkeypatch: pytest.MonkeyPatch
@@ -80,7 +87,7 @@ async def raw_collection(
     # The collections the conversation repository writes beside its own (its entry
     # log, and the entries migration's records), kept apart so heads never mix with them.
     siblings = {
-        name: coll.database[f"{coll.name}_{name}"]
+        name: fixture_sibling(coll, name)
         for name in (
             CONVERSATION_ENTRIES_COLLECTION,
             CONVERSATION_MIGRATION_FAILURES_COLLECTION,
@@ -136,6 +143,52 @@ async def redis(redis_url: str, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
 
     await client.flushdb()
     await client.aclose()
+
+
+@pytest.fixture
+def local_time_offset_from_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Move the process's local timezone off UTC for the test.
+
+    The suite pins TZ=UTC, which makes a naive datetime.now() numerically
+    identical to an aware UTC one — so a timestamp that forgot its timezone
+    would look correct here and be hours wrong in production.
+    """
+    monkeypatch.setenv("TZ", "Asia/Kolkata")  # UTC+5:30
+    time.tzset()
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+#: Runs one repository read and returns the plan summary of every operation it sent.
+QueryPlans = Callable[[Awaitable[object]], Awaitable[list[str]]]
+
+
+@pytest.fixture
+def query_plans(raw_collection: AsyncIOMotorCollection) -> QueryPlans:
+    """Return a runner that profiles one read on the fixture collection and its siblings, reporting their plans.
+
+    The profiler is the server's own record of what ran, so a plan read here is the plan
+    production gets for that exact filter and sort, not a hand-copied explain.
+    """
+    database = raw_collection.database
+    # the siblings are named after the fixture collection, so one prefix covers them all
+    namespaces = {"$regex": f"^{re.escape(f'{database.name}.{raw_collection.name}')}"}
+
+    async def run(read: Awaitable[object]) -> list[str]:
+        await database.command("profile", 2, filter={"ns": namespaces})
+        try:
+            await read
+        finally:
+            await database.command("profile", 0)
+        profile = database["system.profile"].find(
+            {"ns": namespaces, "planSummary": {"$exists": True}}
+        )
+        return [str(entry["planSummary"]) async for entry in profile]
+
+    return run
 
 
 class HeldFlushes:

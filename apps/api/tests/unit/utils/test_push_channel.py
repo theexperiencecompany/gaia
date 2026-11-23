@@ -10,6 +10,8 @@ import pytest
 import respx
 import time_machine
 
+from app.constants.notifications import NotificationKind
+from app.models.notification.details_models import ApprovalNotification
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContent,
@@ -25,7 +27,12 @@ MESSAGE = PushMessage(
     title="GAIA needs your approval",
     body="Send the deck",
     category_id="hil_approval",
-    data={"notification_id": "n1", "approval_id": "ap_1"},
+    data={
+        "notification_id": "n1",
+        "type": "hil_approval",
+        "conversation_id": "c1",
+        "approval_id": "ap_1",
+    },
 )
 
 
@@ -35,20 +42,20 @@ def _request(source: NotificationSourceEnum) -> NotificationRequest:
         user_id="u1",
         source=source,
         content=NotificationContent(title="GAIA needs your approval", body="Send the deck"),
-        metadata={"approval_id": "ap_1"},
+        details=ApprovalNotification(
+            kind=NotificationKind.APPROVAL, conversation_id="c1", approval_id="ap_1"
+        ),
     )
 
 
 @pytest.fixture
 def tokens() -> Iterator[MagicMock]:
     """Serve the user's registered Expo tokens; records which ones were retired."""
-    service = MagicMock()
-    service.get_active_tokens = AsyncMock(return_value=[])
-    service.deactivate_tokens = AsyncMock()
-    with patch(
-        "app.utils.notification.channels.push.get_device_token_service", return_value=service
-    ):
-        yield service
+    repository = MagicMock()
+    repository.list_active_tokens = AsyncMock(return_value=[])
+    repository.deactivate = AsyncMock()
+    with patch("app.utils.notification.channels.push.device_token_repository", repository):
+        yield repository
 
 
 def _sent(route: respx.Route) -> list[list[dict[str, object]]]:
@@ -63,10 +70,17 @@ def test_only_an_approval_wakes_the_phone(source: NotificationSourceEnum, handle
     assert PushChannelAdapter().can_handle(_request(source)) is handled
 
 
-async def test_the_message_carries_the_notification_id_and_its_metadata() -> None:
+async def test_the_message_carries_the_notification_id_and_the_approval() -> None:
     message = await PushChannelAdapter().transform(_request(NotificationSourceEnum.APPROVAL))
 
     assert message == MESSAGE
+
+
+async def test_a_push_without_approval_details_fails_loudly() -> None:
+    request = _request(NotificationSourceEnum.APPROVAL).model_copy(update={"details": None})
+
+    with pytest.raises(TypeError, match="n1 carries no approval details"):
+        await PushChannelAdapter().transform(request)
 
 
 async def test_a_user_with_no_device_is_skipped(tokens: MagicMock) -> None:
@@ -80,7 +94,7 @@ async def test_a_user_with_no_device_is_skipped(tokens: MagicMock) -> None:
         skipped=True,
         error_message="push: no registered device",
     )
-    tokens.get_active_tokens.assert_awaited_once_with("u1")
+    tokens.list_active_tokens.assert_awaited_once_with("u1")
     assert not route.called
 
 
@@ -89,7 +103,7 @@ async def test_every_device_is_sent_in_batches_and_gone_ones_are_retired(
     tokens: MagicMock,
 ) -> None:
     devices = [f"ExponentPushToken[{n}]" for n in range(101)]
-    tokens.get_active_tokens.return_value = devices
+    tokens.list_active_tokens.return_value = devices
     first_batch: list[dict[str, object]] = [{"status": "ok"}] * 100
     first_batch[3] = {"status": "error", "details": {"error": "DeviceNotRegistered"}}
     first_batch[4] = {"status": "error", "details": {"error": "MessageTooBig"}}
@@ -119,17 +133,15 @@ async def test_every_device_is_sent_in_batches_and_gone_ones_are_retired(
             "title": "GAIA needs your approval",
             "body": "Send the deck",
             "categoryId": "hil_approval",
-            "data": {"notification_id": "n1", "approval_id": "ap_1"},
+            "data": MESSAGE.data,
         }
     ]
     assert [message["to"] for message in sent[0]] == devices[:100]
-    tokens.deactivate_tokens.assert_awaited_once_with(
-        ["ExponentPushToken[3]", "ExponentPushToken[100]"]
-    )
+    tokens.deactivate.assert_awaited_once_with(["ExponentPushToken[3]", "ExponentPushToken[100]"])
 
 
 async def test_a_batch_with_no_gone_device_retires_nothing(tokens: MagicMock) -> None:
-    tokens.get_active_tokens.return_value = ["ExponentPushToken[a]"]
+    tokens.list_active_tokens.return_value = ["ExponentPushToken[a]"]
     with respx.mock() as expo:
         expo.post(EXPO_URL).mock(
             return_value=httpx.Response(200, json={"data": [{"status": "ok"}]})
@@ -137,14 +149,14 @@ async def test_a_batch_with_no_gone_device_retires_nothing(tokens: MagicMock) ->
         status = await PushChannelAdapter().deliver(MESSAGE, "u1")
 
     assert status.status is NotificationStatus.DELIVERED
-    tokens.deactivate_tokens.assert_not_awaited()
+    tokens.deactivate.assert_not_awaited()
 
 
 async def test_an_expo_failure_is_raised_for_the_orchestrator(tokens: MagicMock) -> None:
-    tokens.get_active_tokens.return_value = ["ExponentPushToken[a]"]
+    tokens.list_active_tokens.return_value = ["ExponentPushToken[a]"]
     with respx.mock() as expo:
         expo.post(EXPO_URL).mock(return_value=httpx.Response(503))
         with pytest.raises(httpx.HTTPStatusError):
             await PushChannelAdapter().deliver(MESSAGE, "u1")
 
-    tokens.deactivate_tokens.assert_not_awaited()
+    tokens.deactivate.assert_not_awaited()

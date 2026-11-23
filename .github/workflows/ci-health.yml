@@ -24,7 +24,7 @@ jobs:
   runner-pools:
     name: Runner pools online
     # Control plane: the check must not queue behind the thing it checks.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     steps:
       - name: Every label the workflows ask for has an online runner

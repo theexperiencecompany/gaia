@@ -1807,7 +1807,196 @@ groups:
           severity: critical
           service: arq_worker
 
-      # 29. A comms model call ran over a minute. A chat reply that long is a
+      # 29. Brief runs are failing. gaia_brief_run_total{kind,outcome} counts every
+      # daily and weekly run by how it ended; a run that raised counts outcome="failed".
+      # A failed run is a user's brief that never arrived, so a tenth of an hour's runs
+      # failing is a real outage, not noise. clamp_min keeps an hour with no runs at a
+      # ratio of 0 instead of NoData. No dashboard link: no panel charts briefs yet.
+      - uid: gaia-brief-run-failures
+        title: Morning briefs are failing to send
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(gaia_brief_run_total{outcome="failed"}[1h]))
+                / clamp_min(sum(increase(gaia_brief_run_total[1h])), 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ humanizePercentage $values.B.Value }} of brief runs
+            failed in the last hour (threshold: 10%){{ else }}Unable to read the brief
+            run counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Users whose brief run failed got no brief this morning. The kind label
+            says daily or weekly. Find the failed runs in the worker's wide events
+            (workflow.briefing_outcome is absent, errors[] holds the cause) and fix
+            what they share: a model provider, the edition renderer, Mongo.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-run-failures
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 30. No brief has been sent for six hours. Briefs land at each user's own
+      # morning hour, so across time zones some are sent in every six-hour window;
+      # none at all means the schedule, the queue or delivery stopped, which the
+      # failure ratio above cannot see when runs stop being attempted. The sent
+      # series exists at 0 from worker start, so a restart reads as 0, not NoData:
+      # for 30m keeps a deploy from tripping it.
+      - uid: gaia-brief-none-sent
+        title: No briefs have been sent in six hours
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 21600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_brief_run_total{outcome="sent"}[6h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} briefs sent in the
+            last six hours (threshold: at least one){{ else }}Unable to read the
+            brief run counts — this rule could not be evaluated, which almost always
+            means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Nobody has received a brief for six hours. Check that the worker is
+            consuming the briefing queue, that brief workflows are still scheduled
+            (the scheduler re-arms them after each run), and the outcome label of
+            gaia_brief_run_total: runs that end skipped rather than failed point at
+            the dormancy or quiet-note rules.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-none-sent
+        labels:
+          severity: critical
+          service: arq_worker
+
+      # 31. Scouts are failing. gaia_brief_scout_total{outcome,skip_reason} counts
+      # every scout's turn in a brief; skip_reason="failed" is a scout that raised
+      # (an app down, a bad report, a timeout). One app failing is expected; a fifth
+      # of all turns failing means scouts as a whole broke and briefs have gone
+      # quiet about every connected app.
+      - uid: gaia-brief-scout-failures
+        title: Brief scouts are failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(gaia_brief_scout_total{skip_reason="failed"}[1h]))
+                / clamp_min(sum(increase(gaia_brief_scout_total[1h])), 1)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ humanizePercentage $values.B.Value }} of scout turns
+            failed in the last hour (threshold: 20%){{ else }}Unable to read the scout
+            turn counts — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Briefs still send, but say nothing about the apps whose scouts failed.
+            The briefing.scout_failed errors in the worker's wide events carry the
+            integration_id and error_type: one integration dominating is that app's
+            outage; every integration failing is the scout model or the MCP client.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-scout-failures
+        labels:
+          severity: warning
+          service: arq_worker
+
+      # 32. Share links cannot be minted. gaia_link_mint_total{outcome} counts every
+      # short-link mint; a failed one leaves a brief, artifact or file without the
+      # link the user was promised. Mints touch only Mongo and the blob store, so a
+      # few failing in an hour is already a dependency problem.
+      - uid: gaia-link-mint-failures
+        title: Share links are failing to mint
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_link_mint_total{outcome="failed"}[1h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} share links failed
+            to mint in the last hour (threshold: more than 2){{ else }}Unable to read
+            the link mint count — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Briefs, artifacts and files went out without the link that opens them.
+            The mint failures in the API and worker wide events carry error_type:
+            a storage error is the blob store, a duplicate key is the short_links
+            unique index.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-link-mint-failures
+        labels:
+          severity: warning
+          service: api
+
+      # 33. A comms model call ran over a minute. A chat reply that long is a
       # runaway: the 3,998-break replies of October ran ~100 s to the output
       # limit. Counted per call, not as a p95, so a single one shows up. The slow-call
       # counter is derived before increase(), which extrapolates two counters apart.

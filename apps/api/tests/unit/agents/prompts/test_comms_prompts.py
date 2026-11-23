@@ -99,7 +99,11 @@ class TestTrackedTodoDeliveryNote:
     def test_the_todos_standing_rules_close_the_note_and_bind_it(self) -> None:
         """Regression: an Inbox desk briefing with content was silenced as routine under a rule to deliver every one."""
         note = tracked_todo_delivery_note(
-            "Word count", "- Tell me the result every time.", None, runs_once=False, run_history=()
+            "Word count",
+            "- Tell me the result every time.",
+            None,
+            runs_once=False,
+            run_history=(),
         )
 
         assert (
@@ -121,7 +125,11 @@ class TestTrackedTodoDeliveryNote:
 
     def test_key_details_follow_the_rules_as_details_of_their_own(self) -> None:
         note = tracked_todo_delivery_note(
-            "Word count", "- Be brief.", "- tell me every time", runs_once=False, run_history=()
+            "Word count",
+            "- Be brief.",
+            "- tell me every time",
+            runs_once=False,
+            run_history=(),
         )
 
         assert (

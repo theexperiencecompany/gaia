@@ -9,6 +9,7 @@ repository's own behaviour (user-scoping, source persistence, message stripping,
 pin semantics) is covered by the real-DB contract suite.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -18,6 +19,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.config.settings import settings
+from app.db.repositories.short_links import short_link_repository
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
@@ -26,13 +28,14 @@ from app.models.chat_models import (
     SystemPurpose,
 )
 from app.models.conversation_frame_models import EntryFrame
-from app.models.conversation_log_models import UserMessage
+from app.models.conversation_log_models import Reply, UserMessage
 from app.models.conversation_models import (
     ConversationMessageHit,
     ConversationSummary,
     LogPage,
     StoredConversation,
 )
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.services import conversation_service
 from app.services.conversation.screen_patches import ScreenTracker
@@ -55,6 +58,8 @@ from app.services.conversation_service import (
     star_conversation,
     update_conversation_description,
 )
+from app.services.links.placeholders import link_placeholder
+from app.services.links.urls import build_url
 from app.utils.errors import AppError, ConversationIdTakenError, ConversationStoreError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import (
@@ -270,6 +275,59 @@ class TestTheScreenAPageProjectsTo:
         assert (loaded.has_older, loaded.cursor, len(loaded.items)) == (True, 4, 1)
 
 
+_LINKED = RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+_LINKED_TEXT = f"the plan {link_placeholder(_LINKED)}"
+_LINKED_SHOWN = (f"the plan {build_url('ab12cd')}",)
+
+
+@pytest.fixture
+def live_link():
+    live = AsyncMock(return_value=ShortLink(slug="ab12cd", user_id=USER_ID, target=_LINKED))
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        yield live
+
+
+def _linked_reply_entries() -> list[dict[str, object]]:
+    reply = Reply(id="e4", reply_id="r4", attempt_id="a1", text=_LINKED_TEXT)
+    return [EntryFrame(seq=4, at=datetime(2026, 1, 1, tzinfo=UTC), entry=reply).model_dump()]
+
+
+class TestAReplysLinkReachesTheClientResolvedForItsUser:
+    """Each read a client renders from resolves the placeholders the log keeps, under the reader's id."""
+
+    async def test_a_loaded_conversation(self, mock_repo, test_user, live_link):
+        mock_repo.get.return_value = _document(entries=_linked_reply_entries())
+        loaded = await get_conversation("conv_abc", test_user)
+        assert [item.bubbles for item in loaded.items] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+    async def test_an_older_page(self, mock_repo, test_user, live_link):
+        mock_repo.read_entries_before.return_value = LogPage.model_validate(
+            {
+                "entries": _linked_reply_entries(),
+                "state": {"head": 4, "display": "idle", "work": []},
+            }
+        )
+        page = await get_entries_before("conv_abc", test_user, before_seq=9, limit=20)
+        assert [item.bubbles for item in page.items] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+    async def test_a_synced_row(self, mock_repo, test_user, live_link):
+        mock_repo.find_updated_since.return_value = [_document(entries=_linked_reply_entries())]
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
+        assert [item.bubbles for item in result.conversations[0].items] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+    async def test_a_pinned_message(self, mock_repo, test_user, live_link):
+        mock_repo.list_pinned_messages.return_value = [
+            ConversationMessageHit(conversation_id="conv_1", item=make_reply_item(_LINKED_TEXT))
+        ]
+        result = await get_starred_messages(test_user)
+        assert [hit.item.bubbles for hit in result.results] == [_LINKED_SHOWN]
+        assert live_link.await_args.args[0] == USER_ID
+
+
 class TestStarConversation:
     async def test_stars(self, mock_repo, test_user):
         mock_repo.set_starred.return_value = True
@@ -293,24 +351,55 @@ class TestStarConversation:
         )
 
 
+@dataclass
+class Leftovers:
+    """What outlives a conversation's document, each cleanup patched at its seam."""
+
+    links: AsyncMock
+    artifacts: AsyncMock
+    sessions: AsyncMock
+    threads: AsyncMock
+
+    def cleaned(self) -> list[tuple[object, ...]]:
+        """Return the conversations each cleanup ran for, one row per cleanup."""
+        return [
+            tuple(c.args for c in mock.await_args_list)
+            for mock in (self.links, self.artifacts, self.sessions, self.threads)
+        ]
+
+
+@pytest.fixture
+def leftovers():
+    found = Leftovers(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    with (
+        patch.object(conversation_service, "revoke_conversation_links", new=found.links),
+        patch.object(
+            conversation_service.openui_artifact_repository,
+            "delete_for_conversation",
+            new=found.artifacts,
+        ),
+        patch.object(conversation_service, "delete_session_dir", new=found.sessions),
+        patch.object(conversation_service, "_cleanup_checkpoint_threads", new=found.threads),
+    ):
+        yield found
+
+
 class TestDeleteConversation:
-    async def test_deletes_single(self, mock_repo, test_user):
+    async def test_deletes_single(self, mock_repo, test_user, leftovers):
         mock_repo.delete.return_value = True
-        sessions = AsyncMock()
-        threads = AsyncMock()
-        with (
-            patch.object(conversation_service, "delete_session_dir", new=sessions),
-            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=threads),
-            patch("app.services.conversation_service.capture") as mock_capture,
-        ):
+        with patch("app.services.conversation_service.capture") as mock_capture:
             result = await delete_conversation("conv_abc", test_user)
         assert (result.conversation_id, result.message) == (
             "conv_abc",
             "Conversation deleted successfully",
         )
-        # What outlives the document goes with it: the session dir and the checkpoints.
-        sessions.assert_awaited_once_with(USER_ID, "conv_abc")
-        threads.assert_awaited_once_with("conv_abc")
+        # What outlives the document goes with it: its links, artifacts, session dir and checkpoints.
+        assert leftovers.cleaned() == [
+            ((USER_ID, "conv_abc"),),
+            ((USER_ID, "conv_abc"),),
+            ((USER_ID, "conv_abc"),),
+            (("conv_abc",),),
+        ]
         mock_capture.assert_called_once_with(
             UserId(USER_ID), ChatConversationDeleted(conversation_id="conv_abc")
         )
@@ -321,17 +410,16 @@ class TestDeleteConversation:
             await delete_conversation("nonexistent", test_user)
         assert exc_info.value.status_code == 404
 
-    async def test_delete_all_cleans_up_each_conversation(self, mock_repo, test_user):
+    async def test_delete_all_cleans_up_each_conversation_like_a_single_delete(
+        self, mock_repo, test_user, leftovers
+    ):
         mock_repo.delete_all_chats_for_user.return_value = ["conv_1", "conv_2"]
-        cleanup = AsyncMock()
-        with (
-            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
-            patch("app.services.conversation_service.capture") as mock_capture,
-        ):
+        with patch("app.services.conversation_service.capture") as mock_capture:
             result = await delete_all_conversations(test_user)
         assert result.message == "All conversations deleted successfully"
         mock_repo.delete_all_chats_for_user.assert_awaited_once_with(USER_ID)
-        assert [c.args for c in cleanup.await_args_list] == [("conv_1",), ("conv_2",)]
+        owned = ((USER_ID, "conv_1"), (USER_ID, "conv_2"))
+        assert leftovers.cleaned() == [owned, owned, owned, (("conv_1",), ("conv_2",))]
         mock_capture.assert_called_once_with(UserId(USER_ID), ChatConversationDeleted(count=2))
 
     async def test_delete_all_raises_404_when_none(self, mock_repo, test_user):
@@ -658,23 +746,14 @@ class TestTrackedTodoChat:
         with pytest.raises(RuntimeError, match="todo-1"):
             await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
 
-    async def test_deleting_todos_cleans_up_after_each_of_their_chats(self, mock_repo):
+    async def test_deleting_todos_cleans_up_after_each_of_their_chats(self, mock_repo, leftovers):
         mock_repo.delete_for_todos.return_value = ["conv-1", "conv-2"]
-        cleanup = AsyncMock()
-        sessions = AsyncMock()
-        with (
-            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
-            patch.object(conversation_service, "delete_session_dir", new=sessions),
-            patch("app.services.conversation_service.capture") as mock_capture,
-        ):
+        with patch("app.services.conversation_service.capture") as mock_capture:
             await delete_todo_conversations(USER_ID, ["todo-1", "todo-2"])
 
         mock_repo.delete_for_todos.assert_awaited_once_with(USER_ID, ["todo-1", "todo-2"])
-        assert [c.args for c in cleanup.await_args_list] == [("conv-1",), ("conv-2",)]
-        assert [c.args for c in sessions.await_args_list] == [
-            (USER_ID, "conv-1"),
-            (USER_ID, "conv-2"),
-        ]
+        owned = ((USER_ID, "conv-1"), (USER_ID, "conv-2"))
+        assert leftovers.cleaned() == [owned, owned, owned, (("conv-1",), ("conv-2",))]
         # Not a conversation the user deleted: no chat analytics for it.
         mock_capture.assert_not_called()
 

@@ -139,7 +139,7 @@ def runtime() -> None:
     )
 
 
-@pytest.mark.usefixtures("runtime")
+@pytest.mark.usefixtures("runtime", "arq_pool")
 async def test_the_bot_link_landing_finishes_onboarding_once(mongo_db, captured: MagicMock) -> None:
     """A paid user who taps Start in Telegram and never returns to the web tab is not left unfinished."""
     await onboarding_service.save_onboarding_answers(

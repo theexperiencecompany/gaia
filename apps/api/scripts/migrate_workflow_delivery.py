@@ -1,0 +1,42 @@
+"""Idempotent migration: replace each workflow's notify_on_completion with delivery.
+
+notify_on_completion=true (or absent, the old default) becomes delivery="now";
+notify_on_completion=false becomes delivery="silent". The legacy field is unset.
+Workflows that already carry a delivery are left alone, so re-running is safe.
+
+WorkflowDocument reads an unmigrated record the same way at load time, so the
+deploy does not depend on this having run; running it retires that mapping's
+work and is safe before or after the new code ships. Each record is read as its
+id and flag only, so a field GAIA has since dropped cannot stop the run.
+
+    cd apps/api && uv run python -m scripts.migrate_workflow_delivery [--apply]
+"""
+
+import asyncio
+
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.workflows import workflow_repository
+from scripts._cli import apply_requested
+
+
+async def migrate(apply: bool) -> int:
+    """Store delivery on every workflow that lacks it, from its legacy flag; return how many."""
+    mode = "APPLY" if apply else "DRY RUN"
+    print(f"[{mode}] Mapping notify_on_completion to delivery...\n")
+
+    counts = dict.fromkeys(WorkflowDelivery, 0)
+    for workflow in await workflow_repository.find_without_stored_delivery():
+        counts[workflow.delivery] += 1
+        print(f"  {workflow.id}: -> {workflow.delivery}")
+        if apply:
+            await workflow_repository.store_delivery(workflow.id, workflow.delivery)
+
+    summary = " ".join(f"{mode_value}={count}" for mode_value, count in counts.items())
+    print(f"\n[{mode}] Done. {summary}")
+    if not apply:
+        print("Re-run with --apply to write these changes.")
+    return sum(counts.values())
+
+
+if __name__ == "__main__":
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

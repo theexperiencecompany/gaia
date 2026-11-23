@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { getIconPaths } from "@/config/iconPaths.generated";
 import { getOgIconPath, getToolIconConfig } from "@/config/toolIconConfig";
 import { wallpapers } from "@/config/wallpapers";
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import {
   colors,
   createErrorResponse,
@@ -36,7 +37,7 @@ async function fetchIntegration(
   try {
     const response = await fetch(
       `${apiBaseUrl}/integrations/public/${identifier}`,
-      { cache: "no-store" },
+      { cache: "no-store", headers: internalApiHeaders() },
     );
     if (response.ok) {
       return await response.json();

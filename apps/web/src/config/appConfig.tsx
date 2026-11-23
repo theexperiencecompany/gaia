@@ -26,6 +26,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { SITE_URL } from "@/config/site";
 import { siteConfig } from "@/lib/seo";
 import { vanityTarget } from "../../vanity-redirects.mjs";
 
@@ -122,7 +123,7 @@ export const appConfig = {
   // Site information
   site: {
     name: "GAIA",
-    domain: "heygaia.io",
+    domain: new URL(SITE_URL).host,
     mobileWaitlist:
       "https://heygaia.notion.site/307023640e7b802ca404dee12cb04e89?pvs=105",
   },

@@ -20,8 +20,9 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.constants.onboarding import GMAIL_PERSONALIZATION_MARKER
+from app.models.notification.details_models import GmailPersonalizedNotification
 from app.models.notification.notification_models import (
     ActionStyle,
     ActionType,
@@ -85,8 +86,8 @@ REMOVED_FROM_THE_PIPELINE = (
 
 @pytest.fixture(autouse=True)
 def quiet_logs() -> Iterator[MagicMock]:
-    with patch(f"{MODULE}.log", MagicMock()) as log:
-        yield log
+    with patch(f"{MODULE}.log", MagicMock()) as logged:
+        yield logged
 
 
 def _triage() -> InboxTriage:
@@ -110,7 +111,6 @@ def _user(**overrides: Any) -> UserDocument:
         "email": "ann@x.com",
         "onboarding": {
             "preferences": {"profession": "lawyer"},
-            "focus": "close Q3",
             "clarify_answers": [{"kind": "goal", "value": "grow"}],
         },
     }
@@ -124,7 +124,6 @@ def _expected_ctx() -> OnboardingContext:
         user_id=USER,
         name="Ann",
         profession="lawyer",
-        focus="close Q3",
         user_email="ann@x.com",
         clarify_answers=[{"kind": "goal", "value": "grow"}],
     )
@@ -413,7 +412,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
         await process_onboarding_intelligence(USER)
 
         assert pipeline_stack["triage"].await_args.args[0] == USER
-        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
+        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer",)
         assert pipeline_stack["style"].await_args.args == (USER, "lawyer")
         assert pipeline_stack["social"].await_args.args == (USER, "Ann", "ann@x.com")
         assert pipeline_stack["holo"].await_args.args[0] == replace(
@@ -517,13 +516,14 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert mark.await_count == 1
         assert mark.await_args.kwargs == {"conversation_id": None}
 
-    async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
+    async def test_a_nameless_user_is_searched_for_by_no_name(self, pipeline_stack: Any) -> None:
+        """The name identifies the user to the social-profile filter; "there" made it match nobody."""
         pipeline_stack["repo"].get = AsyncMock(return_value=_user(name=None))
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["social"].await_args.args[1] == "there"
-        assert pipeline_stack["holo"].await_args.args[0].name == "there"
+        assert pipeline_stack["social"].await_args.args[1] is None
+        assert pipeline_stack["holo"].await_args.args[0].name is None
 
     async def test_a_missing_onboarding_subdoc_does_not_crash_the_pipeline(
         self, pipeline_stack: Any
@@ -698,7 +698,9 @@ class TestAnnouncePersonalization:
         request = notifications.notify.await_args.args[0]
         assert request.type is NotificationType.SUCCESS
         assert request.priority == 2
-        assert request.metadata == {"source": "gmail_personalization"}
+        assert request.details == GmailPersonalizedNotification(
+            kind=NotificationKind.GMAIL_PERSONALIZED
+        )
         memories, card = request.content.actions
         assert memories.label == "View memories"
         assert memories.style is ActionStyle.PRIMARY

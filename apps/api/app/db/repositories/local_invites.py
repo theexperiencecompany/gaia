@@ -25,7 +25,6 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
     document_model = LocalInviteDocument
     update_model = LocalInviteUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def list_pending(self, now: datetime) -> list[LocalInviteDocument]:
         """Invites that can still be redeemed, newest first."""
@@ -45,7 +44,6 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
         return await self._apply_raw_update(
             _redeemable(token_hash, now),
             {"$set": {"used_at": now, "used_by": used_by}},
-            scope=None,
         )
 
     async def revoke(self, invite_id: str, now: datetime) -> bool:
@@ -55,7 +53,6 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
         revoked = await self._apply_raw_update(
             {**self._identity_filter(invite_id), "used_at": None, "revoked_at": None},
             {"$set": {"revoked_at": now}},
-            scope=None,
         )
         return revoked is not None
 

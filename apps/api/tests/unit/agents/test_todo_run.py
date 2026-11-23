@@ -28,6 +28,7 @@ from app.agents.core.background.todo_run import (
 from app.agents.llm.lane import AgentRole
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.conversation_entries import EMPTY_LOG_STATE
 from app.models.conversation_log_models import (
     ConversationState,
@@ -241,6 +242,13 @@ class TestWhatTheRunsReplySettledTo:
             "report",
         )
         assert finished.report_form is TodoReportForm.WRITE_UP
+
+    def test_an_urgent_run_is_handed_on_as_urgent(self) -> None:
+        urgent = replace(
+            REQUEST, todo_run=RUN.model_copy(update={"message_class": ProactiveMessageClass.URGENT})
+        )
+        finished = _finished_run(urgent, "t1", _done("t1"))
+        assert finished.message_class is ProactiveMessageClass.URGENT
 
     def test_a_silent_write_up_is_handed_on_as_silent(self) -> None:
         finished = _finished_run(REQUEST, "t1", _done("t1", reply=ReplyOutcome.SILENT))
