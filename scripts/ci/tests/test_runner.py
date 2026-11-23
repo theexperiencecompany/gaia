@@ -119,22 +119,32 @@ def test_the_default_saturation_threshold_is_five_queued_jobs(
     pool(github, *idle_home(18))
     saturate(github, depth)
     out = select(github)
-    assert out["heavy"] == expected
+    assert out["light"] == expected
 
 
 def idle_home(count: int, busy: int = 0) -> list[dict[str, object]]:
     return [runner(f"home-{i}", "online", "gaia-home", busy=i < busy) for i in range(busy + count)]
 
 
-def test_a_saturated_github_queue_overflows_every_class_to_a_box_that_fits_them(
+def test_a_saturated_github_queue_overflows_only_the_light_class_to_the_box(
     github: FakeGitHub,
 ) -> None:
     pool(github, *idle_home(sum(ci_class_demand().values()), busy=2))
     saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert out["light"] == out["heavy"] == out["services"] == HOME
+    out = select(github)
+    assert out["light"] == HOME
+    assert out["heavy"] == out["services"] == HOSTED
     assert out["reason"] == "home-overflow"
+    assert out["runner_label"] == "gaia-home"
     assert out["is_self_hosted"] == "true"
+
+
+def test_heavy_and_services_skip_an_idle_box_for_blacksmith(github: FakeGitHub) -> None:
+    pool(github, *idle_home(sum(ci_class_demand().values())))
+    saturate(github)
+    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
+    assert out["light"] == HOME
+    assert out["heavy"] == out["services"] == f'["{BLACKSMITH}"]'
 
 
 def test_one_idle_listener_takes_no_class_it_cannot_fit(github: FakeGitHub) -> None:
@@ -143,19 +153,6 @@ def test_one_idle_listener_takes_no_class_it_cannot_fit(github: FakeGitHub) -> N
     saturate(github)
     out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
     assert out["light"] == out["heavy"] == out["services"] == f'["{BLACKSMITH}"]'
-
-
-@pytest.mark.parametrize(
-    ("idle", "on_box"),
-    [(5, {"heavy"}), (9, {"services"}), (14, {"services", "heavy"}), (19, {"services", "heavy"})],
-)
-def test_idle_listeners_are_shared_out_class_by_class(
-    github: FakeGitHub, idle: int, on_box: set[str]
-) -> None:
-    pool(github, *idle_home(idle))
-    saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert {cls for cls in ("light", "heavy", "services") if out[cls] == HOME} == on_box
 
 
 def ci_class_demand() -> dict[str, int]:
@@ -185,15 +182,15 @@ def ci_class_demand() -> dict[str, int]:
 
 
 @pytest.mark.parametrize("short", [0, 1])
-def test_the_box_takes_every_class_only_with_a_listener_per_ci_job(
+def test_the_box_takes_the_light_class_only_with_a_listener_per_light_job(
     github: FakeGitHub, short: int
 ) -> None:
-    """A lane added to a class must raise that class's demand, or its jobs queue on the box."""
-    pool(github, *idle_home(sum(ci_class_demand().values()) - short))
+    """A lane added to the light class must raise its demand, or its jobs queue on the box."""
+    pool(github, *idle_home(ci_class_demand()["light"] - short))
     saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    every = out["light"] == out["heavy"] == out["services"] == HOME
-    assert every is (short == 0)
+    out = select(github)
+    assert out["light"] == (HOME if short == 0 else HOSTED)
+    assert out["heavy"] == out["services"] == HOSTED
 
 
 @pytest.mark.parametrize(
@@ -230,14 +227,14 @@ def test_an_unreadable_runners_list_is_loud_and_skips_the_box(github: FakeGitHub
     proc = run_runner("select", env=github.env(PR_HEAD_REPO=REPO, BLACKSMITH_LABEL=BLACKSMITH))
     assert proc.returncode == 0, proc.stderr
     assert "::warning::runners API unavailable" in proc.stderr
-    assert f'heavy=["{BLACKSMITH}"]' in proc.stdout
+    assert f'light=["{BLACKSMITH}"]' in proc.stdout
 
 
 def test_a_custom_threshold_overrides_the_default(github: FakeGitHub) -> None:
-    pool(github, runner("home-1", "online", "gaia-home"))
+    pool(github, *idle_home(18))
     saturate(github, 8)
     out = select(github, HOSTED_QUEUE_THRESHOLD="9")
-    assert out["heavy"] == HOSTED
+    assert out["light"] == HOSTED
 
 
 @pytest.mark.parametrize("busy", [False, True])
@@ -260,12 +257,11 @@ def test_force_home_dies_rather_than_fall_back(github: FakeGitHub) -> None:
 
 def test_services_probe_their_own_label(github: FakeGitHub) -> None:
     """A dispatch may point heavy at a trial pool; services must stay on the pool with services."""
-    trial = [runner(f"trial-{i}", "online", "gaia-trial") for i in range(9)]
-    pool(github, *trial, runner("home-1", "offline", "gaia-home"))
-    saturate(github)
-    out = select(github, RUNNER_LABEL="gaia-trial")
+    pool(github, runner("trial-1", "online", "gaia-trial"), runner("home-1", "online", "gaia-home"))
+    no_runs(github)
+    out = select(github, RUNNER_LABEL="gaia-trial", FORCE_HOME="true")
     assert out["heavy"] == '["self-hosted","gaia-trial"]'
-    assert out["services"] == HOSTED
+    assert out["services"] == HOME
 
 
 def test_jobs_queued_for_the_home_box_are_not_github_saturation(github: FakeGitHub) -> None:
@@ -297,7 +293,7 @@ def test_a_runners_listing_spanning_pages_is_read_whole(github: FakeGitHub) -> N
     github.on("GET", RUNNERS, Reply(200, {"runners": idle_home(18)}), query={"page": "2"})
     saturate(github)
     out = select(github)
-    assert out["heavy"] == HOME
+    assert out["light"] == HOME
     assert out["reason"] == "home-overflow"
 
 
