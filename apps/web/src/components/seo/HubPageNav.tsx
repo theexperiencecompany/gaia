@@ -27,7 +27,7 @@ export function HubPagination({
           <span
             key={page}
             aria-current="page"
-            className={`${NAV_ITEM_CLASS} bg-primary/10 text-primary`}
+            className={`${NAV_ITEM_CLASS} bg-accent/10 text-accent`}
           >
             {page}
           </span>

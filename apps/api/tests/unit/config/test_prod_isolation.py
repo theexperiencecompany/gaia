@@ -17,6 +17,8 @@ from app.config.capability_requirements import required_keys
 from app.config.deployment import BlobStoreKind, DeploymentKind, baseline_profile
 from app.config.settings import Settings
 from app.constants.files import BlobKind
+from app.constants.providers import CredentialProviderName
+from app.db.repositories.provider_credentials import provider_credentials_repository
 
 
 @pytest.fixture(autouse=True)
@@ -236,6 +238,8 @@ _SELFHOST_INFRA_FIELDS = {
     "AGENT_SECRET",
     "BOT_SESSION_TOKEN_SECRET",
     "EMAIL_UNSUBSCRIBE_SECRET",
+    # Written by the CLI on install and update: the web container is told apart from viewers.
+    "INTERNAL_API_TOKEN",
 }
 
 # String form for provisioning via monkeypatch.setenv (get_settings path).
@@ -587,11 +591,11 @@ async def test_production_resolve_never_reads_the_credential_store(
     from app.services.providers import provider_credentials_service as service
 
     store_read = AsyncMock(side_effect=AssertionError("production read the credential store"))
-    monkeypatch.setattr(service.provider_credentials_repository, "find_by_provider", store_read)
+    monkeypatch.setattr(provider_credentials_repository, "find_by_provider", store_read)
     monkeypatch.setattr(settings, "RESEND_API_KEY", "env-resend-key")
     service._cache.clear()
 
-    config = await service.resolve("resend")
+    config = await service.resolve(CredentialProviderName.RESEND)
 
     assert config is not None
     assert config.api_key == "env-resend-key"
@@ -608,11 +612,11 @@ def test_production_snapshot_ignores_a_stored_credential(
     monkeypatch.setattr(settings, "COMPOSIO_KEY", "env-composio-key")
     monkeypatch.setitem(
         service.resolved_configs,
-        "composio",
+        CredentialProviderName.COMPOSIO,
         service.ProviderConfig(api_key="stored-key", base_url=None, model=None, preset=None),
     )
 
-    config = service.resolved_config("composio")
+    config = service.resolved_config(CredentialProviderName.COMPOSIO)
 
     assert config is not None
     assert config.api_key == "env-composio-key"
@@ -624,7 +628,7 @@ async def test_production_refuses_to_store_a_credential(production_profile: None
 
     with pytest.raises(RuntimeError, match="environment only"):
         await service.upsert(
-            "resend",
+            CredentialProviderName.RESEND,
             service.ProviderConfig(
                 api_key="k",
                 base_url=None,
@@ -646,21 +650,21 @@ async def test_production_comms_uses_the_env_openai_key_over_a_stored_one(
     from app.services.providers import provider_credentials_service as service
 
     store_read = AsyncMock(side_effect=AssertionError("production read the stored OpenAI key"))
-    monkeypatch.setattr(service.provider_credentials_repository, "find_by_provider", store_read)
+    monkeypatch.setattr(provider_credentials_repository, "find_by_provider", store_read)
     monkeypatch.setattr(settings, "OPENAI_API_KEY", "env-openai-key")
     monkeypatch.setitem(
         service.resolved_configs,
-        "openai",
+        CredentialProviderName.OPENAI,
         service.ProviderConfig(api_key="stored-openai-key", base_url=None, model=None, preset=None),
     )
     service._cache.clear()
 
-    resolved = await service.resolve("openai")
+    resolved = await service.resolve(CredentialProviderName.OPENAI)
 
     assert resolved is not None
     assert resolved.api_key == "env-openai-key"
     # The LLM client reads this same snapshot when it builds the comms client.
-    snapshot = service.resolved_configs["openai"]
+    snapshot = service.resolved_configs[CredentialProviderName.OPENAI]
     assert snapshot is not None
     assert snapshot.api_key == "env-openai-key"
     store_read.assert_not_awaited()

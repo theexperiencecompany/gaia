@@ -20,7 +20,6 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories import playbooks as playbooks_module
 from app.db.repositories.playbooks import PlaybooksRepository, _outcome_update
 from app.models.playbook_models import (
@@ -88,9 +87,7 @@ def repo() -> PlaybooksRepository:
 def _raw_update_spy(*outcomes: Any) -> tuple[Any, list[dict[str, Any]]]:
     """Stand in for the base repository's raw-update seam, with its real signature.
 
-    The cache scope and upsert flag are decided here and never reach
-    find_one_and_update. Each outcome is the next call's return value, or an
-    exception to raise from it.
+    Each outcome is the next call's return value, or an exception to raise from it.
     """
     calls: list[dict[str, Any]] = []
     queued = list(outcomes)
@@ -100,7 +97,6 @@ def _raw_update_spy(*outcomes: Any) -> tuple[Any, list[dict[str, Any]]]:
         filter_: Mapping[str, object],
         update: Mapping[str, Mapping[str, object]],
         *,
-        scope: str,
         upsert: bool = False,
         **rest: object,
     ) -> PlaybookDocument | None:
@@ -108,7 +104,6 @@ def _raw_update_spy(*outcomes: Any) -> tuple[Any, list[dict[str, Any]]]:
             {
                 "filter": dict(filter_),
                 "update": update,
-                "scope": scope,
                 "upsert": upsert,
             }
         )
@@ -213,16 +208,13 @@ class TestUpsertForWorkflow:
             call.kwargs["upsert"] for call in collection.find_one_and_update.await_args_list
         ] == [False, False, True, True]
 
-    async def test_both_attempts_are_written_in_the_global_scope(
-        self, repo: PlaybooksRepository
-    ) -> None:
-        """Playbooks is a global collection, so both the first attempt and the duplicate-key retry name the global cache scope."""
+    async def test_both_attempts_are_the_same_upsert(self, repo: PlaybooksRepository) -> None:
+        """The duplicate-key retry repeats the upsert, so a winner deleted since still gets a row."""
         spy, calls = _raw_update_spy(None, None, DuplicateKeyError("E11000 duplicate key"), _doc())
 
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
             await repo.upsert_for_workflow(_doc())
 
-        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE] * 4
         assert [call["upsert"] for call in calls] == [False, False, True, True]
 
     async def test_a_rewrite_of_a_body_never_replayed_leaves_the_attempts_alone(
@@ -483,30 +475,13 @@ class TestIncrementHealAttempts:
         assert "$inc" not in update
 
 
-class TestTheScopeAndShapeOfEveryRawWrite:
-    """The raw-update seam carries two things find_one_and_update never sees.
+class TestTheShapeOfEveryRawWrite:
+    """What each outcome write asks the raw-update seam for."""
 
-    The cache scope the write invalidates, and how the outcome update was
-    asked for. playbooks is a global collection, so every write names the
-    global scope — a per-user scope would leave the global one stale.
-    """
-
-    async def test_a_plain_outcome_is_recorded_in_the_global_scope(
+    async def test_a_suspect_landing_tries_the_growing_write_then_the_plain_one(
         self, repo: PlaybooksRepository
     ) -> None:
-        spy, calls = _raw_update_spy()
-
-        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
-            await repo.record_run_outcome(
-                WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.FAILED)
-            )
-
-        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE]
-
-    async def test_both_writes_of_a_suspect_landing_are_global(
-        self, repo: PlaybooksRepository
-    ) -> None:
-        """The growing write is tried first and matches nothing on an already suspect playbook; the plain fallback must invalidate the same scope."""
+        """The growing write is tried first and matches nothing on an already suspect playbook."""
         spy, calls = _raw_update_spy(None, _doc())
 
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
@@ -514,11 +489,10 @@ class TestTheScopeAndShapeOfEveryRawWrite:
                 WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty")
             )
 
-        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE, REPO_GLOBAL_SCOPE]
         assert calls[0]["filter"]["last_run_status"] == {"$ne": "suspect"}
         assert "last_run_status" not in calls[1]["filter"]
 
-    async def test_counting_a_heal_attempt_is_written_in_the_global_scope(
+    async def test_counting_a_heal_attempt_increments_it_once(
         self, repo: PlaybooksRepository
     ) -> None:
         spy, calls = _raw_update_spy()
@@ -526,7 +500,6 @@ class TestTheScopeAndShapeOfEveryRawWrite:
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
             await repo.increment_heal_attempts(WORKFLOW_ID, USER_ID, playbook_id="pb_first")
 
-        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE]
         assert calls[0]["update"] == {"$inc": {"heal_attempts": 1}}
 
     async def test_each_outcome_write_states_its_own_streak_intent(
@@ -592,21 +565,6 @@ class TestDeleteRevision:
         assert filter_["revision"] == 3
         assert "pb_1" in filter_.values()
 
-    async def test_a_removed_body_leaves_the_global_scope_cache(
-        self, repo: PlaybooksRepository, collection: MagicMock
-    ) -> None:
-        collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
-        with (
-            patch.object(repo, "_cache_evict", new_callable=AsyncMock) as evict,
-            patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate,
-        ):
-            assert (
-                await repo.delete_revision(WORKFLOW_ID, USER_ID, playbook_id="pb_1", revision=3)
-                is True
-            )
-        evict.assert_awaited_once_with(REPO_GLOBAL_SCOPE, "pb_1")
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
-
 
 @pytest.mark.unit
 class TestTheWriteIsTheTransition:
@@ -646,9 +604,10 @@ class TestTheWriteIsTheTransition:
             "suspect_streak": before.suspect_streak,
         }
         doc.update(update["$set"])
-        doc["suspect_streak"] = int(doc["suspect_streak"]) + int(
-            update.get("$inc", {}).get("suspect_streak", 0)
-        )
+        streak = doc["suspect_streak"]
+        grown = update.get("$inc", {}).get("suspect_streak", 0)
+        assert isinstance(streak, int) and isinstance(grown, int)
+        doc["suspect_streak"] = streak + grown
 
         expected = transition(before, Replayed(outcome))
         assert doc == {

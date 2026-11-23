@@ -16,9 +16,9 @@ _GENERATED_PROMPT_PATH = _APP_ROOT / "app" / "agents" / "prompts" / "openui_gene
 
 
 def test_generated_prompt_artifact_exists_and_nonempty() -> None:
-    """Regenerate with pnpm openui:gen-prompt if this fails."""
+    """Regenerate with mise openui:prompts if this fails."""
     assert _GENERATED_PROMPT_PATH.exists(), (
-        f"{_GENERATED_PROMPT_PATH} missing — run `pnpm openui:gen-prompt`"
+        f"{_GENERATED_PROMPT_PATH} missing — run `mise openui:prompts`"
     )
     content = _GENERATED_PROMPT_PATH.read_text(encoding="utf-8")
     assert len(content) > 500, "generated openui prompt is suspiciously short"
@@ -114,8 +114,8 @@ def test_enable_openui_removed_from_settings() -> None:
                 )
         # Check plain assignments (e.g. ENABLE_OPENUI = True)
         if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "ENABLE_OPENUI":
+            for assigned in node.targets:
+                if isinstance(assigned, ast.Name) and assigned.id == "ENABLE_OPENUI":
                     pytest.fail(
                         "ENABLE_OPENUI assignment found in settings.py — it should have been removed"
                     )

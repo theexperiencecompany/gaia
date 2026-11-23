@@ -10,8 +10,6 @@ from langgraph.config import get_config, get_stream_writer
 from langgraph.types import StreamWriter
 
 from app.constants.agents import AgentTag
-from app.constants.comms import CommsDirectiveKind
-from app.constants.hil import HIL_RESUME_CONFIG_KEY, SUBAGENT_RESUME_CONFIG_KEY
 
 # The configurable bag's shape and its typed read live in app.models.agent_config,
 # a leaf with no langchain import, so app.utils.timezone can read a home timezone
@@ -21,10 +19,9 @@ from app.models.agent_config import (
     AgentConfigurableView,
     AgentRunConfig,
     ExecutionMode,
+    ExecutorRunItem,
     RunMetadata,
     RunUserMissingError,
-    SubagentKind,
-    SubagentResumeItem,
     agent_configurable,
     get_session_id,
     get_user_id,
@@ -32,7 +29,6 @@ from app.models.agent_config import (
     read_run_metadata,
     run_analytics_context,
 )
-from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 
 __all__ = [
@@ -45,16 +41,13 @@ __all__ = [
     "AgentRunnableConfig",
     "AgentUserContext",
     "AnyAgentMiddleware",
-    "CommsDirective",
     "ExecutionMode",
+    "ExecutorRunItem",
     "InboxDrain",
     "InboxEntry",
     "RunMetadata",
     "RunUserMissingError",
     "RunningSubagent",
-    "SilentRunResult",
-    "SubagentKind",
-    "SubagentResumeItem",
     "agent_configurable",
     "get_session_id",
     "get_user_id",
@@ -173,13 +166,15 @@ def runtime_configurable(request: ToolCallRequest) -> AgentConfigurable:
 class LlmCallMetadata(TypedDict, total=False):
     """The run-metadata keys the TTFT callback reads off one LLM call.
 
-    lane_* is stamped by build_agent_config for the whole run; llm_label by
-    ainvoke_llm per call (under LLM_LABEL_METADATA_KEY).
+    lane_* and stream_id are stamped by build_agent_config for the whole run;
+    llm_label by ainvoke_llm per call (under LLM_LABEL_METADATA_KEY). stream_id
+    finds the live chat turn's clock for comms calls.
     """
 
     lane_provider: str
     lane_model: str
     llm_label: str
+    stream_id: str
 
 
 class StreamChunkMetadata(TypedDict, total=False):
@@ -214,16 +209,6 @@ class AgentRunnableConfig(RunnableConfig):
     agent_name: str
 
 
-@dataclass(frozen=True)
-class SilentRunResult:
-    """What one ``call_agent_silent`` turn produced."""
-
-    message: str
-    tool_data: list[ToolDataEntry]
-    #: The run's stream id, which keys its run record of every tool call it made.
-    stream_id: str
-
-
 @dataclass(frozen=True, slots=True)
 class InboxEntry:
     """One thing the executor has not been told yet.
@@ -249,15 +234,6 @@ class InboxDrain:
 
 
 @dataclass(frozen=True, slots=True)
-class CommsDirective:
-    """A parsed comms narration outcome. ``payload`` is the reply text, the silence
-    reason, or the emoji, depending on ``kind``."""
-
-    kind: CommsDirectiveKind
-    payload: str
-
-
-@dataclass(frozen=True, slots=True)
 class RunningSubagent:
     """One subagent currently executing for a conversation.
 
@@ -279,13 +255,10 @@ class RunningSubagent:
     dispatched_by: str | None = None
 
 
-# What survives a queue hop / HIL resume. AgentConfigurable IS the allowlist; the
+# What survives a queue hop. AgentConfigurable IS the allowlist; the
 # hand-maintained list it replaced had fallen behind. LangGraph's runtime keys
 # (checkpoint_ns, __pregel_*) are filtered by not being declared on it.
 CONFIGURABLE_OWNED_KEYS: frozenset[str] = frozenset(AgentConfigurable.__annotations__)
 
-# Owned keys scoped to ONE dispatch: hil_resume_replay ("this call is a replay") would
-# make a fresh run probe for interrupts it cannot have; subagent_resume is one run's own.
-CONFIGURABLE_RUN_SCOPED_KEYS: frozenset[str] = frozenset(
-    {HIL_RESUME_CONFIG_KEY, SUBAGENT_RESUME_CONFIG_KEY}
-)
+# Owned keys scoped to ONE dispatch: comms_run, the conversation runner's attempt feed.
+CONFIGURABLE_RUN_SCOPED_KEYS: frozenset[str] = frozenset({"comms_run"})

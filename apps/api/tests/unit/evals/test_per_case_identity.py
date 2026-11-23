@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from scripts.evals.core.types import Case
 from scripts.evals.suites.livechat import SuiteChatTransport
-from scripts.evals.suites.quality import ChatStreamTransport
+from scripts.evals.suites.quality import ChatTransport
 
 
 def _case(case_id: str) -> Case:
@@ -22,9 +22,9 @@ def _case(case_id: str) -> Case:
 
 @pytest.mark.parametrize(
     "transport",
-    [ChatStreamTransport(), SuiteChatTransport("comms"), SuiteChatTransport("safety")],
+    [ChatTransport(), SuiteChatTransport("comms"), SuiteChatTransport("safety")],
 )
-def test_each_case_gets_its_own_identity(transport: ChatStreamTransport) -> None:
+def test_each_case_gets_its_own_identity(transport: ChatTransport) -> None:
     first = transport.case_email(_case("case-one"))
     second = transport.case_email(_case("case-two"))
     assert first != second
@@ -37,8 +37,9 @@ def test_identity_is_namespaced_by_suite() -> None:
     """Two suites running concurrently must not collide in the same account."""
     comms = SuiteChatTransport("comms").case_email(_case("shared-id"))
     safety = SuiteChatTransport("safety").case_email(_case("shared-id"))
-    assert comms.startswith("comms-")
-    assert safety.startswith("safety-")
+    # The namespace is the Resend sub-address tag, so the user still lands on its test sink.
+    assert comms.startswith("delivered+comms-")
+    assert safety.startswith("delivered+safety-")
     assert comms != safety
 
 

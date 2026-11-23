@@ -1,4 +1,8 @@
 import { buildQueryString, normalizeListResponse } from "@gaia/shared/api";
+import type {
+  ConversationListResponse,
+  ConversationSummary,
+} from "@gaia/shared/api/generated";
 import type { Reminder } from "@gaia/shared/types";
 import type { Conversation } from "@/features/chat/types";
 import type { InAppNotificationsListResponse } from "@/features/notifications/types/inapp-notification-types";
@@ -6,38 +10,21 @@ import type { Todo, TodoListResponse } from "@/features/todos/types/todo-types";
 import type { WorkflowListResponse } from "@/features/workflows/types/workflow-types";
 import { apiService } from "@/lib/api";
 
-interface ApiConversation {
-  _id: string;
-  user_id: string;
-  conversation_id: string;
-  description: string;
-  is_system_generated: boolean;
-  system_purpose: string | null;
-  is_unread?: boolean;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-interface ConversationsResponse {
-  conversations: ApiConversation[];
-  total: number;
-  page: number;
-  limit: number;
-  total_pages: number;
-}
-
 interface RemindersListResponse {
   reminders: Reminder[];
   total: number;
 }
 
-function normalizeConversation(apiConv: ApiConversation): Conversation {
+const EPOCH_ISO = new Date(0).toISOString();
+
+function normalizeConversation(apiConv: ConversationSummary): Conversation {
   return {
     id: apiConv.conversation_id,
     title: apiConv.description || "Untitled conversation",
-    created_at: apiConv.createdAt,
-    updated_at: apiConv.updatedAt || apiConv.createdAt,
-    is_unread: apiConv.is_unread,
+    // An undated row sorts as the epoch, as the web list does.
+    created_at: apiConv.createdAt ?? EPOCH_ISO,
+    updated_at: apiConv.updatedAt ?? apiConv.createdAt ?? EPOCH_ISO,
+    is_unread: apiConv.is_unread ?? undefined,
   };
 }
 
@@ -50,7 +37,7 @@ export const dashboardApi = {
   },
 
   getRecentConversations: async (): Promise<Conversation[]> => {
-    const data = await apiService.get<ConversationsResponse>(
+    const data = await apiService.get<ConversationListResponse>(
       "/conversations?page=1&limit=3",
     );
     return (data.conversations || []).map(normalizeConversation);

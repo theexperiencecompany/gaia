@@ -16,6 +16,7 @@ from sentry_sdk.types import Event
 from app.agents.core.background import session as stream_session
 from app.config.sentry import init_sentry
 from app.config.settings import settings
+from app.models.work_cancel_models import WorkCancelled
 from app.services.providers import provider_credentials_service
 from tests.factories import make_config, make_state, make_user
 from tests.helpers import (
@@ -24,6 +25,22 @@ from tests.helpers import (
     create_fake_llm,
     create_fake_llm_with_tool_calls,
 )
+
+
+@pytest.fixture
+def origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the deployment a content origin, so links frame their files and sign content URLs."""
+    monkeypatch.setattr(
+        settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.heygaia.test"
+    )
+    monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
+
+
+@pytest.fixture
+def recorded_activity() -> Iterator[AsyncMock]:
+    """Stand in for the activity middleware's write, which needs Mongo; for tests that drive the full app."""
+    with patch("app.api.v1.middleware.activity.mark_user_seen", new_callable=AsyncMock) as record:
+        yield record
 
 
 @pytest.fixture(autouse=True)
@@ -37,21 +54,37 @@ def _isolate_stream_registries() -> Iterator[None]:
 
 
 class _CapturingTransport(Transport):
-    """Keep every error event the client would send to Sentry, in send order."""
+    """Keep every error event and transaction the client would send to Sentry, in send order."""
 
     def __init__(self, options: dict[str, object]) -> None:
         super().__init__(options)
         self.events: list[Event] = []
+        self.transactions: list[Event] = []
 
     def capture_envelope(self, envelope: Envelope) -> None:
         event = envelope.get_event()
         if event is not None:
             self.events.append(event)
+        transaction = envelope.get_transaction_event()
+        if transaction is not None:
+            self.transactions.append(transaction)
 
 
 @pytest.fixture
-def sentry_events() -> Iterator[list[Event]]:
-    """Run the real init_sentry against a transport stub; yields the error events sent."""
+def sentry_events(_sentry_transport: _CapturingTransport) -> list[Event]:
+    """Return the error events the real init_sentry sends, in send order."""
+    return _sentry_transport.events
+
+
+@pytest.fixture
+def sentry_transactions(_sentry_transport: _CapturingTransport) -> list[Event]:
+    """Return the transactions the real init_sentry sends, in send order."""
+    return _sentry_transport.transactions
+
+
+@pytest.fixture
+def _sentry_transport() -> Iterator[_CapturingTransport]:
+    """Run the real init_sentry against a transport stub that keeps what it would send."""
     with (
         patch("app.config.sentry.settings.SENTRY_DSN", "https://public@sentry.invalid/1"),
         patch("app.config.sentry._loguru") as sentry_loguru,
@@ -64,7 +97,7 @@ def sentry_events() -> Iterator[list[Event]]:
     client = sentry_sdk.get_client()
     transport = _CapturingTransport(client.options)
     client.transport = transport
-    yield transport.events
+    yield transport
     for handler_id in added_sinks:
         loguru_logger.remove(handler_id)
     # init_sentry's tags live on the global scope; left there, a later test reads them as its own.
@@ -171,3 +204,11 @@ def selfhost_credential_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMem
     provider_credentials_service._cache.clear()
     provider_credentials_service.resolved_configs.clear()
     provider_credentials_service.resolved_configs.update(saved_snapshot)
+
+
+@pytest.fixture
+def logged_stops(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Stand in for the conversation log a Stop is appended to; the runtime suite drives the real one."""
+    record = AsyncMock(return_value=WorkCancelled())
+    monkeypatch.setattr("app.services.conversation_stop_service.record_user_stop", record)
+    return record

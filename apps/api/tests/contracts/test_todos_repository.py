@@ -13,13 +13,13 @@ from datetime import UTC, datetime, timedelta
 import time
 
 from bson import ObjectId
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor, SystemGatePreset
 from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.todos import TodosRepository
 from app.models import todo_models
 from app.models.scheduler_models import DeactivationReason
@@ -27,6 +27,7 @@ from app.models.todo_models import (
     Priority,
     SearchMode,
     SubTask,
+    TodoDayWindow,
     TodoDocument,
     TodoLabelCount,
     TodoSearchParams,
@@ -42,6 +43,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
+from app.utils.timezone import Timezone
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 _DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
@@ -83,6 +85,17 @@ def _condition(field_name: str, value: str) -> SubscriptionCondition:
     return SubscriptionCondition(
         field_name=field_name, operator=ConditionOperator.EQUALS, value=value
     )
+
+
+_ONE_MS = timedelta(milliseconds=1)
+
+
+def _utc_window() -> TodoDayWindow:
+    return TodoDayWindow.for_timezone(Timezone.utc(), datetime.now(UTC))
+
+
+def _ist_window() -> TodoDayWindow:
+    return TodoDayWindow.for_timezone(Timezone.parse("Asia/Kolkata"), datetime.now(UTC))
 
 
 def _all_params(**overrides: object) -> TodoSearchParams:
@@ -167,6 +180,27 @@ class TestTodosRepository(UserScopedRepositoryContract):
     async def list_via_cache(self, repo, user_id: str) -> list:
         page = await repo.list_page(user_id=user_id, params=_all_params(), inbox_project_id=None)
         return page.items
+
+    @pytest.mark.parametrize("write", ["add_labels", "bulk_update", "delete_all_for_user"])
+    async def test_each_write_path_orphans_only_its_users_query_caches(
+        self, repo, make_doc, raw_collection, write
+    ):
+        mine = await repo.create(make_doc(user_id="writer"))
+        await repo.create(make_doc(user_id="bystander"))
+        writer_before = await self.list_via_cache(repo, "writer")
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
+        for user in ("writer", "bystander"):
+            await raw_collection.insert_one(make_doc(user_id=user).model_dump(exclude={"id"}))
+
+        if write == "add_labels":
+            await repo.add_labels(mine.id, user_id="writer", labels=["x"])
+        elif write == "bulk_update":
+            await repo.bulk_update("writer", [mine.id], TodoUpdate(title="renamed"))
+        else:
+            await repo.delete_all_for_user("writer")
+
+        assert await self.list_via_cache(repo, "writer") != writer_before
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
 
     # ---- list_page ---------------------------------------------------------
 
@@ -312,7 +346,9 @@ class TestTodosRepository(UserScopedRepositoryContract):
         )
 
         page = await repo.list_page(
-            user_id="u", params=_all_params(overdue=True), inbox_project_id=None
+            user_id="u",
+            params=_all_params(overdue=True, day_window=_utc_window()),
+            inbox_project_id=None,
         )
 
         assert page.total == 1
@@ -349,7 +385,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         await repo.create(
             make_doc(user_id="u", completed=False, priority=Priority.LOW, labels=["x"])
         )
-        stats = await repo.compute_stats(user_id="u")
+        stats = await repo.compute_stats(user_id="u", window=_utc_window())
         assert stats.total == 3
         assert stats.completed == 1
         assert stats.pending == 2
@@ -361,10 +397,114 @@ class TestTodosRepository(UserScopedRepositoryContract):
         await repo.create(make_doc(user_id="u", project_id="inbox-1", completed=False))
         await repo.create(make_doc(user_id="u", completed=True))
         await repo.create(make_doc(user_id="u", due_date=now - timedelta(days=1), completed=False))
-        counts = await repo.compute_counts(user_id="u", inbox_project_id="inbox-1")
+        counts = await repo.compute_counts(
+            user_id="u", inbox_project_id="inbox-1", window=_utc_window()
+        )
         assert counts.inbox == 1
         assert counts.completed == 1
         assert counts.overdue == 1
+
+    # ---- the user's todo day (TodoDayWindow) -------------------------------
+
+    async def test_counts_bucket_open_todos_on_the_users_local_day(self, repo, make_doc):
+        window = _ist_window()
+        for due in (window.today_start, window.today.end):
+            await repo.create(make_doc(user_id="u", due_date=due))
+        for due in (window.upcoming.start, window.upcoming.end):
+            await repo.create(make_doc(user_id="u", due_date=due))
+        await repo.create(make_doc(user_id="u", due_date=window.upcoming_end))
+        await repo.create(make_doc(user_id="u", due_date=window.today_start - _ONE_MS))
+        for due in (window.today_start, window.tomorrow_start, window.today_start - _ONE_MS):
+            await repo.create(make_doc(user_id="u", due_date=due, completed=True))
+
+        counts = await repo.compute_counts(user_id="u", inbox_project_id="none", window=window)
+
+        assert (counts.today, counts.upcoming, counts.overdue) == (2, 2, 1)
+        assert counts.completed == 3
+
+    async def test_stats_count_overdue_and_open_todos_per_project(self, repo, make_doc):
+        window = _ist_window()
+        await repo.create(make_doc(user_id="u", project_id="p1", due_date=window.today_start))
+        await repo.create(
+            make_doc(user_id="u", project_id="p1", due_date=window.today_start - _ONE_MS)
+        )
+        await repo.create(
+            make_doc(
+                user_id="u",
+                project_id="p1",
+                due_date=window.today_start - _ONE_MS,
+                completed=True,
+            )
+        )
+        await repo.create(make_doc(user_id="u", project_id="p2", completed=True))
+
+        stats = await repo.compute_stats(user_id="u", window=window)
+
+        assert stats.overdue == 1
+        assert stats.by_project == {"p1": 3, "p2": 1}
+        assert stats.pending_by_project == {"p1": 2}
+
+    async def test_not_overdue_filter_keeps_todos_due_from_local_today_on(self, repo, make_doc):
+        window = _ist_window()
+        await repo.create(make_doc(user_id="u", title="undated"))
+        await repo.create(make_doc(user_id="u", title="today", due_date=window.today_start))
+        await repo.create(
+            make_doc(user_id="u", title="yesterday", due_date=window.today_start - _ONE_MS)
+        )
+
+        page = await repo.list_page(
+            user_id="u",
+            params=_all_params(overdue=False, day_window=window),
+            inbox_project_id=None,
+        )
+
+        assert sorted(t.title for t in page.items) == ["today", "undated"]
+
+    async def test_completed_after_lists_todos_completed_from_that_instant(self, repo, make_doc):
+        window = _ist_window()
+        await repo.create(
+            make_doc(user_id="u", title="at", completed=True, completed_at=window.today_start)
+        )
+        await repo.create(
+            make_doc(
+                user_id="u",
+                title="before",
+                completed=True,
+                completed_at=window.today_start - _ONE_MS,
+            )
+        )
+
+        page = await repo.list_page(
+            user_id="u",
+            params=_all_params(completed=True, completed_after=window.today_start),
+            inbox_project_id=None,
+        )
+
+        assert [t.title for t in page.items] == ["at"]
+
+    async def test_next_due_is_the_soonest_open_todo_after_the_instant(self, repo, make_doc):
+        after = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
+        await repo.create(make_doc(user_id="u", title="past", due_date=after))
+        await repo.create(make_doc(user_id="u", title="later", due_date=after + timedelta(days=2)))
+        await repo.create(
+            make_doc(user_id="u", title="soonest", due_date=after + timedelta(hours=1))
+        )
+        await repo.create(
+            make_doc(
+                user_id="u",
+                title="done",
+                due_date=after + timedelta(minutes=1),
+                completed=True,
+            )
+        )
+        await repo.create(
+            make_doc(user_id="other", title="theirs", due_date=after + timedelta(minutes=1))
+        )
+
+        found = await repo.next_due("u", after=after)
+
+        assert found is not None and found.title == "soonest"
+        assert await repo.next_due("u", after=after + timedelta(days=3)) is None
 
     async def test_top_labels(self, repo, make_doc):
         await repo.create(make_doc(user_id="u", labels=["a", "b"]))
@@ -1514,7 +1654,7 @@ class TestOpenExternalRefIndex:
 
     async def test_a_second_open_todo_for_the_same_thread_is_rejected(self, repo, make_doc):
         await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
 
     async def test_completing_the_todo_frees_the_thread(self, repo, make_doc):
@@ -1560,6 +1700,87 @@ class TestOpenExternalRefIndex:
         assert found is not None and found.id == open_todo.id
         assert await repo.find_open_by_external_ref("u2", self._thread()) is None
         assert await repo.find_open_by_external_ref("u1", self._thread("thread-3")) is None
+
+
+class TestBriefingReads:
+    """The briefing's look-back (completed since) and open-todos reads."""
+
+    async def test_lists_todos_completed_since_the_cutoff_newest_first(
+        self, repo, make_doc, raw_collection
+    ):
+        since = datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        done = {
+            "at_cutoff": since,
+            "latest": since + timedelta(hours=2),
+            "before": since - timedelta(seconds=1),
+        }
+        ids: dict[str, str] = {}
+        for title, completed_at in done.items():
+            todo = await repo.create(make_doc(user_id="u-lookback", title=title, completed=True))
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"completed_at": completed_at}}
+            )
+            ids[title] = todo.id
+        still_open = await repo.create(make_doc(user_id="u-lookback", title="open"))
+        await raw_collection.update_one(
+            {"_id": ObjectId(still_open.id)}, {"$set": {"completed_at": since}}
+        )
+
+        found = await repo.list_completed_since("u-lookback", since=since)
+
+        assert [t.id for t in found] == [ids["latest"], ids["at_cutoff"]]
+
+    async def test_lists_the_users_activity_on_one_kind_of_outside_object_since_the_cutoff(
+        self, repo, make_doc, raw_collection
+    ):
+        user_id, since = "u-activity", datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        gmail = todo_models.ExternalRefSource.GMAIL_THREAD
+        desk = todo_models.ExternalRefSource.INBOX_DESK
+
+        async def seed(
+            title: str, source, *, created_at: datetime, completed_at=None, user=user_id
+        ):
+            todo = await repo.create(
+                make_doc(
+                    user_id=user,
+                    title=title,
+                    external_ref=todo_models.ExternalRef(source=source, id=title),
+                )
+            )
+            fields = {"created_at": created_at, "completed_at": completed_at}
+            await raw_collection.update_one({"_id": ObjectId(todo.id)}, {"$set": fields})
+            return todo.id
+
+        old = since - timedelta(days=3)
+        opened = await seed("opened", gmail, created_at=since)
+        closed = await seed("closed", gmail, created_at=old, completed_at=since)
+        await seed("stale", gmail, created_at=old, completed_at=since - timedelta(seconds=1))
+        await seed("other-kind", desk, created_at=since)
+        await seed("theirs", gmail, created_at=since, user="someone-else")
+
+        found = await repo.list_external_ref_activity_since(user_id, gmail, since=since)
+
+        assert sorted(t.id for t in found) == sorted([opened, closed])
+
+    async def test_lists_the_users_own_open_todos_most_recently_updated_first(
+        self, repo, make_doc, raw_collection
+    ):
+        user_id = "u-open"
+        older = await repo.create(make_doc(user_id=user_id, title="older"))
+        newer = await repo.create(make_doc(user_id=user_id, title="newer"))
+        await repo.create(make_doc(user_id=user_id, title="tracked", labels=[GAIA_TRACKED_LABEL]))
+        await repo.create(make_doc(user_id=user_id, title="done", completed=True))
+        await repo.create(make_doc(user_id="someone-else", title="theirs"))
+        for hour, todo in enumerate([older, newer]):
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)},
+                {"$set": {"updated_at": datetime(2026, 10, 14, hour, tzinfo=UTC)}},
+            )
+
+        found = await repo.list_open_user_todos(user_id, limit=10)
+
+        assert [t.id for t in found] == [newer.id, older.id]
+        assert [t.id for t in await repo.list_open_user_todos(user_id, limit=1)] == [newer.id]
 
 
 async def test_running_tracked_todos_are_the_users_open_unpaused_tracked_ones(repo, make_doc):

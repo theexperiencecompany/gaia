@@ -23,7 +23,6 @@ class LocalCredentialsRepository(MongoRepository[LocalCredentialDocument, LocalC
     document_model = LocalCredentialDocument
     update_model = LocalCredentialUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_by_user_id(self, user_id: str) -> LocalCredentialDocument | None:
         """Return the credential for one user, or None when they authenticate some other way."""

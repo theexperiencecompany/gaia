@@ -7,9 +7,11 @@ Pure stdlib + pytest — no repo project needed:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 import sys
+import time
 from typing import Any
 
 import pytest
@@ -17,21 +19,31 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from directives import (
+    ANSWERED_TOOL,
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
+    HAND_OFF_SILENCE_ARGS,
+    INTENT_SECTION_HEAD,
+    REACT_TOOL,
     SCRIPTED_HAND_OFF_ARGS,
+    STAY_SILENT_TOOL,
     VERBATIM_REQUEST_HEADER,
     DirectiveError,
     FailDirective,
+    NarrateDirective,
+    PaceDirective,
+    Response,
     SayDirective,
     SayResponse,
     ToolCallResponse,
     ToolDirective,
+    WaitDirective,
     parse_directives,
     parse_request,
     resolve_response,
+    unanswered_tool_calls,
 )
-from wire import ScriptedFault, build_chat_completion, stream_chunks
+from wire import ScriptedFault, build_chat_completion, sse_lines, stream_chunks
 
 #: One chat-completions message, as the stub reads it off the wire.
 Message = dict[str, Any]
@@ -205,7 +217,7 @@ def test_nested_handoff_script_resolves_through_all_three_tiers():
     # comms: handoff is unbound, call_executor is -> forward the script verbatim.
     assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
         name=CALL_EXECUTOR_TOOL,
-        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []},
     )
     # executor: handoff is bound -> emit it, carrying the subagent's script intact.
     assert resolve_response([_user(script)], frozenset({"handoff"})) == ToolCallResponse(
@@ -214,6 +226,20 @@ def test_nested_handoff_script_resolves_through_all_three_tiers():
     # subagent: that task text is itself a script the stub can drive.
     assert resolve_response([_user(inner)], frozenset({"fetch_emails"})) == ToolCallResponse(
         name="fetch_emails", args={"max_results": 5}
+    )
+
+
+def test_a_scripted_hand_off_names_the_open_messages_it_takes():
+    script = _tool_directive(CALL_EXECUTOR_TOOL, {"task": "work"}) + " [[say:On it.]]"
+    assert resolve_response([_user(f"[#3] {script}")], COMMS_TOOLS) == ToolCallResponse(
+        name=CALL_EXECUTOR_TOOL, args={"task": "work", "for_messages": [3]}
+    )
+
+
+def test_a_scripted_reaction_answers_the_newest_message_with_the_react_tool():
+    tools = COMMS_TOOLS | {REACT_TOOL}
+    assert resolve_response([_user("[#4] thanks [[react:❤️]]")], tools) == ToolCallResponse(
+        name=REACT_TOOL, args={"emoji": "❤️", "message_id": 4}
     )
 
 
@@ -327,18 +353,42 @@ def test_comms_forwards_executor_tool_via_call_executor():
     got = resolve_response([_user(script)], COMMS_TOOLS)
     assert got == ToolCallResponse(
         name=CALL_EXECUTOR_TOOL,
-        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []},
     )
 
 
-def test_comms_after_forwarding_emits_say():
+def test_comms_after_forwarding_stays_silent():
+    """The say is the result's, re-voiced when it arrives; said at the hand-off it showed twice."""
     script = '[[tool:create_reminder {"title": "x"}]] [[say:Reminder set!]]'
     messages = [
         _user(script),
         _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
         _tool_result(CALL_EXECUTOR_TOOL),
     ]
-    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text="Reminder set!")
+    assert resolve_response(messages, COMMS_TOOLS) == ToolCallResponse(
+        name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS
+    )
+
+
+@pytest.mark.parametrize(
+    ("closing", "expected"),
+    [
+        ("[[say:Partial.]] [[fail:boom]]", SayResponse(text="Partial.", fail="boom")),
+        (
+            "[[narrate:Let me check.]] [[say:Checked.]]",
+            ToolCallResponse(name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS),
+        ),
+    ],
+)
+def test_comms_after_forwarding_says_only_a_reply_it_breaks(closing: str, expected: Response):
+    """A fail scripts the front door's own turn; a narrated hand-off's reply comes once, from the work."""
+    script = f'[[tool:create_reminder {{"title": "x"}}]] {closing}'
+    messages = [
+        _user(script),
+        _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
+        _tool_result(CALL_EXECUTOR_TOOL),
+    ]
+    assert resolve_response(messages, COMMS_TOOLS) == expected
 
 
 def test_comms_single_forward_covers_multiple_executor_tools():
@@ -349,7 +399,9 @@ def test_comms_single_forward_covers_multiple_executor_tools():
         _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
         _tool_result(CALL_EXECUTOR_TOOL),
     ]
-    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text="ok")
+    assert resolve_response(messages, COMMS_TOOLS) == ToolCallResponse(
+        name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS
+    )
 
 
 def test_comms_direct_tool_when_bound():
@@ -656,8 +708,12 @@ def test_a_malformed_directive_still_fails_loud():
 
 
 def _executor_brief(request: str, task: str) -> str:
+    """Lay the brief out as compose_executor_brief does: quote, task, intent, definition of done."""
     return (
         f"{VERBATIM_REQUEST_HEADER}\n{request}\n\n{task}\n\n"
+        "Outcome the user actually wants: the scripted directives run\n"
+        "Time horizon: one shot\n"
+        "Nothing irreversible is approved.\n\n"
         "Definition of done (every item must be true before you finish):\n"
         "- scripted directives executed"
     )
@@ -672,6 +728,27 @@ def test_a_brief_quoting_the_request_runs_its_script_once() -> None:
     )
     after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
     assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
+
+
+def test_a_brief_with_an_intent_section_runs_its_script_once() -> None:
+    """Regression: the intent between task and done hid the quote, so every sim hand-off ran twice."""
+    script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+    task_and_intent = f"{script}\n\n{INTENT_SECTION_HEAD} a reminder\nTime horizon: one_shot"
+    brief = _user(_executor_brief(script, task_and_intent))
+    after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+
+    assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
+
+
+def test_a_request_containing_an_intent_header_is_still_stripped_when_restated() -> None:
+    script = f'[[tool:create_reminder {{"title": "stretch"}}]]\n\n{INTENT_SECTION_HEAD} stretch'
+    brief = _user(_executor_brief(script, script))
+    after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+
+    assert resolve_response([brief], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "stretch"}
+    )
+    assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text=DEFAULT_REPLY)
 
 
 def test_a_multi_paragraph_request_quote_is_skipped_whole() -> None:
@@ -723,6 +800,81 @@ def test_a_restated_request_repeating_a_paragraph_runs_each_once() -> None:
     ) == SayResponse(text="done")
 
 
+def test_a_handed_off_request_runs_once_in_the_brief_built_from_it() -> None:
+    """The brief quotes the request without its [#n] handle, so the task must drop it too."""
+    request = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+    hand_off = resolve_response([_user(f"[#1] {request}")], frozenset({CALL_EXECUTOR_TOOL}))
+    assert isinstance(hand_off, ToolCallResponse)
+    assert hand_off.args["task"] == request
+
+    brief = _user(_executor_brief(request, hand_off.args["task"]))
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == SayResponse(
+        text="Reminder set!"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# A result handed back to a tier is re-voiced, not answered with the script again
+# --------------------------------------------------------------------------- #
+
+
+def _result(tag: str, body: str) -> Message:
+    return _user(f"<{tag}>\n{body}\n</{tag}>\n")
+
+
+def test_the_front_door_re_voices_the_executor_result_handed_to_it():
+    script = '[[tool:create_reminder {"title": "x"}]] [[say:On it.]]'
+    messages = [
+        _user(script),
+        _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
+        _tool_result(CALL_EXECUTOR_TOOL),
+        {"role": "assistant", "content": "On it."},
+        _user("[[say:Side answer.]]"),
+        {"role": "assistant", "content": "Side answer."},
+        _result("executor_result", "Reminder set for 9am."),
+    ]
+    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text="Reminder set for 9am.")
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        "[Background work finished. The user has not seen this result yet, so report it in "
+        "your reply: Pantry stocked.]",
+        "[Background work ended failed. The user has not seen this yet, so tell them in your "
+        "reply: Pantry stocked.]",
+    ],
+)
+def test_the_front_door_re_voices_the_conversation_steps_finished_work_note(note: str):
+    """Regression (live test): the result was re-voiced as the newest script's say instead."""
+    script = '[[tool:create_todo {"title": "x"}]] [[say:On it.]]'
+    messages = [
+        _user(script),
+        _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
+        _tool_result(CALL_EXECUTOR_TOOL),
+        {"role": "assistant", "content": "On it."},
+        _user("three [[say:Got all three.]]"),
+        {"role": "assistant", "content": "Got all three."},
+        _user(note),
+    ]
+    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text="Pantry stocked.")
+
+
+def test_the_working_tier_re_voices_a_browser_result():
+    messages = [
+        _user('[[tool:web_search {"q": "x"}]] [[say:ok]]'),
+        _assistant_tool_call("web_search"),
+        _tool_result("web_search"),
+        _result("browser_task_result", "Booked the 6pm table."),
+    ]
+    assert resolve_response(messages, EXECUTOR_TOOLS) == SayResponse(text="Booked the 6pm table.")
+
+
+def test_a_result_older_than_the_newest_script_is_not_re_voiced():
+    messages = [_result("executor_error", "it broke"), _user("[[say:fresh]]")]
+    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text="fresh")
+
+
 # --------------------------------------------------------------------------- #
 # Fault injection
 # --------------------------------------------------------------------------- #
@@ -756,3 +908,288 @@ def test_a_failing_stream_sends_its_text_then_breaks():
         next(chunks)
     text = "".join(c["choices"][0]["delta"].get("content", "") for c in sent)
     assert text == "half an answer"
+
+
+# --------------------------------------------------------------------------- #
+# Timing: wait and pace
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_wait_and_pace_directives():
+    assert parse_directives("[[wait:250]] [[pace:40]] [[say:hi]]") == [
+        WaitDirective(ms=250),
+        PaceDirective(ms=40),
+        SayDirective(text="hi"),
+    ]
+
+
+@pytest.mark.parametrize("bad", ["[[wait:soon]]", "[[wait:-5]]", "[[pace:]]", "[[wait:1.5]]"])
+def test_a_wait_or_pace_that_is_not_a_whole_millisecond_count_raises(bad: str):
+    with pytest.raises(DirectiveError):
+        parse_directives(bad)
+
+
+def test_a_wait_delays_only_the_tool_call_it_precedes():
+    script = '[[tool:web_search {"q": "x"}]] [[wait:3000]] [[tool:create_reminder {"title": "y"}]] [[say:ok]]'
+    first = [_user(script)]
+    assert resolve_response(first, EXECUTOR_TOOLS) == ToolCallResponse(
+        name="web_search", args={"q": "x"}
+    )
+    second = first + [_assistant_tool_call("web_search"), _tool_result("web_search")]
+    assert resolve_response(second, EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "y"}, delay_ms=3000
+    )
+    done = second + [_assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+    assert resolve_response(done, EXECUTOR_TOOLS) == SayResponse(text="ok")
+
+
+def test_consecutive_waits_add_up_and_a_trailing_wait_delays_the_reply():
+    script = _user("[[wait:1000]] [[say:hi]] [[wait:500]]")
+    assert resolve_response([script], COMMS_TOOLS) == SayResponse(text="hi", delay_ms=1500)
+
+
+def test_the_front_door_forwards_at_once_and_the_executor_waits():
+    script = '[[wait:2000]] [[tool:create_reminder {"title": "x"}]] [[say:Set]]'
+    assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
+        name=CALL_EXECUTOR_TOOL, args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []}
+    )
+    assert resolve_response([_user(script)], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "x"}, delay_ms=2000
+    )
+
+
+def test_a_tool_retrieval_never_carries_the_wait_the_tool_does():
+    script = _user('[[wait:700]] [[tool:create_todo {"title": "x"}]] [[say:Done]]')
+    bigtool = frozenset({"retrieve_tools"})
+    retrieve = resolve_response([script], bigtool)
+    assert isinstance(retrieve, ToolCallResponse)
+    assert retrieve.name == "retrieve_tools"
+    assert retrieve.delay_ms == 0
+    retrieved = [
+        script,
+        _assistant_tool_call("retrieve_tools", {"exact_tool_names": ["create_todo"]}),
+        _tool_result("retrieve_tools"),
+    ]
+    assert resolve_response(retrieved, bigtool | {"create_todo"}) == ToolCallResponse(
+        name="create_todo", args={"title": "x"}, delay_ms=700
+    )
+
+
+def test_a_steer_s_wait_delays_the_tool_it_brings():
+    messages = [
+        _user('[[tool:web_search {"q": "x"}]] [[say:ok]]'),
+        _assistant_tool_call("web_search"),
+        _tool_result("web_search"),
+        _user(
+            '<user_interjection>[[wait:900]] [[tool:create_reminder {"title": "y"}]]</user_interjection>'
+        ),
+    ]
+    assert resolve_response(messages, EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "y"}, delay_ms=900
+    )
+
+
+def test_pace_sets_the_reply_s_streaming_cadence():
+    assert resolve_response(
+        [_user("[[pace:20]] [[say:one two three]]")], COMMS_TOOLS
+    ) == SayResponse(text="one two three", pace_ms=20)
+
+
+def _content_pieces(lines: list[str]) -> list[str]:
+    chunks = [json.loads(line[len("data: ") :]) for line in lines if line != "data: [DONE]\n\n"]
+    return [
+        c["choices"][0]["delta"]["content"]
+        for c in chunks
+        if c["choices"] and "content" in c["choices"][0]["delta"]
+    ]
+
+
+def test_a_paced_reply_streams_one_word_per_chunk_spaced_by_the_pace():
+    async def collect() -> tuple[list[str], float]:
+        started = time.perf_counter()
+        response = SayResponse(text="one two three", pace_ms=30)
+        lines = [line async for line in sse_lines("m", response, 5)]
+        return lines, time.perf_counter() - started
+
+    lines, elapsed = asyncio.run(collect())
+    assert _content_pieces(lines) == ["one ", "two ", "three"]
+    assert elapsed >= 0.06
+
+
+def test_an_unpaced_reply_streams_its_usual_pieces_without_sleeping():
+    async def collect() -> tuple[list[str], float]:
+        started = time.perf_counter()
+        lines = [line async for line in sse_lines("m", SayResponse(text="one two three"), 5)]
+        return lines, time.perf_counter() - started
+
+    lines, elapsed = asyncio.run(collect())
+    assert "".join(_content_pieces(lines)) == "one two three"
+    assert elapsed < 0.05
+
+
+# --------------------------------------------------------------------------- #
+# Narration: text the front door streams with its hand-off, then retracts
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_narrate_directive():
+    assert parse_directives("[[narrate:On it.]] [[say:done]]") == [
+        NarrateDirective(text="On it."),
+        SayDirective(text="done"),
+    ]
+
+
+def test_the_front_door_streams_narration_with_its_hand_off():
+    script = '[[pace:20]] [[narrate:On it, checking.]] [[tool:create_reminder {"title": "x"}]] [[say:Done.]]'
+    assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
+        name=CALL_EXECUTOR_TOOL,
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []},
+        text="On it, checking.",
+        pace_ms=20,
+    )
+
+
+def test_the_executor_never_narrates():
+    script = '[[narrate:On it.]] [[tool:create_reminder {"title": "x"}]] [[say:Done.]]'
+    assert resolve_response([_user(script)], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "x"}
+    )
+
+
+def test_narration_streams_word_by_word_before_the_tool_call():
+    async def collect() -> list[str]:
+        response = ToolCallResponse(
+            name=CALL_EXECUTOR_TOOL, args={"task": "t"}, text="Let me look.", pace_ms=5
+        )
+        return [line async for line in sse_lines("m", response, 5)]
+
+    lines = asyncio.run(collect())
+    chunks = [json.loads(line[len("data: ") :]) for line in lines if line != "data: [DONE]\n\n"]
+    deltas = [c["choices"][0]["delta"] for c in chunks if c["choices"]]
+    first_call = next(i for i, d in enumerate(deltas) if d.get("tool_calls"))
+    assert _content_pieces(lines) == ["Let ", "me ", "look."]
+    assert all("tool_calls" not in d for d in deltas[:first_call] if "content" in d)
+    assert max(i for i, d in enumerate(deltas) if "content" in d) < first_call
+
+
+def test_comms_names_the_messages_its_reply_answers() -> None:
+    messages = [
+        {"role": "assistant", "content": "earlier"},
+        {"role": "user", "content": "[#3] hi [[say:Hello.]]"},
+        {"role": "user", "content": "[#4] and you?"},
+    ]
+    tools = frozenset({CALL_EXECUTOR_TOOL, ANSWERED_TOOL})
+    assert resolve_response(messages, tools) == ToolCallResponse(
+        name=ANSWERED_TOOL, args={"message_ids": [3, 4]}, text="Hello."
+    )
+
+
+def test_a_hand_off_names_the_messages_it_handles() -> None:
+    script = '[#2] remind me [[tool:create_reminder {"title": "x"}]] [[say:Done.]]'
+    response = resolve_response(
+        [{"role": "user", "content": script}], frozenset({CALL_EXECUTOR_TOOL})
+    )
+    assert isinstance(response, ToolCallResponse)
+    assert response.args["for_messages"] == [2]
+
+
+def test_a_thread_with_a_tool_call_no_result_answers_is_refused_like_a_real_provider() -> None:
+    call = {"id": "call_1", "type": "function", "function": {"name": "x", "arguments": "{}"}}
+    open_thread = [
+        _user("go"),
+        {"role": "assistant", "content": "", "tool_calls": [call]},
+        _user("next"),
+    ]
+    answered = [*open_thread[:2], {"role": "tool", "tool_call_id": "call_1", "content": "ok"}]
+
+    assert unanswered_tool_calls(open_thread) == ["call_1"]
+    assert unanswered_tool_calls(answered) == []
+
+
+_ASKED = [
+    _user('[[tool:create_todo {"title":"t"}]] [[say:Added t.]]'),
+    _assistant_tool_call("create_todo", {"title": "t"}),
+    _tool_result("create_todo"),
+]
+
+
+def test_a_plain_approval_wake_runs_the_approved_call_through_execute() -> None:
+    ticket = _interjection(
+        "APPROVAL_READY ap_1: the user approved Add t (0h0m old). Run it now with "
+        'execute(tool_name="approve", data={"id": "ap_1"}) and continue with its result.'
+    )
+
+    response = resolve_response([*_ASKED, ticket], EXECUTOR_TOOLS | {"execute"})
+
+    assert response == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run the approved call",
+            "tool_name": "approve",
+            "data": {"id": "ap_1"},
+        },
+    )
+
+
+def test_an_approval_with_a_change_redoes_the_scripted_call_naming_what_it_amends() -> None:
+    ticket = _interjection(
+        "APPROVAL_READY ap_1: the user approved Add t (0h0m old) with a change: "
+        '\'call it u [[tool:create_todo {"title":"u"}]] [[say:Added u.]]\'. Do not run '
+        "the stored call, it lacks the change: make the call again with the change applied, as "
+        'execute(tool_name="create_todo", data=<the changed arguments>, amends="ap_1").'
+    )
+
+    response = resolve_response([*_ASKED, ticket], EXECUTOR_TOOLS | {"execute"})
+
+    assert response == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run create_todo with the change",
+            "tool_name": "create_todo",
+            "data": {"title": "u"},
+            "amends": "ap_1",
+        },
+    )
+
+
+def _pending(name: str, approval_id: str) -> Message:
+    return {
+        "role": "tool",
+        "tool_call_id": f"call_{name}",
+        "content": f"PENDING {approval_id}: Add t queued — needs your OK.",
+    }
+
+
+def test_a_call_waiting_on_the_user_ends_the_run_asking_not_with_the_closing() -> None:
+    asked = [*_ASKED[:2], _pending("create_todo", "ap_1")]
+
+    response = resolve_response(asked, EXECUTOR_TOOLS | {"finish_task"})
+
+    assert response == ToolCallResponse(
+        name="finish_task", args={"result": "Waiting for your approval.", "outcome": "ask"}
+    )
+
+
+def test_after_the_ask_the_wake_runs_the_approved_call_then_the_closing() -> None:
+    ticket = _interjection(
+        'APPROVAL_READY ap_1: the user approved Add t (0h0m old). Run it now with execute(tool_name="approve", data={"id": "ap_1"}).'
+    )
+    asked = [
+        *_ASKED[:2],
+        _pending("create_todo", "ap_1"),
+        _assistant_tool_call(
+            "finish_task", {"result": "Waiting for your approval.", "outcome": "ask"}
+        ),
+        _tool_result("finish_task"),
+        ticket,
+    ]
+    tools = EXECUTOR_TOOLS | {"finish_task", "execute"}
+
+    redeem = resolve_response(asked, tools)
+    closing = resolve_response(
+        [*asked, _assistant_tool_call("execute", redeem.args), _tool_result("execute")], tools
+    )
+
+    assert isinstance(redeem, ToolCallResponse)
+    assert (redeem.name, redeem.args["tool_name"]) == ("execute", "approve")
+    assert closing == SayResponse("Added t.")

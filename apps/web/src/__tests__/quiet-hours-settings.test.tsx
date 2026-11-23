@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetchHours = vi.fn();
 const updateHours = vi.fn();
 
-vi.mock("@/features/settings/api/quietHoursApi", () => ({
-  quietHoursApi: {
-    fetch: () => fetchHours(),
-    update: (...args: unknown[]) => updateHours(...args),
+vi.mock("@/lib/api/typed", () => ({
+  api: {
+    get: () => fetchHours(),
+    patch: (_path: string, init: { body: unknown }) => updateHours(init.body),
   },
 }));
 
@@ -18,12 +18,9 @@ vi.mock("@/lib/timezone", () => ({
   getUserHomeTimezone: () => "Asia/Kolkata",
 }));
 
+import { formatHour } from "@shared/utils";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
-import {
-  formatHour,
-  fromAxis,
-  toAxis,
-} from "@/features/settings/utils/quietHoursAxis";
+import { fromAxis, toAxis } from "@/features/settings/utils/quietHoursAxis";
 
 const NIGHT = { enabled: true, start_hour: 22, end_hour: 8 };
 
@@ -110,6 +107,25 @@ describe("the quiet-hours section", () => {
         screen.getByText(`${formatHour(22)} to ${formatHour(8)}`),
       ).toBeTruthy(),
     );
+  });
+
+  it("saves the window a thumb was moved to", async () => {
+    render(<QuietHoursSettings />, { wrapper });
+    const [startThumb] = await screen.findAllByRole("slider");
+
+    fireEvent.keyDown(startThumb, { key: "ArrowRight" });
+    fireEvent.keyUp(startThumb, { key: "ArrowRight" });
+
+    await waitFor(() =>
+      expect(updateHours).toHaveBeenCalledWith({ ...NIGHT, start_hour: 23 }),
+    );
+  });
+
+  it("labels the axis at noon and midnight", async () => {
+    render(<QuietHoursSettings />, { wrapper });
+
+    expect(await screen.findByText("Midnight")).toBeTruthy();
+    expect(screen.getAllByText("Noon")).toHaveLength(2);
   });
 
   it("shows nothing, and throws nothing, when the stored window cannot be read", async () => {

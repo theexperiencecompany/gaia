@@ -25,17 +25,16 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from fastapi.responses import HTMLResponse, Response
 from jwt import PyJWTError
-from starlette.websockets import WebSocketState
 import websockets
 
-from app.browser_host.pumps import pump_until_first_close
+from app.browser_host.pumps import is_closed, pump_until_first_close
 from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
-from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
+from app.schemas.errors import NON_JSON_ROUTE_ERROR_RESPONSES
 from app.services.browser import registry
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.live_code import live_code_ended, resolve_live_code
@@ -115,7 +114,9 @@ async def step_screenshot(code: str, index: int) -> Response:
     return Response(content=frame, media_type="image/jpeg")
 
 
-@router.get("/replays/{code}", response_class=HTMLResponse, responses=HTML_ROUTE_ERROR_RESPONSES)
+@router.get(
+    "/replays/{code}", response_class=HTMLResponse, responses=NON_JSON_ROUTE_ERROR_RESPONSES
+)
 async def replay_page(code: str) -> HTMLResponse:
     """Standalone recap slideshow for a finished session: its code is the capability."""
     log.set(browser={"operation": "replay_page"})
@@ -172,7 +173,9 @@ async def live_view_ws(
         return
     log.set(browser={"session_id": target.session_id})
     if not target.live_ws:
-        log.warning(f"{LogTag.BROWSER} browser live view has no host stream")
+        log.warning(
+            f"{LogTag.BROWSER} browser live view has no host stream", reason="no_host_stream"
+        )
         await websocket.close(code=_WS_SESSION_GONE)
         return
 
@@ -196,7 +199,7 @@ async def _proxy_live_view(client_ws: WebSocket, host_ws_url: str, ends: _Connec
             f"{LogTag.BROWSER} browser live view host unreachable", error_type=type(exc).__name__
         )
     finally:
-        if client_ws.application_state is not WebSocketState.DISCONNECTED:
+        if not is_closed(client_ws):
             await client_ws.close()
     log.info(f"{LogTag.BROWSER} browser live view proxy closed")
 

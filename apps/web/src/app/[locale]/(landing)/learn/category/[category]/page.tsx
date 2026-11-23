@@ -1,3 +1,4 @@
+import "../../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -94,7 +95,7 @@ export default async function GlossaryCategoryPage({ params }: PageProps) {
         url: `${siteConfig.url}/learn/${term.slug}`,
       }))}
     >
-      <GlossaryTermGrid terms={category.items} />
+      <GlossaryTermGrid terms={category.items} headingLevel="h2" />
     </CategoryHubPage>
   );
 }

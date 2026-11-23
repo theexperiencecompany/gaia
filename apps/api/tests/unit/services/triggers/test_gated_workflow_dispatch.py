@@ -22,6 +22,7 @@ from sentry_sdk.types import Event
 import time_machine
 
 from app.constants.trigger_gates import GateAuthor
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
@@ -51,6 +52,7 @@ def _workflow(
     trigger_name: str | None = "gmail_new_message",
 ) -> Workflow:
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=USER_ID,
         title="Draft replies",
@@ -259,7 +261,12 @@ def night(fake_redis: fakeredis.aioredis.FakeRedis, arq: ArqRedis) -> Iterator[S
         patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
     ):
         yield SimpleNamespace(
-            jev=gate.jev, claim=claim, skipped=gate.workflow_skips, arq=arq, redis=fake_redis
+            jev=gate.jev,
+            claim=claim,
+            skipped=gate.workflow_skips,
+            arq=arq,
+            redis=fake_redis,
+            owner=gate.owner,
         )
 
 
@@ -271,13 +278,8 @@ async def _fire_at(
     Returns the queue and the workflow's batch, read before the clock moves on:
     their keys expire against wall time.
     """
-    with (
-        patch(
-            "app.services.triggers.trigger_gate.get_profile_timezone",
-            AsyncMock(return_value=Timezone.parse(zone)),
-        ),
-        time_machine.travel(at, tick=False),
-    ):
+    night.owner.timezone = zone
+    with time_machine.travel(at, tick=False):
         await _fire([workflow])
         batch = await night.redis.lrange(f"trigger_batch:{workflow.id}", 0, -1)
         return await night.arq.queued_jobs(), batch
@@ -353,13 +355,7 @@ class TestQuietHours:
         immediate = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
         workflow = _workflow(trigger_config=immediate)
 
-        with (
-            patch(
-                "app.services.triggers.trigger_gate.get_profile_timezone",
-                AsyncMock(return_value=Timezone.parse(KOLKATA)),
-            ),
-            time_machine.travel(datetime(2026, 10, 1, 21, 0, tzinfo=UTC), tick=False),
-        ):
+        with time_machine.travel(datetime(2026, 10, 1, 21, 0, tzinfo=UTC), tick=False):
             await _fire([workflow], text="Deploy is done")
             await _fire([workflow], message_id="t2", text="Can you review the PR?")
             batch = await night.redis.lrange(f"trigger_batch:{WORKFLOW_ID}", 0, -1)

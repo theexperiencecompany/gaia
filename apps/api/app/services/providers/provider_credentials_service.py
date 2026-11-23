@@ -37,7 +37,7 @@ class ProviderConfig(BaseModel):
     base_url: str | None = None
     model: str | None = None
     preset: str | None = None  # e.g. "opencode" | "nous"
-    # The non-secret account half: Cloudinary's cloud name, Google's OAuth client id.
+    # The non-secret account half: Cloudinary's cloud name, Google's OAuth client id, Cloudflare's account id.
     account_id: str | None = None
     # A second secret beside api_key: Cloudinary's API secret.
     api_secret: str | None = None
@@ -60,13 +60,6 @@ class CloudinaryAccount(NamedTuple):
     api_secret: str
 
 
-class GoogleOAuthClient(NamedTuple):
-    """The OAuth client pair; the secret travels as api_key, the client id as account_id."""
-
-    client_id: str
-    client_secret: str
-
-
 def cloudinary_account(config: ProviderConfig | None) -> CloudinaryAccount | None:
     """Return the Cloudinary account a resolved config names; None unless all three fields are set."""
     if config is None:
@@ -75,16 +68,6 @@ def cloudinary_account(config: ProviderConfig | None) -> CloudinaryAccount | Non
     if not (cloud_name and api_key and api_secret):
         return None
     return CloudinaryAccount(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
-
-
-def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | None:
-    """Return the OAuth client a resolved config names; None unless both halves are set."""
-    if config is None:
-        return None
-    client_id, client_secret = config.account_id, config.api_key
-    if not (client_id and client_secret):
-        return None
-    return GoogleOAuthClient(client_id=client_id, client_secret=client_secret)
 
 
 def is_usable(provider: CredentialProviderName, config: ProviderConfig | None) -> bool:

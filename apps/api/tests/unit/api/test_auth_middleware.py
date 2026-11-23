@@ -2,7 +2,7 @@
 
 Tests cover session extraction from cookies and Authorization headers,
 excluded paths, agent-only paths, session refresh cookie setting,
-and the _authenticate_session helper.
+and the WorkOS session path.
 """
 
 import asyncio
@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, Response as HttpxResponse
 from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware.activity import ActivityRecordingMiddleware
 from app.api.v1.middleware.agent_auth import AgentTokenInfo
 from app.api.v1.middleware.auth import (
     PostHogRequestContextMiddleware,
@@ -31,8 +32,10 @@ from app.api.v1.middleware.client_type import (
 )
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
+    BOT_API_KEY_HEADER,
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
+    SESSION_HINT_COOKIE,
     WOS_SESSION_COOKIE,
     WOS_SESSION_MAX_AGE_SECONDS,
 )
@@ -41,9 +44,13 @@ from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.analytics_service import capture
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
+from app.utils.auth_utils import clear_session_cookie
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, SESSION_TTL_SECONDS
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import EntrySurface
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
-from tests.helpers import captured_wide_event, session_set_cookie
+from tests.helpers import captured_wide_event, session_hint_set_cookie, session_set_cookie
 
 
 @pytest.fixture(autouse=True)
@@ -102,8 +109,14 @@ def _build_test_app(middleware_kwargs: dict | None = None):
         authed = getattr(request.state, "authenticated", False)
         return {"user": user, "authenticated": authed}
 
-    @app.post("/api/v1/chat-stream")
-    async def chat_stream(request: Request):
+    @app.post("/api/v1/logout")
+    async def logout(request: Request) -> Response:
+        response = Response()
+        clear_session_cookie(response, request, name=WOS_SESSION_COOKIE)
+        return response
+
+    @app.post("/api/v1/conversations/conv-1/messages")
+    async def voice_send(request: Request):
         user = getattr(request.state, "user", None)
         authed = getattr(request.state, "authenticated", False)
         return {"user": user, "authenticated": authed}
@@ -158,16 +171,17 @@ class TestWorkOSAuthMiddlewareSessionAuth:
 
     def test_cookie_session_authenticates(self) -> None:
         user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
-        app = _build_test_app()
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
+        workos = MagicMock()
+        app = _build_test_app({"workos_client": workos})
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             return_value=(user_info, None),
-        ):
+        ) as authenticate:
             client = TestClient(app)
             client.cookies.set("wos_session", "sealed_tok")
             resp = client.get("/api/v1/protected")
+        authenticate.assert_awaited_once_with(session_token="sealed_tok", workos_client=workos)
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is True
@@ -176,9 +190,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
     def test_bearer_header_fallback(self) -> None:
         user_info = AuthenticatedUser(user_id="u2", email="b@c.com", name="User2")
         app = _build_test_app()
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             return_value=(user_info, None),
         ):
@@ -190,31 +203,10 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is True
 
-    def test_session_refresh_sets_cookie(self) -> None:
-        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
-        new_session = "refreshed_session_token"
-        app = _build_test_app()
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
-            new_callable=AsyncMock,
-            return_value=(user_info, new_session),
-        ):
-            client = TestClient(app)
-            client.cookies.set("wos_session", "old_tok")
-            resp = client.get("/api/v1/protected")
-        assert resp.status_code == 200
-        assert resp.headers.get_list("set-cookie") == [
-            session_set_cookie(
-                WOS_SESSION_COOKIE, new_session, WOS_SESSION_MAX_AGE_SECONDS, secure=False
-            )
-        ]
-
     def test_failed_session_sets_auth_failure_state(self) -> None:
         app = _build_test_app()
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             return_value=(None, None),
         ):
@@ -226,9 +218,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
 
     def test_auth_exception_does_not_block_request(self) -> None:
         app = _build_test_app()
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             side_effect=RuntimeError("WorkOS error"),
         ):
@@ -238,6 +229,93 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         # Request should still go through, just unauthenticated
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False
+
+
+@pytest.fixture
+def _hosted_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "HOST", "https://api.heygaia.io")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://heygaia.io")
+
+
+HOSTED_HINT = session_hint_set_cookie(
+    WOS_SESSION_MAX_AGE_SECONDS, secure=False, domain=".heygaia.io"
+)
+
+
+def _get_protected(
+    session: tuple[AuthenticatedUser | None, str | None] | Exception, cookies: dict[str, str]
+) -> HttpxResponse:
+    authenticate = (
+        AsyncMock(side_effect=session)
+        if isinstance(session, Exception)
+        else AsyncMock(return_value=session)
+    )
+    with patch("app.api.v1.middleware.auth.authenticate_workos_session", authenticate):
+        client = TestClient(_build_test_app())
+        for name, value in cookies.items():
+            client.cookies.set(name, value)
+        return client.get("/api/v1/protected")
+
+
+@pytest.mark.usefixtures("_hosted_urls")
+class TestSessionHint:
+    USER = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
+
+    def test_a_refreshed_session_reissues_its_hint(self) -> None:
+        resp = _get_protected((self.USER, "fresh_tok"), {WOS_SESSION_COOKIE: "old_tok"})
+
+        assert resp.headers.get_list("set-cookie") == [
+            session_set_cookie(
+                WOS_SESSION_COOKIE, "fresh_tok", WOS_SESSION_MAX_AGE_SECONDS, secure=False
+            ),
+            HOSTED_HINT,
+        ]
+
+    def test_a_session_from_before_the_hint_gets_one(self) -> None:
+        resp = _get_protected((self.USER, None), {WOS_SESSION_COOKIE: "tok"})
+
+        assert resp.headers.get_list("set-cookie") == [HOSTED_HINT]
+
+    def test_a_session_that_has_its_hint_sets_nothing(self) -> None:
+        resp = _get_protected(
+            (self.USER, None), {WOS_SESSION_COOKIE: "tok", SESSION_HINT_COOKIE: "1"}
+        )
+
+        assert resp.headers.get_list("set-cookie") == []
+
+    @pytest.mark.parametrize(
+        "cookies",
+        [{WOS_SESSION_COOKIE: "expired_tok", SESSION_HINT_COOKIE: "1"}, {SESSION_HINT_COOKIE: "1"}],
+        ids=["rejected-session", "no-session"],
+    )
+    def test_a_hint_without_a_live_session_is_dropped(self, cookies: dict[str, str]) -> None:
+        resp = _get_protected((None, None), cookies)
+
+        (cleared,) = resp.headers.get_list("set-cookie")
+        assert cleared.startswith(f'{SESSION_HINT_COOKIE}=""; Domain=.heygaia.io;')
+        assert "Max-Age=0" in cleared
+
+    def test_a_route_that_clears_the_session_is_not_handed_a_fresh_hint(self) -> None:
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
+            AsyncMock(return_value=(self.USER, None)),
+        ):
+            client = TestClient(_build_test_app())
+            client.cookies.set(WOS_SESSION_COOKIE, "tok")
+            resp = client.post("/api/v1/logout")
+
+        cookies = resp.headers.get_list("set-cookie")
+        assert [c.split("=", 1)[0] for c in cookies] == [WOS_SESSION_COOKIE, SESSION_HINT_COOKIE]
+        assert "Max-Age=0" in cookies[1]
+
+    def test_a_transient_auth_error_keeps_the_hint(self) -> None:
+        resp = _get_protected(
+            RuntimeError("WorkOS down"), {WOS_SESSION_COOKIE: "tok", SESSION_HINT_COOKIE: "1"}
+        )
+
+        assert resp.headers.get_list("set-cookie") == []
 
 
 class TestWorkOSAuthMiddlewareAgentAuth:
@@ -265,7 +343,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt_token"},
             )
         assert resp.status_code == 200
@@ -282,7 +360,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer bad_token"},
             )
         assert resp.status_code == 200
@@ -303,7 +381,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt_token"},
             )
         assert resp.status_code == 200
@@ -317,7 +395,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt"},
             )
         assert resp.status_code == 200
@@ -326,14 +404,14 @@ class TestWorkOSAuthMiddlewareAgentAuth:
 
 
 def _bare_request(
-    path: str = "/api/v1/chat-stream",
+    path: str = "/api/v1/conversations/conv-1/messages",
     method: str = "GET",
     headers: dict[str, str] | None = None,
 ):
     """Build a Request with just the pieces the middleware touches, no ASGI stack.
 
     Helpers run directly, not through TestClient, and the default path is the
-    agent-only chat-stream path: elsewhere an agent token is declined, so an
+    voice worker's send: elsewhere an agent token is declined, so an
     ordinary path would silently assert nothing.
     """
     raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
@@ -408,15 +486,14 @@ class TestExcludedSandboxCallbacks:
 class TestAuthenticateWosSessionDirectly:
     async def test_the_session_from_the_request_is_what_gets_verified(self) -> None:
         request = _bare_request()
-        with patch.object(
-            _middleware().__class__,
-            "_authenticate_session",
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             return_value=({"user_id": "u1"}, None),
         ) as verify:
             await _middleware()._authenticate_wos_session(request, "session-token")
 
-        assert verify.call_args.args == ("session-token",)
+        assert verify.call_args.kwargs["session_token"] == "session-token"
         assert request.state.authenticated is True
 
     def test_the_dispatch_hands_the_cookie_through_untouched(self) -> None:
@@ -434,9 +511,8 @@ class TestAuthenticateWosSessionDirectly:
         # The middleware cannot log here (wrong context), so this exact value on
         # request.state is the only handoff — the route matches on it.
         request = _bare_request()
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             return_value=(None, None),
         ):
@@ -451,9 +527,8 @@ class TestAuthenticateWosSessionDirectly:
         # The request continues unauthenticated by design, so the event is the
         # only evidence WorkOS failed rather than the user being logged out.
         request = _bare_request(path="/api/v1/protected", method="POST")
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
+        with patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
             new_callable=AsyncMock,
             side_effect=RuntimeError("WorkOS down"),
         ):
@@ -567,75 +642,6 @@ class TestAuthenticateAgentTokenDirectly:
         assert request.state.authenticated is True
         assert request.state.user.auth_provider == "workos"
         assert request.state.user.impersonated is True
-
-
-class TestAuthenticateSession:
-    """Unit tests for _authenticate_session helper."""
-
-    async def test_successful_authentication_updates_last_activity(self) -> None:
-        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
-        middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
-        with (
-            patch(
-                "app.api.v1.middleware.auth.authenticate_workos_session",
-                new_callable=AsyncMock,
-                return_value=(user_info, "new_sess"),
-            ),
-            patch(
-                "app.api.v1.middleware.auth.user_repository.touch_last_active",
-                new_callable=AsyncMock,
-            ) as mock_touch,
-        ):
-            result_user, result_sess = await middleware._authenticate_session("tok")
-        assert result_user == user_info
-        assert result_sess == "new_sess"
-        mock_touch.assert_awaited_once_with("a@b.com")
-
-    async def test_failed_authentication(self) -> None:
-        middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
-        with patch(
-            "app.api.v1.middleware.auth.authenticate_workos_session",
-            new_callable=AsyncMock,
-            return_value=(None, None),
-        ):
-            result_user, result_sess = await middleware._authenticate_session("tok")
-        assert result_user is None
-        assert result_sess is None
-
-    async def test_auth_outcome_is_independent_of_last_active_touch(self) -> None:
-        """A valid WorkOS session authenticates regardless of the fire-and-forget last-active touch; touch_last_active never raises."""
-        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
-        middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
-        with (
-            patch(
-                "app.api.v1.middleware.auth.authenticate_workos_session",
-                new_callable=AsyncMock,
-                return_value=(user_info, None),
-            ),
-            patch(
-                "app.api.v1.middleware.auth.user_repository.touch_last_active",
-                new_callable=AsyncMock,
-            ) as mock_touch,
-        ):
-            result_user, _ = await middleware._authenticate_session("tok")
-        assert result_user == user_info
-        mock_touch.assert_awaited_once_with("a@b.com")
-
-    async def test_a_user_without_an_email_touches_last_active_with_an_empty_key(self) -> None:
-        middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
-        with (
-            patch(
-                "app.api.v1.middleware.auth.authenticate_workos_session",
-                new_callable=AsyncMock,
-                return_value=(AuthenticatedUser(user_id="u1"), None),
-            ),
-            patch(
-                "app.api.v1.middleware.auth.user_repository.touch_last_active",
-                new_callable=AsyncMock,
-            ) as mock_touch,
-        ):
-            await middleware._authenticate_session("tok")
-        mock_touch.assert_awaited_once_with("")
 
 
 # PostHogRequestContextMiddleware is the identity every authenticated capture
@@ -848,6 +854,7 @@ class TestPostHogSessionJoin:
         assert "$session_id" not in event["properties"]
 
 
+@pytest.mark.usefixtures("recorded_activity")
 class TestRequestAttribution:
     """Each request is attributed once, by the middleware, from how it authenticated and who sent it."""
 
@@ -860,7 +867,7 @@ class TestRequestAttribution:
         """Post on the test's own loop, so the user:active gate reaches the per-test fake Redis."""
         transport = ASGITransport(app=TestRequestAttribution._app(state))
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.post("/api/v1/chat-stream", headers=headers)
+            await client.post("/api/v1/conversations/conv-1/messages", headers=headers)
         await asyncio.gather(
             *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
         )
@@ -875,10 +882,12 @@ class TestRequestAttribution:
                     setattr(request.state, key, value)
                 return await call_next(request)
 
+        # In the app's order: activity inside the context PostHog's middleware binds.
+        app.add_middleware(ActivityRecordingMiddleware)
         app.add_middleware(PostHogRequestContextMiddleware)
         app.add_middleware(_Authenticate)
 
-        @app.post("/api/v1/chat-stream")
+        @app.post("/api/v1/conversations/conv-1/messages")
         @app.post("/api/v1/payments/webhooks/dodo")
         async def route() -> dict:
             capture(UserId(GAIA_USER_ID), CHAT_TURN)
@@ -894,27 +903,29 @@ class TestRequestAttribution:
 
     def test_a_web_chat_turn_is_the_users_own_interactive_web_action(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID)
-        self._client({"user": user}).post("/api/v1/chat-stream")
+        self._client({"user": user}).post("/api/v1/conversations/conv-1/messages")
 
         assert self._attribution(posthog_events) == ("user", "interactive", "web")
 
     def test_the_desktop_app_is_its_own_surface(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID)
         self._client({"user": user}).post(
-            "/api/v1/chat-stream", headers={CLIENT_TYPE_HEADER: "desktop"}
+            "/api/v1/conversations/conv-1/messages", headers={CLIENT_TYPE_HEADER: "desktop"}
         )
 
         assert self._attribution(posthog_events) == ("user", "interactive", "desktop")
 
     def test_a_bot_request_is_the_bot_surface(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID, bot_authenticated=True)
-        self._client({"user": user, "bot_api_key_valid": True}).post("/api/v1/chat-stream")
+        self._client({"user": user, "bot_api_key_valid": True}).post(
+            "/api/v1/conversations/conv-1/messages"
+        )
 
         assert self._attribution(posthog_events) == ("user", "interactive", "bot")
 
     def test_the_voice_workers_agent_token_is_the_voice_surface(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID, impersonated=True)
-        self._client({"user": user}).post("/api/v1/chat-stream")
+        self._client({"user": user}).post("/api/v1/conversations/conv-1/messages")
 
         assert self._attribution(posthog_events) == ("user", "interactive", "voice")
 
@@ -947,13 +958,54 @@ class TestRequestAttribution:
         user = AuthenticatedUser(user_id=GAIA_USER_ID)
         with patch("app.api.v1.middleware.auth.log") as mock_log:
             self._client({"user": user}).post(
-                "/api/v1/chat-stream", headers={POSTHOG_SESSION_HEADER: "not a session"}
+                "/api/v1/conversations/conv-1/messages",
+                headers={POSTHOG_SESSION_HEADER: "not a session"},
             )
 
         [event] = _route_events(posthog_events)
         assert "$session_id" not in event["properties"]
         # The rejection is logged by shape only: the header's value never reaches the log.
         mock_log.warning.assert_called_once_with("posthog_session_header_rejected", length=13)
+
+
+class TestActivityRecording:
+    """Activity is recorded exactly where a request is attributed to its user, on its surface."""
+
+    _app = staticmethod(TestRequestAttribution._app)
+
+    def _post(self, state: dict[str, object], headers: dict[str, str] | None = None) -> None:
+        TestClient(self._app(state)).post("/api/v1/chat-stream", headers=headers or {})
+
+    def test_a_web_request_records_the_user_on_the_web_surface(self, recorded_activity):
+        self._post({"user": AuthenticatedUser(user_id=GAIA_USER_ID)})
+
+        recorded_activity.assert_awaited_once_with(GAIA_USER_ID, EntrySurface.WEB)
+
+    def test_a_bot_message_records_the_user_as_active(self, recorded_activity):
+        """Regression: only a WorkOS web session bumped last_active_at, so bot-only users read as inactive."""
+        user = AuthenticatedUser(user_id=GAIA_USER_ID, bot_authenticated=True)
+        self._post({"user": user, "bot_api_key_valid": True})
+
+        recorded_activity.assert_awaited_once_with(GAIA_USER_ID, EntrySurface.BOT)
+
+    def test_a_voice_turn_records_the_user_on_the_voice_surface(self, recorded_activity):
+        self._post({"user": AuthenticatedUser(user_id=GAIA_USER_ID, impersonated=True)})
+
+        recorded_activity.assert_awaited_once_with(GAIA_USER_ID, EntrySurface.VOICE)
+
+    def test_an_automatic_client_request_records_nothing(self, recorded_activity):
+        """An open tab polling in the background is not its user acting."""
+        self._post(
+            {"user": AuthenticatedUser(user_id=GAIA_USER_ID)},
+            {REQUEST_ORIGIN_HEADER: BACKGROUND_REQUEST_ORIGIN},
+        )
+
+        recorded_activity.assert_not_awaited()
+
+    def test_an_anonymous_request_records_nothing(self, recorded_activity):
+        self._post({})
+
+        recorded_activity.assert_not_awaited()
 
 
 class TestDevBypassWithoutAMongoUser:
@@ -1014,6 +1066,34 @@ class TestDevBypassWithAMongoUser:
             False,
         )
 
+    def test_a_bot_request_is_left_for_bot_auth_to_identify(self) -> None:
+        """Regression (live test): the bypass overrode the bot session token, so a bot followed as the dev user."""
+        app = _build_test_app()
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ) as get_by_email:
+            resp = TestClient(app).get("/api/v1/protected", headers={BOT_API_KEY_HEADER: "bot-key"})
+
+        get_by_email.assert_not_awaited()
+        assert resp.json() == {"user": None, "authenticated": False}
+
+    @pytest.mark.usefixtures("_hosted_urls")
+    def test_the_bypass_user_gets_the_signed_in_hint_once(self) -> None:
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ):
+            client = TestClient(_build_test_app())
+            first = client.get("/api/v1/protected")
+            client.cookies.set(SESSION_HINT_COOKIE, "1")
+            second = client.get("/api/v1/protected")
+
+        assert first.headers.get_list("set-cookie") == [HOSTED_HINT]
+        assert second.headers.get_list("set-cookie") == []
+
     def test_the_bypass_user_is_published_to_the_request_context(self) -> None:
         app = _build_test_app()
 
@@ -1030,6 +1110,40 @@ class TestDevBypassWithAMongoUser:
             resp = TestClient(app).get("/api/v1/whoami")
 
         assert resp.json() == {"user_id": "507f1f77bcf86cd799439011"}
+
+
+class TestDevBypassLeavesWorkOSSignInPublic:
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/v1/oauth/login/workos",
+            "/api/v1/oauth/login/workos/desktop",
+            "/api/v1/oauth/workos/callback",
+            "/api/v1/oauth/workos/mobile/callback",
+            "/api/v1/oauth/workos/desktop/callback",
+        ],
+    )
+    def test_sign_in_reaches_its_route_without_the_bypass_user(self, monkeypatch, path) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@example.com")
+        app = _build_test_app()
+
+        @app.get(path)
+        async def sign_in(request: Request) -> dict[str, bool]:
+            return {"authenticated": getattr(request.state, "authenticated", False)}
+
+        with patch(
+            "app.api.v1.middleware.auth.resolve_dev_bypass_user",
+            new_callable=AsyncMock,
+            return_value=("ghost@example.com", None),
+        ) as resolve:
+            resp = TestClient(app).get(path)
+
+        assert (resp.status_code, resp.json()) == (200, {"authenticated": False})
+        assert resolve.await_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1168,28 +1282,67 @@ class TestLocalSessionDispatch:
 
         assert resp.json()["auth_failure"] == "unknown_local_session_user"
 
-    async def test_a_broken_secret_store_is_an_error_not_a_silent_401(self) -> None:
-        with patch(
-            "app.utils.local_auth_utils.resolve_session_token",
-            AsyncMock(side_effect=RuntimeError("secret store down")),
+    @pytest.mark.parametrize(
+        ("resolve", "lookup", "error"),
+        [
+            (
+                AsyncMock(side_effect=RuntimeError("secret store down")),
+                AsyncMock(return_value=LOCAL_USER),
+                {
+                    "msg": f"{LogTag.API} local session verification error",
+                    "auth_failure": "RuntimeError",
+                    "error": "secret store down",
+                },
+            ),
+            (
+                AsyncMock(return_value=LOCAL_USER.id),
+                AsyncMock(side_effect=ConnectionError("mongo down")),
+                {
+                    "msg": f"{LogTag.API} local session account lookup error",
+                    "error_type": "ConnectionError",
+                    "error": "mongo down",
+                },
+            ),
+        ],
+        ids=["secret-store-down", "account-lookup-down"],
+    )
+    async def test_an_outage_is_an_error_that_neither_authenticates_nor_rejects(
+        self, resolve: AsyncMock, lookup: AsyncMock, error: dict[str, str]
+    ) -> None:
+        with (
+            patch("app.utils.local_auth_utils.resolve_session_token", resolve),
+            patch("app.api.v1.middleware.auth.user_repository.get", lookup),
         ):
             async with captured_wide_event() as event:
                 async with AsyncClient(
                     transport=ASGITransport(app=_build_local_probe_app()), base_url="http://t"
                 ) as client:
-                    client.cookies.set("gaia_session", "session.jwt")
+                    client.cookies.set(LOCAL_SESSION_COOKIE, "session.jwt")
+                    client.cookies.set(SESSION_HINT_COOKIE, "1")
                     resp = await client.get("/api/v1/protected")
 
-        assert resp.json()["auth_failure"] == "invalid_or_expired_session"
-        assert event["errors"] == [
-            {
-                "msg": f"{LogTag.API} local session verification error",
-                "auth_failure": "RuntimeError",
-                "error": "secret store down",
-            }
-        ]
+        assert (resp.json()["authenticated"], resp.json()["auth_failure"]) == (False, None)
+        assert resp.headers.get_list("set-cookie") == []
+        assert event["errors"] == [error]
 
-    async def test_a_failed_account_lookup_is_an_error_on_the_wide_event(self) -> None:
+    def test_a_token_naming_a_malformed_id_is_an_unknown_user_without_a_lookup(self) -> None:
+        lookup = AsyncMock(return_value=LOCAL_USER)
+        with (
+            patch(
+                "app.utils.local_auth_utils.resolve_session_token",
+                AsyncMock(return_value="not-an-object-id"),
+            ),
+            patch("app.api.v1.middleware.auth.user_repository.get", lookup),
+        ):
+            client = TestClient(_build_local_probe_app())
+            client.cookies.set(LOCAL_SESSION_COOKIE, "session.jwt")
+            resp = client.get("/api/v1/protected")
+
+        lookup.assert_not_awaited()
+        assert resp.json()["auth_failure"] == "unknown_local_session_user"
+
+    @pytest.mark.usefixtures("_hosted_urls")
+    def test_a_local_session_from_before_the_hint_gets_one_for_its_lifetime(self) -> None:
         with (
             patch(
                 "app.utils.local_auth_utils.resolve_session_token",
@@ -1197,23 +1350,15 @@ class TestLocalSessionDispatch:
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
-                AsyncMock(side_effect=ValueError("bad id")),
+                AsyncMock(return_value=LOCAL_USER),
             ),
         ):
-            async with captured_wide_event() as event:
-                async with AsyncClient(
-                    transport=ASGITransport(app=_build_local_probe_app()), base_url="http://t"
-                ) as client:
-                    client.cookies.set("gaia_session", "session.jwt")
-                    resp = await client.get("/api/v1/protected")
+            client = TestClient(_build_local_probe_app())
+            client.cookies.set(LOCAL_SESSION_COOKIE, "session.jwt")
+            resp = client.get("/api/v1/protected")
 
-        assert resp.json()["auth_failure"] == "unknown_local_session_user"
-        assert event["errors"] == [
-            {
-                "msg": f"{LogTag.API} Invalid user_id in local session token",
-                "error_type": "ValueError",
-                "error": "bad id",
-            }
+        assert resp.headers.get_list("set-cookie") == [
+            session_hint_set_cookie(SESSION_TTL_SECONDS, secure=False, domain=".heygaia.io")
         ]
 
     def test_an_agent_token_authenticates_as_an_email_account(self) -> None:
@@ -1228,7 +1373,8 @@ class TestLocalSessionDispatch:
             ),
         ):
             resp = TestClient(_build_local_probe_app()).post(
-                "/api/v1/chat-stream", headers={"Authorization": "Bearer agent.jwt"}
+                "/api/v1/conversations/conv-1/messages",
+                headers={"Authorization": "Bearer agent.jwt"},
             )
 
         assert (resp.json()["user"], resp.json()["auth_provider"]) == ("kid@gaia.dev", "email")
@@ -1246,3 +1392,26 @@ class TestWorkOSClientChoice:
 
         assert middleware.workos is None
         build.assert_not_called()
+
+
+class TestAuthStepTiming:
+    async def test_session_authentication_is_timed_as_the_turns_auth_step(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/v1/chat-stream",
+                "query_string": b"",
+                "headers": [(b"cookie", b"wos_session=tok")],
+                "state": {},
+            }
+        )
+        timings = begin_turn_timings()
+        with (
+            patch.object(WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock),
+            patch.object(WorkOSAuthMiddleware, "_authenticate_agent_token", new_callable=AsyncMock),
+            patch.object(WorkOSAuthMiddleware, "_publish_user"),
+        ):
+            await _middleware().dispatch(request, AsyncMock(return_value=Response()))
+
+        assert list(timings.steps) == [(TurnPhase.INGRESS, TurnStep.AUTH)]

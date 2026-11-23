@@ -3,6 +3,7 @@ import {
   formatDateWithRelative,
   formatTimeRange,
 } from "@gaia/shared";
+import type { GoogleCalendarEventResource } from "@gaia/shared/api/generated";
 import { Button } from "heroui-native";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
@@ -16,16 +17,19 @@ export interface CalendarOptionAttendee {
   displayName?: string;
 }
 
-export interface SameDayEvent {
-  id?: string;
-  summary?: string;
-  start?: { date?: string; dateTime?: string };
-  end?: { date?: string; dateTime?: string };
-  description?: string;
-  location?: string;
-  background_color?: string;
-  calendarTitle?: string;
-}
+/** A calendar event already on that day: the API's event, plus the colour the card draws it in. */
+export type SameDayEvent = Partial<
+  Pick<
+    GoogleCalendarEventResource,
+    | "id"
+    | "summary"
+    | "start"
+    | "end"
+    | "description"
+    | "location"
+    | "calendarTitle"
+  >
+> & { background_color?: string };
 
 export interface CalendarOption {
   summary?: string;

@@ -1,314 +1,137 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import {
+  Chip,
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownPopover,
+  Label,
+} from "@heroui/react";
+import { MoreHorizontalIcon, Unlink04Icon } from "@icons";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LoadError } from "@/components/shared/LoadError";
+import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
 import {
-  PhoneLinkModal,
-  type PhoneLinkTarget,
-} from "@/components/shared/PhoneLinkModal";
-import {
-  BOT_AUTH_COMMAND,
   BOT_PLATFORM_ICONS,
   BOT_PLATFORM_LABELS,
+  BOT_PLATFORMS,
+  type BotPlatform,
 } from "@/config/botPlatforms";
-import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { OpenPlatformChatButton } from "@/features/settings/components/OpenPlatformChatButton";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
-import { api } from "@/lib/api/typed";
-import { toast } from "@/lib/toast";
-import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-import type { PlatformLinks } from "@/types/platform";
-
-interface PlatformConfig {
-  id: string;
-  name: string;
-  image?: string;
-  color: string;
-  description: string;
-  connectedDescription: string;
-  premium?: boolean;
-  requiresPhone?: boolean;
-  /** The linked account has a DM chat the web app can open. */
-  chat?: boolean;
-}
-
-const PLATFORMS: PlatformConfig[] = [
-  {
-    id: "telegram",
-    name: BOT_PLATFORM_LABELS.telegram,
-    description: "Chat with GAIA on Telegram",
-    image: BOT_PLATFORM_ICONS.telegram,
-    color: "#0088cc",
-    connectedDescription: "Message your bot on Telegram to chat with GAIA",
-    chat: true,
-  },
-  {
-    id: "whatsapp",
-    name: BOT_PLATFORM_LABELS.whatsapp,
-    image: BOT_PLATFORM_ICONS.whatsapp,
-    color: "#25D366",
-    description: "Connect GAIA to WhatsApp (Beta)",
-    connectedDescription: "Message GAIA on WhatsApp",
-    chat: true,
-  },
-  {
-    id: "imessage",
-    name: BOT_PLATFORM_LABELS.imessage,
-    image: BOT_PLATFORM_ICONS.imessage,
-    color: "#34C759",
-    description: "Text GAIA over iMessage (Pro)",
-    connectedDescription: "Message GAIA from your iPhone or Mac",
-    premium: true,
-    requiresPhone: true,
-    chat: true,
-  },
-  {
-    id: "slack",
-    name: BOT_PLATFORM_LABELS.slack,
-    image: BOT_PLATFORM_ICONS.slack,
-    color: "#4A154B",
-    description: "Bring GAIA into your Slack workspace",
-    connectedDescription: "Use /gaia in Slack to chat with GAIA",
-  },
-  {
-    id: "discord",
-    name: BOT_PLATFORM_LABELS.discord,
-    image: BOT_PLATFORM_ICONS.discord,
-    color: "#5865F2",
-    description: "Use GAIA directly from Discord servers and DMs",
-    connectedDescription: "Use /gaia in Discord to chat with GAIA",
-  },
-];
+import { LINKED_PLATFORM_DETAILS } from "@/features/settings/constants";
+import { usePlatformLinks } from "@/features/settings/hooks/usePlatformLinks";
+import { connectedAsLabel } from "@/features/settings/utils/platformLinkLabels";
 
 export default function LinkedAccountsSettings() {
-  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
-    null,
-  );
-  const [phoneModalPlatform, setPhoneModalPlatform] = useState<string | null>(
-    null,
-  );
-  const [phoneLinkTarget, setPhoneLinkTarget] =
-    useState<PhoneLinkTarget | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Registering a number takes a round trip to Photon. Closing the modal (or
-  // starting over) invalidates that request, so a late reply cannot drop the
-  // previous attempt's number into the session the user is now in.
-  const connectAttemptRef = useRef(0);
-  const { isPaid, isUnknown } = useIsPaid();
-  const billingEnabled = useDeployment().bills;
-  // Unknown status stays permissive: the backend enforces the gate, and
-  // blocking a paying customer is worse than a brief open window.
-  const isLockedBehindPro = (platform: PlatformConfig) =>
-    billingEnabled && !!platform.premium && !isUnknown && !isPaid;
-  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
+  const {
+    isLoading,
+    loadFailed,
+    refetch,
+    isLinked,
+    linkedAs,
+    isLockedBehindPro,
+    connectingPlatform,
+    connect,
+    disconnect,
+    phoneLinkModal,
+  } = usePlatformLinks();
 
-  const clearPollTimer = () => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    void fetchPlatformLinks();
-    return () => {
-      clearPollTimer();
-    };
-  }, []);
-
-  const fetchPlatformLinks = async (): Promise<PlatformLinks | null> => {
-    try {
-      setIsLoading(true);
-      const data = await api.get("/api/v1/platform-links", { silent: true });
-      setPlatformLinks(data.platform_links || {});
-      return data.platform_links || {};
-    } catch {
-      toast.error("Failed to load connected accounts");
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const startConnect = (platform: PlatformConfig) => {
-    if (isLockedBehindPro(platform)) {
-      openUpgradeModal(undefined, {
-        dismissible: true,
-        source: "settings_linked_accounts",
-      });
-      return;
-    }
-    if (platform.requiresPhone) {
-      setPhoneLinkTarget(null);
-      setPhoneModalPlatform(platform.id);
-      return;
-    }
-    handleConnect(platform.id);
-  };
-
-  const handleConnect = async (platformId: string, phoneNumber?: string) => {
-    const attempt = ++connectAttemptRef.current;
-    try {
-      setConnectingPlatform(platformId);
-
-      const data = await api.post("/api/v1/platform-links/{platform}/connect", {
-        path: { platform: platformId },
-        body: phoneNumber ? { phone: phoneNumber } : {},
-        silent: true,
-      });
-
-      if (attempt !== connectAttemptRef.current) return;
-
-      if (data.auth_url) {
-        const width = 600;
-        const height = 700;
-        const left = window.screen.width / 2 - width / 2;
-        const top = window.screen.height / 2 - height / 2;
-
-        const popup = window.open(
-          data.auth_url,
-          `Connect ${platformId}`,
-          `width=${width},height=${height},left=${left},top=${top}`,
-        );
-
-        clearPollTimer();
-        pollTimerRef.current = setInterval(() => {
-          if (popup?.closed) {
-            clearPollTimer();
-            void fetchPlatformLinks().then(() => {
-              setConnectingPlatform(null);
-            });
-          }
-        }, 500);
-      } else if (data.contact_number) {
-        // An sms: deep link resolves on Apple devices only, so the number and
-        // the command have to be readable (and copyable) on any device.
-        setPhoneLinkTarget({
-          contactNumber: data.contact_number,
-          command: BOT_AUTH_COMMAND,
-          actionLink: data.action_link ?? undefined,
-        });
-        setConnectingPlatform(null);
-      } else if (data.auth_type === "manual" && data.instructions) {
-        const platformConfig = PLATFORMS.find((p) => p.id === platformId);
-        toast.info(`Connect ${platformConfig?.name ?? platformId}`, {
-          description: data.instructions,
-          duration: 10000,
-          icon: platformConfig?.image ? (
-            <Image
-              src={platformConfig.image}
-              alt={platformConfig.name}
-              width={20}
-              height={20}
-              className="rounded"
-            />
-          ) : undefined,
-          ...(data.action_link && {
-            action: {
-              label: "Open",
-              onClick: () =>
-                window.open(data.action_link ?? undefined, "_blank"),
-            },
-          }),
-        });
-        setConnectingPlatform(null);
-      } else {
-        setConnectingPlatform(null);
-      }
-    } catch {
-      if (attempt !== connectAttemptRef.current) return;
-      toast.error(`Failed to connect ${platformId}`);
-      setConnectingPlatform(null);
-    }
-  };
-
-  const handleDisconnect = async (platformId: string) => {
-    try {
-      await api.delete("/api/v1/platform-links/{platform}", {
-        path: { platform: platformId },
-        silent: true,
-      });
-      toast.success(`Disconnected from ${platformId}`);
-      await fetchPlatformLinks();
-    } catch {
-      toast.error(`Failed to disconnect from ${platformId}`);
-    }
-  };
+  if (loadFailed) {
+    return (
+      <SettingsPage>
+        <LoadError
+          title="Couldn't load your linked accounts"
+          description="Your accounts are still linked. This page just couldn't reach them."
+          onRetry={refetch}
+        />
+      </SettingsPage>
+    );
+  }
 
   return (
     <SettingsPage>
       <SettingsSection description="Connect your messaging platforms to use GAIA from anywhere.">
-        {PLATFORMS.map((platform) => {
-          const isConnected =
-            platformLinks[platform.id]?.platformUserId != null;
-          const link = platformLinks[platform.id];
-          const userLabel = link?.displayName
-            ? `${link.displayName}${link.username ? ` (@${link.username})` : ""}`
-            : link?.username
-              ? `@${link.username}`
-              : undefined;
+        {BOT_PLATFORMS.map((platform) => {
+          const details = LINKED_PLATFORM_DETAILS[platform];
+          const name = BOT_PLATFORM_LABELS[platform];
+          const isConnected = isLinked(platform);
 
           return (
             <SettingsRow
-              key={platform.id}
-              label={platform.name}
+              key={platform}
+              label={name}
               description={
                 isConnected
-                  ? userLabel
-                    ? `${platform.connectedDescription} · ${userLabel}`
-                    : platform.connectedDescription
-                  : platform.description
+                  ? linkedDescription(platform, linkedAs(platform))
+                  : details.description
               }
               icon={
-                platform.image ? (
-                  <Image
-                    src={platform.image}
-                    alt={platform.name}
-                    width={36}
-                    height={36}
-                    className="rounded-xl"
-                  />
-                ) : undefined
+                <Image
+                  src={BOT_PLATFORM_ICONS[platform]}
+                  alt={name}
+                  width={36}
+                  height={36}
+                  className="rounded-xl"
+                />
               }
             >
-              <div className="flex items-center gap-3">
-                {isLockedBehindPro(platform) && (
-                  <Chip size="sm" variant="flat" color="warning">
-                    Pro
-                  </Chip>
-                )}
-                {isConnected && (
-                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                    Connected
-                  </span>
-                )}
-                {isConnected && platform.chat && (
-                  <OpenPlatformChatButton platform={platform.id} />
-                )}
-                <Button
-                  variant="flat"
-                  color={isConnected ? "danger" : "primary"}
-                  size="sm"
-                  onPress={() =>
-                    isConnected
-                      ? handleDisconnect(platform.id)
-                      : startConnect(platform)
-                  }
-                  isLoading={connectingPlatform === platform.id}
-                  isDisabled={isLoading || connectingPlatform != null}
-                  className="text-xs"
-                >
-                  {isConnected ? "Disconnect" : "Connect"}
-                </Button>
-              </div>
+              {isConnected ? (
+                <div className="flex items-center gap-2">
+                  {details.chat && (
+                    <OpenPlatformChatButton platform={platform} />
+                  )}
+                  <Dropdown>
+                    <GaiaButton
+                      isIconOnly
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`More for ${name}`}
+                      isDisabled={isLoading || connectingPlatform != null}
+                    >
+                      <MoreHorizontalIcon className="size-4 text-zinc-400" />
+                    </GaiaButton>
+                    <DropdownPopover placement="bottom end">
+                      <DropdownMenu
+                        aria-label={`${name} actions`}
+                        onAction={() => void disconnect(platform)}
+                      >
+                        <DropdownItem
+                          id="disconnect"
+                          textValue="Disconnect"
+                          variant="danger"
+                        >
+                          <Unlink04Icon className="size-4" />
+                          <Label>Disconnect</Label>
+                        </DropdownItem>
+                      </DropdownMenu>
+                    </DropdownPopover>
+                  </Dropdown>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  {isLockedBehindPro(platform) && (
+                    <Chip size="sm" variant="soft" color="warning">
+                      <Chip.Label>Pro</Chip.Label>
+                    </Chip>
+                  )}
+                  <GaiaButton
+                    variant="accent-soft"
+                    size="sm"
+                    aria-label={`Connect ${name}`}
+                    onPress={() => connect(platform)}
+                    isPending={connectingPlatform === platform}
+                    isDisabled={isLoading || connectingPlatform != null}
+                    className="text-xs"
+                  >
+                    Connect
+                  </GaiaButton>
+                </div>
+              )}
             </SettingsRow>
           );
         })}
@@ -316,13 +139,9 @@ export default function LinkedAccountsSettings() {
 
       <SettingsSection title="How it works">
         <div className="px-4 py-3.5">
-          <ul className="space-y-1.5 text-sm text-zinc-400">
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
-              Connect your account using the button above
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
+          <ul className="list-disc space-y-1.5 pl-4 text-sm text-zinc-400 marker:text-zinc-600">
+            <li>Connect your account using the button above</li>
+            <li>
               Use{" "}
               <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
                 /gaia
@@ -330,36 +149,27 @@ export default function LinkedAccountsSettings() {
               in Discord or Slack, or just message the Telegram, WhatsApp, or
               iMessage bot
             </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
-              All conversations sync with your GAIA account
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
-              Disconnect anytime from this page
-            </li>
+            <li>All conversations sync with your GAIA account</li>
+            <li>Disconnect anytime from this page</li>
           </ul>
         </div>
       </SettingsSection>
 
-      <PhoneLinkModal
-        isOpen={phoneModalPlatform != null}
-        platformName={
-          PLATFORMS.find((p) => p.id === phoneModalPlatform)?.name ?? "iMessage"
-        }
-        isSubmitting={connectingPlatform === phoneModalPlatform}
-        target={phoneLinkTarget}
-        onSubmit={(phone) => {
-          if (phoneModalPlatform) handleConnect(phoneModalPlatform, phone);
-        }}
-        onClose={() => {
-          connectAttemptRef.current += 1;
-          setConnectingPlatform(null);
-          setPhoneModalPlatform(null);
-          setPhoneLinkTarget(null);
-          fetchPlatformLinks();
-        }}
-      />
+      <PhoneLinkModal {...phoneLinkModal} />
     </SettingsPage>
   );
+}
+
+/** Who the link is, and for the apps with no chat to open, how to reach GAIA there. */
+function linkedDescription(
+  platform: BotPlatform,
+  user: string | undefined,
+): string {
+  const details = LINKED_PLATFORM_DETAILS[platform];
+  return [
+    connectedAsLabel(user),
+    details.chat ? null : details.connectedDescription,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }

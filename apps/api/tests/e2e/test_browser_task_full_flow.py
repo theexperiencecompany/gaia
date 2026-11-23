@@ -125,22 +125,19 @@ async def test_a_full_run_screenshots_hands_off_and_reports() -> None:
     assert set(uploads) >= {1, 2}
     assert all(uploads[index] for index in (1, 2))
 
-    # ... and the cards + the bot photos carry the URLs those uploads returned.
+    # ... and the cards every surface renders, a bot's follower included, carry the URLs those uploads returned.
     step_cards = [card for card in world.cards() if card["kind"] == "step"]
     assert [card["screenshot"] for card in step_cards[:2]] == [
         SHOT_URL_TEMPLATE.format(index=1),
         SHOT_URL_TEMPLATE.format(index=2),
     ]
     assert all(step_cards[index].get("goal") for index in (0, 1))
-    assert world.bot_photos[:2] == [
-        SHOT_URL_TEMPLATE.format(index=1),
-        SHOT_URL_TEMPLATE.format(index=2),
-    ]
 
-    # The handoff asked with a way in, and the note reached the run.
-    assert any(LIVE_VIEW_LINK in message for message in world.bot_messages)
+    # The handoff asked with a way in on its card, and the note reached the run.
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
+    assert [card["live_view_url"] for card in handoffs] == [LIVE_VIEW_LINK, None]
+    assert world.bot_messages == []
     assert world.browser.takeover_notes == [NOTE]
 
     # The closing result leads with what the user said and keeps the whole summary,

@@ -22,11 +22,13 @@ const setPendingPrompt = vi.fn();
 
 vi.mock("@/features/onboarding/api/onboardingApi", () => ({
   mintLinkCode: () => mintLinkCode(),
-  fetchPlatformLinks: () => fetchPlatformLinks(),
 }));
 
 vi.mock("@/lib/api/typed", () => ({
-  api: { post: (...args: unknown[]) => apiPost(...args) },
+  api: {
+    get: () => fetchPlatformLinks(),
+    post: (...args: unknown[]) => apiPost(...args),
+  },
 }));
 
 vi.mock("@/lib/toast", () => ({

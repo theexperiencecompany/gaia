@@ -13,7 +13,7 @@ fails the gate. `skipped` means `detect` proved the lane had nothing to check
 push). There is no informational tier. A lane that ran and reported nothing is
 `NO VERDICT` and fails too.
 
-Inside a grouped job (lint-node, lint-python, lint-mixed, repo-policy, scan,
+Inside a grouped job (lint-node, lint-python, lint-mixed, scan,
 python-audit, ts-build-test) every check is an nx task: `runner.py run-job`
 runs the job's affected ones and `verdict.py post-statuses` posts each as its
 own `ci / <area> / <check>` commit status and fails the job if any failed. A

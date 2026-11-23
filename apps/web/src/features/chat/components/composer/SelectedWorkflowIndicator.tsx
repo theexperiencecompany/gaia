@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 
@@ -47,15 +47,17 @@ export default function SelectedWorkflowIndicator({
       />
       {onRemove && (
         <div className="absolute top-4 right-4 z-20">
-          <Button
+          <GaiaButton
+            aria-label="Remove workflow"
             isIconOnly
             size="sm"
-            variant="light"
+            variant="ghost"
             onPress={onRemove}
-            className="text-zinc-400 hover:text-zinc-200"
+            tone="muted"
+            hoverTone="bright"
           >
             <Cancel01Icon className="h-4 w-4" />
-          </Button>
+          </GaiaButton>
         </div>
       )}
     </m.div>

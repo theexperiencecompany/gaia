@@ -104,6 +104,9 @@ LOCAL_ONLY_KEYS = {
     "security_opt",
 }
 
+#: The restart policy that marks a one-shot compose service (a pre-boot migration).
+ONE_SHOT_RESTART = "no"
+
 #: Backend variables that need extra_hosts (host.docker.internal), which no platform template sets.
 HOST_GATEWAY_ENV = {"LOOPBACK_HOST_ALIAS"}
 
@@ -112,7 +115,12 @@ _INTERPOLATION_RE = re.compile(r"\$\{(\w+):-([^}]*)\}")
 
 def _machine_secrets() -> list[str]:
     secrets = json.loads(MACHINE_SECRETS.read_text())
-    return [*secrets["always"], *secrets["freshInstallOnly"]]
+    return [*secrets["always"], *secrets["freshInstallOnly"], *secrets["webServer"]]
+
+
+def _web_server_secrets() -> set[str]:
+    """Return the secrets the web app's server shares with the backend."""
+    return set(json.loads(MACHINE_SECRETS.read_text())["webServer"])
 
 
 def _resolve_image(image: str, keep: set[str]) -> str:
@@ -153,15 +161,17 @@ COOLIFY_HEADER = """# documentation: https://docs.heygaia.io/self-hosting/one-cl
 COOLIFY_SERVICES = {
     "proxy": "proxy",
     "gaia-web": "gaia-web",
+    "gaia-migrate": "gaia-migrate",
     "gaia-backend": "gaia-backend",
     "arq_worker": "arq-worker",
+    "migrate": "migrate",
     "chromadb": "chromadb",
     "postgres": "postgres",
     "redis": "redis",
     "mongo": "mongo",
     "rabbitmq": "rabbitmq",
 }
-COOLIFY_APP_SERVICES = {"gaia-backend", "arq_worker"}
+COOLIFY_APP_SERVICES = {"migrate", "gaia-migrate", "gaia-backend", "arq_worker"}
 COOLIFY_VOLUMES = {
     "models_cache": "models-cache",
     "workspace": "workspace",
@@ -182,6 +192,7 @@ COOLIFY_SECRETS = {
     "GAIA_BOT_API_KEY": "${SERVICE_PASSWORD_64_BOTAPIKEY}",
     "SANDBOX_EXECUTE_TOKEN_SECRET": "${SERVICE_PASSWORD_64_SANDBOXEXECUTETOKEN}",
     "INSTANCE_SECRET": "${SERVICE_PASSWORD_64_INSTANCE}",
+    "INTERNAL_API_TOKEN": "${SERVICE_PASSWORD_64_INTERNALAPI}",
 }
 
 #: What `gaia up` writes into apps/api/.env for a self-host install, with the
@@ -222,10 +233,14 @@ def _coolify_env(name: str, service: YamlMap, shared_env: Anchored) -> Merged | 
         own = {
             k: v
             for k, v in env.items()
-            if k not in HOST_GATEWAY_ENV and shared_env.get(k, object()) != v
+            if k not in HOST_GATEWAY_ENV
+            and k not in COOLIFY_SECRETS
+            and shared_env.get(k, object()) != v
         }
         return Merged(shared_env, own)
-    env = {**env, **COOLIFY_SERVICE_ENV.get(name, {})}
+    # A secret the web server shares with the backend is the backend's own generated value.
+    secrets = {key: COOLIFY_SECRETS[key] for key in env if key in COOLIFY_SECRETS}
+    env = {**env, **secrets, **COOLIFY_SERVICE_ENV.get(name, {})}
     return [key if value is None else f"{key}={value}" for key, value in env.items()]
 
 
@@ -248,7 +263,15 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
         out["depends_on"] = {
             COOLIFY_SERVICES[dep]: cond for dep, cond in service["depends_on"].items()
         }
-    out["healthcheck"] = {**service["healthcheck"], "test": Flow(service["healthcheck"]["test"])}
+    if "healthcheck" in service:
+        out["healthcheck"] = {
+            **service["healthcheck"],
+            "test": Flow(service["healthcheck"]["test"]),
+        }
+    if service.get("restart") == ONE_SHOT_RESTART:
+        # Coolify restarts every service unless told not to, and counts an exited one as down.
+        out["restart"] = ONE_SHOT_RESTART
+        out["exclude_from_hc"] = True
     unhandled = set(service) - LOCAL_ONLY_KEYS - set(out) - {"environment"}
     if unhandled:
         raise SystemExit(
@@ -258,10 +281,29 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
 
 
 _CADDY_PLACEHOLDER_RE = re.compile(r"\{\$(\w+)(?::([^}]*))?\}")
+#: A share-domain site block's address: filled by `gaia up --link-domain` /
+#: `--usercontent-domain`, idle on its .invalid default. Coolify has no `gaia up`.
+_SHARE_DOMAIN_SITE_RE = re.compile(r"^\{\$\w+:http://[\w.-]+\.invalid\} \{$", re.MULTILINE)
+_PARAGRAPH_BREAK = "\n\n"
+
+
+def _without_share_domains(caddyfile: str) -> str:
+    """Drop each share-domain site block, which the Caddyfile keeps in one paragraph with its comment."""
+    kept: list[str] = []
+    for paragraph in caddyfile.split(_PARAGRAPH_BREAK):
+        if _SHARE_DOMAIN_SITE_RE.search(paragraph) is None:
+            kept.append(paragraph)
+        elif paragraph.count("{") != paragraph.count("}"):
+            raise SystemExit(
+                "deploy_templates: a share-domain site block must be one paragraph "
+                "(no blank line inside it) so the Coolify template can drop it whole"
+            )
+    # A dropped last block takes the file's final newline with it.
+    return _PARAGRAPH_BREAK.join(kept).rstrip("\n") + "\n"
 
 
 def _coolify_caddyfile() -> Block:
-    """Resolve the Caddyfile's {$VAR} and {$VAR:default} placeholders to Coolify's values."""
+    """Resolve the Caddyfile's {$VAR} and {$VAR:default} placeholders to Coolify's values, share domains dropped."""
 
     def value(match: re.Match[str]) -> str:
         name, default = match.group(1), match.group(2)
@@ -273,7 +315,7 @@ def _coolify_caddyfile() -> Block:
             )
         return default
 
-    text = _CADDY_PLACEHOLDER_RE.sub(value, CADDYFILE.read_text())
+    text = _CADDY_PLACEHOLDER_RE.sub(value, _without_share_domains(CADDYFILE.read_text()))
     # Tabs become spaces: a YAML block scalar cannot carry a tab indent.
     return Block("\n".join(line.rstrip() for line in text.replace("\t", "    ").split("\n")))
 
@@ -361,12 +403,18 @@ RENDER_DISKS = {
     "chroma_data": ("chroma-data", 5),
 }
 RENDER_DATASTORES = ("mongo", "rabbitmq", "chromadb")
+#: The env group holding the secrets the backend shares with the web app's server.
+RENDER_WEB_SERVER_GROUP = "gaia-web-server"
+#: Render has no one-shot service: these run, in order, as the backend's and the worker's
+#: pre-deploy command, the release step first, as on GAIA Cloud.
+RENDER_PRE_DEPLOY_SERVICES = ("migrate", "gaia-migrate")
 #: Every compose service, as a Render service or Render's own managed one.
 RENDER_SERVICES = {
     "proxy",
     "gaia-web",
     "gaia-backend",
     "arq_worker",
+    *RENDER_PRE_DEPLOY_SERVICES,
     *RENDER_DATASTORES,
     "redis",
     "postgres",
@@ -426,12 +474,19 @@ def _render_app_group(services: YamlMap, secrets: list[str]) -> list[Any]:
         {"key": "CLOUDINARY_API_KEY", "sync": False},
         {"key": "CLOUDINARY_API_SECRET", "sync": False},
     ]
-    first, *rest = ({"key": name, "generateValue": True} for name in secrets)
+    shared = _web_server_secrets()
+    first, *rest = ({"key": name, "generateValue": True} for name in secrets if name not in shared)
     group.append(
         Note("Machine secrets. Generated once; never rotate them after first boot.", first)
     )
     group.extend(rest)
     return group
+
+
+def _render_web_server_group(secrets: list[str]) -> list[Any]:
+    """List the secrets the backend and the web app's server must hold alike, for a group both link."""
+    shared = _web_server_secrets()
+    return [{"key": name, "generateValue": True} for name in secrets if name in shared]
 
 
 def _render_app_env(services: YamlMap, name: str) -> list[Any]:
@@ -458,7 +513,7 @@ def _render_app_env(services: YamlMap, name: str) -> list[Any]:
             wiring.append(Note(comment, {"key": key, "sync": False}))
         else:
             wiring.append({"key": key, **_from_service("pserv", "gaia-backend", envVarKey=key)})
-    return [{"fromGroup": "gaia-app"}, *own, *wiring]
+    return [{"fromGroup": "gaia-app"}, {"fromGroup": RENDER_WEB_SERVER_GROUP}, *own, *wiring]
 
 
 def _render_datastore(services: YamlMap, name: str) -> YamlMap:
@@ -482,6 +537,9 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
     services = compose["services"]
     _require_all("Render", "service", services, RENDER_SERVICES)
     worker = services["arq_worker"]
+    pre_deploy = " && ".join(
+        " ".join(services[name]["command"]) for name in RENDER_PRE_DEPLOY_SERVICES
+    )
     render_services = SpacedList(
         [
             Note(
@@ -515,11 +573,12 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                 "image": _render_image(services["gaia-web"]),
                 "plan": RENDER_PLANS["gaia-web"],
                 "envVars": [
+                    {"fromGroup": RENDER_WEB_SERVER_GROUP},
                     Note(
                         "http://<gaia-backend internal address>/api/v1/ — fill in after the\n"
                         "first deploy (Render cannot compose a URL from a private hostname).",
                         {"key": "API_BASE_URL_INTERNAL", "sync": False},
-                    )
+                    ),
                 ],
             },
             {
@@ -531,6 +590,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                     "The local embedding model loads ~1.8 GB on first memory use.",
                     RENDER_PLANS["gaia-backend"],
                 ),
+                "preDeployCommand": pre_deploy,
                 "envVars": _render_app_env(services, "gaia-backend"),
             },
             {
@@ -540,6 +600,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                 "image": _render_image(worker),
                 "plan": RENDER_PLANS["arq_worker"],
                 "dockerCommand": " ".join(worker["command"]),
+                "preDeployCommand": pre_deploy,
                 "envVars": _render_app_env(services, "arq_worker"),
             },
             *(_render_datastore(services, name) for name in RENDER_DATASTORES),
@@ -557,7 +618,10 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
         ]
     )
     document = Spaced(
-        envVarGroups=[{"name": "gaia-app", "envVars": _render_app_group(services, secrets)}],
+        envVarGroups=[
+            {"name": "gaia-app", "envVars": _render_app_group(services, secrets)},
+            {"name": RENDER_WEB_SERVER_GROUP, "envVars": _render_web_server_group(secrets)},
+        ],
         services=render_services,
         databases=[
             {

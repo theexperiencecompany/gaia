@@ -13,7 +13,8 @@ from app.constants.integrations import (
     USE_CASES_COUNT,
 )
 from app.models.db_oauth import MCPAuthType
-from app.models.integration_models import AuthType, StoredIntegrationTool
+from app.models.integration_models import StoredIntegrationTool
+from app.models.mcp_config import AuthType
 from app.models.oauth_models import IntegrationContent, IntegrationFAQ, IntegrationHowItWorksStep
 
 # Leading verbs cycle so integrations with fewer than USE_CASES_COUNT tools still
@@ -39,7 +40,7 @@ def humanize_tool_name(tool_name: str) -> str:
     return tool_name.replace("_", " ").replace("-", " ").strip().lower()
 
 
-def _first_sentence(text: str | None, max_len: int = 140) -> str | None:
+def first_sentence(text: str | None, max_len: int = 140) -> str | None:
     """First sentence of free text, trimmed to max_len, or None when unusable."""
     if not text:
         return None
@@ -56,7 +57,7 @@ def _first_sentence(text: str | None, max_len: int = 140) -> str | None:
     return cleaned or None
 
 
-def _named_tools(tools: list[StoredIntegrationTool]) -> list[StoredIntegrationTool]:
+def named_tools(tools: list[StoredIntegrationTool]) -> list[StoredIntegrationTool]:
     """Tools with a non-blank name, in stored order."""
     return [t for t in tools if t.name and t.name.strip()]
 
@@ -102,7 +103,7 @@ def _build_use_cases(
         tool = named[i % len(named)]
         human = humanize_tool_name(tool.name)
         verb = _USE_CASE_VERBS[i % len(_USE_CASE_VERBS)]
-        snippet = _first_sentence(tool.description)
+        snippet = first_sentence(tool.description)
         if snippet and snippet not in seen_snippets:
             seen_snippets.add(snippet)
             lines.append(f"{verb} {human} in {name} — {snippet}")
@@ -164,10 +165,10 @@ def _build_faqs(
         f"{name} with your other tools, for example summarising {name} activity "
         "in a scheduled daily briefing."
     )
-    snippet = _first_sentence(named[0].description)
+    snippet = first_sentence(named[0].description)
     if snippet:
         capability_answer += f" For example: {snippet}"
-    user_snippet = _first_sentence(description, max_len=120)
+    user_snippet = first_sentence(description, max_len=120)
     if user_snippet and user_snippet not in capability_answer:
         capability_answer = f"{user_snippet} {capability_answer}"
 
@@ -226,7 +227,7 @@ def build_fallback_content(
     a real tool, the capability FAQ inventories this integration's top three
     tools, and one FAQ is specific to its first tool's description.
     """
-    named = _named_tools(tools)
+    named = named_tools(tools)
     if not named:
         return None
     clean_category = (

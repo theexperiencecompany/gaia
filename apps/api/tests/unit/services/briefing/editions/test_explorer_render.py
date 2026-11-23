@@ -1,0 +1,466 @@
+"""Unit tests for the vendored-explorer HTML document builder.
+
+Assertions are on the document itself (inlined modules, embedded ed/seed literals,
+script-tag escaping, the failure path), not on rastered pixels.
+"""
+
+import base64
+from collections.abc import Iterator
+import json
+import re
+from typing import Any
+from unittest.mock import patch
+
+import pytest
+from tests.briefing_factories import make_briefing_payload
+
+from app.constants.briefing import EditionFamily
+from app.models.brief_payload_models import BriefingPayload
+from app.services.briefing import editions
+from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
+from app.services.briefing.editions.artworks import artwork_art
+from app.services.briefing.editions.codes import family_codes
+from app.services.briefing.editions.explorer_render import (
+    _TRANSPARENT_DESK_CSS,
+    EXPLORER_CANVAS_PX,
+    _asset_data_uris,
+    _module_sources,
+    _raw_assets,
+    _shell_sources,
+    explorer_family_ids,
+    explorer_family_names,
+    render_explorer_edition,
+)
+from app.services.briefing.editions.stamps import stamp_art, stamp_for, stamp_weights
+
+# Every loader is @lru_cache(maxsize=1) and the cache outlives the test that fills it,
+# so each test must start cold.
+_CACHED_LOADERS = (
+    _module_sources,
+    _shell_sources,
+    explorer_family_names,
+    explorer_family_ids,
+    _raw_assets,
+    _asset_data_uris,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_loader_caches() -> Iterator[None]:
+    for loader in _CACHED_LOADERS:
+        loader.cache_clear()
+    yield
+    for loader in _CACHED_LOADERS:
+        loader.cache_clear()
+
+
+EXPECTED_FAMILIES = (
+    "band",
+    "playfair",
+    "broadsheet",
+    "gradient",
+    "exhibition",
+    "weekly",
+    "librarycard",
+    "menu",
+    "invoice",
+    "postal",
+    "swiss",
+    "memo",
+    "almanac",
+    "receipt",
+    "flightplan",
+    "instrument",
+    "metromap",
+    "boardingpass",
+)
+
+EXPECTED_ASSET_KEYS = {"BAND", "TEC_MARK"}
+
+
+_STANDUP = {"date": "2026-07-05", "start": "09:00", "title": "Standup"}
+_SUNDAY = make_briefing_payload(
+    date="2026-07-05",
+    headline="A quiet Sunday",
+    tallies={"done_by_you": 1, "done_by_gaia": 2},
+    calendar=[_STANDUP],
+    generated_at="6:02 AM",
+    stamp_city="paris",
+)
+
+
+def _render(payload: BriefingPayload | None = None, **overrides: Any) -> str:
+    kwargs: dict[str, Any] = {
+        "link": None,
+        "family": "swiss",
+        "skin_seed": "2026-07-05",
+        "edition_no": 12,
+    }
+    kwargs.update(overrides)
+    return render_explorer_edition(payload or _SUNDAY, **kwargs)
+
+
+def _embedded_const(html: str, name: str) -> Any:
+    match = re.search(rf"^const {name} = (.*);$", html, re.MULTILINE)
+    assert match is not None, f"{name} literal not found in the document"
+    return json.loads(match.group(1).replace("<\\/", "</").replace("<\\!--", "<!--"))
+
+
+@pytest.mark.unit
+class TestFamilyIds:
+    def test_ids_are_read_from_the_vendored_register_calls(self) -> None:
+        assert explorer_family_ids() == EXPECTED_FAMILIES
+
+    def test_there_are_eighteen_distinct_families_and_no_cut_ones(self) -> None:
+        ids = explorer_family_ids()
+
+        assert len(ids) == 18
+        assert len(set(ids)) == 18
+        assert "playbill" not in ids
+        assert "dayline" not in ids
+
+    def test_axis_option_ids_are_not_mistaken_for_families(self) -> None:
+        ids = explorer_family_ids()
+
+        for axis_option in ("thermal", "canary", "slate", "putty", "baize", "walnut"):
+            assert axis_option not in ids
+
+    def test_result_is_cached_so_the_js_files_are_read_once(self) -> None:
+        assert explorer_family_ids() is explorer_family_ids()
+
+    def test_edition_families_are_exactly_the_vendored_templates(self) -> None:
+        assert set(EXPLORER_RENDERER) == set(explorer_family_ids()) == set(EditionFamily)
+
+    @pytest.mark.parametrize(
+        ("templates", "named"),
+        [
+            ((*EditionFamily, "playbill"), "templates without a family ['playbill']"),
+            (tuple(f for f in EditionFamily if f is not EditionFamily.MENU), "['menu']"),
+        ],
+        ids=["template-without-family", "family-without-template"],
+    )
+    def test_a_family_and_template_set_that_disagree_fail_loud(
+        self, templates: tuple[str, ...], named: str
+    ) -> None:
+        with (
+            patch.object(editions, "explorer_family_ids", return_value=templates),
+            pytest.raises(RuntimeError, match=re.escape(named)),
+        ):
+            editions._checked_families()
+
+    def test_each_family_carries_its_register_call_display_name(self) -> None:
+        names = explorer_family_names()
+
+        assert tuple(names) == EXPECTED_FAMILIES
+        assert (names["postal"], names["flightplan"]) == ("Air Mail", "The Blueprint")
+
+
+@pytest.mark.unit
+class TestUnknownFamily:
+    def test_unknown_family_raises_before_any_document_is_built(self) -> None:
+        with pytest.raises(ValueError, match=r"^unknown explorer family: 'nope'$"):
+            _render(family="nope")
+
+    def test_empty_family_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match=r"^unknown explorer family: ''$"):
+            _render(family="")
+
+    def test_an_axis_option_id_is_not_an_accepted_family(self) -> None:
+        with pytest.raises(ValueError, match="unknown explorer family"):
+            _render(family="thermal")
+
+
+@pytest.mark.unit
+class TestDocumentShell:
+    def test_document_is_a_full_html_page_at_the_540px_canvas(self) -> None:
+        html = _render()
+
+        assert html.startswith('<!doctype html>\n<html lang="en">')
+        assert html.endswith("</body>\n</html>")
+        assert '<meta name="viewport" content="width=540">' in html
+        assert "body { width: 540px; }" in html
+
+    def test_root_node_and_render_call_are_present(self) -> None:
+        html = _render()
+
+        assert '<div id="root"></div>' in html
+        assert "const article = tpl.render(ed, skin);" in html
+        assert 'document.getElementById("root").innerHTML = article;' in html
+
+    def test_every_vendored_module_is_inlined(self) -> None:
+        html = _render()
+
+        assert html.count("EXPLORER.register({") == 18
+        assert len(_module_sources()) == 10
+
+    def test_each_module_gets_its_own_script_tag_on_its_own_line(self) -> None:
+        html = _render()
+
+        # 10 modules => 9 joins between them, plus the shim and the block plumbing
+        # before and the bootstrap after — anything else means the modules ran together.
+        assert html.count("</script>\n<script>") == 12
+
+    def test_only_the_marks_of_the_apps_the_brief_prints_are_embedded(self) -> None:
+        item = {"text": "PR #12", "kind": "you", "action": "review", "source": "github"}
+        payload = make_briefing_payload(
+            calendar=[_STANDUP],
+            sections=[{"numeral": "I", "title": "Needs you", "items": [item]}],
+            blocks=[{"kind": "items", "section": 0}],
+        )
+
+        html = _render(payload)
+
+        assert '.xb-logo[data-logo="github"]' in html
+        assert '.xb-logo[data-logo="googlecalendar"]' in html
+        assert '.xb-logo[data-logo="slack"]' not in html
+        assert 'logoKinds: {"github": "mono", "googlecalendar": "color"}' in html
+
+    def test_the_shared_block_script_and_reading_css_are_inlined(self) -> None:
+        html = _render()
+
+        assert (explorer_render._SHELL_DIR / "blocks.js").read_text() in html
+        assert (explorer_render._SHELL_DIR / "reading.css").read_text() in html
+
+    def test_the_weekly_edition_prints_the_marks_of_its_week_ahead_not_todays_calendar(
+        self,
+    ) -> None:
+        week = {
+            "days": [{"you": 0, "gaia": 0}] * 7,
+            "ahead": [{"date": "2026-07-07", "start": "10:00", "title": "Board"}],
+        }
+        payload = make_briefing_payload(
+            template_family=EditionFamily.WEEKLY, calendar=[], week=week
+        )
+
+        html = _render(payload, family="weekly")
+
+        assert '.xb-logo[data-logo="googlecalendar"]' in html
+
+    def test_deterministic_rng_shim_is_inlined(self) -> None:
+        html = _render()
+
+        assert "function mulberry32(a) {" in html
+        assert "function strSeed(s) {" in html
+
+    def test_only_the_drawn_familys_fonts_are_embedded(self) -> None:
+        html = _render(family="swiss")
+        faces = html[html.index("@font-face{") : html.index("* { margin")]
+        families = re.findall(r"@font-face\{font-family:'([^']+)'", faces)
+
+        assert families == [
+            "Aeonik Extended",
+            "Aeonik Extended",
+            "TeX Gyre Heros",
+            "TeX Gyre Heros",
+            "TeX Gyre Heros",
+        ]
+        assert faces.count("src:url(data:font/woff2;base64,") == 5
+        assert "size-adjust" not in faces
+
+    def test_a_scaled_face_carries_its_size_adjust(self) -> None:
+        html = _render(family="postal")
+        cutive = re.search(r"@font-face\{font-family:'Cutive';[^}]*\}", html)
+
+        assert cutive is not None
+        assert "size-adjust:83%;" in cutive.group()
+
+
+@pytest.mark.unit
+class TestTransparentDesk:
+    @pytest.mark.parametrize(
+        ("family", "transparent"), [(EditionFamily.POSTAL, True), (EditionFamily.SWISS, False)]
+    )
+    def test_a_paper_on_a_desk_is_rendered_without_its_desk(
+        self, family: EditionFamily, transparent: bool
+    ) -> None:
+        html = EXPLORER_RENDERER[family](_SUNDAY, link=None, edition_no=12)
+
+        assert ("#root > article { background: none; }" in html) is transparent
+        assert edition_frame(family).transparent_desk is transparent
+
+    @pytest.mark.parametrize("family", [EditionFamily.POSTAL, EditionFamily.SWISS])
+    def test_nothing_but_the_family_rules_follows_the_body_width(
+        self, family: EditionFamily
+    ) -> None:
+        html = EXPLORER_RENDERER[family](_SUNDAY, link=None, edition_no=12)
+
+        style = html.split("<style>")[1].split("</style>")[0]
+        after_body_width = style.split(f"body {{ width: {EXPLORER_CANVAS_PX}px; }}")[1]
+        assert after_body_width.strip() in {"", _TRANSPARENT_DESK_CSS}
+
+
+@pytest.mark.unit
+class TestEmbeddedLiterals:
+    def test_family_literal_matches_the_requested_family(self) -> None:
+        assert _embedded_const(_render(family="memo"), "FAMILY") == "memo"
+
+    def test_skin_seed_literal_is_namespaced_by_family(self) -> None:
+        html = _render(family="memo", skin_seed="2026-07-05")
+
+        assert _embedded_const(html, "SKIN_SEED") == "2026-07-05|memo"
+
+    def test_same_seed_and_family_produce_a_byte_identical_document(self) -> None:
+        assert _render() == _render()
+
+    def test_a_different_family_changes_the_document(self) -> None:
+        assert _render(family="memo") != _render(family="swiss")
+
+    def test_ed_literal_carries_the_adapted_payload(self) -> None:
+        ed = _embedded_const(_render(), "ed")
+
+        assert ed["editionNo"] == 12
+        assert ed["n"] == 12
+        assert ed["time"] == "6:02 AM"
+        assert ed["time24"] == "06:02"
+        assert ed["deck"] == "A quiet Sunday"
+        assert ed["dateLong"] == "Sunday, 5 July 2026"
+        assert ed["blocks"][0]["events"][0]["title"] == "Standup"
+        assert ed["stats"]["done"] == 3
+
+    def test_a_family_that_prints_a_code_encodes_the_briefs_link(self) -> None:
+        link = "https://heygaia.io/b/brief-1"
+
+        ed = _embedded_const(_render(family="invoice", link=link), "ed")
+
+        assert ed["codes"] == json.loads(json.dumps(family_codes(EditionFamily.INVOICE, link)))
+
+    @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
+    def test_a_framed_family_hangs_the_drawn_artwork_inlined_from_its_file(
+        self, family: str
+    ) -> None:
+        image = base64.b64encode(artwork_art("oxbow").read_bytes()).decode()
+
+        art = _embedded_const(
+            _render(make_briefing_payload(artwork_id="oxbow"), family=family), "ed"
+        )["art"]
+
+        assert art == {
+            "src": f"data:image/webp;base64,{image}",
+            "title": "The Oxbow",
+            "artist": "Thomas Cole",
+            "year": "1836",
+            "medium": "oil on canvas",
+        }
+
+    def test_a_re_render_hangs_the_same_artwork_whatever_the_edition_number(self) -> None:
+        payload = make_briefing_payload(artwork_id="kambara")
+
+        hung = {
+            _embedded_const(_render(payload, family="exhibition", edition_no=n), "ed")["art"][
+                "title"
+            ]
+            for n in range(12)
+        }
+
+        assert hung == {"Kambara"}
+
+    def test_a_framed_family_without_a_drawn_artwork_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="exhibition edition needs the artwork_id"):
+            _render(family="exhibition")
+
+    def test_a_family_with_no_frame_hangs_nothing(self) -> None:
+        ed = _embedded_const(
+            _render(make_briefing_payload(artwork_id="oxbow"), family="memo"), "ed"
+        )
+
+        assert ed["art"] is None
+
+    def test_the_asset_map_is_the_band_and_the_experience_company_mark(self) -> None:
+        ed = _embedded_const(_render(), "ed")
+
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
+        assert ed["assets"]["BAND"].startswith("data:image/webp;base64,")
+        assert ed["assets"]["TEC_MARK"].startswith("data:image/webp;base64,UklGR")
+
+    def test_assets_are_exposed_on_the_explorer_shim_too(self) -> None:
+        html = _render()
+
+        shim_match = re.search(r"^  assets: (\{.*\}),$", html, re.MULTILINE)
+
+        assert shim_match is not None
+        assert json.loads(shim_match.group(1)) == _embedded_const(html, "ed")["assets"]
+
+    def test_every_family_leads_with_the_headline(self) -> None:
+        ed = _embedded_const(_render(family="memo"), "ed")
+
+        assert ed["deck"] == "A quiet Sunday"
+
+
+@pytest.mark.unit
+class TestPostalStamp:
+    def test_postal_inlines_the_drawn_citys_art_so_the_render_fetches_nothing(self) -> None:
+        """Regression: the stamp loaded from GAIA Cloud's Cloudinary, even on a self-host."""
+        image = base64.b64encode(stamp_art("paris").read_bytes()).decode()
+
+        html = _render(make_briefing_payload(stamp_city="paris"), family="postal")
+        ed = _embedded_const(html, "ed")
+
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | {"CITY_PARIS"}
+        assert ed["assets"]["CITY_PARIS"] == f"data:image/webp;base64,{image}"
+        assert "https://" not in json.dumps(ed["assets"])
+        assert ed["stamp"]["id"] == "paris"
+        assert ed["stamp"]["key"] == "CITY_PARIS"
+
+    def test_postal_without_a_drawn_city_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="postal edition needs the stamp_city"):
+            _render(make_briefing_payload(), family="postal")
+
+    def test_the_template_city_axis_is_every_catalogued_city(self) -> None:
+        html = _render(family="swiss")
+        match = re.search(r"\n  cities: (\[.*?\]),\n", html, re.S)
+
+        assert match is not None
+        cities = json.loads(match.group(1))
+        assert [c["id"] for c in cities] == list(stamp_weights())
+        assert cities[0] == stamp_for(cities[0]["id"])
+
+    def test_other_families_ignore_the_stamp_city(self) -> None:
+        ed = _embedded_const(
+            _render(make_briefing_payload(stamp_city="paris"), family="swiss"), "ed"
+        )
+
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
+        assert ed["stamp"] is None
+
+    def test_a_postal_city_off_the_catalogue_fails_loud(self) -> None:
+        with pytest.raises(KeyError, match="atlantis"):
+            _render(make_briefing_payload(stamp_city="atlantis"), family="postal")
+
+
+@pytest.mark.unit
+class TestScriptEscaping:
+    def test_payload_text_cannot_close_the_inline_script_tag(self) -> None:
+        html = _render(make_briefing_payload(headline="</script><img src=x>"))
+
+        assert "</script><img src=x>" not in html
+        assert '"deck": "<\\/script><img src=x>"' in html
+
+    def test_payload_text_cannot_open_an_html_comment(self) -> None:
+        html = _render(make_briefing_payload(headline="<!--hide"))
+
+        assert "<!--hide" not in html
+        assert "<\\!--hide" in html
+
+    def test_escaped_payload_still_decodes_to_the_original_text(self) -> None:
+        ed = _embedded_const(_render(make_briefing_payload(headline="</script><!--boom")), "ed")
+
+        assert ed["deck"] == "</script><!--boom"
+
+    def test_item_text_is_escaped_for_the_script_context_as_well(self) -> None:
+        html = _render(
+            make_briefing_payload(
+                sections=[
+                    {
+                        "numeral": "I",
+                        "title": "Today",
+                        "items": [
+                            {"text": "</script>alert(1)", "kind": "note", "outcome": "changed"}
+                        ],
+                    }
+                ],
+                blocks=[{"kind": "items", "section": 0}],
+            )
+        )
+
+        assert "</script>alert(1)" not in html
+        assert "<\\/script>alert(1)" in html

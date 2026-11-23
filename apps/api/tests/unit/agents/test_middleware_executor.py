@@ -22,6 +22,7 @@ from langchain_core.messages import (
     HumanMessage,
     MessageLikeRepresentation,
     RemoveMessage,
+    SystemMessage,
     ToolCall,
     ToolMessage,
 )
@@ -574,6 +575,20 @@ class TestExecuteAfterModelStateUpdates:
 # ---------------------------------------------------------------------------
 
 
+_KEPT_TOOL: dict[str, object] = {"name": "kept"}
+_DROPPED_TOOL: dict[str, object] = {"name": "dropped"}
+
+
+class _KeepsOneTool(AgentMiddleware):
+    async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
+        return await handler(request.override(tools=[_KEPT_TOOL]))
+
+
+class _FailingWrapModel(AgentMiddleware):
+    async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
+        raise RuntimeError("middleware failed")
+
+
 class TestWrapModelInvocation:
     @patch(
         "app.agents.middleware.executor.create_model_request",
@@ -675,11 +690,6 @@ class TestWrapModelInvocation:
         mock_request.messages = [HumanMessage(content="hello")]
         mock_create_req.return_value = mock_request
 
-        # Middleware that always fails
-        class _FailingWrapModel(AgentMiddleware):
-            async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
-                raise RuntimeError("middleware failed")
-
         executor = MiddlewareExecutor([_FailingWrapModel()])
         state = _make_state()
         result = await executor.wrap_model_invocation(
@@ -779,6 +789,53 @@ class TestWrapModelInvocation:
             await executor.wrap_model_invocation(
                 mock_model, state, _make_config(), None, [], invoke_fn
             )
+
+
+@patch("app.agents.middleware.executor.BigtoolRuntime.from_graph_context", return_value=None)
+class TestWhatTheModelIsCalledWith:
+    async def test_the_model_gets_the_requests_messages_and_the_tools_a_middleware_left(
+        self, _rt: MagicMock
+    ) -> None:
+        system = SystemMessage(content="be brief")
+        hello = HumanMessage(content="hello")
+        request = ModelRequest(
+            model=MagicMock(spec=BaseChatModel),
+            messages=[hello],
+            system_message=system,
+            tools=[_KEPT_TOOL, _DROPPED_TOOL],
+        )
+        invoke_fn = AsyncMock(return_value=AIMessage(content="ok"))
+
+        with patch("app.agents.middleware.executor.create_model_request", return_value=request):
+            await MiddlewareExecutor([_KeepsOneTool()]).wrap_model_invocation(
+                request.model, _make_state(), _make_config(), None, request.tools, invoke_fn
+            )
+
+        invoke_fn.assert_awaited_once_with([system, hello], [_KEPT_TOOL])
+
+    async def test_a_failed_chain_calls_the_model_on_the_states_messages_and_its_tools(
+        self, _rt: MagicMock
+    ) -> None:
+        state = _make_state()
+        tools: list[BaseTool | dict[str, object]] = [_KEPT_TOOL, _DROPPED_TOOL]
+        invoke_fn = AsyncMock(return_value=AIMessage(content="ok"))
+
+        await MiddlewareExecutor([_FailingWrapModel()]).wrap_model_invocation(
+            MagicMock(spec=BaseChatModel), state, _make_config(), None, tools, invoke_fn
+        )
+
+        invoke_fn.assert_awaited_once_with(state["messages"], tools)
+
+    async def test_a_failed_chain_on_a_state_without_messages_calls_the_model_on_none(
+        self, _rt: MagicMock
+    ) -> None:
+        invoke_fn = AsyncMock(return_value=AIMessage(content="ok"))
+
+        await MiddlewareExecutor([_FailingWrapModel()]).wrap_model_invocation(
+            MagicMock(spec=BaseChatModel), State(), _make_config(), None, [], invoke_fn
+        )
+
+        invoke_fn.assert_awaited_once_with([], [])
 
 
 # ---------------------------------------------------------------------------
@@ -951,8 +1008,8 @@ class TestToolChainFailsClosed:
         with (
             patch("app.services.hil.gate.resolve_policy", AsyncMock(return_value="ask")),
             patch(
-                "app.services.hil.gate.is_hil_ledger_enabled",
-                AsyncMock(side_effect=RuntimeError("flag store down")),
+                "app.services.hil.gate.read_gate_context",
+                side_effect=RuntimeError("gate identity read failed"),
             ),
             patch("app.agents.middleware.executor.log") as mock_log,
         ):

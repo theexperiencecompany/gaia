@@ -553,6 +553,41 @@ def test_a_deletion_beside_a_real_change_keeps_only_the_change(
     assert ranges == [[5, 5]]
 
 
+def test_off_ci_an_uncommitted_edit_is_in_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A local run checks what is about to be committed, as changes.sh files does."""
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    base_sha = _init_repo_with_commit(tmp_path, "a = 1\nb = 2\nc = 3\n")
+    (tmp_path / "mod.py").write_text("a = 1\nb = 99\nc = 3\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._changed_line_ranges("mod.py", base_sha) == [[2, 2]]
+
+
+def test_off_ci_an_untracked_module_is_all_added(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    base_sha = _init_repo_with_commit(tmp_path, "a = 1\n")
+    (tmp_path / "new.py").write_text("x = 1\ny = 2\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._changed_line_ranges("new.py", base_sha) == [[1, 2]]
+
+
+def test_in_ci_only_the_commits_are_in_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A CI step that regenerated a tracked file did not change the PR."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    base_sha = _init_repo_with_commit(tmp_path, "a = 1\nb = 2\n")
+    (tmp_path / "mod.py").write_text("a = 1\nb = 99\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._changed_line_ranges("mod.py", base_sha) == []
+
+
 def test_a_deletion_only_module_is_dropped_from_the_matrix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -596,3 +631,28 @@ def test_a_deletion_only_module_is_dropped_from_the_matrix(
 
     assert mm.main() == 0
     assert json.loads(captured.getvalue()) == []
+
+
+ESTIMATE_SOURCE = """\
+LIMIT = 3
+
+
+def scale(value):
+    if value > LIMIT:
+        return value * 2
+    return value
+
+
+def untouched(value):
+    return value + 1
+"""
+
+
+def test_the_mutant_estimate_counts_only_changed_lines_inside_functions() -> None:
+    # Compare on line 5; Return, BinOp and Constant on line 6; Return on line 7.
+    # The module-level constant is no mutmut target, and line 11 is unchanged.
+    assert mm.estimate_mutants(ESTIMATE_SOURCE, [[1, 7]]) == 5
+
+
+def test_a_diff_touching_no_function_estimates_no_mutants() -> None:
+    assert mm.estimate_mutants(ESTIMATE_SOURCE, [[1, 1]]) == 0

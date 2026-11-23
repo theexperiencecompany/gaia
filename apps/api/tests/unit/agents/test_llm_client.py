@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 from bson import ObjectId
 import httpx
 from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
@@ -37,7 +38,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openai import APIConnectionError, AuthenticationError, RateLimitError
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 import pytest
 import tenacity
 
@@ -1413,7 +1414,14 @@ class TestConstants:
         assert set(LLM_MODEL_PROFILES) == set(LLM_PROVIDER_PRIORITY) == set(LLMProviderName)
 
     def test_provider_priority_is_ordered(self) -> None:
-        assert LLM_PROVIDER_PRIORITY == ("openrouter", "gemini", "openai", "ollama", "custom")
+        assert LLM_PROVIDER_PRIORITY == (
+            "cloudflare",
+            "openrouter",
+            "gemini",
+            "openai",
+            "ollama",
+            "custom",
+        )
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError
@@ -2106,6 +2114,16 @@ class _Closing(BaseModel):
     achieved: bool
 
 
+class _CappedNote(BaseModel):
+    text: str = Field(min_length=1, max_length=40)
+
+
+class _Capped(BaseModel):
+    headline: str = Field(max_length=12)
+    tags: list[str] = Field(max_length=2)
+    note: _CappedNote
+
+
 def _provider_replies_with(arguments: str, finish_reason: str = "tool_calls") -> Any:
     """Patch ChatOpenRouter's wire so both its streamed and unstreamed paths return one raw tool call.
 
@@ -2337,6 +2355,140 @@ class TestStructuredReplyParsing:
         binding = runnable.first
         assert isinstance(binding, RunnableBinding)
         assert binding.kwargs["tool_choice"] == tool_choice
+
+    @staticmethod
+    def _tool_binding(runnable: Runnable) -> RunnableBinding:
+        assert isinstance(runnable, RunnableSequence)
+        assert isinstance(runnable.first, RunnableBinding)
+        return runnable.first
+
+    def test_the_tool_is_not_strict_unless_asked(self) -> None:
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(client_module._structured_tool_runnable(llm, _Closing))
+
+        assert "strict" not in binding.kwargs["tools"][0]["function"]
+        offered = binding.kwargs["ls_structured_output_format"]["schema"]
+        assert "strict" not in offered["function"]
+
+    def test_a_strict_tool_has_the_openai_wire_hold_the_arguments_to_the_schema(self) -> None:
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(
+            client_module._structured_tool_runnable(llm, _Closing, strict=True)
+        )
+
+        assert binding.kwargs["tools"][0]["function"]["strict"] is True
+        offered = binding.kwargs["ls_structured_output_format"]["schema"]
+        assert offered["function"]["strict"] is True
+
+    def test_a_schema_held_call_on_gemini_runs_on_the_response_schema(self) -> None:
+        gemini = ChatGoogleGenerativeAI(model="gemini-x", api_key=SecretStr("k"))
+
+        with patch(f"{_CLIENT}.resolve_model", return_value=gemini):
+            runnable = _structured_runnable(_Closing, None, StructuredCallOptions(schema_held=True))
+
+        binding = self._tool_binding(runnable)
+        assert binding.bound is gemini
+        assert binding.kwargs == {
+            "response_mime_type": "application/json",
+            "response_json_schema": _Closing.model_json_schema(),
+        }
+
+    def test_a_strict_tool_offers_no_size_cap_for_the_provider_to_cut_a_string_at(self) -> None:
+        """Regression: a provider holding a strict maxLength cut a brief's headline mid-sentence."""
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(
+            client_module._structured_tool_runnable(llm, _Capped, strict=True)
+        )
+
+        offered = json.dumps(binding.kwargs["tools"][0]["function"]["parameters"])
+        assert "maxLength" not in offered
+        assert "maxItems" not in offered
+        assert '"minLength": 1' in offered
+        assert binding.kwargs["tools"][0]["function"]["name"] == "_Capped"
+
+    def test_a_gemini_response_schema_offers_no_size_cap(self) -> None:
+        gemini = ChatGoogleGenerativeAI(model="gemini-x", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(client_module._gemini_schema_runnable(gemini, _Capped))
+
+        held = json.dumps(binding.kwargs["response_json_schema"])
+        assert "maxLength" not in held
+        assert "maxItems" not in held
+
+    def test_a_reply_past_a_cap_the_provider_was_not_held_to_is_malformed_naming_it(
+        self,
+    ) -> None:
+        reply = AIMessage(
+            content='{"headline": "Three things are on today", "tags": [], "note": {"text": "ok"}}'
+        )
+
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(reply, _Capped)
+
+        assert "at most 12 characters" in raised.value.reason
+
+    def test_the_gemini_reply_is_read_as_the_schema_under_the_schemas_name(self) -> None:
+        fake = GenericFakeChatModel(
+            messages=iter([AIMessage(content='{"text": "done", "achieved": true}')])
+        )
+
+        runnable = client_module._gemini_schema_runnable(
+            cast("ChatGoogleGenerativeAI", fake), _Closing
+        )
+
+        assert isinstance(runnable, RunnableSequence)
+        assert runnable.last.name == "_Closing"
+        assert runnable.invoke("prompt") == _Closing(text="done", achieved=True)
+
+    def test_a_gemini_reply_that_does_not_fit_the_schema_is_malformed(self) -> None:
+        fake = GenericFakeChatModel(messages=iter([AIMessage(content='{"text": "done"}')]))
+
+        with pytest.raises(MalformedStructuredOutputError, match="does not fit the schema"):
+            client_module._gemini_schema_runnable(
+                cast("ChatGoogleGenerativeAI", fake), _Closing
+            ).invoke("prompt")
+
+    def test_a_json_reply_that_is_no_ai_message_is_malformed_naming_its_type(self) -> None:
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(HumanMessage(content="{}"), _Closing)
+
+        assert raised.value.reason == "_Closing: expected an AI reply, got HumanMessage"
+
+    def test_a_json_reply_cut_at_the_output_cap_is_malformed(self) -> None:
+        cut = AIMessage(content='{"text": "do', response_metadata={"finish_reason": "length"})
+
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(cut, _Closing)
+
+        assert raised.value.reason == "_Closing: reply stopped at the output cap"
+
+    def test_a_json_reply_that_does_not_fit_keeps_its_text_for_the_retry(self) -> None:
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(AIMessage(content='{"text": "done"}'), _Closing)
+
+        assert raised.value.llm_output == '{"text": "done"}'
+        assert raised.value.reason.startswith("_Closing: the reply does not fit the schema: ")
+
+    def test_a_call_on_gemini_that_holds_no_schema_runs_on_the_tool(self) -> None:
+        gemini = ChatGoogleGenerativeAI(model="gemini-x", api_key=SecretStr("k"))
+
+        with patch(f"{_CLIENT}.resolve_model", return_value=gemini):
+            runnable = _structured_runnable(_Closing, None, StructuredCallOptions())
+
+        assert "response_json_schema" not in self._tool_binding(runnable).kwargs
+
+    def test_a_schema_held_call_off_gemini_runs_on_the_strict_tool(self) -> None:
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        with patch(f"{_CLIENT}.resolve_model", return_value=llm):
+            runnable = _structured_runnable(_Closing, None, StructuredCallOptions(schema_held=True))
+
+        binding = self._tool_binding(runnable)
+        assert "response_json_schema" not in binding.kwargs
+        assert binding.kwargs["tools"][0]["function"]["strict"] is True
 
 
 class TestStampFallback:

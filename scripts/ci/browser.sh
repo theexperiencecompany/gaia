@@ -9,7 +9,9 @@
 #                   the gaia-fortress image pins (its opt-in Chromium, which only Fortress's
 #                   own identity test launches), and publish CHROMIUM_BIN /
 #                   OBSCURA_BIN / CADDY_BIN / FORTRESS_BIN to $GITHUB_ENV. Any one
-#                   missing fails: the browser slice never skips a scenario.
+#                   missing fails: the browser slice never skips a scenario. A
+#                   pinned release is fetched up to DOWNLOAD_ATTEMPTS times until
+#                   it matches its digest, and never used unverified.
 #   chrome-host     Start a Chrome browser host (python -m app.browser_host) in the
 #                   background on BROWSER_HOST_PORT with a fresh host key, publish
 #                   the key and a login-encryption key to $GITHUB_ENV, and wait for
@@ -29,6 +31,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/pinned-release.sh
+source "$(dirname "$0")/lib/pinned-release.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -65,8 +69,7 @@ install_fortress() {
   local dir="${RUNNER_TEMP:?RUNNER_TEMP required}/fortress"
   local archive="$dir.tar.gz"
   mkdir -p "$dir"
-  curl -fsSL -o "$archive" "$url"
-  echo "$sha256  $archive" | sha256sum -c - > /dev/null || ci_die "fortress ${version} failed its checksum"
+  fetch_verified "fortress ${version}" "$url" sha256 "$sha256" "$archive"
   tar -C "$dir" -xzf "$archive" --strip-components=1
   rm -f "$archive"
   echo "$dir/tilion"
@@ -76,8 +79,7 @@ install_caddy() {
   local dir="${RUNNER_TEMP:?RUNNER_TEMP required}/caddy"
   local archive="$dir/caddy.tar.gz"
   mkdir -p "$dir"
-  curl -fsSL -o "$archive" "$CADDY_RELEASE_URL"
-  echo "$CADDY_SHA512  $archive" | sha512sum -c - > /dev/null || ci_die "caddy ${CADDY_VERSION} failed its checksum"
+  fetch_verified "caddy ${CADDY_VERSION}" "$CADDY_RELEASE_URL" sha512 "$CADDY_SHA512" "$archive"
   tar -C "$dir" -xzf "$archive" caddy
   echo "$dir/caddy"
 }

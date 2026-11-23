@@ -1,6 +1,6 @@
 """Tool-loop guardrail middleware.
 
-Tracks identical failures (same tool + args returning status="error"),
+Tracks identical failures (same tool + args failing, by status or by an error body),
 same-tool failures, and repeats (the same tool + args issued again this run,
 whatever the outcome). Warn thresholds append an in-band note to the
 ToolMessage; in a background run (no user present) stop thresholds skip the
@@ -25,6 +25,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from app.agents.core.subagents.call_record import tool_call_failed
 from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.constants.llm import (
     LOOP_GUARD_MAX_TRACKED_RUNS,
@@ -144,7 +145,7 @@ class LoopGuardMiddleware(AgentMiddleware):
         # Only failures feed the loop counters; a success breaks the consecutive
         # streak (clears last_failure_key) so an alternating fail/succeed pattern
         # never trips the identical guard.
-        if not isinstance(result, ToolMessage) or getattr(result, "status", None) != "error":
+        if not isinstance(result, ToolMessage) or not tool_call_failed(result):
             counters.last_failure_key = None
             # A successful call that repeats identical arguments is still a loop —
             # warn in-band so the model reuses the earlier result instead of

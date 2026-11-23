@@ -14,11 +14,17 @@
  * generated on a fresh install only: an install that already has a .env may
  * have encrypted credentials under a database-held secret, and a new env value
  * would override it and make them unreadable.
+ *
+ * The web-server secrets (INTERNAL_API_TOKEN) are read by the API and the web
+ * app's server alike, so they go in the compose env file both containers get.
  * @module lib/machine-secrets
  */
 
 import * as crypto from "node:crypto";
-import { parseEnvFileValues } from "./env-writer.js";
+import {
+  addMissingDockerComposeEnvValues,
+  parseEnvFileValues,
+} from "./env-writer.js";
 // Also read by scripts/ci/lib/deploy_templates.py, which gives every one-click template these secrets.
 import machineSecrets from "./machine-secrets.json";
 
@@ -27,6 +33,9 @@ const MACHINE_SECRET_VARS = machineSecrets.always;
 
 /** Keeps the credential-encryption key out of the database it protects. */
 const FRESH_INSTALL_SECRET_VARS = machineSecrets.freshInstallOnly;
+
+/** Shared by the API and the web app's server, so they live in the compose env file both read. */
+const WEB_SERVER_SECRET_VARS = machineSecrets.webServer;
 
 /** Generate one machine secret (64 hex chars, ~openssl rand -hex 32). */
 export function generateMachineSecret(): string {
@@ -65,4 +74,18 @@ export function collectMachineSecrets(
     }
   }
   return secrets;
+}
+
+/**
+ * Give a self-host install's compose env file every web-server secret it has
+ * no value for, keeping the ones it has. Without INTERNAL_API_TOKEN the API
+ * counts every visitor of a server-rendered page as the web container.
+ */
+export function ensureWebServerSecrets(repoRoot: string): void {
+  addMissingDockerComposeEnvValues(
+    repoRoot,
+    Object.fromEntries(
+      WEB_SERVER_SECRET_VARS.map((name) => [name, generateMachineSecret()]),
+    ),
+  );
 }

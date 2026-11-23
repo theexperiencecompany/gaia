@@ -11,13 +11,15 @@
  * @module
  */
 
+import type { Priority } from "../../api/generated";
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchTodoSubcommand,
   handleTodoCreate,
   handleTodoList,
 } from "../utils/commands";
+import { sendChunked } from "../utils/delivery";
+import { parseTextArgs } from "../utils/text";
 
 /** `/todo` command definition with subcommands. */
 export const todoCommand: BotCommand = {
@@ -41,7 +43,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "title",
-          description: "BotTodo title",
+          description: "Todo title",
           required: true,
           type: "string",
         },
@@ -57,7 +59,7 @@ export const todoCommand: BotCommand = {
         },
         {
           name: "description",
-          description: "BotTodo description",
+          description: "Todo description",
           type: "string",
         },
       ],
@@ -68,7 +70,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotTodo ID",
+          description: "Todo ID",
           required: true,
           type: "string",
         },
@@ -80,7 +82,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotTodo ID",
+          description: "Todo ID",
           required: true,
           type: "string",
         },
@@ -107,7 +109,7 @@ export const todoCommand: BotCommand = {
         await target.sendEphemeral("Usage: /todo add <title>");
         return;
       }
-      const priority = args.priority as "low" | "medium" | "high" | undefined;
+      const priority = args.priority as Priority | undefined;
       const description = args.description
         ? String(args.description)
         : undefined;

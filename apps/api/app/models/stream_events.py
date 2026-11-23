@@ -49,11 +49,12 @@ in exactly one helper, so the frame and the persisted record can never
 disagree.
 """
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel, JsonValue
 
-from app.models.hil_models import HILApprovalStatus
+from app.models.hil_models import ApprovalDescription
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, ApprovalStatus
 
 # ---------------------------------------------------------------------------
 # Structured payloads (wrapped in a one-word envelope key at the emit site)
@@ -96,31 +97,25 @@ class ApprovalRequestEntryData(BaseModel):
     tool_call_id: str
     gated_tool_name: str
     integration_name: str | None
-    summary: str
+    description: ApprovalDescription
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
-    args_preview: dict[str, Any]
-    status: HILApprovalStatus
+    args_preview: dict[str, JsonValue]
+    # Where the approval stands: the one status every client renders; it is never re-derived.
+    status: ApprovalStatus
+    # How the log recorded its end (None while none is), who decided, and what the action did.
+    outcome: ApprovalOutcome | None
+    decider: ApprovalDecider | None = None
+    action: ActionResult | None = None
     feedback: str | None
     auto_reason: str | None
-    timeout_seconds: int
-    # Ledger-backed approvals (executor-free HIL): the agent's one-line why, age in
-    # seconds, and the row version the client saw (echoed back on decide; stale v
-    # never overwrites). All optional — old-path cards omit them.
-    rationale: str | None = None
-    age_seconds: int | None = None
-    ledger_version: int | None = None
+    # When the user was asked, so a client can say how long ago.
+    asked_at: AwareDatetime | None = None
     # The call asks in every mode, so clients must not offer "always allow" on it.
     always_asks: bool = False
 
 
 class ApprovalRequestEntry(BaseModel):
-    """The ``approval_request`` tool_data entry built by ``hil.bridge``.
-
-    Emitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the
-    user's decision, and re-emitted in its resolved status once decided —
-    ``stream_utils._append_or_upsert_tool_data`` replaces the earlier frame in
-    the persisted turn so only the final status survives.
-    """
+    """An approval card: the screen draws one per ApprovalRequested entry, ended by its decision entries."""
 
     tool_name: str
     tool_category: str
@@ -137,18 +132,9 @@ class ToolOutputPayload(BaseModel):
 
 
 class MessageBoundaryPayload(BaseModel):
-    """End of one assistant message inside a turn.
-
-    ``discarded`` is true when that message turned out to carry tool calls, which
-    makes any text it streamed a MOMENT-1 preamble ("let me get that set up…")
-    the user must not keep — the real reply arrives as the next message. The
-    frame exists because the wire streams that text BEFORE the tool call, so a
-    live consumer has already shown it by the time we know, and has to retract
-    it rather than leave a duplicate reply on screen.
-    """
+    """End of one assistant message inside a turn; the next text opens a new bubble."""
 
     message_id: str
-    discarded: bool
 
 
 class ReasoningPayload(BaseModel):
@@ -156,6 +142,10 @@ class ReasoningPayload(BaseModel):
 
     content: str
     subagent_id: str | None = None
+
+
+#: "handoff" survives only in stored conversations; every new run is "spawned".
+SubagentAgentType = Literal["handoff", "spawned"]
 
 
 class SubagentStartPayload(BaseModel):
@@ -166,7 +156,7 @@ class SubagentStartPayload(BaseModel):
     #: The integration id the removed handoff tool stamped; no current producer sets it.
     #: subagent_id is this dispatch's row (unique per call), not the subagent's identity.
     subagent: str | None = None
-    agent_type: str
+    agent_type: SubagentAgentType
     started_at: str
     icon_url: str | None = None
     tool_category: str | None = None
@@ -198,21 +188,6 @@ class FollowUpActionsFrame(BaseModel):
     follow_up_actions: list[str]
 
 
-class ErrorFrame(BaseModel):
-    """Terminal error for the stream."""
-
-    error: str
-
-
-class ModelFallbackFrame(BaseModel):
-    """One-time notice that the primary model failed and a backup answered.
-
-    Emitted at most once per stream; the frontend surfaces it as a quiet toast.
-    """
-
-    model_fallback: dict[str, str]
-
-
 class MainResponseCompleteFrame(BaseModel):
     """Marks the primary assistant response as finished.
 
@@ -225,54 +200,7 @@ class MainResponseCompleteFrame(BaseModel):
     usage: dict[str, Any] | None = None
 
 
-class EmojiAckPayload(BaseModel):
-    """What the reaction badge needs: the emoji and the message it reacts to."""
-
-    emoji: str
-    reacts_to_message_id: str
-
-
-class EmojiAckFrame(BaseModel):
-    """The turn resolved to comms' ``<EMOJI>…</EMOJI>`` control tag.
-
-    The driver never streams a directive's text (visible_comms_text), so this
-    frame is the turn's whole visible outcome: the emoji is a reaction badge on
-    the ``reacts_to_message_id`` message, never a bubble of its own. Only emitted on
-    the interactive path (background executor results announce the same outcome
-    over the WebSocket notification instead).
-    """
-
-    emoji_ack: EmojiAckPayload
-
-
 class TodoProgressFrame(BaseModel):
     """Envelope for a todo-progress snapshot."""
 
     todo_progress: dict[str, Any]
-
-
-class ConversationDescriptionFrame(BaseModel):
-    """A freshly generated conversation title/description."""
-
-    conversation_description: str
-
-
-class ConversationInitializedFrame(BaseModel):
-    """Identity frame sent first: conversation + message ids for the turn.
-
-    New conversations dump all fields (``conversation_description`` may be
-    ``null`` and is still included); resumed conversations exclude the two
-    conversation-level fields via ``model_dump(exclude=...)``.
-    """
-
-    conversation_id: str | None = None
-    conversation_description: str | None = None
-    # Single identity: this IS the client's send id (turn_id) when the client
-    # provided one — the optimistic record already carries the final key.
-    user_message_id: str
-    # The user message text. Makes the event log a complete record of the
-    # turn: a client that reloads before its local write ever committed can
-    # reconstruct the user message from replay alone.
-    user_message_content: str
-    bot_message_id: str
-    stream_id: str

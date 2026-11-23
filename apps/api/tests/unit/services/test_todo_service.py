@@ -15,12 +15,14 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from bson import ObjectId
 from fastapi import HTTPException
 from pydantic import ValidationError
-from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
+import time_machine
 
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent, TodoCompleter
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
@@ -32,6 +34,7 @@ from app.models.todo_models import (
     ProjectDocument,
     ProjectWithCount,
     SearchMode,
+    TodoDayWindow,
     TodoDocument,
     TodoModel,
     TodoPage,
@@ -77,6 +80,7 @@ from app.services.todos.todo_service import (
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils import auth_utils
 from app.utils.errors import AppError
+from app.utils.timezone import Timezone
 from app.utils.todo_vector_utils import TodoSearchFilters
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import (
@@ -91,9 +95,13 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_TODO_ID = str(ObjectId())
 FAKE_PROJECT_ID = str(ObjectId())
 FAKE_INBOX_ID = str(ObjectId())
+_WINDOW = TodoDayWindow.for_timezone(
+    Timezone.parse("Asia/Kolkata"), datetime(2026, 11, 17, 19, 30, tzinfo=UTC)
+)
 NOW = datetime.now(UTC)
 _PARENT = str(ObjectId())
 _CHILD = str(ObjectId())
+_COMPLETED_AT = datetime(2026, 3, 4, 9, 30, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -104,10 +112,7 @@ def _no_analytics():
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
-    with (
-        patch("app.services.todos.todo_service.capture"),
-        patch("app.services.todos.todo_bulk_service.capture"),
-    ):
+    with patch("app.services.todos.todo_service.capture"):
         yield
 
 
@@ -141,8 +146,8 @@ def _owners_are_users():
 def _no_pending_approvals():
     """Neutralize the cross-domain ledger read; no live approvals by default."""
     with patch(
-        "app.services.todos.todo_service.approval_ledger_repository.list_live_by_owners",
-        new=AsyncMock(return_value=[]),
+        "app.services.todos.todo_service.pending_approvals_by_owner",
+        new=AsyncMock(return_value={}),
     ):
         yield
 
@@ -258,6 +263,7 @@ def _workflow_doc(wf_id: str, categories: list[str]):
     )
 
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=wf_id,
         user_id=FAKE_USER_ID,
         title="wf",
@@ -502,7 +508,7 @@ class TestCreateTodoWithExternalRef:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         winner = _make_todo_doc(title="Reply to Sam")
-        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.create = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=winner)
 
         with pytest.raises(ExternalRefTakenError) as raised:
@@ -517,9 +523,9 @@ class TestCreateTodoWithExternalRef:
     async def test_a_duplicate_key_with_no_open_holder_is_not_disguised(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.create = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await TodoService.create_todo(
                 TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD
             )
@@ -527,9 +533,9 @@ class TestCreateTodoWithExternalRef:
     async def test_a_duplicate_key_without_a_ref_propagates(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.create = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock()
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await TodoService.create_todo(TodoModel(title="Reply"), FAKE_USER_ID)
         mock_todo_repo.find_open_by_external_ref.assert_not_awaited()
 
@@ -648,8 +654,8 @@ class TestGetTodo:
             owner_id=FAKE_TODO_ID, approval_id="ap_1", conversation_id="conv-9"
         )
         with patch(
-            "app.services.todos.todo_service.approval_ledger_repository.list_live_by_owners",
-            new=AsyncMock(return_value=[live_row]),
+            "app.services.todos.todo_service.pending_approvals_by_owner",
+            new=AsyncMock(return_value={FAKE_TODO_ID: live_row}),
         ):
             result = await TodoService.get_todo(FAKE_TODO_ID, FAKE_USER_ID)
         assert result.pending_approval == PendingApprovalRef(
@@ -691,6 +697,63 @@ class TestListTodos:
         params = TodoSearchParams(mode=SearchMode.TEXT, page=1, per_page=50)
         await TodoService.list_todos(FAKE_USER_ID, params)
         mock_workflow_repo.assert_awaited_once_with(["wf1"], FAKE_USER_ID)
+
+    async def test_the_unfiltered_list_scopes_to_the_users_inbox(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+
+        await TodoService.list_todos(FAKE_USER_ID, TodoSearchParams(mode=SearchMode.TEXT))
+
+        mock_project_repo.get_or_create_inbox.assert_awaited_once_with(FAKE_USER_ID)
+        assert mock_todo_repo.list_page.await_args.kwargs["inbox_project_id"] == FAKE_INBOX_ID
+
+    async def test_an_overdue_list_is_not_scoped_to_the_inbox(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+        params = TodoSearchParams(mode=SearchMode.TEXT, overdue=True, day_window=_WINDOW)
+
+        await TodoService.list_todos(FAKE_USER_ID, params)
+
+        mock_project_repo.get_or_create_inbox.assert_not_awaited()
+        assert mock_todo_repo.list_page.await_args.kwargs["inbox_project_id"] is None
+
+    async def test_stats_are_computed_on_the_users_day(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+        mock_todo_repo.compute_stats = AsyncMock(return_value=TodoStats(total=7))
+        params = TodoSearchParams(mode=SearchMode.TEXT, include_stats=True, day_window=_WINDOW)
+
+        result = await TodoService.list_todos(FAKE_USER_ID, params)
+
+        assert result.stats == TodoStats(total=7)
+        mock_todo_repo.compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_WINDOW)
+
+    async def test_search_stats_are_computed_on_the_users_day(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils
+    ):
+        mock_vector_utils["vector_search"].return_value = []
+        mock_todo_repo.compute_stats = AsyncMock(return_value=TodoStats(total=4))
+        params = TodoSearchParams(
+            q="find", mode=SearchMode.SEMANTIC, include_stats=True, day_window=_WINDOW
+        )
+
+        result = await TodoService.list_todos(FAKE_USER_ID, params)
+
+        assert result.stats == TodoStats(total=4)
+        mock_todo_repo.compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_WINDOW)
+
+    async def test_stats_without_a_day_window_fail_loud(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+
+        with pytest.raises(ValueError, match="day_window"):
+            await TodoService.list_todos(
+                FAKE_USER_ID, TodoSearchParams(mode=SearchMode.TEXT, include_stats=True)
+            )
 
     async def test_semantic_route_uses_vector_search(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils
@@ -775,6 +838,32 @@ class TestUpdateTodo:
 
         assert result.sub_todo_count == 2
         mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
+
+    @pytest.mark.parametrize(
+        ("delivery", "released"), [(WorkflowDelivery.NOW, True), (WorkflowDelivery.SILENT, False)]
+    )
+    async def test_switching_a_held_delivery_to_now_releases_what_the_todo_held(
+        self,
+        mock_todo_repo,
+        mock_project_repo,
+        mock_vector_utils,
+        mock_sync,
+        monkeypatch: pytest.MonkeyPatch,
+        delivery: WorkflowDelivery,
+        released: bool,
+    ):
+        """Regression: a todo moved to Tell me now left its held results waiting for the brief."""
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        release = AsyncMock()
+        monkeypatch.setattr("app.services.briefing.held.release_held_items", release)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(delivery=delivery), FAKE_USER_ID
+        )
+
+        assert release.await_args_list == (
+            [call(FAKE_USER_ID, source_ids=[FAKE_TODO_ID])] if released else []
+        )
 
     async def test_a_new_title_retitles_the_todos_chat(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
@@ -1034,6 +1123,18 @@ class TestUpdateTodo:
             ),
         )
 
+    @time_machine.travel(_COMPLETED_AT, tick=False)
+    async def test_a_todo_the_user_completes_is_stamped_as_theirs(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+
+        await TodoService.update_todo(FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID)
+
+        written = mock_todo_repo.update.await_args.kwargs["update"]
+        assert written.completed_by is TodoCompleter.USER
+        assert written.completed_at == _COMPLETED_AT
+
     async def test_completing_tracked_routes_through_service(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1050,7 +1151,7 @@ class TestUpdateTodo:
                 FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
             )
             mock_tracked.complete_tracked_todo.assert_awaited_once_with(
-                FAKE_TODO_ID, FAKE_USER_ID, summary="Completed via UI"
+                FAKE_TODO_ID, FAKE_USER_ID, summary="Completed via UI", by=TodoCompleter.USER
             )
         # That service sets the completion itself, so nothing is left for this update to write.
         mock_todo_repo.update.assert_not_awaited()
@@ -1245,6 +1346,123 @@ _TRACKED_PATH = "/workspace/gaia-tasks/x"
 _COMPLETE_TRACKED = "app.services.tracked_todo_service.tracked_todo_service.complete_tracked_todo"
 
 
+async def test_a_bulk_switch_to_now_releases_what_the_updated_todos_held(
+    mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, monkeypatch: pytest.MonkeyPatch
+):
+    mock_todo_repo.find_by_ids = AsyncMock(return_value=[])
+    mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+    release = AsyncMock()
+    monkeypatch.setattr("app.services.briefing.held.release_held_items", release)
+    req = BulkUpdateRequest(
+        todo_ids=["a", "b"], updates=TodoUpdateRequest(delivery=WorkflowDelivery.NOW)
+    )
+
+    await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+    release.assert_awaited_once_with(FAKE_USER_ID, source_ids=["a", "b"])
+
+
+class TestBulkUpdateCapturesWhatChanged:
+    """Every bulk path (the web's bulk edit and bulk complete, the agent's bulk complete) captures here, once."""
+
+    @pytest.mark.regression
+    async def test_a_bulk_complete_through_the_bulk_edit_is_a_toggle_of_the_todos_written(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Regression: the bulk edit endpoint reported a completion as todos:updated, counting the ids sent."""
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
+        )
+        mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+        req = BulkUpdateRequest(todo_ids=["a", "b", "c"], updates=TodoUpdateRequest(completed=True))
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=2)
+        )
+
+    @pytest.mark.regression
+    async def test_a_bulk_edit_is_an_update_of_the_todos_written(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(
+            todo_ids=["a", "b"], updates=TodoUpdateRequest(priority=Priority.HIGH)
+        )
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosUpdated(bulk_count=1))
+
+    async def test_a_bulk_complete_of_only_already_completed_tracked_todos_is_not_captured(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        done = _make_todo_doc(todo_id="t", vfs_path=_TRACKED_PATH, completed=True)
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        req = BulkUpdateRequest(todo_ids=["t"], updates=TodoUpdateRequest(completed=True))
+
+        with (
+            patch(_COMPLETE_TRACKED, new_callable=AsyncMock, return_value=True),
+            patch("app.services.todos.todo_service.capture") as mock_capture,
+        ):
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_not_called()
+
+    @pytest.mark.regression
+    async def test_a_bulk_complete_naming_a_todo_twice_counts_it_once(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(todo_ids=["a", "a"], updates=TodoUpdateRequest(completed=True))
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        assert result.success == ["a"]
+        assert result.total == 1
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=1)
+        )
+
+    @pytest.mark.regression
+    async def test_a_bulk_complete_with_another_field_captures_an_already_completed_todo(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        done = _make_todo_doc(todo_id="t", vfs_path=_TRACKED_PATH, completed=True)
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(
+            todo_ids=["t"], updates=TodoUpdateRequest(completed=True, priority=Priority.HIGH)
+        )
+
+        with (
+            patch(_COMPLETE_TRACKED, new_callable=AsyncMock, return_value=True),
+            patch("app.services.todos.todo_service.capture") as mock_capture,
+        ):
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_todo_repo.bulk_update.assert_awaited_once()
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=1)
+        )
+
+    async def test_a_bulk_edit_that_wrote_nothing_is_not_captured(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Regression: an empty bulk edit wrote nothing and was still captured as todos:updated."""
+        req = BulkUpdateRequest(todo_ids=["a", "b"], updates=TodoUpdateRequest())
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_not_called()
+
+
 class TestBulkCompleteRunsTheTrackedLifecycle:
     """A bulk complete must close a tracked todo the way a single complete does: watches torn down, sub-todos completed."""
 
@@ -1260,7 +1478,9 @@ class TestBulkCompleteRunsTheTrackedLifecycle:
         with patch(_COMPLETE_TRACKED, new_callable=AsyncMock, return_value=True) as complete:
             result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
 
-        complete.assert_awaited_once_with("t", FAKE_USER_ID, summary="Completed via bulk operation")
+        complete.assert_awaited_once_with(
+            "t", FAKE_USER_ID, summary="Completed via bulk operation", by=TodoCompleter.USER
+        )
         assert mock_todo_repo.bulk_update.await_args.args[1] == ["p"]
         assert sorted(result.success) == ["p", "t"]
         assert mock_todo_repo.find_by_ids.await_args_list == [
@@ -1286,8 +1506,11 @@ class TestBulkCompleteRunsTheTrackedLifecycle:
         assert tracked_write.args[:2] == (FAKE_USER_ID, ["t"])
         assert tracked_write.args[2].model_dump(exclude_unset=True) == {"priority": Priority.HIGH}
         assert plain_write.args[:2] == (FAKE_USER_ID, ["p"])
-        assert plain_write.args[2].model_dump(exclude_unset=True) == {
+        written = plain_write.args[2].model_dump(exclude_unset=True)
+        assert written.pop("completed_at") is not None
+        assert written == {
             "completed": True,
+            "completed_by": TodoCompleter.USER,
             "priority": Priority.HIGH,
         }
 
@@ -1838,9 +2061,11 @@ class TestBulkServiceComplete:
             return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
         )
         todo_repo.bulk_update = AsyncMock(return_value=2)
-        with patch("app.services.todos.todo_bulk_service.capture") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
-        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=2)
+        )
 
     async def test_captures_completed_count_with_tracked_todos(self, mock_bulk_repos):
         """Tracked todos count through their completion lifecycle — the reported count is modified + tracked, not a plain update count."""
@@ -1853,14 +2078,16 @@ class TestBulkServiceComplete:
         )
         todo_repo.bulk_update = AsyncMock(return_value=1)
         with (
-            patch("app.services.todos.todo_bulk_service.capture") as mock_capture,
+            patch("app.services.todos.todo_service.capture") as mock_capture,
             patch(_COMPLETE_TRACKED, new_callable=AsyncMock) as mock_tracked,
         ):
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
         mock_tracked.assert_awaited_once_with(
-            "b", FAKE_USER_ID, summary="Completed via bulk operation"
+            "b", FAKE_USER_ID, summary="Completed via bulk operation", by=TodoCompleter.USER
         )
-        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=2)
+        )
 
     async def test_no_todos_raises_404(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos
@@ -2017,7 +2244,7 @@ class TestReopenOfATakenRef:
         reopened.external_ref = _THREAD
         holder = _make_todo_doc(title="Reply to Sam")
         mock_todo_repo.get = AsyncMock(return_value=reopened)
-        mock_todo_repo.update = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.update = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
 
         with pytest.raises(ExternalRefTakenError) as raised:
@@ -2032,7 +2259,7 @@ class TestReopenOfATakenRef:
         mock_todo_repo.update.assert_awaited_once_with(
             FAKE_TODO_ID,
             user_id=FAKE_USER_ID,
-            update=TodoUpdate(completed=False, completed_at=None),
+            update=TodoUpdate(completed=False, completed_at=None, completed_by=None),
         )
         mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
 
@@ -2042,10 +2269,10 @@ class TestReopenOfATakenRef:
         reopened = _make_todo_doc(todo_id=FAKE_TODO_ID, completed=True)
         reopened.external_ref = _THREAD
         mock_todo_repo.get = AsyncMock(return_value=reopened)
-        mock_todo_repo.update = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.update = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
             )
@@ -2118,9 +2345,7 @@ class TestReopenOfATakenRef:
         holder = _make_todo_doc(title="Reply to Sam")
         mock_todo_repo.find_by_ids = AsyncMock(return_value=[reopened])
         mock_todo_repo.find_open_by_external_ref = AsyncMock(side_effect=[None, holder])
-        mock_todo_repo.bulk_update = AsyncMock(
-            side_effect=BulkWriteError({"writeErrors": [{"code": 11000}]})
-        )
+        mock_todo_repo.bulk_update = AsyncMock(side_effect=AlreadyExistsError("E11000"))
 
         created: list[TriggerSubscription] = []
 
@@ -2155,10 +2380,10 @@ class TestReopenOfATakenRef:
     async def test_a_bulk_write_that_fails_for_another_reason_propagates(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        failure = BulkWriteError({"writeErrors": [{"code": 2}]})
+        failure = RepositoryError("BulkWriteError: batch op errors occurred")
         mock_todo_repo.bulk_update = AsyncMock(side_effect=failure)
 
-        with pytest.raises(BulkWriteError) as raised:
+        with pytest.raises(RepositoryError) as raised:
             await TodoService.bulk_update_todos(
                 BulkUpdateRequest(todo_ids=["b"], updates=TodoUpdateRequest(completed=False)),
                 FAKE_USER_ID,
@@ -2171,7 +2396,9 @@ class TestReopenOfATakenRef:
 def reopen_seams() -> Iterator[SimpleNamespace]:
     """Patch what a landed reopen does to a tracked todo: activity entry, search flag, sync."""
     with (
-        patch("app.services.todos.todo_service.record_activity", new_callable=AsyncMock) as record,
+        patch(
+            "app.services.todos.todo_service.record_todo_activity", new_callable=AsyncMock
+        ) as record,
         patch(
             "app.services.todos.todo_service.set_canvas_completed", new_callable=AsyncMock
         ) as flag,

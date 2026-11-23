@@ -22,8 +22,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.api.v1.endpoints import mcp as mcp_endpoint
-from app.models.chat_models import MessageModel
-from app.models.conversation_models import ConversationDescriptionHit
+from app.models.conversation_models import ConversationDescriptionHit, ConversationMessageHit
 from app.models.integration_models import Integration
 from app.services.integrations import marketplace
 from app.services.search_service import search_messages
@@ -31,6 +30,7 @@ from app.utils.search.engine import SearchEngine
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
 from tests.conftest import FAKE_USER
+from tests.factories import make_reply_item
 
 pytestmark = pytest.mark.e2e
 
@@ -116,9 +116,8 @@ class TestKeywordSearchJoinsBothRepositories:
     async def test_messages_and_notes_merge_into_one_response(self) -> None:
         convo_results = SimpleNamespace(
             messages=[
-                SimpleNamespace(
-                    conversation_id="conv-1",
-                    message=MessageModel(type="user", response="standup moved to nine"),
+                ConversationMessageHit(
+                    conversation_id="conv-1", item=make_reply_item("standup moved to nine")
                 )
             ],
             conversations=[ConversationDescriptionHit(conversation_id="conv-1")],

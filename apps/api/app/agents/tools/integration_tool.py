@@ -18,6 +18,7 @@ from app.constants.integrations import (
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
     ConnectMode,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
@@ -30,7 +31,6 @@ from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
 from app.models.integration_models import (
-    AuthType,
     ConnectStep,
     CreateCustomIntegrationRequest,
     Integration,
@@ -38,7 +38,7 @@ from app.models.integration_models import (
     ListIntegrationsResult,
     SuggestedIntegration,
 )
-from app.models.mcp_config import McpProbeResult
+from app.models.mcp_config import AuthType, McpProbeResult
 from app.models.oauth_models import OAuthIntegration
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_service import (
@@ -47,7 +47,6 @@ from app.services.device.device_service import (
 )
 from app.services.integrations.connect_steps import connect_step
 from app.services.integrations.custom_crud import (
-    CustomConnectionResult,
     create_and_connect_custom_integration,
     create_custom_integration,
 )
@@ -498,7 +497,6 @@ async def _create_and_report_custom_server(
     resolved_type = cast(
         AuthType | None, probed_type if probed_type in ("none", "oauth", "bearer") else None
     )
-    connection: CustomConnectionResult
     integration, connection = await create_and_connect_custom_integration(
         user_id,
         CreateCustomIntegrationRequest(
@@ -509,14 +507,14 @@ async def _create_and_report_custom_server(
         ),
         mcp_client,
     )
-    status = connection.get("status")
-    if status == "connected":
-        count = connection.get("tools_count") or 0
+    if connection.status == IntegrationStatus.CONNECTED:
+        count = connection.tools_count or 0
         return f"✅ Added and connected {integration.name} ({count} tools available)."
-    if status == "requires_oauth":
+    if connection.status == "requires_oauth":
         return await request_integration_connection(integration.integration_id, name, user_id)
+    error = "unknown error" if connection.error is None else connection.error
     return (
-        f"❌ Added {name} but couldn't connect: {connection.get('error', 'unknown error')}. "
+        f"❌ Added {name} but couldn't connect: {error}. "
         f"It's saved (id {integration.integration_id}); you can ask me to retry connecting it."
     )
 

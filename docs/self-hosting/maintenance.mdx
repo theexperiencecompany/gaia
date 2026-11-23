@@ -154,6 +154,8 @@ This moves you to the GAIA release your CLI ships. Your data, `.env` files and `
 <Accordion title="More about updates">
   `gaia update` checks the download against its checksum, swaps in the new setup files (removing any the release dropped), pins `GAIA_VERSION` in `packages/cli/selfhost/.env`, restarts, and prints the old and new version.
 
+  Every start, the manual `docker compose up` included, first runs the release's data updates in a one-off `migrate` container. The server and background jobs wait until it finishes. If it fails, they don't start: read `docker compose -f docker-compose.selfhost.yml logs migrate`, fix the cause, and start again. Each update runs once, so a second start skips what already finished.
+
   An install made by an older `gaia up` is a git checkout. Its next `gaia update` converts it: tracked files and `.git` are removed, and your `.env` files and `backups/` stay. A checkout on a branch, or with local edits, is refused and pointed at `gaia update --git`. Contributors use `gaia update --git` to pull and rebuild from source.
 
   After an update that changes the embedding model, old vectors can go stale. Failures are logged and flagged for reindexing instead of stopping writes. Watch for them:

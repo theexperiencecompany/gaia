@@ -1,10 +1,6 @@
-import { splitMessageByBreaks } from "@shared/utils";
-
 /**
  * Framer Motion timing for the staggered reveal of message-break bubbles.
- *
- * The splitter itself lives in `@shared/utils` and is imported from there
- * directly — re-exporting it here only gave the same function two import paths.
+ * The server splits a reply into its bubbles; this is only how they land.
  */
 
 const MESSAGE_BREAK_STAGGER_SECONDS = 0.08;
@@ -33,15 +29,4 @@ export function resolvePartChoreography(
   choreography: PartChoreography | undefined,
 ): PartChoreography {
   return choreography ?? DEFAULT_PART_CHOREOGRAPHY;
-}
-
-/** How long the avatar waits before fading in: it belongs to the last part of
- *  the turn, so it lands with that part rather than with the first. */
-export function logoDelayFor(
-  cleanText: string,
-  staggerSeconds: number,
-): number {
-  if (!cleanText) return 0;
-  const parts = splitMessageByBreaks(cleanText);
-  return Math.max(0, parts.length - 1) * staggerSeconds;
 }

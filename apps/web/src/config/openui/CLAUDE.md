@@ -49,12 +49,12 @@ GAIA-only components (in `components/`): `GaugeChart`, `MapBlock`, `Timeline` (e
 
 ## 4. The LLM prompt is generated — never hand-edit it
 
-`scripts/openui/generate-prompt.ts` merges `openuiLibrary.toSpec()` with the GAIA specs from
+`scripts/openui/generate-prompts.ts` merges `openuiLibrary.toSpec()` with the GAIA specs from
 `promptSpecs.ts` and writes `apps/api/app/agents/prompts/openui_generated.txt`. The Python
 agent (`openui_prompts.py`) reads that artifact and prepends GAIA's SURFACE POLICY +
 `OPENUI_SUPPRESSED_TOOLS` (derived from `tool_fields` in `chat_models.py`).
 
-- Regenerate: `pnpm openui:gen-prompt`.
+- Regenerate: `mise openui:prompts`.
 - A **prek pre-commit hook** regenerates and fails if `openui_generated.txt` is stale, so the
   prompt can never drift from the library. `openui_generated.txt` is committed.
 

@@ -5,7 +5,12 @@ import fs from "fs";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
-import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import {
+  expandCanonicalRedirects,
+  RETIRED_PAGE_PAIRS,
+} from "./canonical-redirects.mjs";
+import { STATIC_PAGE_GENERATION_TIMEOUT_SECONDS } from "./build-rate-limit.mjs";
+import { IMAGE_QUALITIES } from "./image-qualities.mjs";
 import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
 import { POSTHOG_HOST } from "./third-party-origins.mjs";
 import { vanityRedirects } from "./vanity-redirects.mjs";
@@ -25,6 +30,20 @@ const isWorktreeWithSharedDeps =
 const turbopackRoot = isWorktreeWithSharedDeps
   ? path.join(__dirname, "../../..")
   : path.join(__dirname, "../..");
+
+/** The first path segment of every (landing) route: each directory there that holds a route. */
+function landingSections() {
+  const landingDir = path.join(__dirname, "src/app/[locale]/(landing)");
+  return fs
+    .readdirSync(landingDir, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        fs.readdirSync(path.join(landingDir, entry.name), { recursive: true })
+          .some((file) => /(^|\/)page\.(tsx|mdx)$/.test(String(file))),
+    )
+    .map((entry) => entry.name);
+}
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -61,6 +80,7 @@ const nextConfig = {
   // human dev server runs) lifts that without touching the default build.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   productionBrowserSourceMaps: true,
+  staticPageGenerationTimeout: STATIC_PAGE_GENERATION_TIMEOUT_SECONDS,
   // OpenNext file-traces every public/*.wasm into the Worker (even in unrelated
   // routes' .nft.json), collecting the desktop-only ~12MiB wake-word WASM past
   // Cloudflare's 10MiB limit. Exclude it on the Cloudflare build; Electron's standalone build copies public/ wholesale, unaffected.
@@ -75,7 +95,12 @@ const nextConfig = {
           }
         : false,
   },
+  // next dev otherwise rewrites the tracked CLAUDE.md (AGENTS.md symlink) whenever its
+  // managed block's text differs; the docs pointer lives there as plain text instead.
+  agentRules: false,
   reactStrictMode: true,
+  // next dev otherwise writes a managed block into the tracked CLAUDE.md (AGENTS.md links to it).
+  agentRules: false,
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
   output: "standalone",
@@ -136,6 +161,9 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
+    // Under an agent, next dev otherwise exits on its first start to show an upgrade
+    // nudge, which half-boots a stack whose API keeps serving.
+    agentUpgrade: false,
     // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
     // protocol (as of @opennextjs/cloudflare 1.20.2 it doesn't — /_tree gets the
     // full build-time RSC payload, no x-nextjs-postponed header). With inlining on, the client marks the route cache stale and refetches at ~5 req/s per visible <Link> (observed heygaia.io /signup, 2026-08-18).
@@ -173,6 +201,7 @@ const nextConfig = {
     // 1920 CSS px; asking Cloudflare for 3840 upscaled files (500KB+) with no
     // visible gain on any viewport.
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    qualities: IMAGE_QUALITIES,
     // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
     // custom loader — edge-cached, off the worker. Requires Transformations enabled
     // on the zone; gated on the Cloudflare build (see image-loader.ts), else falls through to Next's built-in optimizer.
@@ -214,24 +243,34 @@ const nextConfig = {
     ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
   ],
   async headers() {
-    // ISR hub pages send s-maxage only; browsers need max-age and a validator.
-    // Scope it to those routes: static pages already pass, app routes need
-    // their private/no-store headers.
-    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for", "blog", "use-cases"];
-    const buildLastModified = new Date().toUTCString();
+    // Next sends public pages s-maxage only; browsers need max-age and a validator.
+    // Hosted (landing) routes and home only: app routes stay private/no-store, and
+    // self-host /signup renders live setup status (see src/lib/selfhost.ts).
+    const isSelfhostWeb = process.env.NEXT_PUBLIC_GAIA_SELFHOST === "true";
+    const publicHeaders = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
+      },
+      { key: "Last-Modified", value: new Date().toUTCString() },
+    ];
+    const publicCacheRules = isSelfhostWeb
+      ? []
+      : [
+          {
+            source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${landingSections().join("|")})/:path*`,
+            headers: publicHeaders,
+          },
+          // An optional segment alone does not match "/", so the home page needs its own rule.
+          { source: "/", headers: publicHeaders },
+          {
+            source: "/:locale(de|es|fr|ja|ko|pt-br)",
+            headers: publicHeaders,
+          },
+        ];
     return [
       ...NEXT_SECURITY_HEADER_RULES,
-      {
-        source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${marketingHubs.join("|")})/:path*`,
-        headers: [
-          {
-            key: "Cache-Control",
-            value:
-              "public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
-          },
-          { key: "Last-Modified", value: buildLastModified },
-        ],
-      },
+      ...publicCacheRules,
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
       // Next content-hashes chunk filenames in prod, so its default immutable
       // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.
@@ -291,7 +330,11 @@ const nextConfig = {
   // pairs mirror the canonicalSlug/canonicalPath markers in public/data (see
   // canonical-redirects.mjs). Runs before routing/middleware, per locale prefix.
   async redirects() {
-    return [...expandCanonicalRedirects(), ...vanityRedirects()];
+    return [
+      ...expandCanonicalRedirects(),
+      ...expandCanonicalRedirects(RETIRED_PAGE_PAIRS),
+      ...vanityRedirects(),
+    ];
   },
 };
 

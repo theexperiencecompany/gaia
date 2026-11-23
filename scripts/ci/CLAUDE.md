@@ -20,14 +20,15 @@ lane without grepping the workflow first.
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
 | What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
-| Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
-| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
-| The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
-| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
+| The sim stack (API, worker, web, LLM stub) a browser e2e lane boots and drives | `sim-stack.sh` | `up` |
+| Standing dependency, pin and secret gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog`, `uv-lock`, `secrets` |
+| The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-scope`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan`, `queue-verified` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
-| Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
-| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `indexnow` |
+| Shipping to production | `deploy.sh` | `plan`, `stack`, `migrate`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
+| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
+| The ratchet baselines, which only shrink | `baselines.py` | `growth` |
 
 `.py` concepts decide (parse API results, route, pack, classify); `.sh`
 concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
@@ -42,12 +43,41 @@ count, who holds CPU slots, and how many mutmut/pytest processes are running.
 Release and deploy are two concepts, not one: `release.sh` publishes artifacts
 (image tags, `:latest`, the CLI on npm); `deploy.sh` puts them on the Swarm.
 
+A backend deploy runs in this order, and each step must succeed before the next:
+`deploy.sh migrate` runs the release's data migrations (`apps/api/scripts/post_deploy.py`)
+as a one-off Swarm job of the image about to roll, with the backend's environment,
+secrets, networks and working directory copied from its live task template, then the
+conversation check (and, only when it finds work, the catch-up with the old writers
+stopped); then `deploy.sh stack` rolls the services; then convergence and `verify-commit`. No API or
+worker of a release ever serves before its migrations finished. The previous release
+keeps serving while the job runs, so a migration that moves a field leaves it reading
+that field's default for those minutes, so a migration that moves a field is
+expand/contract: the expand copies and keeps the old field, and the contract step that drops
+it runs a release later. `apps/api/scripts/contract_moved_fields.py` is the pending contract
+for the todo and notification moves; the next release appends it to `POST_DEPLOY_STEPS`
+(`infra/docker/CLAUDE.md`). Self-host gets the same order from the
+`migrate` service in `packages/cli/selfhost/docker-compose.selfhost.yml`, which the API
+and worker wait on; Render runs it as their `preDeployCommand`.
+
 `baselines/` holds the ratchet files for the gates that landed on a tree
 that already violated them (`checks.mjs api-schema-types`,
-`api-client-imports`, and `smoke-web.sh squirrel`'s per-rule finding counts). Each line is one known violation, each file has a header
+`api-client-imports`, and `smoke-web.sh squirrel`'s per-page findings). Each line is one known violation, each file has a header
 saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
+
+Growing one is the founder's call, never the author's. `baselines.py growth`
+(the `baseline-growth` check in lint-node, on a PR and in the merge queue)
+fails a change that adds an entry to any of these files, to
+`tools/lints/*_baseline.txt` or `apps/api/tests/meta/*_baseline.txt`, or to a
+module-level `*ALLOWLIST*` literal in `tools/lints/*.py` — or that loosens a
+bound one records (a squirrel `score:` floor lowered, an allowlist count
+raised). The one way through is a comment written in the same change directly
+above the entry, or above the run of entries it opens:
+`# growth approved by <github-login> on YYYY-MM-DD: <reason>`. An approval
+already on the base approves nothing new, a renewed `deferred-until=` is not
+growth, and a new gate's seed file is not growth. Write that line only when
+the founder has approved the growth in so many words.
 
 `lib/` holds what the entrypoints share or delegate to: `output_findings.py`
 (what a tool printed, read back as findings at file:line — pytest, vitest,
@@ -58,26 +88,39 @@ through — retries, timeouts, and a raised `GitHubError` instead of an empty
 answer; a caller with a safe fallback catches it at the call site), `log.sh` (the log
 convention), `runner-host.sh` (`ci_on_the_box`: whether this job is on the home
 box, read from the runner name `gaia-home-<n>` and never from
-`RUNNER_ENVIRONMENT`, which Blacksmith also sets to `self-hosted`),
+`RUNNER_ENVIRONMENT`, which Blacksmith also sets to `self-hosted`) and
+`runner_host.py` (the same answer, `on_the_box()`, for `runner.py` and `mutation.py`),
+`webhook.sh` (`post_webhook`, the one Discord/Slack webhook sender: `deploy.sh
+notify` sources it and `analytics.py csp-soak` runs it through bash),
+`csp_soak.py` (the CSP soak's header classification, HogQL query and Slack
+message behind `analytics.py csp-soak`, kept out of the catalog checks' file),
 `cpu-slots.sh` (the host CPU governor, below),
+`pinned-release.sh` (`fetch_verified`, the one download of a pinned release:
+checked against its digest and fetched again up to `DOWNLOAD_ATTEMPTS` times),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
-`CHANGED_FILES` contract), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
+`CHANGED_FILES` contract), `checks-commands.mjs` (every `checks.mjs`
+subcommand but `bot-handles`; the entry loads it only once node_modules is
+installed and otherwise names the install command, so a fresh worktree gets one
+line instead of a module-resolution stack), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
 observability scanner behind `checks.mjs evlog-map-bots`),
 `api-contract.mjs` (the twin/boundary detector behind `checks.mjs
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
-left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
+left in checks-commands.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
-`cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
+`cli-config-schema`, `deploy-templates`, `link-constants` and `openui-prompts`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
-crawler behind `smoke-web.sh audit`), `squirrel.py` (squirrelscan's effective
-config and the per-rule ratchet against `baselines/squirrel-build.txt` and
-`squirrel-live.txt` behind
-`smoke-web.sh squirrel`), `origin_proxy.py` (the HTTPS proxy that serves a local
-build to squirrel as https://heygaia.io, since squirrel cannot remap a host),
+crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run
+audits, the one ignore list of squirrel's own bugs, `drop` for applying a run's fixes, and the per-page, per-check,
+per-item baseline in `baselines/squirrel-build.txt` and `squirrel-live.txt`, read
+from squirrel's own crawl database behind `smoke-web.sh squirrel`; it reuses
+`indexnow.py`'s diff mapping), `origin_proxy.py` (the HTTPS proxy that serves a local
+build to squirrel as https://heygaia.io, since squirrel cannot remap a host, and
+serves a chosen page list as the sitemap, since squirrel audits sitemap pages and
+not the URL it is given),
 `indexnow.py` (the changed-page submitter behind
 `smoke-web.sh indexnow`, which reuses `seo_audit.py`'s sitemap reader) and
 `mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
@@ -99,10 +142,53 @@ themselves are written only by `verdict.py emit`, one per module, lane
 
 A survivor is read back through `mutation.py survivors <shard.verdict.json |
 record dir | shard.log> [--json]` (`mise mutation:survivors`), never by parsing
-`shard.log` or mutmut's own state. `mutation.py one <module> [tests]`
-(`mise mutation:one`) runs a single module locally, writes the same records to
-`verify-logs/mutation/one/`, and prints that view on failure — the local proof
-step, with no lane and nothing to poll.
+`shard.log` or mutmut's own state. `mutation.py local <module>`
+(`mise mutation:one`) runs a module locally through the lane's own `shard`
+path, writes its record to `verify-logs/mutation/<module>.verdict.json`, and
+prints that view on failure — the local proof step, with no lane and nothing
+to poll.
+
+Shards are sized by estimated cost, not by module count. The detector stamps
+each module with `mutants`, its count of mutable AST nodes inside functions on
+the changed lines (rank correlation 0.92 with mutmut's real count on PR #1799).
+A module's `cost` is `20 s + mutants x 0.30 s` in the unit pool, and
+`20 s + mutants x (0.19 s + test files x 0.061 s)` in services (one mutant
+worker, because contract tests share a Redis DB). `plan` picks the shard COUNT
+from the cost: each pool gets the fewest shards whose packing keeps every shard
+within `SHARD_BUDGET_SECONDS` (420), a module over it taking a shard alone.
+420 s plus a shard's setup ends before ts-build-test (616 s median on a PR), so
+packing never lengthens a PR's wall clock, and it sits well under the deadline
+on purpose: no static feature predicts the slow modules (`message_breaks.py`, 96
+mutants, took 245 s on one run and 563 s on the next), and replaying both #1799
+runs' measured durations kept the worst 600 s shard at 1133 s. Measured beats
+estimated: each shard uploads `mutation-durations-N` (`shard.durations.json`,
+the seconds every started module took), `detect` runs `mutation.py history` to
+download those from the PR's five newest earlier runs, and `plan` costs a
+measured module at its newest measurement, falling back to the estimate. A
+plan is never topped up to fill a wave: on GitHub-hosted runners every shard
+paid ~70-160 s of checkout and install (a 3-shard run spent 377 s of setup on
+71 s of mutants) and held one of the org's 20 job slots. A plan above `MAX_SHARDS` (24, four waves, far
+under GitHub's 256-job matrix limit) is cut back to it, and the plan warns for
+each shard over budget. Concurrency stays at `max-parallel: 6`, so the shards
+past the first wave queue. Spare shards go to the pool with the most cost per
+shard, and inside a pool the costliest module goes first onto the cheapest shard.
+Each module's mutmut cap is 3x its cost, never under 720 s and never past the
+deadline less wrap-up. `shard` also keeps a deadline, `SHARD_DEADLINE_SECONDS` (1680, under the
+30-minute step timeout). Caps shrink to fit the time left, and a module the
+deadline has no room for gets a `timed_out` verdict with no run. So the step
+timeout can no longer kill a shard before it reports. Memory is capped the same
+way: on Linux mutmut gets an `RLIMIT_DATA` of `MUTANT_MEMORY_SHARE` (80%) of the
+shard's cgroup limit (else RAM) split over itself and its workers, inherited by
+every forked mutant. A mutant that loops while a test fake grows then dies of
+`MemoryError`, or as a segfault (counted as detected on Linux beside real verdicts,
+and named in the verdict's reason). Before the cap, `conversation/step.py` went
+from 1.1 GB to 8 GB in 50 s and the OOM killer took the whole hosted runner,
+which GitHub reports as "the runner has received a shutdown signal". The constants were fitted
+to PR #1799 (runs 43665639573 and 43677307541), where packing by count left shard 3/6 with 54
+modules and a 30-minute timeout. The same run stopped
+`repositories/conversations.py` and `conversation/mongo_log.py` at the fixed
+720 s cap with 452/519 and 383/521 mutants graded. Refit them from a later
+run's `shard.log` phases when the lane's machines or worker counts change.
 
 The bots scanner and the three `mutation_*.py` modules live in `lib/` rather
 than inline because they are large bodies with their own tests and a second
@@ -121,6 +207,22 @@ subcommand. `contract.json` is the cross-runtime contract data, and `run.py`
 drives two separate runtimes through `emit_python.py` and `emit_typescript.ts`
 to diff what they actually print. Folding an entry point into `checks.mjs` would
 leave the other three files behind and hide where the tool really lives.
+
+## regression-proof: what counts as proof on base
+
+`pytest.sh regression-proof` runs this diff's new `@pytest.mark.regression`
+tests in a worktree of the base, with the PR's whole test tree copied over, and
+`verdict.py regression-proof-verdict` requires each to FAIL there. PASSED,
+SKIPPED and ERRORED (never reached its assertions) are rejected. So is a test
+that cannot be collected on base at all: a conftest or test module importing a
+head-only name aborts pytest (exit 4, or 2) before anything runs, and the
+verdict says `cannot run on base — <file>: <first error line>` at that file's
+line, with the advice to import only what base has. Only then is each test
+file rerun alone, so the broken file voids only the tests under it and every
+other one still gets its own outcome; when everything imports, the lane stays
+one pytest start. All outcomes land in one verdict. `--services false` (in
+lint-python) and `--services true` (in the integration slice) share this one
+path.
 
 ## The host CPU governor (`lib/cpu-slots.sh`)
 
@@ -179,8 +281,9 @@ Two rules make it safe to have in the gate at all:
   acquirer.
 
 Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.py shard` takes
-EXACTLY its `MUTMUT_MAX_CHILDREN` mutant-worker count (defaulting to `nproc/2`
-via `mutant_workers`, and printed as `mutation shard: N mutant worker(s), N
+EXACTLY its `MUTMUT_MAX_CHILDREN` mutant-worker count (defaulting through
+`mutant_workers` to `nproc/2` on the box and to every vCPU off it, where the
+shard has the runner to itself, and printed as `mutation shard: N mutant worker(s), N
 host CPU token(s)` so a shard's weight is never invisible), and the nx `build`
 step takes `NX_PARALLEL` via `runner.py with-slots N -- <cmd>` (the wrapper exists
 so a scriptless lane's step stays one command line). A lane must ask for what it
@@ -320,7 +423,7 @@ its output (file:line, paths prefixed by the target's `cwd`) and fails the
 job: a task detect planned that has no result is a failure, never a skip. The
 `tools/nx-ci-status` plugin's `postTasksExecution` hands the run-many tasks'
 results back; it fires once per run, which is why only build chains share one.
-An action check (gitleaks, semgrep, trivy) or a step check (the PostHog ones)
+An action check (semgrep, trivy) or a step check (the PostHog ones)
 is a target with `runner` `action`/`step`; its step's outcome reaches
 post-statuses as `--step <check>=<outcome>`.
 
@@ -338,7 +441,7 @@ with what is there so far and clears the flag. Artifacts are readable mid-run
 and job logs are not, so `mise ci:remote` prints the finding under the still
 running job. A step that is not a check (a setup) keeps its plain shell: `check` reads its command's output to EOF, so a
 command that leaves a child holding stdout would hold the step open. Scanners
-that are actions (gitleaks, semgrep) cannot take a shell, so the step after
+that are actions (semgrep) cannot take a shell, so the step after
 them is `verdict.py sarif` over the report they wrote. The gate writes its own
 `quality-gate` verdict too — one finding per lane that did not pass.
 

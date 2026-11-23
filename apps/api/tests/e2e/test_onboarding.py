@@ -40,6 +40,7 @@ from app.constants.onboarding import (
 )
 from app.models.integration_models import IntegrationAccount
 from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
+from app.models.mcp_config import ComposioConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.onboarding_models import (
     EmailSummary,
@@ -54,11 +55,12 @@ from app.models.user_models import (
     PersonalizationBundle,
     StartingJobs,
     UserDocument,
+    UserUpdate,
 )
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.onboarding.intelligence_job import personalization_job_id
-from app.services.onboarding.intelligence_service import OnboardingStage, holo_card_url
+from app.services.onboarding.intelligence_service import holo_card_url
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.tasks.onboarding_tasks import process_onboarding_intelligence_task
 from tests.conftest import FAKE_USER
@@ -88,7 +90,8 @@ GMAIL_CONFIG = OAuthIntegration(
     category="productivity",
     provider="google",
     scopes=[],
-    managed_by="self",
+    managed_by="composio",
+    composio_config=ComposioConfig(auth_config_id="ac_gmail", toolkit="GMAIL"),
 )
 
 
@@ -145,8 +148,6 @@ class _UserStore:
         doc = self.docs.get(user_id)
         if doc is None or (doc.get("onboarding") or {}).get("completed"):
             return None
-        if fields.get("timezone") is not None:
-            doc["timezone"] = fields["timezone"]
         sub = doc.setdefault("onboarding", {})
         sub.update(
             completed=True,
@@ -158,6 +159,13 @@ class _UserStore:
         sub.setdefault("preferences", {}).update(
             fields["preferences"].model_dump(exclude_unset=True)
         )
+        return await self.get(user_id)
+
+    async def update(self, user_id: str, update: UserUpdate) -> UserDocument | None:
+        doc = self.docs.get(user_id)
+        if doc is None:
+            return None
+        doc.update(update.model_dump(exclude_unset=True))
         return await self.get(user_id)
 
     async def clear_onboarding(self, user_id: str) -> None:
@@ -234,33 +242,6 @@ class _UserStore:
 # ---------------------------------------------------------------------------
 
 
-class _StageSink:
-    """Every onboarding_stage event the socket would have carried, in order."""
-
-    def __init__(self) -> None:
-        self.events: list[tuple[str, dict[str, Any]]] = []
-
-    async def broadcast_to_user(self, *, user_id: str, message: dict[str, Any]) -> None:
-        if message.get("type") != "onboarding_stage":
-            return
-        data = message["data"]
-        self.events.append((data["stage"], data["payload"]))
-
-    @property
-    def names(self) -> list[str]:
-        return [name for name, _ in self.events]
-
-    def payload(self, stage: OnboardingStage) -> dict[str, Any]:
-        """Return the last payload emitted for stage — the one the client keeps."""
-        for name, payload in reversed(self.events):
-            if name == stage.value:
-                return payload
-        raise AssertionError(f"{stage.value} never emitted; got {self.names}")
-
-    def emitted(self, stage: OnboardingStage) -> bool:
-        return stage.value in self.names
-
-
 # ---------------------------------------------------------------------------
 # External-service doubles
 # ---------------------------------------------------------------------------
@@ -290,6 +271,8 @@ class _Externals:
     memories_cleared: int = 0
     integrations_connected: list[str] = field(default_factory=list)
     disconnected: list[str] = field(default_factory=list)
+    #: users whose daily brief and weekly digest workflows were provisioned
+    briefings_provisioned: list[str] = field(default_factory=list)
 
 
 #: The two conversations this flow seeds, by the description each carries. One
@@ -391,11 +374,6 @@ async def arq_pool() -> Any:
     await fake.aclose()
 
 
-@pytest.fixture
-def stages() -> _StageSink:
-    return _StageSink()
-
-
 def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _Externals) -> None:
     """Every write the flow makes, routed into users/externals instead of Mongo."""
 
@@ -407,13 +385,8 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         )
         return conversation
 
-    async def _append_messages(
-        conversation_id: str, *, user_id: str, messages: list[Any]
-    ) -> list[str]:
-        externals.seeded_messages.setdefault(conversation_id, []).extend(
-            m.response for m in messages
-        )
-        return [f"msg-{i}" for i, _ in enumerate(messages)]
+    async def _log_notice(_ports: Any, conversation_id: str, _user_id: str, notice: Any) -> None:
+        externals.seeded_messages.setdefault(conversation_id, []).append(notice.text)
 
     async def _list_user_integrations(_user_id: str) -> list[Any]:
         out = []
@@ -426,8 +399,9 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
     async def _disconnect(_user_id: str, integration_id: str) -> None:
         externals.disconnected.append(integration_id)
 
-    seeding_conversations = AsyncMock()
-    seeding_conversations.append_messages.side_effect = _append_messages
+    async def _provision_briefings(user_id: str) -> list[Any]:
+        externals.briefings_provisioned.append(user_id)
+        return []
 
     todo_repo = AsyncMock()
     todo_repo.delete_onboarding_todos.side_effect = lambda _uid: externals.todos_purged
@@ -462,29 +436,30 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
         patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
         patch(f"{SVC}.onboarding_service.conversation_repository", conversation_repo),
-        patch("app.utils.seeding_utils.conversation_repository", seeding_conversations),
+        patch("app.utils.seeding_utils.accept", side_effect=_log_notice),
+        patch("app.utils.seeding_utils.runtime_ports"),
         patch("app.utils.seeding_utils.create_conversation_service", _create_conversation),
         patch(f"{SVC}.onboarding_service.user_integration_repository", integrations_repo),
         patch(f"{SVC}.onboarding_service.memory_engine", memory),
         patch(f"{SVC}.onboarding_service.disconnect_integration", _disconnect),
+        patch(f"{SVC}.onboarding_service.provision_briefing_workflows", _provision_briefings),
+        patch("app.services.user_timezone.user_repository", users),
+        # No briefing workflows exist before provisioning, so a timezone moves nothing.
+        patch("app.services.user_timezone.resync_briefing_schedules", AsyncMock()),
     ):
         stack.enter_context(patcher)
 
 
-def _enter_transport_patches(stack: ExitStack, stages: _StageSink, externals: _Externals) -> None:
-    """Record the socket and the notification service rather than delivering them."""
+def _enter_transport_patches(stack: ExitStack, externals: _Externals) -> None:
+    """Record the notification service rather than delivering it."""
 
     async def _create_notification(request: Any) -> None:
         externals.notifications.append(request.content.title)
 
     notifications = AsyncMock()
-    notifications.create_notification.side_effect = _create_notification
+    notifications.notify.side_effect = _create_notification
 
-    for patcher in (
-        patch(f"{SVC}.intelligence_service.websocket_manager", stages),
-        patch(f"{SVC}.intelligence_service.notification_service", notifications),
-    ):
-        stack.enter_context(patcher)
+    stack.enter_context(patch(f"{SVC}.intelligence_service.notification_service", notifications))
 
 
 def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> None:
@@ -559,14 +534,13 @@ def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> 
 @pytest.fixture(autouse=True)
 def world(
     users: _UserStore,
-    stages: _StageSink,
     externals: _Externals,
     arq_pool: ArqRedis,
 ) -> Iterator[None]:
     """Wire the store, the socket and every external service into the real flow."""
     with ExitStack() as stack:
         _enter_persistence_patches(stack, users, externals)
-        _enter_transport_patches(stack, stages, externals)
+        _enter_transport_patches(stack, externals)
         _enter_external_service_patches(stack, externals)
         yield
 
@@ -647,6 +621,15 @@ class TestSubmittingTheFormIsCompletion:
         assert response.status_code == 200
         assert users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.COMPLETED.value
 
+    async def test_the_user_is_given_the_daily_brief_and_weekly_digest(
+        self, client: AsyncClient, externals: _Externals
+    ):
+        """Completion is what provisions the briefs; without it a new user never gets one."""
+        response = await complete_submit(client)
+
+        assert response.status_code == 200
+        assert externals.briefings_provisioned == [USER_ID]
+
     async def test_no_job_is_queued_and_only_the_opener_is_seeded(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
     ):
@@ -726,17 +709,7 @@ class TestConnectingGmailEarnsThePersonalization:
         """A second personalization job here would rebuild the card and re-announce it."""
         assert self.ran == [INTELLIGENCE_TASK, MEMORY_TASK]
 
-    async def test_the_inbox_scan_reports_what_it_found(self, stages: _StageSink):
-        assert stages.emitted(OnboardingStage.INBOX_SCANNING)
-        assert stages.payload(OnboardingStage.TRIAGE_READY)["total_scanned"] == 6
-
-    async def test_the_writing_style_the_user_sees_is_the_one_persisted(
-        self, stages: _StageSink, users: _UserStore
-    ):
-        """The card is shown from the socket and re-read over HTTP; the two must agree."""
-        emitted = stages.payload(OnboardingStage.WRITING_STYLE_READY)["style_summary"]
-
-        assert emitted == STYLE_SUMMARY
+    async def test_the_writing_style_is_persisted(self, users: _UserStore):
         assert users.onboarding_of(USER_ID)["writing_style"]["summary"] == STYLE_SUMMARY
 
     async def test_the_triage_is_persisted_for_the_reveal(self, users: _UserStore):
@@ -751,14 +724,13 @@ class TestConnectingGmailEarnsThePersonalization:
         ]
 
     async def test_the_holo_card_is_generated_from_what_was_learned(
-        self, users: _UserStore, externals: _Externals, stages: _StageSink
+        self, users: _UserStore, externals: _Externals
     ):
         """The card prompt must include the triage and style, or it's the generic one anyone gets."""
         onboarding = users.onboarding_of(USER_ID)
 
         assert onboarding["personality_phrase"] == HOLO_PHRASE
         assert onboarding["user_bio"] == HOLO_BIO
-        assert stages.emitted(OnboardingStage.HOLO_READY)
         prompt = externals.llm_prompts["holo_card"]
         assert TRIAGE_SUMMARY in prompt
         assert STYLE_SUMMARY in prompt
@@ -876,7 +848,6 @@ class TestThePipelineDegrades:
         arq_pool: ArqRedis,
         externals: _Externals,
         users: _UserStore,
-        stages: _StageSink,
     ):
         """The style card must resolve explicitly rather than spin forever when its model fails."""
         externals.inbox = [_gmail_message(i) for i in range(4)]
@@ -887,7 +858,6 @@ class TestThePipelineDegrades:
         await connect_gmail()
         await run_queued_jobs(arq_pool)
 
-        assert stages.payload(OnboardingStage.WRITING_STYLE_READY)["style_summary"] is None
         assert "writing_style" not in users.onboarding_of(USER_ID)
         assert users.onboarding_of(USER_ID)["personality_phrase"] == HOLO_PHRASE
         assert seeded_descriptions(externals) == [
@@ -895,10 +865,10 @@ class TestThePipelineDegrades:
             HOLO_CARD_DESCRIPTION,
         ]
 
-    async def test_an_empty_sent_folder_resolves_the_card_rather_than_spinning(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, stages: _StageSink
+    async def test_an_empty_sent_folder_learns_no_style_and_still_triages(
+        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
     ):
-        """The frontend distinguishes "learned nothing" from "still learning"."""
+        """An empty sent folder learns no style and still runs the triage."""
         externals.inbox = [_gmail_message(i) for i in range(4)]
         externals.sent_emails = [_sent_email(0)]  # under the sampler's minimum
 
@@ -906,10 +876,8 @@ class TestThePipelineDegrades:
         await connect_gmail()
         await run_queued_jobs(arq_pool)
 
-        payload = stages.payload(OnboardingStage.WRITING_STYLE_READY)
-        assert payload["style_summary"] is None
-        assert payload["example"] is None
-        assert stages.emitted(OnboardingStage.TRIAGE_READY)
+        assert "writing_style" not in users.onboarding_of(USER_ID)
+        assert "triage_summary" in users.onboarding_of(USER_ID)
 
     async def test_a_failed_seed_still_marks_the_pipeline_as_run(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore

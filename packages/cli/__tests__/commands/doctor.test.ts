@@ -52,7 +52,13 @@ function stubFetch(
   impl: (
     url: string,
     init?: RequestInit,
-  ) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>,
+  ) => Promise<{
+    ok: boolean;
+    status: number;
+    url?: string;
+    headers: Headers;
+    json: () => Promise<unknown>;
+  }>,
 ): void {
   vi.stubGlobal("fetch", vi.fn(impl));
 }
@@ -61,9 +67,17 @@ function okResponse(payload?: unknown) {
   return {
     ok: true,
     status: 200,
+    headers: new Headers({ "content-type": "application/json" }),
     json: async () => payload,
   };
 }
+
+/** The body GAIA's /ping answers with while it is serving normally. */
+const HEALTHY_HEALTH = {
+  status: "online",
+  version: "0.7.0",
+  event_loop_lag_ms: 1.2,
+};
 
 /** The catalog's chat-capable providers, as GET /setup/catalog serves them. */
 const LLM_KEYS = ["openrouter", "gemini", "openai", "ollama", "custom"];
@@ -636,7 +650,7 @@ describe("unconfiguredInstallCheck", () => {
 
 describe("checkApiHealth", () => {
   it("pings the API base it is given (the proxy origin on self-host)", async () => {
-    stubFetch(async () => okResponse());
+    stubFetch(async () => okResponse(HEALTHY_HEALTH));
 
     const result = await checkApiHealth("http://localhost:3000/api/v1");
 
@@ -647,12 +661,60 @@ describe("checkApiHealth", () => {
   });
 
   it("fails on error status codes", async () => {
-    stubFetch(async () => ({ ok: false, status: 502, json: async () => ({}) }));
+    stubFetch(async () => ({
+      ok: false,
+      status: 502,
+      headers: new Headers({ "content-type": "text/html" }),
+      json: async () => ({}),
+    }));
 
     const result = await checkApiHealth("http://localhost:3000/api/v1");
 
     expect(result.state).toBe("fail");
     expect(result.detail).toContain("502");
+  });
+
+  it("fails a 2xx that isn't GAIA's health body", async () => {
+    stubFetch(async () => okResponse({ ok: true }));
+
+    const result = await checkApiHealth("http://localhost:3000/api/v1");
+
+    expect(result.state).toBe("fail");
+    expect(result.detail).toContain("not with GAIA's health body");
+  });
+
+  it("fails an answer that came through another origin", async () => {
+    stubFetch(async () => ({
+      ok: true,
+      status: 200,
+      url: "https://elsewhere.example/api/v1/ping",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => HEALTHY_HEALTH,
+    }));
+
+    const result = await checkApiHealth("http://localhost:3000/api/v1");
+
+    expect(result.state).toBe("fail");
+    expect(result.detail).toContain("redirect");
+    expect(result.detail).toContain("https://elsewhere.example/api/v1/ping");
+  });
+
+  it("fails a degraded instance instead of calling it healthy", async () => {
+    stubFetch(async () => ({
+      ok: false,
+      status: 503,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        status: "degraded",
+        event_loop_lag_ms: 900,
+        detail: "lagged",
+      }),
+    }));
+
+    const result = await checkApiHealth("http://localhost:3000/api/v1");
+
+    expect(result.state).toBe("fail");
+    expect(result.detail).toContain("degraded");
   });
 
   it("fails on connection errors with a start hint", async () => {
@@ -1009,7 +1071,12 @@ describe("checkSetupReadiness", () => {
   it("skips naming the catalog endpoint when it cannot be read", async () => {
     stubFetch(async (url) =>
       url.endsWith("/catalog")
-        ? { ok: false, status: 404, json: async () => ({}) }
+        ? {
+            ok: false,
+            status: 404,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: async () => ({}),
+          }
         : okResponse({ providers: {} }),
     );
 

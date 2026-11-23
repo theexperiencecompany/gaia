@@ -1,0 +1,16 @@
+# One linked worktree's private Redis, started by scripts/dev/docker-up.sh as compose
+# project gaia-wt<offset>. Redis holds the ARQ queue, the conversation streams and the
+# worker health key, so a shared Redis lets one worktree's worker run another's jobs;
+# its 16 numbered databases are too few for one per worktree. Nothing persists: a dev
+# stack's Redis state is rebuilt on boot.
+services:
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "127.0.0.1:${WT_REDIS_PORT:?run mise run wt:env first}:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15

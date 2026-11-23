@@ -20,7 +20,7 @@ from pydantic import BaseModel
 import pytest
 
 from app.agents.tools.execute.execute_tool import execute
-from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
+from app.agents.tools.execute.unwrap import execute_call_note, unwrap_execute_call
 from app.models.playbook_models import (
     MAX_FOR_EACH_ITEMS,
     ForEachStep,
@@ -291,7 +291,7 @@ def _replayed(body: PlaybookBody, sources: Sequence[RecordedResult]) -> list[dic
             {
                 "tool": name,
                 "args": resolve_args(written, _context(steps, item)),
-                "account": execute_call_account(step.tool, step.args),
+                "account": execute_call_note(step.tool, step.args, "account"),
             }
         )
         steps[step.id] = StepResult(value=source.result)

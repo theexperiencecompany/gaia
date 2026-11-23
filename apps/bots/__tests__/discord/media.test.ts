@@ -19,32 +19,31 @@ import {
 const CHUNK = 256;
 const CAP = 1000;
 
+interface FakeAttachment {
+  url?: string;
+  name?: string;
+  contentType?: string | null;
+  size?: number;
+}
+
 function makeMessage(overrides: {
-  attachment?: {
-    url?: string;
-    name?: string;
-    contentType?: string | null;
-    size?: number;
-  } | null;
+  attachment?: FakeAttachment | null;
+  attachments?: FakeAttachment[];
   stickers?: number;
   voice?: boolean;
 }): Message {
   const { attachment = null, stickers = 0, voice = false } = overrides;
+  const list = (overrides.attachments ?? (attachment ? [attachment] : [])).map(
+    (a) => ({
+      url: a.url ?? "https://cdn.discord.test/photo.jpg",
+      name: a.name ?? "photo.jpg",
+      contentType: a.contentType === undefined ? "image/jpeg" : a.contentType,
+      size: a.size ?? 4096,
+    }),
+  );
   return {
-    attachments: {
-      first: () =>
-        attachment
-          ? {
-              url: attachment.url ?? "https://cdn.discord.test/photo.jpg",
-              name: attachment.name ?? "photo.jpg",
-              contentType:
-                attachment.contentType === undefined
-                  ? "image/jpeg"
-                  : attachment.contentType,
-              size: attachment.size ?? 4096,
-            }
-          : undefined,
-    },
+    // discord.js hands attachments as a Collection (a Map keyed by id).
+    attachments: new Map(list.map((a, i) => [`att-${i}`, a])),
     stickers: { size: stickers },
     flags: {
       has: (flag: bigint | number) =>
@@ -82,7 +81,7 @@ describe("extractDiscordMedia", () => {
       makeMessage({ attachment: { size: 12_345_678 } }),
     );
 
-    expect(extracted?.media).toMatchObject({
+    expect(extracted[0]?.media).toMatchObject({
       kind: "image",
       mimeType: "image/jpeg",
       sizeBytes: 12_345_678,
@@ -100,7 +99,7 @@ describe("extractDiscordMedia", () => {
       }),
     );
 
-    expect(extracted?.media).toMatchObject({
+    expect(extracted[0]?.media).toMatchObject({
       kind: "document",
       filename: "report.pdf",
       sizeBytes: 2048,
@@ -115,7 +114,7 @@ describe("extractDiscordMedia", () => {
       }),
     );
 
-    expect(extracted?.media).toMatchObject({
+    expect(extracted[0]?.media).toMatchObject({
       kind: "audio",
       isVoiceNote: true,
       sizeBytes: 900,
@@ -125,13 +124,40 @@ describe("extractDiscordMedia", () => {
   it("returns a sticker with no size because it is never downloaded", () => {
     const extracted = extractDiscordMedia(makeMessage({ stickers: 1 }));
 
-    expect(extracted?.url).toBe("");
-    expect(extracted?.media.kind).toBe("sticker");
-    expect(extracted?.media.sizeBytes).toBeUndefined();
+    expect(extracted).toHaveLength(1);
+    expect(extracted[0]?.url).toBe("");
+    expect(extracted[0]?.media.kind).toBe("sticker");
+    expect(extracted[0]?.media.sizeBytes).toBeUndefined();
   });
 
-  it("returns null when the message carries no media", () => {
-    expect(extractDiscordMedia(makeMessage({}))).toBeNull();
+  it("returns nothing when the message carries no media", () => {
+    expect(extractDiscordMedia(makeMessage({}))).toEqual([]);
+  });
+
+  it("returns every attachment in the message, not just the first", () => {
+    const extracted = extractDiscordMedia(
+      makeMessage({
+        attachments: [
+          { url: "https://cdn.discord.test/1.png", contentType: "image/png" },
+          { url: "https://cdn.discord.test/2.png", contentType: "image/png" },
+          {
+            url: "https://cdn.discord.test/notes.pdf",
+            name: "notes.pdf",
+            contentType: "application/pdf",
+          },
+        ],
+      }),
+    );
+
+    expect(extracted.map((e) => e.url)).toEqual([
+      "https://cdn.discord.test/1.png",
+      "https://cdn.discord.test/2.png",
+      "https://cdn.discord.test/notes.pdf",
+    ]);
+    expect(extracted[2]?.media).toMatchObject({
+      kind: "document",
+      filename: "notes.pdf",
+    });
   });
 });
 

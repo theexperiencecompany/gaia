@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import type { MemberResponse } from "@shared/api/generated";
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { formatRelativeDate } from "@/utils/date/dateUtils";
 
 interface MemberListSectionProps {
   members: MemberResponse[];
@@ -17,7 +17,7 @@ interface MemberListSectionProps {
 
 function memberDescription(member: MemberResponse): string {
   const joined = member.created_at
-    ? ` · Joined ${formatRelativeDate(member.created_at)}`
+    ? ` · Joined ${formatDate(member.created_at, "long", { locale: FIXED_LOCALE })}`
     : "";
   return `${member.email ?? ""}${joined}`;
 }
@@ -49,19 +49,18 @@ export function MemberListSection({
           description={memberDescription(member)}
         >
           {member.role === "admin" ? (
-            <Chip size="sm" variant="flat">
+            <Chip size="sm" variant="secondary">
               Admin
             </Chip>
           ) : (
-            <Button
+            <GaiaButton
+              variant="danger-soft"
               size="sm"
-              variant="flat"
-              color="danger"
-              isLoading={removingUserId === member.user_id}
+              isPending={removingUserId === member.user_id}
               onPress={() => void remove(member)}
             >
               Remove
-            </Button>
+            </GaiaButton>
           )}
         </SettingsRow>
       ))}

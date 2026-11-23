@@ -1,7 +1,7 @@
 """Unit tests for app.utils.auth_utils — WorkOS session authentication."""
 
-from datetime import UTC, datetime
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,12 +10,13 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_HEADER, WOS_SESSION_COOKIE, InstanceRole
+from app.constants.auth import (
+    DEV_USER_HEADER,
+    SESSION_HINT_COOKIE,
+    WOS_SESSION_COOKIE,
+)
 from app.constants.vfs import SYSTEM_USER_ID
-from app.models.first_steps_models import FirstStepsState
-from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
 from app.utils import auth_utils
 from app.utils.auth_utils import (
@@ -27,7 +28,13 @@ from app.utils.auth_utils import (
     with_local_onboarding_completed,
 )
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
-from tests.helpers import UNKNOWN_USER_ID, session_set_cookie, users_get
+from tests.helpers import (
+    UNKNOWN_USER_ID,
+    session_hint_set_cookie,
+    session_set_cookie,
+    users_get,
+)
+from tests.user_document_factories import user_document_sample_values
 
 
 def _as_user(db_doc: dict) -> UserDocument:
@@ -105,6 +112,10 @@ def _make_session(
 ) -> MagicMock:
     """Create a mock sealed session object."""
     session = MagicMock()
+    # The shared signing-key cache is keyed by the session client's JWKS URL.
+    session.user_management.get_jwks_url.return_value = (
+        "https://api.workos.com/sso/jwks/client_test"
+    )
     session.authenticate.return_value = auth_response
     if refresh_side_effect:
         session.refresh = AsyncMock(side_effect=refresh_side_effect)
@@ -391,10 +402,9 @@ class TestAuthenticateWorkosSession:
 
     async def test_exception_during_session_authenticate(self) -> None:
         """When session.authenticate() raises, caught by outer try/except -> ({}, None)."""
-        session = MagicMock()
+        session = _make_session(MagicMock())
         session.authenticate.side_effect = RuntimeError("corrupt session")
-        client = MagicMock()
-        client.user_management.load_sealed_session = AsyncMock(return_value=session)
+        client = _make_workos_client(session)
 
         with patch(_PATCH_LOG), patch(_PATCH_SETTINGS) as mock_settings:
             mock_settings.WORKOS_COOKIE_PASSWORD = (
@@ -405,6 +415,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
+        session.authenticate.assert_called_once_with()
         assert user_info is None
         assert new_session is None
 
@@ -786,40 +797,9 @@ class TestBuildUserContextLocalOnboarding:
 # ---------------------------------------------------------------------------
 
 
-_STAMP = datetime(2024, 5, 1, tzinfo=UTC)
-
-# One distinct non-default sample per declared field type, matched by the
-# first type name found in the field's annotation (order matters: the nested
-# models are named before the primitives their annotations also mention).
-_SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
-    ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
-    ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
-    ("QuietHours", QuietHours(enabled=False, start_hour=23, end_hour=6)),
-    ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
-    ("InstanceRole", InstanceRole.ADMIN),
-    ("datetime", _STAMP),
-    ("bool", True),
-    ("int", 3),
-    ("list", ["item"]),
-    ("dict", {"k": "v"}),
-)
-
-
-def _sample_values() -> dict[str, object]:
-    """Return a non-default value for every declared UserDocument field but id."""
-    return {
-        name: next(
-            (value for type_name, value in _SAMPLE_BY_TYPE if type_name in str(field.annotation)),
-            f"{name}-value",
-        )
-        for name, field in UserDocument.model_fields.items()
-        if name != "id"
-    }
-
-
 def _every_field_document() -> tuple[UserDocument, dict[str, object]]:
     """Return a document with a distinct non-default value in every declared field."""
-    values = _sample_values()
+    values = user_document_sample_values()
     return UserDocument.model_validate({"id": "64abc123def4567890abcdef", **values}), values
 
 
@@ -1074,10 +1054,55 @@ class TestSessionCookieSecure:
         assert auth_utils.session_cookie_secure(_connection("http")) is True
 
 
+HOSTED_API = "https://api.heygaia.io"
+HOSTED_WEB = "https://heygaia.io"
+
+
+class TestSessionHintCookieDomain:
+    @pytest.mark.parametrize(
+        ("api_url", "web_url", "domain"),
+        [
+            (HOSTED_API, HOSTED_WEB, ".heygaia.io"),
+            ("https://api.example.com", "https://app.example.com", ".example.com"),
+            ("https://api.example.co.uk", "https://example.co.uk", ".example.co.uk"),
+            ("https://gaia.example.com", "https://gaia.example.com", None),
+            ("http://localhost:8000", "http://localhost:3000", None),
+            ("http://192.168.1.4:8000", "http://192.168.1.4:3000", None),
+            ("https://api.example.com", "https://example.org", None),
+            ("https://api.github.io", "https://web.github.io", None),
+            ("", HOSTED_WEB, None),
+            (HOSTED_API, "", None),
+        ],
+        ids=[
+            "hosted",
+            "sibling-subdomains",
+            "multi-label-suffix",
+            "selfhost-same-host",
+            "localhost",
+            "lan-ip",
+            "unrelated-sites",
+            "private-public-suffix",
+            "no-api-url",
+            "no-web-url",
+        ],
+    )
+    def test_it_is_the_site_web_and_api_share_else_host_only(
+        self, api_url: str, web_url: str, domain: str | None
+    ) -> None:
+        assert auth_utils.session_hint_cookie_domain(api_url, web_url) == domain
+
+
+@pytest.fixture
+def _hosted_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "HOST", HOSTED_API)
+    monkeypatch.setattr(settings, "FRONTEND_URL", HOSTED_WEB)
+
+
+@pytest.mark.usefixtures("_hosted_urls")
 class TestSetSessionCookie:
     @pytest.mark.parametrize("name", [WOS_SESSION_COOKIE, LOCAL_SESSION_COOKIE])
     @pytest.mark.parametrize(("scheme", "secure"), [("http", False), ("https", True)])
-    def test_it_sets_the_one_header_every_session_cookie_carries(
+    def test_it_sets_the_session_and_its_readable_hint_with_the_same_lifetime(
         self, monkeypatch: pytest.MonkeyPatch, name: str, scheme: str, secure: bool
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "selfhost")
@@ -1089,5 +1114,41 @@ class TestSetSessionCookie:
         )
 
         assert response.headers.getlist("set-cookie") == [
-            session_set_cookie(name, "sealed.tok", 3600, secure=secure)
+            session_set_cookie(name, "sealed.tok", 3600, secure=secure),
+            session_hint_set_cookie(3600, secure=secure, domain=".heygaia.io"),
         ]
+
+
+@pytest.mark.usefixtures("_hosted_urls")
+class TestClearSessionCookie:
+    @pytest.mark.parametrize("name", [WOS_SESSION_COOKIE, LOCAL_SESSION_COOKIE])
+    def test_it_expires_the_session_and_the_hint_on_the_domain_it_was_set_on(
+        self, monkeypatch: pytest.MonkeyPatch, name: str
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        response = Response()
+
+        auth_utils.clear_session_cookie(response, _connection("https"), name=name)
+
+        session, hint = (SimpleCookie(h) for h in response.headers.getlist("set-cookie"))
+        expired_session, expired_hint = session[name], hint[SESSION_HINT_COOKIE]
+        assert (expired_session.value, expired_session["max-age"]) == ("", "0")
+        assert (expired_session["httponly"], expired_session["secure"]) == (True, True)
+        assert (expired_hint.value, expired_hint["max-age"]) == ("", "0")
+        assert expired_hint["domain"] == ".heygaia.io"
+        assert (expired_hint["path"], expired_hint["samesite"]) == ("/", "lax")
+        assert (expired_hint["httponly"], expired_hint["secure"]) == ("", True)
+
+    @pytest.mark.parametrize(("scheme", "secure"), [("http", False), ("https", True)])
+    def test_the_hint_is_expired_secure_exactly_when_the_request_is(
+        self, monkeypatch: pytest.MonkeyPatch, scheme: str, secure: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        response = Response()
+
+        auth_utils.clear_session_cookie(response, _connection(scheme), name=LOCAL_SESSION_COOKIE)
+
+        _, hint = (SimpleCookie(h) for h in response.headers.getlist("set-cookie"))
+        assert hint[SESSION_HINT_COOKIE]["secure"] == (True if secure else "")

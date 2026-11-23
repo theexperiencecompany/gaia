@@ -14,7 +14,7 @@ Four subcommands:
 
   fetch
       Download the newest AVAILABLE map artifact for this slice into $MAP_DIR:
-      the newest trusted master run is tried first, then each older one in
+      the newest trusted master or merge-queue run is tried first, then each older one in
       order until a map lands. One run whose artifact is missing (deleted,
       expired, or a recording that did not upload) must not force the whole
       slice.
@@ -577,7 +577,7 @@ def cmd_select(args: argparse.Namespace) -> int:
 def cmd_fetch(args: argparse.Namespace) -> int:
     """Download the newest AVAILABLE map artifact for this slice into $MAP_DIR.
 
-    Maps are uploaded as workflow artifacts by master / dispatch runs (ci.yml
+    Maps are uploaded as workflow artifacts by every run that is not a PR's (ci.yml
     "Upload test impact map"), not actions/cache: a pull_request run may only
     restore caches written on its own merge ref or on the default branch, so a
     map recorded by a master run was invisible to the PR — measured: four maps
@@ -635,36 +635,36 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+# Where a map is recorded: master pushes, and the merge queue, which runs every
+# slice whole on the SHA master then fast-forwards to (a verified master push
+# records none of its own). Neither runs a fork's workflow file.
+TRUSTED_RUN_QUERIES = (
+    "branch=master&event=push&status=success",
+    "event=merge_group&status=success",
+)
+TRUSTED_EVENTS = frozenset({"push", "merge_group"})
+
+
 def _trusted_runs(repo: str) -> list[tuple[int, str]]:
-    """Successful push-to-master runs of ci.yml, newest first.
+    """Successful master-push and merge-queue runs of ci.yml, newest first.
 
-    Resolved by RUN, never by the artifact's ``head_branch`` string. A branch
-    name is not provenance: a fork can open a PR from a branch it named
-    "master", and `pull_request` runs of this workflow execute the fork's own
-    workflow file. Such a run can upload an artifact called
-    ``test-impact-map-<slice>``, and a selector that trusted the name would let
-    a PR author choose which of our tests run against their diff — a map that
-    claims one test covers everything skips the suite.
-
-    So: ask the API for runs of ci.yml that are ``event=push`` on ``master``
-    and ``status=success``, and then re-check each candidate's own event and
-    head repository, because query parameters are a filter, not a guarantee.
-    The whole filtered list is returned, not just the first entry: callers
-    walk it until one run's map artifact actually downloads.
+    Resolved by RUN, never by the artifact's head_branch: a fork can name a branch
+    master, and its pull_request run executes its own workflow file. Each run's own
+    event and head repository are re-checked, because query parameters are a filter,
+    not a guarantee. Callers walk the list until one run's map downloads.
     """
-    listing = GitHub.from_env().get(
-        f"repos/{repo}/actions/workflows/ci.yml/runs"
-        "?branch=master&event=push&status=success&per_page=20"
-    )
-    runs: list[tuple[int, str]] = []
-    for run in records(listing, "workflow_runs"):
-        if run.get("event") == "pull_request":
-            continue
-        head_repo = run.get("head_repository")
-        if not isinstance(head_repo, dict) or head_repo.get("full_name") != repo:
-            continue
-        runs.append((field_of(run, "id", int), text_of(run, "created_at")))
-    return runs
+    gh = GitHub.from_env()
+    runs: dict[int, str] = {}
+    for query in TRUSTED_RUN_QUERIES:
+        listing = gh.get(f"repos/{repo}/actions/workflows/ci.yml/runs?{query}&per_page=20")
+        for run in records(listing, "workflow_runs"):
+            head_repo = run.get("head_repository")
+            if run.get("event") not in TRUSTED_EVENTS:
+                continue
+            if not isinstance(head_repo, dict) or head_repo.get("full_name") != repo:
+                continue
+            runs[field_of(run, "id", int)] = text_of(run, "created_at")
+    return sorted(runs.items(), key=lambda run: run[1], reverse=True)
 
 
 def _download_map(repo: str, artifact: str, run_id: int, map_dir: Path) -> bool:

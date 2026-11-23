@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { WEB_BASE_URL } from "./e2e/harness";
+import { SIM_ENABLED, WEB_BASE_URL } from "./e2e/harness";
 
 /**
  * Playwright config for GAIA web e2e, run against an already-running dev stack
@@ -10,13 +10,16 @@ import { WEB_BASE_URL } from "./e2e/harness";
 export default defineConfig({
   testDir: "./e2e",
   // The self-host journey runs only against a `gaia up` stack (playwright.selfhost.config.ts);
-  // e2e/worker runs against the built worker, through playwright.worker.config.ts.
-  testIgnore: ["selfhost/**", "worker/**"],
+  // e2e/worker runs against the built worker, through playwright.worker.config.ts;
+  // e2e/primitive-parity through playwright.parity.config.ts (`mise web:primitive-parity`).
+  testIgnore: ["selfhost/**", "worker/**", "primitive-parity/**"],
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: process.env.CI ? 1 : undefined,
+  // The sim flows share one dev user and flip its approval preferences, so a
+  // sim run is one worker. Every test is still its own shard unit (--shard).
+  workers: process.env.CI || SIM_ENABLED ? 1 : undefined,
   // Target is always a Next.js DEV server, so the first route visit pays a
   // Turbopack compile (fullyParallel means every worker pays it at once); warm
   // ~20s, cold blows past Playwright's 30s default. These budgets cover the cold case.

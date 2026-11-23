@@ -1,8 +1,10 @@
-import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
+import { Link } from "@heroui/react";
 import { defineComponent } from "@openuidev/react-lang";
+import { FIXED_LOCALE, formatDate, formatTime } from "@shared/utils";
 import React from "react";
 import type { z } from "zod";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard } from "../primitives/ToolCard";
@@ -45,12 +47,7 @@ const TIMELINE_STATUS: Record<
 function formatTimelineTime(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return `${formatDate(d, "short", { locale: FIXED_LOCALE })}, ${formatTime(d, { locale: FIXED_LOCALE })}`;
 }
 
 // TimelineView stays file-private: this module's public surface is the
@@ -116,15 +113,16 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                     <div className="flex flex-wrap items-center gap-2 mt-2">
                       {item.links?.map((link) => {
                         const safeHref = sanitizeRedirectUrl(String(link.url));
-                        const linkClassName =
-                          link.type === "primary"
-                            ? "text-xs text-[#00bbff]"
-                            : "text-xs text-zinc-400";
+                        const linkClassName = toneVariants({
+                          tone: link.type === "primary" ? "accent" : "muted",
+                          className: "text-xs",
+                        });
                         return safeHref ? (
                           <Link
                             key={`${item.title}-${link.label}-${link.url}`}
                             href={safeHref}
-                            isExternal
+                            target="_blank"
+                            rel="noreferrer noopener"
                             className={linkClassName}
                           >
                             {link.label}
@@ -139,14 +137,14 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                         );
                       })}
                       {item.actions?.map((action) => (
-                        <Button
+                        <GaiaButton
                           key={`${item.title}-${action.value}`}
                           size="sm"
-                          variant="flat"
+                          variant="default-soft"
                           onPress={() => triggerAction(action.value)}
                         >
                           {action.label}
-                        </Button>
+                        </GaiaButton>
                       ))}
                     </div>
                   )}

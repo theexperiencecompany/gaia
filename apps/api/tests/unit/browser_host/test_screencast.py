@@ -80,8 +80,11 @@ class _Host:
 def _mux() -> FakeMux:
     return FakeMux(
         {
-            "Target.getTargetInfo": {"targetInfo": {"url": "https://example.com/", "title": "Ex"}},
-            "Runtime.evaluate": {"result": {"value": _FAVICON}},
+            "Runtime.evaluate": {
+                "result": {
+                    "value": {"url": "https://example.com/", "title": "Ex", "favicon": _FAVICON}
+                }
+            },
         }
     )
 
@@ -188,28 +191,36 @@ async def test_every_frame_is_acked_even_when_the_viewer_is_behind(
     await run.finish()
 
 
-async def test_a_main_frame_navigation_refreshes_the_tab_and_a_subframe_does_not() -> None:
+async def test_a_main_frame_navigation_names_the_new_page_and_a_subframes_does_not() -> None:
     run = _Run()
     await run.start()
-    reads = run.mux.methods.count("Target.getTargetInfo")
 
     run.mux.emit(
         {
             "method": "Page.frameNavigated",
             "sessionId": run.page_session,
-            "params": {"frame": {"parentId": "p"}},
+            "params": {"frame": {"parentId": "p", "url": "https://ads.example/frame"}},
         }
     )
-    await _settle()
-    assert run.mux.methods.count("Target.getTargetInfo") == reads
+    run.frame("<subframe>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.got_frame.clear()
     run.mux.emit(
-        {"method": "Page.frameNavigated", "sessionId": run.page_session, "params": {"frame": {}}}
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"url": "https://example.com/next"}},
+        }
     )
-    await _settle()
-
-    assert run.mux.methods.count("Target.getTargetInfo") == reads + 1
+    run.frame("<main>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
     run.viewer.leave()
     await run.finish()
+
+    assert [frame["url"] for frame in run.viewer.sent] == [
+        "https://example.com/",
+        "https://example.com/next",
+    ]
 
 
 @pytest.mark.regression
@@ -218,14 +229,15 @@ async def test_the_first_frame_after_a_navigation_names_the_new_page_before_the_
 ):
     run = _Run()
     await run.start()
-    run.mux.hang_on = "Target.getTargetInfo"
+    run.mux.hang_on = "Runtime.evaluate"
 
     run.mux.emit(
         {
             "method": "Page.frameNavigated",
             "sessionId": run.page_session,
             "params": {"frame": {"url": "https://example.com/secure"}},
-        }
+        },
+        {"method": "Page.domContentEventFired", "sessionId": run.page_session, "params": {}},
     )
     await run.mux.until_hanging(1)
     run.frame("<jpeg>")
@@ -236,15 +248,135 @@ async def test_the_first_frame_after_a_navigation_names_the_new_page_before_the_
     assert run.viewer.sent[0]["url"] == "https://example.com/secure"
 
 
+@pytest.mark.regression
+async def test_the_tab_names_the_page_on_screen_while_the_engines_record_of_it_lags_the_commit() -> (
+    None
+):
+    """Chrome answers Target.getTargetInfo with an empty url until its browser process has seen a commit its renderer already reported."""
+    run = _Run()
+    run.mux.responses["Target.getTargetInfo"] = {"targetInfo": {"url": "", "title": "The Internet"}}
+    run.mux.responses["Runtime.evaluate"] = {
+        "result": {
+            "value": {"url": "https://example.com/secure", "title": "Secure", "favicon": _FAVICON}
+        }
+    }
+    await run.start()
+
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"url": "https://example.com/secure"}},
+        },
+        {"method": "Page.domContentEventFired", "sessionId": run.page_session, "params": {}},
+    )
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert (run.viewer.sent[0]["url"], run.viewer.sent[0]["title"]) == (
+        "https://example.com/secure",
+        "Secure",
+    )
+
+
+@pytest.mark.regression
+async def test_a_tab_read_begun_before_a_navigation_never_overwrites_the_new_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _Run()
+    await run.start()
+    answer_stale_read = asyncio.Event()
+    send_raw = run.mux.send_raw
+
+    async def _slow_evaluate(
+        method: str, params: dict[str, Any] | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
+        if method == "Runtime.evaluate":
+            await answer_stale_read.wait()
+            return {
+                "result": {
+                    "value": {"url": "https://example.com/old", "title": "Old", "favicon": None}
+                }
+            }
+        return await send_raw(method, params, session_id)
+
+    monkeypatch.setattr(run.mux, "send_raw", _slow_evaluate)
+    # The stale read starts on a page that was itself navigated to, so each visit must be its own.
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"url": "https://example.com/old"}},
+        }
+    )
+    run.mux.emit(
+        {"method": "Page.domContentEventFired", "sessionId": run.page_session, "params": {}}
+    )
+    await _settle()
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"url": "https://example.com/new"}},
+        }
+    )
+    answer_stale_read.set()
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert (run.viewer.sent[0]["url"], run.viewer.sent[0]["title"]) == (
+        "https://example.com/new",
+        "Ex",
+    )
+
+
+@pytest.mark.regression
+async def test_a_page_restored_from_the_back_forward_cache_is_reread_without_a_dom_content_event() -> (
+    None
+):
+    run = _Run()
+    await run.start()
+    run.mux.responses["Runtime.evaluate"] = {
+        "result": {
+            "value": {"url": "https://example.com/back", "title": "Back", "favicon": _FAVICON}
+        }
+    }
+
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {
+                "frame": {"url": "https://example.com/back"},
+                "type": "BackForwardCacheRestore",
+            },
+        }
+    )
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert (run.viewer.sent[0]["url"], run.viewer.sent[0]["title"]) == (
+        "https://example.com/back",
+        "Back",
+    )
+
+
 async def test_a_navigation_that_names_no_address_keeps_the_last_one_until_the_tab_is_reread() -> (
     None
 ):
     run = _Run()
     await run.start()
-    run.mux.hang_on = "Target.getTargetInfo"
 
     run.mux.emit({"method": "Page.frameNavigated", "sessionId": run.page_session, "params": {}})
-    await run.mux.until_hanging(1)
     run.frame("<jpeg>")
     await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
     run.viewer.leave()
@@ -372,7 +504,7 @@ async def test_a_session_with_no_page_open_shows_nothing() -> None:
     assert run.viewer.sent == []
 
 
-async def test_a_page_that_refuses_evaluation_streams_without_a_favicon() -> None:
+async def test_a_page_whose_read_names_nothing_streams_without_a_tab() -> None:
     run = _Run()
     run.mux.responses["Runtime.evaluate"] = {"result": {"value": 5}}
     await run.start()
@@ -382,24 +514,40 @@ async def test_a_page_that_refuses_evaluation_streams_without_a_favicon() -> Non
     run.viewer.leave()
     await run.finish()
 
-    assert run.viewer.sent[0]["favicon"] is None
+    sent = run.viewer.sent[0]
+    assert (sent["url"], sent["title"], sent["favicon"]) == (None, None, None)
 
 
-async def test_a_favicon_read_that_fails_is_warned_about_and_left_empty(
+async def test_a_tab_read_that_fails_is_warned_about_and_the_last_tab_kept(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mux = _mux()
+    run = _Run()
+    await run.start()
     warning = MagicMock()
     monkeypatch.setattr(log, "warning", warning)
+    answer = run.mux.send_raw
 
-    async def _refuse(method: str, params: Any = None, session_id: Any = None) -> dict[str, Any]:
-        raise CdpCommandError({"message": "no context"})
+    async def _no_context(
+        method: str, params: Any = None, session_id: Any = None
+    ) -> dict[str, Any]:
+        if method == "Runtime.evaluate":
+            raise CdpCommandError({"message": "Execution context was destroyed."})
+        return await answer(method, params, session_id)
 
-    monkeypatch.setattr(mux, "send_raw", _refuse)
+    monkeypatch.setattr(run.mux, "send_raw", _no_context)
+    run.mux.emit(
+        {"method": "Page.domContentEventFired", "sessionId": run.page_session, "params": {}}
+    )
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
 
-    assert await screencast._read_favicon(cast(Any, mux), "S") is None
+    sent = run.viewer.sent[0]
+    assert (sent["url"], sent["title"], sent["favicon"]) == ("https://example.com/", "Ex", _FAVICON)
     assert warning.call_args.kwargs == {"error_type": "CdpCommandError"}
-    assert "Could not read page favicon" in warning.call_args.args[0]
+    assert "Could not read the live page's tab" in warning.call_args.args[0]
 
 
 _ON_ITS_PAGE = {
@@ -430,14 +578,9 @@ async def test_everything_the_view_does_to_its_page_rides_its_own_page_session()
     assert all(session == page for _, _, session in on_page)
     assert (
         "Runtime.evaluate",
-        {"expression": screencast._FAVICON_JS, "returnByValue": True},
+        {"expression": screencast._PAGE_META_JS, "returnByValue": True},
         page,
     ) in run.mux.calls
-    assert all(
-        params == {"targetId": "t1"}
-        for m, params, _ in run.mux.calls
-        if m == "Target.getTargetInfo"
-    )
     assert run.mux.params_for("Page.startScreencast")[-1] == {
         "format": "jpeg",
         "quality": 72,
@@ -503,32 +646,6 @@ async def test_a_page_that_never_lets_go_is_left_inside_the_budget(
 
     assert "left its page attached" in warning.call_args.args[0]
     assert warning.call_args.kwargs == {"error_type": "CDPTimeoutError"}
-
-
-async def test_a_navigation_without_a_frame_and_a_tab_without_info_are_still_read() -> None:
-    run = _Run()
-    run.mux.responses["Target.getTargetInfo"] = {}
-    run.mux.responses["Runtime.evaluate"] = {}
-    await run.start()
-    reads = run.mux.methods.count("Target.getTargetInfo")
-
-    run.mux.emit({"method": "Page.frameNavigated", "sessionId": run.page_session, "params": {}})
-    await _settle()
-    run.frame("<jpeg>")
-    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
-    run.viewer.leave()
-    await run.finish()
-
-    assert run.mux.methods.count("Target.getTargetInfo") == reads + 1
-    assert (
-        run.viewer.sent[0]["url"],
-        run.viewer.sent[0]["title"],
-        run.viewer.sent[0]["favicon"],
-    ) == (
-        None,
-        None,
-        None,
-    )
 
 
 async def test_a_finished_side_task_leaves_the_views_set() -> None:

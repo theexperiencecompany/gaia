@@ -36,12 +36,14 @@ def _tool(
     description: str = "Fetch emails.",
 ) -> StructuredTool:
     tool = StructuredTool.from_function(
-        func=lambda **kwargs: None,
+        # Without a declared schema the tool's own signature is its schema: here, no args.
+        func=lambda: None,
         name=name,
         description=description,
         metadata={"output_parameters": output} if output else None,
     )
-    tool.args_schema = args_schema
+    if args_schema is not None:
+        tool.args_schema = args_schema
     return tool
 
 

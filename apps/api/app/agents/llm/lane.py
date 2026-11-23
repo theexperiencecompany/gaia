@@ -19,8 +19,9 @@ from enum import StrEnum
 
 from pydantic import TypeAdapter
 
-from app.agents.llm.client import chat_model, chat_route, provider_configured
-from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
+from app.agents.llm.client import chat_model, chat_route, one_shot_route, provider_configured
+from app.agents.llm.dev_lane import custom_lane_forced, dev_default_model_id, dev_default_option
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
@@ -39,10 +40,12 @@ from app.constants.llm import (
     DevModelOption,
     LaneConfig,
     LLMProviderName,
+    ModelUse,
     OpenRouterModelKwargs,
     OpenRouterReasoning,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import OVERRIDE_PROVIDER
 from app.models.agent_models import AgentConfigurable
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
@@ -220,14 +223,40 @@ def _default_lane() -> ModelLane:
     )
 
 
+def one_shot_lane(use: ModelUse) -> ModelLane:
+    """Return the lane resolve_model(use) serves, from the same route, for an agent graph run on it.
+
+    Accounting prices a call by its run's lane, so a graph on a one-shot model needs this
+    on its configurable or its calls price against another model. Raises
+    LLMNotConfiguredError when nothing configured serves use, as resolve_model does.
+    """
+    if custom_lane_forced():
+        provider, model = LLMProviderName.CUSTOM, chat_model(LLMProviderName.CUSTOM)
+    else:
+        route = one_shot_route(use)
+        if route is None:
+            raise LLMNotConfiguredError(f"No configured AI provider can serve {use.value} calls.")
+        provider, model = route
+    return ModelLane(
+        provider=provider,
+        model=model,
+        reasoning=None,
+        provider_pin=_provider_pin(provider, model),
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
 def _comms_lane() -> ModelLane | None:
-    """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
-    if not provider_configured(LLMProviderName.OPENAI):
+    """Return comms' own lane: the override provider, else direct OpenAI; None when neither is configured."""
+    provider = next(
+        (p for p in (OVERRIDE_PROVIDER, LLMProviderName.OPENAI) if provider_configured(p)), None
+    )
+    if provider is None:
         return None
     return ModelLane(
-        provider=LLMProviderName.OPENAI,
-        model=chat_model(LLMProviderName.OPENAI),
-        # The effort is fixed on the client; a reasoning key would only be ignored.
+        provider=provider,
+        model=chat_model(provider),
+        # Both fix the effort on the client; a reasoning key would only be ignored.
         reasoning=None,
         provider_pin=None,
         max_input_tokens=DEFAULT_MAX_TOKENS,
@@ -291,7 +320,7 @@ async def resolve_lane(
     """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
     Comms runs its own lane on every plan, otherwise free runs the default model
-    and paid the paid model.
+    and paid the paid model; a configured OVERRIDE_PROVIDER serves both.
     In development an explicit dev_option, else DEV_DEFAULT_MODEL, wins over all
     of it: every top-level run, not only chat, starts on it.
     """
@@ -314,8 +343,12 @@ async def resolve_lane(
         return comms_lane, plan
 
     # Without plans every user is Pro, yet the paid model is a hosted tier: the
-    # instance's own configured lane serves everyone.
-    if plan == PlanType.FREE or not settings.deployment.enforces_plans:
+    # instance's own configured lane serves everyone. A configured override serves every plan.
+    if (
+        plan == PlanType.FREE
+        or not settings.deployment.enforces_plans
+        or provider_configured(OVERRIDE_PROVIDER)
+    ):
         return _default_lane(), plan
 
     return (

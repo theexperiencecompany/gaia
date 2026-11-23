@@ -197,28 +197,29 @@ def parse_show_blocks(text: str) -> dict[str, str]:
     return diffs
 
 
+def _hunk_lines(diff: str) -> list[tuple[str, str]]:
+    """Split the diff's body into (marker, text): " " context, "-" removed, "+" added."""
+    body: list[tuple[str, str]] = []
+    for line in diff.splitlines():
+        if line.startswith(("---", "+++", "@@")):
+            continue
+        if line.startswith(("-", "+", " ")):
+            body.append((line[0], line[1:]))
+        elif not line:
+            body.append((" ", ""))
+    return body
+
+
 def diff_hunk(diff: str) -> tuple[list[str], list[str]]:
     """Return the diff's before/after line blocks, markers stripped.
 
     `before` is context + removed lines, `after` is context + added — the two
     texts that must swap for the mutation to be applied.
     """
-    before: list[str] = []
-    after: list[str] = []
-    for line in diff.splitlines():
-        if line.startswith(("---", "+++", "@@")):
-            continue
-        if line.startswith("-"):
-            before.append(line[1:])
-        elif line.startswith("+"):
-            after.append(line[1:])
-        elif line.startswith(" "):
-            before.append(line[1:])
-            after.append(line[1:])
-        elif not line:
-            before.append("")
-            after.append("")
-    return before, after
+    body = _hunk_lines(diff)
+    return [text for marker, text in body if marker != "+"], [
+        text for marker, text in body if marker != "-"
+    ]
 
 
 def changed_lines(diff: str) -> tuple[list[str], list[str]]:
@@ -320,20 +321,46 @@ def _clip(text: str, limit: int = 90) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def locate_hunk(source: list[str], before: list[str], hint: int | None) -> int:
-    """Index in `source` where this diff's before-block starts.
+def _indent(line: str) -> str:
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _block_indent(block: list[str], before: list[str]) -> str | None:
+    """Return the indent mutmut stripped from this block, or None when the block is not it.
+
+    `mutmut show` prints a method dedented to column 0, except a multi-line
+    string's continuation lines, which keep their file column. So each line
+    matches either re-indented or verbatim; the longest indent that fits wins.
+    """
+    candidates = {
+        _indent(file_line)[: len(_indent(file_line)) - len(_indent(diff_line))]
+        for file_line, diff_line in zip(block, before, strict=True)
+        if diff_line.strip() and _indent(file_line).endswith(_indent(diff_line))
+    }
+    for indent in sorted(candidates | {""}, key=len, reverse=True):
+        if all(
+            file_line.rstrip() in ((indent + diff_line).rstrip(), diff_line.rstrip())
+            for file_line, diff_line in zip(block, before, strict=True)
+        ):
+            return indent
+    return None
+
+
+def locate_hunk(source: list[str], before: list[str], hint: int | None) -> tuple[int, str]:
+    """Index in `source` where this diff's before-block starts, and the indent mutmut stripped.
+
+    `hint` is the line the block should start on.
 
     mutmut's `@@ -15,7 +15,7 @@` counts lines of its own per-function rewrite,
     not of the real file, so the hunk header cannot be trusted for a line
     number — the text is the only honest anchor. `hint` (the classifier's real
     line number) breaks ties when the block appears more than once.
     """
-    stripped = [line.rstrip() for line in before]
-    matches = [
-        index
-        for index in range(len(source) - len(stripped) + 1)
-        if [line.rstrip() for line in source[index : index + len(stripped)]] == stripped
-    ]
+    matches: list[tuple[int, str]] = []
+    for index in range(len(source) - len(before) + 1):
+        indent = _block_indent(source[index : index + len(before)], before)
+        if indent is not None:
+            matches.append((index, indent))
     if not matches:
         raise SystemExit(
             "mutation replay: this survivor's diff does not match the file on disk — "
@@ -346,21 +373,40 @@ def locate_hunk(source: list[str], before: list[str], hint: int | None) -> int:
             f"mutation replay: the diff matches {len(matches)} places in the file and the "
             "verdict carries no line number to disambiguate. Select the survivor by name."
         )
-    return min(matches, key=lambda index: abs(index + 1 - hint))
+    return min(matches, key=lambda match: abs(match[0] + 1 - hint))
 
 
 def apply_hunk(source: list[str], diff: str, hint: int | None) -> tuple[list[str], int]:
     """Return the file's lines with this mutation applied, and the mutated line number."""
-    before, after = diff_hunk(diff)
-    start = locate_hunk(source, before, hint)
-    patched = source[:start] + after + source[start + len(before) :]
-    removed, _ = changed_lines(diff)
-    offset = 0
-    if removed:
-        offset = next(
-            (i for i, line in enumerate(before) if line.rstrip() == removed[0].rstrip()), 0
-        )
-    return patched, start + offset + 1
+    before, _ = diff_hunk(diff)
+    body = _hunk_lines(diff)
+    leading_context = next((i for i, (marker, _) in enumerate(body) if marker != " "), 0)
+    start, indent = locate_hunk(source, before, None if hint is None else hint - leading_context)
+    file_lines = iter(source[start : start + len(before)])
+    block: list[str] = []
+    consumed = 0
+    mutated: int | None = None
+    prefixes: list[str] = []
+    added = 0
+    for marker, text in body:
+        if marker == "+":
+            prefix = prefixes[min(added, len(prefixes) - 1)] if prefixes else indent
+            added += 1
+            block.append(prefix + text if text.strip() else text)
+            continue
+        file_line = next(file_lines)
+        consumed += 1
+        if marker == " ":
+            block.append(file_line)
+            prefixes, added = [], 0
+            continue
+        if mutated is None:
+            mutated = start + consumed
+        if added:
+            prefixes, added = [], 0
+        # A line inside a multi-line string was printed at its file column, so its replacement is too.
+        prefixes.append("" if file_line.rstrip() == text.rstrip() else indent)
+    return source[:start] + block + source[start + len(before) :], mutated or start + 1
 
 
 def _survivor(
@@ -866,7 +912,7 @@ def _verdicts_from_json(path: Path) -> list[ModuleVerdict]:
             f"mutation: {path} is not a mutation record (no 'module'/'modules' key).\n"
             "  Pass shard.verdict.json, a directory of module records, or shard.log."
         )
-    return [from_dict(data)]
+    return [_record_from_dict(data, path)]
 
 
 def _record_from_dict(data: dict[str, object], path: Path) -> ModuleVerdict:

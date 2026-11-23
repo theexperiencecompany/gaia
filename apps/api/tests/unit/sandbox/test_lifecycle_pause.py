@@ -17,9 +17,10 @@ import uuid
 
 import pytest
 
+from app.config.settings import settings
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.models.todo_models import TodoDocument
-from app.services.sandbox import lifecycle, pool as pool_module
+from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
 
@@ -78,10 +79,9 @@ def _idle_timer_world(
     get_sandbox_pool().put(user_id, entry)
     try:
         with (
-            patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 0),
-            patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", LAB_TEMPLATE),
+            patch.object(settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 0),
+            patch.object(settings, "E2B_AGENT_LAB_TEMPLATE_ID", LAB_TEMPLATE),
             patch.object(lifecycle, "e2b_sandbox_repository", repo),
-            patch.object(lifecycle, "_stop_watcher", AsyncMock()),
             patch.object(lifecycle, "save_agents_home", AsyncMock(return_value=True)),
             patch(
                 "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
@@ -155,8 +155,8 @@ async def test_scheduled_pause_aborts_if_another_replica_is_using_the_sandbox() 
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
     with (
         _idle_timer_world(entry, _record(used_ago_s=1)) as (user_id, repo),
-        patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 300),
-        patch.object(lifecycle.asyncio, "sleep", AsyncMock()),
+        patch.object(settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 300),
+        patch.object(asyncio, "sleep", AsyncMock()),
     ):
         await _fire_idle_timer(entry, user_id)
     sbx.beta_pause.assert_not_awaited(), "paused a sandbox another replica was using"
@@ -169,8 +169,8 @@ async def test_scheduled_pause_proceeds_when_no_replica_has_touched_it() -> None
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
     with (
         _idle_timer_world(entry, _record(used_ago_s=3600)) as (user_id, _repo),
-        patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 300),
-        patch.object(lifecycle.asyncio, "sleep", AsyncMock()),
+        patch.object(settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 300),
+        patch.object(asyncio, "sleep", AsyncMock()),
     ):
         await _fire_idle_timer(entry, user_id)
     sbx.beta_pause.assert_awaited_once()
@@ -210,9 +210,7 @@ async def test_schedule_pause_cancels_a_prior_pending_task() -> None:
     sbx.beta_pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
     with (
-        patch.object(
-            lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 1000
-        ),  # long: won't fire
+        patch.object(settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 1000),  # long: won't fire
         patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
     ):
         lifecycle._schedule_pause("u1", entry)
@@ -232,7 +230,7 @@ async def test_idle_check_treats_the_window_edge_as_idle() -> None:
     # The strict `>` is what separates "used since the window" from "used exactly
     # at its edge"; a `>=` would wrongly keep an idle sandbox alive forever.
     now = datetime(2099, 1, 1, tzinfo=UTC)
-    idle_since = now - timedelta(seconds=lifecycle.settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
+    idle_since = now - timedelta(seconds=settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
     coll = AsyncMock()
     coll.get_for_user = AsyncMock(return_value=SimpleNamespace(last_used_at=idle_since))
     with (

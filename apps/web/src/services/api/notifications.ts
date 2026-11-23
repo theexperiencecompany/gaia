@@ -1,4 +1,3 @@
-import type { NotificationPlatform } from "@/features/notification/constants";
 import { api } from "@/lib/api/typed";
 import {
   type BulkActionRequest,
@@ -73,20 +72,6 @@ export class NotificationsAPI {
   static markAllAsRead(channelType?: string) {
     return api.post("/api/v1/notifications/mark-all-read", {
       query: { channel_type: channelType },
-    });
-  }
-
-  /** Channel preferences (telegram, discord, whatsapp, slack). */
-  static getChannelPreferences() {
-    return api.get("/api/v1/notifications/preferences/channels");
-  }
-
-  static async updateChannelPreference(
-    platform: NotificationPlatform,
-    enabled: boolean,
-  ): Promise<void> {
-    await api.put("/api/v1/notifications/preferences/channels", {
-      body: { [platform]: enabled },
     });
   }
 }

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 from collections.abc import Mapping
 import contextlib
 from dataclasses import dataclass
@@ -17,7 +16,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from prometheus_client import Counter
 
-from app.agents.tools.coding._artifacts import publish_artifact
+from app.agents.tools.coding._artifacts import artifact_links_note, publish_artifact
 from app.agents.tools.coding._context import (
     get_session_id,
     get_user_id,
@@ -25,10 +24,8 @@ from app.agents.tools.coding._context import (
     sh_quote,
 )
 from app.agents.workspace.paths import (
-    INLINE_ARTIFACT_MAX_BYTES,
     WORKSPACE_ROOT,
     detect_content_type,
-    is_inlineable_content_type,
     is_under_workspace,
     runs_log_dir,
     session_artifacts,
@@ -36,6 +33,7 @@ from app.agents.workspace.paths import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    ARTIFACT_MTIME_SKEW_SECONDS,
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
     BASH_MAX_TIMEOUT_SECONDS,
@@ -68,7 +66,7 @@ from app.services.sandbox.execute_client import (
     sandbox_execute_enabled,
     seed_execute_client,
 )
-from app.services.storage import FsOps, fs_timer
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.services.triggers.subscription_service import unregister_subscription
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
@@ -451,6 +449,7 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
             if isinstance(lab_result, str):
                 return _emit_bash_error(run.run_id, lab_result, lab_result, run.session_id)
             lab, command_env = lab_result
+            started_at = time.time()
             try:
                 result = await _run_sandbox_command(
                     sbx=sbx,
@@ -467,7 +466,10 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
                 # curl -o, …), not just the write tool. Enumerate the session's
                 # artifacts/ from the sandbox itself (no cross-mount race) in real time.
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, run.user_id, run.session_id)
+                    links = await _publish_artifacts(
+                        sbx, run.user_id, run.session_id, changed_since=started_at
+                    )
+                result += artifact_links_note(links)
             # Equivalent under mutation: lab is set exactly when run_todo_id is
             # (_lab_run_and_env); the second test only narrows run_todo_id's type.
             if lab is not None and run_todo_id is not None:  # pragma: no mutate
@@ -512,47 +514,32 @@ async def _run_bash(
     return await _execute_invocation(run=run, run_todo_id=request.run_todo_id)
 
 
-async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
-    """Enumerate the session's ``artifacts/`` in the sandbox and push each
-    file as a real-time artifact event (covers cat/python/mv/curl, etc.).
+async def _publish_artifacts(
+    sbx: object, user_id: str, session_id: str, *, changed_since: float
+) -> dict[str, str]:
+    """Card each file in artifacts/ on the run; return the links of the ones this command wrote.
 
-    Implementation note: this used to be N+1 sandbox round-trips (one ``find``
-    plus one ``base64`` per artifact). For a turn that writes 5 artifacts that
-    was 6 envd round-trips. We now collapse to a *single* ``find`` invocation
-    whose ``-exec`` emits the path, size, and base64 body for every artifact in
-    one stream — parsed back here in Python. One round-trip total, regardless
-    of how many artifacts the turn produced.
+    Covers what the write tool cannot see (cat, python, mv, curl), in one sandbox round-trip.
+    Only a file with mtime at or after changed_since (less ARTIFACT_MTIME_SKEW_SECONDS for
+    host/sandbox clock drift) is linked, so a command never shares every file in the session.
+    Fields and records are NUL-delimited, which no filename can contain: <path>\0<size>\0<mtime>\0.
     """
-    artifacts_root = session_artifacts(session_id)
-    # NUL-delimited fields AND records (desync-proof, filenames can't contain
-    # NUL). Each artifact emits <path>\0<size>\0<mtime>\0<base64>\0. Real
-    # mtime is required so the forwarder's dedup skips unchanged files.
-    max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
-        f"find {sh_quote(artifacts_root)} -type f "
+        f"find {sh_quote(session_artifacts(session_id))} -type f "
         f"! -name '*{WORKSPACE_TMP_SUFFIX}' "
-        f"-printf '%P\\0%s\\0%T@\\0' "
-        f"-exec sh -c '"
-        f'  s=$(stat -c%s "$0"); '
-        f'  if [ "$s" -le {max_inline} ]; then base64 -w0 "$0" 2>/dev/null; fi; '
-        f'  printf "\\0"'
-        f"' {{}} \\; 2>/dev/null"
+        f"-printf '%P\\0%s\\0%T@\\0' 2>/dev/null"
     )
+    links: dict[str, str] = {}
     try:
         res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
     except Exception:
-        return
+        return links
 
-    stdout = getattr(res, "stdout", "") or ""
-    fields = stdout.split("\0")
-    # Last element after the trailing NUL is the empty tail — discard. Group
-    # the remainder in 4-tuples (path, size, mtime, body); a partial trailing
-    # group means find was interrupted mid-record and we skip it.
-    for i in range(0, len(fields) - (len(fields) % 4), 4):
-        rel = fields[i]
-        size_str = fields[i + 1]
-        mtime_str = fields[i + 2]
-        body_b64 = fields[i + 3]
+    # What follows the last NUL is never a field; a partial trailing record means find was cut short.
+    stdout = getattr(res, "stdout", "") or ""  # pragma: no mutate — NUL-free text holds no field
+    fields = stdout.split("\0")[:-1]
+    for i in range(0, len(fields) - (len(fields) % 3), 3):
+        rel, size_str, mtime_str = fields[i : i + 3]
         if not rel:
             continue
         try:
@@ -563,23 +550,17 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             mtime = float(mtime_str) if mtime_str else time.time()
         except ValueError:
             mtime = time.time()
-        inline_body = _decode_inline(body_b64, size_bytes, detect_content_type(rel))
-        # Same shared publisher write/edit use — one owner of the event shape.
-        await publish_artifact(user_id, session_id, rel, size_bytes, mtime, inline_body)
-
-
-def _decode_inline(body_b64: str, size_bytes: int, content_type: str | None) -> str | None:
-    """Decode the inline body if the file is small + textual, else None."""
-    if not body_b64:
-        return None
-    if size_bytes <= 0 or size_bytes > INLINE_ARTIFACT_MAX_BYTES:
-        return None
-    if not is_inlineable_content_type(content_type):
-        return None
-    try:
-        return base64.b64decode(body_b64).decode("utf-8", errors="replace")
-    except ValueError:
-        return None
+        placeholder = await publish_artifact(
+            user_id,
+            session_id,
+            ArtifactInfo(
+                path=rel, size_bytes=size_bytes, mtime=mtime, content_type=detect_content_type(rel)
+            ),
+            written_this_turn=mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS,
+        )
+        if placeholder:
+            links[rel] = placeholder
+    return links
 
 
 async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -> None:

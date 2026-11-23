@@ -1,239 +1,26 @@
-"""Shared lifecycle for capturing background-executor tool events.
+"""The approval cards an executor run's session holds, which hil records there rather than on the work's card record."""
 
-The executor runs as a detached asyncio task (spawned by call_executor).
-Its tool events, and those of any subagent it spawns, are appended to
-the stream's StreamSession.tool_events by make_redis_stream_writer.
+from collections.abc import Iterable, Iterator, Mapping
 
-Both the live chat path and the silent path (workflows, background tasks)
-register the session, wait for the executor, drain the collected events into
-grouped tool_data, and tear it down. Centralizing it here keeps one
-implementation so chat and workflow runs render identically.
-"""
-
-import asyncio
-from pathlib import Path
-from types import CoroutineType, FrameType
-
-from pydantic import BaseModel, ConfigDict
-
-from app.agents.core.background.session import (
-    RunKind,
-    create_session,
-    get_session,
-    teardown_session,
-)
-from app.constants.agents import AgentTag, wrap_agent_payload
-from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
-from app.constants.log_tags import LogTag
-from app.models.chat_models import ToolDataEntry, tool_fields
-from app.services.chat.chunks import normalize_custom_event
-from app.utils.stream_utils import (
-    ToolDataEnvelope,
-    absorb_collector_event,
-    apply_outputs_to_tool_data,
-    reconstruct_subagent_groups,
-)
-from shared.py.wide_events import log
+from app.agents.core.background.session import get_session
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.models.conversation_frame_models import ToolDataEvent
+from app.services.conversation.graph_payloads import payloads_of_custom
+from app.services.conversation.tool_cards import fold_cards
+from shared.py.conversation_wire import ToolDataEntry
 
 
-def register_executor_capture(stream_id: str, voice_mode: bool = False) -> asyncio.Event:
-    """Register the stream session that captures executor tool events.
-
-    Must run before the comms agent executes so call_executor's background
-    task can append events to the session. voice_mode marks the stream so the
-    executor's finalize step publishes a TTS-only voice_tts frame with its
-    narrated answer for the voice agent to speak. Returns the done-event.
-    """
-    session = create_session(stream_id, RunKind.LIVE)
-    session.voice_mode = voice_mode
-    return session.done_event
-
-
-# The timeout cannot move to callers: this function owns the graceful
-# catch-and-drain semantics (log + return so collected events still flush).
-async def await_executor_done(
-    stream_id: str,
-    timeout: float = EXECUTOR_WAIT_TIMEOUT,  # NOSONAR python:S7483
-) -> bool:
-    """Block until the background executor for this stream signals completion.
-
-    True when it finished (or none was spawned). On timeout only the waiting
-    stops: the tasks still running are logged so the stall can be read, False
-    comes back so the caller can drain what was collected, and the executor
-    goes on to deliver its result as a message of its own.
-    """
+def session_approval_cards(stream_id: str) -> tuple[ToolDataEntry, ...]:
+    """Return the run's approval cards, each in the latest state hil recorded for it."""
     session = get_session(stream_id)
-    if session is None or not session.executor_spawned:
-        return True
-    log.info(f"{LogTag.AGENT} Waiting for executor completion", stream_id=stream_id)
-    try:
-        async with asyncio.timeout(timeout):
-            await session.done_event.wait()
-    except TimeoutError:
-        log.error(
-            f"{LogTag.AGENT} Timed out waiting for executor; draining what it produced",
-            stream_id=stream_id,
-            timeout_seconds=int(timeout),
-            stuck_tasks=_running_task_stacks(),
-        )
-        return False
-    return True
+    events = session.tool_events if session is not None else []
+    return fold_cards(_approval_events(events)).tool_data
 
 
-#: Tasks worth naming when the executor stalls: the executor's own run and
-#: the subagent runs it dispatched. Everything else is the loop's plumbing.
-_AGENT_TASK_MARKERS = ("run_executor", "run_subagent")
-_STACK_FRAMES = 6
-
-
-def _running_task_stacks() -> list[str]:
-    """One line per agent task still running, with its innermost frames.
-
-    A thread dump shows only the idle event loop; the stall is in a coroutine,
-    and this is the only view of where it sits.
-    """
-    return [
-        f"{name}: {_innermost_frames(task)}"
-        for task in asyncio.all_tasks()
-        if not task.done() and (name := _agent_task_name(task)) is not None
-    ]
-
-
-def _agent_task_name(task: asyncio.Task[object]) -> str | None:
-    """Return the task's coroutine name when it is an agent run, else None."""
-    coro = task.get_coro()
-    name = getattr(coro, "__qualname__", type(coro).__name__)
-    return name if any(marker in name for marker in _AGENT_TASK_MARKERS) else None
-
-
-def _innermost_frames(task: asyncio.Task[object]) -> str:
-    """Where the task is suspended, innermost await first.
-
-    Task.get_stack stops at the task's own coroutine; the stall is down the
-    chain of awaits, so the chain is walked to its end and its tail kept.
-    """
-    frames: list[FrameType] = []
-    coro: object = task.get_coro()
-    while isinstance(coro, CoroutineType) and coro.cr_frame is not None:
-        frames.append(coro.cr_frame)
-        coro = coro.cr_await
-    return " <- ".join(
-        f"{frame.f_code.co_name}({Path(frame.f_code.co_filename).name}:{frame.f_lineno})"
-        for frame in reversed(frames[-_STACK_FRAMES:])
-    )
-
-
-def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
-    """Drain the session's tool events into reconstructed tool_data.
-
-    Non-destructive read. Mirrors the comms-graph accumulation path:
-    tool_calls_data outputs are merged in, and subagent start/end pairs are
-    grouped via reconstruct_subagent_groups. Only tool_calls_data entries
-    get their output backfilled.
-    """
-    session = get_session(stream_id)
-    if session is None or not session.tool_events:
-        return []
-    entries: list[ToolDataEntry] = []
-    # The accumulator envelope is an open bag; only "tool_data" has a fixed
-    # shape, and it's this list object throughout, rebound by
-    # reconstruct_subagent_groups, hence the re-read at the end.
-    accumulated: dict[str, object] = {"tool_data": entries}
-    outputs: dict[str, str] = {}
-    for evt in session.tool_events:
-        # Hooks emit raw field payloads like {"email_fetch_data": [...]};
-        # normalize to {"tool_data": {...}} or absorb_collector_event drops
-        # them and the list card never persists.
-        absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
-    apply_outputs_to_tool_data(entries, outputs, only_tool_name="tool_calls_data")
-    reconstruct_subagent_groups(accumulated)
-    return ToolDataEnvelope.model_validate(accumulated).tool_data
-
-
-class _SubagentGroupProducer(BaseModel):
-    """A subagent_group entry's data, read for the id and name it credits cards to."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    subagent_id: str | None = None
-    subagent_name: str | None = None
-
-
-def build_returned_to_frontend_note(stream_id: str) -> str:
-    """Build a note telling comms which native cards already rendered this turn.
-
-    States what was RETURNED to the frontend, not a claim about DOM
-    rendering. Each row names the producing subagent (once missing, an
-    executor summary credited the wrong product: "8 tasks created (Todoist)"
-    for GAIA todos). MUST be called before the session is torn down.
-    """
-    entries: list[ToolDataEntry] = drain_executor_tool_data(stream_id)
-    subagent_names: dict[str, str] = {}
-    for entry in entries:
-        group = entry.get("data")
-        if entry.get("tool_name") != SUBAGENT_GROUP_TOOL_NAME or not isinstance(group, dict):
-            continue
-        credited = _SubagentGroupProducer.model_validate(group)
-        subagent_names[str(credited.subagent_id)] = credited.subagent_name or ""
-
-    # (field name, producer) -> item count. Eight separate one-item todo cards
-    # from one subagent are one fact, not eight lines of noise.
-    counts: dict[tuple[str, str], int] = {}
-    for entry in entries:
-        name = entry.get("tool_name")
-        if name not in tool_fields:
-            continue  # excludes tool_calls_data / subagent_group (loading rows)
-        data = entry.get("data")
-        producer = subagent_names.get(str(entry.get("subagent_id")), "")
-        key = (str(name), producer)
-        counts[key] = counts.get(key, 0) + (len(data) if isinstance(data, list) else 1)
-
-    summary: list[str] = []
-    for (name, producer), count in counts.items():
-        # Derive a readable label from the field name so it never drifts from
-        # the tool_fields source of truth (e.g. "email_fetch_data" -> "email fetch").
-        noun = name.removesuffix("_data").replace("_", " ") or "items"
-        via = f", via subagent:{producer}" if producer else ""
-        summary.append(f"  - {name} ({count} {noun}{via})")
-
-    if not summary:
-        return ""
-
-    body = "\n".join(summary)
-    return wrap_agent_payload(
-        AgentTag.RETURNED_TO_FRONTEND,
-        "These native cards are already on the user's screen this turn:\n"
-        f"{body}\n"
-        "They visually render the RAW items, so don't re-type those items "
-        "row-by-row and don't re-emit them as OpenUI. That literal duplication "
-        "is the ONLY thing to avoid here.\n"
-        "The cards are visual aids, NOT your reply. You still owe the user the "
-        "ANSWER in your own voice, the substance the executor produced: what it "
-        "found, grouped and counted, the few items that actually matter (and "
-        'why), and the natural next step. This synthesis is never "card '
-        'contents"; suppressing it because a card exists is the worst failure '
-        "you can have.\n"
-        "Match the depth to the work: a quick outcome gets a line or two; a "
-        "large, comprehensive result (a full triage, a multi-item analysis) gets "
-        "a real structured rundown, never a one-liner. Replying just \"here's "
-        'the list 👇" with no substance, when the executor did real work, fails '
-        "the user. Point them to the card for the granular rows AFTER you've "
-        "actually delivered the gist.\n"
-        "CRITICAL EXCEPTION (LONG-FORM DELIVERABLE): if the executor's result is "
-        "itself a finished written piece (a research report, an article, an "
-        "analysis, a document), that is the ANSWER, not raw card rows. The cards "
-        "above were just the research/loading steps along the way. Deliver the "
-        "deliverable IN FULL per the long-form rule: every section, point, and "
-        "citation, and do NOT compress it to a 'here's the breakdown' summary. "
-        "This note never authorizes shrinking a report; it only stops you "
-        "re-typing rows a card already lists.",
-    )
-
-
-def teardown_executor_capture(stream_id: str) -> None:
-    """Drop the stream's session and everything it holds.
-
-    Safe to call multiple times.
-    """
-    teardown_session(stream_id)
+def _approval_events(events: Iterable[Mapping[str, object]]) -> Iterator[ToolDataEvent]:
+    for event in events:
+        for payload in payloads_of_custom(event):
+            if isinstance(payload, ToolDataEvent):
+                card: ToolDataEntry = payload.tool_data
+                if card["tool_name"] == APPROVAL_REQUEST_TOOL_NAME:
+                    yield payload

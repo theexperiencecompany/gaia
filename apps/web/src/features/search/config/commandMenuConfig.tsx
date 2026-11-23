@@ -6,7 +6,7 @@ import {
   ConnectIcon,
   DiscordIcon,
   MessageMultiple02Icon,
-  NotificationIcon,
+  News01Icon,
   PencilEdit01Icon,
   Settings01Icon,
   WhatsappIcon,
@@ -40,12 +40,6 @@ export interface MenuSectionConfig {
 // Page navigation items
 const PAGE_ITEMS: MenuItemConfig[] = [
   {
-    id: "notifications",
-    label: "Notifications",
-    icon: <NotificationIcon width={18} height={18} />,
-    path: "/notifications",
-  },
-  {
     id: "calendar",
     label: "Calendar",
     icon: <CalendarIcon width={18} height={18} />,
@@ -69,6 +63,12 @@ const PAGE_ITEMS: MenuItemConfig[] = [
     label: "Workflows",
     icon: <ZapIcon width={18} height={18} />,
     path: "/workflows",
+  },
+  {
+    id: "briefings",
+    label: "Briefings",
+    icon: <News01Icon width={18} height={18} />,
+    path: "/briefings",
   },
   {
     id: "chats",

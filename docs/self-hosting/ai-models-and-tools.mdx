@@ -20,17 +20,18 @@ AI keys are tested before saving. Tool keys are saved as typed. A key saved in S
 
 ## AI models
 
-Pick one to start. If you add several, GAIA uses the first available in this order and falls back to the next on failure: OpenRouter, Gemini, OpenAI, Ollama, custom.
+Pick one to start. If you add several, GAIA uses the first available in this order and falls back to the next on failure: Cloudflare, OpenRouter, Gemini, OpenAI, Ollama, custom. Cloudflare is the exception on failure: it falls back to OpenAI when OpenAI is set.
 
 | Provider | What you need | Environment variable | Notes |
 | --- | --- | --- | --- |
+| **Cloudflare Workers AI** | An account ID and an API token with Workers AI access from [dash.cloudflare.com](https://dash.cloudflare.com/profile/api-tokens) | `CLOUDFLARE_AI_ACCOUNT_ID`, `CLOUDFLARE_AI_API_TOKEN` | Runs DeepSeek V4.1 Flash for every role while set. Needs the Workers Paid plan |
 | **OpenRouter** | A key from [openrouter.ai/keys](https://openrouter.ai/keys) | `OPENROUTER_API_KEY` | One key for most models. Easiest start |
 | **Google Gemini** | A key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | `GOOGLE_API_KEY` | Has a free tier |
 | **OpenAI** | A key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | `OPENAI_API_KEY` | Also transcribes voice notes |
 | **Ollama** | Ollama on your machine, no key | `OLLAMA_BASE_URL` | See [Using Ollama](#using-ollama) |
 | **Custom** | A key, the server's address and a model name | Set in the setup page, Settings or `gaia up` | Any OpenAI-style API. OpenCode and Nous Research are one click |
 
-Only OpenRouter, Gemini and OpenAI can read images.
+Only OpenRouter, Gemini, OpenAI and Cloudflare can describe images.
 
 ### From the terminal
 
@@ -58,7 +59,7 @@ GAIA runs in a container, so `localhost` is not your machine. Use `http://host.d
 | Reading web pages | The built-in reader, a headless browser on your server | Firecrawl, which gets past sites that block bots | `FIRECRAWL_API_KEY` |
 | Running code | Off, until you turn on the local sandbox | E2B, a cloud sandbox | `E2B_API_KEY` |
 | File storage | Your server's disk | Cloudinary | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
-| Email | Off | Resend, for notifications and reminders by email | `RESEND_API_KEY` |
+| Email | Off | Resend, for notifications and reminders by email, sent from `brief@` your domain (a domain Resend has verified) unless `EMAIL_FROM` names another sender | `RESEND_API_KEY`, `EMAIL_FROM` |
 | Weather | Off | OpenWeather | `OPENWEATHER_API_KEY` |
 | Scanned documents | Text PDFs and Office files, read on your server | LlamaParse, which reads scanned pages and photos of text | `LLAMA_INDEX_KEY` |
 | Skill installs | 60 GitHub lookups an hour | A GitHub token, for 5000 an hour | `GITHUB_TOKEN` |

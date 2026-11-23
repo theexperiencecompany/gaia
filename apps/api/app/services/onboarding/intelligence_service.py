@@ -18,7 +18,6 @@ Gmail. System workflows are provisioned by the OAuth connect handler itself.
 
 import asyncio
 from dataclasses import dataclass, field, replace
-from enum import Enum
 import time
 from typing import Any, cast
 
@@ -30,10 +29,11 @@ from app.config.settings import settings
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
-from app.core.websocket_manager import websocket_manager
 from app.db.repositories.users import user_repository
+from app.models.mail_models import GmailMessageSummary
+from app.models.notification.details_models import GmailPersonalizedNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -44,19 +44,15 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.models.onboarding_models import (
     ClarifyAnswerRecord,
     InboxTriage,
     PersistedTriageSummary,
     SocialProfile,
-    SocialProfilesReadyPayload,
-    StagePayload,
-    StatusTextPayload,
     TriageEmailSummary,
-    TriageReadyPayload,
     WritingStyleProfile,
-    WritingStyleReadyPayload,
 )
 from app.models.user_models import OnboardingSubdocument, PersonalizationBundle, UserDocument
 from app.services.composio.composio_service import get_composio_service
@@ -77,6 +73,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_holo_card_conversation
+from app.utils.user_display import display_name
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
@@ -89,49 +86,6 @@ _MEMORIES_NOTIFICATION_BODY = (
     "I read through your inbox and saved what matters — the people you work with, "
     "how you write, what you're on top of."
 )
-
-
-class OnboardingStage(str, Enum):
-    """Stages emitted over WebSocket during Gmail personalization."""
-
-    INBOX_SCANNING = "inbox_scanning"
-    WRITING_STYLE_PROGRESS = "writing_style_progress"
-    WRITING_STYLE_READY = "writing_style_ready"
-    SOCIAL_PROFILES_READY = "social_profiles_ready"
-    TRIAGE_ANALYZING = "triage_analyzing"
-    TRIAGE_READY = "triage_ready"
-    HOLO_READY = "holo_ready"
-
-
-async def _emit_stage(
-    user_id: str,
-    stage: OnboardingStage,
-    payload: StagePayload | None = None,
-) -> None:
-    try:
-        await websocket_manager.broadcast_to_user(
-            user_id=user_id,
-            message={
-                "type": "onboarding_stage",
-                "data": {"stage": stage.value, "payload": payload.to_wire() if payload else {}},
-            },
-        )
-        status_text = payload.status_text if isinstance(payload, StatusTextPayload) else None
-        if status_text:
-            log.info(
-                f"{LogTag.ONBOARDING} stage emitted with status",
-                stage_value=stage.value,
-                status_text=status_text,
-            )
-        else:
-            log.info(f"{LogTag.ONBOARDING} stage emitted", stage_value=stage.value)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.ONBOARDING} Failed to emit stage",
-            stage_value=stage.value,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
 
 
 @dataclass
@@ -151,9 +105,8 @@ class OnboardingContext:
     """Shared per-user context threaded through the personalization helpers."""
 
     user_id: str
-    name: str
+    name: str | None
     profession: str = ""
-    focus: str = ""
     user_email: str | None = None
     triage: InboxTriage | None = None
     writing_style: WritingStyleProfile | None = None
@@ -228,10 +181,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     base_ctx = OnboardingContext(
         user_id=user_id,
-        name=user.name or "there",
+        name=display_name(user),
         profession=(onboarding.preferences.profession if onboarding.preferences else None)
         or "",  # pragma: no mutate — the default for a missing answer
-        focus=onboarding.focus,
         user_email=user.email,
         clarify_answers=cast(list[ClarifyAnswerRecord], onboarding.clarify_answers),
     )
@@ -241,7 +193,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     t_gather = time.monotonic()
     triage, writing_style = await asyncio.gather(
-        _run_triage(user_id, inbox_ctx, base_ctx.profession, base_ctx.focus),
+        _run_triage(user_id, inbox_ctx, base_ctx.profession),
         _run_writing_style(user_id, base_ctx.profession),
     )
     log.info(
@@ -281,11 +233,6 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
         ctx.emails.extend(cached)
         ctx.first_batch_ready.set()
         ctx.done.set()
-        await _emit_stage(
-            user_id,
-            OnboardingStage.INBOX_SCANNING,
-            StatusTextPayload(status_text=f"Loaded {len(cached)} cached emails"),
-        )
         log.info(
             f"{LogTag.ONBOARDING} inbox_scanning cache_hit",
             user_id=user_id,
@@ -297,25 +244,9 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
         )
         return
 
-    await _emit_stage(
-        user_id,
-        OnboardingStage.INBOX_SCANNING,
-        StatusTextPayload(status_text="Connecting to Gmail"),
-    )
-
-    async def _on_batch(current: int, latest_sender: str | None) -> None:
+    async def _on_batch(current: int, _latest_sender: str | None) -> None:
         if not ctx.first_batch_ready.is_set() and current >= TRIAGE_EARLY_THRESHOLD:
             ctx.first_batch_ready.set()
-        status_text = (
-            f"Fetched {current} emails — {latest_sender}"
-            if latest_sender
-            else f"Fetched {current} emails"
-        )
-        await _emit_stage(
-            user_id,
-            OnboardingStage.INBOX_SCANNING,
-            StatusTextPayload(status_text=status_text),
-        )
 
     fetch_ok = False
     try:
@@ -356,17 +287,9 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
 
 async def _run_writing_style(user_id: str, profession: str) -> WritingStyleProfile | None:
     """Learn writing style from the user's last 50 sent emails."""
-
-    async def _on_status(status_text: str) -> None:
-        await _emit_stage(
-            user_id,
-            OnboardingStage.WRITING_STYLE_PROGRESS,
-            StatusTextPayload(status_text=status_text),
-        )
-
     t0 = time.monotonic()
     try:
-        result = await learn_writing_style(user_id, profession=profession, on_status=_on_status)
+        result = await learn_writing_style(user_id, profession=profession)
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} writing_style failed",
@@ -389,14 +312,6 @@ async def _run_writing_style(user_id: str, profession: str) -> WritingStyleProfi
         duration_s=round(time.monotonic() - t0, 2),
     )
 
-    await _emit_stage(
-        user_id,
-        OnboardingStage.WRITING_STYLE_READY,
-        WritingStyleReadyPayload(
-            style_summary=result.summary if result and result.summary else None,
-            example=result.example if result and result.example else None,
-        ),
-    )
     return result
 
 
@@ -404,10 +319,9 @@ async def _run_triage(
     user_id: str,
     inbox_ctx: InboxScanContext,
     profession: str,
-    focus: str,
 ) -> InboxTriage | None:
     await inbox_ctx.first_batch_ready.wait()
-    emails = list(inbox_ctx.emails)
+    emails = [GmailMessageSummary.model_validate(email) for email in inbox_ctx.emails]
     if not emails:
         log.info(
             f"{LogTag.ONBOARDING} triage skipped",
@@ -418,15 +332,9 @@ async def _run_triage(
         )
         return None
 
-    await _emit_stage(
-        user_id,
-        OnboardingStage.TRIAGE_ANALYZING,
-        StatusTextPayload(status_text=f"Analyzing {len(emails)} emails"),
-    )
-
     t0 = time.monotonic()
     try:
-        result = await triage_inbox(user_id, emails, profession=profession, focus=focus)
+        result = await triage_inbox(user_id, emails, profession=profession)
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} triage failed",
@@ -451,25 +359,6 @@ async def _run_triage(
         duration_s=round(time.monotonic() - t0, 2),
     )
 
-    if result and result.important_emails:
-        n = len(result.important_emails)
-        await _emit_stage(
-            user_id,
-            OnboardingStage.TRIAGE_ANALYZING,
-            StatusTextPayload(status_text=f"Found {n} important thread{'s' if n != 1 else ''}"),
-        )
-
-    await _emit_stage(
-        user_id,
-        OnboardingStage.TRIAGE_READY,
-        TriageReadyPayload(
-            total_scanned=result.total_scanned if result else len(emails),
-            total_unread=result.total_unread if result else 0,
-            summary=result.summary if result else None,
-            patterns=result.patterns if result else [],
-            important_emails=_important_emails_for_client(result),
-        ),
-    )
     return result
 
 
@@ -483,7 +372,7 @@ def _important_emails_for_client(triage: InboxTriage | None) -> list[TriageEmail
 
 async def _run_social_profiles(
     user_id: str,
-    user_name: str,
+    user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
     """Fetch email bodies, extract and persist social profiles, emit SOCIAL_PROFILES_READY."""
@@ -531,11 +420,6 @@ async def _run_social_profiles(
             exc_info=True,
         )
 
-    await _emit_stage(
-        user_id,
-        OnboardingStage.SOCIAL_PROFILES_READY,
-        SocialProfilesReadyPayload(profiles=profiles),
-    )
     return profiles
 
 
@@ -565,8 +449,6 @@ async def _run_holo_card(
         if social_profiles:
             platforms = ", ".join(f"{p.platform}: {p.url}" for p in social_profiles)
             context_parts.append(f"Social profiles: {platforms}")
-        if ctx.focus:
-            context_parts.append(f"Current focus: {ctx.focus}")
         clarify_answers: list[ClarifyAnswerRecord] = ctx.clarify_answers or []
         for answer in clarify_answers:
             value = (answer.get("value") or "").strip()
@@ -625,7 +507,6 @@ async def _run_holo_card(
             exc_info=True,
         )
 
-    await _emit_stage(ctx.user_id, OnboardingStage.HOLO_READY)
     return card_ready
 
 
@@ -685,8 +566,9 @@ async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | 
         )
 
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(user_id, "personalization_ready", user_id),
                 user_id=user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.SUCCESS,
@@ -696,7 +578,7 @@ async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | 
                     body=body,
                     actions=actions,
                 ),
-                metadata={"source": "gmail_personalization"},
+                details=GmailPersonalizedNotification(kind=NotificationKind.GMAIL_PERSONALIZED),
             )
         )
     except Exception as e:

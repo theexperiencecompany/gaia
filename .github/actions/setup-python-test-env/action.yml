@@ -2,7 +2,8 @@ name: Setup Python test environment
 description: >
   Prepare the runner to execute the API pytest suite against live services:
   install Node + pnpm deps (the device-bridge e2e tests drive the real
-  `gaia bridge` CLI via tsx) when requested, sync Python deps with uv, and start
+  `gaia bridge` CLI via tsx; the artifact-validator tests build its bundle) when requested, sync Python deps with uv, install
+  headless Chromium when requested, and start
   PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
   daemon.
 
@@ -17,9 +18,11 @@ inputs:
     default: "true"
   node:
     description: >
-      Install Node + pnpm deps. Only tests/integration/real/test_device_bridge_e2e.py
-      needs them (it drives the real `gaia bridge` CLI via tsx); a lane that
-      does not run that file should pass "false" and skip ~45s warm / minutes cold.
+      Install Node + pnpm deps. tests/integration/real/test_device_bridge_e2e.py
+      drives the real `gaia bridge` CLI via tsx, and
+      tests/integration/services/test_openui_artifact_validate.py builds the
+      validator bundle with esbuild; a lane that runs neither should pass "false"
+      and skip ~45s warm / minutes cold.
     required: false
     default: "true"
   restore-models:
@@ -29,6 +32,14 @@ inputs:
       and pre-uploads 1.3GB it never uses (wasted restore time on every run).
     required: false
     default: "true"
+  chromium:
+    description: >
+      Install Playwright's headless Chromium shell at the version uv.lock pins.
+      The Chromium render tests (tests/integration/render/)
+      rasterize through it, and the browser is not part of the uv environment.
+      Cached per Playwright version on GitHub-hosted runners; the box keeps it on disk.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -95,6 +106,35 @@ runs:
         python3 scripts/ci/runner.py heal-venv .venv
         uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
         touch "$MARK"
+
+    # The browser build is keyed by the installed Playwright, which --frozen holds to uv.lock.
+    - name: Read the Playwright version
+      if: inputs.chromium == 'true'
+      id: playwright
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(uv run --frozen --no-sync python -c 'from importlib.metadata import version; print(version("playwright"))')"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - name: Restore headless Chromium
+      if: inputs.chromium == 'true' && !startsWith(runner.name, 'gaia-home-')
+      id: chromium-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: chromium-headless-shell-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+    # A no-op when the build is already on disk (a cache hit, or the box's persistent home).
+    - name: Install headless Chromium
+      if: inputs.chromium == 'true'
+      shell: bash
+      working-directory: apps/api
+      run: uv run --frozen --no-sync playwright install chromium-headless-shell
+    - name: Save headless Chromium
+      if: inputs.chromium == 'true' && !startsWith(runner.name, 'gaia-home-') && steps.chromium-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: chromium-headless-shell-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
     # Join the background boot, then claim this lane's namespace and export its
     # endpoints. `prepare` owns the port arithmetic and the namespace names, so

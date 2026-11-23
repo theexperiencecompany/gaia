@@ -150,10 +150,7 @@ function VoiceSessionInner({
   const discoveredConversationId = storeDiscoveredId ?? convoIdParam ?? null;
   const conversationId = discoveredConversationId;
 
-  // useVoiceMessages owns the thinking-indicator lifecycle — it's the only
-  // place that knows a turn's first token and new-turn start. Driving it
-  // off agentState alone showed the indicator AFTER the reply (backend re-enters "thinking" for follow-up actions).
-  const { sendUserTurn } = useVoiceMessages(conversationId, agentState);
+  const { sendUserTurn } = useVoiceMessages(conversationId);
 
   useRoomConversationStreams({
     onConversationId: setDiscoveredConversationId,
@@ -262,6 +259,7 @@ function VoiceSessionInner({
             title: conversationDescription,
             description: conversationDescription,
             starred: false,
+            awaitingApproval: false,
             isSystemGenerated: false,
             systemPurpose: null,
             isUnread: false,
@@ -334,7 +332,7 @@ function VoiceSessionInner({
           audible output). */}
       <StartAudio
         label="Tap to enable sound"
-        className="fixed top-16 left-1/2 z-50 -translate-x-1/2 cursor-pointer rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105"
+        className="fixed top-16 left-1/2 z-50 -translate-x-1/2 cursor-pointer rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground shadow-lg transition-transform hover:scale-105"
       />
       {children}
     </VoiceSessionProvider>

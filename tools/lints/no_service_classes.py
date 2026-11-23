@@ -57,8 +57,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "PaymentWebhookService",
         # Holds channel-adapter + action-handler registries.
         "NotificationService",
-        # Legacy DI shape (mongodb passed in) — convertible follow-up.
-        "DeviceTokenService",
         # Holds a Chroma collection name — thin state, convertible follow-up.
         "GaiaKnowledgeService",
     }

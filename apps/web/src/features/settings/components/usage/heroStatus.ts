@@ -1,5 +1,5 @@
 import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
-import { formatDate } from "@shared/utils";
+import { formatDate, formatTime } from "@shared/utils";
 
 export type Period = "day" | "month";
 
@@ -9,18 +9,9 @@ export interface HeroStatus {
   detail: string;
 }
 
-/** Local wall-clock time of an instant, e.g. "5:30 AM" — "midnight" would be
- * a lie for every user outside UTC. */
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function resetPhrase(win: Period, resetIso: string): string {
   return win === "day"
-    ? `at ${fmtTime(resetIso)}`
+    ? `at ${formatTime(resetIso)}`
     : formatDate(resetIso, "short");
 }
 

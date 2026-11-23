@@ -2,7 +2,6 @@
 
 from typing import Annotated
 
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
@@ -17,7 +16,6 @@ from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationsConfigResponse,
-    IntegrationStatusesResponse,
     IntegrationSuccessResponse,
     IntegrationToolsResponse,
     MyIntegrationsResponse,
@@ -30,11 +28,9 @@ from app.services.integrations.integration_connection_service import (
     initiate_integration_connection,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
-from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.integrations.my_integrations import (
     get_integration_tools,
     get_my_integrations,
-    get_my_integrations_snapshot,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
@@ -60,35 +56,11 @@ async def get_integrations_config() -> IntegrationsConfigResponse:
 async def get_my_integrations_endpoint(
     user_id: str = Depends(get_user_id),
 ) -> MyIntegrationsResponse:
-    """The current user's full integration catalog (platform + their custom),
-    each with connection status and tool count. One call replaces the old
-    /config + /status + /users/me/integrations merge."""
+    """The current user's full integration catalog (platform + their custom), each with its one connection status."""
     log.set(operation="get_my_integrations", user={"id": user_id})
     result = await get_my_integrations(user_id)
     log.set(result_count=result.total, outcome="success")
     return result
-
-
-@router.get("/me/snapshot")
-async def get_my_integrations_snapshot_endpoint(
-    user_id: str = Depends(get_user_id),
-) -> MyIntegrationsResponse:
-    """Return the workspace catalog without waiting for connection checks."""
-    log.set(operation="get_my_integrations_snapshot", user={"id": user_id})
-    result = await get_my_integrations_snapshot(user_id)
-    log.set(result_count=result.total, outcome="success")
-    return result
-
-
-@router.get("/status")
-async def get_integration_statuses_endpoint(
-    user_id: str = Depends(get_user_id),
-) -> IntegrationStatusesResponse:
-    """Refresh connection state independently from the fast catalog snapshot."""
-    log.set(operation="get_integration_statuses", user={"id": user_id})
-    statuses = await get_all_integrations_status(user_id)
-    log.set(result_count=len(statuses), outcome="success")
-    return IntegrationStatusesResponse(statuses=statuses)
 
 
 @router.get("/{integration_id}/tools")
@@ -166,7 +138,7 @@ async def connect_integration_endpoint(
     auth_type: str | None = None
     if resolved.mcp_config:
         auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
-    elif resolved.managed_by in ("composio", "self"):
+    elif resolved.managed_by == "composio":
         auth_type = "oauth2"
     provider = resolved.platform_integration.provider if resolved.platform_integration else None
     log.set(
@@ -181,7 +153,6 @@ async def connect_integration_endpoint(
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user.email or "",
         redirect_path=request.redirect_path,
         bearer_token=request.bearer_token,
         reconnect_account_id=request.account_id,
@@ -263,12 +234,7 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         resource=integration_id,
     )
 
-    # Self-managed (Google) connectors use email as an OAuth login hint; others
-    # ignore it. user_id is trusted (it came from a server-bound, single-use code).
-    user_email = ""
-    try:
-        user_doc = await user_repository.get(user_id)
-    except InvalidId as e:
+    if not user_repository.is_valid_id(user_id):
         # A server-issued code that carries a non-ObjectId user_id means the
         # stored binding is corrupt — same opaque bounce for the client, but a
         # distinct failure in telemetry.
@@ -276,18 +242,14 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         log.warning(
             f"{LogTag.INTEGRATION} Connect link redemption rejected",
             failure="malformed_user_id",
-            error_type=type(e).__name__,
         )
         log.audit(
             "connect link redemption rejected",
             actor=user_id,
             resource=integration_id,
             reason="malformed_user_id",
-            error_type=type(e).__name__,
         )
         return _connect_link_error("invalid_or_expired_link")
-    if user_doc:
-        user_email = user_doc.email or ""
 
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
@@ -296,7 +258,6 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user_email,
         redirect_path="/integrations",
         reconnect_account_id=verified.account_id,
     )

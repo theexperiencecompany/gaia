@@ -12,11 +12,15 @@ Mongo held the entry.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+import threading
+from typing import TypedDict
 from unittest.mock import patch
 
 import pytest
 
-from app.services._vfs_scheduler import make_scheduler
+from app.services._vfs_scheduler import HashedSyncSpec, make_scheduler, run_hashed_sync
+from app.services.storage import _vfs_common
 
 _MOD = "app.services._vfs_scheduler"
 
@@ -126,3 +130,53 @@ async def test_a_failing_sync_does_not_wedge_the_user(mounted) -> None:
     await asyncio.sleep(0.01)
 
     assert calls == 2
+
+
+class _Doc(TypedDict):
+    id: str
+    v: str
+
+
+def _spec(docs: list[_Doc]) -> HashedSyncSpec[_Doc]:
+    async def fetch(user_id: str) -> list[_Doc]:
+        return docs if user_id == "u1" else []
+
+    return HashedSyncSpec(
+        fs_op="test",
+        fetch_fn=fetch,
+        per_doc_sig_fn=lambda doc: doc["v"],
+        materialize_fn=lambda _root, written, _guide: len(written),
+        guide_md="",
+        catalog_marker_path_fn=lambda root: root / ".catalog.v",
+        log_name="test",
+    )
+
+
+@pytest.mark.regression
+async def test_the_catalog_marker_is_read_and_written_off_the_event_loop(
+    mounted, tmp_path: Path
+) -> None:
+    """The mount is JuiceFS: a marker read or write is a network round trip."""
+    loop_thread = threading.get_ident()
+    marker_threads: list[int] = []
+
+    def read(path: Path) -> str | None:
+        marker_threads.append(threading.get_ident())
+        return _vfs_common.read_marker(path)
+
+    def write(path: Path, value: str) -> None:
+        marker_threads.append(threading.get_ident())
+        _vfs_common.write_marker(path, value)
+
+    spec = _spec([{"id": "d1", "v": "1"}])
+    with (
+        patch(f"{_MOD}.user_workspace_path", return_value=tmp_path),
+        patch(f"{_MOD}.read_marker", side_effect=read),
+        patch(f"{_MOD}.write_marker", side_effect=write),
+    ):
+        first = await run_hashed_sync("u1", spec)
+        again = await run_hashed_sync("u1", spec)
+
+    assert (first, again) == (1, 0)
+    assert len(marker_threads) == 3  # read + write, then the read that matches
+    assert loop_thread not in marker_threads

@@ -695,46 +695,6 @@ class TestGmailSchemaModifiers:
             "that summarizes the email. Never leave it blank."
         )
 
-    def test_fetch_message_by_id_schema_sets_format_default(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import (
-            gmail_fetch_message_schema_modifier,
-        )
-
-        schema = _make_tool_schema(
-            input_parameters={
-                "properties": {
-                    "format": {"type": "string"},
-                },
-            }
-        )
-        result = gmail_fetch_message_schema_modifier(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", schema
-        )
-        props = result.input_parameters["properties"]
-        assert isinstance(props, dict)
-        assert props["format"]["default"] == "full"
-
-    def test_schema_modifier_handles_non_dict_input_params(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import (
-            gmail_fetch_message_schema_modifier,
-        )
-
-        schema = _make_tool_schema(input_parameters="not_a_dict")
-        # Should return schema unchanged (early return)
-        result = gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
-        assert result is schema
-
-    def test_schema_modifier_rejects_non_dict_properties(self) -> None:
-        # Not a JSON-schema object: it fails to parse (the registry logs and keeps
-        # the schema untouched) rather than being silently walked around.
-        from app.utils.composio_hooks.gmail_hooks import (
-            gmail_fetch_message_schema_modifier,
-        )
-
-        schema = _make_tool_schema(input_parameters={"properties": "not_a_dict"})
-        with pytest.raises(ValidationError):
-            gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
-
 
 # ============================================================================
 # 6. Gmail hooks — before execute
@@ -1113,28 +1073,6 @@ class TestGmailBeforeHooks:
 class TestGmailAfterHooks:
     """Tests for Gmail after-execute hooks."""
 
-    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
-    def test_message_detail_after_hook(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
-
-        mock_template.return_value = {"id": "m1", "from": "a@b.com", "subject": "Hi"}
-        response = _make_response({"id": "m1", "payload": {}})
-        result = gmail_message_detail_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
-        )
-        assert isinstance(result, dict)
-        assert result["id"] == "m1"
-        mock_template.assert_called_once_with(response["data"])
-
-    def test_message_detail_after_hook_error_response(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
-
-        response = _make_response({"error": "Not found"})
-        result = gmail_message_detail_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
-        )
-        assert result == {"error": "Not found"}
-
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
     def test_thread_after_hook_processes_and_streams(
@@ -1194,16 +1132,6 @@ class TestGmailAfterHooks:
         response = _make_response({"error": "Not found"})
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
         assert result == {"error": "Not found"}
-
-    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
-    def test_draft_detail_after_hook(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
-
-        mock_template.return_value = {"id": "d1", "message": {"to": "a@b.com"}}
-        response = _make_response({"id": "d1", "message": {}})
-        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
-        assert isinstance(result, dict)
-        assert result["id"] == "d1"
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_after_hook_successful(self, mock_writer: MagicMock) -> None:
@@ -1915,13 +1843,13 @@ class TestTwitterAfterHooks:
         assert "twitter_following_data" in payload
 
     @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_post_created_after_hook(self, mock_writer: MagicMock) -> None:
+    def test_post_created_after_hook_summarises_and_streams_nothing(
+        self, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        writer = _noop_writer()
-        mock_writer.return_value = writer
         response = _make_response(
             {
                 "data": {
@@ -1933,17 +1861,13 @@ class TestTwitterAfterHooks:
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         url = "https://twitter.com/i/status/post123"
         assert result == {"success": True, "id": "post123", "text": "My new tweet", "url": url}
-        writer.assert_called_once_with(
-            {"twitter_post_created": {"id": "post123", "text": "My new tweet", "url": url}}
-        )
+        mock_writer.assert_not_called()
 
-    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_post_created_after_hook_error(self, mock_writer: MagicMock) -> None:
+    def test_post_created_after_hook_error(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Duplicate"})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert result == {"error": "Duplicate"}
@@ -2755,17 +2679,6 @@ class TestEdgeCases:
 class TestGmailAfterHookExceptions:
     """Cover exception branches in Gmail after-execute hooks."""
 
-    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
-    def test_message_detail_exception_returns_raw(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
-
-        mock_template.side_effect = KeyError("bad key")
-        response = _make_response({"raw": "data"})
-        result = gmail_message_detail_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
-        )
-        assert result == {"raw": "data"}
-
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
     def test_thread_exception_returns_raw(
@@ -2787,15 +2700,6 @@ class TestGmailAfterHookExceptions:
         response = _make_response({"raw": "drafts"})
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
         assert result == {"raw": "drafts"}
-
-    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
-    def test_draft_detail_exception_returns_raw(self, mock_template: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
-
-        mock_template.side_effect = RuntimeError("parse fail")
-        response = _make_response({"raw": "draft"})
-        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
-        assert result == {"raw": "draft"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer")
     def test_send_draft_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
@@ -3114,13 +3018,11 @@ class TestRedditTwitterAfterHookExceptions:
         result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_twitter_post_created_exception(self, mock_writer: MagicMock) -> None:
+    def test_a_malformed_created_post_passes_through_raw(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        mock_writer.side_effect = RuntimeError("broken")
-        response = _make_response({"data": {"id": "p1"}})
+        response = _make_response({"data": {"text": "no id"}})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
-        assert isinstance(result, dict)
+        assert result == {"data": {"text": "no id"}}

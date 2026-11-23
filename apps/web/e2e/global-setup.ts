@@ -1,4 +1,4 @@
-import { DEV_USER, mintDevUser, resetDevUser, seedDevData } from "./harness";
+import { devUser, mintDevUser, resetDevUser, seedDevData } from "./harness";
 
 /**
  * Bootstraps a deterministic authenticated environment before any spec runs.
@@ -13,7 +13,7 @@ async function globalSetup(): Promise<void> {
   await mintDevUser();
   await seedDevData();
 
-  console.info(`[e2e] seeded dev user ${DEV_USER} (onboarding complete)`);
+  console.info(`[e2e] seeded dev user ${devUser()} (onboarding complete)`);
 }
 
 export default globalSetup;

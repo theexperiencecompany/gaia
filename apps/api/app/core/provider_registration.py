@@ -39,6 +39,7 @@ from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
 from app.db.rabbitmq import declare_outbound_topology_on_startup, init_rabbitmq_publisher
 from app.db.redis import redis_cache
+from app.db.repositories.conversation_migration_guard import refuse_unmigrated_conversations
 from app.helpers.lifespan_helpers import (
     StartupService,
     _process_results,
@@ -216,6 +217,8 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
 
     # Before anything serves: a blob volume or bucket that cannot take writes stops the boot.
     await ensure_blob_store_ready()
+    # Before anything serves: a conversation still in the old message shape stops the boot.
+    await refuse_unmigrated_conversations()
 
     # In development and in the ARQ worker these initialize during startup;
     # in production FastAPI they're scheduled to initialize in the background.

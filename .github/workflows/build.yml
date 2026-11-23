@@ -114,7 +114,7 @@ jobs:
   # phase consumes the build phase's outputs via inputs).
   affected:
     if: inputs.phase != 'deploy'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -224,7 +224,7 @@ jobs:
 
   docker-release:
     needs: [affected]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
@@ -419,7 +419,7 @@ jobs:
   docker-api-manifest:
     needs: [docker-release, docker-api-arm64]
     if: ${{ !cancelled() && needs.docker-release.outputs.apps_tag != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       packages: write
@@ -505,7 +505,7 @@ jobs:
   docker-bots-manifest:
     needs: [affected, docker-release, docker-bots-arm64]
     if: ${{ !cancelled() && needs.affected.outputs.cli_release == 'true' && needs.docker-release.outputs.bots_tag != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -546,7 +546,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
@@ -606,7 +606,7 @@ jobs:
   # Tags the multi-platform gaia-web index from both platform digests.
   docker-web:
     needs: [docker-web-build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       packages: write
@@ -675,7 +675,7 @@ jobs:
   # gaia-grafana:latest.
   docker-grafana:
     if: inputs.phase != 'deploy'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -751,7 +751,7 @@ jobs:
     # planning there would deploy ungated code in parallel with the gate.
     needs: [docker-release, docker-api-manifest, docker-grafana]
     if: always() && inputs.phase != 'build'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       backend_deploy: ${{ steps.plan.outputs.backend_deploy }}
       backend_orphaned: ${{ steps.plan.outputs.backend_orphaned }}
@@ -798,7 +798,7 @@ jobs:
   notify-publish-without-deploy:
     needs: [deployment-plan]
     if: always() && inputs.phase != 'build' && needs.deployment-plan.outputs.backend_orphaned == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # failing-checks reads this commit's check-runs to name the cause.
@@ -860,7 +860,7 @@ jobs:
   # ":latest == deployed" for the backend. phase=build never touches :latest.
   promote-latest:
     if: github.ref == 'refs/heads/master' && inputs.phase == 'deploy' && inputs.gate_result == 'success' && (inputs.web_image_tag != '' || inputs.grafana_image_tag != '')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       packages: write

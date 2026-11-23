@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -37,7 +37,7 @@ function toCanonicalTodo(t: ChatTodoItem): Todo {
     priority: t.priority,
     project_id: t.project_id ?? "",
     completed: t.completed,
-    notify_on_run: true,
+    delivery: "now",
     subtasks: (t.subtasks ?? []).map((s) => ({
       id: s.id,
       title: s.title,

@@ -1,8 +1,10 @@
 "use client";
 
-import { Input } from "@heroui/input";
+import { SearchField } from "@heroui/react";
 import { PinIcon } from "@icons";
+import { itemText } from "@shared/conversation";
 import { useEffect, useMemo, useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import Spinner from "@/components/ui/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
 import { usePins } from "@/features/pins/hooks/usePins";
@@ -18,7 +20,7 @@ export default function Pins() {
   const filteredResults = useMemo(() => {
     if (!searchQuery.trim()) return fetchedResults;
     return fetchedResults.filter((result) =>
-      result.message.response.toLowerCase().includes(searchQuery.toLowerCase()),
+      itemText(result.item).toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [fetchedResults, searchQuery]);
 
@@ -37,9 +39,9 @@ export default function Pins() {
                 <div className="grid grid-cols-1 gap-4 pt-10 pb-24 sm:grid-cols-3 sm:pb-20">
                   {filteredResults.map((result) => (
                     <PinCard
-                      key={result.message.message_id}
+                      key={result.item.id}
                       conversation_id={result.conversation_id}
-                      message={result.message}
+                      item={result.item}
                     />
                   ))}
                 </div>
@@ -69,20 +71,19 @@ export default function Pins() {
 
       <div className="absolute bottom-4 left-0 z-10 flex w-full flex-col items-center justify-center px-3 sm:bottom-5">
         <div className="relative flex w-full max-w-(--breakpoint-sm) items-center gap-3">
-          <Input
+          <SearchField
             autoFocus
-            className="w-full"
-            classNames={{ inputWrapper: "pr-1" }}
-            placeholder="Enter a message to filter pins"
-            radius="full"
-            size="lg"
+            aria-label="Filter pins"
+            className={shapeVariants({ shape: "pill", className: "w-full" })}
+            variant="secondary"
             value={searchQuery}
-            isClearable
-            variant="faded"
-            onValueChange={(query) => {
-              setSearchQuery(query);
-            }}
-          />
+            onChange={setSearchQuery}
+          >
+            <SearchField.Group className="h-12 border-2 border-zinc-700 pr-1 text-base">
+              <SearchField.Input placeholder="Enter a message to filter pins" />
+              <SearchField.ClearButton />
+            </SearchField.Group>
+          </SearchField>
         </div>
       </div>
       <div className="bg-custom-gradient2 absolute bottom-0 left-0 z-1 h-[100px] w-full" />
