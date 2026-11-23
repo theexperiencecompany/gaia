@@ -50,10 +50,11 @@ UNSCOPED = {
     "build-images",
     "trigger-build",
     "deploy-unwedge",
-    # Call a build or deploy workflow whole: detect's nx answer already decided
-    # whether they run, and nothing inside them diffs the tree.
+    # Call a build, deploy or end-to-end workflow whole: detect's nx answer
+    # already decided whether they run, and nothing inside them diffs the tree.
     "web-build",
     "desktop-build",
+    "selfhost-e2e",
     "deploy-web",
     # Deploys the Worker whole on master once detect's nx answer named its build.
     "deploy-usercontent-worker",
