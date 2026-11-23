@@ -12,6 +12,7 @@ dependencies = [
   "livekit-plugins-noise-cancellation~=0.2",
   "livekit-plugins-elevenlabs~=1.2",
   "hf_transfer",
+  "prometheus-client>=0.20.0",
   "python-dotenv",
 ]
 
