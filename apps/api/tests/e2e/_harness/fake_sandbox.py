@@ -23,12 +23,13 @@ import stat
 import subprocess
 import tempfile
 from types import SimpleNamespace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from uuid import uuid4
 
 from e2b import CommandExitException
 
 from app.constants.sandbox import SANDBOX_USER_HOME
+from app.services.sandbox import CodingSandbox
 
 
 def _to_local(text: str, root: Path) -> str:
@@ -146,6 +147,10 @@ class FakeAsyncSandbox:
 
     async def kill(self) -> None:
         pass
+
+    def as_sandbox(self) -> CodingSandbox:
+        """Hand this fake to code typed for the real sandbox; it implements only what the tools touch."""
+        return cast(CodingSandbox, self)
 
     @classmethod
     async def create(cls, **kwargs: Any) -> FakeAsyncSandbox:

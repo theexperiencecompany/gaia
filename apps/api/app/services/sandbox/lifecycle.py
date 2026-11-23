@@ -25,7 +25,7 @@ from pathlib import Path
 import time
 from urllib.parse import unquote, urlsplit, urlunsplit
 
-from e2b import AsyncSandbox, NotFoundException, SandboxState
+from e2b import AsyncSandbox, CommandExitException, NotFoundException, SandboxState
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.deployment import DeploymentKind
@@ -308,7 +308,12 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
         sandbox_id=sandbox_id,
         user_id=user_id,
     )
-    await _run_mount_script(sbx, _mount_env(user_id, shard_id))
+    try:
+        await _run_mount_script(sbx, _mount_env(user_id, shard_id))
+    except SandboxAcquisitionError:
+        # Nothing has recorded this sandbox yet, so only this kill stops it running to its cap.
+        await sbx.kill()
+        raise
     return sbx
 
 
@@ -361,22 +366,22 @@ async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> Non
     except OSError:
         cmd = MOUNT_SCRIPT_PATH
     async with fs_timer(FsOps.SBX_MOUNT_SCRIPT):
-        result = await sbx.commands.run(
-            cmd,
-            timeout=SANDBOX_MOUNT_TIMEOUT_SECONDS,
-            envs=mount_env,
-            user="root",
-        )
-    if result.exit_code != 0:
-        raise SandboxAcquisitionError(
-            f"Mount script crashed (exit {result.exit_code}): {result.stderr}"
-        )
+        try:
+            result = await sbx.commands.run(
+                cmd,
+                timeout=SANDBOX_MOUNT_TIMEOUT_SECONDS,
+                envs=mount_env,
+                user="root",
+            )
+        except CommandExitException as e:
+            raise SandboxAcquisitionError(
+                f"Mount script crashed (exit {e.exit_code}): {e.stderr}"
+            ) from e
     # If the script took the ephemeral path it logs a `WARN:` to stderr —
     # surface that so we know the sandbox FS isn't durable.
-    stderr = getattr(result, "stderr", "") or ""
-    if "WARN:" in stderr:
+    if "WARN:" in result.stderr:
         _record(mount_status="ephemeral_fallback")
-        log.warning(f"{LogTag.SANDBOX} ephemeral /workspace fallback", stderr=stderr.strip())
+        log.warning(f"{LogTag.SANDBOX} ephemeral /workspace fallback", stderr=result.stderr.strip())
     else:
         _record(mount_status="mounted")
         log.info(f"{LogTag.SANDBOX} workspace mounted")
@@ -395,16 +400,12 @@ async def _run_silent(sbx: AsyncSandbox, cmd: str, *, timeout: int = 10) -> tupl
     """
     try:
         result = await sbx.commands.run(cmd, timeout=timeout)
-        return (
-            getattr(result, "exit_code", 0) or 0,
-            getattr(result, "stdout", "") or "",
-            getattr(result, "stderr", "") or "",
-        )
+    except CommandExitException as e:
+        return e.exit_code, e.stdout, e.stderr
     except Exception as e:
-        msg = str(e)
-        # E2B's CommandExitException includes the exit code in its string repr;
-        # we don't need to parse it precisely — any non-zero is "no".
-        return 1, "", msg
+        # A probe that could not run at all (timeout, transport) is also a "no".
+        return 1, "", str(e)
+    return result.exit_code, result.stdout, result.stderr
 
 
 async def _ensure_mounted(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:

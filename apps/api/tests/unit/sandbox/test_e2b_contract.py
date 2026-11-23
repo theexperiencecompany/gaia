@@ -22,10 +22,15 @@ import inspect
 from e2b import (
     AsyncSandbox,
     CommandExitException,
+    CommandResult,
     NotFoundException,
+    SandboxInfo,
+    SandboxNotFoundException,
+    SandboxState,
     TimeoutException,
 )
 from e2b.sandbox.filesystem.filesystem import EntryInfo, WriteInfo
+from e2b.sandbox_async.commands.command import Commands
 from e2b.sandbox_async.filesystem.filesystem import Filesystem
 
 
@@ -64,8 +69,8 @@ def test_is_running_accepts_request_timeout() -> None:
 
 
 def test_filesystem_surface_present() -> None:
-    # read/write/rename/make_dir/get_info back the native-files migration.
-    for method in ("read", "write", "rename", "make_dir", "get_info", "watch_dir"):
+    # read/write/rename/make_dir/get_info back the native-files migration; remove drops a temp.
+    for method in ("read", "write", "rename", "remove", "make_dir", "get_info"):
         assert hasattr(Filesystem, method), f"Filesystem.{method} missing"
 
 
@@ -101,3 +106,34 @@ def test_exception_types_importable() -> None:
     assert issubclass(NotFoundException, Exception)
     assert issubclass(TimeoutException, Exception)
     assert issubclass(CommandExitException, Exception)
+
+
+def test_create_accepts_the_kwargs_create_fresh_sandbox_passes() -> None:
+    params = inspect.signature(AsyncSandbox.create).parameters
+    assert {"template", "timeout", "metadata"} <= set(params), params
+    # api_key rides in **opts (ApiParams); losing it would fall back to the env var.
+    assert any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+def test_commands_run_accepts_every_kwarg_our_callers_pass() -> None:
+    # bash foreground streams through on_stdout/on_stderr; mount.sh runs as root with envs.
+    params = inspect.signature(Commands.run).parameters
+    wanted = {"background", "envs", "user", "cwd", "on_stdout", "on_stderr", "timeout"}
+    assert wanted <= set(params), wanted - set(params)
+
+
+def test_command_result_carries_exit_code_and_both_streams() -> None:
+    fields = {f.name for f in dataclasses.fields(CommandResult)}
+    assert {"exit_code", "stdout", "stderr"} <= fields, fields
+
+
+def test_a_missing_sandbox_is_a_not_found_exception() -> None:
+    # _liveness reads NotFoundException as gone; get_info raises the sandbox subclass on a 404.
+    assert issubclass(SandboxNotFoundException, NotFoundException)
+
+
+def test_sandbox_info_exposes_the_state_and_end_at_the_lifecycle_reads() -> None:
+    # _liveness compares state to PAUSED; keep-warm renews off end_at.
+    fields = {f.name for f in dataclasses.fields(SandboxInfo)}
+    assert {"state", "end_at", "sandbox_id"} <= fields, fields
+    assert SandboxState.PAUSED.value == "paused"

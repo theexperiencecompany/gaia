@@ -1603,20 +1603,6 @@ wheels = [
 ]
 
 [[package]]
-name = "e2b-code-interpreter"
-version = "2.4.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "attrs" },
-    { name = "e2b" },
-    { name = "httpx" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1e/eb/db6e51edd9f3402fd68d026572579b9b1bd833b10d990376a1e4c05d5b8d/e2b_code_interpreter-2.4.1.tar.gz", hash = "sha256:4b15014ee0d0dfcdc3072e1f409cbb87ca48f48d53d75629b7257e5513b9e7dd", size = 10700, upload-time = "2025-11-26T18:12:38.086Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/e7/09b9106ead227f7be14bd97c3181391ee498bb38933b1a9c566b72c8567a/e2b_code_interpreter-2.4.1-py3-none-any.whl", hash = "sha256:15d35f025b4a15033e119f2e12e7ac65657ad2b5a013fa9149e74581fbee778a", size = 13719, upload-time = "2025-11-26T18:12:36.7Z" },
-]
-
-[[package]]
 name = "email-validator"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2225,7 +2211,6 @@ backend = [
     { name = "composio-langchain" },
     { name = "crawl4ai" },
     { name = "dodopayments" },
-    { name = "e2b-code-interpreter" },
     { name = "fastapi", extra = ["standard"] },
     { name = "firecrawl" },
     { name = "firecrawl-py" },
@@ -2404,7 +2389,6 @@ backend = [
     { name = "composio-langchain", specifier = ">=0.13.1" },
     { name = "crawl4ai", specifier = ">=0.7.7" },
     { name = "dodopayments", specifier = ">=1.49.0" },
-    { name = "e2b-code-interpreter", specifier = ">=1.2.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.119.0" },
     { name = "firecrawl", specifier = ">=4.6.0" },
     { name = "firecrawl-py", specifier = ">=4.3.6" },
