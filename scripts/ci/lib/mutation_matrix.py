@@ -218,9 +218,15 @@ def _is_enum(node: ast.ClassDef) -> bool:
             ast.unparse(decorator) in ("unique", "enum.unique") for decorator in node.decorator_list
         )
         and all(
-            isinstance(stmt, ast.Assign | ast.AnnAssign | ast.Pass) or _is_docstring(stmt)
+            isinstance(stmt, ast.Pass) or _is_docstring(stmt) or _is_plain_assignment(stmt)
             for stmt in node.body
         )
+    )
+
+
+def _is_plain_assignment(stmt: ast.stmt) -> bool:
+    return isinstance(stmt, ast.Assign | ast.AnnAssign) and not any(
+        isinstance(node, LOGIC_NODES) for node in ast.walk(stmt)
     )
 
 
@@ -245,9 +251,7 @@ def _is_declaration(stmt: ast.stmt) -> bool:
             and not stmt.orelse
             and all(isinstance(inner, ast.Import | ast.ImportFrom) for inner in stmt.body)
         )
-    return isinstance(stmt, ast.Assign | ast.AnnAssign) and not any(
-        isinstance(node, LOGIC_NODES) for node in ast.walk(stmt)
-    )
+    return _is_plain_assignment(stmt)
 
 
 def is_declarative(source: str) -> bool:
@@ -267,6 +271,17 @@ def exclusion(module_rel: str) -> str | None:
     if path.is_file() and is_declarative(path.read_text(encoding="utf-8")):
         return "only prompt text, constants or enums: no function for mutmut to mutate"
     return None
+
+
+def skips_excluded(module_rel: str) -> bool:
+    """Print the lane's skip notice and return True when exclusion() leaves this module out."""
+    reason = exclusion(module_rel)
+    if reason:
+        print(
+            f"::notice::mutation gate: {module_rel} is outside the lane's scope ({reason}) — skipping",
+            file=sys.stderr,
+        )
+    return reason is not None
 
 
 @cache
@@ -509,12 +524,7 @@ def main() -> int:
     failures: list[str] = []
     for module in changed:
         rel = module.removeprefix("apps/api/")
-        reason = exclusion(rel)
-        if reason:
-            print(
-                f"::notice::mutation gate: {rel} is outside the lane's scope ({reason}) — skipping",
-                file=sys.stderr,
-            )
+        if skips_excluded(rel):
             continue
         # A comment-only diff has zero possible mutants — checked before the
         # test-file lookup, and regardless of whether a test file exists.

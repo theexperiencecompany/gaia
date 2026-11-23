@@ -69,22 +69,41 @@ def _read_back_fields() -> set[str]:
     raise AssertionError("mutation_classify.py defines no _READ_BACK_FIELDS")
 
 
-def _is_log_get(node: ast.AST) -> bool:
-    return isinstance(node, ast.Call) and ast.unparse(node.func) == "log.get"
+def _logger_names(tree: ast.Module) -> set[str]:
+    """Names bound to the wide-event logger: imported from shared.py.wide_events, or built there."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "shared.py.wide_events":
+            names.update(alias.asname or "log" for alias in node.names if alias.name == "log")
+        elif isinstance(node, ast.Assign) and ast.unparse(node.value) == "WideEventLogger()":
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return names
 
 
 def _wide_event_reads(tree: ast.Module) -> set[str]:
-    """Return the top-level wide-event keys a module reads through log.get()."""
+    """Return the top-level wide-event keys a module reads back through log.get()."""
+    loggers = _logger_names(tree)
+
+    def is_log_get(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in loggers
+            and not node.args
+        )
+
     holders = {
         target.id
         for node in ast.walk(tree)
-        if isinstance(node, ast.Assign) and _is_log_get(node.value)
+        if isinstance(node, ast.Assign) and is_log_get(node.value)
         for target in node.targets
         if isinstance(target, ast.Name)
     }
 
     def is_event(node: ast.AST) -> bool:
-        return _is_log_get(node) or (isinstance(node, ast.Name) and node.id in holders)
+        return is_log_get(node) or (isinstance(node, ast.Name) and node.id in holders)
 
     keys: set[str] = set()
     for node in ast.walk(tree):
@@ -99,6 +118,16 @@ def _wide_event_reads(tree: ast.Module) -> set[str]:
             and node.args
         ):
             key = node.args[0]
+        # Model.model_validate(log.get()).field reads that field back.
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "model_validate"
+            and node.value.args
+            and is_event(node.value.args[0])
+        ):
+            keys.add(node.attr)
         if isinstance(key, ast.Constant) and isinstance(key.value, str):
             keys.add(key.value)
     return keys
@@ -1154,10 +1183,26 @@ class TestWideEventLogArguments:
 
         assert _classify(workdir).stdout.strip() == "CHANGED:2"
 
-    def test_every_field_the_llm_ledger_reads_back_stays_gated(self) -> None:
-        metering = ast.parse((REPO_ROOT / "apps/api/app/services/llm_metering.py").read_text())
-        assert _wide_event_reads(metering) <= _read_back_fields()
-        assert _wide_event_reads(metering) >= {"job_id", "task", "conversation_source"}
+    def test_a_local_named_log_in_a_module_without_the_logger_stays_gated(
+        self, workdir: Path
+    ) -> None:
+        body = "    log.set(count=count)\n    return count > 3"
+        (workdir / MODULE_REL).write_text(f"def probe(log, count):\n{body}\n")
+        _write_mutants(workdir, body, body.replace("count=count", "count=None"))
+
+        assert _classify(workdir).stdout.strip() == "CHANGED:2"
+
+    def test_every_field_app_code_reads_back_stays_gated(self) -> None:
+        sources = [
+            path
+            for root in ("apps/api/app", "libs/shared/py")
+            for path in (REPO_ROOT / root).rglob("*.py")
+            if "tests" not in path.relative_to(REPO_ROOT).parts
+        ]
+        reads = set().union(*(_wide_event_reads(ast.parse(p.read_text())) for p in sources))
+
+        assert reads <= _read_back_fields()
+        assert reads >= {"job_id", "task", "conversation_source", "model", "user", "composio"}
 
     def test_the_decision_beside_a_log_call_stays_gated(self, workdir: Path) -> None:
         body = "    log.set(count=count)\n    return count > 3"

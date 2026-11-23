@@ -10,7 +10,9 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 
+import mutation
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -686,6 +688,7 @@ def test_prompt_text_constants_and_enums_are_declarative(source: str) -> None:
     [
         MIXED_SOURCE,
         "from enum import Enum\n\n\nclass Tier(Enum):\n    FREE = 1\n\n    def label(self):\n        return 'x'\n",
+        "from enum import Enum\n\n\nclass Tier(Enum):\n    FREE = 1\n    enabled = lambda self: True\n",
         "MODELS = {name: 1 for name in ('a', 'b')}\n",
         "import os\nREGION = os.getenv('REGION') or 'eu'\n",
         "from pydantic import BaseModel\n\n\nclass Row(BaseModel):\n    id: str\n",
@@ -694,6 +697,7 @@ def test_prompt_text_constants_and_enums_are_declarative(source: str) -> None:
     ids=[
         "constants-plus-one-function",
         "enum-with-method",
+        "enum-member-with-logic",
         "comprehension",
         "bool-op",
         "model",
@@ -770,3 +774,21 @@ def test_an_excluded_module_is_skipped_before_the_test_file_requirement(
     out, err = capsys.readouterr()
     assert json.loads(out) == []
     assert "app/scripts/migrate_thing.py is outside the lane's scope" in err
+
+
+def test_a_single_module_run_skips_a_module_the_lane_excludes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def must_not_mutate(*_: object) -> None:
+        raise AssertionError("mutmut started on a module the lane excludes")
+
+    monkeypatch.setattr(mutation, "mutate", must_not_mutate)
+    monkeypatch.setattr(mutation, "venv_python", lambda: Path(sys.executable))
+    monkeypatch.setattr(mutation.signal, "signal", lambda *_: None)
+    monkeypatch.setenv("MUTMUT_MAX_CHILDREN", "1")
+    monkeypatch.delenv("MUTATION_VERDICT_DIR", raising=False)
+
+    exit_code = mutation.cmd_module(["app/constants/waits.py", "tests/unit/constants/test_hil.py"])
+
+    assert exit_code == 0
+    assert "app/constants/waits.py is outside the lane's scope" in capsys.readouterr().err

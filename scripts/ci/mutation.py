@@ -59,7 +59,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager, suppress
+from contextlib import chdir, contextmanager, suppress
 import dataclasses
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -81,7 +81,7 @@ from types import FrameType
 from typing import IO
 from urllib.parse import urlparse
 
-from lib import mutation_report as report, runner_host
+from lib import mutation_matrix as matrix, mutation_report as report, runner_host
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
@@ -1609,11 +1609,15 @@ def _terminate(signum: int, _frame: FrameType | None) -> None:
 
 def cmd_module(args: list[str]) -> int:
     record_dir = os.environ.get("MUTATION_VERDICT_DIR")
+    module = args[0].removeprefix("apps/api/") if args else ""
+    # exclusion() reads the module through a repo-relative path.
+    with chdir(REPO_ROOT):
+        if module.startswith("app/") and matrix.skips_excluded(module):
+            return 0
     try:
         request = ModuleRequest.from_args(args)
     except UsageError as exc:
         _say(str(exc))
-        module = args[0].removeprefix("apps/api/") if args else ""
         if record_dir and module.startswith("app/"):
             unrunnable = ModuleRequest(module=module, testfiles=(), ranges="")
             _record(unrunnable, Outcome(Status.ERROR, str(exc).splitlines()[0]), Path(record_dir))

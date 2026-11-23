@@ -205,22 +205,31 @@ _LOG_WRITES = {
     "critical",
     "exception",
 }
-# Top-level fields app code reads back, so a set() writing one stays gated: set() routes
-# trace_id to a ContextVar, and the LLM ledger reads job_id/task/conversation_source
-# (app/services/llm_metering.py). A ** splat may hold any of them.
-# Code that starts reading another top-level wide-event field back adds it here.
-_READ_BACK_FIELDS = {"trace_id", "job_id", "task", "conversation_source"}
+# Top-level fields code reads back through log.get(), so a set() writing one stays gated;
+# set() also routes trace_id to a ContextVar. A ** splat may hold any of them.
+# test_mutation_classify.py derives the read-backs from apps/api/app and libs/shared/py.
+_READ_BACK_FIELDS = {
+    "trace_id",
+    "job_id",
+    "task",
+    "conversation_source",
+    "model",
+    "composio",
+    "user",
+    "outcome",
+    "workflow",
+}
 
 
 def _log_names(tree: ast.Module) -> set[str]:
-    """Names the module binds to the wide-event logger: log, and any alias it imports it as."""
-    names = {"log"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "shared.py.wide_events":
-            names.update(
-                alias.asname for alias in node.names if alias.name == "log" and alias.asname
-            )
-    return names
+    """Names the module imports the wide-event logger as; a local merely named log is not it."""
+    return {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "shared.py.wide_events"
+        for alias in node.names
+        if alias.name == "log"
+    }
 
 
 def _writes_read_back_field(call: ast.Call) -> bool:
