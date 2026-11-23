@@ -708,6 +708,7 @@ def test_a_module_with_any_logic_is_not_declarative(source: str) -> None:
     "module",
     [
         "app/scripts/migrate_file_type_field.py",
+        "app/scripts/backfill_public_workflow_descriptions.py",
         "app/agents/prompts/brief_check_prompts.py",
         "app/constants/waits.py",
     ],
@@ -731,12 +732,27 @@ def test_scripts_migrations_prompt_text_and_constants_leave_the_lane(
         "app/config/sentry_scrub.py",
         "app/services/briefing/composition/compose.py",
         "app/services/conversation/step_run.py",
+        "app/scripts/delete_user_account.py",
+        "app/scripts/reset_admin_password.py",
+        "app/scripts/purge_retired_integrations.py",
     ],
 )
 def test_logic_modules_stay_in_the_lane(module: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(REPO_ROOT)
     assert (REPO_ROOT / "apps/api" / module).is_file()
     assert mm.exclusion(module) is None
+
+
+def test_only_the_migrations_and_backfills_among_the_operator_scripts_leave_the_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    scripts = sorted((REPO_ROOT / "apps/api/app/scripts").glob("[!_]*.py"))
+    excluded = {p.name for p in scripts if mm.exclusion(f"app/scripts/{p.name}")}
+
+    assert excluded == {p.name for p in scripts if p.name.startswith(("migrate_", "backfill_"))}
+    assert excluded
+    assert len(excluded) < len(scripts)
 
 
 def test_an_excluded_module_is_skipped_before_the_test_file_requirement(

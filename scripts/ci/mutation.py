@@ -1113,8 +1113,9 @@ def configure_mutmut(request: ModuleRequest, workdir: Path) -> None:
         f"'addopts={PLUGIN_FENCE} --timeout={MUTANT_TEST_TIMEOUT}']\n"
     )
     pyproject = workdir / "pyproject.toml"
-    text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, pyproject.read_text())
-    pyproject.write_text(text)
+    # The only [tool.mutmut] there is: written here, never read from the checkout.
+    text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", "", pyproject.read_text())
+    pyproject.write_text(f"{text.rstrip()}\n\n{replacement}")
 
 
 def mutmut_cap_seconds() -> int:

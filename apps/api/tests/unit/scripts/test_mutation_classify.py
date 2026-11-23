@@ -10,6 +10,7 @@ Driven as a real script, the way the lane invokes it: a throwaway mutants file
 in the layout mutmut emits, and the verdict read off stdout.
 """
 
+import ast
 from pathlib import Path
 import subprocess
 import sys
@@ -58,6 +59,49 @@ def _classify(
         text=True,
         check=False,
     )
+
+
+def _read_back_fields() -> set[str]:
+    """Parse the classifier's _READ_BACK_FIELDS literal; the script runs on import."""
+    for node in ast.parse(CLASSIFIER.read_text()).body:
+        if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "_READ_BACK_FIELDS":
+            return set(ast.literal_eval(node.value))
+    raise AssertionError("mutation_classify.py defines no _READ_BACK_FIELDS")
+
+
+def _is_log_get(node: ast.AST) -> bool:
+    return isinstance(node, ast.Call) and ast.unparse(node.func) == "log.get"
+
+
+def _wide_event_reads(tree: ast.Module) -> set[str]:
+    """Return the top-level wide-event keys a module reads through log.get()."""
+    holders = {
+        target.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and _is_log_get(node.value)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+    def is_event(node: ast.AST) -> bool:
+        return _is_log_get(node) or (isinstance(node, ast.Name) and node.id in holders)
+
+    keys: set[str] = set()
+    for node in ast.walk(tree):
+        key = None
+        if isinstance(node, ast.Subscript) and is_event(node.value):
+            key = node.slice
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and is_event(node.func.value)
+            and node.args
+        ):
+            key = node.args[0]
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            keys.add(key.value)
+    return keys
 
 
 @pytest.fixture
@@ -1109,6 +1153,11 @@ class TestWideEventLogArguments:
         _write_mutants(workdir, body, body.replace("count=count", "count=None"))
 
         assert _classify(workdir).stdout.strip() == "CHANGED:2"
+
+    def test_every_field_the_llm_ledger_reads_back_stays_gated(self) -> None:
+        metering = ast.parse((REPO_ROOT / "apps/api/app/services/llm_metering.py").read_text())
+        assert _wide_event_reads(metering) <= _read_back_fields()
+        assert _wide_event_reads(metering) >= {"job_id", "task", "conversation_source"}
 
     def test_the_decision_beside_a_log_call_stays_gated(self, workdir: Path) -> None:
         body = "    log.set(count=count)\n    return count > 3"

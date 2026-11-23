@@ -208,6 +208,7 @@ _LOG_WRITES = {
 # Top-level fields app code reads back, so a set() writing one stays gated: set() routes
 # trace_id to a ContextVar, and the LLM ledger reads job_id/task/conversation_source
 # (app/services/llm_metering.py). A ** splat may hold any of them.
+# Code that starts reading another top-level wide-event field back adds it here.
 _READ_BACK_FIELDS = {"trace_id", "job_id", "task", "conversation_source"}
 
 

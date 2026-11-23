@@ -14,7 +14,7 @@ Output: [{"module": ..., "testfiles": [...], "changed_lines": [...], "mutants": 
         `mutants` estimates how many mutants mutmut will generate on the
         changed lines; mutation.py plans its shards by it.
 Exit 1 with a ::error message when a changed module has no test file.
-A module `exclusion` names (operator scripts, modules with no function) is
+A module `exclusion` names (data migrations, modules with no function) is
 skipped with a ::notice before any of that.
 """
 
@@ -54,9 +54,11 @@ MUTABLE_NODES = (
     ast.UnaryOp,
     ast.keyword,
 )
-# Operator scripts and data migrations, run by hand: their mutants were measured
-# zero-value on #1853. apps/api/scripts/ never reaches the lane (outside app/).
+# One-shot data migrations and backfills, measured zero-value on #1853. Every other
+# operator script (deleting a user, resetting a password) stays mutated.
+# apps/api/scripts/ never reaches the lane (outside app/).
 SCRIPTS_DIR = "app/scripts/"
+MIGRATION_PREFIXES = ("migrate_", "backfill_")
 ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "Flag", "IntFlag"})
 # A module-level value holding any of these is logic, and keeps its module in the lane.
 LOGIC_NODES = (
@@ -259,8 +261,8 @@ def is_declarative(source: str) -> bool:
 
 def exclusion(module_rel: str) -> str | None:
     """Return why the lane leaves this app module (app/...) unmutated, or None when it mutates it."""
-    if module_rel.startswith(SCRIPTS_DIR):
-        return "an operator script or data migration"
+    if module_rel.startswith(SCRIPTS_DIR) and Path(module_rel).name.startswith(MIGRATION_PREFIXES):
+        return "a one-shot data migration or backfill"
     path = APP_DIR.parent / module_rel
     if path.is_file() and is_declarative(path.read_text(encoding="utf-8")):
         return "only prompt text, constants or enums: no function for mutmut to mutate"

@@ -151,8 +151,9 @@ to poll.
 What the lane mutates has two owners, both measured on #1853 (116
 mutation-driven commits: the 4 real bugs were all decision logic) and approved
 by the founder in that narrow form. Modules: `mutation_matrix.exclusion`, read
-by both `plan` and `local`, skips `app/scripts/` (operator scripts and data
-migrations; `apps/api/scripts/` is outside `app/` and never reached the lane)
+by both `plan` and `local`, skips `app/scripts/migrate_*` and `backfill_*`
+(one-shot data migrations; every other operator script, such as deleting a
+user, stays mutated; `apps/api/scripts/` is outside `app/` and never reached the lane)
 and declarative modules — every top-level statement an import, docstring, enum
 or assignment with no branch, comprehension or lambda (prompt text, constants).
 Mutants: `mutation_classify.py` grades a survivor inside a wide-event log call
