@@ -59,3 +59,18 @@ async def test_apply_raises_only_the_users_behind_to_their_latest_metered_day(
     query, change = update.args
     assert str(query["_id"]) == _BEHIND
     assert change == {"$max": {"last_active_at": datetime(2026, 11, 15, tzinfo=UTC)}}
+
+
+@pytest.mark.regression
+async def test_a_usage_row_metered_to_a_non_user_actor_is_skipped_not_fatal() -> None:
+    """Regression: a "system" usage row crashed the release migration on an ObjectId parse."""
+    users = _users({_BEHIND})
+    rows = [{"_id": "system", "day": "2026-11-20"}, {"_id": _BEHIND, "day": "2026-11-15"}]
+    with (
+        patch.object(backfill, "usage_daily_collection", _usage(rows)),
+        patch.object(backfill, "users_collection", users),
+    ):
+        assert await backfill.backfill(apply=True) == 1
+
+    [update] = users.update_one.await_args_list
+    assert str(update.args[0]["_id"]) == _BEHIND
