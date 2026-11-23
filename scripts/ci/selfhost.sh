@@ -132,16 +132,17 @@ cmd_logs() {
 
   : "${OUT_DIR:?OUT_DIR is required}"
   mkdir -p "$OUT_DIR"
+  # A failed `gaia up` prints only "Full log: ~/.gaia/logs/…"; the compile error is in there.
+  # Copied before the Docker calls: they abort under set -e when the daemon is down.
+  if [[ -d "$HOME/.gaia/logs" ]]; then
+    cp -R "$HOME/.gaia/logs" "$OUT_DIR/gaia-cli"
+  fi
   docker ps -a --filter "label=com.docker.compose.project=$COMPOSE_PROJECT" > "$OUT_DIR/containers.txt"
   local id service
   for id in $(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT"); do
     service=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$id")
     docker logs "$id" > "$OUT_DIR/$service.log" 2>&1
   done
-  # A failed `gaia up` prints only "Full log: ~/.gaia/logs/…"; the compile error is in there.
-  if [[ -d "$HOME/.gaia/logs" ]]; then
-    cp -R "$HOME/.gaia/logs" "$OUT_DIR/gaia-cli"
-  fi
   ci_ok "selfhost logs: written to $OUT_DIR"
 }
 
