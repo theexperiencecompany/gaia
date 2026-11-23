@@ -15,6 +15,7 @@ import re
 from typing import Annotated, Any
 from unittest.mock import AsyncMock, patch
 
+import httpx
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import (
     AIMessage,
@@ -23,14 +24,17 @@ from langchain_core.messages import (
     HumanMessage,
     ToolMessage,
 )
+from langchain_core.outputs import ChatResult
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from openai import RateLimitError
+from pydantic import Field
 import pytest
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 import time_machine
 
-from app.agents.llm import lane as lane_module
+from app.agents.llm import client as client_module, lane as lane_module
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants import scouts as scout_constants
@@ -216,13 +220,23 @@ class _Greedy(ScriptedModel):
 
 
 @contextmanager
-def _seams(app: _App, report: str, model: ScriptedModel | None = None) -> Iterator[None]:
+def _seams(
+    app: _App,
+    report: str,
+    model: ScriptedModel | None = None,
+    fallback: ScriptedModel | None = None,
+) -> Iterator[None]:
+    """Serve the helper lane's provider with model, and the fallback lane's with fallback."""
     registry = _Registry({**app.tools(), "delete_issue": _delete_issue})
     model = model or _Learner(
         script=[ScriptedCall("list_issues", {"assignee": "me"})], report=report
     )
+    providers = {LLMProviderName.GEMINI: model}
+    if fallback is not None:
+        providers[LLMProviderName.OPENAI] = fallback
     with (
-        patch.object(learn, "resolve_model", {ModelUse.HELPER: model}.__getitem__),
+        patch.object(client_module, "_get_available_providers", lambda: providers),
+        patch.object(lane_module, "chat_route", lambda _failed: (LLMProviderName.OPENAI, "gpt-x")),
         patch(
             "app.services.workflow.playbook.runner.get_tool_registry",
             AsyncMock(return_value=registry),
@@ -501,7 +515,46 @@ def _spy_graph() -> Iterator[list[dict[str, Any]]]:
         yield runs
 
 
+class _RateLimited(ScriptedModel):
+    """A provider over its per-minute inference limit on every call."""
+
+    calls: list[str] = Field(default_factory=list)
+
+    def _generate(self, *args: Any, **kwargs: Any) -> ChatResult:
+        self.calls.append("called")
+        request = httpx.Request("POST", "https://api.cloudflare.com/client/v4/ai/v1/chat")
+        raise RateLimitError(
+            "inference request per min rate reached",
+            response=httpx.Response(429, request=request),
+            body=None,
+        )
+
+
 class TestTheLearnRun:
+    async def test_a_rate_limited_helper_provider_is_finished_by_the_fallback_lane(
+        self,
+    ) -> None:
+        """Regression: the fallback re-ran the rate-limited one-shot model, so the scout failed."""
+        app = _App([_ISSUE])
+        limited = _RateLimited(script=[])
+        with (
+            _seams(
+                app,
+                _report(),
+                model=limited,
+                fallback=_Learner(
+                    script=[ScriptedCall("list_issues", {"assignee": "me"})], report=_report()
+                ),
+            ),
+            patch.object(client_module, "with_llm_retry", lambda runnable, **_: runnable),
+        ):
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+
+        assert limited.calls
+        assert app.calls[0] == {"assignee": "me", "user_id": USER_ID}
+        assert learned.scout is not None
+        assert learned.scout.status is ScoutStatus.WATCHING
+
     @time_machine.travel(_NOW, tick=False)
     async def test_the_agent_is_prompted_for_the_app_today_under_the_users_identity(
         self,
@@ -532,9 +585,16 @@ class TestTheLearnRun:
             "execution_mode",
             "lane",
             "read_only",
+            "provider",
+            "model",
         }
         # Priced by the route the helper model runs on, and refused anything that writes.
         assert (configurable["lane"]["provider"], configurable["lane"]["model"]) == (
+            LLMProviderName.GEMINI,
+            "gemini-helper",
+        )
+        # The model the run binds is the lane's, so a fallback can rebind it to the next one.
+        assert (configurable["provider"], configurable["model"]) == (
             LLMProviderName.GEMINI,
             "gemini-helper",
         )
@@ -811,8 +871,7 @@ class TestReadOnlyAtCallTime:
             return history
 
         with (
-            _seams(app, _report()),
-            patch.object(learn, "resolve_model", {ModelUse.HELPER: model}.__getitem__),
+            _seams(app, _report(), model=model),
             patch.object(learn, "run_tool_graph", keep_history),
         ):
             async with captured_wide_event() as event:
