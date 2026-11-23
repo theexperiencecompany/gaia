@@ -4,6 +4,8 @@ import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.runnables import RunnableBinding
 import pytest
 
 from app.constants.chat import ConversationSource
@@ -225,8 +227,13 @@ async def test_a_message_no_longer_in_the_recent_entries_gets_no_reaction(
     log.react_once.assert_not_awaited()
 
 
-def test_the_ports_build_on_a_fresh_self_host_with_no_llm_configured_yet() -> None:
+def test_a_fresh_self_host_boots_with_no_llm_and_folds_with_the_one_saved_later() -> None:
     """Regression: a fresh self-host saves its LLM key in setup, after the API booted."""
     with patch("app.agents.llm.client._get_available_providers", return_value={}):
         ports = composition.build_runtime_ports()
+    saved_later = GenericFakeChatModel(messages=iter([]))
     assert isinstance(ports.runner, CommsGraphRunner)
+    with patch.object(composition, "init_llm", return_value=saved_later):
+        fold_model = ports.runner._fold().model
+    assert isinstance(fold_model, RunnableBinding)
+    assert fold_model.bound is saved_later
