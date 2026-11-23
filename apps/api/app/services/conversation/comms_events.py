@@ -112,12 +112,14 @@ class CommsEventMapper:
         if self._final_reported:
             return []
         self._final_reported = True
-        tail = [self._streamed(payload) for payload in flush_held_payloads(self._graph)]
+        owed = flush_held_payloads(self._graph)
+        tail = [self._streamed(payload) for payload in owed]
         return [*tail, Answered(outcome=self._outcome())]
 
-    def finish(self) -> list[RunEvent]:
+    async def finish(self) -> list[RunEvent]:
         """Return the frames still owed once the stream ended, then the run's outcome."""
-        tail = [self._streamed(payload) for payload in flush_held_payloads(self._graph)]
+        owed = flush_held_payloads(self._graph)
+        tail = [self._streamed(payload) for payload in owed]
         return [*tail, Finished(outcome=self._outcome())]
 
     def _is_summary_call(self, payload: object) -> bool:

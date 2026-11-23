@@ -1,3 +1,5 @@
+import { SITE_URL } from "@/config/site";
+
 /** Mirrors `BROWSER_PROFILE_TTL_DAYS` in apps/api/app/constants/browser.py —
  * saved-site session data auto-expires this long after its last use. */
 export const SAVED_LOGIN_TTL_DAYS = 90;
@@ -10,7 +12,7 @@ export const GAIA_CONNECT_DEFAULT_API_ORIGIN = "https://api.heygaia.io";
 /** The platform-detecting installer for the gaia-connect binary — the
  * Node-free twin of `gaia connect`, served from tools/gaia-connect/install.sh
  * the way heygaia.io/install.sh serves the CLI's. */
-export const GAIA_CONNECT_INSTALL_URL = "https://heygaia.io/connect.sh";
+export const GAIA_CONNECT_INSTALL_URL = `${SITE_URL}/connect.sh`;
 
 /** Ways to run the tool, in the order the modal offers them; `source` only
  * makes sense against a developer's localhost API. */

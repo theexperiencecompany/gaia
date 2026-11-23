@@ -48,6 +48,7 @@
     "area-css": "node scripts/generate-area-css.mjs"
   },
   "dependencies": {
+    "@gaia/artifacts": "workspace:*",
     "@gaia/shared": "workspace:*",
     "@gaia/wake-word": "workspace:*",
     "@heroui/react": "3.2.7",
@@ -159,6 +160,7 @@
     "remark-smartypants": "^3.0.2",
     "remark-supersub": "^1.0.0",
     "sanitize-html": "^2.18.1",
+    "server-only": "^0.0.1",
     "sharp": "^0.35.5",
     "sileo": "^0.1.4",
     "streamdown": "^2.5.0",

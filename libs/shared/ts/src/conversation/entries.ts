@@ -323,6 +323,7 @@ const ReplyItemSchema = z.object({
       path: z.string().min(1),
       content_type: z.string().nullable(),
       opens_at: z.string().min(1),
+      short_url: z.string().nullish(),
     }),
   ),
 }) satisfies z.ZodType<ReplyItem>;
@@ -356,6 +357,7 @@ const NoticeItemSchema = z.object({
   tool_data: z.array(ToolDataEntrySchema),
   timeline: ToolTimelineSchema,
   follow_up_actions: z.array(z.string()),
+  image_url: z.string().nullable(),
 }) satisfies z.ZodType<NoticeItem>;
 
 const WorkflowFiredItemSchema = z.object({

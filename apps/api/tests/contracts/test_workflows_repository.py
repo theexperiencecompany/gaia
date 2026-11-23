@@ -15,7 +15,10 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import ValidationError
 import pytest
 
+from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.trigger_gates import SystemGatePreset
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.cache import CachePolicy
 from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
@@ -32,6 +35,7 @@ from app.models.workflow_models import (
     WorkflowStep,
     WorkflowUpdate,
 )
+from app.services.system_workflows.registry import UNLISTED_KEYS, UNPAUSABLE_KEYS
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.utils.occurrence import parse_occurrence_stamp
 
@@ -47,6 +51,7 @@ def _workflow(**overrides: object) -> WorkflowDocument:
         "prompt": "do the thing",
         "steps": [WorkflowStep(title="step", category="gmail", description="d")],
         "trigger_config": TriggerConfig(type=TriggerType.MANUAL),
+        "delivery": WorkflowDelivery.NOW,
     }
     data.update(overrides)
     return WorkflowDocument.model_validate(data)
@@ -205,10 +210,17 @@ class TestWorkflowsOwnedCrud:
         newer = await repo.create(_workflow(user_id=owner, created_at=datetime.now(UTC)))
         await repo.create(_workflow(user_id=owner, is_todo_workflow=True))
         await repo.create(_workflow(user_id=_uid("other")))
-        listed = await repo.list_for_user(owner)
+        listed = await repo.list_for_user(owner, unlisted_keys=UNLISTED_KEYS)
         assert [w.id for w in listed] == [newer.id, older.id]
         # opt-in includes the todo workflow
-        assert len(await repo.list_for_user(owner, exclude_todo_workflows=False)) == 3
+        assert (
+            len(
+                await repo.list_for_user(
+                    owner, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=False
+                )
+            )
+            == 3
+        )
 
     async def test_find_by_ids_variants(self, repo):
         owner = _uid("owner")
@@ -228,7 +240,7 @@ class TestWorkflowsOwnedCrud:
         # so one corrupt document can't blank the user's whole workflow list.
         bad_id = _uid("bad")
         await raw_collection.insert_one({"_id": bad_id, "user_id": owner})
-        listed = await repo.list_for_user(owner)
+        listed = await repo.list_for_user(owner, unlisted_keys=UNLISTED_KEYS)
         assert [w.id for w in listed] == [valid.id]
         # The single-document read of the same corrupt row stays strict — a fetch of
         # a known id surfaces the corruption rather than silently returning nothing.
@@ -536,10 +548,35 @@ class TestWorkflowsTriggersAndSystem:
         )
         assert (await repo.find_system_workflow(owner, key)).id == sys_wf.id
         assert await repo.find_system_workflow("other", key) is None
+        assert [w.id for w in await repo.find_system_workflows(owner, [key, "absent"])] == [
+            sys_wf.id
+        ]
+        assert await repo.find_system_workflows("other", [key]) == []
         assert (await repo.get_system_workflow_for_user(sys_wf.id, owner)).id == sys_wf.id
         # a non-system workflow is not resettable
         plain = await repo.create(_workflow(user_id=owner))
         assert await repo.get_system_workflow_for_user(plain.id, owner) is None
+
+    async def test_the_pause_set_leaves_out_the_workflows_declared_unpausable(self, repo):
+        """The sweep paused the brief of a user who read it in Telegram, so briefs stopped."""
+        owner = _uid("owner")
+        own = await repo.create(_workflow(user_id=owner, activated=True))
+        triage = await repo.create(
+            _workflow(
+                user_id=owner, activated=True, is_system_workflow=True, system_workflow_key="triage"
+            )
+        )
+        for key in BRIEFING_RHYTHM_WORKFLOW_KEYS:
+            await repo.create(
+                _workflow(
+                    user_id=owner, activated=True, is_system_workflow=True, system_workflow_key=key
+                )
+            )
+        await repo.create(_workflow(user_id=owner, activated=False))
+
+        pausable = await repo.find_activated_for_user(owner, excluding_keys=UNPAUSABLE_KEYS)
+
+        assert sorted(w.id for w in pausable) == sorted([own.id, triage.id])
 
     async def test_reset_system_workflow(self, repo):
         wf = await repo.create(
@@ -615,6 +652,50 @@ class TestWorkflowsPublishAndWrites:
         assert published.created_by == wf.user_id
         unpublished = await repo.unpublish(wf.id)
         assert unpublished is not None and unpublished.is_public is False
+
+    async def test_store_delivery_migrates_only_records_without_one(self, repo, raw_collection):
+        silent_id, legacy_default_id = _uid("wf"), _uid("wf")
+        base = _workflow().model_dump(by_alias=True, exclude={"delivery"})
+        await raw_collection.insert_many(
+            [
+                {**base, "_id": silent_id, "notify_on_completion": False},
+                {**base, "_id": legacy_default_id},
+            ]
+        )
+        modern = await repo.create(_workflow(delivery=WorkflowDelivery.BRIEF))
+
+        pending = {wf.id: wf.delivery for wf in await repo.find_without_stored_delivery()}
+        assert pending == {
+            silent_id: WorkflowDelivery.SILENT,
+            legacy_default_id: WorkflowDelivery.NOW,
+        }
+
+        assert await repo.store_delivery(silent_id, WorkflowDelivery.SILENT)
+        raw = await raw_collection.find_one({"_id": silent_id})
+        assert raw["delivery"] == "silent"
+        assert "notify_on_completion" not in raw
+        # A record that already has a delivery is never overwritten.
+        assert not await repo.store_delivery(modern.id, WorkflowDelivery.NOW)
+        assert (await raw_collection.find_one({"_id": modern.id}))["delivery"] == "brief"
+        assert [wf.id for wf in await repo.find_without_stored_delivery()] == [legacy_default_id]
+
+    async def test_store_delivery_evicts_a_cached_workflow(self, raw_collection):
+        """Switching a cache policy on must need no call-site change: the migration evicts get()."""
+
+        class _CachedWorkflowsRepository(WorkflowsRepository):
+            cache_policy = CachePolicy(prefix="contract:workflows")
+
+        cached_repo = _CachedWorkflowsRepository()
+        legacy_id = _uid("wf")
+        base = _workflow().model_dump(by_alias=True, exclude={"delivery"})
+        await raw_collection.insert_one({**base, "_id": legacy_id, "notify_on_completion": False})
+        warmed = await cached_repo.get(legacy_id)
+        assert warmed is not None and warmed.delivery == WorkflowDelivery.SILENT
+
+        assert await cached_repo.store_delivery(legacy_id, WorkflowDelivery.BRIEF)
+
+        fetched = await cached_repo.get(legacy_id)
+        assert fetched is not None and fetched.delivery == WorkflowDelivery.BRIEF
 
     async def test_backfill_public_slug_races(self, repo):
         wf = await repo.create(_workflow(is_public=True, slug=None))

@@ -14,6 +14,7 @@ x-backend-environment: &backend_environment
   PYTHONPATH: /app/apps/api
   JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
   MEMORY_MODEL_CACHE_DIR: /models
+  INTERNAL_API_TOKEN: ${SERVICE_PASSWORD_64_INTERNALAPI}
   ENV: selfhost
   AUTH_MODE: local
   MONGO_DB: mongodb://mongo:27017/gaia
@@ -103,6 +104,7 @@ services:
     image: ghcr.io/theexperiencecompany/gaia-web:${GAIA_VERSION:-latest}
     environment:
       - API_BASE_URL_INTERNAL=http://gaia-backend:8000/api/v1/
+      - INTERNAL_API_TOKEN=${SERVICE_PASSWORD_64_INTERNALAPI}
     depends_on:
       gaia-backend:
         condition: service_healthy
@@ -144,6 +146,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       gaia-migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -170,6 +174,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       gaia-migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -177,6 +183,30 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  migrate:
+    image: ghcr.io/theexperiencecompany/gaia:${GAIA_VERSION:-latest}
+    command: ["python", "-m", "scripts.post_deploy", "--apply"]
+    environment:
+      <<: *backend_environment
+      WORKER_TYPE: main_app
+      GAIA_SERVICE_NAME: migrate
+    volumes:
+      - workspace:/mnt/jfs
+      - files:/var/lib/gaia/files
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+    exclude_from_hc: true
 
   chromadb:
     image: chromadb/chroma:1.5.1

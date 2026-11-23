@@ -11,11 +11,12 @@ by the approval, so a replayed gate sends nothing twice.
 from app.constants.chat import SourceCategory
 from app.constants.notifications import (
     APPROVAL_CHAT_LINK_LABEL,
-    APPROVAL_PUSH_CATEGORY,
     APPROVAL_PUSH_TITLE,
     CHANNEL_TYPE_PUSH,
+    NotificationKind,
 )
 from app.db.repositories.conversations import conversation_repository
+from app.models.notification.details_models import ApprovalNotification
 from app.models.notification.notification_models import (
     ChannelConfig,
     NotificationContent,
@@ -47,11 +48,11 @@ async def notify_approval_pending(approval: GatedApproval) -> None:
             source=NotificationSourceEnum.APPROVAL,
             channels=channels,
             content=NotificationContent(title=APPROVAL_PUSH_TITLE, body=approval.summary),
-            metadata={
-                "type": APPROVAL_PUSH_CATEGORY,
-                "conversation_id": approval.conversation_id,
-                "approval_id": approval.approval_id,
-            },
+            details=ApprovalNotification(
+                kind=NotificationKind.APPROVAL,
+                conversation_id=approval.conversation_id,
+                approval_id=approval.approval_id,
+            ),
             message=f"**{approval.question}**\n\n[{APPROVAL_CHAT_LINK_LABEL}]({page})",
         )
     )

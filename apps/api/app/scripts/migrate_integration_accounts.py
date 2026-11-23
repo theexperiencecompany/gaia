@@ -55,6 +55,7 @@ from app.constants.integrations import (
     COMPOSIO_ACCOUNT_LIST_LIMIT,
     CONNECT_INTEGRATION_TOOL,
     ConnectMode,
+    IntegrationStatus,
 )
 from app.core.provider_registration import boot_process
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
@@ -84,7 +85,7 @@ class _LegacyRecord(BaseModel):
     id: ObjectId = Field(alias="_id")
     user_id: str
     integration_id: str
-    status: str = "created"
+    status: IntegrationStatus = IntegrationStatus.CREATED
     connected_account_id: str | None = None
     accounts: list[IntegrationAccount] = Field(default_factory=list)
     primary_account_id: str | None = None
@@ -153,7 +154,7 @@ async def _plan(
     # Every account the record tracks stays as GAIA has it, live on Composio or not.
     plan.keep += tracked
     kept_ids = {k.connected_account_id for k in plan.keep}
-    if not plan.keep and record.status == "expired" and stored_id:
+    if not plan.keep and record.status == IntegrationStatus.EXPIRED and stored_id:
         stored = next((a for a in composio_accounts if a.id == stored_id), None)
         if stored is not None:
             plan.keep.append(
@@ -162,7 +163,7 @@ async def _plan(
                     connected_account_id=stored.id,
                     # Equivalent under mutation: account_label treats a None identity as {}.
                     label=account_label(integration, {}, set()),  # pragma: no mutate
-                    status="expired",
+                    status=IntegrationStatus.EXPIRED,
                     connected_at=datetime.fromisoformat(stored.created_at),
                     expired_at=datetime.now(UTC),
                 )
@@ -219,13 +220,13 @@ async def _migrate_document(
         integration.id,
         accounts=plan.keep,
         primary_account_id=plan.primary,
-        status=derive_status(plan.keep) if plan.keep else "created",
+        status=derive_status(plan.keep) if plan.keep else IntegrationStatus.CREATED,
     )
     already_subscribed = {a.connected_account_id for a in doc.accounts}
     for account in plan.keep:
         if account.connected_account_id in already_subscribed:
             continue
-        if account.status == "connected" and integration.associated_triggers:
+        if account.status == IntegrationStatus.CONNECTED and integration.associated_triggers:
             await composio.handle_subscribe_trigger(
                 user_id, account.connected_account_id, integration.associated_triggers
             )

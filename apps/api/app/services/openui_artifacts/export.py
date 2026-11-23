@@ -1,0 +1,69 @@
+"""PDF export of an artifact: its program on the print page, cached per program."""
+
+import base64
+import hashlib
+import json
+import re
+
+from pydantic import BaseModel
+
+from app.config.settings import settings
+from app.constants.openui_artifacts import (
+    ARTIFACT_PDF_CACHE_KEY,
+    ARTIFACT_PDF_CACHE_TTL_SECONDS,
+    ARTIFACT_PRINT_PROGRAM_GLOBAL,
+    ARTIFACT_PRINT_URL,
+    ARTIFACT_READY_SELECTOR,
+)
+from app.decorators.caching import Cacheable
+from app.models.openui_artifact_models import OpenUIArtifact
+from app.services.analytics_service import capture
+from app.services.openui_artifacts.read import get_owned_artifact
+from app.services.render.pdf import render_url_to_pdf
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.artifacts import ArtifactPdfExported
+from shared.py.wide_events import log
+
+
+class PrintedPdf(BaseModel):
+    pdf_b64: str
+    pages: int
+
+
+async def render_program_to_pdf(program: str) -> tuple[bytes, int]:
+    """Print a program on the web app's print page; no link or session needed."""
+    url = ARTIFACT_PRINT_URL.format(frontend=settings.FRONTEND_URL)
+    init_script = f"window.{ARTIFACT_PRINT_PROGRAM_GLOBAL} = {json.dumps(program)};"
+    return await render_url_to_pdf(url, ARTIFACT_READY_SELECTOR, init_script)
+
+
+@Cacheable(key_pattern=ARTIFACT_PDF_CACHE_KEY, ttl=ARTIFACT_PDF_CACHE_TTL_SECONDS, model=PrintedPdf)
+async def _print_program(program_sha256: str, program: str) -> PrintedPdf:  # noqa: ARG001 -- the hash keys the cache
+    pdf, pages = await render_program_to_pdf(program)
+    log.set_ns("artifact", pdf_rendered=True, pages=pages, pdf_bytes=len(pdf))
+    return PrintedPdf(pdf_b64=base64.b64encode(pdf).decode(), pages=pages)
+
+
+async def _pdf_for(artifact: OpenUIArtifact) -> bytes:
+    printed = await _print_program(
+        hashlib.sha256(artifact.program.encode()).hexdigest(), artifact.program
+    )
+    capture(
+        UserId(artifact.user_id), ArtifactPdfExported(kind=artifact.kind.value, pages=printed.pages)
+    )
+    return base64.b64decode(printed.pdf_b64)
+
+
+async def owner_artifact_pdf(user_id: str, artifact_id: str) -> tuple[OpenUIArtifact, bytes]:
+    """Print an artifact read under its owner: the owner's own export, or a link opener's after its access check."""
+    artifact = await get_owned_artifact(user_id, artifact_id)
+    return artifact, await _pdf_for(artifact)
+
+
+def pdf_download_headers(artifact: OpenUIArtifact) -> dict[str, str]:
+    """Headers that save the PDF under the artifact's title."""
+    stem = re.sub(r"[^A-Za-z0-9 _-]+", "", artifact.title).strip() or artifact.kind.value
+    return {
+        "Content-Disposition": f'attachment; filename="{stem}.pdf"',
+        "Cache-Control": "no-store",
+    }

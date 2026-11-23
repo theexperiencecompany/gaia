@@ -17,6 +17,7 @@ import pytest
 
 from app.api.v1.endpoints.bot import _bot_turn_refused, bot_send_message
 from app.constants.bot import BotRequestFailure
+from app.constants.integrations import IntegrationStatus
 from app.db.redis import redis_cache
 from app.models.bot_models import BotChatRequest
 from app.models.conversation_send_models import BotMessageAccepted
@@ -32,6 +33,7 @@ from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionRese
 from shared.py.analytics.catalog.chat import ChatMessageRefused
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from tests.helpers import captured_wide_event
+from tests.integration_account_factories import make_integration_record
 
 BOT_BASE = "/api/v1/bot"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -739,10 +741,13 @@ class TestGetSettings:
         client: AsyncClient,
     ):
         mock_get_user.return_value = UserDocument(id=USER_ID, name="Alice", created_at=None)
-        # The records arrive as dumped documents, exactly as the service returns them.
         mock_integrations.return_value = [
-            {"id": "r1", "user_id": USER_ID, "integration_id": "gmail", "status": "connected"},
-            {"id": "r2", "user_id": USER_ID, "integration_id": "notion", "status": "created"},
+            make_integration_record(
+                user_id=USER_ID, integration_id="gmail", status=IntegrationStatus.CONNECTED
+            ),
+            make_integration_record(
+                user_id=USER_ID, integration_id="notion", status=IntegrationStatus.CREATED
+            ),
         ]
         details = {
             "gmail": MagicMock(icon_url="https://icons/gmail.png"),

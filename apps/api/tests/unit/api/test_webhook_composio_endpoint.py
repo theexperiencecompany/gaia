@@ -17,6 +17,7 @@ from httpx import AsyncClient
 from pydantic import AliasChoices, AliasPath, ValidationError
 import pytest
 
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import IntegrationAccount
 from app.models.webhook_models import ComposioWebhookEvent
 from app.services.integrations.integration_expiry import AccountExpired
@@ -323,7 +324,10 @@ class TestTheBackgroundExpiry:
     @staticmethod
     def _expired(*, stops_workflows: bool) -> AccountExpired:
         account = IntegrationAccount(
-            id="acct_1", connected_account_id="ca_1", label="a@b.c", status="expired"
+            id="acct_1",
+            connected_account_id="ca_1",
+            label="a@b.c",
+            status=IntegrationStatus.EXPIRED,
         )
         return AccountExpired(
             account=account,

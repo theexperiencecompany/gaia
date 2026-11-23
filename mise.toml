@@ -77,6 +77,12 @@ _.python.venv = { path = ".venv", create = true }
 # skips it when absent; scripts/dev/require-worktree-env.sh makes a linked worktree's
 # dev stack refuse to boot without it.
 _.file = ".env.worktree"
+# The dev auth bypass user every dev/e2e tool defaults to — the one source of
+# truth (mise seed, mise dev --agent/--sim, web e2e, playbook drive, agent bench).
+# Dev shares the production Resend account, so it must be a Resend test address
+# that accepts mail: a fake domain hard-bounces and costs sender reputation.
+# Override per shell with DEV_USER=<email>.
+DEV_USER = "{{ get_env(name='DEV_USER', default='delivered+dev@resend.dev') }}"
 
 [settings]
 experimental = true
@@ -208,18 +214,18 @@ description = "Give this worktree its own ports, Mongo database, Redis and Rabbi
 run = "uv run --no-project python scripts/dev/wt_env.py"
 
 [tasks.seed]
-description = "Mint + seed the dev bypass user with GAIA Pro against a running API, so chat is not paywalled (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS; SEED_PRO=false with a new DEV_USER for a free user; it never removes Pro from an existing one)"
+description = "Mint + seed the dev bypass user with GAIA Pro against a running API, so chat is not paywalled (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS, SEED_POSTMARKS; SEED_PRO=false with a new DEV_USER for a free user; it never removes Pro from an existing one)"
 run = '''
 set -eu
-: "${DEV_USER:=dev@gaia.local}"
 : "${SEED_TODOS:=5}"
 : "${SEED_CONVERSATIONS:=2}"
+: "${SEED_POSTMARKS:=12}"
 : "${SEED_PRO:=true}"
 base="http://localhost:${API_PORT:-8000}/api/v1/dev"
 curl -sfS -X POST "$base/users" -H 'content-type: application/json' \
   -d "{\"email\": \"$DEV_USER\"}" > /dev/null
 curl -sfS -X POST "$base/seed" -H 'content-type: application/json' \
-  -d "{\"email\": \"$DEV_USER\", \"todos\": $SEED_TODOS, \"conversations\": $SEED_CONVERSATIONS, \"pro\": $SEED_PRO}"
+  -d "{\"email\": \"$DEV_USER\", \"todos\": $SEED_TODOS, \"conversations\": $SEED_CONVERSATIONS, \"postmarks\": $SEED_POSTMARKS, \"pro\": $SEED_PRO}"
 echo ""
 echo "seeded $DEV_USER (boot with \`mise dev --agent\` or \`mise dev --sim\` — pass DEV_USER=$DEV_USER to bypass-auth as this user)"
 '''
@@ -277,7 +283,7 @@ run = "pnpm nx run web:e2e-screen"
 [tasks.dev]
 description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). Default is the REAL WorkOS login flow. Add --agent for zero-login agent driving (dev auth bypass, real LLM) or --sim for the sim stack (bypass + scripted LLM stub + ARQ worker, detached; `mise run sim:status` / `sim:down`). Both fail loudly under ENV=production. JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this native path — use `mise dev:vm` for those."
 usage = '''
-flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
+flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (mise.toml [env]), no WorkOS login. Real LLM."
 flag "--sim" help="The sim stack: stub, API, ARQ worker and web with the dev auth bypass and the scripted LLM (tools/llm-stub), detached, each with its own log under .sim-stack/. Returns once /health/ready answers and DEV_USER is minted with Pro. Replies come from [[tool:...]]/[[say:...]] directives."
 '''
 run = '''
@@ -292,7 +298,7 @@ bash scripts/dev/require-worktree-env.sh
 # an explicit `if` so set -e reliably aborts (an `&&` one-liner does not).
 if [ "${usage_agent:-}" = "true" ]; then
   bash scripts/dev/assert-not-prod.sh "the dev auth bypass"
-  export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:-dev@gaia.local}"
+  export DEV_AUTH_BYPASS_EMAIL="$DEV_USER"
 fi
 
 # A taken port half-boots the stack (uvicorn exits, nx keeps web pointed at a
@@ -334,7 +340,7 @@ run = "nx run docker:docker:up && nx dev api"
 description = "Run the API in a container (hot reload via the mounted apps/api/app dir + JuiceFS FUSE mount) + web natively. Use this when working on workspace v2, file uploads, artifact streaming, or sandbox file ops. The container is required because JuiceFS mounts via FUSE, which a native macOS/Windows process cannot provide. Default is the REAL WorkOS login flow; add --agent (dev auth bypass, real LLM) or --sim (bypass + scripted LLM stub) for zero-login agent driving. Both fail loudly under ENV=production. Also starts voice-agent-worker as a side effect of the `backend` profile."
 env = { COMPOSE_PROFILES = "backend" }
 usage = '''
-flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
+flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (mise.toml [env]), no WorkOS login. Real LLM."
 flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) reached from the container via host.docker.internal. Deterministic, no OpenRouter cost."
 '''
 run = '''
@@ -350,7 +356,7 @@ if [ -n "$bypass" ]; then
   bash scripts/dev/assert-not-prod.sh "the dev auth bypass / sim mode"
   # Bypass reaches the dockered API via compose interpolation of this var (see
   # infra/docker/docker-compose.yml gaia-backend env) — apps/api/.env has it off.
-  export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:-dev@gaia.local}"
+  export DEV_AUTH_BYPASS_EMAIL="$DEV_USER"
 fi
 
 if [ "${usage_sim:-}" = "true" ]; then
@@ -420,7 +426,7 @@ description = "Export apps/api/openapi.json and regenerate the TypeScript API ty
 run = "node scripts/ci/checks.mjs api-schema --write"
 
 [tasks."analytics:e2e"]
-description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, bot via gaia-sim), then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
+description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, briefing schedule, artifact, link share, bot via gaia-sim) on the scripted LLM stub with no real model, then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
 usage = '''
 flag "--no-assert" help="Drive the journeys without a personal API key and assert nothing (exits 2)"
 '''
@@ -432,7 +438,7 @@ bash scripts/dev/assert-not-prod.sh "the analytics e2e (dev auth bypass + sim mo
 # Every process the sim stack starts sends to gaia-test, whatever project the environment names.
 export POSTHOG_PROJECT_TOKEN="$POSTHOG_E2E_PROJECT_TOKEN"
 export POSTHOG_HOST="https://us.i.posthog.com"
-export DEV_USER="analytics-e2e@gaia.local"
+export DEV_USER="delivered+analytics-e2e@resend.dev"
 export ANALYTICS_MONGO_URI="${ANALYTICS_MONGO_URI:-mongodb://localhost:27017}"
 api="http://localhost:${API_PORT:-8000}"
 
@@ -501,6 +507,14 @@ run = "nx run cli:test"
 [tasks."cli:schema"]
 description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
 run = "node scripts/ci/checks.mjs cli-config-schema --write"
+
+[tasks."links:constants"]
+description = "Regenerate the web's link-constants.generated.ts and the usercontent Worker's and CLI's link-constants.generated.json from the API's link constants, access order and page copy, and check the self-host Caddyfile spells the same routes — CI's link-constants check fails when they drift"
+run = "node scripts/ci/checks.mjs link-constants --write"
+
+[tasks."openui:prompts"]
+description = "Regenerate the comms OpenUI prompt (apps/api/app/agents/prompts/openui_generated.txt) and the artifact model's per-kind prompts (apps/api/app/agents/prompts/artifacts/) from the component libraries — CI's openui-prompts check fails when they drift"
+run = "node scripts/ci/checks.mjs openui-prompts --write"
 
 [tasks."deploy:templates"]
 description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"

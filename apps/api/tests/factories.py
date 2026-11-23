@@ -16,6 +16,7 @@ from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import DisplayState, Entry
 from app.models.conversation_models import StoredConversation
+from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from shared.py.conversation_wire import ReplyItem, ReplyOutcome, ToolTimeline
 
@@ -26,6 +27,19 @@ CONVERSATION_ID = "c1"
 def make_user_id() -> str:
     """Return a fresh GAIA user id: a real ObjectId, as UserId and every capture require."""
     return str(ObjectId())
+
+
+def make_todo(title: str, *labels: str, user_id: str | None = None, **fields: Any) -> TodoDocument:
+    """Build a todo titled title, its id the title unless fields name one; open unless fields say."""
+    return TodoDocument.model_validate(
+        {
+            "id": title,
+            "user_id": user_id or make_user_id(),
+            "title": title,
+            "labels": list(labels),
+            **fields,
+        }
+    )
 
 
 def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:

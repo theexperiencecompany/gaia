@@ -9,6 +9,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.notes import note_repository
 from app.models.conversation_screen_models import NoticeItem, UserItem
 from app.models.search_models import MessageSearchResult, NoteSearchResult, SearchResultsResponse
+from app.services.conversation.shown_links import shown_item
 from app.utils.general_utils import get_context_window
 from app.utils.log_identifiers import user_text_shape
 from shared.py.conversation_wire import ReplyItem
@@ -37,14 +38,18 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
         conversation_results = await conversation_repository.search(user_id, pattern=escaped_query)
         note_hits = await note_repository.search_by_plaintext(user_id, pattern=escaped_query)
 
+        shown = [
+            (hit.conversation_id, await shown_item(user_id, hit.item))
+            for hit in conversation_results.messages
+        ]
         messages = [
             MessageSearchResult(
-                conversation_id=hit.conversation_id,
-                item=hit.item,
+                conversation_id=conversation_id,
+                item=item,
                 # Snippet for search highlighting, centered on the matched text.
-                snippet=get_context_window(_text(hit.item), query, chars_before=30),
+                snippet=get_context_window(_text(item), query, chars_before=30),
             )
-            for hit in conversation_results.messages
+            for conversation_id, item in shown
         ]
 
         notes_with_snippets = [

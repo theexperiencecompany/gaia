@@ -394,6 +394,7 @@ def _item(
                 tool_data=notice.tool_data,
                 timeline=tool_timeline(notice.tool_data),
                 follow_up_actions=notice.follow_up_actions,
+                image_url=notice.image_url,
             )
         case WorkflowFired() as fired:
             return WorkflowFiredItem(id=fired.id, seq=seq, at=at, workflow=fired.run.workflow)

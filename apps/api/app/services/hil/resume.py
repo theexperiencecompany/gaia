@@ -22,7 +22,7 @@ from app.models.hil_models import ApprovalLedgerDocument
 from app.services.analytics_service import capture
 from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
 from app.services.hil.ticket import approval_ticket
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.redis_utils import RedisPoolManager
@@ -50,7 +50,7 @@ async def record_owner_deny(row: ApprovalLedgerDocument, feedback: str | None) -
     if row.owner_run_type != "todo" or not row.owner_id:
         return
     what = f" ({feedback!r})" if feedback else ""
-    await record_activity(
+    await record_todo_activity(
         row.owner_id,
         row.user_id,
         TodoActivityEvent.APPROVAL_DENIED,
@@ -65,7 +65,7 @@ async def _resume_todo(row: ApprovalLedgerDocument) -> None:
     scheduled fire. The grant is logged here, at the hand-off, because
     the resume job itself may be deferred and run again.
     """
-    await record_activity(
+    await record_todo_activity(
         row.owner_id,
         row.user_id,
         TodoActivityEvent.APPROVAL_GRANTED,

@@ -440,6 +440,8 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
 - `apps/api/app/services/system_workflows/`
   - `provisioner.py` — auto-provisions workflows on integration connect.
   - `definitions/` — built-in workflows: `definitions/calendar.py` (calendar-triggered workflows). Gmail gets the Inbox desk tracked todo instead (`app/services/todos/inbox_desk.py`).
+  - `behaviour.py` + `registry.py` — what each system workflow declares beside its definition (listed, pausable, notify on failure, its cron, the queue its fires run on, and the work each fire starts ahead of itself); the engine reads `behaviour_of(key)`. The briefs (`definitions/briefing.py`) run on the brief queue and refresh their scouts on the scout queue `SCOUT_REFRESH_LEAD` before the slot (`workers/tasks/scout_tasks.refresh_scouts_task`), so the brief takes the refreshed results and runs scouts itself only when none are waiting.
+- `apps/api/app/workers/queue_workers.py` — the arq Workers serving their own queues inside the worker process, each with its own concurrency (browser jobs: `browser_worker.py`; brief fires and scout refreshes: `brief_workers.py`, sized by `constants/brief_slots.py`). Started last by the worker lifecycle, closed first; one that stops on its own takes the process down. No extra service or compose entry: every `arq_worker` container serves them all.
 - `apps/api/app/services/scheduler_service.py` — `ScheduledTaskStatus` model + scheduler.
 - `apps/api/app/agents/prompts/workflow_prompts.py` — `WORKFLOW_AUTO_NOTIFY_SECTION`, `WORKFLOW_SILENT_NOTIFY_SECTION`.
 - Frontend: `libs/shared/ts/src/types/workflow.ts`, `libs/shared/ts/src/api/workflowsApi.ts`, `libs/shared/ts/src/hooks/useWorkflowsBase.ts`, `libs/shared/ts/src/workflows/`.

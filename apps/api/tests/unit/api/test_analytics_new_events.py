@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from app.agents.skills.models import Skill, SkillAuthor, SkillSource
 from app.constants.memory import MemoryDocType
+from app.constants.workflows import WorkflowDelivery
 from app.models.conversation_log_models import ApprovalDecided as LoggedDecision
 from app.models.files_models import FileDocument
 from app.models.hil_models import ApprovalLedgerDocument
@@ -106,6 +107,7 @@ def _make_workflow(**overrides: object) -> Workflow:
         "prompt": "Do the thing",
         "steps": [{"id": "step_1", "title": "Step 1", "category": "general", "description": "x"}],
         "trigger_config": {"type": "manual", "enabled": True},
+        "delivery": WorkflowDelivery.NOW,
         "activated": True,
         "is_public": False,
         "slug": None,
@@ -134,10 +136,51 @@ class TestWorkflowNewEvents:
     async def test_update_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ),
             patch(_WF_CAPTURE) as mock_capture,
         ):
             mock_svc.return_value = _make_workflow(title="Updated")
             resp = await client.put(f"{WF}/wf_abc123", json={"title": "Updated"})
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated())
+
+    async def test_an_update_that_changes_delivery_captures_the_new_mode(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(delivery=WorkflowDelivery.NOW),
+            ),
+            patch(_WF_CAPTURE) as mock_capture,
+        ):
+            mock_svc.return_value = _make_workflow(delivery=WorkflowDelivery.BRIEF)
+            resp = await client.put(f"{WF}/wf_abc123", json={"delivery": "brief"})
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated(delivery="brief"))
+
+    async def test_an_update_resending_the_same_delivery_reports_no_change(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(delivery=WorkflowDelivery.BRIEF),
+            ),
+            patch(_WF_CAPTURE) as mock_capture,
+        ):
+            mock_svc.return_value = _make_workflow(title="Renamed", delivery=WorkflowDelivery.BRIEF)
+            resp = await client.put(
+                f"{WF}/wf_abc123", json={"title": "Renamed", "delivery": "brief"}
+            )
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated())
 
@@ -211,7 +254,9 @@ class TestWorkflowNewEvents:
                 json={"todo_id": "todo_123", "todo_title": "Buy groceries"},
             )
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), WorkflowCreated(origin="todo_converted"))
+        mock_capture.assert_called_once_with(
+            UserId(UID), WorkflowCreated(origin="todo_converted", delivery="now")
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -592,11 +637,12 @@ class TestNotificationNewEvents:
             patch(
                 f"{NOTIF}.user_repository.set_channel_preferences",
                 new_callable=AsyncMock,
-            ),
+            ) as set_prefs,
             patch(f"{NOTIF}.capture") as mock_capture,
         ):
             resp = await client.post("/api/v1/notifications/unsubscribe?token=tok")
         assert resp.status_code == 200
+        set_prefs.assert_awaited_once_with(UID, {"email": False})
         mock_capture.assert_called_once_with(UserId(UID), NotificationUnsubscribed())
 
     async def test_a_token_for_a_non_user_id_unsubscribes_nobody(self, client: AsyncClient) -> None:

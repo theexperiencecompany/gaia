@@ -26,7 +26,7 @@ from e2b import NotFoundException
 from langchain_core.runnables import RunnableConfig
 import pytest
 
-from app.agents.tools.coding._artifacts import WrittenFile
+from app.agents.tools.coding._artifacts import WrittenFile, artifact_links_note
 from app.agents.tools.coding.edit_tool import (
     MAX_FILE_BYTES,
     MAX_PATCH_BYTES,
@@ -57,6 +57,7 @@ CONFIG: RunnableConfig = {
 
 ABS_PATH = "/workspace/sessions/conv-1/scratch/app.py"
 MTIME = 1_700_000_000.0
+LINK_PLACEHOLDER = "gaia-link:report"
 
 
 def _target(abs_path: str = ABS_PATH, session_id: str | None = SESSION_ID) -> EditTarget:
@@ -123,7 +124,7 @@ async def _do_edit_env(
     with (
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=MTIME)) as mock_atomic,
         patch(f"{MODULE}.safe_emit") as mock_emit,
-        patch(f"{MODULE}.publish_artifact_write") as mock_publish,
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=None)) as mock_publish,
     ):
         yield sbx, mock_atomic, mock_emit, mock_publish
 
@@ -198,7 +199,7 @@ async def test_do_edit_single_occurrence_replaces_with_exact_payloads() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_called_once_with(
+    mock_publish.assert_awaited_once_with(
         WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH),
         24,
         MTIME,
@@ -222,7 +223,7 @@ async def test_do_edit_replace_all_replaces_every_occurrence() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_called_once_with(
+    mock_publish.assert_awaited_once_with(
         WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH), 9, MTIME
     )
 
@@ -237,7 +238,7 @@ async def test_do_edit_multiple_occurrences_without_replace_all_is_ambiguous() -
     )
     mock_atomic.assert_not_awaited()
     mock_emit.assert_not_called()
-    mock_publish.assert_not_called()
+    mock_publish.assert_not_awaited()
 
 
 async def test_do_edit_old_string_not_found_is_clean_error() -> None:
@@ -247,7 +248,7 @@ async def test_do_edit_old_string_not_found_is_clean_error() -> None:
     assert out == "Error: old_string not found in file"
     mock_atomic.assert_not_awaited()
     mock_emit.assert_not_called()
-    mock_publish.assert_not_called()
+    mock_publish.assert_not_awaited()
 
 
 async def test_do_edit_read_failure_aborts_before_any_write() -> None:
@@ -262,7 +263,7 @@ async def test_do_edit_read_failure_aborts_before_any_write() -> None:
     assert out == "Error: file not found at /workspace/missing.txt"
     mock_atomic.assert_not_awaited()
     mock_emit.assert_not_called()
-    mock_publish.assert_not_called()
+    mock_publish.assert_not_awaited()
 
 
 async def test_do_edit_size_counts_bytes_not_characters() -> None:
@@ -284,7 +285,7 @@ async def test_do_edit_size_counts_bytes_not_characters() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_called_once_with(
+    mock_publish.assert_awaited_once_with(
         WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH), 9, MTIME
     )
 
@@ -319,7 +320,7 @@ async def test_edit_replaces_file_with_exact_payloads() -> None:
         patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(sbx)),
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=MTIME)) as mock_atomic,
         patch(f"{MODULE}.safe_emit") as mock_emit,
-        patch(f"{MODULE}.publish_artifact_write") as mock_publish,
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=None)) as mock_publish,
     ):
         result = await edit.ainvoke(
             {"path": "scratch/app.py", "old_string": "return 1", "new_string": "return 2"},
@@ -339,7 +340,7 @@ async def test_edit_replaces_file_with_exact_payloads() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_called_once_with(
+    mock_publish.assert_awaited_once_with(
         WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH),
         24,
         MTIME,
@@ -353,7 +354,7 @@ async def test_edit_relative_path_resolves_under_session_root() -> None:
         patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(sbx)),
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=1.0)) as mock_atomic,
         patch(f"{MODULE}.safe_emit"),
-        patch(f"{MODULE}.publish_artifact_write"),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=None)),
     ):
         result = await edit.ainvoke(
             {"path": "app.py", "old_string": "v = 1", "new_string": "v = 2"},
@@ -472,7 +473,7 @@ async def test_edit_artifact_publish_failure_is_converted_to_error() -> None:
         patch(f"{MODULE}.safe_emit"),
         patch(
             f"{MODULE}.publish_artifact_write",
-            side_effect=RuntimeError("channel down"),
+            AsyncMock(side_effect=RuntimeError("channel down")),
         ),
     ):
         result = await edit.ainvoke(
@@ -481,6 +482,27 @@ async def test_edit_artifact_publish_failure_is_converted_to_error() -> None:
         )
 
     assert result == "Error editing file: channel down"
+
+
+async def test_an_artifact_edit_hands_the_agent_its_link_placeholder() -> None:
+    sbx = AsyncMock()
+    sbx.files.read = AsyncMock(return_value=b"<p>1</p>")
+    with (
+        patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(sbx)),
+        patch(f"{MODULE}.atomic_write", AsyncMock(return_value=MTIME)),
+        patch(f"{MODULE}.safe_emit"),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=LINK_PLACEHOLDER)),
+    ):
+        result = await edit.ainvoke(
+            {"path": "artifacts/report.html", "old_string": "1", "new_string": "2"},
+            config=CONFIG,
+        )
+
+    assert result == (
+        "Edited /workspace/sessions/conv-1/artifacts/report.html (1 occurrence replaced)"
+        + artifact_links_note({"report.html": LINK_PLACEHOLDER})
+    )
+    assert result.endswith(f"- report.html: {LINK_PLACEHOLDER}")
 
 
 # --- patch validation -------------------------------------------------------- #

@@ -24,6 +24,7 @@ from pymongo.errors import DuplicateKeyError
 from app.db.mongodb.collections import get_async_collection
 from app.db.mongodb.indexes import create_user_instructions_indexes
 from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE, InstructionsEditor
+from scripts._cli import apply_requested
 
 users_collection = get_async_collection("users")
 legacy_collection = get_async_collection("integration_instructions")
@@ -101,4 +102,4 @@ async def migrate(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

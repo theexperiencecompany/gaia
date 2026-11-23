@@ -11,7 +11,9 @@ from app.agents.context.sections import SECTIONS, Section
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER
 from app.agents.context.tiers import AgentTier
+from app.constants.integrations import IntegrationStatus
 from app.models.todo_models import TodoDocument
+from tests.integration_account_factories import make_integration_record
 
 
 @pytest.fixture
@@ -38,18 +40,23 @@ class TestConnectedIntegrationsManifest:
     """Runs the real get_connected_integrations_named over mocked integration records."""
 
     @staticmethod
-    def _records(*records: dict[str, str]):
+    def _records(*records: tuple[str, IntegrationStatus]):
         return patch(
             "app.services.integrations.user_integrations.get_user_integration_records",
-            AsyncMock(return_value=list(records)),
+            AsyncMock(
+                return_value=[
+                    make_integration_record(user_id="u", integration_id=iid, status=status)
+                    for iid, status in records
+                ]
+            ),
         )
 
     async def test_only_connected_integrations_reach_the_agent(self, user: str) -> None:
         """A disconnected integration listed as available is worse than absent: its handoff fails."""
         with self._records(
-            {"integration_id": "gmail", "status": "connected"},
-            {"integration_id": "slack", "status": "disconnected"},
-            {"integration_id": "notion", "status": "pending"},
+            ("gmail", IntegrationStatus.CONNECTED),
+            ("slack", IntegrationStatus.EXPIRED),
+            ("notion", IntegrationStatus.CREATED),
         ):
             block = await _section("integrations_manifest").fetch(_ctx(user))
 
@@ -58,13 +65,13 @@ class TestConnectedIntegrationsManifest:
         assert "notion" not in block
 
     async def test_the_executor_gets_the_activation_framed_header(self, user: str) -> None:
-        with self._records({"integration_id": "gmail", "status": "connected"}):
+        with self._records(("gmail", IntegrationStatus.CONNECTED)):
             block = await _section("integrations_manifest").fetch(_ctx(user))
 
         assert block.startswith(EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER)
 
     async def test_comms_gets_the_capability_framed_header_instead(self, user: str) -> None:
-        with self._records({"integration_id": "gmail", "status": "connected"}):
+        with self._records(("gmail", IntegrationStatus.CONNECTED)):
             block = await _section("integrations_manifest").fetch(
                 SectionContext(tier=AgentTier.COMMS, user_id=user)
             )
@@ -73,7 +80,7 @@ class TestConnectedIntegrationsManifest:
         assert "gmail" in block
 
     async def test_no_connected_integrations_yields_nothing_at_all(self, user: str) -> None:
-        with self._records({"integration_id": "gmail", "status": "disconnected"}):
+        with self._records(("gmail", IntegrationStatus.EXPIRED)):
             assert await _section("integrations_manifest").fetch(_ctx(user)) == ""
 
     async def test_the_manifest_is_a_stable_section(self) -> None:

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Components } from "streamdown";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { MarkdownRenderer } from "@/features/chat";
 import { formatJsonLikeString, normalizeValue } from "@/utils/jsonFormatters";
 
 interface CompactMarkdownProps {

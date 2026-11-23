@@ -337,6 +337,16 @@ describe("redeemLinkCode", () => {
       buildLinkCodeFailureMessage("failed", FRONTEND_URL),
     ]);
   });
+
+  it.each(["account-has-other", "conflict"] as const)(
+    "sends a %s user to Linked Accounts, where Disconnect lives",
+    (reason) => {
+      const message = buildLinkCodeFailureMessage(reason, FRONTEND_URL);
+
+      expect(message).toContain(`${FRONTEND_URL}/settings/linked-accounts`);
+      expect(message).not.toContain("/settings/notifications");
+    },
+  );
 });
 
 describe("consumeInboundLinkCode", () => {

@@ -3,7 +3,7 @@
 import { Modal } from "@heroui/react";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { MarkdownRenderer } from "@/features/chat";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
 /** Normalized shape for the shared read-only preview (built-in or user skill). */

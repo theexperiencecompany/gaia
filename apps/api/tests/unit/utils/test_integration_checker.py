@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode, IntegrationStatus
 from app.constants.waits import WaitCondition
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
@@ -782,7 +782,7 @@ class TestAddAccountPrompt:
 class TestAccountReconnectPrompt:
     """One expired account is signed back in place, named on the card and in the link."""
 
-    _DEAD = make_integration_account("ca_work", "expired", label="work@acme.com")
+    _DEAD = make_integration_account("ca_work", IntegrationStatus.EXPIRED, label="work@acme.com")
 
     async def test_the_card_names_the_account_and_carries_its_id(self) -> None:
         # The integration itself stays connected while another account works.

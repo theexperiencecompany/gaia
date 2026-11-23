@@ -32,6 +32,7 @@ WEB: dict[str, object] = {
     "surface": "web",
     "$session_id": SESSION,
 }
+WEB_SERVER: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "web"}
 WEBHOOK: dict[str, object] = {"actor": "agent", "trigger": "webhook", "surface": "worker"}
 BOT: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "bot"}
 # The agent acts in the run tree the user's request started.
@@ -45,6 +46,20 @@ BOT_TURN: dict[str, object] = {
     "conversation_id": BOT_CONVERSATION,
     "mode": "interactive",
     "agent": "comms",
+}
+ARTIFACT_CONVERSATION = "7e4cb1d0-5a1e-4a55-9b2c-0f9d3c2b8a11"
+ARTIFACT_TURN: dict[str, object] = {
+    "conversation_id": ARTIFACT_CONVERSATION,
+    "mode": "interactive",
+    "agent": "comms",
+}
+ARTIFACT_CREATED: dict[str, object] = {
+    "kind": "dashboard",
+    "components": 6,
+    "repairs": 0,
+    "output_tokens": 900,
+    "first_component_ms": 2600.0,
+    "total_ms": 5200.0,
 }
 WORKFLOW_RUN: dict[str, object] = {
     "conversation_id": WORKFLOW_CONVERSATION,
@@ -135,6 +150,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "origin": "user_created",
             "steps_count": 1,
             "generated_immediately": False,
+            "delivery": "now",
             "trigger_type": "manual",
         },
     ),
@@ -146,6 +162,114 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ),
     ("agent:run_started", {**AGENT_WEB, **WORKFLOW_RUN}),
     ("agent:run_completed", {**AGENT_WEB, **WORKFLOW_RUN}),
+    (
+        "settings:briefing_schedule_updated",
+        {**WEB, "frequency": "weekdays", "hour": 7, "via": "settings"},
+    ),
+    (
+        "workflow:created",
+        {
+            **WEB,
+            "origin": "user_created",
+            "steps_count": 1,
+            "generated_immediately": False,
+            "delivery": "now",
+            "trigger_type": "manual",
+        },
+    ),
+    ("settings:briefs_off_blocked", {**WEB, "workflow_count": 1, "via": "settings"}),
+    (
+        "settings:briefs_off_resolved",
+        {**WEB, "moved_to_now": 1, "moved_to_silent": 0, "via": "settings"},
+    ),
+    (
+        "settings:briefing_schedule_updated",
+        {**WEB, "frequency": "off", "hour": 8, "via": "settings"},
+    ),
+    (
+        "chat:message_submitted",
+        {
+            **WEB,
+            "source": "web",
+            "stream_id": "s-artifact",
+            "is_retry": False,
+            "has_files": False,
+            "is_new_conversation": True,
+            "message_count": 1,
+        },
+    ),
+    (
+        "chat:conversation_created",
+        {**WEB, "is_onboarding_demo": False, "is_system_generated": False},
+    ),
+    ("agent:run_started", {**AGENT_WEB, **ARTIFACT_TURN}),
+    ("agent:run_completed", {**AGENT_WEB, **ARTIFACT_TURN}),
+    (
+        "chat:message_completed",
+        {
+            **WEB,
+            **COMPLETED,
+            "conversation_id": ARTIFACT_CONVERSATION,
+            "stream_id": "s-artifact",
+            "source": "web",
+            "is_new_conversation": True,
+        },
+    ),
+    ("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED}),
+    (
+        "short_link:opened",
+        {
+            **WEB_SERVER,
+            "target_type": "openui_artifact",
+            "access": "unlisted",
+            "viewer_signed_in": False,
+        },
+    ),
+    ("artifact:pdf_exported", {**WEB_SERVER, "kind": "dashboard", "pages": 1}),
+    (
+        "todos:created",
+        {
+            **WEB,
+            "priority": "none",
+            "has_due_date": False,
+            "has_description": False,
+            "labels_count": 0,
+            "subtasks_count": 0,
+            "has_project": False,
+            "is_sub_todo": False,
+        },
+    ),
+    (
+        "short_link:created",
+        {
+            **WEB,
+            "target_type": "todo_deliverable",
+            "access": "unlisted",
+            "origin": "owner_share",
+            "has_expiry": False,
+        },
+    ),
+    (
+        "short_link:opened",
+        {
+            **WEB_SERVER,
+            "target_type": "todo_deliverable",
+            "access": "unlisted",
+            "viewer_signed_in": True,
+        },
+    ),
+    (
+        "short_link:access_changed",
+        {
+            **WEB,
+            "target_type": "todo_deliverable",
+            "from_access": "unlisted",
+            "to_access": "owner",
+        },
+    ),
+    ("short_link:denied", {**WEB_SERVER, "target_type": "todo_deliverable", "reason": "forbidden"}),
+    ("short_link:rotated", {**WEB, "target_type": "todo_deliverable", "access": "owner"}),
+    ("short_link:revoked", {**WEB, "target_type": "todo_deliverable", "reason": "owner"}),
     (
         "chat:message_submitted",
         {**BOT, "source": "telegram", "stream_id": "s-bot", "is_retry": False, "has_files": False},

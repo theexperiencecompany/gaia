@@ -22,22 +22,23 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import json
 import os
+import secrets
 import time
 from typing import TypedDict
 
 from composio import Composio
 import httpx
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import StreamMode
 import pytest
 
-from app.config.oauth_config import OAuthIntegration, get_integration_by_id
+from app.config.oauth_config import get_integration_by_id
 from app.config.settings import settings
-from app.constants.integrations import (
-    INTEGRATION_STATUS_CONNECTED,
-    INTEGRATION_STATUS_EXPIRED,
-)
+from app.constants.integrations import IntegrationStatus
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_models import UserIntegrationDocument
+from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import ComposioService
 from app.services.composio.langchain_composio_service import StructuredTool
 from app.services.integrations.integration_connection_service import (
@@ -230,16 +231,16 @@ async def _run_tool_in_graph(
         # runtime and the metadata below, exactly as a ToolNode invocation does.
         return {"result": await tool.ainvoke(args)}
 
-    builder: StateGraph = StateGraph(_ToolRunState)
+    builder = StateGraph(_ToolRunState, input_schema=_ToolRunState, output_schema=_ToolRunState)
     builder.add_node("call_tool", call_tool)
     builder.add_edge(START, "call_tool")
     builder.add_edge("call_tool", END)
     graph = builder.compile()
 
+    initial: _ToolRunState = {"result": None}
+    modes: list[StreamMode] = ["custom", "updates"]
     async for mode, chunk in graph.astream(
-        {"result": None},
-        config={"metadata": {"user_id": user_id}},
-        stream_mode=["custom", "updates"],
+        initial, config=RunnableConfig(metadata={"user_id": user_id}), stream_mode=modes
     ):
         if mode == "custom" and isinstance(chunk, dict):
             events.append(chunk)
@@ -285,7 +286,7 @@ async def _require_connected_record() -> UserIntegrationDocument:
         f"no user_integrations record for user={LIVE_USER_ID} integration={LIVE_INTEGRATION_ID} — "
         "connect the integration in the app first"
     )
-    assert record.status == INTEGRATION_STATUS_CONNECTED, (
+    assert record.status == IntegrationStatus.CONNECTED, (
         f"expected a healthy connection to start from, found status={record.status!r}. "
         "Reconnect the integration (COMPOSIO_LIVE_RECONNECT=1 -k l4) before running this."
     )
@@ -303,7 +304,9 @@ async def test_l1_connect_account_mints_a_reachable_connect_link(
     composio_service: ComposioService, integration: OAuthIntegration
 ) -> None:
     """connect_account() goes through link(), not the retiring initiate() endpoint (which raises ComposioLegacyConnectedAccountsEndpointRetiredError)."""
-    result = await composio_service.connect_account(integration.provider, LIVE_USER_ID)
+    result = await composio_service.connect_account(
+        integration.provider, LIVE_USER_ID, state_token=secrets.token_urlsafe(16)
+    )
     connection_id = result["connection_id"]
 
     try:
@@ -369,7 +372,7 @@ async def test_l5_healthy_connected_account_is_left_alone(
 
     after = await user_integration_repository.get_for_user(LIVE_USER_ID, LIVE_INTEGRATION_ID)
     assert after is not None
-    assert after.status == INTEGRATION_STATUS_CONNECTED, (
+    assert after.status == IntegrationStatus.CONNECTED, (
         f"a healthy tool call expired the integration: {before.status!r} -> {after.status!r}, "
         f"reason={after.expired_reason!r}"
     )
@@ -428,7 +431,7 @@ async def test_l2_revoked_account_expires_the_integration_at_tool_execution(
         )
 
         expired = await _poll_record(
-            lambda record: record.status == INTEGRATION_STATUS_EXPIRED,
+            lambda record: record.status == IntegrationStatus.EXPIRED,
             timeout=_EXPIRY_TIMEOUT_S,
         )
         assert expired is not None, (
@@ -467,7 +470,7 @@ async def test_l3_expired_webhook_delivery_expires_the_integration(
         await asyncio.to_thread(_revoke_connected_account, composio_service.composio, account_id)
 
         expired = await _poll_record(
-            lambda record: record.status == INTEGRATION_STATUS_EXPIRED,
+            lambda record: record.status == IntegrationStatus.EXPIRED,
             timeout=_WEBHOOK_TIMEOUT_S,
         )
         assert expired is not None, (
@@ -499,7 +502,7 @@ async def test_l4_reconnecting_clears_the_expiry_and_records_the_new_account(
 ) -> None:
     """The status "connected" is only ever written by the callback path, not by the created upsert this test performs when it mints the link."""
     record = await user_integration_repository.get_for_user(LIVE_USER_ID, LIVE_INTEGRATION_ID)
-    if record is None or record.status != INTEGRATION_STATUS_EXPIRED:
+    if record is None or record.status != IntegrationStatus.EXPIRED:
         pytest.skip(
             f"nothing to reconnect: user_integrations status is "
             f"{record.status if record else 'missing'!r}, not 'expired'. Run -k l2 or -k l3 first."
@@ -523,7 +526,7 @@ async def test_l4_reconnecting_clears_the_expiry_and_records_the_new_account(
     )
 
     restored = await _poll_record(
-        lambda doc: doc.status == INTEGRATION_STATUS_CONNECTED,
+        lambda doc: doc.status == IntegrationStatus.CONNECTED,
         timeout=_RECONNECT_TIMEOUT_S,
     )
     assert restored is not None, (

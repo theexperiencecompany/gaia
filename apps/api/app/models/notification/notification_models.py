@@ -5,7 +5,9 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.constants.notifications import ProactiveMessageClass
 from app.models.document_models import UserScopedDocument
+from app.models.notification.details_models import NotificationDetails
 from app.schemas.common import ResponseModel
 
 
@@ -177,9 +179,11 @@ class NotificationRequest(BaseModel):
     priority: int = Field(default=3, ge=1, le=5)  # 1 highest
     channels: list[ChannelConfig] = Field(default_factory=list)
     content: NotificationContent
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    details: NotificationDetails | None = None
     scheduled_for: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    #: Whether the user's quiet hours may hold its chat-platform copy (in-app is never held).
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     #: The conversation the fact belongs to; it is logged there as a Notice.
     conversation_id: str | None = None
     #: What a chat reads, in GAIA's voice; None renders the title and body.
@@ -202,6 +206,11 @@ class ChannelDeliveryStatus(BaseModel):
     error_message: str | None = None
     retry_count: int = 0
     skipped: bool = False
+
+    @property
+    def reached_user(self) -> bool:
+        """Whether this channel actually delivered: neither failed nor skipped."""
+        return self.status == NotificationStatus.DELIVERED and not self.skipped
 
 
 class NotificationRecord(UserScopedDocument):
@@ -286,7 +295,7 @@ class NotificationView(BaseModel):
     Distinct from ``NotificationRecord``: the record is the stored document (it
     nests the whole ``original_request``), while this is the flat shape the web
     and mobile clients actually read — ``content``/``source``/``type``/
-    ``metadata`` are lifted out of the request, and the channel entries are
+    ``details`` are lifted out of the request, and the channel entries are
     projected. It mirrors ``NotificationRecord`` in the frontend's
     ``notificationTypes.ts``.
 
@@ -307,7 +316,7 @@ class NotificationView(BaseModel):
     content: NotificationContentView
     source: NotificationSourceEnum
     type: NotificationType
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    details: NotificationDetails | None = None
     channels: list[NotificationChannelView] = Field(default_factory=list)
 
 
@@ -346,21 +355,30 @@ class BulkActions(str, Enum):
 
 
 class ChannelPreferences(ResponseModel):
-    """User notification channel preferences."""
+    """User notification channel preferences.
+
+    One field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out
+    so FastAPI and mypy see real types, and a unit test pins the set against the
+    enum so the two cannot drift.
+    """
 
     telegram: bool = True
     discord: bool = True
     whatsapp: bool = True
     slack: bool = True
+    imessage: bool = True
+    email: bool = True
 
 
 class ChannelPreferencesUpdate(BaseModel):
-    """Request body for updating channel preferences."""
+    """Request body for updating channel preferences; omitted channels are untouched."""
 
     telegram: bool | None = None
     discord: bool | None = None
     whatsapp: bool | None = None
     slack: bool | None = None
+    imessage: bool | None = None
+    email: bool | None = None
 
 
 class NotificationListFilters(BaseModel):

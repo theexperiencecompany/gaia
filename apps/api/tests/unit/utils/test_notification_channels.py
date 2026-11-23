@@ -1,4 +1,4 @@
-"""Channel adapter unit tests: the base status helpers and the CommonMark a chat app is sent.
+"""Channel adapter unit tests: the base status helpers, the CommonMark a chat app is sent and how a post maps to a status.
 
 Delivery itself (publish, DM session, Notice) is proven against real Mongo in
 tests/integration/real/test_notify_pipeline_real.py.
@@ -11,14 +11,13 @@ import pytest
 
 from app.constants.notifications import (
     CHANNEL_TYPE_CONVERSATION,
-    CHANNEL_TYPE_DISCORD,
-    CHANNEL_TYPE_IMESSAGE,
-    CHANNEL_TYPE_SLACK,
-    CHANNEL_TYPE_TELEGRAM,
-    CHANNEL_TYPE_WHATSAPP,
+    NotificationChannel,
+    NotificationKind,
+    ProactiveMessageClass,
 )
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Notice
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -32,6 +31,9 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.user_models import UserDocument
+from app.services.delivery.chat_channel import ChatChannel
+from app.services.outbound_delivery import OutboundResult
 from app.utils.errors import ConversationNotFoundError
 from app.utils.notification.channels.conversation import (
     ConversationChannelAdapter,
@@ -45,6 +47,7 @@ from app.utils.notification.channels.telegram import TelegramChannelAdapter
 from app.utils.notification.channels.whatsapp import WhatsAppChannelAdapter
 
 _SENTINEL = object()
+_DETAILS = TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
 
 
 def _make_request(
@@ -72,7 +75,7 @@ def _make_request(
             actions=actions,
             rich_content=rich_content,
         ),
-        metadata={"key": "value"},
+        details=_DETAILS,
     )
 
 
@@ -93,7 +96,7 @@ def _make_redirect_action(label: str = "View", url: str = "/test") -> Notificati
 class TestChannelAdapterBaseHelpers:
     def test_success_helper(self) -> None:
         status = TelegramChannelAdapter()._success()
-        assert status.channel_type == CHANNEL_TYPE_TELEGRAM
+        assert status.channel_type == NotificationChannel.TELEGRAM
         assert status.status == NotificationStatus.DELIVERED
         assert status.delivered_at is not None
 
@@ -123,6 +126,8 @@ class TestExternalPlatformTransform:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
         assert content.text == "**My Title**\nMy body"
+        assert content.origin == notice_origin(request)
+        assert content.message_class is request.message_class
 
     async def test_standard_message_without_title(self) -> None:
         request = _make_request(title="", body="just body")
@@ -158,6 +163,7 @@ class TestExternalPlatformTransform:
                 "[View Task](https://example.com/INBOX/todos/1) · [Open](https://example.com/INBOX/x)"
             ),
             origin=notice_origin(request),
+            message_class=ProactiveMessageClass.ROUTINE,
         )
 
     async def test_rich_content_is_ignored(self) -> None:
@@ -179,15 +185,126 @@ class TestExternalPlatformTransform:
         assert content.text == "**Workflow Done**\nCompleted in 30s"
 
 
+LINKED_USER = UserDocument(id="user-1", platform_links={"discord": {"id": "dc-7"}})
+EXTERNAL = "app.utils.notification.channels.external"
+
+
+def _payload(text: str) -> ExternalPayload:
+    return ExternalPayload(
+        notification_id="notif-1",
+        text=text,
+        origin="notification from ai_agent",
+        message_class=ProactiveMessageClass.ROUTINE,
+    )
+
+
+@pytest.mark.asyncio
+class TestExternalPlatformDeliver:
+    async def test_deliver_posts_into_the_linked_dm_and_maps_success(self) -> None:
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.PUBLISHED,
+            ) as post,
+        ):
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
+
+        kwargs = post.await_args.kwargs
+        assert kwargs["user"].user_id == "user-1"
+        assert kwargs["channel"] == ChatChannel(
+            source=ConversationSource.DISCORD, platform_user_id="dc-7", basis="priority"
+        )
+        assert (kwargs["message"].text, kwargs["message"].origin) == (
+            "hello",
+            "notification from ai_agent",
+        )
+        assert kwargs["message"].message_class is ProactiveMessageClass.ROUTINE
+        # Keyed by the notification, so a retried notification posts its Notice once.
+        assert kwargs["message"].notice_id == "notice:notif-1"
+        assert status.status == NotificationStatus.DELIVERED
+        assert status.skipped is False
+
+    async def test_an_unlinked_platform_is_skipped_without_posting(self) -> None:
+        with (
+            patch(
+                f"{EXTERNAL}.user_repository.get",
+                AsyncMock(return_value=UserDocument(id="user-1")),
+            ) as get,
+            patch(f"{EXTERNAL}.post_to_platform_chat", new_callable=AsyncMock) as post,
+        ):
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
+
+        get.assert_awaited_once_with("user-1")
+        post.assert_not_awaited()
+        assert status.status == NotificationStatus.FAILED
+        assert status.skipped is True
+        assert status.error_message == "discord: not linked"
+
+    async def test_blank_text_is_skipped_without_a_lookup(self) -> None:
+        with patch(f"{EXTERNAL}.user_repository.get", new_callable=AsyncMock) as get:
+            status = await DiscordChannelAdapter().deliver(_payload("  "), "user-1")
+
+        get.assert_not_awaited()
+        assert status.skipped is True
+        assert status.error_message == "discord: nothing to send"
+
+    async def test_a_message_held_for_quiet_hours_is_pending_not_failed(self) -> None:
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.DEFERRED,
+            ),
+        ):
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
+
+        assert status.status == NotificationStatus.PENDING
+        assert status.skipped is False
+        assert status.error_message is None
+
+    async def test_deliver_maps_skipped_to_skipped(self) -> None:
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.SKIPPED,
+            ),
+        ):
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
+        assert status.status == NotificationStatus.FAILED
+        assert status.skipped is True
+        assert status.error_message == "discord: not linked or nothing to send"
+
+    async def test_deliver_maps_failed_to_error_not_skipped(self) -> None:
+        # A post that failed is a real failure, NOT a skip, so retries and
+        # alerting that key off non-skipped FAILED still fire in an outage.
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.FAILED,
+            ),
+        ):
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
+        assert status.status == NotificationStatus.FAILED
+        assert status.skipped is False
+        assert status.error_message == "discord: outbound post failed"
+
+
 class TestExternalAdapterIdentity:
     @pytest.mark.parametrize(
         "adapter_cls, channel_type, platform",
         [
-            (WhatsAppChannelAdapter, CHANNEL_TYPE_WHATSAPP, ConversationSource.WHATSAPP),
-            (SlackChannelAdapter, CHANNEL_TYPE_SLACK, ConversationSource.SLACK),
-            (TelegramChannelAdapter, CHANNEL_TYPE_TELEGRAM, ConversationSource.TELEGRAM),
-            (DiscordChannelAdapter, CHANNEL_TYPE_DISCORD, ConversationSource.DISCORD),
-            (ImessageChannelAdapter, CHANNEL_TYPE_IMESSAGE, ConversationSource.IMESSAGE),
+            (WhatsAppChannelAdapter, NotificationChannel.WHATSAPP, ConversationSource.WHATSAPP),
+            (SlackChannelAdapter, NotificationChannel.SLACK, ConversationSource.SLACK),
+            (TelegramChannelAdapter, NotificationChannel.TELEGRAM, ConversationSource.TELEGRAM),
+            (DiscordChannelAdapter, NotificationChannel.DISCORD, ConversationSource.DISCORD),
+            (ImessageChannelAdapter, NotificationChannel.IMESSAGE, ConversationSource.IMESSAGE),
         ],
     )
     def test_channel_type_and_platform(self, adapter_cls, channel_type, platform) -> None:

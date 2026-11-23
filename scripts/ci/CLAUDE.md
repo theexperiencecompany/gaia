@@ -43,6 +43,22 @@ count, who holds CPU slots, and how many mutmut/pytest processes are running.
 Release and deploy are two concepts, not one: `release.sh` publishes artifacts
 (image tags, `:latest`, the CLI on npm); `deploy.sh` puts them on the Swarm.
 
+A backend deploy runs in this order, and each step must succeed before the next:
+`deploy.sh migrate` runs the release's data migrations (`apps/api/scripts/post_deploy.py`)
+as a one-off Swarm job of the image about to roll, with the backend's environment,
+secrets, networks and working directory copied from its live task template, then the
+conversation check (and, only when it finds work, the catch-up with the old writers
+stopped); then `deploy.sh stack` rolls the services; then convergence and `verify-commit`. No API or
+worker of a release ever serves before its migrations finished. The previous release
+keeps serving while the job runs, so a migration that moves a field leaves it reading
+that field's default for those minutes, so a migration that moves a field is
+expand/contract: the expand copies and keeps the old field, and the contract step that drops
+it runs a release later. `apps/api/scripts/contract_moved_fields.py` is the pending contract
+for the todo and notification moves; the next release appends it to `POST_DEPLOY_STEPS`
+(`infra/docker/CLAUDE.md`). Self-host gets the same order from the
+`migrate` service in `packages/cli/selfhost/docker-compose.selfhost.yml`, which the API
+and worker wait on; Render runs it as their `preDeployCommand`.
+
 `baselines/` holds the ratchet files for the gates that landed on a tree
 that already violated them (`checks.mjs api-schema-types`,
 `api-client-imports`, and `smoke-web.sh squirrel`'s per-page findings). Each line is one known violation, each file has a header
@@ -94,7 +110,7 @@ source text plus openapi.json, with the file list, baselines and reporting
 left in checks-commands.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
-`cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
+`cli-config-schema`, `deploy-templates`, `link-constants` and `openui-prompts`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
 crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run

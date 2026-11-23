@@ -22,6 +22,7 @@ from app.models.chat_channel_models import CHAT_CHANNEL_VALUES
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
 from app.models.platform_models import PlatformLinkEntry
 from app.models.presence_models import PresenceSnapshot
+from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.delivery.presence import active_surface, read_presence
 from app.services.platform_link_service import linked_platforms_of
@@ -122,6 +123,20 @@ def proactive_destination(target: ProactiveTarget | None) -> ProactiveDestinatio
     return {"destination": "in_app", "destination_basis": target.reason}
 
 
+def _reachable(
+    platform: str, linked: Mapping[str, PlatformLinkEntry], basis: ChatChannelBasis
+) -> ChatChannel | None:
+    """Return the user's account on platform when it is a linked bot platform with an account id."""
+    entry: PlatformLinkEntry | None = linked.get(platform)
+    if entry is None:
+        return None
+    source = ConversationSource.coerce(platform)
+    platform_user_id = entry.get("platformUserId")
+    if source is None or source not in BOT_CONVERSATION_SOURCES or not platform_user_id:
+        return None
+    return ChatChannel(source=source, platform_user_id=str(platform_user_id), basis=basis)
+
+
 def pick_chat_channel(
     priority: list[str],
     linked: Mapping[str, PlatformLinkEntry],
@@ -138,18 +153,24 @@ def pick_chat_channel(
     """
     candidates = [active.value, *priority] if active is not None else priority
     for platform in dict.fromkeys(candidates):
-        entry: PlatformLinkEntry | None = linked.get(platform)
-        if entry is None or not preferences.get(platform, True):
-            continue
-        source = ConversationSource.coerce(platform)
-        platform_user_id = entry.get("platformUserId")
-        if source is None or source not in BOT_CONVERSATION_SOURCES or not platform_user_id:
+        if not preferences.get(platform, True):
             continue
         basis: ChatChannelBasis = (
             "recent_activity" if active is not None and platform == active.value else "priority"
         )
-        return ChatChannel(source=source, platform_user_id=str(platform_user_id), basis=basis)
+        channel = _reachable(platform, linked, basis)
+        if channel is not None:
+            return channel
     return None
+
+
+def channel_for(user: UserDocument, source: ConversationSource) -> ChatChannel | None:
+    """Return the user's account on this one platform, whatever their order and preferences say.
+
+    For a send whose platform is already decided (a notification routed to it, the
+    hello for the platform just linked); None when it is not linked or has no account id.
+    """
+    return _reachable(source.value, linked_platforms_of(user), "priority")
 
 
 async def _active_surface_of(user_id: str) -> ConversationSource | None:

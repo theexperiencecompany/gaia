@@ -30,6 +30,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkflowRun,
 )
+from app.models.trigger_gate_models import QuietHoursBypass
 from app.services.conversation.comms_input import work_cards_note
 from app.services.conversation.comms_runner import CommsTurn, step_turn_ref
 from app.services.conversation.mongo_log_base import not_found
@@ -39,6 +40,7 @@ from app.services.conversation.todo_wake import todo_runs_reported
 from app.services.conversation.workspace import schedule_last_active_touch
 from app.services.delivery.chat_channel import proactive_surface, resolve_proactive_target
 from app.services.delivery.presence import presence_before
+from app.services.quiet_hours import message_class
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
@@ -182,7 +184,10 @@ def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> No
     configurable["stream_id"] = run.execution_id
     configurable["workflow_id"] = run.workflow.id
     configurable["workflow_title"] = run.workflow.title
-    configurable["workflow_notify_on_completion"] = run.trigger.workflow_notify_on_completion
+    configurable["workflow_delivery"] = run.trigger.workflow_delivery
+    configurable["workflow_message_class"] = message_class(
+        isinstance(run.trigger.quiet_hours, QuietHoursBypass)
+    )
     configurable["playbook_fallback"] = run.trigger.playbook_fallback
 
 

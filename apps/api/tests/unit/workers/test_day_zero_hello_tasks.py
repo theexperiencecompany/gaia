@@ -1,0 +1,271 @@
+"""GAIA's first text after a user links a chat platform: guards, prompt, delivery.
+
+The model call, the platform publish, the user repository and analytics are the
+faked seams; channel picking, prompt building and the user context are real.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+import time_machine
+
+from app.constants.briefing import BriefingFrequency
+from app.constants.chat import ConversationSource
+from app.constants.notifications import ProactiveMessageClass
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.users import user_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument, DayZeroHello
+from app.models.user_models import UserDocument
+from app.services.briefing.goals import StatedGoal
+from app.services.delivery.chat_channel import ChatChannel
+from app.services.outbound_delivery import OutboundResult
+from app.workers.brief_slots import slot_minute
+from app.workers.tasks import day_zero_hello_tasks as hello
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
+from tests.factories import make_user_id
+from tests.helpers import WideEventRecorder
+
+_USER = make_user_id()
+_MINUTE = f"{slot_minute(_USER):02d}"
+_NOW = datetime(2026, 10, 14, 9, tzinfo=UTC)
+_TASK = "send_day_zero_hello"
+
+
+def _user(**overrides: Any) -> UserDocument:
+    data: dict[str, Any] = {
+        "id": _USER,
+        "name": "Ada Lovelace",
+        "created_at": _NOW - timedelta(days=1),
+        "platform_links": {"telegram": {"id": "42"}},
+    }
+    data.update(overrides)
+    return UserDocument(**data)
+
+
+class Seams:
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.get_user = AsyncMock(return_value=_user())
+        self.mark_sent = AsyncMock()
+        self.state = AsyncMock(return_value=BriefingStateDocument(user_id=_USER))
+        self.goal = AsyncMock(return_value=[StatedGoal("raise a seed round")])
+        self.agent = AsyncMock(return_value=hello.HelloBubbles(bubbles=["Hi Ada!", "Brief at 8."]))
+        self.post = AsyncMock(return_value=OutboundResult.PUBLISHED)
+        self.capture = MagicMock()
+        monkeypatch.setattr(user_repository, "get", self.get_user)
+        monkeypatch.setattr(briefing_state_repository, "state_for", self.state)
+        monkeypatch.setattr(briefing_state_repository, "mark_day_zero_hello_sent", self.mark_sent)
+        monkeypatch.setattr(hello, "stated_goals", self.goal)
+        monkeypatch.setattr(hello, "ainvoke_structured", self.agent)
+        monkeypatch.setattr(hello, "post_to_platform_chat", self.post)
+        monkeypatch.setattr(hello, "capture", self.capture)
+        self.recorder = WideEventRecorder()
+
+    async def send(self, platform: str = "telegram") -> str:
+        with patch("shared.py.wide_events._loguru", self.recorder):
+            return await hello.send_day_zero_hello({}, _USER, platform)
+
+    @property
+    def event(self) -> dict[str, Any]:
+        return self.recorder.event(_TASK)
+
+    def assert_nothing_sent(self) -> None:
+        self.agent.assert_not_awaited()
+        self.post.assert_not_awaited()
+        self.mark_sent.assert_not_awaited()
+        self.capture.assert_not_called()
+
+
+@pytest.fixture
+def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
+    with time_machine.travel(_NOW, tick=False):
+        yield Seams(monkeypatch)
+
+
+class TestGuards:
+    async def test_an_unsupported_platform_is_skipped(self, seams: Seams) -> None:
+        assert await seams.send("myspace") == f"skip {_USER}: unsupported platform myspace"
+
+        seams.get_user.assert_not_awaited()
+        assert seams.event["skipped"] == "unsupported_platform"
+        assert seams.event["platform"] == "myspace"
+
+    async def test_an_unknown_user_is_skipped(self, seams: Seams) -> None:
+        seams.get_user.return_value = None
+
+        assert await seams.send() == f"skip {_USER}: unknown user"
+
+        seams.get_user.assert_awaited_once_with(_USER)
+        assert seams.event["skipped"] == "unknown_user"
+        seams.assert_nothing_sent()
+
+    async def test_the_hello_goes_out_once_ever(self, seams: Seams) -> None:
+        seams.state.return_value = BriefingStateDocument(
+            user_id=_USER, day_zero_hello=DayZeroHello(sent_at=_NOW, platform="discord")
+        )
+
+        assert await seams.send() == f"skip {_USER}: day-zero hello already sent"
+
+        assert seams.event["skipped"] == "already_sent"
+        seams.state.assert_awaited_once_with(_USER)
+        seams.assert_nothing_sent()
+
+    @pytest.mark.parametrize(
+        "created_at",
+        [None, _NOW - timedelta(days=14, seconds=1)],
+        ids=["unknown-age", "just-past-14-days"],
+    )
+    async def test_an_old_account_is_not_a_day_zero_moment(
+        self, seams: Seams, created_at: datetime | None
+    ) -> None:
+        seams.get_user.return_value = _user(created_at=created_at)
+
+        assert await seams.send() == f"skip {_USER}: account older than 14 days"
+
+        assert seams.event["skipped"] == "account_too_old"
+        seams.assert_nothing_sent()
+
+    @pytest.mark.parametrize(
+        "created_at",
+        [_NOW - timedelta(days=14), (_NOW - timedelta(days=13)).replace(tzinfo=None)],
+        ids=["exactly-14-days", "naive-utc-from-mongo"],
+    )
+    async def test_an_account_up_to_14_days_old_is_greeted(
+        self, seams: Seams, created_at: datetime
+    ) -> None:
+        seams.get_user.return_value = _user(created_at=created_at)
+
+        assert await seams.send() == f"sent day-zero hello to {_USER} on telegram"
+
+    async def test_a_platform_unlinked_before_the_job_ran_is_skipped(self, seams: Seams) -> None:
+        seams.get_user.return_value = _user(platform_links={"discord": {"id": "7"}})
+
+        assert await seams.send() == f"skip {_USER}: telegram not linked"
+
+        assert seams.event["skipped"] == "not_linked"
+        seams.assert_nothing_sent()
+
+
+class TestDelivery:
+    async def test_the_bubbles_land_in_the_linked_chat_and_the_flag_is_set(
+        self, seams: Seams
+    ) -> None:
+        assert await seams.send() == f"sent day-zero hello to {_USER} on telegram"
+
+        post = seams.post.await_args.kwargs
+        assert post["channel"] == ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="42", basis="priority"
+        )
+        assert post["message"].text == f"Hi Ada!{NEW_MESSAGE_BREAKER}Brief at 8."
+        assert post["message"].notice_id == f"day-zero-hello:{_USER}"
+        assert post["message"].origin == "day-zero hello"
+        assert post["user"].user_id == _USER
+        # A hello the user just asked for by linking must not wait out their quiet hours.
+        assert post["message"].message_class is ProactiveMessageClass.USER_TRIGGERED
+        seams.mark_sent.assert_awaited_once_with(_USER, "telegram")
+        seams.capture.assert_called_once_with(
+            UserId(_USER), BriefingDayZeroHelloSent(platform="telegram", has_goal=True)
+        )
+        assert (seams.event["bubbles"], seams.event["has_goal"]) == (2, True)
+        assert seams.event["user"] == {"id": _USER}
+        assert "skipped" not in seams.event
+
+    async def test_the_agent_writes_from_the_users_first_name_and_goal(self, seams: Seams) -> None:
+        await seams.send()
+
+        seams.goal.assert_awaited_once_with(_USER)
+        schema, prompt = seams.agent.await_args.args
+        assert schema is hello.HelloBubbles
+        assert "texting Ada for the first time" in prompt
+        assert "- raise a seed round" in prompt
+        assert "OFFER one specific" in prompt
+        assert seams.agent.await_args.kwargs == {
+            "label": _TASK,
+            "config": {"configurable": {"user_id": _USER}},
+        }
+
+    @pytest.mark.parametrize(
+        ("schedule", "promised"),
+        [
+            # 09:00 UTC is 14:30 in Kolkata, past a 9 AM brief: the first lands tomorrow.
+            (BriefingSchedule(hour=9), "their first brief lands tomorrow at 9:{minute} AM."),
+            (BriefingSchedule(hour=18), "their first brief lands today at 6:{minute} PM."),
+            # Noon is still ahead at 09:00 UTC but already past in Kolkata.
+            (BriefingSchedule(hour=12), "their first brief lands tomorrow at 12:{minute} PM."),
+            # 14 Oct 2026 is a Wednesday: the weekly digest is Sunday's.
+            (
+                BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY),
+                "their first brief lands Sunday at 5:{minute} PM.",
+            ),
+        ],
+    )
+    async def test_the_hello_promises_the_first_brief_when_it_really_lands(
+        self, seams: Seams, schedule: BriefingSchedule, promised: str
+    ) -> None:
+        seams.get_user.return_value = _user(timezone="Asia/Kolkata")
+        seams.state.return_value = BriefingStateDocument(user_id=_USER, schedule=schedule)
+
+        await seams.send()
+
+        prompt = seams.agent.await_args.args[1]
+        assert promised.format(minute=_MINUTE) in prompt
+        assert "around 8" not in prompt
+
+    async def test_a_weekdays_user_linking_on_saturday_is_promised_sundays_digest(
+        self, seams: Seams
+    ) -> None:
+        seams.get_user.return_value = _user(timezone="Asia/Kolkata")
+        seams.state.return_value = BriefingStateDocument(
+            user_id=_USER,
+            schedule=BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=9),
+        )
+
+        # 17 Oct 2026 is a Saturday: the next brief is the digest, not Monday's daily.
+        with time_machine.travel(datetime(2026, 10, 17, 9, tzinfo=UTC), tick=False):
+            await seams.send()
+
+        prompt = seams.agent.await_args.args[1]
+        assert f"their first brief lands tomorrow at 5:{_MINUTE} PM." in prompt
+
+    async def test_a_user_with_briefs_off_is_promised_none(self, seams: Seams) -> None:
+        seams.state.return_value = BriefingStateDocument(
+            user_id=_USER, schedule=BriefingSchedule(frequency=BriefingFrequency.OFF)
+        )
+
+        await seams.send()
+
+        prompt = seams.agent.await_args.args[1]
+        assert "first brief lands" not in prompt
+        assert "never promise them one" in prompt
+
+    @pytest.mark.parametrize("name", [None, "   "])
+    async def test_a_user_without_a_name_is_greeted_as_there(
+        self, seams: Seams, name: str | None
+    ) -> None:
+        seams.get_user.return_value = _user(name=name, email="delivered+dev@resend.dev")
+        seams.goal.return_value = []
+
+        await seams.send()
+
+        prompt = seams.agent.await_args.args[1]
+        assert "texting there for the first time" in prompt
+        assert "ask ONE specific question" in prompt
+        seams.capture.assert_called_once_with(
+            UserId(_USER), BriefingDayZeroHelloSent(platform="telegram", has_goal=False)
+        )
+
+    async def test_a_skipped_publish_leaves_the_flag_unset(self, seams: Seams) -> None:
+        seams.post.return_value = OutboundResult.SKIPPED
+
+        assert await seams.send() == f"skip {_USER}: publish skipped (telegram)"
+
+        assert seams.event["skipped"] == "publish_skipped"
+        seams.mark_sent.assert_not_awaited()
+        seams.capture.assert_not_called()

@@ -1,5 +1,4 @@
 import type {
-  TriggerConfig,
   WorkflowStepOutput,
   WorkflowWithIntegrations,
 } from "../api/generated";
@@ -9,15 +8,6 @@ export type {
   WorkflowListResponse,
   WorkflowResponse,
 } from "../api/generated";
-
-export interface ExecutionConfig {
-  method: "chat" | "background" | "hybrid";
-  timeout_seconds: number;
-  max_retries: number;
-  retry_delay_seconds: number;
-  notify_on_completion: boolean;
-  notify_on_failure: boolean;
-}
 
 export interface WorkflowMetadata {
   created_from: "chat" | "modal" | "todo" | "template" | "api";
@@ -52,15 +42,4 @@ export interface CommunityWorkflow {
   creator: ContentCreator;
   categories?: string[];
   total_executions?: number;
-}
-
-export interface CreateWorkflowPayload {
-  title: string;
-  description?: string;
-  prompt: string;
-  trigger_config?: Partial<TriggerConfig>;
-  steps?: Omit<WorkflowStep, "id">[];
-  execution_config?: Partial<ExecutionConfig>;
-  metadata?: Partial<WorkflowMetadata>;
-  generate_immediately?: boolean;
 }

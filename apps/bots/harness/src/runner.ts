@@ -9,6 +9,7 @@
  * against.
  */
 
+import type { QuietHours } from "@gaia/shared/api/generated";
 import { allCommands, type PlatformName, withTimeout } from "@gaia/shared/bots";
 import { HarnessAdapter } from "./adapter";
 import { isEmulatablePlatform, resolveEmulation } from "./emulation";
@@ -110,6 +111,28 @@ export async function linkDevUser(
   };
 }
 
+/** Calls the API as the dev user and returns its JSON body, failing the run on any refusal. */
+async function asDevUser<T>(
+  apiUrl: string,
+  email: string,
+  method: "GET" | "PUT" | "PATCH",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(`${apiUrl}${path}`, {
+    method,
+    headers: { "content-type": "application/json", "X-Dev-User": email },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `${method} ${path} for ${email} returned ${res.status}: ${await res.text()}`,
+    );
+  }
+  return (await res.json()) as T;
+}
+
 /**
  * Asks before every call of `askFor` and before no other: the per-tool asks sit
  * on top of "allow always", which is how a user sets them in settings.
@@ -119,21 +142,24 @@ async function askBefore(
   email: string,
   askFor: readonly string[],
 ): Promise<void> {
-  const res = await fetch(`${apiUrl}/api/v1/approvals/preferences`, {
-    method: "PUT",
-    headers: { "content-type": "application/json", "X-Dev-User": email },
-    body: JSON.stringify({
-      mode: "always_allow",
-      tool_overrides: Object.fromEntries(askFor.map((tool) => [tool, true])),
-      never_auto_tools: [],
-    }),
-    signal: AbortSignal.timeout(30_000),
+  await asDevUser(apiUrl, email, "PUT", "/api/v1/approvals/preferences", {
+    mode: "always_allow",
+    tool_overrides: Object.fromEntries(askFor.map((tool) => [tool, true])),
+    never_auto_tools: [],
   });
-  if (!res.ok) {
-    throw new Error(
-      `setting ${email}'s approval preferences returned ${res.status}: ${await res.text()}`,
-    );
-  }
+}
+
+/**
+ * Turns the user's quiet hours off, so a proactive delivery (a todo run's question)
+ * arrives whatever the hour the run happens at, not held for the user's morning.
+ */
+async function quietHoursOff(apiUrl: string, email: string): Promise<void> {
+  const path = "/api/v1/user/quiet-hours";
+  const hours = await asDevUser<QuietHours>(apiUrl, email, "GET", path);
+  await asDevUser<QuietHours>(apiUrl, email, "PATCH", path, {
+    ...hours,
+    enabled: false,
+  } satisfies QuietHours);
 }
 
 /**
@@ -278,6 +304,7 @@ export async function runScenario(
   const platform = scenario.emulate;
   const user = await linkDevUser(apiUrl, scenario.user, platform);
   await askBefore(apiUrl, user.email, scenario.askBefore ?? []);
+  await quietHoursOff(apiUrl, user.email);
   const transcript = new TranscriptRecorder(platform, outPath);
   let adapter = await bootAdapter(platform, apiUrl, transcript);
   const cutShort = terminationRequested();

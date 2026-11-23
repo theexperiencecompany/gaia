@@ -14,7 +14,7 @@ export function makeTodo(id: string, overrides: Partial<Todo> = {}): Todo {
     project_id: "project-1",
     completed: false,
     completed_at: null,
-    notify_on_run: true,
+    delivery: "now",
     subtasks: [],
     workflow_id: null,
     vfs_path: `/todos/${id}/canvas.md`,

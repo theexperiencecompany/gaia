@@ -85,9 +85,10 @@ export const authApi = {
       errorMessage: "Failed to update name",
     }),
 
-  // Logout user
-  logout: async (): Promise<void> => {
+  // Logout user; returnUrl (switching accounts) brings the next sign-in back to it
+  logout: async (returnUrl?: string): Promise<void> => {
     const response = await api.post("/api/v1/user/logout", {
+      query: returnUrl ? { return_url: returnUrl } : undefined,
       successMessage: "Logged out successfully",
       errorMessage: "Failed to logout",
     });

@@ -26,6 +26,7 @@ from app.config.rate_limits import (
 )
 from app.config.settings import settings
 from app.constants.cache import RATE_LIMIT_KEY_PREFIX
+from app.constants.http import RATE_LIMIT_EXCEEDED_CODE
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
@@ -41,7 +42,7 @@ from app.services.limit_upsell import (
     current_limit_origin,
     schedule_limit_upsell,
 )
-from app.services.usage_activity import counts_as_activity, record_activity
+from app.services.usage_activity import count_daily_actions, counts_as_activity
 from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -67,7 +68,7 @@ class RateLimitExceededException(HTTPException):
         current_plan: str | None = None,
     ) -> None:
         detail = {
-            "code": "rate_limit_exceeded",
+            "code": RATE_LIMIT_EXCEEDED_CODE,
             "feature": feature,
             "message": f"Rate limit exceeded for {feature}",
         }
@@ -300,7 +301,7 @@ class TieredRateLimiter:
 
         # Durable daily rollup for the activity heatmap (meaningful actions only).
         if counts_as_activity(feature_key):
-            spawn_background_task(record_activity(user_id))
+            spawn_background_task(count_daily_actions(user_id))
 
         return usage_info
 

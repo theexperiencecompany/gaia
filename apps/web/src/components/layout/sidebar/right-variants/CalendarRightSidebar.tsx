@@ -2,6 +2,7 @@
 
 import { Input, Label, ListBox, Select, Switch, TextArea } from "@heroui/react";
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
+import { formatDate } from "@shared/utils";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { inputVariants } from "@/components/shared/controlVariants";
@@ -322,7 +323,7 @@ const EventDetailsAccordion: React.FC<EventDetailsAccordionProps> = ({
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-500">Created</span>
               <span className="text-zinc-400" suppressHydrationWarning>
-                {new Date(event.created).toLocaleDateString()}
+                {formatDate(event.created, "numeric")}
               </span>
             </div>
           )}
@@ -330,7 +331,7 @@ const EventDetailsAccordion: React.FC<EventDetailsAccordionProps> = ({
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-500">Updated</span>
               <span className="text-zinc-400" suppressHydrationWarning>
-                {new Date(event.updated).toLocaleDateString()}
+                {formatDate(event.updated, "numeric")}
               </span>
             </div>
           )}

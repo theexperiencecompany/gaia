@@ -1702,6 +1702,87 @@ class TestOpenExternalRefIndex:
         assert await repo.find_open_by_external_ref("u1", self._thread("thread-3")) is None
 
 
+class TestBriefingReads:
+    """The briefing's look-back (completed since) and open-todos reads."""
+
+    async def test_lists_todos_completed_since_the_cutoff_newest_first(
+        self, repo, make_doc, raw_collection
+    ):
+        since = datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        done = {
+            "at_cutoff": since,
+            "latest": since + timedelta(hours=2),
+            "before": since - timedelta(seconds=1),
+        }
+        ids: dict[str, str] = {}
+        for title, completed_at in done.items():
+            todo = await repo.create(make_doc(user_id="u-lookback", title=title, completed=True))
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"completed_at": completed_at}}
+            )
+            ids[title] = todo.id
+        still_open = await repo.create(make_doc(user_id="u-lookback", title="open"))
+        await raw_collection.update_one(
+            {"_id": ObjectId(still_open.id)}, {"$set": {"completed_at": since}}
+        )
+
+        found = await repo.list_completed_since("u-lookback", since=since)
+
+        assert [t.id for t in found] == [ids["latest"], ids["at_cutoff"]]
+
+    async def test_lists_the_users_activity_on_one_kind_of_outside_object_since_the_cutoff(
+        self, repo, make_doc, raw_collection
+    ):
+        user_id, since = "u-activity", datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        gmail = todo_models.ExternalRefSource.GMAIL_THREAD
+        desk = todo_models.ExternalRefSource.INBOX_DESK
+
+        async def seed(
+            title: str, source, *, created_at: datetime, completed_at=None, user=user_id
+        ):
+            todo = await repo.create(
+                make_doc(
+                    user_id=user,
+                    title=title,
+                    external_ref=todo_models.ExternalRef(source=source, id=title),
+                )
+            )
+            fields = {"created_at": created_at, "completed_at": completed_at}
+            await raw_collection.update_one({"_id": ObjectId(todo.id)}, {"$set": fields})
+            return todo.id
+
+        old = since - timedelta(days=3)
+        opened = await seed("opened", gmail, created_at=since)
+        closed = await seed("closed", gmail, created_at=old, completed_at=since)
+        await seed("stale", gmail, created_at=old, completed_at=since - timedelta(seconds=1))
+        await seed("other-kind", desk, created_at=since)
+        await seed("theirs", gmail, created_at=since, user="someone-else")
+
+        found = await repo.list_external_ref_activity_since(user_id, gmail, since=since)
+
+        assert sorted(t.id for t in found) == sorted([opened, closed])
+
+    async def test_lists_the_users_own_open_todos_most_recently_updated_first(
+        self, repo, make_doc, raw_collection
+    ):
+        user_id = "u-open"
+        older = await repo.create(make_doc(user_id=user_id, title="older"))
+        newer = await repo.create(make_doc(user_id=user_id, title="newer"))
+        await repo.create(make_doc(user_id=user_id, title="tracked", labels=[GAIA_TRACKED_LABEL]))
+        await repo.create(make_doc(user_id=user_id, title="done", completed=True))
+        await repo.create(make_doc(user_id="someone-else", title="theirs"))
+        for hour, todo in enumerate([older, newer]):
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)},
+                {"$set": {"updated_at": datetime(2026, 10, 14, hour, tzinfo=UTC)}},
+            )
+
+        found = await repo.list_open_user_todos(user_id, limit=10)
+
+        assert [t.id for t in found] == [newer.id, older.id]
+        assert [t.id for t in await repo.list_open_user_todos(user_id, limit=1)] == [newer.id]
+
+
 async def test_running_tracked_todos_are_the_users_open_unpaused_tracked_ones(repo, make_doc):
     running = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="run"))
     await repo.create(make_doc(user_id="u1", title="untracked"))

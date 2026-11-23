@@ -34,6 +34,7 @@ from app.constants.todos import (
     TRIGGER_EVENTS_PROMPT_MAX_CHARS,
 )
 from app.constants.waits import WAIT_MET_TRIGGER
+from app.constants.workflows import WorkflowDelivery
 from app.models.quiet_hours_models import QuietHours
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoRunContext
 from app.models.trigger_subscription_models import TriggerOrigin
@@ -75,7 +76,7 @@ def external_ref_guidance(doc: TodoDocument, context: TodoRunContext) -> str | N
 
 def delivery_guidance(doc: TodoDocument) -> str:
     """State where the run's final report goes; a kind that sets its own report form gets no second one."""
-    if not doc.notify_on_run:
+    if doc.delivery is WorkflowDelivery.SILENT:
         return SILENT_RUN_GUIDANCE
     if doc.owns_report_form:
         return DELIVERED_RESULT_RULES
@@ -191,7 +192,7 @@ def build_execution_prompt(
 
     The trigger payloads go in the prompt itself, the only way they reach the
     model. They are attacker-influenceable, so all of them share one fence
-    labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
+    labelled untrusted. doc.delivery decides which delivery contract is stated.
     """
     prompt_parts = opening_parts(doc, origin, coalesced, local_now, quiet_hours)
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))

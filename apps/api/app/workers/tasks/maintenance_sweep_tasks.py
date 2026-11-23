@@ -12,8 +12,12 @@ from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
+from app.constants.notifications import NotificationKind
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
+from app.models.notification.details_models import DormantTodosNotification, TodoNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -24,12 +28,10 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.canvas_markdown import bounded_canvas
 from app.services.notification_service import notification_service
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
-from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
-from app.utils.timezone import is_within_local_daytime
 from shared.py.wide_events import log
 
 DORMANT_DAYS = 5
@@ -48,11 +50,6 @@ NOTIFICATION_MUTE_DAYS = 30
 # between notifications; it resets only after this much silence.
 STRIKE_TTL_DAYS = 30
 SECONDS_PER_DAY = 86400
-
-# Quiet hours: only push proactive notifications during the user's local daytime
-# so reminders never arrive in the middle of the night.
-DAYTIME_START_HOUR = 9
-DAYTIME_END_HOUR = 21
 
 # What a tier's health check decided, so the caller's counter branches are checked.
 ExpiredOutcome = Literal["archived", "notified", "muted"]
@@ -73,21 +70,21 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     pool = await RedisPoolManager.get_pool()
 
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
+    # A dormant owner would read none of what the sweep's LLM checks produce.
+    away = await user_repository.find_activity_rows(
+        ActivityStatus.DORMANT, among={todo.user_id for todo in todos}
+    )
+    away_ids = {user.id for user in away}
+    todos = [todo for todo in todos if todo.user_id not in away_ids]
     migrated = await _normalize_all_canvases()
     expired, overdue, dormant = await _classify_tracked_todos(pool, now, todos)
 
     # Track health-check calls per user to cap LLM usage per sweep
     health_checks_used: dict[str, int] = {}
-    # Cache the daytime decision per user for the duration of this sweep.
-    daytime_cache: dict[str, bool] = {}
 
-    archived, notified_expired = await _process_expired(
-        expired, pool, now, health_checks_used, daytime_cache
-    )
-    notified_overdue = await _process_overdue(overdue, pool, now, daytime_cache)
-    requeued, needs_attention_todos = await _process_dormant(
-        dormant, pool, now, health_checks_used, daytime_cache
-    )
+    archived, notified_expired = await _process_expired(expired, pool, health_checks_used)
+    notified_overdue = await _process_overdue(overdue, pool)
+    requeued, needs_attention_todos = await _process_dormant(dormant, pool, health_checks_used)
 
     if needs_attention_todos:
         await _send_dormant_digest(needs_attention_todos)
@@ -98,6 +95,7 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
         f"digest_items:{len(needs_attention_todos)}"
     )
     log.set(
+        skipped_dormant_owners=len(away_ids),
         migrated_canvases=migrated,
         archived=archived,
         notified_expired=notified_expired,
@@ -185,9 +183,7 @@ async def _classify_tracked_todos(
 async def _process_expired(
     expired: list[TodoDocument],
     pool: ArqRedis,
-    now: datetime,
     health_checks_used: dict[str, int],
-    daytime_cache: dict[str, bool],
 ) -> tuple[int, int]:
     """Run the health-check agent on expired todos; archive or notify each.
 
@@ -197,9 +193,6 @@ async def _process_expired(
     notified_expired = 0
     for todo in expired:
         uid = todo.user_id
-        # Defer to a daytime sweep: no cooldown consumed, retried later.
-        if not await _is_user_daytime(uid, now, daytime_cache):
-            continue
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
             continue
         # Counted before the call: a failed check has still spent the budget.
@@ -227,15 +220,11 @@ async def _process_expired(
 async def _process_overdue(
     overdue: list[TodoDocument],
     pool: ArqRedis,
-    now: datetime,
-    daytime_cache: dict[str, bool],
 ) -> int:
     """Send an individual notification for each overdue todo. Returns notified count."""
     notified_overdue = 0
     for todo in overdue:
         uid = todo.user_id
-        if not await _is_user_daytime(uid, now, daytime_cache):
-            continue
         try:
             notified = await _notify_overdue(todo, pool)
         except Exception as exc:
@@ -256,9 +245,7 @@ async def _process_overdue(
 async def _process_dormant(
     dormant: list[TodoDocument],
     pool: ArqRedis,
-    now: datetime,
     health_checks_used: dict[str, int],
-    daytime_cache: dict[str, bool],
 ) -> tuple[int, list[TodoDocument]]:
     """Re-queue dormant todos via the agent, else collect them for the digest.
 
@@ -271,8 +258,6 @@ async def _process_dormant(
     needs_attention_candidates: list[TodoDocument] = []
     for todo in dormant:
         uid = todo.user_id
-        if not await _is_user_daytime(uid, now, daytime_cache):
-            continue
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
             needs_attention_candidates.append(todo)
             continue
@@ -401,7 +386,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
     )
     log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
@@ -447,7 +432,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
         )
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()
-        await record_activity(
+        await record_todo_activity(
             todo_id,
             user_id,
             TodoActivityEvent.MAINTENANCE,
@@ -497,7 +482,7 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
 
     # Add needs-follow-up label
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=["needs-follow-up"])
-    await record_activity(
+    await record_todo_activity(
         todo_id,
         user_id,
         TodoActivityEvent.MAINTENANCE,
@@ -563,7 +548,9 @@ async def _send_user_dormant_digest(
                     body=body,
                     actions=[action],
                 ),
-                metadata={"todo_count": count},
+                details=DormantTodosNotification(
+                    kind=NotificationKind.DORMANT_TODOS, todo_count=count
+                ),
             )
         )
         log.info(
@@ -638,7 +625,7 @@ async def _send_individual_notification(
                     body=body,
                     actions=[todo_redirect_action("View todo", todo_id)],
                 ),
-                metadata={"todo_id": todo_id},
+                details=TodoNotification(kind=NotificationKind.TODO, todo_id=todo_id),
             )
         )
     except Exception as exc:
@@ -686,26 +673,3 @@ async def _register_notification(pool: ArqRedis, todo_id: str) -> bool:
     await pool.set(strike_key, str(strike), ex=STRIKE_TTL_DAYS * SECONDS_PER_DAY)
     await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[strike - 1])
     return True
-
-
-async def _is_user_daytime(user_id: str, now: datetime, cache: dict[str, bool]) -> bool:
-    """Whether it is currently daytime for user_id (cached per sweep).
-
-    Proactive notifications are deferred outside the user's local daytime window
-    so they never arrive overnight. Fails open (returns True) when the user or
-    timezone can't be resolved.
-    """
-    if user_id in cache:
-        return cache[user_id]
-
-    timezone_name: str | None = None
-    try:
-        user = await get_user_by_id(user_id)
-        if user:
-            timezone_name = user.timezone
-    except Exception as exc:
-        log.warning("maintenance_sweep.user_tz_lookup_failed", user_id=user_id, error=str(exc))
-
-    result = is_within_local_daytime(now, timezone_name, DAYTIME_START_HOUR, DAYTIME_END_HOUR)
-    cache[user_id] = result
-    return result

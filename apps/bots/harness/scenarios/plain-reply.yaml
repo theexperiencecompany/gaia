@@ -5,7 +5,7 @@
 # is deterministic and no real model is called.
 name: plain reply
 emulate: telegram
-user: dev@gaia.local
+user: delivered+bot-harness@resend.dev
 turns:
   - send: "say hi to me [[say:Hello from the sim stub]]"
     expect:

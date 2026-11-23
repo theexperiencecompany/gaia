@@ -94,8 +94,9 @@ def format_profession_for_display(profession: str) -> str:
 def build_user_context_parts(preferences: Mapping[str, object]) -> list[str]:
     """Build formatted user-context lines from preferences for the system prompt."""
     fields = PreferencePromptFields.model_validate(preferences)
-    log.set(
-        operation="build_user_context_parts",
+    # Namespaced: a top-level operation would overwrite the caller's (the brief's run, an agent turn).
+    log.set_ns(
+        "user_context",
         has_profession=bool(fields.profession),
         has_response_style=bool(fields.response_style),
         has_language=bool(fields.language),

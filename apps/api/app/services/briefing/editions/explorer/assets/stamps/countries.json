@@ -1,0 +1,197 @@
+{
+ "Angola": {
+  "denom": "Kz 500",
+  "air": "Por Avião",
+  "airSub": "Par Avion"
+ },
+ "Argentina": {
+  "denom": "$1.200",
+  "air": "Por Avión",
+  "airSub": "Par Avion"
+ },
+ "Bangladesh": {
+  "denom": "Tk 35",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Brazil": {
+  "denom": "R$ 4,50",
+  "air": "Por Avião",
+  "airSub": "Par Avion"
+ },
+ "Canada": {
+  "denom": "$3.19",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Chile": {
+  "denom": "$1.300",
+  "air": "Por Avión",
+  "airSub": "Par Avion"
+ },
+ "China": {
+  "denom": "¥5.00",
+  "air": "Hángkōng",
+  "airSub": "Par Avion"
+ },
+ "Colombia": {
+  "denom": "$6.500",
+  "air": "Por Avión",
+  "airSub": "Par Avion"
+ },
+ "DR Congo": {
+  "denom": "FC 2.500",
+  "air": "Par Avion",
+  "airSub": "By Air Mail"
+ },
+ "Egypt": {
+  "denom": "E£25",
+  "air": "Par Avion",
+  "airSub": "By Air Mail"
+ },
+ "Ethiopia": {
+  "denom": "Br 30",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "France": {
+  "denom": "€1,96",
+  "air": "Par Avion",
+  "airSub": "By Air Mail"
+ },
+ "Hong Kong": {
+  "denom": "HK$5.00",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "India": {
+  "denom": "₹25",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Indonesia": {
+  "denom": "Rp 10.000",
+  "air": "Pos Udara",
+  "airSub": "Par Avion"
+ },
+ "Iran": {
+  "denom": "Rls 50.000",
+  "air": "Par Avion",
+  "airSub": "By Air Mail"
+ },
+ "Iraq": {
+  "denom": "IQD 2.000",
+  "air": "Par Avion",
+  "airSub": "By Air Mail"
+ },
+ "Japan": {
+  "denom": "¥110",
+  "air": "Kōkūbin",
+  "airSub": "Par Avion"
+ },
+ "Malaysia": {
+  "denom": "RM 2.00",
+  "air": "Mel Udara",
+  "airSub": "Par Avion"
+ },
+ "Mexico": {
+  "denom": "$15.00",
+  "air": "Por Avión",
+  "airSub": "Par Avion"
+ },
+ "Myanmar": {
+  "denom": "K 500",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Nigeria": {
+  "denom": "₦500",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Pakistan": {
+  "denom": "Rs 120",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Peru": {
+  "denom": "S/ 9.00",
+  "air": "Por Avión",
+  "airSub": "Par Avion"
+ },
+ "Philippines": {
+  "denom": "₱45",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Russia": {
+  "denom": "₽65",
+  "air": "Avia",
+  "airSub": "Par Avion"
+ },
+ "Saudi Arabia": {
+  "denom": "SAR 9",
+  "air": "Par Avion",
+  "airSub": "By Air Mail"
+ },
+ "Singapore": {
+  "denom": "S$1.50",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "South Africa": {
+  "denom": "R 25,00",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "South Korea": {
+  "denom": "₩430",
+  "air": "Hanggong",
+  "airSub": "Par Avion"
+ },
+ "Spain": {
+  "denom": "€2,10",
+  "air": "Por Avión",
+  "airSub": "Par Avion"
+ },
+ "Sudan": {
+  "denom": "SDG 500",
+  "air": "Par Avion",
+  "airSub": "By Air Mail"
+ },
+ "Taiwan": {
+  "denom": "NT$15",
+  "air": "Hángkōng",
+  "airSub": "Par Avion"
+ },
+ "Tanzania": {
+  "denom": "TSh 2.000",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Thailand": {
+  "denom": "฿25",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Turkey": {
+  "denom": "₺30",
+  "air": "Uçak İle",
+  "airSub": "Par Avion"
+ },
+ "United Kingdom": {
+  "denom": "£2.80",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "United States": {
+  "denom": "$1.65",
+  "air": "By Air Mail",
+  "airSub": "Par Avion"
+ },
+ "Vietnam": {
+  "denom": "₫25.000",
+  "air": "Máy Bay",
+  "airSub": "Par Avion"
+ }
+}

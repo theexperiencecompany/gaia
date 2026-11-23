@@ -19,8 +19,10 @@ from redis.exceptions import RedisError
 import respx
 import time_machine
 
-from app.constants.todos import TodoActivityEvent
+from app.constants.notifications import NotificationKind
+from app.constants.todos import TodoActivityEvent, TodoCompleter
 from app.constants.trigger_gates import GateAuthor
+from app.models.notification.details_models import TodoTriggerFiredNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -115,7 +117,7 @@ def deps():
         patch(f"{_MOD}.notification_service.notify", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture") as capture,
-        patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
+        patch(f"{_MOD}.record_todo_activity", new_callable=AsyncMock) as activity,
         patch(f"{_MOD}.buffer_todo_trigger_event", new_callable=AsyncMock) as hold,
         patch(f"{_MOD}.buffer_todo_trigger_event_until", new_callable=AsyncMock) as hold_until,
     ):
@@ -604,7 +606,9 @@ class TestActions:
         assert request.content.body == f"An event you were watching ({GMAIL}) just fired."
         assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == f"/todos?todoId={TODO_ID}"
-        assert request.metadata == {"todo_id": TODO_ID, "subscription_id": sub.id}
+        assert request.details == TodoTriggerFiredNotification(
+            kind=NotificationKind.TODO_TRIGGER_FIRED, todo_id=TODO_ID, subscription_id=sub.id
+        )
         deps.enqueue.assert_not_awaited()
         deps.repo.update.assert_not_awaited()
 
@@ -622,6 +626,7 @@ class TestActions:
         assert (
             deps.complete.await_args.kwargs["summary"] == f"Completed automatically: {GMAIL} fired."
         )
+        assert deps.complete.await_args.kwargs["by"] is TodoCompleter.TRIGGER
 
     async def test_unblock_removes_only_the_blocking_labels(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [

@@ -52,6 +52,7 @@ from app.agents.tools.execute.execute_tool import build_execute_tool
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 from app.agents.workspace.offload import read_offload
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import (
     IntegrationAccount,
     IntegrationAccountStatus,
@@ -90,11 +91,15 @@ def tools(composio_client: Composio) -> dict[str, Any]:
 ACCOUNT_ID = "connected-account-1"
 
 
-def _accounts_record(status: IntegrationAccountStatus = "connected") -> UserIntegrationDocument:
+def _accounts_record(
+    status: IntegrationAccountStatus = IntegrationStatus.CONNECTED,
+) -> UserIntegrationDocument:
     return UserIntegrationDocument(
         user_id=USER,
         integration_id="any",
-        status="connected" if status == "connected" else "expired",
+        status=IntegrationStatus.CONNECTED
+        if status == IntegrationStatus.CONNECTED
+        else IntegrationStatus.EXPIRED,
         accounts=[
             IntegrationAccount(
                 id=ACCOUNT_ID, connected_account_id=ACCOUNT_ID, label="me", status=status

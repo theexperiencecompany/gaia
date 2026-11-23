@@ -1,3 +1,5 @@
+export { ArtifactCardDataSchema } from "../artifacts/schema";
+export type { ArtifactCardData } from "../artifacts/types";
 export type {
   ActionResult,
   ApprovalDecider,
@@ -92,12 +94,7 @@ export type {
   ToolDataEntry,
   ToolDataMap,
   ToolName,
-  TwitterData,
-  TwitterFollowersData,
-  TwitterPostCreatedData,
-  TwitterPostPreviewData,
   TwitterSearchData,
-  TwitterTimelineData,
   TwitterTweetData,
   TwitterUserData,
   WeatherData,

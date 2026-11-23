@@ -176,12 +176,12 @@ def error_responses(descriptions: Mapping[int, str]) -> dict[int | str, dict[str
 
 
 # FastAPI documents a response ``model`` under the route's ``response_class``
-# media type, so a ``text/html`` route has to spell out that its error bodies
-# are still the JSON envelope (registered as a component by every other route).
+# media type, so a text/html or text/event-stream route has to spell out that its
+# error bodies are still the JSON envelope (registered as a component by every other route).
 _JSON_ENVELOPE_CONTENT: dict[str, Any] = {
     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}
 }
-HTML_ROUTE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+NON_JSON_ROUTE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: _JSON_ENVELOPE_CONTENT,
     "4XX": _JSON_ENVELOPE_CONTENT,
     "5XX": _JSON_ENVELOPE_CONTENT,

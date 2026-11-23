@@ -1,6 +1,7 @@
 "use client";
 
-import { isToday, isYesterday, subDays } from "date-fns";
+import { dayName, TODAY, YESTERDAY } from "@shared/utils";
+import { subDays } from "date-fns";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -19,8 +20,8 @@ import { ChatTab } from "./ChatTab";
 import { accordionItemStyles } from "./constants";
 
 const getTimeFrame = (date: Date): string => {
-  if (isToday(date)) return "Today";
-  if (isYesterday(date)) return "Yesterday";
+  const named = dayName(date);
+  if (named === TODAY || named === YESTERDAY) return named;
 
   const daysAgo7 = subDays(new Date(), 7);
   const daysAgo30 = subDays(new Date(), 30);
@@ -33,9 +34,9 @@ const getTimeFrame = (date: Date): string => {
 
 const timeFramePriority = (timeFrame: string): number => {
   switch (timeFrame) {
-    case "Today":
+    case TODAY:
       return 0;
-    case "Yesterday":
+    case YESTERDAY:
       return 1;
     case "Previous 7 days":
       return 2;

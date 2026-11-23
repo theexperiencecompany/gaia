@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
-import { NotificationItem } from "@/features/notification/components/NotificationItem";
+import { NotificationCard } from "@/features/notification/components/NotificationCard";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
@@ -189,9 +189,11 @@ export default function NotificationListSection({
                 <ScrollShadow className="max-h-[60vh]">
                   <div className="space-y-2">
                     {localNotifications.map((notification) => (
-                      <NotificationItem
+                      <NotificationCard
                         key={notification.id}
                         notification={notification}
+                        tone="inset"
+                        clampBody
                         onMarkAsRead={handleMarkAsRead}
                       />
                     ))}

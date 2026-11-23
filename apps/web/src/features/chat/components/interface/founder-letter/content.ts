@@ -55,7 +55,6 @@ export const LETTER_DISMISSED_KEY = "gaia_founder_letter_dismissed";
 
 /** Ink: pure black on flat gold. No gray, no brown, no gradient. */
 export const INK = "#000000";
-export const INK_SOFT = "#000000";
 
 /** Typography: the app's normal sans everywhere. */
 export const BODY_FONT = "var(--font-inter), Inter, sans-serif";

@@ -13,12 +13,12 @@ import {
   TaskDone01Icon,
 } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
+import { FIXED_LOCALE, formatDay } from "@shared/utils";
 import { formatDistanceToNow } from "date-fns";
 import { memo } from "react";
 import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
-import { formatDate } from "@/utils/date/dateUtils";
 
 interface TodoItemMetaProps {
   todo: Todo;
@@ -103,7 +103,9 @@ export const TodoItemMeta = memo(function TodoItemMeta({
           variant="soft"
         >
           <CalendarCheckOut01Icon width={16} height={16} className="mx-1" />
-          <Chip.Label>{formatDate(todo.due_date)}</Chip.Label>
+          <Chip.Label>
+            {formatDay(todo.due_date, "fullDay", FIXED_LOCALE)}
+          </Chip.Label>
         </Chip>
       )}
 

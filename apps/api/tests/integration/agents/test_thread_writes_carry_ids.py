@@ -8,7 +8,9 @@ summary on it. Drives the real writers against a real checkpointed State graph.
 
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
+from typing import TypedDict
+
+from langchain_core.messages import AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, StateGraph
@@ -20,6 +22,10 @@ from app.override.langgraph_bigtool.utils import State
 
 THREAD = "thread-ids"
 CONFIG: RunnableConfig = {"configurable": {"thread_id": THREAD}}
+
+
+class _TurnInput(TypedDict):
+    messages: list[AnyMessage]
 
 
 async def _seed(graph: CompiledStateGraph, *messages: object) -> None:
@@ -52,7 +58,7 @@ class TestOutOfBandThreadWritesCarryIds:
     async def test_interruption_write_is_attributed_to_the_tool_node(self) -> None:
         # Without as_node the write inherits the model node that last wrote, so
         # the checkpoint would queue a tools re-entry on resume.
-        builder = StateGraph(State)
+        builder = StateGraph(State, input_schema=_TurnInput)
         builder.add_node("tools", lambda _state: {})
         builder.add_node("model", lambda _state: {})
         builder.set_entry_point("model")
