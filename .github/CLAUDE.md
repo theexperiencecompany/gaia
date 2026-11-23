@@ -16,9 +16,11 @@ work behind a runner's setup.
 - **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
   `lint-node` (with the repo-wide policy checks), `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
   `unit-b` slices, `test-mutation` on the changed modules (a survivor found
-  only in the queue is an ejection plus a fix round), `web-e2e-screen` (the
-  screen-over-time Playwright flows on the sim stack, when `web:e2e-screen`'s
-  inputs changed), `quality-gate`. The merge
+  only in the queue is an ejection plus a fix round), `web-e2e-screen` and
+  `bot-harness-e2e` (the screen-over-time Playwright flows and the bot harness
+  scenarios on the sim stack, when their target's inputs changed; two shards
+  each, every shard on its own stack, so neither waits on the other),
+  `quality-gate`. The merge
   queue (`merge_group`), master and dispatch run the full tier on top: the
   integration, bridge and browser slices (the regression-proof of a test that
   needs services rides integration, so it stays queue-only; a test only the

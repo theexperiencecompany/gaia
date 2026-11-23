@@ -17,6 +17,10 @@ name: Desktop PR Build
 # (ci:desktop-package-deps, tools/ci/project.json).
 on:
   workflow_call:
+    secrets:
+      # Empty on a fork or Dependabot PR: the build then waits out the anonymous ceiling.
+      INTERNAL_API_TOKEN:
+        required: false
 
 env:
   NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
@@ -37,6 +41,9 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
       - name: Build web (standalone)
+        env:
+          # Prerender fetches count against the web server's ceiling, not one runner address's.
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
         run: pnpm nx build web --skip-nx-cache
       - name: Build Electron main/preload
         run: pnpm nx build desktop
