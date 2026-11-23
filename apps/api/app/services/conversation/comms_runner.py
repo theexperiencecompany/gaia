@@ -206,7 +206,7 @@ class CommsGraphRunner:
         build_turn: CommsTurnBuilder,
         cancel_confirm_seconds: float = COMMS_CANCEL_CONFIRM_SECONDS,
         *,
-        history_fold: WorkspaceArchivingSummarizationMiddleware,
+        history_fold: Callable[[], WorkspaceArchivingSummarizationMiddleware],
     ) -> None:
         self._build_turn = build_turn
         self._confirm = cancel_confirm_seconds
@@ -254,14 +254,15 @@ class CommsGraphRunner:
         graph = await GraphManager.get_graph(GraphName.COMMS)
         config = _thread_config(conversation_id, user_id)
         thread = await _thread(graph, config)
-        if not self._fold.should_fold(GaiaAgentState(messages=thread)):
+        fold = self._fold()
+        if not fold.should_fold(GaiaAgentState(messages=thread)):
             return None
         keep = await kept()
         state = GaiaAgentState(
             messages=thread,
             verbatim_message_ids=verbatim_message_ids(thread, keep.owed, keep.pinned),
         )
-        update: SummaryUpdate | None = await self._fold.afold(state, config)
+        update: SummaryUpdate | None = await fold.afold(state, config)
         if update is None:
             return None
         return FoldPlan(tuple(m.id for m in thread), tuple(update["messages"]))

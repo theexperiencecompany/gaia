@@ -466,7 +466,7 @@ async def rig_for(
                 runner=CommsGraphRunner(
                     build_turn or _turn_builder(turns, user_id),
                     cancel_confirm_seconds=_CONFIRM_SECONDS,
-                    history_fold=create_comms_history_fold(model),
+                    history_fold=lambda: create_comms_history_fold(model),
                 ),
                 frames=frames,
                 effects=effects,

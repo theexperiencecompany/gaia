@@ -256,7 +256,9 @@ def runner(
             ),
         )
 
-    return CommsGraphRunner(build, cancel_confirm_seconds=CONFIRM_SECONDS, history_fold=UNUSED_FOLD)
+    return CommsGraphRunner(
+        build, cancel_confirm_seconds=CONFIRM_SECONDS, history_fold=lambda: UNUSED_FOLD
+    )
 
 
 def batch(*entries: LoggedEntry) -> Batch:
@@ -1046,7 +1048,7 @@ async def test_a_run_reads_the_comms_graph_and_builds_its_turn_from_the_batch(
             patch("app.services.conversation.comms_runner.CommsEventMapper", mapper),
         ):
             run = await CommsGraphRunner(
-                recording_build, CONFIRM_SECONDS, history_fold=UNUSED_FOLD
+                recording_build, CONFIRM_SECONDS, history_fold=lambda: UNUSED_FOLD
             ).start(claim(conversation_id), first, (), LEDGER)
             await collect(run)
     get_graph.assert_awaited_once_with(GraphName.COMMS)
@@ -1121,7 +1123,7 @@ async def test_a_thread_past_its_budget_folds_its_oldest_turns_keeping_what_is_o
     )
     # The last turn ran out of steps, so the agent node, not the tools, wrote the thread last.
     out_of_steps = runner(conversation_id, recursion_limit=2)._build_turn
-    folding = CommsGraphRunner(out_of_steps, history_fold=fold)
+    folding = CommsGraphRunner(out_of_steps, history_fold=lambda: fold)
     seeded = [m for seq in (1, 2, 3) for m in _settled(seq)]
     archive = AsyncMock(return_value=("rel", "/workspace/archived.json"))
     async with comms_graph([], model=gated("answer 4")) as graph:
