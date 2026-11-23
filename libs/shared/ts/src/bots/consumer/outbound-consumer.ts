@@ -18,6 +18,7 @@ import {
   describeErrorForAlert,
   type ReportDeliveryFailure,
 } from "../delivery-failures";
+import { BOT_OUTCOME, recordOutbound } from "../metrics";
 import type { OutboundNotifications, PlatformName } from "../types";
 import { BUBBLE_PAUSE_MS } from "../utils/bubbles";
 import { retryAfterMs } from "../utils/delivery-errors";
@@ -246,7 +247,14 @@ export class OutboundConsumer {
     failure: DeliveryFailure,
   ): void {
     this.reportFailure(failure);
+    recordOutbound(this.platform, BOT_OUTCOME.FAILED);
     this.settle(channel, () => channel.nack(msg, false, false));
+  }
+
+  /** Acks a delivered message; the one place an outbound delivery counts as ok. */
+  private acknowledge(channel: Channel, msg: ConsumeMessage): void {
+    recordOutbound(this.platform, BOT_OUTCOME.OK);
+    this.settle(channel, () => channel.ack(msg));
   }
 
   /**
@@ -396,7 +404,7 @@ export class OutboundConsumer {
     wideLog.set({ conversation_id: target.conversation_id });
     try {
       await this.follow(target);
-      this.settle(channel, () => channel.ack(msg));
+      this.acknowledge(channel, msg);
     } catch (err) {
       const reason = recordBotFailure("conversation_wake_failed", err, {
         envelope_id: id,
@@ -429,7 +437,7 @@ export class OutboundConsumer {
       await sendHonouringRateLimit(() =>
         this.deliverFile(destinationId, attachment, isChannel),
       );
-      this.settle(channel, () => channel.ack(msg));
+      this.acknowledge(channel, msg);
     } catch (err) {
       const reason = recordBotFailure("outbound_file_delivery_failed", err, {
         envelope_id: id,
@@ -514,7 +522,7 @@ export class OutboundConsumer {
         });
         return;
       }
-      this.settle(channel, () => channel.ack(msg));
+      this.acknowledge(channel, msg);
     } catch (err) {
       wideLog.set({ delivered_count: progress.delivered });
       const reason = recordBotFailure("outbound_delivery_failed", err, {

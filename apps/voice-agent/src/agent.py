@@ -12,6 +12,9 @@ from livekit.agents import (
     AgentFalseInterruptionEvent,
     AgentSession,
     AgentStateChangedEvent,
+    CloseEvent,
+    CloseReason,
+    ErrorEvent,
     JobContext,
     JobProcess,
     MetricsCollectedEvent,
@@ -41,6 +44,7 @@ from src.constants import (
     LogTag,
 )
 from src.conversation import VoiceConversation, VoiceTurnAgent
+from src.metrics import VOICE_SESSION_TOTAL, VoiceSessionOutcome, create_voice_session_series
 from src.utils import extract_meta_data, ms_since, user_id_from_room
 
 # Absolute path so logs land in the right place regardless of CWD. A no-op
@@ -74,6 +78,7 @@ def prewarm(proc: JobProcess) -> None:
     # LiveKit forks a fresh interpreter per process, and a per-room client would
     # spawn a consumer thread per call. No-ops when the project token is absent.
     proc.userdata["analytics"] = PostHogAnalytics()
+    create_voice_session_series()
 
     t_vad = time.monotonic()
     proc.userdata["vad"] = silero.VAD.load()
@@ -198,6 +203,24 @@ def _register_session_logging(
             resumed=ev.resumed,
             **identity,
         )
+
+    @session.on("error")
+    def _on_error(ev: ErrorEvent) -> None:
+        log.error(
+            f"{LogTag.AGENT} session error",
+            phase="session_error",
+            error_type=type(ev.error).__name__,
+            recoverable=getattr(ev.error, "recoverable", None),
+            **identity,
+        )
+
+    # close fires once per session, so it is the one place a session is counted.
+    @session.on("close")
+    def _on_close(ev: CloseEvent) -> None:
+        failed = ev.reason is CloseReason.ERROR
+        VOICE_SESSION_TOTAL.labels(
+            (VoiceSessionOutcome.ERROR if failed else VoiceSessionOutcome.OK).value
+        ).inc()
 
     usage_collector = metrics.UsageCollector()
 

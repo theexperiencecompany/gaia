@@ -75,6 +75,8 @@ vi.mock("discord.js", () => {
       InteractionCreate: "interactionCreate",
       MessageCreate: "messageCreate",
       Error: "error",
+      ShardResume: "shardResume",
+      ShardDisconnect: "shardDisconnect",
     },
     GatewayIntentBits: {
       Guilds: 1,
@@ -217,6 +219,7 @@ vi.mock("@gaia/shared/bots", async () => {
     BaseBotAdapter,
     withWideEvent: actual.withWideEvent,
     recordBotFailure: actual.recordBotFailure,
+    setPlatformConnected: vi.fn(),
     createBotLogger: vi.fn(() => ({
       debug: vi.fn(),
       info: vi.fn(),

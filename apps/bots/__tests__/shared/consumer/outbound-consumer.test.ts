@@ -27,6 +27,11 @@ vi.mock("amqplib", () => ({ connect }));
 import type { ActiveBotConversation } from "../../../../../libs/shared/ts/src/api/generated";
 import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
+import {
+  BOT_OUTCOME,
+  type BotOutcome,
+  botRegistry,
+} from "../../../../../libs/shared/ts/src/bots/metrics";
 import type { OutboundNotifications } from "../../../../../libs/shared/ts/src/bots/types";
 import { hashLogIdentifier } from "../../../../../libs/shared/ts/src/bots/utils/logger";
 import { captureBotEvents } from "../helpers/capture-bot-event";
@@ -80,6 +85,19 @@ async function startAndCaptureHandler(
 async function deliverMessage(handle: Handler, msg: unknown): Promise<void> {
   handle(msg);
   await flush();
+}
+
+async function outboundCount(
+  platform: string,
+  outcome: BotOutcome,
+): Promise<number> {
+  const metric = botRegistry.getSingleMetric("gaia_bot_outbound_total");
+  const { values } = await (metric as NonNullable<typeof metric>).get();
+  return (
+    values.find(
+      (v) => v.labels.platform === platform && v.labels.outcome === outcome,
+    )?.value ?? 0
+  );
 }
 
 beforeEach(() => {
@@ -930,5 +948,44 @@ describe("OutboundConsumer lifecycle", () => {
 
     expect(channel.consume).not.toHaveBeenCalled();
     expect(connection.close).toHaveBeenCalled();
+  });
+});
+
+describe("gaia_bot_outbound_total", () => {
+  const envelope = {
+    id: "1",
+    platform: "whatsapp",
+    destination_id: "1555",
+    text: "hi",
+    enqueued_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("counts a delivered message as ok", async () => {
+    const before = await outboundCount("whatsapp", BOT_OUTCOME.OK);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      vi.fn().mockResolvedValue(undefined),
+    );
+
+    await deliverMessage(handle, msgFor(envelope));
+
+    expect(await outboundCount("whatsapp", BOT_OUTCOME.OK)).toBe(before + 1);
+  });
+
+  it("counts a delivery that fails permanently as failed, not ok", async () => {
+    const okBefore = await outboundCount("whatsapp", BOT_OUTCOME.OK);
+    const failedBefore = await outboundCount("whatsapp", BOT_OUTCOME.FAILED);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      vi.fn().mockRejectedValue(new Error("chat not found")),
+    );
+
+    await deliverMessage(handle, msgFor(envelope, true));
+
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, false);
+    expect(await outboundCount("whatsapp", BOT_OUTCOME.FAILED)).toBe(
+      failedBefore + 1,
+    );
+    expect(await outboundCount("whatsapp", BOT_OUTCOME.OK)).toBe(okBefore);
   });
 });
