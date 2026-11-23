@@ -41,6 +41,7 @@ from app.services.workflow.notifications import WorkflowRunResult, notify_workfl
 from app.tasks.reminder_tasks import _execute_static_reminder
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import ReplyOutcome
+from tests.helpers import quiet_hours_excluding_now
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
     RecordingEffects,
@@ -155,7 +156,16 @@ async def _users(mongo_db, real_redis, conversations_collection, arq_pool):
     await mongo_db["bot_sessions"].create_index("session_key", unique=True)
     await mongo_db["todos"].delete_many({"user_id": {"$in": [str(o) for o in oids]}})
     await mongo_db["users"].insert_many(
-        [{"_id": oid, "email": f"notify-{oid}@gaia.local", "platform_links": {}} for oid in oids]
+        [
+            {
+                "_id": oid,
+                "email": f"notify-{oid}@gaia.local",
+                "platform_links": {},
+                # Delivery is asserted, so the run's hour must never fall inside the user's quiet hours.
+                "quiet_hours": quiet_hours_excluding_now(),
+            }
+            for oid in oids
+        ]
     )
     await PlatformLinkService.link_account(str(LINKED_OID), "telegram", TELEGRAM_USER_ID)
     yield
