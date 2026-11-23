@@ -58,24 +58,33 @@ work behind a runner's setup.
 
 ## Where jobs run: placed by the runs ahead, not by GitHub's queue depth
 
-ci.yml opens with a `select-runner` job (the control-plane runner, no
-Tailscale needed) that runs `scripts/ci/runner.py select` through the
-`./.github/actions/select-runner` composite, once. It publishes three pools:
-`general` (every job but the movable test slices), `unit` (unit-a, unit-b) and
-`services` (integration, bridge). A job outside test-python takes
-`runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}`; a slice
+Two decisions, at two moments, through the one `./.github/actions/select-runner`
+composite (`scripts/ci/runner.py`). The `select-runner` job (`decide: general`,
+`runner.py select`) publishes `general`, the pool of every job but the movable
+test slices: GitHub-hosted, or the box under `force_home`. It reads no run
+listing, because listings lag: in a 4-run burst every select-runner, 7-15 s after
+its run was created, saw none of the four (runs 45123790590-45123792128), while
+the same read 10 min later saw all four. `detect`'s "Place the test slices" step
+(`decide: slices`, `runner.py place`) runs 60-90 s in (detect finished 89-105 s
+after creation in all 8 burst runs) and publishes `unit` (unit-a, unit-b) and
+`services` (integration, bridge), plus `general` again. A job outside test-python
+takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}`; a slice
 declares its pool once, as `pool` in `scripts/ci/lib/test-slices.json`, and
-test-python indexes the outputs by it.
+test-python indexes `needs.detect.outputs` by it.
 
-`select` lists this repo's live ci.yml runs (queued + in progress, 2 API calls),
-drops superseded ones (an older `pull_request`/`push` run on the same branch)
-and runs GitHub never started (`queued` for 20 min), and orders the rest by
-`(run_started_at, id)`. A re-run restarts `run_started_at`, so it decides
-behind the runs already deciding. A run's place depends only on the runs ahead
-of it, so runs that start together compute the same answer for each other:
+`place` reads the newest 100 ci.yml runs in one unfiltered call (a `status`
+filter turns the listing into a GitHub search) and keeps the active ones. A run
+that does not see itself knows the listing is stale: it re-reads after 5, 10 and
+15 s, then keeps its slices hosted. It drops superseded runs (an older
+`pull_request`/`push` run on the same branch) and runs GitHub never started (no
+job at all; a run's `queued` status means nothing, since it reads `queued` while
+any job waits). It orders the rest by `(run_started_at, id)`. A re-run restarts
+`run_started_at`, so it decides behind the runs already deciding. A run's place
+depends only on the runs ahead of it, so runs that start together compute the
+same answer for each other:
 
 1. No run ahead: every pool on `ubuntu-24.04` (`HOSTED_LINUX_IMAGE`). A lone run
-   is unchanged and pays only the two listing calls.
+   is unchanged and pays one listing call.
 2. One or more ahead: `services` moves to the box (`gaia-home`) and `unit` to the
    M4 (`CI_M4_LABEL`; unset means off; never a merge group; refused while more
    than 2 listeners carry the label, since nothing there caps CPU per job) or else the box,
@@ -83,10 +92,10 @@ of it, so runs that start together compute the same answer for each other:
    M4 `M4_SLOTS` (2). Free slots are capacity minus what the runs ahead hold: a
    run whose `detect` finished holds its jobs that are not completed on that
    label (one jobs call per run ahead, in parallel), and a run still in `detect`
-   holds what this rule gives it.
-3. Nothing free, two or more runs ahead, and `CI_BLACKSMITH_LABEL` set: the pool
-   goes to Blacksmith, with a `::warning::` that names the cost. Otherwise it
-   stays GitHub-hosted and queues.
+   holds what this rule gives it. A superseded run's live self-hosted jobs keep
+   their slots until its force-cancel completes them.
+3. Nothing free: the pool stays GitHub-hosted and queues. Compute never goes to
+   Blacksmith; only `select-runner` and `quality-gate` may (`CI_DISPATCH_RUNNER`).
 
 `general` never leaves GitHub-hosted except under `force_home`: ts-build-test
 (22 min cold on a loaded box against 8.2 hosted), browser (7.5 against 5.0) and
@@ -106,7 +115,7 @@ NOT routed through it: release images and deploys stay GitHub-hosted. Every
 box-only assumption in a lane (the persistent workspace, `RUNNER_LOCAL_CACHE`,
 the cpu-slots governor, the shared test services, the `gaia-ci` builder, the
 tools `setup.sh` installs) stays behind the box check, because a slice can land
-on GitHub-hosted, the box, the M4 or Blacksmith. The M4 (`gaia-m4-<n>`) is not
+on GitHub-hosted, the box or the M4. The M4 (`gaia-m4-<n>`) is not
 the box: it restores caches through actions/cache like a GitHub VM.
 **The box is identified by runner name, never by
 `runner.environment`**: Blacksmith reports `self-hosted` too, and every lane

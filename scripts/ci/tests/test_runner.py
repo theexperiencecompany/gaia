@@ -1,12 +1,13 @@
-"""runner.py select: trust gates and run-ordered routing, against a local fake GitHub.
+"""runner.py select and place: trust gates and run-ordered routing, against a local fake GitHub.
 
 Every trust gate is decided before any API call, so a gate that leaks shows up
-as a request to the fake server. Routing reads this repo's active ci.yml runs
-and places each run by the runs ahead of it: the first stays GitHub-hosted, the
-later ones move their test slices to the box (4 slots) and the M4 (2 slots,
-unit slices only), and Blacksmith is the paid last resort once GitHub is
-saturated and no self-hosted slot is free. Runs that start together read the
-same list, so they get distinct answers instead of all reading an empty queue.
+as a request to the fake server. select (select-runner) decides only the
+general pool and reads no run listing: listings lag the first seconds of a
+burst. place (in detect) reads this repo's ci.yml runs and places each run by
+the runs ahead of it: the first stays GitHub-hosted, the later ones move their
+test slices to the box (4 slots) and the M4 (2 slots, unit slices only), and
+with nothing free they stay GitHub-hosted. Runs that start together read the
+same list, so they get distinct answers.
 """
 
 from __future__ import annotations
@@ -21,13 +22,15 @@ import subprocess
 from github_fake import REPO, RUNNER, FakeGitHub, Reply, ago, run_runner, runner
 import pytest
 import runner as runner_mod
+import yaml
 
 HOSTED = runner_mod.DEFAULT_FALLBACK
 BOX_LABEL = "gaia-home"
 M4_LABEL = "gaia-m4"
 BOX = '["self-hosted","gaia-home"]'
 M4 = '["self-hosted","gaia-m4"]'
-BLACKSMITH = "blacksmith-4vcpu-ubuntu-2404"
+# The label select-runner itself runs on (CI_DISPATCH_RUNNER); never a compute label.
+DISPATCH = "blacksmith-2vcpu-ubuntu-2404"
 WORKFLOW_RUNS = r"/actions/workflows/ci\.yml/runs$"
 RUNNERS = r"/actions/runners$"
 POOLS = ("general", "unit", "services")
@@ -67,17 +70,16 @@ def jobs(github: FakeGitHub, run_id: int, *listed: dict[str, object]) -> None:
     github.on("GET", rf"/actions/runs/{run_id}/jobs$", Reply(200, {"jobs": list(listed)}))
 
 
+def listing(github: FakeGitHub, *runs: dict[str, object]) -> None:
+    """Serve the runs as the newest page of this repo's ci.yml runs (one unfiltered read)."""
+    github.on("GET", WORKFLOW_RUNS, Reply(200, {"workflow_runs": list(runs)}))
+
+
 def active(github: FakeGitHub, *runs: dict[str, object]) -> None:
-    """Serve the runs as this repo's in-progress ci.yml runs, each still in select-runner."""
-    github.on("GET", WORKFLOW_RUNS, Reply(200, {"workflow_runs": []}), query={"status": "queued"})
-    github.on(
-        "GET",
-        WORKFLOW_RUNS,
-        Reply(200, {"workflow_runs": list(runs)}),
-        query={"status": "in_progress"},
-    )
+    """Serve the runs as listed and in progress, each with its select-runner job done."""
+    listing(github, *runs)
     for run in runs:
-        jobs(github, int(str(run["id"])), ci_job("select-runner", "in_progress", [BLACKSMITH]))
+        jobs(github, int(str(run["id"])), ci_job("select-runner", "completed", [DISPATCH]))
 
 
 def listeners(github: FakeGitHub, *, box: int = 10, m4: int = runner_mod.M4_SLOTS) -> None:
@@ -87,11 +89,15 @@ def listeners(github: FakeGitHub, *, box: int = 10, m4: int = runner_mod.M4_SLOT
 
 
 def run_select(
-    github: FakeGitHub, run_id: int, event: str = "pull_request", **env: str
+    github: FakeGitHub,
+    run_id: int,
+    event: str = "pull_request",
+    subcommand: str = "place",
+    **env: str,
 ) -> subprocess.CompletedProcess[str]:
     is_pr = event == "pull_request"
     return run_runner(
-        "select",
+        subcommand,
         env=github.env(
             **{
                 "PR_HEAD_REPO": REPO if is_pr else "",
@@ -100,6 +106,7 @@ def run_select(
                 "GITHUB_EVENT_NAME": event,
                 "GITHUB_WORKFLOW_REF": f"{REPO}/.github/workflows/ci.yml@refs/heads/feature",
                 "M4_LABEL": M4_LABEL,
+                "RUN_LISTING_RETRY_SECS": "0,0",
                 **env,
             }
         ),
@@ -166,13 +173,48 @@ def test_forced_github_skips_every_probe(github: FakeGitHub) -> None:
 # ── run-ordered routing ─────────────────────────────────────────────────────
 
 
+def test_select_decides_the_general_pool_without_reading_any_run(github: FakeGitHub) -> None:
+    """At 7-15 s a burst's runs were missing from the listing (45123790590-45123792128)."""
+    active(github, ci_run(1), ci_run(2))
+    listeners(github)
+    out = outputs(run_select(github, 2, subcommand="select"))
+    assert out == {"is_self_hosted": "false", "general": HOSTED}
+    assert github.requests == []
+
+
 def test_a_lone_run_stays_hosted_and_reads_only_the_run_list(github: FakeGitHub) -> None:
     active(github, ci_run(1))
     listeners(github)
     out = select(github, 1)
     assert all(out[pool] == HOSTED for pool in POOLS)
     assert out["is_self_hosted"] == "false"
-    assert [r.path for r in github.requests] == [f"/repos/{REPO}/actions/workflows/ci.yml/runs"] * 2
+    assert [r.path for r in github.requests] == [f"/repos/{REPO}/actions/workflows/ci.yml/runs"]
+    assert "status" not in github.requests[0].query, "a status filter makes the listing a search"
+
+
+def test_a_listing_that_does_not_show_this_run_is_read_again(github: FakeGitHub) -> None:
+    """The listing lags a burst; a run that cannot see itself cannot trust what else it sees."""
+    burst = [ci_run(i) for i in (301, 302)]
+    for run in burst:
+        jobs(github, int(str(run["id"])), ci_job("select-runner", "completed", [DISPATCH]))
+    github.on(
+        "GET",
+        WORKFLOW_RUNS,
+        Reply(200, {"workflow_runs": []}),
+        Reply(200, {"workflow_runs": burst}),
+    )
+    listeners(github)
+    out = select(github, 302)
+    assert out["unit"] == M4, "the second read shows run 301 ahead"
+
+
+def test_a_listing_that_never_shows_this_run_keeps_the_slices_hosted(github: FakeGitHub) -> None:
+    listing(github, ci_run(311))
+    listeners(github)
+    proc = run_select(github, 312)
+    assert outputs(proc)["unit"] == HOSTED
+    assert "stale" in proc.stderr
+    assert sum(1 for r in github.requests if r.path.endswith("/runs")) == 3, "one read, two retries"
 
 
 def test_simultaneous_pr_runs_get_distinct_places_within_every_cap(github: FakeGitHub) -> None:
@@ -282,38 +324,36 @@ def test_an_offline_box_with_no_running_job_takes_nothing(github: FakeGitHub) ->
 def test_a_run_github_never_started_is_not_ahead(github: FakeGitHub) -> None:
     """Three runs from 11 Nov still list as queued with no job; counted, they made every run later."""
     zombie = {**ci_run(7, started="2026-11-11T20:33:51Z"), "status": "queued"}
-    github.on(
-        "GET", WORKFLOW_RUNS, Reply(200, {"workflow_runs": [zombie]}), query={"status": "queued"}
-    )
-    github.on(
-        "GET",
-        WORKFLOW_RUNS,
-        Reply(200, {"workflow_runs": [ci_run(8, started=ago(30))]}),
-        query={"status": "in_progress"},
-    )
+    listing(github, zombie, ci_run(8, started=ago(30)))
+    jobs(github, 7)
     listeners(github)
     out = select(github, 8)
     assert out["unit"] == HOSTED
-    assert not any("/runs/7/jobs" in r.path for r in github.requests)
+
+
+def test_a_long_queued_run_whose_jobs_work_is_still_ahead(github: FakeGitHub) -> None:
+    """A run reads `queued` while any job waits: 45109154378 at 18 min, mutation shards running."""
+    working = {**ci_run(17, started="2026-11-11T20:33:51Z"), "status": "queued"}
+    listing(github, working, ci_run(18, started=ago(30)))
+    jobs(
+        github,
+        17,
+        ci_job("detect", "completed", [runner_mod.HOSTED_LINUX_IMAGE]),
+        ci_job("test-python (unit-a)", "in_progress", ["self-hosted", BOX_LABEL]),
+        ci_job("test-python (unit-b)", "in_progress", ["self-hosted", BOX_LABEL]),
+        ci_job("mutation", "queued", [runner_mod.HOSTED_LINUX_IMAGE]),
+    )
+    jobs(github, 18, ci_job("select-runner", "completed", [DISPATCH]))
+    listeners(github, m4=0)
+    out = select(github, 18, M4_LABEL="")
+    assert out["unit"] == BOX, "run 17 is ahead and holds 2 of the box's 4 slots"
+    assert out["services"] == HOSTED
 
 
 def test_a_rerun_of_an_old_run_still_queued_is_counted(github: FakeGitHub) -> None:
     """A re-run keeps its created_at; cutting on it hid every re-run until its first job started."""
-    rerun = {
-        **ci_run(9, started=ago(20)),
-        "status": "queued",
-        "created_at": "2026-11-11T20:33:51Z",
-    }
-    github.on(
-        "GET", WORKFLOW_RUNS, Reply(200, {"workflow_runs": [rerun]}), query={"status": "queued"}
-    )
-    github.on(
-        "GET",
-        WORKFLOW_RUNS,
-        Reply(200, {"workflow_runs": [ci_run(10, started=ago(10))]}),
-        query={"status": "in_progress"},
-    )
-    jobs(github, 9, ci_job("select-runner", "queued", [BLACKSMITH]))
+    rerun = {**ci_run(9, started=ago(20)), "status": "queued", "created_at": "2026-11-11T20:33:51Z"}
+    active(github, rerun, ci_run(10, started=ago(10)))
     listeners(github)
     out = select(github, 10)
     assert out["unit"] == M4, "the re-run is ahead, so run 10 is second in line"
@@ -369,31 +409,15 @@ def test_a_rerun_queues_behind_the_runs_already_deciding(github: FakeGitHub) -> 
     assert out["unit"] == M4
 
 
-# ── Blacksmith: paid, the last resort, never silent ─────────────────────────
+# ── nothing free: GitHub-hosted, never a paid runner ────────────────────────
 
 
-def test_one_run_ahead_and_no_free_slot_stays_hosted_not_blacksmith(github: FakeGitHub) -> None:
-    active(github, ci_run(121), ci_run(122))
+def test_a_saturated_burst_with_no_free_slot_queues_on_github(github: FakeGitHub) -> None:
+    """Blacksmith is too costly for compute; CI_BLACKSMITH_LABEL being set changes nothing."""
+    active(github, ci_run(131), ci_run(132), ci_run(133), ci_run(134))
     listeners(github, box=0, m4=0)
-    out = select(github, 122, BLACKSMITH_LABEL=BLACKSMITH)
-    assert out["unit"] == HOSTED
-
-
-def test_a_saturated_github_and_full_machines_go_to_blacksmith_loudly(github: FakeGitHub) -> None:
-    active(github, ci_run(131), ci_run(132), ci_run(133))
-    listeners(github, box=0, m4=0)
-    proc = run_select(github, 133, BLACKSMITH_LABEL=BLACKSMITH)
-    out = outputs(proc)
-    assert out["unit"] == f'["{BLACKSMITH}"]'
-    assert out["general"] == HOSTED, "Blacksmith never takes the compute lanes"
-    assert re.search(r"::warning::.*Blacksmith.*paid", proc.stderr)
-
-
-def test_without_a_blacksmith_label_a_saturated_run_queues_on_github(github: FakeGitHub) -> None:
-    active(github, ci_run(141), ci_run(142), ci_run(143))
-    listeners(github, box=0, m4=0)
-    out = select(github, 143)
-    assert out["unit"] == HOSTED
+    out = select(github, 134, BLACKSMITH_LABEL="blacksmith-4vcpu-ubuntu-2404")
+    assert out == {**dict.fromkeys(POOLS, HOSTED), "is_self_hosted": "false"}
 
 
 # ── API failures fail toward GitHub-hosted ──────────────────────────────────
@@ -401,7 +425,7 @@ def test_without_a_blacksmith_label_a_saturated_run_queues_on_github(github: Fak
 
 def test_an_unreadable_run_list_keeps_everything_hosted(github: FakeGitHub) -> None:
     github.on("GET", WORKFLOW_RUNS, Reply(500, {"message": "Server Error"}))
-    proc = run_select(github, 1, BLACKSMITH_LABEL=BLACKSMITH)
+    proc = run_select(github, 1)
     out = outputs(proc)
     assert "::warning::" in proc.stderr
     assert all(out[pool] == HOSTED for pool in POOLS)
@@ -410,7 +434,7 @@ def test_an_unreadable_run_list_keeps_everything_hosted(github: FakeGitHub) -> N
 def test_an_unreadable_runners_list_keeps_the_slices_hosted(github: FakeGitHub) -> None:
     active(github, ci_run(151), ci_run(152))
     github.on("GET", RUNNERS, Reply(403, {"message": "Resource not accessible by integration"}))
-    proc = run_select(github, 152, BLACKSMITH_LABEL=BLACKSMITH)
+    proc = run_select(github, 152)
     assert "::warning::runners API unavailable" in proc.stderr
     assert outputs(proc)["unit"] == HOSTED
 
@@ -472,15 +496,15 @@ def test_every_slice_declares_a_pool_select_publishes() -> None:
     assert {s["pool"] for s in SLICES} <= set(POOLS)
 
 
-def test_every_routed_job_reads_a_pool_select_publishes() -> None:
-    """A job that names an output select does not write lands on a nameless runner."""
-    workflow = (RUNNER.parent.parent.parent / ".github/workflows/ci.yml").read_text()
-    asked = set(re.findall(r"needs\.select-runner\.outputs\.(\w+)", workflow))
-    assert asked <= {*POOLS, "is_self_hosted"}, asked
-    by_slice = (
-        "needs.select-runner.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]"
-    )
-    assert workflow.count(by_slice) == 2, (
+def test_every_routed_job_reads_a_pool_its_decision_publishes() -> None:
+    """A job that names an output nobody writes lands on a nameless runner."""
+    text = (RUNNER.parent.parent.parent / ".github/workflows/ci.yml").read_text()
+    assert set(re.findall(r"needs\.select-runner\.outputs\.(\w+)", text)) == {"general"}
+    detect = yaml.safe_load(text)["jobs"]["detect"]["outputs"]
+    for output in (*POOLS, "is_self_hosted"):
+        assert detect[output] == f"${{{{ steps.place.outputs.{output} }}}}", output
+    by_slice = "needs.detect.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]"
+    assert text.count(by_slice) == 2, (
         "test-python and test-python-engines route by the slice's pool"
     )
 
@@ -503,7 +527,9 @@ def test_every_ci_script_path_in_the_workflows_resolves() -> None:
 def test_the_select_runner_composite_runs_runner_py_select() -> None:
     action = (RUNNER.parent.parent.parent / ".github/actions/select-runner/action.yml").read_text()
     assert 'SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.py"' in action
-    assert 'python3 "$SCRIPT" select' in action
+    assert 'python3 "$SCRIPT" "$SUBCOMMAND"' in action
+    assert "general) SUBCOMMAND=select" in action
+    assert "slices) SUBCOMMAND=place" in action
     for output in (*POOLS, "is_self_hosted"):
         assert f"steps.probe.outputs.{output} }}}}" in action, output
 

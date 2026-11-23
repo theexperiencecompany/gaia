@@ -5,12 +5,14 @@
 """runner.py — everything about WHERE and HOW HARD a CI job runs.
 
 Subcommands:
-  select              Place this run by the live ci.yml runs ahead of it: the
-                      first stays GitHub-hosted, later ones move their test
-                      slices to free box / M4 slots, Blacksmith only once
-                      GitHub is saturated and no slot is free. Writes general /
-                      unit / services (runs-on JSON arrays) and is_self_hosted
-                      to $GITHUB_OUTPUT (stdout when unset).
+  select              Decide the general pool (select-runner): GitHub-hosted,
+                      or the box under force_home; no run listing. Writes
+                      general and is_self_hosted to $GITHUB_OUTPUT (stdout
+                      when unset).
+  place               Place the test slices (a detect step) by the live ci.yml
+                      runs ahead of this one: the first stays GitHub-hosted,
+                      later ones move to free box / M4 slots, else stay hosted.
+                      Writes unit / services and is_self_hosted.
   watchdog            Re-dispatch or hand over this run once a self-hosted job
                       has stayed `queued` past the limit on a machine with no
                       live listener — one that died after `select` decided.
@@ -47,14 +49,13 @@ Subcommands:
 
 Env contract:
   every API call      lib/github.py's (token, base URL, timeout, retries).
-  select              GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_EVENT_NAME,
-                      GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF or GITHUB_REF_NAME,
-                      RUNNER_LABEL (the box, default gaia-home), M4_LABEL
-                      (empty: no M4), FALLBACK_RUNNER (default
-                      [HOSTED_LINUX_IMAGE]), FORCE_HOME, FORCE_GITHUB,
-                      PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION, GITHUB_ACTOR,
-                      BLACKSMITH_LABEL (empty: never); writes $GITHUB_OUTPUT
-                      and $GITHUB_STEP_SUMMARY.
+  select, place       GITHUB_REPOSITORY, RUNNER_LABEL (the box, default
+                      gaia-home), FALLBACK_RUNNER (default [HOSTED_LINUX_IMAGE]),
+                      FORCE_HOME, FORCE_GITHUB, PR_HEAD_REPO,
+                      PR_AUTHOR_ASSOCIATION, GITHUB_ACTOR; place also
+                      GITHUB_RUN_ID, GITHUB_WORKFLOW_REF, M4_LABEL (empty: no
+                      M4), RUN_LISTING_RETRY_SECS (comma list, tests); both
+                      write $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
   watchdog            GITHUB_REPOSITORY, GITHUB_RUN_ID, WATCHDOG_JOB_NAME
                       (required), QUEUE_LIMIT_SECS (480), POLL_SECS (30),
                       GITHUB_EVENT_NAME, GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF
@@ -235,14 +236,17 @@ def home_state(gh: GitHub, repo: str, label: str) -> HomeState:
     return HomeState.ONLINE if alive else HomeState.OFFLINE
 
 
-# ── select ────────────────────────────────────────────────────────────────
+# ── select / place ────────────────────────────────────────────────────────
 
 
-# A run is placed by the runs ahead of it, never by GitHub's queue depth: runs
-# that start together each read that queue as empty (0-2 of a threshold of 5 in
-# a 4-run burst), so none overflowed, while every run exists the moment its push
-# lands. Each run computes the same placement for the runs ahead of it, so runs
-# deciding at once get distinct answers without talking to each other.
+# Two decisions at two moments. `select` (select-runner, the first job) decides
+# only what must be known before anything runs: the general pool, from the trust
+# gate and the dispatch overrides, with no run listing. `place` (a detect step,
+# ~60-90 s after the run exists) places the slices by the runs ahead of it. Run
+# listings lag: in a 4-run burst every select-runner, 7-15 s after its run was
+# created, saw none of the four (runs 45123790590-45123792128). Each run computes
+# the same placement for the runs ahead of it, so runs deciding at once get
+# distinct answers without talking to each other.
 
 
 def _job_labels(job: Json) -> list[str]:
@@ -264,9 +268,6 @@ class JobPool(StrEnum):
 PLACEMENT_ORDER = (JobPool.SERVICES, JobPool.UNIT)
 # Runs ahead that still leave a run on GitHub-hosted: a lone run never moves.
 HOSTED_RUNS = 1
-# Runs ahead at which GitHub's 20 hosted slots are taken (4 runs at once took
-# 21-32 min each, 12-14 alone): the precondition for paying for Blacksmith.
-SATURATED_RUNS = 2
 # Slices the 16-thread box runs at hosted speed: at 10 jobs its load hit 63-67.
 BOX_SLOTS = 4
 # Jobs the M4 VM's 20 GiB holds; three at once swapped.
@@ -276,11 +277,13 @@ DETECT_JOB = "detect"
 # Events whose newer run on a branch cancels the older one (cancel-superseded).
 SUPERSEDING_EVENTS = frozenset({"pull_request", "push"})
 JOB_READ_WORKERS = 8
-# Sorts after every ISO-8601 stamp: a run missing from the listing decides last.
-NOT_LISTED_YET = "~"
-# A run still `queued` this long after creation never started (select-runner starts
-# in seconds); three such runs from 11 Nov were still listed on 23 Nov with no job.
-NEVER_STARTED_SECS = 20 * 60
+# The newest runs of the workflow read in one unfiltered page. A status filter
+# makes the listing a search (GitHub caps it at 1,000 results), and the burst
+# above is what that search showed.
+RUN_LISTING_PAGE = 100
+# A listing that does not show this run is stale: re-read after each wait (s),
+# then keep the slices hosted.
+RUN_LISTING_RETRY_SECS = (5, 10, 15)
 
 
 def slice_demand(event: str) -> Counter[JobPool]:
@@ -350,24 +353,26 @@ class Runs:
     superseded: list[Run]
 
 
-def active_runs(gh: GitHub, repo: str, workflow: str, me: Run) -> Runs:
-    found = {me.id: me}
-    never_started = int(time.time()) - NEVER_STARTED_SECS
-    for status in ("queued", "in_progress"):
-        path = f"repos/{repo}/actions/workflows/{workflow}/runs?status={status}&per_page=100"
-        for doc in records(gh.get(path), "workflow_runs"):
-            run = Run.parse(doc, repo)
-            # run_started_at, not created_at: a re-run keeps its created_at.
-            if status == "queued" and epoch(run.started) < never_started:
-                continue
-            found[run.id] = run
+def active_runs(gh: GitHub, repo: str, workflow: str, me: int) -> Runs | None:
+    """Read the workflow's newest runs; None when this run is not among them yet (a stale listing)."""
+    path = f"repos/{repo}/actions/workflows/{workflow}/runs?per_page={RUN_LISTING_PAGE}"
+    docs = records(gh.get(path), "workflow_runs")
+    found = {
+        run.id: run
+        for doc in docs
+        if field_of(doc, "status", str) in ACTIVE_RUN_STATUSES
+        for run in [Run.parse(doc, repo)]
+    }
+    log(
+        f"[select-runner] listing: {len(docs)} run(s), {len(found)} active, this run listed: {me in found}"
+    )
+    if me not in found:
+        return None
     ordered = sorted(found.values(), key=Run.order)
     newest = {(r.event, r.branch): r for r in ordered if r.event in SUPERSEDING_EVENTS}
 
     def is_live(r: Run) -> bool:
-        return (
-            r.id == me.id or r.event not in SUPERSEDING_EVENTS or newest[(r.event, r.branch)] is r
-        )
+        return r.id == me or r.event not in SUPERSEDING_EVENTS or newest[(r.event, r.branch)] is r
 
     return Runs([r for r in ordered if is_live(r)], [r for r in ordered if not is_live(r)])
 
@@ -376,6 +381,10 @@ def active_runs(gh: GitHub, repo: str, workflow: str, me: Run) -> Runs:
 class Held:
     """What a run ahead really holds, read from its jobs."""
 
+    # No job at all: GitHub never started it (three runs from 11 Nov were still
+    # listed on 23 Nov with none). Status says nothing: a working run reads
+    # `queued` while any of its jobs waits (run 45109154378 at 18 min).
+    started: bool
     # False while detect runs: its slice jobs do not exist yet.
     settled: bool
     slots: Counter[str]
@@ -400,7 +409,7 @@ def read_held(gh: GitHub, repo: str, run_id: int, labels: frozenset[str]) -> Hel
                 slots[label] += 1
             if status == "in_progress":
                 running.add(label)
-    return Held(settled, slots, frozenset(running))
+    return Held(bool(listed), settled, slots, frozenset(running))
 
 
 def plan_run(
@@ -468,55 +477,70 @@ def trust_gate(repo: str) -> tuple[str, str] | None:
 
 @dataclass
 class Router:
-    """One select invocation: this run's place among the live runs decides its slices' runner."""
+    """One place invocation: this run's place among the live runs decides its slices' runner."""
 
     gh: GitHub
     repo: str
     fallback: tuple[str, ...]
     machines: list[Machine]
-    blacksmith: str
-    me: Run
+    me: int
+    retry_secs: tuple[int, ...]
 
     def hosted(self, reason: str, note: str) -> dict[JobPool, Choice]:
-        return dict.fromkeys(JobPool, Choice(self.fallback, reason, note))
+        return dict.fromkeys(SLICE_POOLS, Choice(self.fallback, reason, note))
+
+    def listing(self) -> Runs | None:
+        """Read the runs until this one shows in them, waiting out a stale listing a bounded time."""
+        for wait in (0, *self.retry_secs):
+            time.sleep(wait)
+            if (runs := active_runs(self.gh, self.repo, workflow_file(), self.me)) is not None:
+                return runs
+        return None
 
     def route(self) -> dict[JobPool, Choice]:
         try:
-            runs = active_runs(self.gh, self.repo, workflow_file(), self.me)
-            ahead = runs.live[: [r.id for r in runs.live].index(self.me.id)]
-            if len(ahead) < HOSTED_RUNS or not self.me.movable:
+            runs = self.listing()
+            if runs is None:
+                warn(
+                    f"run {self.me} is still missing from the run listing after "
+                    f"{sum(self.retry_secs)} s — the listing is stale, so the slices stay hosted"
+                )
+                return self.hosted("listing-stale", "this run is not in the run listing")
+            me = next(r for r in runs.live if r.id == self.me)
+            ahead = runs.live[: runs.live.index(me)]
+            if not ahead or not me.movable:
                 return self.hosted("hosted-first", f"{len(ahead)} run(s) ahead")
-            free = self.free_slots(ahead, runs.superseded)
+            held = self.read_jobs([*ahead, *runs.superseded])
+            ahead = [r for r in ahead if held[r.id].started]
+            log(f"[select-runner] runs ahead: {[r.id for r in ahead]}")
+            if len(ahead) < HOSTED_RUNS:
+                return self.hosted("hosted-first", "0 started run(s) ahead")
+            free = self.free_slots(ahead, runs.superseded, held)
         except GitHubError as err:
-            warn(f"run or job listing failed ({err}) — every pool stays on GitHub-hosted")
+            warn(f"run or job listing failed ({err}) — the slices stay on GitHub-hosted")
             return self.hosted("runs-unknown", "run or job listing unreadable")
-        log(f"[select-runner] runs ahead: {[r.id for r in ahead]}; free slots: {free}")
-        placed = plan_run(self.me, len(ahead), free, self.machines)
-        choices = self.hosted("hosted-general", "general jobs stay on GitHub-hosted")
+        log(f"[select-runner] free slots: {free}")
+        placed = plan_run(me, len(ahead), free, self.machines)
+        choices = self.hosted(
+            "no-free-slot", f"{len(ahead)} run(s) ahead; no self-hosted slot free"
+        )
         for pool, machine in placed.items():
-            choices[pool] = self.choose(pool, machine, len(ahead))
+            if machine is not None:
+                choices[pool] = Choice(
+                    (SELF_HOSTED, machine.label), "self-hosted", f"{len(ahead)} run(s) ahead"
+                )
         return choices
 
-    def choose(self, pool: JobPool, machine: Machine | None, ahead: int) -> Choice:
-        note = f"{ahead} run(s) ahead"
-        if machine is not None:
-            return Choice((SELF_HOSTED, machine.label), "self-hosted", note)
-        if ahead < SATURATED_RUNS or not self.blacksmith:
-            return Choice(self.fallback, "no-free-slot", f"{note}; no self-hosted slot free")
-        warn(
-            f"{pool.value} slices of run {self.me.id} go to Blacksmith (`{self.blacksmith}`), "
-            f"which is paid per job-minute: {ahead} runs are ahead on GitHub-hosted and "
-            "neither the box nor the M4 has a free slot."
-        )
-        return Choice((self.blacksmith,), "blacksmith-last-resort", note)
-
-    def free_slots(self, ahead: list[Run], superseded: list[Run]) -> dict[str, int]:
-        """Return each machine's free slots once every run ahead, and every run still being cancelled, has taken what it holds."""
+    def read_jobs(self, runs: list[Run]) -> dict[int, Held]:
         labels = frozenset(m.label for m in self.machines)
-        readable = [r for r in [*ahead, *superseded] if r.movable]
         with ThreadPoolExecutor(max_workers=JOB_READ_WORKERS) as pool:
-            reads = pool.map(lambda r: read_held(self.gh, self.repo, r.id, labels), readable)
-            held = dict(zip((r.id for r in readable), reads, strict=True))
+            reads = pool.map(lambda r: read_held(self.gh, self.repo, r.id, labels), runs)
+            return dict(zip((r.id for r in runs), reads, strict=True))
+
+    def free_slots(
+        self, ahead: list[Run], superseded: list[Run], held: dict[int, Held]
+    ) -> dict[str, int]:
+        """Return each machine's free slots once every run ahead, and every run still being cancelled, has taken what it holds."""
         running = frozenset().union(*(h.running for h in held.values()))
         free = self.capacity(running)
         for run in superseded:
@@ -583,7 +607,11 @@ def forced_home(gh: GitHub, repo: str, label: str) -> Choice:
     return Choice((SELF_HOSTED, label), "forced-home", f"`{label}`: {pool.describe()}")
 
 
-def route() -> dict[JobPool, Choice]:
+SLICE_POOLS = (JobPool.UNIT, JobPool.SERVICES)
+
+
+def route(pools: tuple[JobPool, ...]) -> dict[JobPool, Choice] | None:
+    """Return the gate's or the override's choice for every pool; None when the runs decide."""
     repo = repository()
     fallback = _fallback_runner()
     gate = trust_gate(repo)
@@ -591,26 +619,44 @@ def route() -> dict[JobPool, Choice]:
     if gate is None and not gh.token:
         gate = ("no-token", "no API token available (local run)")
     if gate is not None:
-        return dict.fromkeys(JobPool, Choice(fallback, *gate))
-    box = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
+        return dict.fromkeys(pools, Choice(fallback, *gate))
     if os.environ.get("FORCE_HOME") == "true":
-        return dict.fromkeys(JobPool, forced_home(gh, repo, box))
-    event = env_required("GITHUB_EVENT_NAME")
-    branch = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME", "")
-    me = Run(env_int("GITHUB_RUN_ID", 0), event, branch, NOT_LISTED_YET, trusted=True)
-    router = Router(
-        gh=gh,
-        repo=repo,
-        fallback=fallback,
-        machines=machines_from_env(box),
-        blacksmith=os.environ.get("BLACKSMITH_LABEL", ""),
-        me=me,
-    )
-    return router.route()
+        box = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
+        return dict.fromkeys(pools, forced_home(gh, repo, box))
+    return None
+
+
+def _general() -> dict[JobPool, Choice]:
+    return {
+        JobPool.GENERAL: Choice(
+            _fallback_runner(), "hosted-general", "general jobs stay on GitHub-hosted"
+        )
+    }
 
 
 def cmd_select(_args: list[str]) -> int:
-    choices = route()
+    """Decide the general pool: no run listing, since nothing about other runs is reliable yet."""
+    return _publish(route((JobPool.GENERAL,)) or _general())
+
+
+def cmd_place(_args: list[str]) -> int:
+    """Place the slices from detect, ~60-90 s in, and repeat select's general pool beside them."""
+    choices = route(tuple(JobPool))
+    if choices is None:
+        retry = os.environ.get("RUN_LISTING_RETRY_SECS")
+        router = Router(
+            gh=GitHub.from_env(),
+            repo=repository(),
+            fallback=_fallback_runner(),
+            machines=machines_from_env(os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL),
+            me=env_int("GITHUB_RUN_ID", 0),
+            retry_secs=tuple(int(s) for s in retry.split(",")) if retry else RUN_LISTING_RETRY_SECS,
+        )
+        choices = _general() | router.route()
+    return _publish(choices)
+
+
+def _publish(choices: dict[JobPool, Choice]) -> int:
     self_hosted = any(choice.is_self_hosted for choice in choices.values())
     lines = [
         f"is_self_hosted={str(self_hosted).lower()}",
@@ -1546,6 +1592,7 @@ def cmd_health(_args: list[str]) -> int:
 
 COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "select": cmd_select,
+    "place": cmd_place,
     "watchdog": cmd_watchdog,
     "requeue-stranded": cmd_requeue_stranded,
     "cancel-superseded": cmd_cancel_superseded,

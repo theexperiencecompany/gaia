@@ -1,15 +1,20 @@
-name: Select runner (by the runs ahead of this one)
+name: Select runner (general pool first, the slices from detect)
 description: >
-  Place this run's job pools by the live ci.yml runs ahead of it
-  (scripts/ci/runner.py select). The first run keeps every pool on
-  GitHub-hosted. A later run moves its test slices to free slots on the home
-  box (4) and the M4 (2, unit slices only), and to Blacksmith (paid, with a
-  warning) only once two or more runs are ahead and no slot is free. The
-  general pool stays GitHub-hosted. Fork PRs, PRs whose author is not an
-  organisation member, and bot actors always get the fallback. Never opens
-  inbound ports: self-hosted runners poll GitHub over HTTPS:443 outbound.
+  Two decisions, one env mapping (scripts/ci/runner.py). `decide: general`
+  (select-runner, the first job) picks the general pool: GitHub-hosted, or the
+  home box under force_home. It reads no run listing, because listings lag for
+  the first seconds of a burst. `decide: slices` (a detect step, ~60-90 s
+  later) places the test slices by the live ci.yml runs ahead of this one: the
+  first run keeps them GitHub-hosted, a later one moves them to free slots on
+  the home box (4) and the M4 (2, unit slices only), and with no free slot they
+  stay GitHub-hosted. Fork PRs, PRs whose author is not an organisation member,
+  and bot actors always get the fallback. Never opens inbound ports:
+  self-hosted runners poll GitHub over HTTPS:443 outbound.
 
 inputs:
+  decide:
+    description: 'general (select-runner) or slices (detect)'
+    required: true
   runner-label:
     description: Label of the home box the slices may move to
     required: false
@@ -34,32 +39,29 @@ inputs:
     description: Token used to list runs, jobs and runners (listing runners needs administration read)
     required: false
     default: ${{ github.token }}
-  blacksmith-label:
-    description: Runner label used as the paid last resort for slices when GitHub is saturated and no self-hosted slot is free (empty disables it)
-    required: false
-    default: ''
 
 outputs:
   general:
-    description: 'runs-on JSON array for every job that is not a movable test slice'
+    description: 'runs-on JSON array for every job that is not a movable test slice (decide: general)'
     value: ${{ steps.probe.outputs.general }}
   unit:
-    description: 'runs-on JSON array for the unit slices, e.g. ["self-hosted","gaia-m4"] or ["ubuntu-24.04"]'
+    description: 'runs-on JSON array for the unit slices, e.g. ["self-hosted","gaia-m4"] or ["ubuntu-24.04"] (decide: slices)'
     value: ${{ steps.probe.outputs.unit }}
   services:
-    description: 'runs-on JSON array for the service-backed slices that may move to the box'
+    description: 'runs-on JSON array for the service-backed slices that may move to the box (decide: slices)'
     value: ${{ steps.probe.outputs.services }}
   is_self_hosted:
-    description: 'true when any pool got a self-hosted runner'
+    description: 'true when a pool this decision made got a self-hosted runner'
     value: ${{ steps.probe.outputs.is_self_hosted }}
 
 runs:
   using: composite
   steps:
-    - name: Place this run's pools
+    - name: Decide where the pools run
       id: probe
       shell: bash
       env:
+        DECIDE: ${{ inputs.decide }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         RUNNER_LABEL: ${{ inputs.runner-label }}
@@ -74,14 +76,18 @@ runs:
         # NONE on a PR; empty otherwise. Only the first two get the box.
         PR_AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
         GITHUB_ACTOR: ${{ github.actor }}
-        BLACKSMITH_LABEL: ${{ inputs.blacksmith-label }}
       run: |
         set -euo pipefail
-        # Single source of truth: scripts/ci/runner.py select from the checkout.
+        case "$DECIDE" in
+          general) SUBCOMMAND=select ;;
+          slices) SUBCOMMAND=place ;;
+          *) echo "::error::select-runner: decide must be general or slices, got '$DECIDE'" >&2; exit 2 ;;
+        esac
+        # Single source of truth: scripts/ci/runner.py from the checkout.
         # A colocated copy used to shadow it and went stale.
         SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.py"
         if [[ -f "$SCRIPT" ]]; then
-          python3 "$SCRIPT" select
+          python3 "$SCRIPT" "$SUBCOMMAND"
         else
           echo "::error::scripts/ci/runner.py not found in the checkout" >&2
           ls -R "${{ github.action_path }}" >&2 | head -n 50

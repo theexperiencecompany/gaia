@@ -66,11 +66,13 @@ def _step(steps: list[dict[str, Any]], key: str, value: str) -> dict[str, Any]:
     raise AssertionError(f"no step whose {key} contains {value!r}")
 
 
-def test_the_selection_probes_the_pool_that_can_serve_services(workflow: dict[str, Any]) -> None:
-    job = workflow["jobs"][SELECTION]
-    pick = _step(job["steps"], "uses", "./.github/actions/select-runner")
+def test_the_placement_probes_the_pool_that_can_serve_services(workflow: dict[str, Any]) -> None:
+    # detect places the slices; the box label it probes is the one test-services.sh serves.
+    job = workflow["jobs"]["detect"]
+    place = _step(job["steps"], "uses", "./.github/actions/select-runner")
 
-    assert pick["with"]["runner-label"] == f"${{{{ inputs.runner_label || '{SERVICES_LABEL}' }}}}"
+    assert place["with"]["decide"] == "slices"
+    assert place["with"]["runner-label"] == f"${{{{ inputs.runner_label || '{SERVICES_LABEL}' }}}}"
     assert "services" in job["outputs"]
 
 

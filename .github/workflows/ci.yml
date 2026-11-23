@@ -104,13 +104,9 @@ jobs:
       contents: read
       actions: write # cancel superseded runs
     outputs:
-      # The three pools a job can ask for: `general` (every job but the movable
-      # slices, GitHub-hosted), and the slices' `unit` and `services` pools
-      # (test-slices.json `pool`), which move off GitHub when other runs are ahead.
+      # `general`: every job but the movable test slices (GitHub-hosted; the box
+      # under force_home). detect places the slices, once the runs are listed.
       general: ${{ steps.pick.outputs.general }}
-      unit: ${{ steps.pick.outputs.unit }}
-      services: ${{ steps.pick.outputs.services }}
-      is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
     steps:
       # The commit under test, like every other job: a pin to master made a
       # selector change untestable on its own PR and broke the PR that changes
@@ -131,9 +127,7 @@ jobs:
         id: pick
         uses: ./.github/actions/select-runner
         with:
-          blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
-          # Unset keeps the M4 out of every route.
-          m4-label: ${{ vars.CI_M4_LABEL }}
+          decide: general
           runner-label: ${{ inputs.runner_label || 'gaia-home' }}
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
@@ -151,7 +145,7 @@ jobs:
     # After detect, which is when the moved slices are created: started with
     # select, its 15 min ended 1 s after a slice could first trip the limit.
     needs: [select-runner, detect]
-    if: ${{ !cancelled() && needs.select-runner.outputs.is_self_hosted == 'true' }}
+    if: ${{ !cancelled() && needs.detect.outputs.is_self_hosted == 'true' }}
     runs-on: ubuntu-24.04
     # runner.py QUEUE_LIMIT_SECS (480) + one poll (30) + the calls after it (60):
     # 570 s. test_the_watchdog_outlives_its_queue_limit holds this to those constants.
@@ -217,6 +211,12 @@ jobs:
       mutation_shards: ${{ steps.plan.outputs.shards }}
       mutation_shard_defs: ${{ steps.plan.outputs.shard_defs }}
       mutation_count: ${{ steps.plan.outputs.count }}
+      # Where each slice pool runs (test-slices.json `pool`), placed here rather
+      # than in select-runner: run listings lag the first seconds of a burst.
+      general: ${{ steps.place.outputs.general }}
+      unit: ${{ steps.place.outputs.unit }}
+      services: ${{ steps.place.outputs.services }}
+      is_self_hosted: ${{ steps.place.outputs.is_self_hosted }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -297,6 +297,22 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # 60-90 s after the run was created: by then the runs of a burst are listed
+      # (at 7-15 s none were). A run that cannot see itself re-reads, then stays hosted.
+      - name: Place the test slices
+        id: place
+        uses: ./.github/actions/select-runner
+        with:
+          decide: slices
+          # Unset keeps the M4 out of every route.
+          m4-label: ${{ vars.CI_M4_LABEL }}
+          runner-label: ${{ inputs.runner_label || 'gaia-home' }}
+          force-home: ${{ inputs.force_home && 'true' || 'false' }}
+          force-github: ${{ inputs.force_github && 'true' || 'false' }}
+          # Listing runners needs administration read. A fork's run gets no secret,
+          # and the trust gate keeps it hosted before any API call.
+          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+
       # Last, so everything above is decided even when this fails: it is ALSO
       # the step that fails loudly when changed app code has no test file
       # anywhere, and every lane below runs under `!cancelled()` on the outputs
@@ -342,14 +358,14 @@ jobs:
     steps:
       - name: Runner provenance
         env:
-          SELF_HOSTED: ${{ needs.select-runner.outputs.is_self_hosted }}
+          GENERAL: ${{ needs.select-runner.outputs.general }}
         shell: bash
         run: |
           {
             echo "## Hybrid probe"
             echo ""
             echo "- **Runner name:** \`$RUNNER_NAME\`"
-            echo "- **is_self_hosted (any pool):** \`$SELF_HOSTED\`"
+            echo "- **general pool:** \`$GENERAL\`"
             echo "- **Hostname:** \`$(hostname)\`"
             echo "- **nproc:** \`$(nproc)\` vCPUs"
             echo "- **Mem:** \`$(free -h | awk '/^Mem:/{print $2}')\`"
@@ -925,8 +941,8 @@ jobs:
     name: test-python
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.tasks), 'api:test') }}
-    # Each slice declares its pool once (test-slices.json `pool`); select placed the pools.
-    runs-on: ${{ fromJSON(needs.select-runner.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]) }}
+    # Each slice declares its pool once (test-slices.json `pool`); detect placed the pools.
+    runs-on: ${{ fromJSON(needs.detect.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]) }}
     # The slice's definition, read once: steps cannot index needs by matrix
     # without repeating this lookup in every `if:`.
     env: &slice-env
@@ -1109,7 +1125,7 @@ jobs:
     name: test-python
     needs: [select-runner, detect, obscura-bin]
     if: ${{ !cancelled() && needs.obscura-bin.result == 'success' && needs.detect.outputs.engine_slices != '[]' }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]) }}
+    runs-on: ${{ fromJSON(needs.detect.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]) }}
     env: *slice-env
     timeout-minutes: ${{ fromJSON(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].timeout_minutes) }}
     permissions:
