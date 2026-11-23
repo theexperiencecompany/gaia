@@ -111,6 +111,8 @@ async def test_a_workflow_fire_runs_its_work_and_delivers_the_result(
     assert stack.executor_model.prompts, "the fire never reached the executor"
     # What the user is sent is the work's result, never the hand-off's acknowledgement.
     [notified] = delivered.await_args_list
-    assert notified.kwargs["result_text"] == NARRATED
+    sent = notified.kwargs["run"].text
+    assert sent.startswith(NARRATED)
+    assert "[Open this run](" in sent[len(NARRATED) :]
     shown = await replayed(execution["conversation_id"], owner.user_id)
     assert NARRATED in [reply.text for reply in entries_of(shown, Reply)]
