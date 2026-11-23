@@ -144,7 +144,11 @@ export class DiscordAdapter extends BaseBotAdapter {
     this.client.on(Events.Error, (error) => {
       void withWideEvent(
         "bot_runtime_error",
-        { platform: this.platform, component: "adapter" },
+        {
+          platform: this.platform,
+          component: "adapter",
+          operation: "gateway_error",
+        },
         async () => {
           recordBotFailure("discord_client_error", error);
         },
@@ -152,13 +156,13 @@ export class DiscordAdapter extends BaseBotAdapter {
     });
 
     this.client.on(Events.ClientReady, () =>
-      setPlatformConnected(this.platform, true),
+      this.recordGatewayConnection(true),
     );
     this.client.on(Events.ShardResume, () =>
-      setPlatformConnected(this.platform, true),
+      this.recordGatewayConnection(true),
     );
     this.client.on(Events.ShardDisconnect, () =>
-      setPlatformConnected(this.platform, false),
+      this.recordGatewayConnection(false),
     );
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
@@ -201,6 +205,21 @@ export class DiscordAdapter extends BaseBotAdapter {
           : this.handleMentionMessage(message, botId, receivedAt),
       );
     });
+  }
+
+  /** Moves the connection gauge and logs the gateway transition as its own event. */
+  private recordGatewayConnection(connected: boolean): void {
+    void withWideEvent(
+      "gateway_connection",
+      {
+        platform: this.platform,
+        component: "adapter",
+        operation: connected ? "gateway_connected" : "gateway_disconnected",
+      },
+      async () => {
+        setPlatformConnected(this.platform, connected);
+      },
+    );
   }
 
   /** Logs in to Discord. */
