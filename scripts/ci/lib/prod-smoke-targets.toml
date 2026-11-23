@@ -1,0 +1,18 @@
+# What `deploy.sh smoke` reads from production after a backend deploy, as an anonymous visitor.
+# One line per target, in order. base: api (PROD_ORIGIN) | web (PROD_WEB_ORIGIN). Every target
+# expects a 200 with no redirect followed. gate: rollback (a consistent failure rolls the deploy
+# back) | alert (warns: a backend rollback cannot fix it, and pages come from OpenNext's ISR cache).
+# burst: one of the reads the burst cycles through (a web build's first reads). Content:
+# json_equals / json_keys / json_nonempty ("." is the root list) / html (a marker the page holds).
+# slugs_from: a list whose first item's slug fills {slug} (API) and {url_slug} (web) later on.
+targets = [
+  { name = "api-health", base = "api", path = "/health", gate = "rollback", json_equals = { status = "online" }, json_keys = ["commit", "version"] },
+  { name = "integrations-community", base = "api", path = "/api/v1/integrations/community?sort=popular&limit=100&offset=0", gate = "rollback", burst = true, json_keys = ["integrations", "total"], slugs_from = "integrations" },
+  { name = "integrations-config", base = "api", path = "/api/v1/integrations/config", gate = "rollback", burst = true, json_nonempty = "integrations", slugs_from = "integrations" },
+  { name = "integration-detail", base = "api", path = "/api/v1/integrations/public/{slug}", gate = "rollback", json_keys = ["slug", "name"] },
+  { name = "plans", base = "api", path = "/api/v1/payments/plans?active_only=true", gate = "rollback", burst = true, json_nonempty = "." },
+  { name = "workflows-explore", base = "api", path = "/api/v1/workflows/explore?limit=25&offset=0", gate = "rollback", burst = true, json_keys = ["workflows"] },
+  { name = "home", base = "web", path = "/", gate = "alert", html = "<title>GAIA" },
+  { name = "marketplace", base = "web", path = "/marketplace", gate = "alert", html = "<title>AI Integration Marketplace" },
+  { name = "marketplace-detail", base = "web", path = "/marketplace/{url_slug}", gate = "alert", html = "| GAIA</title>" },
+]

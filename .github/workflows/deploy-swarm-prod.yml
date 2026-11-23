@@ -83,6 +83,8 @@ concurrency:
 env:
   # Public origin whose /health (and /bots/<name>/health) the deploy checks.
   PROD_ORIGIN: https://api.heygaia.io
+  # Public web origin the post-deploy smoke reads pages from (the Cloudflare Worker).
+  PROD_WEB_ORIGIN: https://heygaia.io
 
 jobs:
   deploy:
@@ -95,6 +97,13 @@ jobs:
       # --with-registry-auth, the post-convergence step re-points :latest at
       # the deployed tags registry-side (docker buildx imagetools create).
       packages: write
+    # What the rollback job needs when the smoke fails. Never after a conversation
+    # catch-up: the old writers were scaled to 0 for it, so their previous spec is a
+    # 0-replica one and the old image may refuse the migrated conversations.
+    outputs:
+      rollback: ${{ steps.smoke.outputs.verdict == 'fail' && steps.migrate.outputs.writers_down != 'true' }}
+      rollback_from: ${{ steps.stack.outputs.images_before }}
+      smoke_summary: ${{ steps.smoke.outputs.summary }}
 
     steps:
       - name: Checkout repository
@@ -146,6 +155,7 @@ jobs:
         run: bash scripts/ci/deploy.sh migrate
 
       - name: ${{ inputs.action == 'verify' && 'Render the stack (verify only)' || 'Deploy stack' }}
+        id: stack
         env:
           # Pin the stack to this run's immutable tags. Empty values fall
           # through to the compose file's ${VAR:-latest} defaults, i.e. the
@@ -192,6 +202,17 @@ jobs:
           APPS_IMAGE_TAG: ${{ inputs.apps_image_tag }}
           BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
         run: bash scripts/ci/deploy.sh verify-commit
+
+      # Healthy containers serving the right commit still say nothing about what a
+      # visitor gets: a public read that 5xxs, 429s or now wants auth passes every
+      # check above. Read prod from outside, anonymously, as a web build does. A
+      # verdict=fail fails this job before :latest moves and the rollback job below
+      # restores the previous images; any other failure of this step is the smoke's
+      # own and rolls nothing back.
+      - name: Smoke-test prod as an anonymous visitor
+        if: inputs.action == 'deploy'
+        id: smoke
+        run: bash scripts/ci/deploy.sh smoke
 
       # Only after convergence proved the deploy healthy does :latest move —
       # this is what makes :latest "what prod runs" instead of "what was last
@@ -247,6 +268,8 @@ jobs:
           STATE: deploy_succeeded
           COMMIT: ${{ steps.verify.outputs.commit }}
           CHANGES: ${{ steps.changelog.outputs.changes }}
+          SMOKE_VERDICT: ${{ steps.smoke.outputs.verdict }}
+          SMOKE_SUMMARY: ${{ steps.smoke.outputs.summary }}
         run: |
           set -euo pipefail
           short="${COMMIT:0:8}"
@@ -254,9 +277,13 @@ jobs:
           # changelog can carry fifteen.
           cause=$(printf '%s\n' "$CHANGES" | head -n 2)
           [[ -n "$cause" ]] || cause=$(git log -1 --format=%s)
+          impact="$short is live; every service converged, /health confirms it and the anonymous smoke passed."
+          if [[ "$SMOKE_VERDICT" == warn ]]; then
+            impact="$short is live, but the anonymous smoke warned: $SMOKE_SUMMARY"
+          fi
           STATE=deploy_succeeded \
           SUBJECT="$short" \
-          IMPACT="$short is live; every service converged and /health confirms it." \
+          IMPACT="$impact" \
           CAUSE="$cause" \
           ACTION="nothing." \
             bash scripts/ci/deploy.sh notify
@@ -335,8 +362,50 @@ jobs:
           CLEARS_WHEN: a later deploy converges every service
         run: bash scripts/ci/deploy.sh notify
 
+      - name: Notify — anonymous smoke failed, rolling back
+        if: failure() && steps.smoke.outputs.verdict == 'fail' && steps.migrate.outputs.writers_down != 'true'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: the anonymous smoke failed after convergence
+          IMPACT: being rolled back to the previous images; the rollback job of this run reports when it is done.
+          CAUSE: ${{ steps.smoke.outputs.summary }}
+          ACTION: read the smoke step of this run; fix the release before merging again.
+          CLEARS_WHEN: a later deploy passes the smoke
+        run: bash scripts/ci/deploy.sh notify
+
+      - name: Notify — anonymous smoke failed after a catch-up, not rolled back
+        if: failure() && steps.smoke.outputs.verdict == 'fail' && steps.migrate.outputs.writers_down == 'true'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: the anonymous smoke failed and prod was NOT rolled back
+          IMPACT: degraded — the new release serves; a rollback would restore 0-replica writers on an image that may refuse the migrated conversations.
+          CAUSE: ${{ steps.smoke.outputs.summary }}
+          ACTION: fix forward now; read the smoke step of this run.
+          CLEARS_WHEN: a later deploy passes the smoke
+        run: bash scripts/ci/deploy.sh notify
+
+      - name: Notify — anonymous smoke could not decide
+        if: failure() && steps.smoke.outcome == 'failure' && steps.smoke.outputs.verdict != 'fail'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: the anonymous smoke could not decide
+          IMPACT: the new release serves and converged; nothing was rolled back and :latest was not moved.
+          CAUSE: ${{ steps.smoke.outputs.summary || 'the smoke crashed before writing a verdict' }}
+          ACTION: read the smoke step of this run; re-run the job once the runner reaches prod.
+          CLEARS_WHEN: a deploy whose smoke decides
+        run: bash scripts/ci/deploy.sh notify
+
       - name: Notify — deploy failed
-        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure' && steps.migrate.outcome != 'failure' && steps.migrate.outputs.writers_down != 'true'
+        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure' && steps.migrate.outcome != 'failure' && steps.migrate.outputs.writers_down != 'true' && steps.smoke.outcome != 'failure'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -349,8 +418,13 @@ jobs:
           CLEARS_WHEN: a green master run deploys
         run: bash scripts/ci/deploy.sh notify
 
+  # One rollback, two triggers: an operator's dispatch, or this run's deploy job
+  # whose anonymous smoke failed (rollback_mode last, scoped to the services that
+  # deploy changed). !cancelled(): a dispatch skips the deploy job, and a smoke
+  # failure fails it; either way this job must still be considered.
   rollback:
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    needs: [deploy]
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.action == 'rollback') || needs.deploy.outputs.rollback == 'true') }}
     runs-on: ubuntu-24.04
     environment: production
     permissions:
@@ -358,6 +432,10 @@ jobs:
       # The post-rollback step re-points :latest at the rolled-back images
       # registry-side (docker buildx imagetools create).
       packages: write
+    env:
+      # A smoke-triggered rollback is always `last`, whatever a dispatch passed.
+      ROLLBACK_MODE: ${{ needs.deploy.outputs.rollback == 'true' && 'last' || inputs.rollback_mode }}
+      ROLLBACK_CAUSE: ${{ needs.deploy.outputs.rollback == 'true' && format('the anonymous smoke failed on {0}', github.sha) || 'dispatched' }}
 
     steps:
       - name: Checkout repository
@@ -378,32 +456,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A smoke-triggered rollback is limited to the services whose image the
+      # deploy changed (ROLLBACK_FROM), so re-running this job rolls nothing back
+      # twice — a second `service rollback` would restore the bad spec. The CLI
+      # waits for each service's rollback to converge before it returns.
       - name: Roll back app stack
         id: rollback
         env:
-          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          ROLLBACK_SCOPED: ${{ needs.deploy.outputs.rollback == 'true' }}
+          ROLLBACK_FROM: ${{ needs.deploy.outputs.rollback_from }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
-        shell: bash
-        run: |
-          # An assignment, not `for svc in $(…)`: a failed docker call (or no
-          # matching service) then fails the step instead of rolling back nothing.
-          if [ "$ROLLBACK_MODE" = "last" ]; then
-            services="$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')"
-            for svc in $services; do
-              echo "Rolling back $svc..."
-              docker --context prod service rollback "$svc"
-            done
-          elif [ "$ROLLBACK_MODE" = "digest" ]; then
-            [ -z "$IMAGE_DIGEST" ] && echo "image_digest required for digest mode" && exit 1
-            # Every service running the gaia image — a partial pin would leave
-            # the remainder on a different build than the :latest alias claims.
-            services="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
-            for svc in $services; do
-              docker --context prod service update --image "$IMAGE_DIGEST" "$svc"
-            done
-          fi
-          echo "services=${services//$'\n'/ }" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/deploy.sh rollback
 
       - name: Wait for rollback convergence
         id: converge
@@ -444,17 +507,22 @@ jobs:
         # exact lie this mechanism exists to kill.
         if: success() && steps.converge.outputs.timed_out != 'true'
         env:
-          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
           DOCKER_CONTEXT: prod
           STACK: gaia-prod
         run: bash scripts/ci/deploy.sh retag rolled-back
 
+      # RECOVERED is a claim about what a visitor gets, so the same anonymous
+      # smoke that can trigger a rollback has to pass after it.
+      - name: Smoke-test prod after the rollback
+        if: success() && steps.converge.outputs.timed_out != 'true'
+        id: smoke
+        run: bash scripts/ci/deploy.sh smoke
+
       - name: Push rollback annotation to Loki
         if: success()
         env:
           LOKI_PUSH_URL: ${{ secrets.LOKI_PUSH_URL }}
-          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
           ACTOR: ${{ github.actor }}
           REF_NAME: ${{ github.ref_name }}
         run: |
@@ -480,13 +548,27 @@ jobs:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           STATE: recovered
           SUBJECT: prod is back on the rolled-back images
-          IMPACT: ${{ steps.converge.outputs.timed_out == 'true' && 'serving the previous build again, but not every service stabilised within 3 minutes — verify manually.' || 'serving the previous build again; the bad deploy is not live.' }}
-          CAUSE: ${{ inputs.rollback_mode }} rollback${{ inputs.image_digest && format(' of `{0}`', inputs.image_digest) || '' }}
+          IMPACT: ${{ steps.converge.outputs.timed_out == 'true' && 'serving the previous build again, but not every service stabilised within 3 minutes — verify manually.' || 'serving the previous build again and it passes the anonymous smoke; the bad deploy is not live.' }}
+          CAUSE: ${{ env.ROLLBACK_MODE }} rollback${{ inputs.image_digest && format(' of `{0}`', inputs.image_digest) || '' }} (${{ env.ROLLBACK_CAUSE }})
           ACTION: fix the failure before merging again.
         run: bash scripts/ci/deploy.sh notify
 
+      - name: Notify — rollback did not clear the smoke
+        if: failure() && steps.smoke.outcome == 'failure'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: rolled back, and prod still fails the anonymous smoke
+          IMPACT: on the previous images, which fail the same public reads — the cause is not (only) the release.
+          CAUSE: ${{ steps.smoke.outputs.summary || 'the smoke crashed before writing a verdict' }}
+          ACTION: read the smoke step of this run; check data, Redis and the proxy, not the image.
+          CLEARS_WHEN: the anonymous smoke passes against prod
+        run: bash scripts/ci/deploy.sh notify
+
       - name: Notify — rollback failed
-        if: failure()
+        if: failure() && steps.smoke.outcome != 'failure'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -494,7 +576,7 @@ jobs:
           STATE: deploy_failed
           SUBJECT: rollback did not complete
           IMPACT: unknown — the rollback job failed before it finished.
-          CAUSE: the rollback command or a follow-up step failed on ${{ inputs.rollback_mode }}
+          CAUSE: the rollback command or a follow-up step failed on ${{ env.ROLLBACK_MODE }} (${{ env.ROLLBACK_CAUSE }})
           ACTION: check the VM now; the run log names the failing step.
           CLEARS_WHEN: prod is confirmed serving a known-good build
         run: bash scripts/ci/deploy.sh notify
