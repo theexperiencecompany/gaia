@@ -19,6 +19,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
 from app.models.conversation_log_models import Reply
 from app.models.scheduler_models import ScheduledTaskStatus
@@ -74,6 +75,7 @@ async def workflow(
             ),
             steps=[WorkflowStep(id="s1", title="Summarize", category="general", description="a")],
             activated=True,
+            delivery=WorkflowDelivery.NOW,
             status=ScheduledTaskStatus.SCHEDULED,
         )
     )
