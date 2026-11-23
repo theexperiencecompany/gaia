@@ -6,10 +6,13 @@ the HIL sweep's timeout path, sweep re-dispatched executor runs, and
 reminder/workflow-triggered runs.
 """
 
+from app.agents.llm.metrics import create_llm_series
 from app.constants.briefing import BriefingKind, BriefingRunOutcome
 from app.services import latency_metrics
 from app.services.briefing.metrics import FAILED, create_brief_run_series
+from app.services.latency_metrics import create_chat_turn_series
 from app.services.links.metrics import LinkMintOutcome, create_link_mint_series
+from app.services.scheduler_metrics import create_scheduled_task_series
 from app.workers.metrics import REGISTRY as WORKER_REGISTRY
 
 
@@ -51,3 +54,20 @@ def test_the_link_mint_failure_series_is_served_by_the_worker_before_its_first_m
         if sample.name == "gaia_link_mint_total"
     }
     assert outcomes == {outcome.value for outcome in LinkMintOutcome}
+
+
+def test_the_llm_scheduler_and_chat_turn_series_are_served_by_the_worker() -> None:
+    """The worker runs model calls, claims and reaps scheduled tasks, and settles chat turns; the alerts read their failures."""
+    create_llm_series()
+    create_scheduled_task_series()
+    create_chat_turn_series()
+
+    served = {sample.name for family in WORKER_REGISTRY.collect() for sample in family.samples}
+    for name in (
+        "gaia_llm_call_total",
+        "gaia_llm_fallback_total",
+        "gaia_scheduled_task_total",
+        "gaia_scheduled_task_lateness_seconds_count",
+        "chat_turn_total",
+    ):
+        assert name in served, name
