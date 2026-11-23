@@ -14,6 +14,7 @@ from uuid import NAMESPACE_URL, uuid5
 import pytest
 
 from app.constants.llm import DEFAULT_MODEL_NAME
+from app.constants.scouts import SCOUT_AGENT_NAME
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.services.analytics_service import AIFeature
 from app.services.llm_usage_analytics import (
@@ -69,6 +70,12 @@ def test_a_browser_run_is_browser_spend_not_an_integration() -> None:
 def test_a_background_call_is_attributed_by_its_label() -> None:
     """A one-shot inside a workflow run is still the memory or follow-up work it did."""
     assert llm_feature("memory:extract", "wf-1", background=True) is AIFeature.MEMORY
+
+
+@pytest.mark.regression
+def test_a_brief_scout_learn_run_is_briefing_spend() -> None:
+    """Its graph books to the scout ledger, so every call is background and attributed by label."""
+    assert llm_feature(SCOUT_AGENT_NAME, None, background=True) is AIFeature.BRIEFING
 
 
 # --- feature_for_label -------------------------------------------------------- #
