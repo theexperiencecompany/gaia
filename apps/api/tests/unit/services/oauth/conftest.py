@@ -28,12 +28,6 @@ def mock_user_integration_repo():
 
 
 @pytest.fixture
-def mock_token_repository():
-    with patch("app.services.oauth.oauth_service.token_repository") as mock_repo:
-        yield mock_repo
-
-
-@pytest.fixture
 def mock_composio_service():
     mock_service = AsyncMock()
     mock_service.check_connection_status = AsyncMock(return_value={})

@@ -38,7 +38,6 @@ from app.models.brief_composition_models import (
 from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, SeriesShape
 from app.services.briefing.candidates.subjects import same_text_key
-from app.services.briefing.claims import dependency_problems, duration_problems, goal_problems
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.slots import SlotError, SlotValues, render_slots, slot_problems
 
@@ -240,16 +239,7 @@ def _own_problems(
     if isinstance(block, ComposedProgress):
         known = block.goal_id in pool.goals_by_id
         return [] if known else [says.NO_POOL_GOAL.format(where=where, id=block.goal_id)]
-    text = _text_problems(where, "text", block.text, BRIEF_NOTE_MAX_CHARS, values)
-    said = f"{where} text"
-    return [
-        *text,
-        *(
-            problem
-            for check in (goal_problems, dependency_problems, duration_problems)
-            for problem in check(said, block.text, values)
-        ),
-    ]
+    return _text_problems(where, "text", block.text, BRIEF_NOTE_MAX_CHARS, values)
 
 
 def _block_problems(

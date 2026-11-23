@@ -32,13 +32,7 @@ from app.models.brief_slot_models import FactField, FactSlot, LinkSlot
 from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
-from app.services.briefing.claims import (
-    claim_problems,
-    dependency_problems,
-    duration_problems,
-    goal_problems,
-    points_back,
-)
+from app.services.briefing.claims import claim_problems, points_back
 from app.services.briefing.facts import Facts
 from app.services.briefing.formats import opening_line
 from app.services.briefing.slots import (
@@ -182,11 +176,7 @@ def _field_problems(name: str, text: str, values: SlotValues) -> list[str]:
     problems = slot_problems(name, text, values)
     if name == "message":
         problems += claim_problems(name, text, values)
-    return problems + [
-        problem
-        for check in (goal_problems, dependency_problems, duration_problems)
-        for problem in check(name, text, values)
-    ]
+    return problems
 
 
 def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str]:

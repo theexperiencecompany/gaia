@@ -189,43 +189,6 @@ FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
     "as always",
     "once again",
 )
-#: Words that say one thing causes, blocks or gates another; prose may use one only where a fact does.
-DEPENDENCY_CLAIMS: Final[tuple[str, ...]] = (
-    "because",
-    "blocks",
-    "blocked",
-    "blocking",
-    "blocker",
-    "unblock",
-    "unblocks",
-    "unblocking",
-    "holding up",
-    "holds up",
-    "held up",
-    "bottleneck",
-    "caused by",
-    "depends on",
-    "dependent on",
-    "opens up",
-    "frees up",
-)
-#: Words that say how long something has stood, or that it stood before; prose may use one only
-#: of a fact whose line carries a date (its time, when an earlier brief showed it, an age).
-DURATION_CLAIMS: Final[tuple[str, ...]] = (
-    "still",
-    "again",
-    "for a while",
-    "for days",
-    "for weeks",
-    "for months",
-    "for ages",
-    "or more",
-    "sitting",
-    "lingering",
-    "been waiting",
-    "piling up",
-    "long overdue",
-)
 # Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
 # mend shows it what it wrote), then code voices it plainly from its facts (briefing.checked_call).
 MAX_VOICE_ATTEMPTS: Final[int] = 2

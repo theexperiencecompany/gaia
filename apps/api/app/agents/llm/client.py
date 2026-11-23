@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from functools import cache
 import math
 import time
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, Literal, TypedDict, TypeVar, cast
 from urllib.parse import urlparse
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -28,7 +28,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openrouter.utils import BackoffStrategy, RetryConfig
-from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, SecretStr, ValidationError
 
 from app.agents.llm.dev_lane import (
     build_custom_chat_model,
@@ -1156,7 +1156,7 @@ class StructuredCallOptions:
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
     #: Have the provider hold the reply to the schema (strict tools on an OpenAI wire, the
     #: response schema on Gemini), so a model cannot leave a field out. Every field of the
-    #: schema must then be required, with no defaults.
+    #: schema must then be required, with no defaults. Size caps are checked after, not held.
     schema_held: bool = False
 
 
@@ -1626,11 +1626,15 @@ async def _record_auxiliary_usage(
 
 
 class _OpenAIFunctionSpec(BaseModel):
-    """The function block of an OpenAI tool spec, read for the name the model calls."""
+    """The function block of an OpenAI tool spec: the name the model calls and its arguments' schema.
 
-    model_config = ConfigDict(extra="ignore")
+    Its description and strict flag ride along as extras, so a spec dumps back whole.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str
+    parameters: JsonValue = None
 
 
 class _OpenAIToolSpec(BaseModel):
@@ -1638,6 +1642,7 @@ class _OpenAIToolSpec(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    type: Literal["function"] = "function"
     function: _OpenAIFunctionSpec
 
 
@@ -1721,6 +1726,22 @@ def _structured_tool_choice(llm: BaseChatModel) -> str:
     return "required" if forced else "auto"
 
 
+#: The bounds a provider holding a reply to its schema enforces by cutting it short: a
+#: string ends mid-sentence at maxLength, a list at maxItems. Code checks them after.
+_SIZE_CAPS = frozenset({"maxLength", "maxItems"})
+
+
+def _without_size_caps(schema: JsonValue) -> JsonValue:
+    """Return the JSON schema without its size caps, so a held reply arrives whole and is checked."""
+    if isinstance(schema, list):
+        return [_without_size_caps(node) for node in schema]
+    if isinstance(schema, dict):
+        return {
+            key: _without_size_caps(node) for key, node in schema.items() if key not in _SIZE_CAPS
+        }
+    return schema
+
+
 def _structured_tool_runnable(
     llm: BaseChatModel, schema: type[_StructuredT], *, strict: bool = False
 ) -> Runnable:
@@ -1729,12 +1750,15 @@ def _structured_tool_runnable(
     Not with_structured_output: it forces the tool by name, and it parses streamed
     arguments leniently. The call is unstreamed (streaming=False also holds under
     astream_events), so :func:_parse_structured_reply sees the arguments exactly as sent.
-    strict has the OpenAI wire hold the arguments to the schema.
+    strict has the OpenAI wire hold the arguments to the schema, less its size caps.
     """
-    tool = convert_to_openai_tool(schema, strict=strict or None)
+    spec = _OpenAIToolSpec.model_validate(convert_to_openai_tool(schema, strict=strict or None))
+    if strict:
+        spec.function.parameters = _without_size_caps(spec.function.parameters)
+    tool = spec.model_dump()
     tool_choice = _structured_tool_choice(llm)
     bound = llm.model_copy(update={"streaming": False}).bind_tools(
-        [schema],
+        [tool],
         tool_choice=tool_choice,
         ls_structured_output_format={
             "kwargs": {"method": "function_calling", "tool_choice": tool_choice},
@@ -1769,7 +1793,7 @@ def _gemini_schema_runnable(llm: ChatGoogleGenerativeAI, schema: type[_Structure
     """Build a Gemini one-shot whose reply the response schema holds: JSON that fits, field for field."""
     bound = llm.bind(
         response_mime_type="application/json",
-        response_json_schema=schema.model_json_schema(),
+        response_json_schema=_without_size_caps(schema.model_json_schema()),
     )
     return bound | RunnableLambda(
         lambda message: _parse_json_reply(message, schema), name=_structured_tool_name(schema)

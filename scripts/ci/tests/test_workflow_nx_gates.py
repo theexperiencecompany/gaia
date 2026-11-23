@@ -146,8 +146,6 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         (".dockerignore", "ci:api-image"),
         ("config/squirrel.toml", "ci:seo"),
         ("libs/shared/ts/src/index.ts", "ci:seo"),
-        ("packages/cli/src/index.ts", "ci:selfhost-e2e"),
-        ("packages/cli/selfhost/docker-compose.selfhost.yml", "ci:selfhost-e2e"),
         # The web bundle syncs the wake-word runtime and bundles shared-typescript.
         ("libs/wake-word/src/web/runtime.ts", "web:build"),
         ("libs/shared/ts/src/index.ts", "web:build"),
@@ -187,7 +185,6 @@ def test_detect_selects(path: str, task: str) -> None:
         ("apps/api/app/main.py", "ci:api-image"),
         ("apps/api/app/main.py", "ci:seo"),
         ("pnpm-lock.yaml", "api:test"),
-        ("apps/api/app/main.py", "ci:selfhost-e2e"),
         ("apps/api/app/main.py", "web:build"),
         ("scripts/ci/deploy.sh", "ci:desktop-package"),
         ("apps/api/CLAUDE.md", "api:docker:build"),
@@ -201,6 +198,82 @@ def test_detect_selects(path: str, task: str) -> None:
 )
 def test_detect_leaves_out(path: str, task: str) -> None:
     assert task not in nx_affected.select([f"--files={path}"]).tasks
+
+
+SELFHOST_E2E = "cli:selfhost-e2e"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "packages/cli/src/index.ts",
+        "packages/cli/selfhost/docker-compose.selfhost.yml",
+        "packages/cli/selfhost/Caddyfile",
+        "apps/api/Dockerfile",
+        "apps/api/Dockerfile.dockerignore",
+        ".dockerignore",
+        "scripts/docker-entrypoint.sh",
+        "apps/web/Dockerfile",
+        "infra/docker/docker-compose.yml",
+        # API startup, settings and lifespan: what `gaia up` waits on before the journey starts.
+        "apps/api/app/main.py",
+        "apps/api/app/core/app_factory.py",
+        "apps/api/app/core/lifespan.py",
+        "apps/api/app/core/provider_registration.py",
+        "apps/api/app/config/settings.py",
+        "apps/api/app/config/deployment.py",
+        "apps/api/app/api/v1/endpoints/health.py",
+        "apps/api/app/api/v1/endpoints/readiness.py",
+        "apps/api/scripts/post_deploy.py",
+        "apps/api/app/worker.py",
+        # What the journey drives.
+        "apps/api/app/api/v1/endpoints/setup.py",
+        "apps/web/src/features/setup-wizard/constants.ts",
+        "apps/web/e2e/selfhost/selfhost-journey.spec.ts",
+        "apps/web/playwright.selfhost.config.ts",
+        "tools/llm-stub/server.py",
+        # The lane's own harness.
+        ".github/workflows/selfhost-smoke.yml",
+        "scripts/ci/selfhost.sh",
+        "scripts/ci/lib/log.sh",
+        ".github/actions/setup-uv/action.yml",
+    ],
+)
+def test_the_selfhost_e2e_runs_when_the_change_reaches_the_selfhost_stack(path: str) -> None:
+    assert SELFHOST_E2E in nx_affected.select([f"--files={path}"]).tasks
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "apps/web/src/features/chat/components/composer/Composer.tsx",
+        "apps/api/app/services/todos/todo_service.py",
+        "docs/introduction.mdx",
+        ".github/workflows/build.yml",
+        # 9 of 14 queue runs that booted it in a week came from CI-only changes like these.
+        ".github/workflows/ci.yml",
+        "scripts/ci/changes.sh",
+        "scripts/ci/tests/test_audit.py",
+        ".github/actions/select-runner/action.yml",
+        # Any edit here re-selects every target of its project, so the lane lives outside it.
+        "tools/ci/project.json",
+    ],
+)
+def test_the_selfhost_e2e_skips_what_never_reaches_the_selfhost_stack(path: str) -> None:
+    assert SELFHOST_E2E not in nx_affected.select([f"--files={path}"]).tasks
+
+
+def test_the_selfhost_e2e_runs_on_every_dispatch_and_on_a_merge_group_it_reaches() -> None:
+    workflow = mapping(yaml.safe_load((WORKFLOWS / "selfhost-smoke.yml").read_text()))
+    changes = workflow["jobs"]["changes"]
+    assert changes["outputs"]["selfhost_e2e"] == (
+        "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'merge_group'"
+        f" && contains(fromJSON(steps.affected.outputs.tasks), '{SELFHOST_E2E}')) }}}}"
+    )
+    assert workflow["jobs"]["selfhost-e2e"]["if"] == "needs.changes.outputs.selfhost_e2e == 'true'"
+    # A detection that errors fails the run; it never reads as "not affected".
+    assert "continue-on-error" not in changes
+    assert all("continue-on-error" not in step for step in changes["steps"])
 
 
 @pytest.mark.parametrize(
