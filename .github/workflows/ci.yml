@@ -1263,7 +1263,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -la .coverage.*
-          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.render .coverage.bridge .coverage.browser
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
           echo "coverage gate: fail-under=$FAIL_UNDER (whole-suite runs only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml

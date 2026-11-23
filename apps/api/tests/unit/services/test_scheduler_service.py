@@ -163,6 +163,7 @@ class TestInitializeClose:
         await service.close()
 
         mock_pool.aclose.assert_awaited_once()
+        assert service.arq_pool is None
 
     async def test_close_no_pool(self, service):
         service.arq_pool = None
