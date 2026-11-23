@@ -9,6 +9,7 @@ trees so the logic is proven without running mutmut.
 import io
 import json
 from pathlib import Path
+import signal
 import subprocess
 import sys
 
@@ -784,7 +785,7 @@ def test_a_single_module_run_skips_a_module_the_lane_excludes(
 
     monkeypatch.setattr(mutation, "mutate", must_not_mutate)
     monkeypatch.setattr(mutation, "venv_python", lambda: Path(sys.executable))
-    monkeypatch.setattr(mutation.signal, "signal", lambda *_: None)
+    monkeypatch.setattr(signal, "signal", lambda *_: None)
     monkeypatch.setenv("MUTMUT_MAX_CHILDREN", "1")
     monkeypatch.delenv("MUTATION_VERDICT_DIR", raising=False)
 
