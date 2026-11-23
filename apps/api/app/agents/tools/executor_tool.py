@@ -106,7 +106,8 @@ async def call_executor(
     ],
     for_messages: Annotated[
         list[int],
-        "The [#n] handles of the user's messages this task handles, as numbers (#7 is 7).",
+        "The [#n] handles of the user's messages this task handles, as numbers (#7 is 7). "
+        "Empty when the request carries no handle (a workflow run, a connected integration).",
     ],
     acceptance_criteria: Annotated[
         list[str],
@@ -233,7 +234,7 @@ async def call_executor(
         # letting a second concurrent executor start in the same conversation.
         await release_lock_if_owned(conversation_id, configurable.get("stream_id"), task_id)
         return f"Error starting task: {e!s}"
-    if dispatched != _NOT_STARTED_STOPPED:
+    if handled is not None and dispatched != _NOT_STARTED_STOPPED:
         close(config, Closing.HANDED, for_messages)
     return dispatched
 
