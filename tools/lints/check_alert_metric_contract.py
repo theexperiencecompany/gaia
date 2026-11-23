@@ -319,7 +319,7 @@ def _collector_call(module: _Module, value: ast.expr | None) -> tuple[str, ast.C
     """Return (kind, constructor call) when value builds a prometheus_client collector."""
     if not isinstance(value, ast.Call):
         return None
-    if isinstance(value.func, ast.Name) and value.func.id == "_register_once":
+    if isinstance(value.func, ast.Name) and value.func.id == "register_once":
         factory = value.args[1] if len(value.args) > 1 else None
         return _collector_call(module, factory.body if isinstance(factory, ast.Lambda) else None)
     if isinstance(value.func, ast.Name):

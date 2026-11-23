@@ -10,12 +10,12 @@ from typing import Final
 from prometheus_client import Counter
 
 from app.models.scout_models import ScoutOutcome, ScoutResult, ScoutSkipReason
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 #: The skip_reason label on a turn that was not skipped.
 NO_SKIP: Final = "none"
 
-SCOUT_TURN_TOTAL = _register_once(
+SCOUT_TURN_TOTAL = register_once(
     "gaia_brief_scout_total",
     lambda: Counter(
         name="gaia_brief_scout_total",

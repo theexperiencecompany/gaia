@@ -67,10 +67,10 @@ from app.services.sandbox.execute_client import (
     seed_execute_client,
 )
 from app.services.storage import ArtifactInfo, FsOps, fs_timer
-from app.services.storage.metrics import _register_once
 from app.services.triggers.subscription_service import unregister_subscription
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
+from app.utils.prometheus_registry import register_once
 from shared.py.wide_events import log
 
 MAX_TIMEOUT_SECONDS = 600
@@ -80,7 +80,7 @@ MAX_COMMAND_LENGTH = 16_000
 # Bucketed bash exit code counter (fs-metrics-coverage contract). Mirrors
 # shell semantics: 0=success, 1-126=generic failure, 127=not found,
 # 128-254=killed by signal, 255=catch-all, "timeout"=our deadline.
-_BASH_EXIT_CODE_TOTAL = _register_once(
+_BASH_EXIT_CODE_TOTAL = register_once(
     "tool_bash_exit_code_total",
     lambda: Counter(
         name="tool_bash_exit_code_total",

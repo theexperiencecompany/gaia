@@ -14,7 +14,7 @@ from prometheus_client import Counter
 
 from app.constants.llm import LLMProviderName
 from app.services.llm_metering import classify_error_family
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 UNKNOWN_PROVIDER = "unknown"
 
@@ -34,7 +34,7 @@ class LLMFallbackOutcome(StrEnum):
     EXHAUSTED = "exhausted"
 
 
-LLM_CALL_TOTAL = _register_once(
+LLM_CALL_TOTAL = register_once(
     "gaia_llm_call_total",
     lambda: Counter(
         name="gaia_llm_call_total",
@@ -43,7 +43,7 @@ LLM_CALL_TOTAL = _register_once(
     ),
 )
 
-LLM_FALLBACK_TOTAL = _register_once(
+LLM_FALLBACK_TOTAL = register_once(
     "gaia_llm_fallback_total",
     lambda: Counter(
         name="gaia_llm_fallback_total",

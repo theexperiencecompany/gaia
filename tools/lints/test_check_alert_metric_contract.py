@@ -49,9 +49,9 @@ groups:
 METRICS = """\
 from prometheus_client import Counter
 
-from app.registry import _register_once
+from app.registry import register_once
 
-ORDERS_TOTAL = _register_once(
+ORDERS_TOTAL = register_once(
     "gaia_orders_total",
     lambda: Counter(name="gaia_orders_total", documentation="orders", labelnames=("outcome",)),
 )

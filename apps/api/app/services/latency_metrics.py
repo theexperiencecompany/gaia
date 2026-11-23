@@ -22,8 +22,8 @@ from typing import Final
 from prometheus_client import Counter, Histogram
 
 from app.constants.chat import ConversationSource
-from app.services.storage.metrics import _register_once
 from app.services.turn_timings import StepReport, Store, StoreTally, TurnPhase, TurnStep
+from app.utils.prometheus_registry import register_once
 from shared.py.wide_events import log
 
 #: Sub-second steps where the overhead work moves things, edges at the 5s and
@@ -85,7 +85,7 @@ _TURN_BUCKETS: Final[tuple[float, ...]] = (
     600,
 )
 
-_CHAT_TTFT_SECONDS = _register_once(
+_CHAT_TTFT_SECONDS = register_once(
     "chat_ttft_seconds",
     lambda: Histogram(
         name="chat_ttft_seconds",
@@ -95,7 +95,7 @@ _CHAT_TTFT_SECONDS = _register_once(
     ),
 )
 
-_CHAT_E2E_FULL_SECONDS = _register_once(
+_CHAT_E2E_FULL_SECONDS = register_once(
     "chat_e2e_full_seconds",
     lambda: Histogram(
         name="chat_e2e_full_seconds",
@@ -105,7 +105,7 @@ _CHAT_E2E_FULL_SECONDS = _register_once(
     ),
 )
 
-_TURN_STEP_SECONDS = _register_once(
+_TURN_STEP_SECONDS = register_once(
     "turn_step_seconds",
     lambda: Histogram(
         name="turn_step_seconds",
@@ -118,7 +118,7 @@ _TURN_STEP_SECONDS = _register_once(
     ),
 )
 
-_TURN_STORE_CALLS = _register_once(
+_TURN_STORE_CALLS = register_once(
     "turn_store_calls",
     lambda: Histogram(
         name="turn_store_calls",
@@ -128,7 +128,7 @@ _TURN_STORE_CALLS = _register_once(
     ),
 )
 
-_TURN_STORE_SECONDS = _register_once(
+_TURN_STORE_SECONDS = register_once(
     "turn_store_seconds",
     lambda: Histogram(
         name="turn_store_seconds",
@@ -138,7 +138,7 @@ _TURN_STORE_SECONDS = _register_once(
     ),
 )
 
-_LLM_TTFT_SECONDS = _register_once(
+_LLM_TTFT_SECONDS = register_once(
     "llm_ttft_seconds",
     lambda: Histogram(
         name="llm_ttft_seconds",
@@ -148,7 +148,7 @@ _LLM_TTFT_SECONDS = _register_once(
     ),
 )
 
-_CONTEXT_ASSEMBLE_SECONDS = _register_once(
+_CONTEXT_ASSEMBLE_SECONDS = register_once(
     "context_assemble_seconds",
     lambda: Histogram(
         name="context_assemble_seconds",
@@ -158,7 +158,7 @@ _CONTEXT_ASSEMBLE_SECONDS = _register_once(
     ),
 )
 
-_EXECUTOR_QUEUE_WAIT_SECONDS = _register_once(
+_EXECUTOR_QUEUE_WAIT_SECONDS = register_once(
     "executor_queue_wait_seconds",
     lambda: Histogram(
         name="executor_queue_wait_seconds",
@@ -168,7 +168,7 @@ _EXECUTOR_QUEUE_WAIT_SECONDS = _register_once(
     ),
 )
 
-_EXECUTOR_TTFT_SECONDS = _register_once(
+_EXECUTOR_TTFT_SECONDS = register_once(
     "executor_ttft_seconds",
     lambda: Histogram(
         name="executor_ttft_seconds",
@@ -178,7 +178,7 @@ _EXECUTOR_TTFT_SECONDS = _register_once(
     ),
 )
 
-_EXECUTOR_ACTIVE_SECONDS = _register_once(
+_EXECUTOR_ACTIVE_SECONDS = register_once(
     "executor_active_seconds",
     lambda: Histogram(
         name="executor_active_seconds",
@@ -188,7 +188,7 @@ _EXECUTOR_ACTIVE_SECONDS = _register_once(
     ),
 )
 
-_EXECUTOR_E2E_SECONDS = _register_once(
+_EXECUTOR_E2E_SECONDS = register_once(
     "executor_e2e_seconds",
     lambda: Histogram(
         name="executor_e2e_seconds",
@@ -198,7 +198,7 @@ _EXECUTOR_E2E_SECONDS = _register_once(
     ),
 )
 
-_TOOL_CALL_SECONDS = _register_once(
+_TOOL_CALL_SECONDS = register_once(
     "tool_call_seconds",
     lambda: Histogram(
         name="tool_call_seconds",
@@ -208,7 +208,7 @@ _TOOL_CALL_SECONDS = _register_once(
     ),
 )
 
-_SUBAGENT_RUN_SECONDS = _register_once(
+_SUBAGENT_RUN_SECONDS = register_once(
     "subagent_run_seconds",
     lambda: Histogram(
         name="subagent_run_seconds",
@@ -218,7 +218,7 @@ _SUBAGENT_RUN_SECONDS = _register_once(
     ),
 )
 
-_LLM_CALL_SECONDS = _register_once(
+_LLM_CALL_SECONDS = register_once(
     "llm_call_seconds",
     lambda: Histogram(
         name="llm_call_seconds",
@@ -228,7 +228,7 @@ _LLM_CALL_SECONDS = _register_once(
     ),
 )
 
-_GRAPH_NODE_SECONDS = _register_once(
+_GRAPH_NODE_SECONDS = register_once(
     "graph_node_seconds",
     lambda: Histogram(
         name="graph_node_seconds",
@@ -238,7 +238,7 @@ _GRAPH_NODE_SECONDS = _register_once(
     ),
 )
 
-_CHAT_TURN_TOTAL = _register_once(
+_CHAT_TURN_TOTAL = register_once(
     "chat_turn_total",
     lambda: Counter(
         name="chat_turn_total",
@@ -247,7 +247,7 @@ _CHAT_TURN_TOTAL = _register_once(
     ),
 )
 
-_CONTEXT_SECTION_BUDGET_EXCEEDED = _register_once(
+_CONTEXT_SECTION_BUDGET_EXCEEDED = register_once(
     "context_section_budget_exceeded",
     lambda: Counter(
         name="context_section_budget_exceeded",
@@ -256,7 +256,7 @@ _CONTEXT_SECTION_BUDGET_EXCEEDED = _register_once(
     ),
 )
 
-_MEMORY_FAST_RECALL_SEMANTIC_MISSED = _register_once(
+_MEMORY_FAST_RECALL_SEMANTIC_MISSED = register_once(
     "memory_fast_recall_semantic_missed",
     lambda: Counter(
         name="memory_fast_recall_semantic_missed",
@@ -264,7 +264,7 @@ _MEMORY_FAST_RECALL_SEMANTIC_MISSED = _register_once(
     ),
 )
 
-_EXECUTOR_RUN_TOTAL = _register_once(
+_EXECUTOR_RUN_TOTAL = register_once(
     "executor_run_total",
     lambda: Counter(
         name="executor_run_total",
@@ -273,7 +273,7 @@ _EXECUTOR_RUN_TOTAL = _register_once(
     ),
 )
 
-_TOOL_CALL_TOTAL = _register_once(
+_TOOL_CALL_TOTAL = register_once(
     "tool_call_total",
     lambda: Counter(
         name="tool_call_total",
@@ -282,7 +282,7 @@ _TOOL_CALL_TOTAL = _register_once(
     ),
 )
 
-_TRIGGER_GATE_DECISION_TOTAL = _register_once(
+_TRIGGER_GATE_DECISION_TOTAL = register_once(
     "trigger_gate_decision_total",
     lambda: Counter(
         name="trigger_gate_decision_total",
@@ -294,7 +294,7 @@ _TRIGGER_GATE_DECISION_TOTAL = _register_once(
     ),
 )
 
-_REACTION_ACK_DECISION_TOTAL = _register_once(
+_REACTION_ACK_DECISION_TOTAL = register_once(
     "reaction_ack_decision_total",
     lambda: Counter(
         name="reaction_ack_decision_total",

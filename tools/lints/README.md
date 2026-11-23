@@ -752,7 +752,7 @@ How each side is read:
   is collected.
 - **Python** (`apps/api/app`, `apps/voice-agent/src`): a collector is a
   module-level `prometheus_client` `Counter`/`Gauge`/`Histogram`/`Summary`,
-  built directly or inside `_register_once(...)`. It is recorded when a
+  built directly or inside `register_once(...)`. It is recorded when a
   function calls `inc`/`observe`/`set`/… on it (through any `.labels(...)`), or
   hands it to a helper of its own module, and that function is either outside
   the collector's module or reachable from another production module by name,

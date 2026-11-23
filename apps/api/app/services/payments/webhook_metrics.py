@@ -10,7 +10,7 @@ from enum import StrEnum
 from prometheus_client import Counter
 
 from app.models.webhook_models import WebhookProcessingStatus
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 
 class PaymentWebhookRejection(StrEnum):
@@ -20,7 +20,7 @@ class PaymentWebhookRejection(StrEnum):
     ERROR = "error"
 
 
-PAYMENT_WEBHOOK_TOTAL = _register_once(
+PAYMENT_WEBHOOK_TOTAL = register_once(
     "gaia_payment_webhook_total",
     lambda: Counter(
         name="gaia_payment_webhook_total",

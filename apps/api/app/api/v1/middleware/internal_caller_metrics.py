@@ -10,7 +10,7 @@ from http import HTTPStatus
 
 from prometheus_client import Counter
 
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 
 class InternalCallerRefusal(StrEnum):
@@ -25,7 +25,7 @@ _REFUSALS: dict[int, InternalCallerRefusal] = {
     HTTPStatus.FORBIDDEN: InternalCallerRefusal.FORBIDDEN,
 }
 
-INTERNAL_CALLER_REFUSED_TOTAL = _register_once(
+INTERNAL_CALLER_REFUSED_TOTAL = register_once(
     "gaia_internal_caller_refused_total",
     lambda: Counter(
         name="gaia_internal_caller_refused_total",

@@ -9,7 +9,7 @@ from enum import StrEnum
 
 from prometheus_client import Counter
 
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 
 class WebhookOutcome(StrEnum):
@@ -19,7 +19,7 @@ class WebhookOutcome(StrEnum):
     FAILED = "failed"
 
 
-INTEGRATION_TOKEN_REFRESH_TOTAL = _register_once(
+INTEGRATION_TOKEN_REFRESH_TOTAL = register_once(
     "gaia_integration_token_refresh_total",
     lambda: Counter(
         name="gaia_integration_token_refresh_total",
@@ -28,7 +28,7 @@ INTEGRATION_TOKEN_REFRESH_TOTAL = _register_once(
     ),
 )
 
-TRIGGER_WEBHOOK_TOTAL = _register_once(
+TRIGGER_WEBHOOK_TOTAL = register_once(
     "gaia_trigger_webhook_total",
     lambda: Counter(
         name="gaia_trigger_webhook_total",

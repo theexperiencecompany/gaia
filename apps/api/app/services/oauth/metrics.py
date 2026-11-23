@@ -10,7 +10,7 @@ from enum import StrEnum
 
 from prometheus_client import Counter
 
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 
 class OAuthFlow(StrEnum):
@@ -28,7 +28,7 @@ class OAuthCallbackOutcome(StrEnum):
     CANCELLED = "cancelled"
 
 
-OAUTH_CALLBACK_TOTAL = _register_once(
+OAUTH_CALLBACK_TOTAL = register_once(
     "gaia_oauth_callback_total",
     lambda: Counter(
         name="gaia_oauth_callback_total",

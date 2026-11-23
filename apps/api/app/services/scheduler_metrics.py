@@ -10,7 +10,7 @@ from typing import Final
 
 from prometheus_client import Counter, Histogram
 
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 
 class ScheduledTaskKind(StrEnum):
@@ -31,7 +31,7 @@ class ScheduledTaskOutcome(StrEnum):
 #: Edges at the 1 and 5 minute lateness a reminder is felt at; the top is the stale-EXECUTING threshold.
 _LATENESS_BUCKETS: Final[tuple[float, ...]] = (1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600)
 
-SCHEDULED_TASK_TOTAL = _register_once(
+SCHEDULED_TASK_TOTAL = register_once(
     "gaia_scheduled_task_total",
     lambda: Counter(
         name="gaia_scheduled_task_total",
@@ -40,7 +40,7 @@ SCHEDULED_TASK_TOTAL = _register_once(
     ),
 )
 
-SCHEDULED_TASK_LATENESS_SECONDS = _register_once(
+SCHEDULED_TASK_LATENESS_SECONDS = register_once(
     "gaia_scheduled_task_lateness_seconds",
     lambda: Histogram(
         name="gaia_scheduled_task_lateness_seconds",
