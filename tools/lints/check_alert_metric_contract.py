@@ -4,7 +4,10 @@
 Every metric an alert rule queries must be one of two things. Either GAIA's own
 code registers it (a prometheus_client collector in the API, the worker or the
 voice agent; a prom-client one in the bots) AND production code records it, or
-it is listed in EXPORTER_METRIC_ALLOWLIST as a series an exporter owns.
+it is listed in EXPORTER_METRIC_ALLOWLIST as a series an exporter owns. And
+every collector our code registers must be recorded, whether or not a rule
+queries it yet: an unrecorded collector is a dashboard panel or a future rule
+reading nothing.
 
 Recorded means an inc/observe/set on the collector that production code can
 reach: in a function outside the module that defines the collector, or in a
@@ -438,47 +441,74 @@ def queried_metrics(rules_file: Path) -> dict[str, list[str]]:
     return queried
 
 
+def _query_problem(
+    uid: str, name: str, metric: Metric | None, repo: Path
+) -> tuple[str, str] | None:
+    """Return (detail, fix) when a rule's queried series is not one our code registers and records."""
+    if not name:
+        return (
+            f"{uid} selects a series without naming its metric",
+            "name the metric in the selector: metric{...}, not {__name__=...}",
+        )
+    if metric is None:
+        return (
+            f"{uid} queries {name}, which no code in this repo registers",
+            "fix the name, or register and record the metric; only a series an exporter "
+            "owns goes in EXPORTER_METRIC_ALLOWLIST, once it is proven to exist",
+        )
+    if not metric.recorded:
+        where = f"{metric.path.relative_to(repo).as_posix()}:{metric.line}"
+        return (
+            f"{uid} queries {name}, registered at {where} but recorded by no production code",
+            "record it where the action it counts ends, or delete the rule and the metric",
+        )
+    return None
+
+
 def check(repo: Path) -> list[Violation]:
-    """Return every rule that queries a metric nothing registers or records, and every stale allowlist entry."""
+    """Return every rule on a metric nothing records, every unrecorded collector and every stale allowlist entry."""
     rules_file = repo / RULES_FILE
     python, unreadable_python = python_metrics(repo)
     typescript, unreadable_ts = ts_metrics(repo)
-    by_sample = {sample: metric for metric in [*python, *typescript] for sample in metric.samples()}
+    metrics = [*python, *typescript]
+    by_sample = {sample: metric for metric in metrics for sample in metric.samples()}
     lines = rules_file.read_text(encoding="utf-8").splitlines()
     violations = [*unreadable_python, *unreadable_ts]
-    used: set[str] = set()
+    queried: set[str] = set()
+    blind: set[str] = set()
     for uid, names in queried_metrics(rules_file).items():
         line = next((n for n, text in enumerate(lines, 1) if text.strip() == f"- uid: {uid}"), 1)
+        queried.update(names)
         for name in dict.fromkeys(names):
-            if name in EXPORTER_METRIC_ALLOWLIST:
-                used.add(name)
-                continue
             metric = by_sample.get(name)
-            if not name:
-                detail = f"{uid} selects a series without naming its metric"
-                fix = "name the metric in the selector: metric{...}, not {__name__=...}"
-            elif metric is None:
-                detail = f"{uid} queries {name}, which no code in this repo registers"
-                fix = (
-                    "fix the name, or register and record the metric; only a series an exporter "
-                    "owns goes in EXPORTER_METRIC_ALLOWLIST, once it is proven to exist"
-                )
-            elif not metric.recorded:
-                where = f"{metric.path.relative_to(repo).as_posix()}:{metric.line}"
-                detail = f"{uid} queries {name}, registered at {where} but recorded by no production code"
-                fix = "record it where the action it counts ends, or delete the rule and the metric"
-            else:
-                continue
-            violations.append(Violation(rules_file, line, detail, fix))
-    for name in sorted(EXPORTER_METRIC_ALLOWLIST - used):
-        violations.append(
-            Violation(
-                Path(__file__),
-                1,
-                f"EXPORTER_METRIC_ALLOWLIST lists {name}, which no rule queries",
-                "delete the entry",
+            problem = (
+                None
+                if name in EXPORTER_METRIC_ALLOWLIST
+                else _query_problem(uid, name, metric, repo)
             )
+            if problem is not None:
+                blind.update([metric.name] if metric is not None else [])
+                violations.append(Violation(rules_file, line, *problem))
+    violations += [
+        Violation(
+            metric.path,
+            metric.line,
+            f"{metric.name} is registered but recorded by no production code",
+            "record it where the action it measures ends, or delete the collector, "
+            "its helper and whatever charts it",
         )
+        for metric in metrics
+        if not metric.recorded and metric.name not in blind
+    ]
+    violations += [
+        Violation(
+            Path(__file__),
+            1,
+            f"EXPORTER_METRIC_ALLOWLIST lists {name}, which no rule queries",
+            "delete the entry",
+        )
+        for name in sorted(EXPORTER_METRIC_ALLOWLIST - queried)
+    ]
     return violations
 
 

@@ -685,12 +685,17 @@ class TestComposioCallback:
 
     @pytest.mark.usefixtures("composio_state")
     async def test_composio_callback_access_denied(self, client: AsyncClient):
+        cancelled = _callbacks("integration", "cancelled")
+        failed = _callbacks("integration", "failed")
         response = await client.get(
             f"{OAUTH_BASE}/composio/callback?status=failed&state=tok&error=access_denied",
             follow_redirects=False,
         )
         assert response.status_code == 307
         assert response.headers["location"] == f"{FRONTEND}/integrations?oauth_error=cancelled"
+        # The user said no on the consent screen: counted, but not a failure.
+        assert _callbacks("integration", "cancelled") == cancelled + 1
+        assert _callbacks("integration", "failed") == failed
 
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",

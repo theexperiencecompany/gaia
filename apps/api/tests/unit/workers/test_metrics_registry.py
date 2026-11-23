@@ -24,7 +24,7 @@ def test_every_latency_collector_is_served_by_the_worker_registry() -> None:
         if collector._name not in names
     ]
     assert missing == []
-    assert "hil_user_wait_seconds" in names
+    assert "tool_call_seconds" in names
     assert "executor_e2e_seconds" in names
 
 
