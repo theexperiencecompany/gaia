@@ -94,9 +94,13 @@ def answer_sole(run_id: str) -> bool:
 
 
 def named(config: RunnableConfig, seqs: Sequence[int]) -> tuple[str, ...] | None:
-    """Return the message ids of seqs, all still open on the run's ledger; None for a run with no ledger."""
+    """Return the message ids of seqs, all still open on the run's ledger.
+
+    None for a run with no ledger, and for one given no message to name: a workflow fire
+    or a connected integration reaches the model without a handle.
+    """
     ledger = _ledger_of(config)
-    return None if ledger is None else _checked(ledger, seqs)
+    return None if ledger is None or not ledger.given else _checked(ledger, seqs)
 
 
 def close(

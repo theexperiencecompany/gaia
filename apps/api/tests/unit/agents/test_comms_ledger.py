@@ -71,6 +71,20 @@ def test_a_run_with_no_ledger_names_and_closes_nothing() -> None:
     assert close(NO_LEDGER, Closing.ANSWERED, [1]) is None
 
 
+@pytest.mark.parametrize("seqs", [[], [1]])
+def test_a_run_given_no_message_has_none_to_name_until_one_joins(seqs: list[int]) -> None:
+    open_ledger("fired", {})
+    fired: RunnableConfig = {"configurable": {"comms_run": "fired"}}
+    try:
+        assert named(fired, seqs) is None
+        owe("fired", {4: "m4"})
+        assert named(fired, [4]) == ("m4",)
+        with pytest.raises(NotOpenError):
+            named(fired, [1])
+    finally:
+        close_ledger("fired")
+
+
 def test_close_returns_the_ids_and_records_the_closure(config: RunnableConfig) -> None:
     assert close(config, Closing.HANDED, [2, 2]) == ("m2",)
     assert drain(RUN) == [Closure(how=Closing.HANDED, seqs=(2,))]
