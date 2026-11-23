@@ -50,6 +50,7 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   sanitizeErrorForLog,
+  setPlatformConnected,
   withWideEvent,
 } from "@gaia/shared/bots";
 import { type RunnerHandle, run, sequentialize } from "@grammyjs/runner";
@@ -405,7 +406,12 @@ export class TelegramAdapter extends BaseBotAdapter {
       // a 401/409 still ends the task and lands below.
       this.runner = run(this.bot, { runner: { silent: true } });
       this.adapterLogger.info("long_polling_started");
-      await this.runner.task();
+      setPlatformConnected(this.platform, true);
+      try {
+        await this.runner.task();
+      } finally {
+        setPlatformConnected(this.platform, false);
+      }
     };
 
     const startWithRetry = (retryDelayMs = 0): void => {

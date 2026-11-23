@@ -473,18 +473,21 @@ export function splitOverflow(
   minCut: number,
 ): [string, string] {
   const limit = PLATFORM_LIMITS[platform];
+  const minRawLimit = Math.max(minCut, MIN_RENDER_RAW_LIMIT);
+  // a cut that keeps only a fence opener hands the same text back, reopened, forever
+  const floor = (raw: number): number => Math.max(minCut, raw * MIN_CUT_SHARE);
   let rawLimit = Math.max(minCut, limit - FENCE_HEADROOM);
-  let [chunk, next] = splitAtBoundary(text, rawLimit, minCut);
+  let [chunk, next] = splitAtBoundary(text, rawLimit, floor(rawLimit));
   for (
     let i = 0;
-    rawLimit > minCut &&
+    rawLimit > minRawLimit &&
     render(chunk).length > limit &&
     i < MAX_RENDER_SHRINK_ITERS;
     i += 1
   ) {
     const scaled = Math.floor((rawLimit * limit) / (render(chunk).length || 1));
-    rawLimit = Math.max(minCut, Math.min(rawLimit - 1, scaled));
-    [chunk, next] = splitAtBoundary(text, rawLimit, minCut);
+    rawLimit = Math.max(minRawLimit, Math.min(rawLimit - 1, scaled));
+    [chunk, next] = splitAtBoundary(text, rawLimit, floor(rawLimit));
   }
   return [chunk, next];
 }

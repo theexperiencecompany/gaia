@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import BackgroundTasks
 from httpx import AsyncClient
+from prometheus_client import REGISTRY
 import pytest
 
 from app.config.settings import settings
@@ -26,6 +27,11 @@ OAUTH_BASE = "/api/v1/oauth"
 FRONTEND = settings.FRONTEND_URL
 RejectionReason = Literal["account_not_found", "user_missing", "config_missing", "user_mismatch"]
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+
+
+def _callbacks(flow: str, outcome: str) -> float:
+    labels = {"flow": flow, "outcome": outcome}
+    return REGISTRY.get_sample_value("gaia_oauth_callback_total", labels) or 0.0
 
 
 def _oauth_ns(log_mock: MagicMock) -> dict:
@@ -839,3 +845,81 @@ class TestComposioCallback:
             exc_info=True,
         )
         route_log.audit.assert_not_called()
+
+    @pytest.mark.usefixtures("composio_state")
+    async def test_a_connection_that_lands_counts_ok_and_one_that_is_rejected_counts_failed(
+        self, completed_connection: AsyncMock, client: AsyncClient
+    ):
+        completed_connection.return_value = ConnectionCompleted(
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
+        )
+        url = f"{OAUTH_BASE}/composio/callback?status=success&state=tok&connectedAccountId=acc1"
+        ok = _callbacks("integration", "ok")
+        failed = _callbacks("integration", "failed")
+
+        await client.get(url, follow_redirects=False)
+        assert (_callbacks("integration", "ok"), _callbacks("integration", "failed")) == (
+            ok + 1,
+            failed,
+        )
+
+        completed_connection.return_value = ConnectionRejected(reason="user_mismatch")
+        await client.get(url, follow_redirects=False)
+        assert _callbacks("integration", "failed") == failed + 1
+        assert _callbacks("integration", "ok") == ok + 1
+
+
+class TestOAuthCallbackMetric:
+    @pytest.mark.parametrize(
+        ("path", "failure"),
+        [
+            ("workos/desktop/callback", "error=missing_code"),
+            ("workos/mobile/callback", "error=missing_code"),
+            ("workos/callback", "error=missing_code"),
+        ],
+    )
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_a_login_callback_without_a_code_counts_failed(
+        self, mock_redis: MagicMock, path: str, failure: str, client: AsyncClient
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        before = _callbacks("login", "failed")
+
+        response = await client.get(f"{OAUTH_BASE}/{path}", follow_redirects=False)
+
+        assert failure in response.headers["location"]
+        assert _callbacks("login", "failed") == before + 1
+
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    async def test_a_login_that_signs_in_counts_ok(
+        self, mock_workos: MagicMock, mock_store: AsyncMock, client: AsyncClient
+    ):
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.return_value = (MagicMock(), False)
+        before = (_callbacks("login", "ok"), _callbacks("login", "failed"))
+
+        await client.get(f"{OAUTH_BASE}/workos/desktop/callback?code=abc", follow_redirects=False)
+
+        assert (_callbacks("login", "ok"), _callbacks("login", "failed")) == (
+            before[0] + 1,
+            before[1],
+        )
+
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    async def test_a_login_that_raises_counts_failed(
+        self, mock_workos: MagicMock, client: AsyncClient
+    ):
+        mock_workos.return_value.user_management.authenticate_with_code.side_effect = Exception(
+            "boom"
+        )
+        before = _callbacks("login", "failed")
+
+        await client.get(f"{OAUTH_BASE}/workos/desktop/callback?code=abc", follow_redirects=False)
+
+        assert _callbacks("login", "failed") == before + 1

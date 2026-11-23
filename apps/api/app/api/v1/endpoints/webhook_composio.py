@@ -33,6 +33,11 @@ from app.models.webhook_models import (
     ComposioWebhookEvent,
 )
 from app.services.composio.auth_config_resolver import integration_for_auth_config
+from app.services.composio.webhook_metrics import (
+    INTEGRATION_TOKEN_REFRESH_TOTAL,
+    TRIGGER_WEBHOOK_TOTAL,
+    WebhookOutcome,
+)
 from app.services.integrations.integration_accounts import event_account
 from app.services.integrations.integration_expiry import announce_account_expiry, expire_account
 from app.services.triggers import get_handler_by_event
@@ -68,7 +73,9 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
             ),
             timeout=WEBHOOK_TASK_TIMEOUT,
         )
+        TRIGGER_WEBHOOK_TOTAL.labels(WebhookOutcome.OK).inc()
     except TimeoutError:
+        TRIGGER_WEBHOOK_TOTAL.labels(WebhookOutcome.FAILED).inc()
         log.error(
             f"{LogTag.COMPOSIO} Webhook background processing timed out",
             timeout_s=WEBHOOK_TASK_TIMEOUT,
@@ -76,6 +83,7 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
             user_id=event_data.user_id,
         )
     except Exception as e:
+        TRIGGER_WEBHOOK_TOTAL.labels(WebhookOutcome.FAILED).inc()
         log.error(
             f"{LogTag.COMPOSIO} Webhook background processing failed",
             event_type=event_data.type,
@@ -173,6 +181,10 @@ async def _handle_connection_event(body: object) -> ComposioWebhookAckResponse:
         integration_id=integration.id if integration else None,
     )
     log.set(user={"id": data.user_id})
+    refreshed = (
+        WebhookOutcome.FAILED if data.status in DEAD_CONNECTION_STATUSES else WebhookOutcome.OK
+    )
+    INTEGRATION_TOKEN_REFRESH_TOTAL.labels(refreshed).inc()
 
     if integration is None:
         log.warning(

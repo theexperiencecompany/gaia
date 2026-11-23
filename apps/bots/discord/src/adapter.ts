@@ -39,6 +39,7 @@ import {
   renderForPlatform,
   type SentMessage,
   sanitizeErrorForLog,
+  setPlatformConnected,
   wideLog,
   withWideEvent,
 } from "@gaia/shared/bots";
@@ -150,6 +151,16 @@ export class DiscordAdapter extends BaseBotAdapter {
       );
     });
 
+    this.client.on(Events.ClientReady, () =>
+      setPlatformConnected(this.platform, true),
+    );
+    this.client.on(Events.ShardResume, () =>
+      setPlatformConnected(this.platform, true),
+    );
+    this.client.on(Events.ShardDisconnect, () =>
+      setPlatformConnected(this.platform, false),
+    );
+
     this.client.on(Events.InteractionCreate, async (interaction) => {
       const receivedAt = Date.now();
       if (interaction.isChatInputCommand()) {
@@ -204,6 +215,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       this.statusRotationTimer = null;
     }
     this.client.destroy();
+    setPlatformConnected(this.platform, false);
   }
 
   /**

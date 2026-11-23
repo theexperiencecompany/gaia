@@ -38,6 +38,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openai import APIConnectionError, AuthenticationError, RateLimitError
+from openrouter.errors import TooManyRequestsResponseError
+from prometheus_client import REGISTRY
 from pydantic import BaseModel, SecretStr
 import pytest
 import tenacity
@@ -897,6 +899,80 @@ class TestAinvokeLlm:
         primary = self._runnable(result=AIMessage(content="ok"))
         result = await ainvoke_llm(primary, [HumanMessage(content="hi")])
         assert result.content == "ok"
+
+    @staticmethod
+    def _count(metric: str, **labels: str) -> float:
+        return REGISTRY.get_sample_value(metric, labels) or 0.0
+
+    @staticmethod
+    def _on(provider: str) -> RunnableConfig:
+        return cast(RunnableConfig, {"configurable": {"provider": provider}})
+
+    async def test_a_returned_call_counts_ok_for_its_lane_provider(self) -> None:
+        labels = {"provider": "gemini", "outcome": "ok"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        await ainvoke_llm(
+            self._runnable(result=AIMessage(content="ok")),
+            [HumanMessage(content="hi")],
+            config=self._on("gemini"),
+        )
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
+
+    async def test_a_recovered_fallback_counts_the_failed_call_and_the_recovery(self) -> None:
+        call = {"provider": "openrouter", "outcome": "failed"}
+        calls, recovered = (
+            self._count("gaia_llm_call_total", **call),
+            self._count("gaia_llm_fallback_total", outcome="recovered"),
+        )
+
+        await ainvoke_llm(
+            self._runnable(side_effect=ConnectionError("provider down")),
+            [HumanMessage(content="hi")],
+            fallback=self._runnable(result=AIMessage(content="fallback-ok")),
+            config=self._on("openrouter"),
+        )
+
+        assert self._count("gaia_llm_call_total", **call) == calls + 1
+        assert self._count("gaia_llm_fallback_total", outcome="recovered") == recovered + 1
+
+    async def test_a_fallback_that_fails_too_counts_exhausted(self) -> None:
+        before = self._count("gaia_llm_fallback_total", outcome="exhausted")
+
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+                fallback=self._runnable(side_effect=ConnectionError("also down")),
+            )
+
+        assert self._count("gaia_llm_fallback_total", outcome="exhausted") == before + 1
+
+    async def test_a_call_with_no_fallback_to_try_counts_exhausted(self) -> None:
+        before = self._count("gaia_llm_fallback_total", outcome="exhausted")
+
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+            )
+
+        assert self._count("gaia_llm_fallback_total", outcome="exhausted") == before + 1
+
+    async def test_a_rate_limited_call_is_counted_apart_from_other_failures(self) -> None:
+        rate_limited = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
+        labels = {"provider": "openrouter", "outcome": "rate_limited"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        with pytest.raises(TooManyRequestsResponseError):
+            await ainvoke_llm(
+                self._runnable(side_effect=rate_limited),
+                [HumanMessage(content="hi")],
+                config=self._on("openrouter"),
+            )
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
 
     @patch("app.agents.llm.client.log")
     async def test_falls_back_to_default_on_provider_error(self, mock_log: MagicMock) -> None:

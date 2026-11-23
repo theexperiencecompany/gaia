@@ -14,6 +14,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+from prometheus_client import REGISTRY
 from pydantic import AliasChoices, AliasPath, ValidationError
 import pytest
 
@@ -767,3 +768,62 @@ class TestBackgroundTriggerProcessing:
         await _endpoint()._process_webhook_event(handler, event)
 
         assert handler.process_event.await_args.kwargs["trigger_id"] == "uuid-1"
+
+
+def _webhook_count(metric: str, outcome: str) -> float:
+    return REGISTRY.get_sample_value(metric, {"outcome": outcome}) or 0.0
+
+
+def _trigger_delivery() -> ComposioWebhookEvent:
+    return ComposioWebhookEvent(
+        connection_id="conn-1",
+        connection_nano_id="nano-1",
+        trigger_nano_id="ti_nano",
+        trigger_id="uuid-1",
+        user_id="user-1",
+        data={},
+        timestamp="2026-08-10T05:44:33Z",
+        type="gmail_new_gmail_message",
+    )
+
+
+@pytest.mark.usefixtures("_accepted_delivery")
+class TestTokenRefreshMetric:
+    @pytest.mark.parametrize(("status", "outcome"), [("EXPIRED", "failed"), ("ACTIVE", "ok")])
+    async def test_a_connection_event_counts_what_the_refresh_left_the_account_as(
+        self, unauthed_client: AsyncClient, status: str, outcome: str
+    ) -> None:
+        metric = "gaia_integration_token_refresh_total"
+        before = _webhook_count(metric, outcome)
+
+        with patch(f"{MODULE}.spawn_logged_task") as spawn:
+            spawn.side_effect = lambda _name, coro, **_kw: coro.close()
+            await _post_event(
+                unauthed_client, _expired_connection_event(status=status), f"refresh-{status}"
+            )
+
+        assert _webhook_count(metric, outcome) == before + 1
+
+
+class TestTriggerWebhookMetric:
+    @pytest.fixture(autouse=True)
+    def account_name(self):
+        with patch(f"{MODULE}.event_account", AsyncMock(return_value=None)) as name:
+            yield name
+
+    async def test_processing_that_finishes_counts_ok(self) -> None:
+        handler = MagicMock(process_event=AsyncMock())
+        before = _webhook_count("gaia_trigger_webhook_total", "ok")
+
+        await _endpoint()._process_webhook_event(handler, _trigger_delivery())
+
+        assert _webhook_count("gaia_trigger_webhook_total", "ok") == before + 1
+
+    @pytest.mark.parametrize("error", [RuntimeError("boom"), TimeoutError()])
+    async def test_processing_that_raises_or_stalls_counts_failed(self, error: Exception) -> None:
+        handler = MagicMock(process_event=AsyncMock(side_effect=error))
+        before = _webhook_count("gaia_trigger_webhook_total", "failed")
+
+        await _endpoint()._process_webhook_event(handler, _trigger_delivery())
+
+        assert _webhook_count("gaia_trigger_webhook_total", "failed") == before + 1

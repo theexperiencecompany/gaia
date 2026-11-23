@@ -29,6 +29,7 @@ from app.services.analytics_service import capture
 from app.services.payments.discount_codes import get_discount_codes
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
+from app.services.payments.webhook_metrics import PaymentWebhookRejection, observe_payment_webhook
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import (
     PaymentCheckoutStarted,
@@ -282,6 +283,7 @@ async def handle_dodo_webhook(
 
         # Verify webhook signature using Standard Webhooks library
         if not payment_webhook_service.verify_webhook_signature(payload, headers):
+            observe_payment_webhook(PaymentWebhookRejection.INVALID_SIGNATURE)
             log.warning(f"{LogTag.PAYMENT} Invalid webhook signature", webhook_id=webhook_id)
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
@@ -292,6 +294,7 @@ async def handle_dodo_webhook(
 
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
+        observe_payment_webhook(result.status)
         log.set_ns("payment", event_type=result.event_type)
 
         log.audit(
@@ -338,11 +341,13 @@ async def handle_dodo_webhook(
     except HTTPException:
         raise
     except json.JSONDecodeError as exc:
+        observe_payment_webhook(PaymentWebhookRejection.ERROR)
         log.error(
             f"{LogTag.PAYMENT} Invalid JSON in webhook payload", error_type=type(exc).__name__
         )
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
     except Exception as e:
+        observe_payment_webhook(PaymentWebhookRejection.ERROR)
         log.error(
             f"{LogTag.PAYMENT} Error processing webhook",
             error_type=type(e).__name__,

@@ -32,6 +32,7 @@ from app.services.oauth.composio_callback import (
     ConnectionRejected,
     complete_composio_connection,
 )
+from app.services.oauth.metrics import OAuthCallbackOutcome, OAuthFlow, observe_oauth_callback
 from app.services.oauth.oauth_service import store_user_info
 from app.services.oauth.oauth_state_service import (
     is_safe_redirect_path,
@@ -224,6 +225,7 @@ async def workos_mobile_callback(
                 f"{LogTag.OAUTH} No authorization code received from WorkOS (mobile)",
                 failure_reason="missing_code",
             )
+            observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
             return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
         auth_response = get_workos_client().user_management.authenticate_with_code(
@@ -266,6 +268,7 @@ async def workos_mobile_callback(
         )
 
         token = auth_response.sealed_session or auth_response.access_token
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.OK)
         return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
 
     except HTTPException as e:
@@ -275,6 +278,7 @@ async def workos_mobile_callback(
             error=str(e.detail),
             status_code=e.status_code,
         )
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
         return RedirectResponse(url=f"{mobile_redirect}?error={e.detail}")
 
     except Exception as e:
@@ -283,6 +287,7 @@ async def workos_mobile_callback(
             error_type=type(e).__name__,
             error=str(e),
         )
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
         return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error")
 
 
@@ -333,6 +338,7 @@ async def workos_desktop_callback(
                 f"{LogTag.OAUTH} No authorization code received from WorkOS (desktop)",
                 failure_reason="missing_code",
             )
+            observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
             return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=missing_code")
 
         auth_response = get_workos_client().user_management.authenticate_with_code(
@@ -376,6 +382,7 @@ async def workos_desktop_callback(
 
         # Return token via deep link - desktop app will handle storage
         token = auth_response.sealed_session or auth_response.access_token
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.OK)
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?token={quote(token, safe='')}")
 
     except HTTPException as e:
@@ -385,6 +392,7 @@ async def workos_desktop_callback(
             error=str(e.detail),
             status_code=e.status_code,
         )
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error={e.detail}")
 
     except Exception as e:
@@ -393,6 +401,7 @@ async def workos_desktop_callback(
             error_type=type(e).__name__,
             error=str(e),
         )
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=server_error")
 
 
@@ -431,6 +440,7 @@ async def workos_callback(
                 f"{LogTag.OAUTH} No authorization code received from WorkOS",
                 failure_reason="missing_code",
             )
+            observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
             return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=missing_code")
 
         auth_response = get_workos_client().user_management.authenticate_with_code(
@@ -489,6 +499,7 @@ async def workos_callback(
             max_age=WOS_SESSION_MAX_AGE_SECONDS,
         )
 
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.OK)
         return response
 
     except HTTPException as e:
@@ -498,6 +509,7 @@ async def workos_callback(
             error=str(e.detail),
             status_code=e.status_code,
         )
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={e.detail}")
 
     except Exception as e:
@@ -506,10 +518,12 @@ async def workos_callback(
             error_type=type(e).__name__,
             error=str(e),
         )
+        observe_oauth_callback(OAuthFlow.LOGIN, OAuthCallbackOutcome.FAILED)
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=server_error")
 
 
 def _composio_failure(redirect_path: str, error: str) -> RedirectResponse:
+    observe_oauth_callback(OAuthFlow.INTEGRATION, OAuthCallbackOutcome.FAILED)
     return RedirectResponse(url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error={error}")
 
 
@@ -539,7 +553,7 @@ async def composio_callback(
     state_data: OAuthStateData | None = await validate_and_consume_oauth_state(state)
     if not state_data:
         log.warning(f"{LogTag.OAUTH} Invalid OAuth state token", state_prefix=state[:8])
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state")
+        return _composio_failure("/redirect", "invalid_state")
 
     redirect_path = state_data["redirect_path"]
 
@@ -578,10 +592,10 @@ async def composio_callback(
             error=str(e),
             exc_info=True,
         )
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed")
+        return _composio_failure("/redirect", "failed")
     if isinstance(outcome, ConnectionRejected):
         if outcome.reason in ("account_not_found", "user_missing"):
-            return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed")
+            return _composio_failure("/redirect", "failed")
         return _composio_failure(
             redirect_path, "failed" if outcome.reason == "config_missing" else outcome.reason
         )
@@ -591,6 +605,7 @@ async def composio_callback(
         resource=outcome.integration_id,
         provider=outcome.provider,
     )
+    observe_oauth_callback(OAuthFlow.INTEGRATION, OAuthCallbackOutcome.OK)
     separator = "?" if "?" not in redirect_path else "&"
     return RedirectResponse(
         url=f"{settings.FRONTEND_URL}{redirect_path}{separator}"

@@ -229,3 +229,33 @@ describe("R3 a bubble longer than the platform allows", () => {
     );
   });
 });
+
+describe("a streaming code block whose first line outgrows one message", () => {
+  it.each<PlatformName>(["telegram", "slack"])(
+    "%s cuts it into messages instead of re-splitting the same text forever",
+    (platform) => {
+      const code = "x".repeat(PLATFORM_LIMITS[platform] * 2);
+      // The loop is synchronous, so a test timeout could never fire: a render budget fails it.
+      let renders = 0;
+      const render = (text: string): string => {
+        renders += 1;
+        if (renders > 500)
+          throw new Error("the preview stopped making progress");
+        return PLATFORM_MARKDOWN[platform](text);
+      };
+
+      const config = { live: true, platform, render };
+      const { state } = stepDelivery(
+        initialDeliveryState(),
+        shown(`\`\`\`\n${code}`),
+        config,
+      );
+      const { ops } = stepDelivery(state, TICK, config);
+      const messages = screen(ops);
+
+      expect(messages.length).toBeGreaterThan(1);
+      expect(messages.length).toBeLessThan(6);
+      expect(messages.join("").replaceAll(/[`\n]/g, "")).toBe(code);
+    },
+  );
+});

@@ -2559,6 +2559,7 @@ dependencies = [
     { name = "livekit-agents", extra = ["deepgram", "silero", "turn-detector"] },
     { name = "livekit-plugins-elevenlabs" },
     { name = "livekit-plugins-noise-cancellation" },
+    { name = "prometheus-client" },
     { name = "python-dotenv" },
 ]
 
@@ -2578,6 +2579,7 @@ requires-dist = [
     { name = "livekit-agents", extras = ["turn-detector", "silero", "deepgram"], specifier = "~=1.2" },
     { name = "livekit-plugins-elevenlabs", specifier = "~=1.2" },
     { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
+    { name = "prometheus-client", specifier = ">=0.20.0" },
     { name = "python-dotenv" },
 ]
 
