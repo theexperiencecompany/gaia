@@ -150,20 +150,16 @@ async def test_a_challenge_header_survives_the_envelope() -> None:
     assert json.loads(response.body) == {"message": "Not authenticated"}
 
 
-async def test_a_4xx_http_exception_is_a_warning_with_its_detail() -> None:
+async def test_a_4xx_http_exception_adds_its_detail_without_a_second_log_line() -> None:
+    """One request, one line: the http_request event owns status, path and method."""
     with patch(HANDLERS_LOG) as mock_log:
         await http_exception_handler(
             _request(method="GET"), StarletteHTTPException(status_code=404, detail="Todo not found")
         )
 
     mock_log.error.assert_not_called()
-    mock_log.warning.assert_called_once_with(
-        "http_exception",
-        status_code=404,
-        detail="Todo not found",
-        path="/api/v1/todos",
-        method="GET",
-    )
+    mock_log.warning.assert_not_called()
+    mock_log.set_ns.assert_called_once_with("http_exception", detail="Todo not found")
 
 
 async def test_a_5xx_http_exception_is_an_error_so_level_searches_find_it() -> None:
@@ -211,7 +207,7 @@ async def test_a_bodiless_status_keeps_its_headers_and_is_still_recorded() -> No
     assert response.status_code == 304
     assert response.headers["etag"] == '"v1"'
     assert response.body == b""
-    mock_log.warning.assert_called_once()
+    mock_log.set_ns.assert_called_once()
 
 
 async def test_the_registration_covers_every_kind_of_failure() -> None:

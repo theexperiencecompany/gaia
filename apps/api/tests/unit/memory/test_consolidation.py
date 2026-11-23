@@ -27,8 +27,9 @@ from app.constants.memory import (
     MemoryShelfLife,
     MemorySourceType,
 )
+from app.db.repositories.errors import RepositoryError
 from app.memory import consolidation
-from app.memory.consolidation import consolidate, render_agenda_document
+from app.memory.consolidation import _get_user_name, consolidate, render_agenda_document
 from app.memory.schemas import ExtractedFact, VerifiedDocument
 from app.models.memory_db_models import MemoryRecord
 from tests.helpers import captured_wide_event
@@ -846,3 +847,26 @@ class TestDebouncedScheduling:
             await waiter
 
         run.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestUserNameLookup:
+    async def test_a_database_failure_falls_back_to_the_generic_name_and_is_logged(self) -> None:
+        with (
+            patch(
+                "app.memory.consolidation.user_repository.get",
+                AsyncMock(side_effect=RepositoryError("timeout")),
+            ),
+            patch("app.memory.consolidation.log") as mock_log,
+        ):
+            assert await _get_user_name(USER) == "the user"
+        kwargs = mock_log.warning.call_args.kwargs
+        assert (kwargs["user_id"], kwargs["error_type"]) == (USER, "RepositoryError")
+
+    async def test_a_programming_error_propagates(self) -> None:
+        with patch(
+            "app.memory.consolidation.user_repository.get",
+            AsyncMock(side_effect=TypeError("bug")),
+        ):
+            with pytest.raises(TypeError):
+                await _get_user_name(USER)

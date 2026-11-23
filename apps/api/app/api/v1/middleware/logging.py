@@ -25,10 +25,7 @@ from app.api.v1.middleware.auth import get_current_user
 from app.config.loggers import request_logger
 from app.services.turn_timings import begin_turn_timings
 from app.utils.loggable_path import loggable_request_path
-from shared.py.wide_events import log as wide_log
-
-_WARNING = "WARNING"
-_LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, _WARNING: 2, "ERROR": 3, "CRITICAL": 4}
+from shared.py.wide_events import log as wide_log, resolve_final_level
 
 
 class _WideEventUser(BaseModel):
@@ -146,14 +143,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             else request.headers.get("x-forwarded-for", "unknown")
         )
 
-        # Final level = worst of: HTTP status code + explicit warning/error calls
-        level = wide_log.get_max_level()
-        if status_code >= 500:
-            level = "ERROR"
-        elif status_code >= 400 and (
-            _LEVEL_ORDER[level] < _LEVEL_ORDER[_WARNING]  # pragma: no mutate -- <= is a no-op here
-        ):
-            level = _WARNING
+        level = resolve_final_level(wide_log.get_max_level(), failed=status_code >= 500)
 
         # Store final_level before get() so it appears in the emitted JSON
         wide_log.set(final_level=level)
