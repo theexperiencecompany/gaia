@@ -21,6 +21,7 @@ The `verify.sh` pipeline, which is exactly what the `alert-rules` CI lane runs:
 2. `pint --offline` — PromQL validity and sanity (see the check split below).
 3. `promtool check rules` — validates the derived rule file (pint embeds Prometheus's own parser, so this is a deliberately redundant cross-check).
 4. `promtool test rules tools/alert-rules/tests/*.yaml` — **proves every rule fires** under its trigger fixture and **stays quiet** under its quiet fixture, honouring each rule's real `for` duration.
+5. `tools/lints/check_alert_metric_contract.py` — **proves every metric a rule queries exists in our code and is recorded by production code**, or is a listed exporter series. A fixture invents its series, so stages 1 to 4 pass on a rule whose metric nothing emits; this one does not. See `tools/lints/README.md` → alert-metric-contract.
 
 ## The test suite (`tools/alert-rules/tests/`)
 
@@ -109,11 +110,13 @@ shape deliberately. Do not make it tolerant.
 
 ## What CI does and does not catch
 
-CI proves a rule is valid PromQL **and** that it fires and stays quiet against
-synthetic data (`promtool test rules`). It cannot prove the metric exists with
-matching labels, or that the threshold is reachable — those answers only live in
-Prometheus, so they need the online pint pass against a LOCAL Prometheus holding
-the relevant series before merging a new rule (no prod access needed):
+CI proves a rule is valid PromQL, that it fires and stays quiet against
+synthetic data (`promtool test rules`), and that a metric GAIA's own code owns
+is registered and recorded (the metric contract). It cannot prove an exporter's
+metric exists, that the label values a rule matches are the ones emitted, or
+that the threshold is reachable — those answers only live in Prometheus, so
+they need the online pint pass against a LOCAL Prometheus holding the relevant
+series before merging a new rule (no prod access needed):
 
 ```bash
 # The checks that find a metric nothing exports — needs a local Prometheus on
