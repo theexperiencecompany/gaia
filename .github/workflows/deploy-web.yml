@@ -57,7 +57,7 @@ jobs:
     concurrency:
       group: deploy-web-production
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # populateCache uploads ~1.7GB of prerendered pages to R2; the deploy alone
     # is quick but the upload needs headroom (local populate of ~5.4k entries
     # took under a minute — the remote R2 upload dominates).
@@ -136,7 +136,7 @@ jobs:
     name: Start the post-deploy SEO audits
     needs: deploy-production
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       actions: write # dispatch seo-crawl.yml
@@ -153,7 +153,7 @@ jobs:
     # and whose IndexNow job did not fail, so a rejected batch is resubmitted.
     needs: deploy-production
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read

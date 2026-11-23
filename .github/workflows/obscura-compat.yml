@@ -42,7 +42,7 @@ jobs:
   probe:
     # The name carries it because a red X in the checks list is read before any summary.
     name: Obscura vs Chrome on common sites (non-blocking — loads live third-party sites)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A cold cargo build of Obscura is most of this; the probe itself is ~10 min.
     timeout-minutes: 60
     steps:
@@ -87,7 +87,7 @@ jobs:
 
   engine-tests:
     name: Obscura's own tests with our patch series
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A cold release build plus every test binary of the workspace.
     timeout-minutes: 60
     steps:

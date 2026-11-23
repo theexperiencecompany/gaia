@@ -69,8 +69,8 @@ the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
 every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`.
 Every pool is routed the same way:
 
-1. `ubuntu-latest` by default (public repo: 4 vCPU / 16 GB, 20 concurrent
-   jobs on the org's Free plan).
+1. `ubuntu-24.04` (`HOSTED_LINUX_IMAGE` in `runner.py`) by default (public
+   repo: 4 vCPU / 16 GB, 20 concurrent jobs on the org's Free plan).
 2. Once GitHub's hosted queue holds `HOSTED_SATURATED_QUEUE_DEPTH` (5) queued
    jobs or more — the 20-job cap is hit; override with the
    `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
@@ -129,7 +129,7 @@ Consequences to keep in mind when editing a lane:
 - **What actually keeps fork code off the box is the repo's fork-PR approval
   policy** (all outside collaborators require approval before any workflow
   runs). `runner.py select` does send a PR whose head repo is not this one to
-  `ubuntu-latest` before it probes the runners API — but that is ROUTING, not a
+  the hosted image before it probes the runners API — but that is ROUTING, not a
   security boundary: on `pull_request` a fork supplies its own workflow file,
   so it can choose not to call the composite at all. Do not weaken the approval
   policy on the strength of that check. What keeps the box's PAT away from fork
@@ -357,9 +357,13 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   `package.json#packageManager`, Python in `.python-version`, the Python lint
   and audit tools in the root `pyproject.toml`'s `lint` group (locked in
   `uv.lock`, run with `uv run --frozen --no-build --isolated --only-group lint`),
-  biome in `pnpm-lock.yaml`, and every remote action by commit SHA.
+  biome in `pnpm-lock.yaml`, every remote action by commit SHA, and the
+  GitHub-hosted Linux image as `HOSTED_LINUX_IMAGE` in `scripts/ci/runner.py`.
   `tools/lints/check_tool_pins.py` fails on a second copy (a `uvx tool@x`, an
-  action on a tag).
+  action on a tag, a `runs-on` naming another Ubuntu release) and on any
+  `*-latest` runner label: `ubuntu-latest` rolled to 26.04 job by job and broke
+  the Playwright browser install (run 45079269367). Moving to a new image is a
+  deliberate bump of that constant and every label the lint then names.
 - Never run a linter unpinned in a lane: ruff 0.16.0 shipped new rules
   (ISC004, RUF036) four minutes before a scheduled run and turned the lane
   red with zero code changes. Bump a lint-group pin deliberately and re-lock.
