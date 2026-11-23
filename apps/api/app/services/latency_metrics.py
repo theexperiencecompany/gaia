@@ -15,11 +15,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
 import contextlib
+from enum import StrEnum
 import time
 from typing import Final
 
 from prometheus_client import Counter, Histogram
 
+from app.constants.chat import ConversationSource
 from app.services.storage.metrics import _register_once
 from app.services.turn_timings import StepReport, Store, StoreTally, TurnPhase, TurnStep
 from shared.py.wide_events import log
@@ -97,18 +99,8 @@ _CHAT_E2E_ACK_SECONDS = _register_once(
     "chat_e2e_ack_seconds",
     lambda: Histogram(
         name="chat_e2e_ack_seconds",
-        documentation="Request accepted to comms ack complete per chat turn in seconds",
-        labelnames=("source", "delegated", "status"),
-        buckets=_TURN_BUCKETS,
-    ),
-)
-
-_CHAT_E2E_FULL_SECONDS = _register_once(
-    "chat_e2e_full_seconds",
-    lambda: Histogram(
-        name="chat_e2e_full_seconds",
-        documentation="Request accepted to stream DONE per chat turn in seconds",
-        labelnames=("source", "delegated", "status"),
+        documentation="User message to its settled reply per chat turn in seconds",
+        labelnames=("source", "status"),
         buckets=_TURN_BUCKETS,
     ),
 )
@@ -300,8 +292,8 @@ _CHAT_TURN_TOTAL = _register_once(
     "chat_turn_total",
     lambda: Counter(
         name="chat_turn_total",
-        documentation="Lifetime chat turn observations",
-        labelnames=("source", "delegated", "status"),
+        documentation="Chat turns by the surface that sent them and how they ended",
+        labelnames=("source", "status"),
     ),
 )
 
@@ -373,6 +365,14 @@ _HIL_PAUSE_TOTAL = _register_once(
 )
 
 
+class ChatTurnStatus(StrEnum):
+    """How a chat turn ended."""
+
+    OK = "ok"
+    ERROR = "error"
+    CANCELLED = "cancelled"
+
+
 def _bool_label(value: bool | str) -> str:
     return value if isinstance(value, str) else ("true" if value else "false")
 
@@ -383,7 +383,6 @@ def _bool_label(value: bool | str) -> str:
 ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _CHAT_TTFT_SECONDS,
     _CHAT_E2E_ACK_SECONDS,
-    _CHAT_E2E_FULL_SECONDS,
     _LLM_TTFT_SECONDS,
     _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
@@ -440,6 +439,13 @@ def _inc(counter: Counter, **labels: str) -> None:
         )
 
 
+def create_chat_turn_series() -> None:
+    """Create every chat-turn series at zero, so the first failed turn is an increase."""
+    for source in ConversationSource:
+        for status in ChatTurnStatus:
+            _CHAT_TURN_TOTAL.labels(source.value, status.value)
+
+
 @contextlib.contextmanager
 def span() -> Iterator[Callable[[], float]]:
     """Time one span, yielding an elapsed() reader in seconds."""
@@ -447,46 +453,23 @@ def span() -> Iterator[Callable[[], float]]:
     yield lambda: time.perf_counter() - start
 
 
-def observe_chat_ttft(seconds: float, *, source: str, status: str) -> None:
-    """Record time to first comms response text for a chat turn."""
-    _observe(
-        _CHAT_TTFT_SECONDS,
-        seconds,
-        source=source,
-        status=status,
-    )
+def observe_chat_ttft(
+    seconds: float, *, source: ConversationSource, status: ChatTurnStatus
+) -> None:
+    """Record user message to the first text of the reply that settled it."""
+    _observe(_CHAT_TTFT_SECONDS, seconds, source=source.value, status=status.value)
 
 
-def observe_chat_e2e_ack(seconds: float, *, source: str, delegated: bool, status: str) -> None:
-    """Record request-accepted to comms-ack-complete for a chat turn."""
-    _observe(
-        _CHAT_E2E_ACK_SECONDS,
-        seconds,
-        source=source,
-        delegated=_bool_label(delegated),
-        status=status,
-    )
+def observe_chat_e2e_ack(
+    seconds: float, *, source: ConversationSource, status: ChatTurnStatus
+) -> None:
+    """Record user message to the settle of the reply that answered it."""
+    _observe(_CHAT_E2E_ACK_SECONDS, seconds, source=source.value, status=status.value)
 
 
-def observe_chat_e2e_full(seconds: float, *, source: str, delegated: bool, status: str) -> None:
-    """Record request-accepted to stream-DONE for a chat turn."""
-    _observe(
-        _CHAT_E2E_FULL_SECONDS,
-        seconds,
-        source=source,
-        delegated=_bool_label(delegated),
-        status=status,
-    )
-
-
-def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> None:
-    """Increment the lifetime chat-turn counter."""
-    _inc(
-        _CHAT_TURN_TOTAL,
-        source=source,
-        delegated=_bool_label(delegated),
-        status=status,
-    )
+def observe_chat_turn_total(*, source: ConversationSource, status: ChatTurnStatus) -> None:
+    """Count one chat turn by the surface that sent it and how it ended."""
+    _inc(_CHAT_TURN_TOTAL, source=source.value, status=status.value)
 
 
 def observe_context_section_budget_exceeded(*, section: str) -> None:
@@ -632,8 +615,9 @@ def observe_graph_node(seconds: float, *, node: str, agent: str) -> None:
 
 __all__ = [
     "ALL_COLLECTORS",
+    "ChatTurnStatus",
+    "create_chat_turn_series",
     "observe_chat_e2e_ack",
-    "observe_chat_e2e_full",
     "observe_chat_ttft",
     "observe_chat_turn_total",
     "observe_comms_graph",

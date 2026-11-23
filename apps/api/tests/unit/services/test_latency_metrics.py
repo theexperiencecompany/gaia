@@ -2,6 +2,7 @@
 
 from prometheus_client import REGISTRY
 
+from app.constants.chat import ConversationSource
 from app.services.latency_metrics import (
     observe_context_section_budget_exceeded,
     observe_fast_recall_semantic_missed,
@@ -13,7 +14,7 @@ from app.services.latency_metrics import (
 def test_histograms_registered_and_observe():
     from app.services import latency_metrics as m
 
-    m.observe_chat_ttft(0.5, source="web", status="success")
+    m.observe_chat_ttft(0.5, source=ConversationSource.WEB, status=m.ChatTurnStatus.OK)
     assert "chat_ttft_seconds" in REGISTRY._names_to_collectors
 
 
