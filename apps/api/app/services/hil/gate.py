@@ -71,7 +71,9 @@ from app.services.hil.policy import (
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.prompts import (
     GATE_ERROR_TEMPLATE,
+    READ_ONLY_REFUSAL_TEMPLATE,
 )
+from app.services.hil.read_only import is_read_only
 from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import (
     GatedApproval,
@@ -80,6 +82,7 @@ from app.services.hil.utils import (
     prior_tool_calls,
     recent_assistant_turns,
     tool_description,
+    tool_of,
     tool_schema,
     unpack_tool_call,
 )
@@ -124,6 +127,14 @@ async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
     told it waits on the user, and the decision runs the action later, never this run.
     """
     call = unpack_tool_call(request)
+    # Before every exemption: a read-only run reads, whatever the tool or the run's identity.
+    configurable: AgentConfigurable = configurable_of(request)
+    if configurable.get("read_only") and not await is_read_only(tool_of(request)):
+        log.error(
+            f"{LogTag.HIL} Read-only run refused a tool not classified read-only",
+            tool_name=call.name,
+        )
+        return _tool_message(call, READ_ONLY_REFUSAL_TEMPLATE.format(tool=call.name), "denied")
     if call.name in HIL_EXEMPT_TOOLS:
         return None
 

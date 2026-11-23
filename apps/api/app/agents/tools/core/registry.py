@@ -356,6 +356,7 @@ class ToolRegistry:
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             account_tools,
+            artifact_tool,
             browser_tool,
             context_tool,
             desktop_tools,
@@ -416,6 +417,7 @@ class ToolRegistry:
                     "update_notification_settings",
                     "update_preferences",
                     "set_selected_voice",
+                    "set_briefing_schedule",
                 },
             ),
         )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)
@@ -543,7 +545,11 @@ class ToolRegistry:
         )
         self._add_category(
             "creative",
-            tools=[image_tool.generate_image, flowchart_tool.create_flowchart],
+            tools=[
+                image_tool.generate_image,
+                flowchart_tool.create_flowchart,
+                artifact_tool.create_artifact,
+            ],
             risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(

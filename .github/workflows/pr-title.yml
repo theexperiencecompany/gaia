@@ -23,7 +23,7 @@ permissions:
 jobs:
   pr-title:
     name: Validate PR Title
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     # The rescope step waits up to CANCEL_WAIT_SECS (180 s) for a cancel.
     timeout-minutes: 8
     permissions:

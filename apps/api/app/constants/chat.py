@@ -32,6 +32,10 @@ GROUPED_TOOL_CARDS = frozenset(
 )
 
 
+#: The web app's path to one conversation.
+CONVERSATION_PATH = "/c/{conversation_id}"
+
+
 class ConversationSource(str, Enum):
     """Client or channel a conversation originated from."""
 

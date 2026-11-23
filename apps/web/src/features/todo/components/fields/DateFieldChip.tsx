@@ -2,7 +2,7 @@
 
 import { Input } from "@heroui/react";
 import { CalendarIcon, Cancel01Icon } from "@icons";
-import { format, isToday, isTomorrow, isYesterday } from "date-fns";
+import { formatDay } from "@shared/utils";
 
 import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
@@ -15,15 +15,8 @@ interface DateFieldChipProps {
   timezone?: string; // User's preferred timezone
 }
 
-const formatDisplayDate = (dateString: string) => {
-  const date = new Date(dateString);
-
-  if (isToday(date)) return "Today";
-  if (isTomorrow(date)) return "Tomorrow";
-  if (isYesterday(date)) return "Yesterday";
-
-  return format(date, "MMM d");
-};
+const formatDisplayDate = (dateString: string) =>
+  formatDay(dateString, "short");
 
 export default function DateFieldChip({
   value,

@@ -22,7 +22,7 @@
     "extract-blog": "node scripts/extract-blog-data.mjs",
     "image-dimensions": "node scripts/generate-image-dimensions.mjs",
     "test": "vitest run",
-    "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime && npm run image-dimensions && npm run area-css",
+    "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime && npm run image-dimensions && npm run area-css -- --check",
     "predev": "bash ../../scripts/dev/require-worktree-env.sh && npm run sync-wake-word-runtime && npm run area-css && node scripts/clean-corrupt-dev-manifest.mjs",
     "dev": "nx next:dev --turbopack --port=${WEB_PORT:-3000}",
     "build": "npm run type-check && nx next:build",
@@ -48,6 +48,7 @@
     "area-css": "node scripts/generate-area-css.mjs"
   },
   "dependencies": {
+    "@gaia/artifacts": "workspace:*",
     "@gaia/shared": "workspace:*",
     "@gaia/wake-word": "workspace:*",
     "@heroui/react": "3.2.7",
@@ -159,6 +160,7 @@
     "remark-smartypants": "^3.0.2",
     "remark-supersub": "^1.0.0",
     "sanitize-html": "^2.18.1",
+    "server-only": "^0.0.1",
     "sharp": "^0.35.5",
     "sileo": "^0.1.4",
     "streamdown": "^2.5.0",

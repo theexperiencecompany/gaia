@@ -331,8 +331,29 @@ export class ConversationFollower {
   private async sendNotice(notice: NoticeItem): Promise<void> {
     if (this.noticed.has(notice.id)) return;
     this.noticed.add(notice.id);
-    if (await this.sendLines(notice.bubbles))
-      this.summary.noticesDelivered += 1;
+    const { image_url: imageUrl, bubbles } = notice;
+    const photoSent = imageUrl
+      ? await this.sendNoticePhoto(imageUrl, bubbles[0] ?? "")
+      : false;
+    const lines = photoSent ? bubbles.slice(1) : bubbles;
+    const textSent = await this.sendLines(
+      imageUrl && !photoSent ? [...lines, imageUrl] : lines,
+    );
+    if (photoSent || textSent) this.summary.noticesDelivered += 1;
+  }
+
+  /** Send a notice's image captioned with its first bubble; false when the platform would not take it, so the text and link go instead. */
+  private async sendNoticePhoto(
+    url: string,
+    caption: string,
+  ): Promise<boolean> {
+    try {
+      await this.surface.sendPhoto(url, caption);
+      return true;
+    } catch (error) {
+      logger.warn("notice_photo_failed", sanitizeErrorForLog(error));
+      return false;
+    }
   }
 
   /** Send lines outside a reply, chunked and rendered for the platform; false when there was nothing to send. */

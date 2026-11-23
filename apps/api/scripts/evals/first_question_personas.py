@@ -68,7 +68,7 @@ DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:8000")
 #: One minted dev user per persona. Sharing a user leaked context between them
 #: (a "the writing" turn answered with the previous persona's unconnected-Gmail
 #: thread), which made the replies unreadable as a signal about the chip.
-FOLLOW_USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "fq-{slug}@gaia.local")
+FOLLOW_USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "delivered+fq-{slug}@resend.dev")
 FOLLOW_PERSONA_COUNT = 5
 REPLY_PREVIEW_WORDS = 40
 FOLLOW_TIMEOUT_SECONDS = 180.0

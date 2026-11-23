@@ -38,8 +38,8 @@ async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> N
         result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
 
     # The failure is surfaced to the caller, not swallowed.
-    assert result["status"] == "failed"
-    assert "discovery failed" in result["error"]
+    assert result.status == "failed"
+    assert "discovery failed" in (result.error or "")
 
     # It must NOT reach Sentry as an ERROR — warn instead.
     mock_log.error.assert_not_called()
@@ -68,7 +68,8 @@ async def test_build_oauth_result_logs_bare_value_error_as_error() -> None:
     ):
         result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
 
-    assert result["status"] == "failed"
+    assert result.status == "failed"
+    assert result.error == "OAuth required but discovery failed: Integration foo not found"
     mock_log.warning.assert_not_called()
     mock_log.error.assert_called_once()
     args, kwargs = mock_log.error.call_args
@@ -92,7 +93,8 @@ async def test_build_oauth_result_logs_unexpected_failure_as_error() -> None:
     ):
         result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
 
-    assert result["status"] == "failed"
+    assert result.status == "failed"
+    assert result.error == "OAuth required but discovery failed: 'missing_field'"
     mock_log.warning.assert_not_called()
     mock_log.error.assert_called_once()
     args, kwargs = mock_log.error.call_args

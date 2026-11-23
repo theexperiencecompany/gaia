@@ -1,6 +1,6 @@
 "use client";
 
-import { Separator, Switch } from "@heroui/react";
+import { Separator } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
 import type { Control, FieldErrors, UseFormSetValue } from "react-hook-form";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -10,6 +10,7 @@ import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { MissingIntegrationsAlert } from "../shared/WorkflowCardComponents";
+import WorkflowDeliveryField from "./WorkflowDeliveryField";
 import WorkflowDescriptionField from "./WorkflowDescriptionField";
 import WorkflowFooter from "./WorkflowFooter";
 import WorkflowHeader from "./WorkflowHeader";
@@ -178,33 +179,7 @@ export default function WorkflowModalFormView({
                 isPreview={isPreview}
               />
 
-              <div className="flex items-center justify-between gap-4 pb-1 pt-2">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-zinc-200">
-                    Notify when runs finish
-                  </span>
-                  <span className="text-xs text-zinc-500">
-                    GAIA shares the result in your channels after each run
-                  </span>
-                </div>
-                <Switch
-                  size="sm"
-                  isSelected={formData.notify_on_completion}
-                  onChange={(enabled) =>
-                    setValue("notify_on_completion", enabled, {
-                      shouldDirty: true,
-                    })
-                  }
-                  isDisabled={isPreview}
-                  aria-label="Notify when runs finish"
-                >
-                  <Switch.Content>
-                    <Switch.Control>
-                      <Switch.Thumb />
-                    </Switch.Control>
-                  </Switch.Content>
-                </Switch>
-              </div>
+              <WorkflowDeliveryField control={control} isDisabled={isPreview} />
             </div>
           </fieldset>
         </div>

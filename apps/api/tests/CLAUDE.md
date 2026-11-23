@@ -10,6 +10,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 |---|---|---|---|
 | Unit | `tests/unit/` (mirrors `app/`) | nothing — mocked, hermetic, no I/O | new service fn → `unit/services/`; new endpoint → `unit/api/` |
 | Integration | `tests/integration/` | nothing — real production code, mocked infra | wiring between components, full request cycle |
+| Chromium render | `tests/integration/render/` | Playwright's Chromium shell (`playwright install chromium-headless-shell`; the integration slice installs it) | what a server-side render (edition image, PDF) draws, through the process browser its conftest shares across the package |
 | Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` — the `real_services` mark (`tests/real_services.py`) fails a test when opted in but Mongo/Redis is unreachable, and otherwise skips it with one summary line | behavior only provable against real Postgres/Redis/Mongo |
 | Browser stack | `tests/integration/real/browser/` | the real-infra services plus Chrome (`CHROMIUM_BIN` or `google-chrome`), `OBSCURA_BIN` and the self-host Caddy (`CADDY_BIN` or `caddy`); a missing binary fails, never skips | a browser promise a user sees end to end: one answer, a stop, a handoff, a secret kept, an engine or worker death |
 | Contracts | `tests/contracts/` | real Mongo + Redis | repository contract changes (never mocks) |

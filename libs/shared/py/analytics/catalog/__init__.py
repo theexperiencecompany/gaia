@@ -8,9 +8,11 @@ from collections.abc import Mapping
 
 from shared.py.analytics.catalog import (
     agents,
+    artifacts,
     auth,
     billing,
     bots,
+    briefings,
     browser,
     calendars,
     chat,
@@ -25,6 +27,7 @@ from shared.py.analytics.catalog import (
     reminders,
     search,
     settings,
+    short_links,
     support,
     todos,
     triggers,
@@ -36,9 +39,11 @@ from shared.py.analytics.catalog.base import AnalyticsEvent, registered_events
 
 DOMAIN_MODULES = (
     agents,
+    artifacts,
     auth,
     billing,
     bots,
+    briefings,
     browser,
     calendars,
     chat,
@@ -53,6 +58,7 @@ DOMAIN_MODULES = (
     reminders,
     search,
     settings,
+    short_links,
     support,
     todos,
     triggers,

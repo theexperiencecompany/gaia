@@ -24,6 +24,7 @@ from app.models.workflow_models import (
     WorkflowDocument,
     WorkflowUpdate,
 )
+from app.services.system_workflows.registry import UNPAUSABLE_KEYS
 from app.services.triggers.subscription_service import (
     AccountScope,
     pause_subscriptions_for_trigger_names,
@@ -47,7 +48,9 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
     """
     paused: list[str] = []
 
-    for workflow in await workflow_repository.find_activated_for_user(user_id):
+    for workflow in await workflow_repository.find_activated_for_user(
+        user_id, excluding_keys=UNPAUSABLE_KEYS
+    ):
         required = compute_required_integrations(workflow.steps, workflow.trigger_config)
         if integration_id not in required:
             continue

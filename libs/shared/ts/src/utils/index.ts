@@ -4,15 +4,29 @@ export { flattenArgsPreview } from "./argsPreview";
 export type { JwtPayload, TokenStorage } from "./auth";
 export { isTokenExpired, parseJwt, shouldRefreshToken } from "./auth";
 export { discordInviteUrl, telegramBotUrl } from "./botLinks";
-export type { DueChipTone } from "./dateUtils";
+export type { DateFormat, DueChipTone } from "./dateUtils";
 export {
+  dayName,
+  FIXED_LOCALE,
+  formatClockTime,
   formatDate,
   formatDateUTC,
+  formatDay,
   formatDueDate,
+  formatHour,
+  formatInboxTime,
+  formatMessageTime,
+  formatRelativeDate,
   formatRelativeTime,
+  formatTime,
+  formatTimeRange,
+  formatWeekday,
   getDueChipTone,
   isOverdue,
   parseRelativeDateLabel,
+  TODAY,
+  TOMORROW,
+  YESTERDAY,
 } from "./dateUtils";
 export {
   extractUrls,
@@ -23,7 +37,6 @@ export {
   formatFileSize,
   formatNumber,
   formatPlanName,
-  formatRelativeDate,
   formatRunCount,
   getTriggerLabel,
   truncateText,
@@ -32,6 +45,7 @@ export {
   getCompleteTimeBasedGreeting,
   getSimpleTimeGreeting,
 } from "./greetingUtils";
+export { to12Hour, to24Hour } from "./hours";
 export type {
   InstructionsDraftView,
   InstructionsEdit,

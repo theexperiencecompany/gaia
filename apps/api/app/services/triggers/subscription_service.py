@@ -33,7 +33,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.analytics_service import capture
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.triggers import get_handler_by_name
 from app.services.triggers.subscription_validation import (
     ValidationOutcome,
@@ -265,7 +265,7 @@ async def store_subscription(
             cooldown_seconds=subscription.cooldown_seconds,
         ),
     )
-    await record_activity(todo.id, todo.user_id, TodoActivityEvent.WATCH_ADDED, activity)
+    await record_todo_activity(todo.id, todo.user_id, TodoActivityEvent.WATCH_ADDED, activity)
     log.info(
         "todo_subscription.registered",
         todo_id=todo.id,
@@ -311,7 +311,7 @@ async def unregister_subscription(
                 error_type=type(e).__name__,
             )
 
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.WATCH_REMOVED, f"stopped watching {target.trigger_name}"
     )
     log.info(
@@ -361,7 +361,7 @@ async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> 
 
     count = len(before.trigger_subscriptions)
     names = ", ".join(sorted({sub.trigger_name for sub in before.trigger_subscriptions}))
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.WATCH_REMOVED, f"stopped watching {names} ({reason})"
     )
     log.info("todo_subscription.torn_down", todo_id=todo_id, count=count, reason=reason)
@@ -411,7 +411,7 @@ async def pause_subscriptions_for_trigger_names(
             await todo_repository.pause_trigger_subscriptions(
                 todo.id, user_id=user_id, subscription_ids={s.id for s in hit}
             )
-            await record_activity(
+            await record_todo_activity(
                 todo.id,
                 user_id,
                 TodoActivityEvent.WATCH_PAUSED,
@@ -464,7 +464,7 @@ async def resync_subscriptions_for_trigger_names(
             await todo_repository.resume_trigger_subscriptions(
                 todo.id, user_id=user_id, trigger_ids=trigger_ids
             )
-            await record_activity(
+            await record_todo_activity(
                 todo.id,
                 user_id,
                 TodoActivityEvent.WATCH_RESUMED,

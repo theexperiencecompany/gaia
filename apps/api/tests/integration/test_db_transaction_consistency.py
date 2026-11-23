@@ -167,9 +167,16 @@ class TestConversationDeletionCleanup:
         """Deleting a conversation must delete via the repository, scoped to the owner."""
         conv_id = str(uuid4())
         mock_delete = AsyncMock(return_value=True)
+        revoke_links = AsyncMock()
+        delete_artifacts = AsyncMock()
 
         with (
             patch("app.services.conversation_service.conversation_repository.delete", mock_delete),
+            patch("app.services.conversation_service.revoke_conversation_links", revoke_links),
+            patch(
+                "app.services.conversation_service.openui_artifact_repository.delete_for_conversation",
+                delete_artifacts,
+            ),
             patch(
                 "app.services.conversation_service.delete_session_dir",
                 AsyncMock(),
@@ -184,6 +191,8 @@ class TestConversationDeletionCleanup:
         assert result.conversation_id == conv_id
         assert mock_delete.await_args.args[0] == conv_id
         assert mock_delete.await_args.kwargs["user_id"] == USER_ID
+        revoke_links.assert_awaited_once_with(USER_ID, conv_id)
+        delete_artifacts.assert_awaited_once_with(USER_ID, conv_id)
 
     async def test_delete_conversation_not_found_raises(self) -> None:
         """Deleting a nonexistent conversation must raise 404."""
@@ -200,12 +209,20 @@ class TestConversationDeletionCleanup:
 
     async def test_delete_all_conversations_clears_user_data(self) -> None:
         """Bulk-deleting must target only the current user's conversations."""
-        mock_delete_all = AsyncMock(return_value=[str(uuid4()) for _ in range(5)])
+        conv_ids = [str(uuid4()) for _ in range(5)]
+        mock_delete_all = AsyncMock(return_value=conv_ids)
+        revoke_links = AsyncMock()
+        delete_artifacts = AsyncMock()
 
         with (
             patch(
                 "app.services.conversation_service.conversation_repository.delete_all_chats_for_user",
                 mock_delete_all,
+            ),
+            patch("app.services.conversation_service.revoke_conversation_links", revoke_links),
+            patch(
+                "app.services.conversation_service.openui_artifact_repository.delete_for_conversation",
+                delete_artifacts,
             ),
             patch(
                 "app.services.conversation_service._cleanup_checkpoint_threads",
@@ -216,6 +233,9 @@ class TestConversationDeletionCleanup:
 
         assert "deleted" in result.message.lower() or "All" in result.message
         assert mock_delete_all.await_args.args[0] == USER_ID
+        expected = [((USER_ID, conv_id),) for conv_id in conv_ids]
+        assert [(c.args,) for c in revoke_links.await_args_list] == expected
+        assert [(c.args,) for c in delete_artifacts.await_args_list] == expected
 
     async def test_delete_all_conversations_none_found_raises(self) -> None:
         """If the user has no conversations, bulk delete must raise 404."""

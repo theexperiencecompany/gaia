@@ -69,7 +69,6 @@ from app.models.conversation_log_models import LoggedEntry, Reply, ReplySettled,
 from app.models.conversation_models import LogPage
 from app.models.conversation_screen_models import NoticeItem, ScreenItem, UserItem, WorkItem
 from app.models.email_verdict_models import EmailVerdictDocument
-from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.screen import project_screen
@@ -268,10 +267,8 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
         patch("app.models.trigger_gate_models.ENFORCED_GATE_KINDS", frozenset(GateKind)),
         patch(f"{gate}.capture", MagicMock()) as capture,
-        patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
-        patch(
-            f"{gate}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
-        ) as quiet_hours,
+        # The owner quiet hours read once: their clock and hours (the default until set on owner).
+        patch("app.services.quiet_hours.user_repository") as users,
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
         patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,
         patch(
@@ -288,12 +285,14 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
+        owner = UserDocument(id="gate-owner", timezone=tz.value)
+        users.get = AsyncMock(return_value=owner)
         yield SimpleNamespace(
             jev=router.post(decisions_url(None)),
             enforced=enforced,
             capture=capture,
-            tz=profile_tz,
-            quiet_hours=quiet_hours,
+            owner=owner,
+            owner_read=users.get,
             wrote=wrote,
             workflow_skips=workflow_skips,
             watch_skips=watch_skips,
@@ -816,6 +815,27 @@ async def drain_at_most_once_sends() -> None:
     await asyncio.gather(
         *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
     )
+
+
+def quiet_hours_excluding_now() -> dict[str, int | bool]:
+    """Return a UTC quiet-hours window starting two hours from now, so a send is never held.
+
+    A plain mapping rather than a QuietHours: UserDocument coerces it, and the
+    regression lane can still build it against a base revision without the model.
+    """
+    hour = datetime.now(UTC).hour
+    return {"enabled": True, "start_hour": (hour + 2) % 24, "end_hour": (hour + 3) % 24}
+
+
+def tamper_signature(token: str) -> str:
+    """Corrupt the signature segment of a dot-separated signed token.
+
+    Edits the first character: the last base64url one carries padding bits a
+    decoder discards, so changing it can leave the signature bytes unchanged.
+    """
+    head, _, signature = token.rpartition(".")
+    replacement = "B" if signature[0] == "A" else "A"
+    return f"{head}.{replacement}{signature[1:]}"
 
 
 CREDENTIAL_STORE_SECRET = "unit-test-instance-secret"

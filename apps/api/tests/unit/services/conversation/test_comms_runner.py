@@ -1,7 +1,7 @@
 """The comms runner on the real comms graph and an in-memory checkpointer, with a scripted model."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 import re
 from typing import Any, TypeVar, cast
@@ -26,6 +26,7 @@ from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import INTERRUPTION_MARKER
 from app.agents.core.messages import MessageAttachments, MessageScope
 from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
+from app.agents.core.nodes.memory_node import memory_node
 from app.agents.middleware.factory import create_comms_history_fold
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.comms_turn_tools import react, stay_silent
@@ -187,6 +188,16 @@ def _tool_registry() -> None:
         init_tool_registry()
 
 
+@pytest.fixture(autouse=True)
+def _no_memory_side_work() -> Iterator[None]:
+    """Switch off the memory node's spawned retain and precompute: no turn's own, they reach real models."""
+    with (
+        patch(f"{memory_node.__module__}._store_user_memory_background", new=AsyncMock()),
+        patch(f"{memory_node.__module__}._precompute_next_turn_background", new=AsyncMock()),
+    ):
+        yield
+
+
 @pytest.fixture
 def conversation_id() -> str:
     return f"convrt-runner-{uuid4().hex[:10]}"
@@ -245,7 +256,9 @@ def runner(
             ),
         )
 
-    return CommsGraphRunner(build, cancel_confirm_seconds=CONFIRM_SECONDS, history_fold=UNUSED_FOLD)
+    return CommsGraphRunner(
+        build, cancel_confirm_seconds=CONFIRM_SECONDS, history_fold=lambda: UNUSED_FOLD
+    )
 
 
 def batch(*entries: LoggedEntry) -> Batch:
@@ -754,8 +767,8 @@ async def test_frames_owed_at_the_end_of_the_stream_reach_the_step_before_finish
     owed = Streamed(payload=ResponseEvent(response="owed tail"))
     real_finish = CommsEventMapper.finish
 
-    def finish_owing(mapper: CommsEventMapper) -> list[RunEvent]:
-        return [owed, *real_finish(mapper)]
+    async def finish_owing(mapper: CommsEventMapper) -> list[RunEvent]:
+        return [owed, *await real_finish(mapper)]
 
     async with comms_graph([], model=gated("hello there")) as graph:
         with patched_graph(graph), patch.object(CommsEventMapper, "finish", finish_owing):
@@ -1035,7 +1048,7 @@ async def test_a_run_reads_the_comms_graph_and_builds_its_turn_from_the_batch(
             patch("app.services.conversation.comms_runner.CommsEventMapper", mapper),
         ):
             run = await CommsGraphRunner(
-                recording_build, CONFIRM_SECONDS, history_fold=UNUSED_FOLD
+                recording_build, CONFIRM_SECONDS, history_fold=lambda: UNUSED_FOLD
             ).start(claim(conversation_id), first, (), LEDGER)
             await collect(run)
     get_graph.assert_awaited_once_with(GraphName.COMMS)
@@ -1110,7 +1123,7 @@ async def test_a_thread_past_its_budget_folds_its_oldest_turns_keeping_what_is_o
     )
     # The last turn ran out of steps, so the agent node, not the tools, wrote the thread last.
     out_of_steps = runner(conversation_id, recursion_limit=2)._build_turn
-    folding = CommsGraphRunner(out_of_steps, history_fold=fold)
+    folding = CommsGraphRunner(out_of_steps, history_fold=lambda: fold)
     seeded = [m for seq in (1, 2, 3) for m in _settled(seq)]
     archive = AsyncMock(return_value=("rel", "/workspace/archived.json"))
     async with comms_graph([], model=gated("answer 4")) as graph:

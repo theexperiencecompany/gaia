@@ -1,3 +1,5 @@
+import { SITE_URL } from "@/config/site";
+
 export const OPEN_SOURCE_FAQS = [
   {
     question: "Is GAIA an open source AI assistant?",
@@ -11,8 +13,7 @@ export const OPEN_SOURCE_FAQS = [
   },
   {
     question: "Can I host an AI assistant on my own server?",
-    answer:
-      "Yes. Run `curl -fsSL https://heygaia.io/install.sh | sh` to install the GAIA CLI, then `gaia up`. It installs Docker if it is missing and starts the web app, the API and every database in Docker on your machine or VPS. Open the address it prints, create the admin account and paste your AI provider key.",
+    answer: `Yes. Run \`curl -fsSL ${SITE_URL}/install.sh | sh\` to install the GAIA CLI, then \`gaia up\`. It installs Docker if it is missing and starts the web app, the API and every database in Docker on your machine or VPS. Open the address it prints, create the admin account and paste your AI provider key.`,
   },
   {
     question:
@@ -46,7 +47,7 @@ export const OPEN_SOURCE_FAQS = [
 export const SELF_HOST_STEPS = [
   {
     name: "Install the GAIA CLI",
-    text: "Run `curl -fsSL https://heygaia.io/install.sh | sh`. It sets up Node.js if needed and installs the `gaia` command.",
+    text: `Run \`curl -fsSL ${SITE_URL}/install.sh | sh\`. It sets up Node.js if needed and installs the \`gaia\` command.`,
   },
   {
     name: "Run gaia up",

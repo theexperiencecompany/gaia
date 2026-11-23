@@ -223,7 +223,7 @@ export function createTodoStore(
               project_id: todoData.project_id ?? "",
               completed: false,
               completed_at: null,
-              notify_on_run: todoData.notify_on_run ?? true,
+              delivery: todoData.delivery ?? "now",
               subtasks: (todoData.subtasks ?? []).map((subtask) => ({
                 id: subtask.id ?? "",
                 title: subtask.title,

@@ -1843,13 +1843,13 @@ class TestTwitterAfterHooks:
         assert "twitter_following_data" in payload
 
     @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_post_created_after_hook(self, mock_writer: MagicMock) -> None:
+    def test_post_created_after_hook_summarises_and_streams_nothing(
+        self, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        writer = _noop_writer()
-        mock_writer.return_value = writer
         response = _make_response(
             {
                 "data": {
@@ -1861,17 +1861,13 @@ class TestTwitterAfterHooks:
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         url = "https://twitter.com/i/status/post123"
         assert result == {"success": True, "id": "post123", "text": "My new tweet", "url": url}
-        writer.assert_called_once_with(
-            {"twitter_post_created": {"id": "post123", "text": "My new tweet", "url": url}}
-        )
+        mock_writer.assert_not_called()
 
-    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_post_created_after_hook_error(self, mock_writer: MagicMock) -> None:
+    def test_post_created_after_hook_error(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Duplicate"})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert result == {"error": "Duplicate"}
@@ -3022,13 +3018,11 @@ class TestRedditTwitterAfterHookExceptions:
         result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
         assert isinstance(result, dict)
 
-    @patch("app.utils.composio_hooks.twitter_hooks.current_stream_writer")
-    def test_twitter_post_created_exception(self, mock_writer: MagicMock) -> None:
+    def test_a_malformed_created_post_passes_through_raw(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
-        mock_writer.side_effect = RuntimeError("broken")
-        response = _make_response({"data": {"id": "p1"}})
+        response = _make_response({"data": {"text": "no id"}})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
-        assert isinstance(result, dict)
+        assert result == {"data": {"text": "no id"}}

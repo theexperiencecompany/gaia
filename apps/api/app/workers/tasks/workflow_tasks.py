@@ -34,13 +34,17 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
+from app.constants.briefing import BriefItemSource
 from app.constants.cache import (
     BACKGROUND_EXECUTOR_WAIT_TIMEOUT,
     WORKFLOW_FIRE_ADMISSION_PREFIX,
     WORKFLOW_FIRE_ADMISSION_TTL,
 )
 from app.constants.log_tags import LogTag
+from app.constants.notifications import NotificationKind
+from app.constants.user_activity import ActivityStatus
 from app.constants.waits import WAIT_MET_CONTEXT_KEY
+from app.constants.workflows import WorkflowDelivery
 from app.core.websocket_manager import get_websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
@@ -57,6 +61,10 @@ from app.models.conversation_log_models import (
     WorkflowRun,
     WorkOutcome,
 )
+from app.models.notification.details_models import (
+    WorkflowFailedNotification,
+    WorkflowPausedNotification,
+)
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -72,6 +80,7 @@ from app.models.notification.notification_models import (
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursHold, QuietHoursStamp
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
@@ -86,6 +95,7 @@ from app.models.workflow_models import (
 )
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.analytics_service import capture
+from app.services.briefing.held import HeldSource, brief_will_carry, hold_for_brief
 from app.services.conversation.log import accept
 from app.services.conversation.outcome import await_outcome
 from app.services.conversation.runtime import runtime_ports
@@ -95,7 +105,12 @@ from app.services.conversation.work_log import (
     record_work_finished,
 )
 from app.services.cost_budget import format_reset_date
+from app.services.links.placeholders import link_placeholder, resolve_link_placeholders
+from app.services.links.service import attach_link
 from app.services.notification_service import notification_service
+from app.services.quiet_hours import message_class
+from app.services.system_workflows.registry import behaviour_of
+from app.services.system_workflows.runs import SYSTEM_RUNS
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -103,6 +118,7 @@ from app.services.triggers.batching import (
     reschedule_if_refilled,
 )
 from app.services.triggers.trigger_gate import quiet_hours_hold
+from app.services.user_activity.status import activity_status_of
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     build_playbook_tool_data,
@@ -122,7 +138,7 @@ from app.services.workflow.execution_service import (
     record_skipped_execution,
 )
 from app.services.workflow.integration_pause import pause_workflow_before_fire
-from app.services.workflow.notifications import notify_workflow_result
+from app.services.workflow.notifications import WorkflowRunResult, notify_workflow_result
 from app.services.workflow.playbook.check import distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import (
@@ -223,6 +239,7 @@ async def process_workflow_generation_task(
             prompt=workflow_prompt,
             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
             generate_immediately=True,
+            delivery=WorkflowDelivery.NOW,
         )
 
         workflow = await WorkflowService.create_workflow(
@@ -270,6 +287,7 @@ async def process_workflow_generation_task(
                         workflow_id=workflow.id,
                         steps_count=len(workflow.steps),
                         is_todo_workflow=True,
+                        delivery=workflow_request.delivery.value,
                     ),
                 )
 
@@ -542,7 +560,7 @@ async def _notify_workflow_paused_for_integrations(
         await notification_service.notify(
             NotificationRequest(
                 id=notification_id(
-                    workflow.user_id, "workflow_paused", workflow.id or "", fired_at.isoformat()
+                    workflow.user_id, "workflow_paused", workflow.id, fired_at.isoformat()
                 ),
                 user_id=workflow.user_id,
                 source=NotificationSourceEnum.INTEGRATION_EXPIRED,
@@ -568,10 +586,11 @@ async def _notify_workflow_paused_for_integrations(
                         )
                     ],
                 ),
-                metadata={
-                    "workflow_id": workflow.id,
-                    "missing_integrations": ",".join(ref.id for ref in missing),
-                },
+                details=WorkflowPausedNotification(
+                    kind=NotificationKind.WORKFLOW_PAUSED,
+                    workflow_id=workflow.id,
+                    missing_integrations=[ref.id for ref in missing],
+                ),
             )
         )
     except Exception as notify_err:
@@ -611,9 +630,7 @@ async def _notify_workflow_failed(
         occurrence = execution_id or datetime.now(UTC).date().isoformat()
         await notification_service.notify(
             NotificationRequest(
-                id=notification_id(
-                    workflow.user_id, "workflow_failed", workflow.id or "", occurrence
-                ),
+                id=notification_id(workflow.user_id, "workflow_failed", workflow.id, occurrence),
                 user_id=workflow.user_id,
                 source=NotificationSourceEnum.WORKFLOW_FAILED,
                 type=NotificationType.ERROR,
@@ -622,10 +639,11 @@ async def _notify_workflow_failed(
                     body=body,
                     actions=[upgrade_action] if upgrade_action else None,
                 ),
-                metadata={
-                    "workflow_id": workflow.id,
-                    "error_type": type(error).__name__,
-                },
+                details=WorkflowFailedNotification(
+                    kind=NotificationKind.WORKFLOW_FAILED,
+                    workflow_id=workflow.id,
+                    error_type=type(error).__name__,
+                ),
             )
         )
     except Exception as notify_err:
@@ -682,7 +700,8 @@ async def _record_execution_failure(
         except Exception as e2:
             log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
 
-    await _notify_workflow_failed(error, workflow, execution_id)
+    if behaviour_of(workflow.system_workflow_key).notify_on_failure:
+        await _notify_workflow_failed(error, workflow, execution_id)
 
 
 def _fallback_note(result: PlaybookRunResult) -> str:
@@ -944,36 +963,70 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
         ) from exc
 
 
+async def _run_link_line(user_id: str, execution_id: str) -> str:
+    """Return the closing line linking the run's page by its placeholder; "" when no link is live."""
+    target = RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id=execution_id)
+    if await attach_link(user_id, target) is None:
+        return ""
+    return f"\n\n[Open this run]({link_placeholder(target)})"
+
+
 async def _notify_run_finished(
     workflow: Workflow,
     execution_id: str,
     conversation_id: str,
     text: str,
     *,
-    notify_on_completion: bool,
+    delivery: WorkflowDelivery,
+    broke_through: bool,
 ) -> None:
-    """Deliver a finished run, replayed or answered by the agent, through the one notify pipeline.
+    """Route a finished run, replayed or answered by the agent, by its delivery mode.
 
-    Gated on notify_on_completion and best-effort: the result is already in its conversation.
+    now goes out through the one notify pipeline (URGENT when the trigger gate let it
+    through quiet hours); brief holds it for the next daily brief, or goes now when no
+    brief will carry it; silent leaves it in its conversation. Best-effort: the result
+    is already there. What leaves the conversation closes on the run's link, every placeholder resolved.
     """
-    if not notify_on_completion:
-        log.info(
-            f"{LogTag.WORKER} Run completion notification skipped (workflow is silent)",
-            workflow_id=workflow.id,
-        )
-        return
     try:
-        await notify_workflow_result(
-            workflow_id=workflow.id or "",
-            workflow_title=workflow.title,
-            execution_id=execution_id,
-            conversation_id=conversation_id,
-            user_id=workflow.user_id,
-            result_text=text,
-        )
+        link_line = await _run_link_line(workflow.user_id, execution_id)
+        text = await resolve_link_placeholders(workflow.user_id, text + link_line)
+        if delivery is WorkflowDelivery.BRIEF and not await brief_will_carry(workflow.user_id):
+            log.info(
+                f"{LogTag.WORKFLOW} Workflow result sent now: no daily brief will carry it",
+                workflow_id=workflow.id,
+            )
+            delivery = WorkflowDelivery.NOW
+        log.set(workflow_delivery=delivery.value)
+        if delivery is WorkflowDelivery.SILENT:
+            log.info(
+                f"{LogTag.WORKER} Run result kept in its conversation (silent)",
+                workflow_id=workflow.id,
+            )
+        elif delivery is WorkflowDelivery.BRIEF:
+            await hold_for_brief(
+                workflow.user_id,
+                HeldSource(BriefItemSource.WORKFLOW, workflow.id, workflow.title, conversation_id),
+                [text],
+            )
+            log.info(
+                f"{LogTag.WORKFLOW} Workflow result held for the next brief",
+                workflow_id=workflow.id,
+            )
+        else:
+            await notify_workflow_result(
+                workflow_id=workflow.id,
+                workflow_title=workflow.title,
+                user_id=workflow.user_id,
+                run=WorkflowRunResult(
+                    execution_id=execution_id,
+                    conversation_id=conversation_id,
+                    text=text,
+                    message_class=message_class(broke_through),
+                ),
+            )
     except Exception as e:
         log.warning(
-            f"{LogTag.WORKER} Run completion notification failed",
+            f"{LogTag.WORKER} Run completion delivery failed",
             workflow_id=workflow.id,
             error=str(e),
             error_type=type(e).__name__,
@@ -1010,6 +1063,7 @@ async def _deliver_replay(
             reason=result.narration_failed,
         )
     text = result.text
+    broke_through = isinstance(fire.quiet_hours, QuietHoursBypass)
     if isinstance(fire.quiet_hours, QuietHoursBypass):
         opening = QUIET_HOURS_BYPASS_OPENING.format(reason=fire.quiet_hours.reason)
         text = f"{opening}\n\n{text}"
@@ -1019,7 +1073,8 @@ async def _deliver_replay(
         fire.execution_id,
         conversation_id,
         text,
-        notify_on_completion=workflow.notify_on_completion,
+        delivery=workflow.delivery,
+        broke_through=broke_through,
     )
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
@@ -1332,7 +1387,14 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     # Replay the playbook when it still describes this workflow, else run the
     # agent (a partial replay hands the rest over, carrying what it did). Agent
     # path delivers from the background path; a replay via _finish_after_replay.
-    conversation_id, trace, summary = await _run_workflow(fire)
+    conversation_id: str | None
+    trace: list[RecordedCall]
+    # A system workflow with its own pipeline delivers itself: no workflow conversation.
+    key = workflow.system_workflow_key
+    if run := SYSTEM_RUNS.get(key) if key else None:
+        conversation_id, trace, summary = None, [], await run(workflow)
+    else:
+        conversation_id, trace, summary = await _run_workflow(fire)
 
     # Track successful execution
     await WorkflowService.increment_execution_count(
@@ -1384,6 +1446,7 @@ async def _record_run_failure(
     execution_id: str | None,
     trigger_type: str | None,
 ) -> str:
+    """Close out a failed fire, then re-raise it; a plan-quota refusal is a skip and returns."""
     # A failure after a partial replay arrives wrapped with the replay's
     # trace; the bookkeeping below classifies the real error, and the
     # record keeps the calls that already happened.
@@ -1395,7 +1458,9 @@ async def _record_run_failure(
     # error) must not permanently kill a recurring workflow.
     await _rearm_quietly(workflow_scheduler, workflow, trigger_type, workflow_id)
 
-    return f"Error executing workflow {workflow_id}: {e}"
+    if isinstance(e, RateLimitExceededException):
+        return f"Workflow {workflow_id} skipped: {e}"
+    raise raised
 
 
 async def _reschedule_refill_safe(
@@ -1532,6 +1597,30 @@ async def _skip_unpaid_fire(
     return f"Workflow {workflow_id} skipped — subscription required"
 
 
+async def _skip_dormant_owner_fire(
+    scheduler: WorkflowScheduler,
+    workflow: Workflow,
+    workflow_id: str,
+) -> str | None:
+    """Skip a fire whose owner is dormant and pause the workflow until they are back, or None.
+
+    The same rule as a tracked todo's: paused when it would next act, with the reason
+    reactivate_user resumes. A workflow declared unpausable (the briefs) winds itself down.
+    """
+    if not behaviour_of(workflow.system_workflow_key).pausable:
+        return None
+    if await activity_status_of(workflow.user_id) is not ActivityStatus.DORMANT:
+        return None
+    log.info(
+        f"{LogTag.WORKER} Workflow skipped — owner dormant",
+        workflow_id=workflow_id,
+        user_id=workflow.user_id,
+    )
+    if workflow.activated:
+        await scheduler.pause_for_reason(workflow, DeactivationReason.USER_DORMANT)
+    return f"Workflow {workflow_id} skipped — owner dormant"
+
+
 async def execute_workflow_by_id(
     ctx: Mapping[str, object],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     workflow_id: str,
@@ -1624,10 +1713,14 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             )
         )
 
-        # The paid gate runs first and short-circuits admission, so an unpaid
-        # fire never claims its scheduled occurrence.
-        skipped = await _skip_unpaid_fire(scheduler, workflow, workflow_id) or await _admit_fire(
-            workflow, workflow_id, trigger_type, stamp.scheduled_for, actual_fire_utc
+        # The paid and dormant-owner gates run first and short-circuit admission, so a
+        # withheld fire never claims its scheduled occurrence.
+        skipped = (
+            await _skip_unpaid_fire(scheduler, workflow, workflow_id)
+            or await _skip_dormant_owner_fire(scheduler, workflow, workflow_id)
+            or await _admit_fire(
+                workflow, workflow_id, trigger_type, stamp.scheduled_for, actual_fire_utc
+            )
         )
         if skipped:
             return skipped
@@ -1861,7 +1954,7 @@ async def execute_workflow_as_chat(
         # A caller firing this for something quieter lowers the default through the context.
         trigger=WorkflowTriggerContext.model_validate(
             {
-                "workflow_notify_on_completion": workflow.notify_on_completion,
+                "workflow_delivery": workflow.delivery,
                 **context,
                 "workflow_id": workflow.id,
             }
@@ -1902,7 +1995,8 @@ async def execute_workflow_as_chat(
             execution_id,
             conversation_id,
             outcome.text,
-            notify_on_completion=run.trigger.workflow_notify_on_completion,
+            delivery=run.trigger.workflow_delivery,
+            broke_through=isinstance(run.trigger.quiet_hours, QuietHoursBypass),
         )
     return conversation_id, trace
 

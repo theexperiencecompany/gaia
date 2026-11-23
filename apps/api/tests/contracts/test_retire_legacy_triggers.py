@@ -42,7 +42,9 @@ class TestLegacyEmailTrigger:
         with pytest.raises(ValidationError):
             await workflow_repository.get_for_user(str(legacy["_id"]), str(legacy["user_id"]))
         with pytest.raises(ValidationError):
-            await workflow_repository.find_activated_for_user(str(legacy["user_id"]))
+            await workflow_repository.find_activated_for_user(
+                str(legacy["user_id"]), excluding_keys=()
+            )
 
     async def test_an_activated_one_reads_as_a_switched_off_gmail_trigger(
         self, raw_collection
@@ -63,7 +65,12 @@ class TestLegacyEmailTrigger:
         assert workflow.trigger_config.composio_trigger_ids == []
         assert workflow.activated is False
         assert workflow.deactivated_reason is DeactivationReason.TRIGGER_RETIRED
-        assert await workflow_repository.find_activated_for_user(str(legacy["user_id"])) == []
+        assert (
+            await workflow_repository.find_activated_for_user(
+                str(legacy["user_id"]), excluding_keys=()
+            )
+            == []
+        )
 
     async def test_a_calendar_one_moves_to_calendar_event_created(self, raw_collection) -> None:
         legacy = _legacy_workflow(trigger_type="calendar", activated=True)

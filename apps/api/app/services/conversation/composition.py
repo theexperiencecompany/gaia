@@ -217,8 +217,9 @@ def build_runtime_ports() -> RuntimePorts:
     frames = BotWakingFrames(RedisStreamFrames())
     return RuntimePorts(
         log=log,
+        # The model resolves per fold: a fresh self-host boots before its LLM key is saved.
         runner=CommsGraphRunner(
-            build_comms_turn, history_fold=create_comms_history_fold(init_llm())
+            build_comms_turn, history_fold=lambda: create_comms_history_fold(init_llm())
         ),
         frames=frames,
         effects=RuntimeEffects(log, frames, runtime_ports),

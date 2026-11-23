@@ -23,6 +23,7 @@ from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
     HAND_OFF_SILENCE_ARGS,
+    INTENT_SECTION_HEAD,
     REACT_TOOL,
     SCRIPTED_HAND_OFF_ARGS,
     STAY_SILENT_TOOL,
@@ -730,11 +731,9 @@ def test_a_brief_quoting_the_request_runs_its_script_once() -> None:
 
 
 def test_a_brief_with_an_intent_section_runs_its_script_once() -> None:
+    """Regression: the intent between task and done hid the quote, so every sim hand-off ran twice."""
     script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
-    task_and_intent = (
-        f"{script}\n\nOutcome the user actually wants: the scripted directives run\n"
-        "Time horizon: one_shot: finish it in this run."
-    )
+    task_and_intent = f"{script}\n\n{INTENT_SECTION_HEAD} a reminder\nTime horizon: one_shot"
     brief = _user(_executor_brief(script, task_and_intent))
     after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
 
@@ -742,9 +741,7 @@ def test_a_brief_with_an_intent_section_runs_its_script_once() -> None:
 
 
 def test_a_request_containing_an_intent_header_is_still_stripped_when_restated() -> None:
-    script = (
-        '[[tool:create_reminder {"title": "stretch"}]]\n\nOutcome the user actually wants: stretch'
-    )
+    script = f'[[tool:create_reminder {{"title": "stretch"}}]]\n\n{INTENT_SECTION_HEAD} stretch'
     brief = _user(_executor_brief(script, script))
     after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
 

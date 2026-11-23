@@ -70,6 +70,8 @@ export interface FollowSurface extends ConversationSurface {
   sendFile: (conversationId: string, file: ReplyFile) => Promise<void>;
   /** Sends a notice's rendered bubbles; where proactive messages are restricted they go as one. */
   sendNotice: (bubbles: string[]) => Promise<void>;
+  /** Sends a notice's image (a brief's edition) as a photo with its caption. */
+  sendPhoto: (url: string, caption: string) => Promise<void>;
   /** Whether the platform would refuse a free-form message now (WhatsApp's 24 h window). */
   windowClosed: () => Promise<boolean>;
   /** The requester's own chat: a browser run's live link and step photos go there, even from a group. */

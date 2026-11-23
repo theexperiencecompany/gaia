@@ -6,6 +6,7 @@ The run through the step runs end to end in tests/integration/real/test_conversa
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,12 +20,19 @@ from app.agents.core.background.todo_run_delivery import (
     write_up_note,
 )
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.config.settings import settings
 from app.constants import todos as todo_constants
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.log_tags import LogTag
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.errors import RepositoryError
+from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import TodoRun
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRecord,
@@ -33,10 +41,12 @@ from app.models.notification.notification_models import (
     NotificationType,
     notification_id,
 )
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
+from app.services.links.placeholders import link_placeholder
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from app.utils import auth_utils
@@ -45,6 +55,7 @@ from app.workers.tasks import tracked_todo_tasks
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyOutcome
+from tests.briefing_helpers import brief_loop_awake
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_run
 
@@ -79,6 +90,10 @@ class _Seams:
     #: Where the pipeline routed the result.
     target: MagicMock
     read_todo: AsyncMock
+    #: workflow_repository.find_system_workflow: the daily brief that would carry a held result.
+    daily_brief: AsyncMock
+    #: pending_brief_items_repository.create: one call per result line held for the brief.
+    hold: AsyncMock
     #: The note the run's write-up was written under, as the turn builder reads it.
     note: str = ""
 
@@ -91,7 +106,11 @@ class _Seams:
 
 @contextmanager
 def _seams(
-    *, todo: TodoDocument | None, write_up: str = "Deploy failed.", sent_on: object = None
+    *,
+    todo: TodoDocument | None,
+    write_up: str = "Deploy failed.",
+    sent_on: object = None,
+    daily_brief: SimpleNamespace | None = None,
 ) -> Iterator[_Seams]:
     target = MagicMock(return_value=InApp(reason="no_chat_app"))
     notify = AsyncMock(side_effect=lambda request: _notified(request, sent_on, target()))
@@ -104,6 +123,9 @@ def _seams(
         in_app=notify,
         target=target,
         read_todo=AsyncMock(return_value=todo),
+        # No daily brief unless a test turns one on, so nothing is held for it.
+        daily_brief=AsyncMock(return_value=daily_brief),
+        hold=AsyncMock(),
     )
     repo = MagicMock()
     repo.get_by_id = seams.read_todo
@@ -112,6 +134,9 @@ def _seams(
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(notification_service, "notify", seams.in_app),
+        patch.object(workflow_repository, "find_system_workflow", seams.daily_brief),
+        brief_loop_awake(),
+        patch.object(pending_brief_items_repository, "create", seams.hold),
     ):
         yield seams
 
@@ -141,6 +166,7 @@ async def deliver(
     *,
     nothing_for_user: bool = False,
     reply: ReplyOutcome = ReplyOutcome.ANSWERED,
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE,
 ) -> None:
     """Write the run up as the step does, under its note, then hand what its reply settled to delivery."""
     form = report_form_of(seams.todo) if seams.todo is not None else kind.report_form
@@ -157,6 +183,7 @@ async def deliver(
         write_up=seams.write_up if reply is ReplyOutcome.ANSWERED else "",
         reply=reply,
         nothing_for_user=nothing_for_user,
+        message_class=message_class,
     )
     if (undone := await finish_todo_run(finished)) is not None:
         await hand_unfinished_run_to_job(undone)
@@ -171,6 +198,37 @@ def _todo(**fields: object) -> TodoDocument:
 def _thread_todo(**fields: object) -> TodoDocument:
     ref = todo_models.ExternalRef(source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1")
     return _todo(external_ref=ref, **fields)
+
+
+class TestALinkInTheWriteUp:
+    async def test_reaches_the_user_as_its_live_link(self) -> None:
+        """The write-up carries a placeholder; delivery is where it becomes the URL."""
+        target = RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="todo-1")
+        live = ShortLink(slug="loglink1234", user_id=USER_ID, target=target)
+        with (
+            _seams(
+                todo=_todo(), write_up=f"Deploy failed. [The log]({link_placeholder(target)})"
+            ) as seams,
+            patch(
+                "app.services.links.placeholders.short_link_repository.get_live_for_target",
+                AsyncMock(return_value=live),
+            ),
+        ):
+            await deliver(seams, SCHEDULED, "report")
+
+        body = seams.in_app.await_args.args[0].content.body
+        assert body == f"Deploy failed. [The log]({settings.SHORTLINK_BASE_URL}/loglink1234)"
+
+
+class TestTheRunsMessageClassReachesThePipeline:
+    @pytest.mark.parametrize("message_class", list(ProactiveMessageClass))
+    async def test_quiet_hours_see_what_woke_the_run(
+        self, message_class: ProactiveMessageClass
+    ) -> None:
+        with _seams(todo=_todo()) as seams:
+            await deliver(seams, WATCHING, "report", message_class=message_class)
+
+        assert seams.in_app.await_args.args[0].message_class is message_class
 
 
 class TestResultsThatReachNobody:
@@ -192,7 +250,7 @@ class TestResultsThatReachNobody:
         assert request.type is NotificationType.INFO
         assert request.content.title == "Watch the deploy"
         assert request.content.body == "Deploy failed."
-        assert request.metadata == {"todo_id": "todo-1"}
+        assert request.details == TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
         assert seams.entry() == "result sent as an in-app notification (summary='report')"
         assert seams.event().outcome == "delivered"
         assert seams.event().platform is None
@@ -326,7 +384,7 @@ class TestARunThatFoundNothingForTheUser:
         assert seams.event().outcome == "delivered"
 
     async def test_with_delivery_off_the_run_is_recorded_as_delivery_off(self) -> None:
-        with _seams(todo=_thread_todo(notify_on_run=False)) as seams:
+        with _seams(todo=_thread_todo(delivery=WorkflowDelivery.SILENT)) as seams:
             await deliver(seams, WATCHING, self.NOTE, nothing_for_user=True)
 
         assert seams.event().outcome == "notify_off"
@@ -699,3 +757,83 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
 
         seams.send.assert_not_awaited()
         seams.activity.assert_not_awaited()
+
+
+_LIVE_BRIEF = SimpleNamespace(id="brief-wf", activated=True)
+# One finding per line, as the desk's run guidance writes them; a stray blank line holds nothing.
+_DESK_FINDINGS = (
+    'Arjun call Tue 4pm · say "add Arjun call" to add it\n'
+    "\n"
+    "3 product updates · Linear, Vercel pricing, Notion AI\n"
+)
+
+
+def _desk(**fields: object) -> TodoDocument:
+    ref = todo_models.ExternalRef(source=todo_models.ExternalRefSource.INBOX_DESK, id="int-1")
+    return _todo(
+        **{"title": "Inbox desk", "external_ref": ref, "delivery": WorkflowDelivery.BRIEF, **fields}
+    )
+
+
+class TestABriefTodoFeedsTheMorningBrief:
+    """The todo's stored delivery alone decides whether its result waits for the next brief."""
+
+    async def test_each_finding_is_held_as_one_brief_item_and_nothing_is_sent(self) -> None:
+        with _seams(todo=_desk(), daily_brief=_LIVE_BRIEF) as seams:
+            await deliver(seams, SCHEDULED, _DESK_FINDINGS)
+
+        seams.send.assert_not_awaited()
+        held = [call.args[0] for call in seams.hold.await_args_list]
+        assert [item.text for item in held] == [
+            'Arjun call Tue 4pm · say "add Arjun call" to add it',
+            "3 product updates · Linear, Vercel pricing, Notion AI",
+        ]
+        assert {
+            (item.user_id, item.source, item.source_id, item.source_title, item.conversation_id)
+            for item in held
+        } == {(USER_ID, BriefItemSource.TODO, "todo-1", "Inbox desk", "run-conv")}
+        assert seams.event().outcome == "held_for_brief"
+        assert seams.entry().startswith("result held for the next brief (summary=")
+        seams.daily_brief.assert_awaited_once_with(USER_ID, DAILY_BRIEFING_WORKFLOW_KEY)
+
+    async def test_a_silent_write_up_holds_nothing(self) -> None:
+        with _seams(todo=_todo(delivery=WorkflowDelivery.BRIEF), daily_brief=_LIVE_BRIEF) as seams:
+            await deliver(seams, SCHEDULED, "report", reply=ReplyOutcome.SILENT)
+
+        seams.hold.assert_not_awaited()
+        seams.send.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "daily_brief", [None, SimpleNamespace(activated=False)], ids=["no-brief", "brief-off"]
+    )
+    async def test_without_a_live_daily_brief_the_result_is_sent(
+        self, daily_brief: SimpleNamespace | None
+    ) -> None:
+        """Holding for a brief that never runs would mean nobody sees the result."""
+        with _seams(todo=_desk(), daily_brief=daily_brief) as seams:
+            await deliver(seams, SCHEDULED, _DESK_FINDINGS)
+
+        seams.send.assert_awaited_once()
+        seams.hold.assert_not_awaited()
+
+    @pytest.mark.parametrize("kind", [SCHEDULED, WATCHING], ids=["schedule", "watch"])
+    async def test_a_brief_todos_written_up_result_is_held_however_its_run_was_woken(
+        self, kind: TodoRun
+    ) -> None:
+        with _seams(
+            todo=_todo(delivery=WorkflowDelivery.BRIEF),
+            write_up=_DESK_FINDINGS,
+            daily_brief=_LIVE_BRIEF,
+        ) as seams:
+            await deliver(seams, kind, "report")
+
+        seams.send.assert_not_awaited()
+        assert len(seams.hold.await_args_list) == 2
+        assert seams.event().outcome == "held_for_brief"
+
+    async def test_a_now_todo_is_sent_with_a_live_brief(self) -> None:
+        with _seams(todo=_desk(delivery=WorkflowDelivery.NOW), daily_brief=_LIVE_BRIEF) as seams:
+            await deliver(seams, SCHEDULED, _DESK_FINDINGS)
+
+        seams.send.assert_awaited_once()
+        seams.hold.assert_not_awaited()

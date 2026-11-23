@@ -47,6 +47,11 @@ BLOCKING_LABEL: Final[str] = "blocked"
 BLOCKING_LABELS: Final[frozenset[str]] = frozenset(
     {WAITING_FOR_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
 )
+# Labels meaning the next move is the user's: a reply they owe, an action, an approval, a blocker.
+# A thread waiting on someone else's reply is not one of them.
+NEEDS_USER_LABELS: Final[frozenset[str]] = frozenset(
+    {NEEDS_REPLY_LABEL, ACTION_NEEDED_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
+)
 
 
 class WaitingOn(StrEnum):
@@ -57,6 +62,19 @@ class WaitingOn(StrEnum):
     USER = "user"
     SUB_TODOS = "sub_todos"
     UNPLANNED = "unplanned"
+
+
+class TodoCompleter(StrEnum):
+    """Who closed a todo, so a recap credits each completion to whoever finished it."""
+
+    #: The user marked it done: in the app, or by asking GAIA in chat.
+    USER = "user"
+    #: GAIA finished its own tracked work.
+    GAIA = "gaia"
+    #: An event the todo watched fired and closed it.
+    TRIGGER = "trigger"
+    #: Housekeeping closed it: it expired, or its parent closed while it was being created.
+    SYSTEM = "system"
 
 
 class NoReplyPlan(StrEnum):
@@ -170,6 +188,7 @@ class TodoRunDeliveryOutcome(StrEnum):
     NOTHING_TO_REPORT = "nothing_to_report"
     NOTIFY_OFF = "notify_off"
     NARRATION_FAILED = "narration_failed"
+    HELD_FOR_BRIEF = "held_for_brief"
 
 
 class TodoWakeKind(StrEnum):
@@ -300,14 +319,15 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 # Most todos list_tracked_todos returns, filtered or not; the freshest win.
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
 
-# The one tracked todo per user that triages mail, owns its threads, briefs each morning and alerts on new mail.
 # Where a ping meets follow-through: one rule, read by comms, the executor and the manual.
 PING_WITH_FOLLOW_THROUGH_RULE: Final[str] = (
     "A ping that GAIA must also see through is ONE tracked todo whose first run gives the "
     "ping: never a reminder beside it, and never the reminder alone."
 )
+# The one tracked todo per user that triages mail and owns its threads; its daily findings go into the morning brief.
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
-INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
+# How long before the user's daily brief the desk sweeps every day, so its report is waiting when the brief runs.
+INBOX_DESK_LEAD_HOURS: Final[int] = 1
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
 # Automated senders the desk's fetch leaves out: GitHub and other
 # notifications land in Primary, and this cut a live 24h window from 224 messages to 10 people.
@@ -382,11 +402,10 @@ INBOX_DESK_ACTION_MAIL_FILTER: Final[str] = (
     + " OR ".join(f"subject:{term}" for term in INBOX_DESK_SECURITY_PROBLEM_TERMS)
     + "))"
 )
-# The desk's briefing is read in seconds: words per item, per summary under an item,
-# and lines per capped section.
+# The desk's findings are read in seconds: words per finding, per thread summary its
+# mail subagent returns, and FYI lines.
 INBOX_DESK_BRIEFING_ITEM_MAX_WORDS: Final[int] = 12
 INBOX_DESK_SUMMARY_MAX_WORDS: Final[int] = 25
-INBOX_DESK_NEEDS_YOU_MAX_ITEMS: Final[int] = 5
 INBOX_DESK_FYI_MAX_LINES: Final[int] = 5
 # Days a high-confidence pattern must hold before the desk suggests a Gmail change from it.
 INBOX_DESK_SUGGEST_AFTER_DAYS: Final[int] = 3
@@ -397,7 +416,6 @@ INBOX_DESK_ASKED_ONCE: Final[str] = "Asked once"
 class InboxDeskAsk(StrEnum):
     """What the desk does only once the user says yes, each asked at most once ever."""
 
-    SUMMARIES = "summaries"
     TODOS = "todos"
 
 

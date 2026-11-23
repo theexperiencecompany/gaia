@@ -153,12 +153,7 @@ export type {
   ToolDataMap,
   ToolFixture,
   ToolName,
-  TwitterData,
-  TwitterFollowersData,
-  TwitterPostCreatedData,
-  TwitterPostPreviewData,
   TwitterSearchData,
-  TwitterTimelineData,
   TwitterTweetData,
   TwitterUserData,
   WeatherData,
@@ -263,6 +258,8 @@ export {
 } from "./tool-utils";
 export type {
   ActivityDay,
+  BriefingFrequency,
+  BriefingScheduleState,
   BudgetWindow,
   BulkMoveRequest,
   ChannelPlatform,
@@ -273,9 +270,7 @@ export type {
   CommunityWorkflow,
   ContentCreator,
   CreateCustomIntegrationRequest,
-  CreateWorkflowPayload,
   CronValidationResult,
-  ExecutionConfig,
   FeatureUsage,
   InAppNotification,
   InAppNotificationContent,
@@ -357,6 +352,10 @@ export {
   SUBSCRIPTION_REQUIRED_CODE,
   WorkflowStatus,
 } from "./types";
+export {
+  EMAIL_CHANNEL_DESCRIPTION,
+  NOTIFICATION_CHANNELS,
+} from "./types/notification";
 export type {
   ArgsPreviewRow,
   ConnectionPromptState,
@@ -421,6 +420,7 @@ export {
   truncateText,
 } from "./utils";
 export type {
+  BriefFreeDelivery,
   BuiltinTriggerMeta,
   IntegrationTriggerGroup,
   TriggerDisplayConfig,
@@ -429,6 +429,7 @@ export type {
   TriggerSchema,
 } from "./workflows";
 export {
+  BRIEF_FREE_DELIVERIES,
   BUILTIN_TRIGGER_META,
   buildDefaultTriggerConfig,
   findTriggerSchema,
@@ -437,4 +438,8 @@ export {
   getTriggerDisplayInfoBySlug,
   getTriggerLogoKey,
   groupTriggerSchemasByIntegration,
+  NO_DAILY_BRIEF_DELIVERY_REASON,
+  ONE_CLICK_WORKFLOW_DELIVERY,
+  WORKFLOW_DELIVERIES,
+  WORKFLOW_DELIVERY_COPY,
 } from "./workflows";

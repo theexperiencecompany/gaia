@@ -2,34 +2,35 @@
 
 Users created before the live memory pipeline shipped have conversation history
 that never went through memory_node. A daily cron (backfill_active_users)
-scans for recently-active, pre-launch, not-yet-backfilled users and enqueues a
+scans for active (ActivityStatus.ACTIVE), pre-launch, not-yet-backfilled users and enqueues a
 per-user job (backfill_user_memories) that replays their conversations
 through memory_engine.retain and notifies them once their memory is ready.
 
 The memory_backfilled marker makes the whole thing idempotent and, as a
 free side effect, picks up users who only just became active again: when a
-dormant account logs back in its last_active_at is bumped, so the next cron
-run sees it as eligible and backfills it.
+dormant account comes back from any surface its last_active_at is bumped, so
+the next cron run sees it as eligible and backfills it.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from collections.abc import Mapping
+from datetime import UTC, datetime
 
 from app.constants.memory import (
-    MEMORY_BACKFILL_ACTIVE_DAYS,
     MEMORY_BACKFILL_ELIGIBLE_BEFORE,
     MEMORY_BACKFILL_MAX_CONVERSATIONS,
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
 from app.models.conversation_log_models import Reply, UserMessage
 from app.models.conversation_models import StoredConversation
+from app.models.notification.details_models import MemoryReadyNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -44,30 +45,23 @@ from app.models.notification.notification_models import (
 )
 from app.services.notification_service import notification_service
 from app.utils.redis_utils import RedisPoolManager
+from app.utils.timezone import as_utc
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _BACKFILL_TASK = "backfill_user_memories"
 
 
-def _active_since() -> datetime:
-    """Cutoff for 'recently active' — the backfill only touches live accounts."""
-    return datetime.now(UTC) - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
-
-
-async def backfill_active_users(ctx: dict[str, object]) -> str:  # noqa: ARG001 -- contract
+async def backfill_active_users(ctx: Mapping[str, object]) -> str:  # noqa: ARG001 -- contract
     """Daily cron: enqueue a memory backfill for eligible users, capped per run.
 
     Capping per run drains the backlog gradually instead of spiking the
     extraction LLM; the marker means the next run resumes with whoever is left
     (plus anyone who became active in the meantime).
     """
-    active_since = _active_since()
-    remaining = await user_repository.count_backfill_candidates(
-        active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE
-    )
+    remaining = await user_repository.count_backfill_candidates(MEMORY_BACKFILL_ELIGIBLE_BEFORE)
     candidate_ids = await user_repository.find_backfill_candidate_ids(
-        active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE, limit=MEMORY_BACKFILL_MAX_USERS_PER_RUN
+        MEMORY_BACKFILL_ELIGIBLE_BEFORE, limit=MEMORY_BACKFILL_MAX_USERS_PER_RUN
     )
 
     pool = await RedisPoolManager.get_pool()
@@ -85,7 +79,7 @@ async def backfill_active_users(ctx: dict[str, object]) -> str:  # noqa: ARG001 
     return f"memory backfill: enqueued {enqueued}, {max(remaining - enqueued, 0)} still pending"
 
 
-async def backfill_user_memories(ctx: dict[str, object], user_id: str) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+async def backfill_user_memories(ctx: Mapping[str, object], user_id: str) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     """Replay one user's conversations into memory, then notify them.
 
     Idempotent: re-checks the marker, and the engine's reconciliation dedups
@@ -164,14 +158,12 @@ def _conversation_to_messages(conversation: StoredConversation) -> list[dict[str
 
 def _conversation_date(conversation: StoredConversation) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
-    if conversation.createdAt:
-        try:
-            return datetime.fromisoformat(conversation.createdAt)
-        except ValueError:
-            return datetime.now(UTC)
-    if (updated := conversation.updatedAt) is not None:
-        return updated if updated.tzinfo else updated.replace(tzinfo=UTC)
-    return datetime.now(UTC)
+    created_at = conversation.createdAt
+    try:
+        stamp = datetime.fromisoformat(created_at) if created_at else conversation.updatedAt
+    except ValueError:
+        stamp = conversation.updatedAt
+    return as_utc(stamp) or datetime.now(UTC)
 
 
 async def _notify_memory_ready(user_id: str) -> None:
@@ -206,7 +198,7 @@ async def _notify_memory_ready(user_id: str) -> None:
                         )
                     ],
                 ),
-                metadata={"source": "memory_backfill"},
+                details=MemoryReadyNotification(kind=NotificationKind.MEMORY_READY),
             )
         )
     except Exception as e:

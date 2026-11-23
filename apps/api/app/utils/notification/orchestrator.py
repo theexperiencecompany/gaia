@@ -8,9 +8,9 @@ from fastapi import Request
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     CHANNEL_TYPE_CONVERSATION,
-    CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_PUSH,
     EXTERNAL_NOTIFICATION_CHANNELS,
+    NotificationChannel,
 )
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
@@ -46,6 +46,7 @@ from app.utils.notification.channels import (
     ChannelAdapter,
     ConversationChannelAdapter,
     DiscordChannelAdapter,
+    EmailChannelAdapter,
     ImessageChannelAdapter,
     PushChannelAdapter,
     SlackChannelAdapter,
@@ -53,6 +54,7 @@ from app.utils.notification.channels import (
     TelegramChannelAdapter,
     WhatsAppChannelAdapter,
 )
+from app.utils.notification.channels.email import EmailRenderers
 from app.utils.notification.storage import (
     MongoDBNotificationStorage,
 )
@@ -74,11 +76,7 @@ class Notified:
     def chat_app(self) -> ConversationSource | None:
         """The chat app that delivered it, on this call or an earlier attempt; None when none did."""
         for channel in self.record.channels:
-            if (
-                channel.channel_type in EXTERNAL_NOTIFICATION_CHANNELS
-                and channel.status == NotificationStatus.DELIVERED
-                and not channel.skipped
-            ):
+            if channel.channel_type in EXTERNAL_NOTIFICATION_CHANNELS and channel.reached_user:
                 return ConversationSource(channel.channel_type)
         return None
 
@@ -96,7 +94,9 @@ def _lands_in_conversation(target: ProactiveTarget, source: ConversationSource |
 class NotificationOrchestrator:
     """Core notification engine: creation, multi-channel delivery, actions, bulk operations, and status management."""
 
-    def __init__(self, storage: MongoDBNotificationStorage | None = None) -> None:
+    def __init__(
+        self, email_renderers: EmailRenderers, storage: MongoDBNotificationStorage | None = None
+    ) -> None:
         self.storage = storage or MongoDBNotificationStorage()
         # Erased element type: the registry is heterogeneous by design (each
         # adapter has its own payload shape). ``_deliver_via_channel`` rebinds
@@ -104,10 +104,10 @@ class NotificationOrchestrator:
         self.channel_adapters: dict[str, ChannelAdapter[Any]] = {}
         self.action_handlers: dict[str, ActionHandler] = {}
 
-        self._register_default_components()
+        self._register_default_components(email_renderers)
 
     # INITIALIZATION & REGISTRATION METHODS
-    def _register_default_components(self) -> None:
+    def _register_default_components(self, email_renderers: EmailRenderers) -> None:
         """Register default adapters, handlers, and sources."""
         self.register_channel_adapter(ConversationChannelAdapter())
         self.register_channel_adapter(PushChannelAdapter())
@@ -115,6 +115,7 @@ class NotificationOrchestrator:
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
         self.register_channel_adapter(SlackChannelAdapter())
+        self.register_channel_adapter(EmailChannelAdapter(email_renderers))
         self.register_channel_adapter(ImessageChannelAdapter())
 
         self.register_action_handler(ApiCallActionHandler())
@@ -161,18 +162,18 @@ class NotificationOrchestrator:
             *(
                 self._deliver_via_channel(request, self.channel_adapters[channel])
                 for channel in claimed
-                if channel != CHANNEL_TYPE_INAPP
+                if channel != NotificationChannel.INAPP
             )
         )
         for outcome in outcomes:
             await notification_repository.record_channel(request.id, outcome)
-        announce = CHANNEL_TYPE_INAPP in claimed
+        announce = NotificationChannel.INAPP in claimed
         if announce:
             # The stored record is the in-app delivery; the one event below announces it.
             await notification_repository.record_channel(
                 request.id,
                 ChannelDeliveryStatus(
-                    channel_type=CHANNEL_TYPE_INAPP,
+                    channel_type=NotificationChannel.INAPP,
                     status=NotificationStatus.DELIVERED,
                     delivered_at=datetime.now(UTC),
                 ),
@@ -194,9 +195,7 @@ class NotificationOrchestrator:
         record = await self.storage.get_notification(request.id, request.user_id)
         if record is None:
             raise NotificationNotFoundError(request.id)
-        delivered = [
-            c for c in record.channels if c.status == NotificationStatus.DELIVERED and not c.skipped
-        ]
+        delivered = [c for c in record.channels if c.reached_user]
         status = NotificationStatus.DELIVERED if delivered else NotificationStatus.FAILED
         delivered_at = min((c.delivered_at for c in delivered if c.delivered_at), default=None)
         log.set_ns(
@@ -228,7 +227,7 @@ class NotificationOrchestrator:
             ]
             return list(dict.fromkeys(named)), None
         target = await self._proactive_target(request.user_id)
-        channels = [CHANNEL_TYPE_INAPP]
+        channels: list[str] = [NotificationChannel.INAPP]
         chat_app = target.source if isinstance(target, ChatChannel) else None
         if request.conversation_id is not None:
             source = await conversation_repository.get_source(
@@ -246,7 +245,7 @@ class NotificationOrchestrator:
 
     def _can_send(self, channel_type: str, request: NotificationRequest) -> bool:
         """Whether a channel the request names exists and takes this request; the inbox always does."""
-        if channel_type == CHANNEL_TYPE_INAPP:
+        if channel_type == NotificationChannel.INAPP:
             return True
         adapter = self.channel_adapters.get(channel_type)
         return adapter is not None and adapter.can_handle(request)
@@ -532,7 +531,7 @@ class NotificationOrchestrator:
             ),
             source=request.source,
             type=request.type,
-            metadata=request.metadata,
+            details=request.details,
             channels=[
                 NotificationChannelView(
                     channel_type=ch.channel_type,

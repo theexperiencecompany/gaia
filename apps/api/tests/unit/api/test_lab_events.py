@@ -127,7 +127,7 @@ def _service_seams(
         )
         stack.enter_context(patch(f"{SVC}.todo_repository", seams.repo))
         stack.enter_context(patch(f"{SVC}.log", seams.log))
-        stack.enter_context(patch(f"{DISPATCH}.record_activity", seams.activity))
+        stack.enter_context(patch(f"{DISPATCH}.record_todo_activity", seams.activity))
         stack.enter_context(patch(f"{DISPATCH}.enqueue_worker_job", seams.enqueue))
         stack.enter_context(patch(f"{DISPATCH}.capture", seams.capture))
         stack.enter_context(

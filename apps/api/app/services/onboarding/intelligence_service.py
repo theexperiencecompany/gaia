@@ -29,9 +29,11 @@ from app.config.settings import settings
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.db.repositories.users import user_repository
+from app.models.mail_models import GmailMessageSummary
+from app.models.notification.details_models import GmailPersonalizedNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -71,6 +73,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_holo_card_conversation
+from app.utils.user_display import display_name
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
@@ -102,9 +105,8 @@ class OnboardingContext:
     """Shared per-user context threaded through the personalization helpers."""
 
     user_id: str
-    name: str
+    name: str | None
     profession: str = ""
-    focus: str = ""
     user_email: str | None = None
     triage: InboxTriage | None = None
     writing_style: WritingStyleProfile | None = None
@@ -179,10 +181,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     base_ctx = OnboardingContext(
         user_id=user_id,
-        name=user.name or "there",
+        name=display_name(user),
         profession=(onboarding.preferences.profession if onboarding.preferences else None)
         or "",  # pragma: no mutate — the default for a missing answer
-        focus=onboarding.focus,
         user_email=user.email,
         clarify_answers=cast(list[ClarifyAnswerRecord], onboarding.clarify_answers),
     )
@@ -192,7 +193,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     t_gather = time.monotonic()
     triage, writing_style = await asyncio.gather(
-        _run_triage(user_id, inbox_ctx, base_ctx.profession, base_ctx.focus),
+        _run_triage(user_id, inbox_ctx, base_ctx.profession),
         _run_writing_style(user_id, base_ctx.profession),
     )
     log.info(
@@ -318,10 +319,9 @@ async def _run_triage(
     user_id: str,
     inbox_ctx: InboxScanContext,
     profession: str,
-    focus: str,
 ) -> InboxTriage | None:
     await inbox_ctx.first_batch_ready.wait()
-    emails = list(inbox_ctx.emails)
+    emails = [GmailMessageSummary.model_validate(email) for email in inbox_ctx.emails]
     if not emails:
         log.info(
             f"{LogTag.ONBOARDING} triage skipped",
@@ -334,7 +334,7 @@ async def _run_triage(
 
     t0 = time.monotonic()
     try:
-        result = await triage_inbox(user_id, emails, profession=profession, focus=focus)
+        result = await triage_inbox(user_id, emails, profession=profession)
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} triage failed",
@@ -372,7 +372,7 @@ def _important_emails_for_client(triage: InboxTriage | None) -> list[TriageEmail
 
 async def _run_social_profiles(
     user_id: str,
-    user_name: str,
+    user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
     """Fetch email bodies, extract and persist social profiles, emit SOCIAL_PROFILES_READY."""
@@ -449,8 +449,6 @@ async def _run_holo_card(
         if social_profiles:
             platforms = ", ".join(f"{p.platform}: {p.url}" for p in social_profiles)
             context_parts.append(f"Social profiles: {platforms}")
-        if ctx.focus:
-            context_parts.append(f"Current focus: {ctx.focus}")
         clarify_answers: list[ClarifyAnswerRecord] = ctx.clarify_answers or []
         for answer in clarify_answers:
             value = (answer.get("value") or "").strip()
@@ -580,7 +578,7 @@ async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | 
                     body=body,
                     actions=actions,
                 ),
-                metadata={"source": "gmail_personalization"},
+                details=GmailPersonalizedNotification(kind=NotificationKind.GMAIL_PERSONALIZED),
             )
         )
     except Exception as e:

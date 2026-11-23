@@ -13,6 +13,8 @@ import {
   cmdApiSchema,
   cmdCliConfigSchema,
   cmdDeployTemplates,
+  cmdLinkConstants,
+  cmdOpenuiPrompts,
 } from "./generated-artifacts.mjs";
 import { runEvlogMapBots } from "./evlog-map-bots.mjs";
 import {
@@ -975,6 +977,8 @@ function usage() {
       "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
       "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
       "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
+      "  link-constants [--write]               regenerate the Worker's and CLI's link constants, check the Caddyfile, fail on drift",
+      "  openui-prompts [--write]               regenerate the comms and artifact OpenUI prompts, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  heroui-style-overrides                 no colour/radius/padding className or style on a HeroUI component",
       "  heroui-usage                           no v2 HeroUI API, controls render their parts, GAIA wrappers over bare HeroUI",
@@ -1074,6 +1078,12 @@ function cmdFrameworkPair() {
       break;
     case "deploy-templates":
       cmdDeployTemplates(rest);
+      break;
+    case "link-constants":
+      cmdLinkConstants(rest);
+      break;
+    case "openui-prompts":
+      cmdOpenuiPrompts(rest);
       break;
     case "doc-comments":
       cmdDocComments(rest);

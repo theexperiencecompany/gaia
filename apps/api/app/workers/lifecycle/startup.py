@@ -27,8 +27,10 @@ from app.services.conversation.runtime import install_runtime_ports
 from app.services.delivery_alerts.dead_letter_tap import start_dead_letter_tap
 from app.services.device.up_listener import start_up_listener
 from app.utils.browser_reaper import start_browser_reaper
-from app.workers.browser_worker import start_browser_worker
+from app.workers.brief_workers import build_brief_worker, build_scout_worker
+from app.workers.browser_worker import build_browser_worker
 from app.workers.metrics import start_metrics_server
+from app.workers.queue_workers import start_queue_workers
 from shared.py.wide_events import log, log_context
 
 # Set up common warning filters
@@ -78,5 +80,5 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
         # Alerts on outbound messages the broker dead-lettered with no bot involved.
         start_dead_letter_tap(ctx)
 
-        # Last: browser jobs run on the services everything above just started.
-        start_browser_worker(ctx)
+        # Last: the queues' jobs run on the services everything above just started.
+        start_queue_workers(ctx, (build_browser_worker, build_brief_worker, build_scout_worker))

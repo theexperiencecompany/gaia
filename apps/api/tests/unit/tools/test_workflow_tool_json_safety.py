@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.runnables.config import RunnableConfig
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_config import AgentConfigurableView
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowWithIntegrations
 
@@ -42,6 +43,7 @@ def _make_config() -> RunnableConfig:
 def _make_real_workflow() -> WorkflowWithIntegrations:
     """Build a real model instance carrying every datetime the tools serialize."""
     return WorkflowWithIntegrations(
+        delivery=WorkflowDelivery.NOW,
         user_id=FAKE_USER_ID,
         title="Daily digest",
         description="Send the digest",
@@ -193,7 +195,10 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             mock_service.create_workflow = AsyncMock(return_value=workflow)
 
             result = await create_workflow_directly(
-                draft=draft, user_id=FAKE_USER_ID, writer=MagicMock()
+                draft=draft,
+                user_id=FAKE_USER_ID,
+                writer=MagicMock(),
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result is not None

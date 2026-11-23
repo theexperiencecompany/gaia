@@ -16,8 +16,11 @@ from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.chat import ConversationSource
 from app.constants.conversation import WORK_CARDS_NOTE
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.workflows import WorkflowDelivery
 from app.models.conversation_log_models import Batch, Entry, Reply, StepClaim, UserMessage
 from app.models.presence_models import PresenceSnapshot
+from app.models.trigger_gate_models import QuietHoursBypass
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.reply_analytics import spoken_context
@@ -236,7 +239,8 @@ async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: S
             "trigger": entry.run.trigger.model_copy(
                 update={
                     "type": "schedule",
-                    "workflow_notify_on_completion": False,
+                    "workflow_delivery": WorkflowDelivery.SILENT,
+                    "quiet_hours": QuietHoursBypass(reason="the service is down"),
                     "playbook_fallback": "the agent",
                 }
             )
@@ -262,7 +266,9 @@ async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: S
     assert configurable["stream_id"] == "ex_7"
     assert configurable["workflow_id"] == "wf_1"
     assert configurable["workflow_title"] == "Morning brief"
-    assert configurable["workflow_notify_on_completion"] is False
+    assert configurable["workflow_delivery"] is WorkflowDelivery.SILENT
+    # Let through quiet hours, so its result is urgent: delivery does not hold it.
+    assert configurable["workflow_message_class"] is ProactiveMessageClass.URGENT
     assert configurable["playbook_fallback"] == "the agent"
     assert turn.analytics == AnalyticsContext(attribution=run.attribution)
     assert turn.run_started.trigger_type == "schedule"

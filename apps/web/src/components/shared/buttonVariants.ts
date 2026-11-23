@@ -1,5 +1,5 @@
 import { buttonVariants as heroButtonVariants } from "@heroui/react";
-import { tv, type VariantProps } from "tailwind-variants";
+import { tv } from "tailwind-variants";
 
 import { SOFT_TINT_CLASSES } from "./controlVariants";
 import { SHAPE_CLASSES } from "./shape";
@@ -17,8 +17,6 @@ export const BUTTON_HOVER_TONE_CLASSES = {
   accent: "hover:text-accent",
 } as const;
 
-export type ButtonHoverTone = keyof typeof BUTTON_HOVER_TONE_CLASSES;
-
 /** Horizontal inset: tight is v2's px-2 compact button, none is a flush text action. */
 export const BUTTON_INSET_CLASSES = {
   default: "",
@@ -26,7 +24,11 @@ export const BUTTON_INSET_CLASSES = {
   none: "p-0",
 } as const;
 
-export type ButtonInset = keyof typeof BUTTON_INSET_CLASSES;
+/** Floating: a control pinned over a raised sheet (a letter's close and open controls), lifted off it. */
+export const BUTTON_ELEVATION_CLASSES = {
+  none: "",
+  floating: "shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)]",
+} as const;
 
 const GAIA_DIMENSIONS = {
   shape: SHAPE_CLASSES,
@@ -34,6 +36,7 @@ const GAIA_DIMENSIONS = {
   hoverTone: BUTTON_HOVER_TONE_CLASSES,
   inset: BUTTON_INSET_CLASSES,
   tint: SOFT_TINT_CLASSES,
+  elevation: BUTTON_ELEVATION_CLASSES,
 };
 
 const GAIA_DEFAULTS = {
@@ -42,6 +45,7 @@ const GAIA_DEFAULTS = {
   hoverTone: "none",
   inset: "default",
   tint: "default",
+  elevation: "none",
 } as const;
 
 /** Shape, tone, hover tone and inset: the GAIA dimensions layered on any HeroUI button variant. */
@@ -53,8 +57,8 @@ export const buttonOverlayVariants = tv({
 /**
  * GAIA's v2 looks HeroUI's Button lacks: default-solid (bare default, zinc-700),
  * default-soft (default flat), accent-soft (primary flat), success-soft and
- * warning-soft (their flat buttons; danger flat is HeroUI's danger-soft), and
- * text (the small inline text action, 4px by 8px, no fill).
+ * warning-soft (their flat buttons; danger flat is HeroUI's danger-soft), text
+ * (the small inline text action, 4px by 8px, no fill) and scrim (a control over a picture).
  */
 const GAIA_BUTTON_FILLS = {
   // v2's solid and flat hover kept the fill and dimmed the whole button to 90%
@@ -69,6 +73,9 @@ const GAIA_BUTTON_FILLS = {
   "accent-soft":
     "bg-accent-soft text-accent-soft-foreground hover:opacity-90 active:opacity-90",
   text: "h-auto min-h-0 min-w-0 bg-transparent px-2 py-1 hover:bg-transparent active:bg-transparent",
+  // a control laid over a picture: a frosted dark disc that reads on any image
+  scrim:
+    "bg-black/50 text-white backdrop-blur hover:bg-black/65 active:bg-black/65",
 } as const;
 
 type GaiaButtonFill = keyof typeof GAIA_BUTTON_FILLS;
@@ -83,5 +90,3 @@ export const buttonVariants = tv({
   variants: { variant: GAIA_BUTTON_FILLS, ...GAIA_DIMENSIONS },
   defaultVariants: GAIA_DEFAULTS,
 });
-
-export type ButtonVariants = VariantProps<typeof buttonVariants>;

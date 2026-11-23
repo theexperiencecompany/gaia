@@ -1,0 +1,40 @@
+# gaia-brief-scout-failures — fires when more than a fifth of an hour's scout turns failed.
+#
+# gaia_brief_scout_total{outcome,skip_reason} comes from app/services/briefing/scouts/metrics.py
+# on the worker's REGISTRY; every series exists at 0 from worker start.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-brief-scout-failures fires when half the scouts fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_brief_scout_total{outcome="skipped",skip_reason="failed"}'
+        values: '0+2x90'
+      - series: 'gaia_brief_scout_total{outcome="replayed",skip_reason="none"}'
+        values: '0+2x90'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: gaia-brief-scout-failures
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                Briefs still send, but say nothing about the apps whose scouts failed. The briefing.scout_failed errors in the worker's wide events carry the integration_id and error_type: one integration dominating is that app's outage; every integration failing is the scout model or the MCP client.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-scout-failures
+
+  - name: gaia-brief-scout-failures stays quiet when one app of many fails
+    interval: 1m
+    input_series:
+      - series: 'gaia_brief_scout_total{outcome="skipped",skip_reason="failed"}'
+        values: '0+1x90'
+      - series: 'gaia_brief_scout_total{outcome="replayed",skip_reason="none"}'
+        values: '0+9x90'
+      - series: 'gaia_brief_scout_total{outcome="skipped",skip_reason="signed_out"}'
+        values: '0+3x90'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: gaia-brief-scout-failures
+        exp_alerts: []

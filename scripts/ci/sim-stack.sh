@@ -19,6 +19,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/pinned-release.sh
+source "$(dirname "$0")/lib/pinned-release.sh"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
@@ -39,9 +41,9 @@ _install_mongosh() {
   : "${GITHUB_PATH:?GITHUB_PATH is required}"
   local name="mongosh-${MONGOSH_VERSION}-linux-x64"
   local tarball="$RUNNER_TEMP/$name.tgz"
-  curl -fsSL -o "$tarball" \
-    "https://github.com/mongodb-js/mongosh/releases/download/v${MONGOSH_VERSION}/${name}.tgz"
-  echo "${MONGOSH_SHA256}  $tarball" | sha256sum -c -
+  fetch_verified "mongosh $MONGOSH_VERSION" \
+    "https://github.com/mongodb-js/mongosh/releases/download/v${MONGOSH_VERSION}/${name}.tgz" \
+    sha256 "$MONGOSH_SHA256" "$tarball"
   tar -C "$RUNNER_TEMP" -xzf "$tarball"
   echo "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH"
   ci_ok "mongosh: $MONGOSH_VERSION installed"
@@ -112,6 +114,8 @@ cmd_up() {
   export ENV=development
   export DEV_AUTH_BYPASS_EMAIL="$DEV_USER"
   export GAIA_SIM_MODE=1
+  # The suites drive the one dev user far faster than a person: past the per-user request ceiling.
+  export DEV_UNLIMITED_RATE_LIMITS=1
   export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
   # JEV (the approval reply classifier, reactions) is asked on the OpenRouter key, at the
   # stub's Decisions route; an unscripted call is refused there like an unpaid account.

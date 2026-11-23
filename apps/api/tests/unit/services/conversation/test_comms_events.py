@@ -1,6 +1,8 @@
 """Graph stream events to step events: typed payloads from the shared translator, the summary call, the outcome."""
 
-from unittest.mock import AsyncMock
+from collections.abc import Iterator
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.runnables import RunnableConfig
@@ -10,11 +12,13 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.constants.chat import ConversationSource
 from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.core.lazy_loader import providers
+from app.db.repositories.short_links import short_link_repository
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
     ResponseEvent,
     ToolDataEvent,
 )
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.services.conversation import graph_payloads
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.ports import (
@@ -28,6 +32,7 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
+from app.services.links.placeholders import link_placeholder
 from app.utils import agent_utils
 from shared.py.conversation_wire import ToolDataEntry
 
@@ -81,7 +86,7 @@ async def test_an_answer_streams_its_text_then_reports_the_model_output() -> Non
     assert isinstance(closing[0], Streamed)
     assert isinstance(closing[0].payload, MessageBoundaryEvent)
     assert closing[1:] == [ModelOutput(has_tool_calls=False)]
-    assert mapper.finish() == [Finished(outcome=Replied(text="hello"))]
+    assert (await mapper.finish()) == [Finished(outcome=Replied(text="hello"))]
 
 
 async def test_a_namespaced_update_is_not_the_comms_model_returning() -> None:
@@ -128,7 +133,7 @@ async def test_a_turn_ending_call_is_the_answer_and_its_outcome(
 ) -> None:
     mapper = CommsEventMapper("u-1", WEB_RUN)
     assert ModelOutput(has_tool_calls=False) in await mapper.map(event)
-    assert mapper.finish()[-1] == Finished(outcome=outcome)
+    assert (await mapper.finish())[-1] == Finished(outcome=outcome)
 
 
 @pytest.mark.parametrize(
@@ -147,7 +152,7 @@ async def test_a_reaction_the_surface_refuses_does_not_end_the_turn(
     assert ModelOutput(has_tool_calls=True) in await mapper.map(
         ending(REACT_TOOL_NAME, emoji=emoji, message_id=1)
     )
-    finished = mapper.finish()[-1]
+    finished = (await mapper.finish())[-1]
     assert isinstance(finished, Finished)
     assert not isinstance(finished.outcome, Reacted)
 
@@ -156,7 +161,7 @@ async def test_a_reaction_the_surface_refuses_does_not_end_the_turn(
 async def test_a_reaction_in_telegrams_set_ends_a_telegram_turn(emoji: str) -> None:
     mapper = CommsEventMapper("u-1", TELEGRAM_RUN)
     await mapper.map(ending(REACT_TOOL_NAME, emoji=emoji, message_id=1))
-    assert mapper.finish()[-1] == Finished(outcome=Reacted(emoji=emoji))
+    assert (await mapper.finish())[-1] == Finished(outcome=Reacted(emoji=emoji))
 
 
 @pytest.mark.parametrize(
@@ -182,7 +187,7 @@ async def test_a_turn_ending_call_the_graph_does_not_end_on_is_work(event: Graph
         init_tool_registry()
     mapper = CommsEventMapper("u-1", WEB_RUN)
     assert ModelOutput(has_tool_calls=True) in await mapper.map(event)
-    finished = mapper.finish()[-1]
+    finished = (await mapper.finish())[-1]
     assert isinstance(finished, Finished)
     assert not isinstance(finished.outcome, Reacted)
 
@@ -190,7 +195,7 @@ async def test_a_turn_ending_call_the_graph_does_not_end_on_is_work(event: Graph
 async def test_a_reply_written_as_a_tag_is_text() -> None:
     mapper = CommsEventMapper("u-1", WEB_RUN)
     await mapper.map(answer("<❤️>"))
-    assert mapper.finish()[-1] == Finished(outcome=Replied(text="<❤️>"))
+    assert (await mapper.finish())[-1] == Finished(outcome=Replied(text="<❤️>"))
 
 
 async def test_the_answer_is_reported_final_when_the_follow_up_pass_starts() -> None:
@@ -202,7 +207,7 @@ async def test_the_answer_is_reported_final_when_the_follow_up_pass_starts() -> 
     assert [event for event in started if isinstance(event, Answered)] == [
         Answered(outcome=Replied(text="hello"))
     ]
-    assert mapper.finish()[-1] == Finished(
+    assert (await mapper.finish())[-1] == Finished(
         outcome=Replied(text="hello", follow_up_actions=("Ask more",))
     )
     assert not [event for event in suggested if isinstance(event, Answered)]
@@ -240,18 +245,18 @@ async def test_a_reply_carries_the_cards_its_run_showed() -> None:
     mapper = CommsEventMapper("u-1", WEB_RUN)
     card = await shown_card(mapper)
     await mapper.map(answer("here"))
-    assert mapper.finish()[-1] == Finished(outcome=Replied(text="here", tool_data=(card,)))
+    assert (await mapper.finish())[-1] == Finished(outcome=Replied(text="here", tool_data=(card,)))
 
 
 async def test_a_reaction_beside_cards_is_a_reply_of_the_cards_alone() -> None:
     mapper = CommsEventMapper("u-1", WEB_RUN)
     card = await shown_card(mapper)
     await mapper.map(ending(REACT_TOOL_NAME, emoji="👍", message_id=1))
-    assert mapper.finish()[-1] == Finished(outcome=Replied(text="", tool_data=(card,)))
+    assert (await mapper.finish())[-1] == Finished(outcome=Replied(text="", tool_data=(card,)))
 
 
 async def test_a_run_that_never_answered_ends_silent() -> None:
-    assert CommsEventMapper("u-1", WEB_RUN).finish() == [Finished(outcome=Silent())]
+    assert await CommsEventMapper("u-1", WEB_RUN).finish() == [Finished(outcome=Silent())]
 
 
 async def test_a_model_turn_that_calls_tools_is_not_the_answer(
@@ -264,7 +269,7 @@ async def test_a_model_turn_that_calls_tools_is_not_the_answer(
     )
     events = await mapper.map(((), "updates", {"agent": {"messages": [calling]}}))
     assert events[-1] == ModelOutput(has_tool_calls=True)
-    assert mapper.finish()[-1] == Finished(outcome=Silent())
+    assert (await mapper.finish())[-1] == Finished(outcome=Silent())
 
 
 async def test_another_nodes_update_is_not_the_model_returning() -> None:
@@ -287,7 +292,7 @@ async def test_the_answer_is_reported_final_once() -> None:
 async def test_text_still_held_when_the_stream_ends_is_streamed_before_the_outcome() -> None:
     mapper = CommsEventMapper("u-1", WEB_RUN)
     streamed = await mapper.map(token("hi <"))
-    owed = mapper.finish()
+    owed = await mapper.finish()
     texts = [
         event.payload.response
         for event in [*streamed, *owed]
@@ -322,3 +327,49 @@ async def test_text_held_when_the_answer_is_final_streams_before_it() -> None:
         Streamed(payload=ResponseEvent(response="<")),
         Answered(outcome=Silent()),
     ]
+
+
+PLACEHOLDER = link_placeholder(RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1"))
+
+
+@pytest.fixture
+def live_link() -> Iterator[AsyncMock]:
+    live = AsyncMock(return_value=SimpleNamespace(slug="ab12cd"))
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        yield live
+
+
+def streamed_text(events: list[object]) -> str:
+    return "".join(
+        event.payload.response
+        for event in events
+        if isinstance(event, Streamed) and isinstance(event.payload, ResponseEvent)
+    )
+
+
+async def test_a_link_held_when_the_answer_is_final_streams_as_its_placeholder(
+    live_link: AsyncMock,
+) -> None:
+    mapper = CommsEventMapper("u-1", WEB_RUN)
+    streamed = await mapper.map(token(f"see {PLACEHOLDER}"))
+    final = await mapper.map(((), "custom", {"main_response_complete": True}))
+    assert streamed_text([*streamed, *final]) == f"see {PLACEHOLDER}"
+    live_link.assert_not_awaited()
+
+
+async def test_a_link_held_when_the_stream_ends_streams_as_its_placeholder(
+    live_link: AsyncMock,
+) -> None:
+    mapper = CommsEventMapper("u-1", WEB_RUN)
+    streamed = await mapper.map(token(f"see {PLACEHOLDER}"))
+    owed = await mapper.finish()
+    assert streamed_text([*streamed, *owed]) == f"see {PLACEHOLDER}"
+    live_link.assert_not_awaited()
+
+
+async def test_the_reply_outcome_keeps_its_link_placeholders(live_link: AsyncMock) -> None:
+    """Regression: the stored reply held the resolved URL, which later turns fed back to the model."""
+    mapper = CommsEventMapper("u-1", WEB_RUN)
+    await mapper.map(answer(f"see {PLACEHOLDER}"))
+    assert (await mapper.finish())[-1] == Finished(outcome=Replied(text=f"see {PLACEHOLDER}"))
+    live_link.assert_not_awaited()

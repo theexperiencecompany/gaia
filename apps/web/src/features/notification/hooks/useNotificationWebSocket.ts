@@ -89,14 +89,13 @@ function handleDeliveredNotification(
   router: AppRouter,
   isOnboarding: boolean,
 ) {
-  const isTestNotification = notification.metadata?.test === true;
-  if (!isTestNotification && !isOnboarding) {
+  if (!isOnboarding) {
     showDeliveredToast(notification, router);
   }
 
   // Sync the chat a workflow completion notification names
-  const conversationId = notification.metadata?.conversation_id;
-  if (typeof conversationId === "string") {
+  if (notification.details?.kind === "workflow_completed") {
+    const conversationId = notification.details.conversation_id;
     console.debug(
       "[NotificationWS] Notification has conversation_id, triggering sync",
       conversationId,

@@ -48,7 +48,6 @@ def hosted_app(
         "get_by_email",
         AsyncMock(side_effect=lambda email: user if email == USER_EMAIL else None),
     )
-    monkeypatch.setattr(user_repository, "touch_last_active", AsyncMock())
     app = real_auth_app(workos_client)
 
     @app.get("/probe")

@@ -8,7 +8,9 @@ killed from outside mid-drive; a scenario must wait for the port, not fail on it
 
 from __future__ import annotations
 
+import argparse
 from datetime import UTC, datetime
+import os
 import time
 from typing import Literal
 
@@ -16,7 +18,6 @@ import httpx
 from pydantic import BaseModel
 
 DEFAULT_API = "http://127.0.0.1:9480"
-DEFAULT_USER = "dev@gaia.local"
 HEALTH_WAIT_SECONDS = 120
 EXECUTION_WAIT_SECONDS = 300
 SETTLE_SECONDS = 6
@@ -49,10 +50,21 @@ class Execution(BaseModel):
     summary: str | None = None
 
 
+def add_user_argument(parser: argparse.ArgumentParser) -> None:
+    """``--user``, defaulting to ``DEV_USER`` — the dev bypass user ``mise.toml`` defines once."""
+    dev_user = os.environ.get("DEV_USER")
+    parser.add_argument(
+        "--user",
+        default=dev_user,
+        required=dev_user is None,
+        help="dev user email (default: $DEV_USER, set by mise.toml [env])",
+    )
+
+
 class GaiaClient:
     """One dev user's view of one API."""
 
-    def __init__(self, api: str = DEFAULT_API, user: str = DEFAULT_USER) -> None:
+    def __init__(self, api: str, user: str) -> None:
         self.base = api.rstrip("/")
         self.api = f"{self.base}/api/v1"
         self.headers = {"content-type": "application/json", "X-Dev-User": user}
