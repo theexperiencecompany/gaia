@@ -606,17 +606,20 @@ groups:
           headline: >-
             {{ if $values.B }}{{ $labels.job }} is not responding{{ else }}A monitored service stopped responding{{ end }}
           summary: >-
-            {{ if $values.B }}Prometheus can no longer scrape {{ $labels.job }} at
-            {{ $labels.instance }}{{ else }}Unable to read scrape target health — this
-            rule could not be evaluated, which almost always means Prometheus is down or
-            unreachable.{{ end }}
+            {{ if $values.B }}Prometheus has not been able to scrape {{ $labels.job }}
+            ({{ $labels.instance }}) for 2 minutes{{ else }}Unable to read scrape target
+            health — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
           description: >-
-            The container is gone or its metrics endpoint is unreachable. What
-            this means depends on the job — gaia-api means the API container is
-            down or /metrics is rejecting the bearer token; rabbitmq is the
-            broker itself. Note that postgres, redis and jfs_meta_redis scrape
-            their exporter sidecars, not the databases, so those three mean the
-            exporter died and say nothing about whether the database is healthy.
+            {{ if $values.B }}{{ if eq $labels.job "gaia-api" }}The API container is down, or
+            its /metrics endpoint is rejecting Prometheus. If "Public API is unreachable" is
+            in this thread too, users are affected; if not, only monitoring of the API is
+            blind.{{ else if eq $labels.job "rabbitmq" }}The message broker is down, so replies
+            to bot users are not being delivered.{{ else }}This is the metrics exporter beside
+            {{ $labels.job }}, not the database itself. The database may be healthy; its own
+            alert fires if it is not. Until the exporter is back, that database is
+            unmonitored.{{ end }}{{ else }}One of the API, the message broker or a database
+            exporter stopped answering Prometheus.{{ end }}
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-target-down
           __dashboardUid__: gaia-overview
           __panelId__: "5"
@@ -816,18 +819,19 @@ groups:
           headline: >-
             {{ if $values.B }}{{ reReplaceAll "https?://([^:/]+).*" "$1" $labels.instance }} is down{{ else }}A bot or the embedding sidecar is down{{ end }}
           summary: >-
-            {{ if $values.B }}{{ $labels.instance }} has been failing its health check
-            for 2 minutes{{ else }}Unable to read the internal service health probes —
-            this rule could not be evaluated, which almost always means Prometheus is
-            down or unreachable.{{ end }}
+            {{ if $values.B }}{{ reReplaceAll "https?://([^:/]+).*" "$1" $labels.instance }}
+            has failed its health check for 2 minutes{{ else }}Unable to read the internal
+            service health probes — this rule could not be evaluated, which almost always
+            means Prometheus is down or unreachable.{{ end }}
           description: >-
-            These six targets have no metrics of their own and are health-probed
-            instead. If this is embedding-sidecar:8200, both the API and the ARQ
-            worker lose embedding and reranking, so memory storage and semantic
-            memory search break product-wide — there is no in-process fallback,
-            the worker cannot fit the models in its memory limit. If it is one of
-            the discord, slack, telegram, whatsapp or imessage bots, that platform's users
-            get no replies even though the API itself is healthy.
+            {{ if $values.B }}{{ if match "embedding-sidecar" $labels.instance }}Memory is
+            broken for everyone: the API and the worker cannot store or search memories
+            without the embedding sidecar, and there is no fallback. Check the
+            embedding-sidecar container; it needs about 2.4G of its 3G limit for its
+            models.{{ else }}People messaging GAIA on this platform get no reply. The API
+            and the other platforms are unaffected. Check this bot's container: if it keeps
+            restarting, its last log lines before each restart say why.{{ end }}{{ else }}A
+            bot or the embedding sidecar is failing its health check.{{ end }}
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-internal-service-down
           __dashboardUid__: gaia-containers
           __panelId__: "1"

@@ -34,8 +34,6 @@ tests:
               job: 'gaia-api'
               instance: 'gaia-backend:80'
             exp_annotations:
-              description: >-
-                The container is gone or its metrics endpoint is unreachable. What this means depends on the job — gaia-api means the API container is down or /metrics is rejecting the bearer token; rabbitmq is the broker itself. Note that postgres, redis and jfs_meta_redis scrape their exporter sidecars, not the databases, so those three mean the exporter died and say nothing about whether the database is healthy.
               runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-target-down'
               __dashboardUid__: 'gaia-overview'
               __panelId__: '5'
@@ -46,8 +44,6 @@ tests:
               job: 'jfs_meta_redis'
               instance: 'jfs_redis_exporter:9121'
             exp_annotations:
-              description: >-
-                The container is gone or its metrics endpoint is unreachable. What this means depends on the job — gaia-api means the API container is down or /metrics is rejecting the bearer token; rabbitmq is the broker itself. Note that postgres, redis and jfs_meta_redis scrape their exporter sidecars, not the databases, so those three mean the exporter died and say nothing about whether the database is healthy.
               runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-target-down'
               __dashboardUid__: 'gaia-overview'
               __panelId__: '5'
