@@ -522,8 +522,12 @@ async def workos_callback(
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=server_error")
 
 
-def _composio_failure(redirect_path: str, error: str) -> RedirectResponse:
-    observe_oauth_callback(OAuthFlow.INTEGRATION, OAuthCallbackOutcome.FAILED)
+def _composio_failure(
+    redirect_path: str,
+    error: str,
+    outcome: OAuthCallbackOutcome = OAuthCallbackOutcome.FAILED,
+) -> RedirectResponse:
+    observe_oauth_callback(OAuthFlow.INTEGRATION, outcome)
     return RedirectResponse(url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error={error}")
 
 
@@ -559,14 +563,15 @@ async def composio_callback(
 
     # Handle failed connection early
     if status != "success":
-        error_type = "cancelled" if error == "access_denied" else "failed"
         log.warning(
             f"{LogTag.OAUTH} Composio connection failed",
             status=status,
             error=error,
             connected_account_id=connectedAccountId,
         )
-        return _composio_failure(redirect_path, error_type)
+        if error == "access_denied":
+            return _composio_failure(redirect_path, "cancelled", OAuthCallbackOutcome.CANCELLED)
+        return _composio_failure(redirect_path, "failed")
 
     # The hosted Connect Link redirects back without the id; the state recorded it at initiate.
     connected_account_id = connectedAccountId or state_data["connected_account_id"]

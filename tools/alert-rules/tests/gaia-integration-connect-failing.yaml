@@ -10,6 +10,8 @@ tests:
         values: '0+1x60'
       - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="ok"}'
         values: '0x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="cancelled"}'
+        values: '0+9x60'
     alert_rule_test:
       - eval_time: 40m
         alertname: gaia-integration-connect-failing
@@ -29,6 +31,20 @@ tests:
         values: '0+1x60'
       - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="ok"}'
         values: '0+3x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-integration-connect-failing
+        exp_alerts: []
+
+  - name: gaia-integration-connect-failing stays quiet when users only cancel the consent screen
+    interval: 1m
+    input_series:
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="failed"}'
+        values: '0x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="ok"}'
+        values: '0x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="cancelled"}'
+        values: '0+1x60'
     alert_rule_test:
       - eval_time: 40m
         alertname: gaia-integration-connect-failing

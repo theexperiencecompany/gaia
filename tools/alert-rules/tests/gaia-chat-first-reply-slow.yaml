@@ -1,4 +1,4 @@
-# gaia-chat-ttft-p95: fires when over 30% of answered turns had first text after 30s, with at least 5 such turns.
+# gaia-chat-first-reply-slow: fires when over 30% of answered turns had first text after 30s, with at least 5 such turns.
 # The le labels mirror _TTFT_BUCKETS in apps/api/app/services/latency_metrics.py as
 # prometheus_client renders them; the rule reads le="30.0", so a renamed edge fails the
 # trigger test. Failed turns are not counted: gaia-chat-turns-failing owns them.
@@ -6,7 +6,7 @@ rule_files: [../gaia-rules.yaml]
 evaluation_interval: 1m
 
 tests:
-  - name: gaia-chat-ttft-p95 fires when every answered turn had first text after 30s
+  - name: gaia-chat-first-reply-slow fires when every answered turn had first text after 30s
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -49,7 +49,7 @@ tests:
         values: '0+1x60'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95
+        alertname: gaia-chat-first-reply-slow
         exp_alerts:
           - exp_labels:
               severity: 'warning'
@@ -57,11 +57,11 @@ tests:
             exp_annotations:
               description: >-
                 Users are watching a typing indicator for over half a minute before anything appears. Compare "Provider TTFT vs pipeline TTFT" on the latency dashboard: if llm_ttft_seconds moved, the model provider is slow; if only chat_ttft_seconds moved, look at context assembly (context_assemble_seconds) and at turns queued behind a reply that is still running.
-              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95'
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-chat-first-reply-slow'
               __dashboardUid__: 'gaia-latency'
               __panelId__: '1'
 
-  - name: gaia-chat-ttft-p95 stays quiet when every answered turn was faster
+  - name: gaia-chat-first-reply-slow stays quiet when every answered turn was faster
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -104,10 +104,10 @@ tests:
         values: '0+1x60'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95
+        alertname: gaia-chat-first-reply-slow
         exp_alerts: []
 
-  - name: gaia-chat-ttft-p95 stays quiet when four turns were that slow
+  - name: gaia-chat-first-reply-slow stays quiet when four turns were that slow
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -150,10 +150,10 @@ tests:
         values: '0x20 4x40'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95
+        alertname: gaia-chat-first-reply-slow
         exp_alerts: []
 
-  - name: gaia-chat-ttft-p95 stays quiet when only failed turns were that slow
+  - name: gaia-chat-first-reply-slow stays quiet when only failed turns were that slow
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -234,5 +234,5 @@ tests:
         values: '0+1x60'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95
+        alertname: gaia-chat-first-reply-slow
         exp_alerts: []

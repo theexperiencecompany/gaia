@@ -892,11 +892,10 @@ groups:
       # and one in twenty-five over 5. A p95 over the few turns of a quiet window
       # is one turn, so each rule reads the share of answered turns (status="ok";
       # a failed turn is gaia-chat-turns-failing's) slower than a bucket edge, and
-      # says nothing until five turns were that slow. The uids keep p95 so the
-      # Grafana rule state and the runbook URLs stay where they are.
+      # says nothing until five turns were that slow.
       #
       # 26. Over 30% of replies showed their first text after 30s (normal: 5%).
-      - uid: gaia-chat-ttft-p95
+      - uid: gaia-chat-first-reply-slow
         title: Chat first reply is slow
         condition: C
         data:
@@ -944,7 +943,7 @@ groups:
             slow; if only chat_ttft_seconds moved, look at context assembly
             (context_assemble_seconds) and at turns queued behind a reply that
             is still running.
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-first-reply-slow
           __dashboardUid__: gaia-latency
           __panelId__: "1"
         labels:
@@ -953,7 +952,7 @@ groups:
 
       # 27. Over 30% of replies showed their first text after 60s. Critical tier:
       # also pages email.
-      - uid: gaia-chat-ttft-p95-critical
+      - uid: gaia-chat-first-reply-critically-slow
         title: Chat first reply is critically slow
         condition: C
         data:
@@ -1002,7 +1001,7 @@ groups:
             first (llm_ttft_seconds and gaia-llm-provider-failing), then a
             conversation stuck behind a running executor
             (executor_queue_wait_seconds).
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-first-reply-critically-slow
           __dashboardUid__: gaia-latency
           __panelId__: "1"
         labels:
@@ -1010,7 +1009,7 @@ groups:
           service: api
 
       # 28. Over 30% of replies took more than 2 minutes to settle (normal: 11%).
-      - uid: gaia-chat-e2e-p95
+      - uid: gaia-chat-reply-slow
         title: Chat replies are slow end to end
         condition: C
         data:
@@ -1058,7 +1057,7 @@ groups:
             goes: model calls (llm_call_seconds), executor work
             (executor_active_seconds) and its queue wait
             (executor_queue_wait_seconds), and tools (tool_call_seconds).
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-reply-slow
           __dashboardUid__: gaia-latency
           __panelId__: "2"
         labels:
@@ -1067,7 +1066,7 @@ groups:
 
       # 29. Over 30% of replies took more than 5 minutes to settle (normal: 4%).
       # Critical tier: also pages email.
-      - uid: gaia-chat-e2e-p95-critical
+      - uid: gaia-chat-reply-critically-slow
         title: Chat replies are critically slow end to end
         condition: C
         data:
@@ -1115,7 +1114,7 @@ groups:
             incident: look for a wedged executor lock
             (executor_queue_wait_seconds climbing), a model provider outage
             (gaia-llm-provider-failing) or a runaway tool (tool_call_seconds).
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-reply-critically-slow
           __dashboardUid__: gaia-latency
           __panelId__: "2"
         labels:
@@ -2313,7 +2312,7 @@ groups:
       # 2. A model provider is failing. gaia_llm_call_total{provider,outcome}
       # counts each model call after its own retries; rate_limited is a failure
       # the provider chose. Warning tier: the fallback to the default model
-      # usually answers the user, and gaia-llm-fallback-exhausted is the page for
+      # usually answers the user, and gaia-llm-fallback-exhausted is the alert for
       # when it does not. One instance per provider. No dashboard link: nothing
       # charts this counter.
       - uid: gaia-llm-provider-failing
@@ -2411,7 +2410,7 @@ groups:
             provider's status page and the credits and limits on its key.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-llm-fallback-exhausted
         labels:
-          severity: critical
+          severity: warning
           service: api
 
       # 4. Scheduled tasks are being claimed more than five minutes after their
@@ -2636,7 +2635,7 @@ groups:
               expr: |
                 (
                   sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="login", outcome="failed"}[30m]))
-                  / clamp_min(sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="login"}[30m])), 1)
+                  / clamp_min(sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="login", outcome=~"ok|failed"}[30m])), 1)
                 )
                 and on() (sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="login", outcome="failed"}[30m])) >= 3)
               instant: true
@@ -2674,8 +2673,9 @@ groups:
 
       # 9. Integration connects are failing at the Composio callback. Same counter
       # as rule 8 with flow=integration; kept apart because a user who cannot
-      # connect Gmail is degraded, not locked out. No dashboard link: nothing
-      # charts this counter.
+      # connect Gmail is degraded, not locked out. A user who says no on the
+      # consent screen is counted cancelled and is in neither side of the ratio.
+      # No dashboard link: nothing charts this counter.
       - uid: gaia-integration-connect-failing
         title: Connecting integrations is failing
         condition: C
@@ -2688,7 +2688,7 @@ groups:
               expr: |
                 (
                   sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="integration", outcome="failed"}[30m]))
-                  / clamp_min(sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="integration"}[30m])), 1)
+                  / clamp_min(sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="integration", outcome=~"ok|failed"}[30m])), 1)
                 )
                 and on() (sum (increase(gaia_oauth_callback_total{job="gaia-api", flow="integration", outcome="failed"}[30m])) >= 3)
               instant: true
@@ -2933,7 +2933,7 @@ groups:
           __dashboardUid__: fs-ops
           __panelId__: "8"
         labels:
-          severity: critical
+          severity: warning
           service: api
 
       # 14. Executor runs are ending in an error.
@@ -3041,7 +3041,7 @@ groups:
             rejects.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-bot-outbound-failing
         labels:
-          severity: critical
+          severity: warning
           service: bots
 
       # 16. A bot is losing the messages users send it.
@@ -3095,7 +3095,7 @@ groups:
             chat_post_refused or command_dispatch_failed with the reason.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-bot-inbound-failing
         labels:
-          severity: critical
+          severity: warning
           service: bots
 
       # 17. Voice sessions are closing on an error.
@@ -3150,3 +3150,116 @@ groups:
         labels:
           severity: warning
           service: voice_agent
+
+      # 18. The API refused GAIA's own web server. A request with a valid
+      # INTERNAL_API_TOKEN is the web app rendering a page for a visitor, so a
+      # 401 or 403 on it is always our bug: a page calls a route that does not
+      # admit the web server. A few stray requests stay under the threshold; a
+      # page refused on every render crosses it and holds it within the hour.
+      # No dashboard link: nothing charts this counter.
+      - uid: gaia-web-server-refused
+        title: The API is refusing the web app's own requests
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_internal_caller_refused_total{job="gaia-api"}[30m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}The API refused {{ printf "%.0f" $values.B.Value }}
+            requests from GAIA's web server in the last 30 minutes (threshold: more
+            than 5){{ else }}Unable to read the web server refusal count — this rule
+            could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            A page of the web app calls an API route while it renders, and the
+            route answers 401 or 403 because it does not admit the web server.
+            Visitors see that page degraded or with a piece missing, and nothing
+            errors. Find the route in the API's http_request logs (status 401 or
+            403, user agent node), then admit the internal caller on it or stop
+            the page calling it.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-web-server-refused
+        labels:
+          severity: warning
+          service: api
+
+  # Log rules read Loki, not Prometheus, so pint and promtool cannot test them:
+  # tools/alert-rules/extract_promql.py validates their shape and names them as
+  # log rules, and the LogQL is verified against Loki when the rule is written.
+  - orgId: 1
+    name: gaia-logs
+    folder: GAIA
+    interval: 5m
+    rules:
+      # 1. One service keeps logging the same error. Every log.error() writes a
+      # line at level ERROR whose message is a constant, so the message is the
+      # grouping key; the boundary roll-ups (http_request, worker_task,
+      # background_task, bot_event) repeat those errors in their errors[] and
+      # are left out so one occurrence counts once. Eight a day is one every
+      # three hours: on a normal prod day about ten messages reach it and the
+      # other 25 occurred at most five times. One instance per service and
+      # message. No dashboard link: the lines are read in Explore.
+      - uid: gaia-error-repeating
+        title: A service keeps logging the same error
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: >-
+                sum by (service_name, message) (count_over_time({service_name=~".+", level=~"ERROR|CRITICAL"}
+                | json message
+                | message!~"http_request|worker_task|background_task|bot_event" [24h]))
+              queryType: instant
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [7] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ $labels.service_name }} logged "{{ $labels.message }}"
+            {{ printf "%.0f" $values.B.Value }} times in the last 24 hours (threshold:
+            more than 7){{ else }}Unable to read the error log counts — this rule
+            could not be evaluated, which almost always means Loki is down or
+            unreachable.{{ end }}
+          description: >-
+            The same error keeps happening in one service and no metric alert
+            covers it. Pull the lines in Grafana Explore on the Loki datasource:
+            {service_name="<service>", level="ERROR"} |= "<message>". Each line
+            carries error_type and the fields of the call that failed. The fix
+            is the bug behind it, or, when the line is not an error anyone
+            should act on, logging it at warning instead.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-error-repeating
+        labels:
+          severity: warning
+          service: logs

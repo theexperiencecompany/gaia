@@ -91,6 +91,24 @@ literal annotations (`runbook_url`, `__dashboardUid__`, `__panelId__`) survive.
 The templated ones are Grafana's to validate; `infra/docker/observability/CLAUDE.md`
 covers how.
 
+## Log rules
+
+A rule whose query node reads Loki (`datasourceUid: loki`) is LogQL, which pint
+and promtool cannot read. The extractor does not translate it and does not drop
+it: it holds the rule to the same three-node shape, `for`, annotation-template
+and uid checks as every other rule, requires its `runbook_url` (no fixture
+asserts it), leaves it out of the derived Prometheus file, and prints
+
+```
+log rule, no promtool test: <uid> (shape, for, annotations and runbook checked; LogQL not syntax-checked)
+```
+
+A promtool test file named after a log rule fails the coverage check as an
+orphan. The LogQL itself is not syntax-checked offline, because no parser is
+available here: run the query against Loki once when writing the rule, with the
+threshold appended, and keep the instances it returns in the PR. The metric
+contract check reads the derived file, so it ignores log rules.
+
 ## Fail-loud
 
 A rule that quietly drops out of verification is the exact failure mode this

@@ -47,7 +47,7 @@ groups:
 """
 
 METRICS = """\
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter
 
 from app.registry import _register_once
 
@@ -55,7 +55,6 @@ ORDERS_TOTAL = _register_once(
     "gaia_orders_total",
     lambda: Counter(name="gaia_orders_total", documentation="orders", labelnames=("outcome",)),
 )
-ORDER_SECONDS = Histogram("gaia_order_seconds", "order duration")
 
 
 def create_order_series() -> None:
@@ -76,6 +75,12 @@ from app.metrics import observe_order
 
 def place_order() -> None:
     observe_order("ok")
+"""
+
+TIMINGS = """\
+from prometheus_client import Histogram
+
+ORDER_SECONDS = Histogram("gaia_order_seconds", "order duration")
 """
 
 BOT_METRICS = """\
@@ -189,7 +194,7 @@ def test_a_collector_recorded_from_another_module_passes_by_its_sample_name(tmp_
         tmp_path,
         "histogram_quantile(0.95, sum by (le) (rate(gaia_order_seconds_bucket[5m])))",
         {
-            "apps/api/app/metrics.py": METRICS,
+            "apps/api/app/metrics.py": TIMINGS,
             "apps/api/app/orders.py": (
                 "from app.metrics import ORDER_SECONDS\n\n\n"
                 "def place_order() -> None:\n    ORDER_SECONDS.observe(1.0)\n"
@@ -197,6 +202,19 @@ def test_a_collector_recorded_from_another_module_passes_by_its_sample_name(tmp_
         },
     )
     assert _details(repo) == []
+
+
+def test_a_collector_no_rule_queries_must_still_be_recorded(tmp_path: Path) -> None:
+    repo = _repo(
+        tmp_path,
+        "sum(increase(gaia_orders_total[1h]))",
+        {
+            "apps/api/app/metrics.py": METRICS,
+            "apps/api/app/orders.py": CALLER,
+            "apps/api/app/timings.py": TIMINGS,
+        },
+    )
+    assert _details(repo) == ["gaia_order_seconds is registered but recorded by no production code"]
 
 
 def test_a_reexported_helper_counts_as_recorded(tmp_path: Path) -> None:

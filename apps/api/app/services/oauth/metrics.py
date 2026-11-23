@@ -1,7 +1,8 @@
 """Count every OAuth callback by flow and outcome, the signal the sign-in and connect alerts read.
 
 login is a sign-in through WorkOS on any surface; integration is a Composio connection. failed is
-a callback that redirected the user back with an error. Every series is created at zero when
+a callback that redirected the user back with an error; cancelled is the user saying no on the
+provider's consent screen, which is not a failure. Every series is created at zero when
 the API starts, so the first failure after a restart is an increase.
 """
 
@@ -24,6 +25,7 @@ class OAuthCallbackOutcome(StrEnum):
 
     OK = "ok"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 OAUTH_CALLBACK_TOTAL = _register_once(

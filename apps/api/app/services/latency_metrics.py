@@ -148,16 +148,6 @@ _LLM_TTFT_SECONDS = _register_once(
     ),
 )
 
-_COMMS_GRAPH_SECONDS = _register_once(
-    "comms_graph_seconds",
-    lambda: Histogram(
-        name="comms_graph_seconds",
-        documentation="Comms graph streaming run duration in seconds",
-        labelnames=("status",),
-        buckets=_TURN_BUCKETS,
-    ),
-)
-
 _CONTEXT_ASSEMBLE_SECONDS = _register_once(
     "context_assemble_seconds",
     lambda: Histogram(
@@ -224,46 +214,6 @@ _SUBAGENT_RUN_SECONDS = _register_once(
         name="subagent_run_seconds",
         documentation="Subagent active run time excluding pause in seconds",
         labelnames=("subagent_id", "status"),
-        buckets=_TURN_BUCKETS,
-    ),
-)
-
-_HIL_USER_WAIT_SECONDS = _register_once(
-    "hil_user_wait_seconds",
-    lambda: Histogram(
-        name="hil_user_wait_seconds",
-        documentation="HIL approval decided_at minus created_at in seconds",
-        labelnames=(),
-        buckets=_TURN_BUCKETS,
-    ),
-)
-
-_HIL_DISPATCH_LAG_SECONDS = _register_once(
-    "hil_dispatch_lag_seconds",
-    lambda: Histogram(
-        name="hil_dispatch_lag_seconds",
-        documentation="HIL approval resumed_at minus decided_at in seconds",
-        labelnames=(),
-        buckets=_TTFT_BUCKETS,
-    ),
-)
-
-_TRANSPORT_REDIS_PUBLISH_SECONDS = _register_once(
-    "transport_redis_publish_seconds",
-    lambda: Histogram(
-        name="transport_redis_publish_seconds",
-        documentation="Redis stream publish duration in seconds",
-        labelnames=(),
-        buckets=_TTFT_BUCKETS,
-    ),
-)
-
-_SSE_DELIVERY_SECONDS = _register_once(
-    "sse_delivery_seconds",
-    lambda: Histogram(
-        name="sse_delivery_seconds",
-        documentation="SSE subscribe to close delivery duration in seconds",
-        labelnames=("status",),
         buckets=_TURN_BUCKETS,
     ),
 )
@@ -356,14 +306,6 @@ _REACTION_ACK_DECISION_TOTAL = _register_once(
     ),
 )
 
-_HIL_PAUSE_TOTAL = _register_once(
-    "hil_pause_total",
-    lambda: Counter(
-        name="hil_pause_total",
-        documentation="Lifetime HIL pause observations",
-    ),
-)
-
 
 class ChatTurnStatus(StrEnum):
     """How a chat turn ended."""
@@ -384,7 +326,6 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _CHAT_TTFT_SECONDS,
     _CHAT_E2E_FULL_SECONDS,
     _LLM_TTFT_SECONDS,
-    _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
     _CONTEXT_SECTION_BUDGET_EXCEEDED,
     _MEMORY_FAST_RECALL_SEMANTIC_MISSED,
@@ -394,10 +335,6 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _EXECUTOR_E2E_SECONDS,
     _TOOL_CALL_SECONDS,
     _SUBAGENT_RUN_SECONDS,
-    _HIL_USER_WAIT_SECONDS,
-    _HIL_DISPATCH_LAG_SECONDS,
-    _TRANSPORT_REDIS_PUBLISH_SECONDS,
-    _SSE_DELIVERY_SECONDS,
     _LLM_CALL_SECONDS,
     _GRAPH_NODE_SECONDS,
     _CHAT_TURN_TOTAL,
@@ -405,16 +342,12 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _TOOL_CALL_TOTAL,
     _TRIGGER_GATE_DECISION_TOTAL,
     _REACTION_ACK_DECISION_TOTAL,
-    _HIL_PAUSE_TOTAL,
 )
 
 
 def _observe(histogram: Histogram, amount: float, **labels: str) -> None:
     try:
-        if labels:
-            histogram.labels(**labels).observe(amount)
-        else:
-            histogram.observe(amount)  # .labels() raises on a labelless collector
+        histogram.labels(**labels).observe(amount)
     except Exception as e:  # metrics must never break the turn they measure
         log.warning(
             "[metrics] latency observe failed",
@@ -517,11 +450,6 @@ def observe_llm_ttft(seconds: float, *, model: str, lane: str, agent: str) -> No
     _observe(_LLM_TTFT_SECONDS, seconds, model=model, lane=lane, agent=agent)
 
 
-def observe_comms_graph(seconds: float, *, status: str) -> None:
-    """Record the comms graph streaming run duration."""
-    _observe(_COMMS_GRAPH_SECONDS, seconds, status=status)
-
-
 def observe_context_assemble(seconds: float, *, stage: str) -> None:
     """Record context assembly duration for one stage."""
     _observe(_CONTEXT_ASSEMBLE_SECONDS, seconds, stage=stage)
@@ -578,31 +506,6 @@ def observe_reaction_ack_decision(*, outcome: str, reason: str) -> None:
     _inc(_REACTION_ACK_DECISION_TOTAL, outcome=outcome, reason=reason)
 
 
-def observe_hil_pause() -> None:
-    """Increment the lifetime HIL-pause counter."""
-    _inc(_HIL_PAUSE_TOTAL)
-
-
-def observe_hil_user_wait(seconds: float) -> None:
-    """Record HIL approval decided_at minus created_at."""
-    _observe(_HIL_USER_WAIT_SECONDS, seconds)
-
-
-def observe_hil_dispatch_lag(seconds: float) -> None:
-    """Record HIL approval resumed_at minus decided_at."""
-    _observe(_HIL_DISPATCH_LAG_SECONDS, seconds)
-
-
-def observe_transport_redis_publish(seconds: float) -> None:
-    """Record Redis stream publish duration."""
-    _observe(_TRANSPORT_REDIS_PUBLISH_SECONDS, seconds)
-
-
-def observe_sse_delivery(seconds: float, *, status: str) -> None:
-    """Record SSE subscribe-to-close delivery duration."""
-    _observe(_SSE_DELIVERY_SECONDS, seconds, status=status)
-
-
 def observe_llm_call(seconds: float, *, model: str, agent: str) -> None:
     """Record total provider LLM call duration."""
     _observe(_LLM_CALL_SECONDS, seconds, model=model, agent=agent)
@@ -620,7 +523,6 @@ __all__ = [
     "observe_chat_e2e_full",
     "observe_chat_ttft",
     "observe_chat_turn_total",
-    "observe_comms_graph",
     "observe_context_assemble",
     "observe_context_section_budget_exceeded",
     "observe_fast_recall_semantic_missed",
@@ -630,17 +532,12 @@ __all__ = [
     "observe_executor_run_total",
     "observe_executor_ttft",
     "observe_graph_node",
-    "observe_hil_dispatch_lag",
-    "observe_hil_pause",
-    "observe_hil_user_wait",
     "observe_llm_call",
     "observe_llm_ttft",
     "observe_reaction_ack_decision",
-    "observe_sse_delivery",
     "observe_subagent_run",
     "observe_tool_call",
     "observe_turn_steps",
     "observe_trigger_gate_decision",
-    "observe_transport_redis_publish",
     "span",
 ]

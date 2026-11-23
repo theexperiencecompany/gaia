@@ -738,7 +738,10 @@ file.
 **Rule:** every metric an alert rule queries
 (`infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml`) is
 either registered by GAIA's own code **and** recorded by production code, or
-listed in `EXPORTER_METRIC_ALLOWLIST` as a series an exporter owns.
+listed in `EXPORTER_METRIC_ALLOWLIST` as a series an exporter owns. Every
+collector our code registers must be recorded too, whether or not a rule queries
+it: an unrecorded collector is a dashboard panel or a future rule reading
+nothing.
 `check_alert_metric_contract.py` runs as the last stage of
 `tools/alert-rules/verify.sh`, so it is part of the `alert-rules` check.
 

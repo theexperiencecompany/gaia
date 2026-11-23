@@ -134,6 +134,13 @@ target vanished); a counter going NoData usually just means no traffic. Setting
 `noDataState: Alerting` on the wrong rule produces false pages; setting it to
 `OK` on the wrong rule produces a silent blind spot.
 
+**A log rule** (`gaia-error-repeating` is the only one) queries Loki instead of
+Prometheus: `datasourceUid: loki` and `queryType: instant` on node `A`, the same
+`B` and `C`. It has no promtool test, because promtool cannot run LogQL;
+`extract_promql.py` validates its shape and names it as a log rule. Verify its
+query against Loki by hand before shipping it, and prefer a metric: a counter
+has a test, a log query does not.
+
 ### 5. Write the runbook
 
 Every rule links to `https://internal.lab.heygaia.io/production/runbooks/<uid>`,

@@ -68,7 +68,7 @@ for _collector in (
     _FS_OP_LAST_SEEN,
     _FS_OP_IN_FLIGHT,
     _SANDBOX_POOL_SIZE,
-    # Turn/executor/HIL latency: the sweep and re-dispatched runs emit here.
+    # Turn and executor latency: the sweep and re-dispatched runs emit here.
     *ALL_COLLECTORS,
     # Playbook decisions and replays: workflow runs execute on the worker.
     *ALL_PLAYBOOK_COLLECTORS,
