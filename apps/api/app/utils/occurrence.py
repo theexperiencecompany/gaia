@@ -57,5 +57,5 @@ def occurrence_window(moment: datetime) -> dict[str, datetime]:
     instant at millisecond precision, so an equality compare matched nothing
     and the reminder silently never fired.
     """
-    start = moment.replace(microsecond=0)
-    return {"$gte": start, "$lt": start + OCCURRENCE_RESOLUTION}
+    window_start = moment.replace(microsecond=0)
+    return {"$gte": window_start, "$lt": window_start + OCCURRENCE_RESOLUTION}
