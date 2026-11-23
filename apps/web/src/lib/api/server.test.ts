@@ -2,6 +2,7 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { serverFetch } from "@/lib/api/server";
+import { BUILD_RATE_LIMIT_WAITS } from "../../../build-rate-limit.mjs";
 
 const CONFIG_URL = "https://api.example.test/api/v1/integrations/config";
 
@@ -101,7 +102,7 @@ describe("serverFetch", () => {
     await vi.runAllTimersAsync();
 
     expect((await pending).status).toBe(429);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(BUILD_RATE_LIMIT_WAITS + 1);
   });
 
   it("does not wait out a build-time 429 whose Retry-After is past the window", async () => {

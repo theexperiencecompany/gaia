@@ -6,6 +6,10 @@ import pRetry from "p-retry";
 import { cache } from "react";
 import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
+import {
+  BUILD_RATE_LIMIT_WAITS,
+  MAX_RATE_LIMIT_WAIT_SECONDS,
+} from "../../../build-rate-limit.mjs";
 import { toApiOrigin } from "./origin";
 
 /**
@@ -16,7 +20,7 @@ import { toApiOrigin } from "./origin";
 const BUILD_FETCH_POLICY = {
   timeoutMs: 30_000,
   retries: 3,
-  rateLimitWaits: 5,
+  rateLimitWaits: BUILD_RATE_LIMIT_WAITS,
 } as const;
 const REQUEST_FETCH_POLICY = {
   timeoutMs: 10_000,
@@ -24,8 +28,6 @@ const REQUEST_FETCH_POLICY = {
   rateLimitWaits: 0,
 } as const;
 
-/** The API's app-wide ceilings are per minute; a longer Retry-After is a limit a build cannot wait out. */
-const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
 const TOO_MANY_REQUESTS = 429;
 
 function isProductionBuild(): boolean {
