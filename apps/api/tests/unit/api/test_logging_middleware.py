@@ -10,12 +10,17 @@ from prometheus_client import REGISTRY
 import pytest
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware.internal_caller_metrics import (
+    INTERNAL_CALLER_REFUSED_TOTAL,
+    create_internal_caller_series,
+)
 from app.api.v1.middleware.logging import LoggingMiddleware
 from app.config.settings import settings
 from app.constants.http import INTERNAL_CALLER_HEADER
 from app.models.user_models import AuthenticatedUser
 from app.services.turn_timings import close_ingress
 from shared.py.wide_events import log as wide_log
+from tests.helpers import series_labels
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -302,3 +307,13 @@ class TestLoggingMiddlewareInternalCaller:
                 "/api/v1/test", headers={INTERNAL_CALLER_HEADER: "token-for-tests"}
             )
         assert _refused("unauthorized") == before
+
+    def test_every_refusal_series_exists_before_the_first_refusal(self) -> None:
+        INTERNAL_CALLER_REFUSED_TOTAL.clear()
+
+        create_internal_caller_series()
+
+        assert series_labels("gaia_internal_caller_refused_total") == {
+            ("unauthorized",),
+            ("forbidden",),
+        }

@@ -965,3 +965,33 @@ class TestSchedulerMetrics:
 
         after = REGISTRY.get_sample_value("gaia_scheduled_task_lateness_seconds_sum", labels)
         assert 90 <= after - before < 120
+
+    async def test_a_task_claimed_before_its_time_observes_no_lateness(self, service):
+        early = BaseScheduledTask(
+            _id="early",
+            user_id="user1",
+            scheduled_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        service.mock_get_task.return_value = early
+        labels = {"kind": "reminder"}
+        name = "gaia_scheduled_task_lateness_seconds"
+        before_sum = REGISTRY.get_sample_value(f"{name}_sum", labels) or 0.0
+        before_count = REGISTRY.get_sample_value(f"{name}_count", labels) or 0.0
+
+        await service.process_task_execution("early")
+
+        assert REGISTRY.get_sample_value(f"{name}_count", labels) == before_count + 1
+        assert REGISTRY.get_sample_value(f"{name}_sum", labels) == before_sum
+
+    async def test_a_naive_scheduled_time_is_read_as_utc(self, service):
+        """A cron workflow takes its scheduled_at from the trigger's stored next_run, which Mongo returns naive."""
+        task = BaseScheduledTask(_id="naive", user_id="user1")
+        task.scheduled_at = (datetime.now(UTC) - timedelta(seconds=90)).replace(tzinfo=None)
+        service.mock_get_task.return_value = task
+        labels = {"kind": "reminder"}
+        name = "gaia_scheduled_task_lateness_seconds_sum"
+        before = REGISTRY.get_sample_value(name, labels) or 0.0
+
+        await service.process_task_execution("naive")
+
+        assert 90 <= REGISTRY.get_sample_value(name, labels) - before < 120

@@ -45,6 +45,7 @@ from langchain_core.language_models.fake_chat_models import (
 )
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from motor.motor_asyncio import AsyncIOMotorCollection
+from prometheus_client import REGISTRY, CollectorRegistry
 from pydantic import Field
 from redis.asyncio.client import PubSub
 import respx
@@ -754,6 +755,16 @@ async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str
     """
     async with log_context(operation):
         yield log.get()
+
+
+def series_labels(sample_name: str, registry: CollectorRegistry = REGISTRY) -> set[tuple[str, ...]]:
+    """Return the label values, in label order, of every series a registry serves under a sample name."""
+    return {
+        tuple(sample.labels.values())
+        for family in registry.collect()
+        for sample in family.samples
+        if sample.name == sample_name
+    }
 
 
 @asynccontextmanager

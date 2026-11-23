@@ -25,12 +25,17 @@ from app.models.payment_models import (
     ProCheckout,
     SubscriptionDocument,
 )
+from app.services.payments.webhook_metrics import (
+    PAYMENT_WEBHOOK_TOTAL,
+    create_payment_webhook_series,
+)
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import (
     PaymentCheckoutStarted,
     SubscriptionCancellationRequested,
 )
 from tests.conftest import FAKE_USER
+from tests.helpers import series_labels
 from tests.unit.services.conftest import SUBSCRIPTION_DATA_PAYLOAD, _make_webhook_event
 
 PLANS_URL = "/api/v1/payments/plans"
@@ -981,6 +986,7 @@ class TestDodoWebhook:
         assert response.status_code == 422
 
     async def test_webhook_invalid_json_returns_400(self, client: AsyncClient):
+        before = _webhook_count("error")
         with patch(
             "app.services.payments.payment_webhook_service.payment_webhook_service.verify_webhook_signature",
             return_value=True,
@@ -998,6 +1004,21 @@ class TestDodoWebhook:
 
         assert response.status_code == 400
         assert "Invalid JSON" in response.json()["message"]
+        assert _webhook_count("error") == before + 1
+
+    def test_every_webhook_series_exists_before_the_first_delivery(self):
+        PAYMENT_WEBHOOK_TOTAL.clear()
+
+        create_payment_webhook_series()
+
+        assert series_labels("gaia_payment_webhook_total") == {
+            ("processed",),
+            ("ignored",),
+            ("failed",),
+            ("abandoned",),
+            ("invalid_signature",),
+            ("error",),
+        }
 
     async def test_webhook_processing_error_returns_500(self, client: AsyncClient):
         with (

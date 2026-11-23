@@ -21,7 +21,13 @@ import pytest
 from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import IntegrationAccount
 from app.models.webhook_models import ComposioWebhookEvent
+from app.services.composio.webhook_metrics import (
+    INTEGRATION_TOKEN_REFRESH_TOTAL,
+    TRIGGER_WEBHOOK_TOTAL,
+    create_composio_webhook_series,
+)
 from app.services.integrations.integration_expiry import AccountExpired
+from tests.helpers import series_labels
 
 ENDPOINT = "/api/v1/webhook/composio"
 MODULE = "app.api.v1.endpoints.webhook_composio"
@@ -827,3 +833,15 @@ class TestTriggerWebhookMetric:
         await _endpoint()._process_webhook_event(handler, _trigger_delivery())
 
         assert _webhook_count("gaia_trigger_webhook_total", "failed") == before + 1
+
+
+@pytest.mark.parametrize(
+    "metric", ["gaia_integration_token_refresh_total", "gaia_trigger_webhook_total"]
+)
+def test_every_webhook_series_exists_before_its_first_event(metric: str) -> None:
+    INTEGRATION_TOKEN_REFRESH_TOTAL.clear()
+    TRIGGER_WEBHOOK_TOTAL.clear()
+
+    create_composio_webhook_series()
+
+    assert series_labels(metric) == {("ok",), ("failed",)}
