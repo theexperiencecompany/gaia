@@ -28,19 +28,14 @@ class _FakeClock:
     """A stand-in for post_deploy's datetime whose now() only moves when the test advances it."""
 
     def __init__(self, start: datetime) -> None:
-        self.now = start
+        self.current = start
         self.claim_refreshed = asyncio.Event()
-        clock = self
 
-        class _Datetime(datetime):
-            @classmethod
-            def now(cls, tz: tzinfo | None = None) -> datetime:
-                return clock.now
-
-        self.datetime = _Datetime
+    def now(self, tz: tzinfo | None = None) -> datetime:
+        return self.current
 
     def advance(self, by: timedelta) -> None:
-        self.now += by
+        self.current += by
         self.claim_refreshed.clear()
 
     def watching(self, collection: AsyncIOMotorCollection) -> "_ClaimWatcher":
@@ -60,7 +55,7 @@ class _ClaimWatcher:
     async def update_one(self, query: dict[str, Any], update: dict[str, Any], **kwargs: Any) -> Any:
         result = await self._collection.update_one(query, update, **kwargs)
         if (
-            update["$set"].get("claimed_at") == self._clock.now
+            update["$set"].get("claimed_at") == self._clock.current
             and "applied_at" not in update["$set"]
         ):
             self._clock.claim_refreshed.set()
@@ -154,7 +149,7 @@ async def test_a_step_running_past_the_stale_window_keeps_its_claim_from_a_secon
     steps: dict[str, AsyncMock], raw_collection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clock = _FakeClock(datetime.now(UTC))
-    monkeypatch.setattr(post_deploy, "datetime", clock.datetime)
+    monkeypatch.setattr(post_deploy, "datetime", clock)
     monkeypatch.setattr(post_deploy, "deploy_steps", clock.watching(raw_collection))
     monkeypatch.setattr(post_deploy, "_CLAIM_HEARTBEAT", timedelta(milliseconds=10))
     monkeypatch.setattr(post_deploy, "_CLAIM_POLL", timedelta(milliseconds=10))
