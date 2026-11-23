@@ -22,18 +22,14 @@ import type {
   WithContext,
 } from "schema-dts";
 import SEO_SNIPPET from "@/config/seoSnippet.json";
+import { SITE_URL } from "@/config/site";
 import {
   ADVERTISED_PRO_MONTHLY,
   ADVERTISED_PRO_MONTHLY_PRICE,
 } from "@/features/pricing/advertisedPrice";
 import { localizePath } from "@/i18n/config";
 
-const SITE_URL = "https://heygaia.io";
 const GLOSSARY_PATH = "/learn";
-
-export function getSiteUrl(): string {
-  return SITE_URL;
-}
 
 // Site-wide SEO Configuration
 export const siteConfig = {
@@ -44,7 +40,7 @@ export const siteConfig = {
   fullName: "GAIA - Your Personal AI Assistant from The Experience Company",
   description:
     "GAIA is your source-available personal AI assistant that proactively manages your email, calendar, todos, workflows and digital tools to boost productivity.",
-  url: getSiteUrl(),
+  url: SITE_URL,
   ogImage: "/og-image.webp",
   links: {
     twitter: "https://x.com/trygaia",
@@ -191,7 +187,7 @@ const TITLE_MAX_LENGTH = SEO_SNIPPET.titleLength.max;
 /** Shortest title that still says what the page is about. */
 const TITLE_MIN_LENGTH = SEO_SNIPPET.titleLength.min;
 /** Longest meta description a result snippet shows without truncating it. */
-const DESCRIPTION_MAX_LENGTH = 160;
+const DESCRIPTION_MAX_LENGTH = SEO_SNIPPET.descriptionLength.max;
 const BRAND_SUFFIX = ` | ${siteConfig.short_name}`;
 const BRAND_PATTERN = new RegExp(`\\b${siteConfig.short_name}\\b`);
 

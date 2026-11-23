@@ -1,13 +1,17 @@
+import asyncio
 from http import HTTPStatus
 from typing import Literal, TypedDict
+from urllib.parse import urlsplit
 
 from starlette.requests import HTTPConnection
 from starlette.responses import Response
+import tldextract
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
-from app.config.workos import get_async_workos_client
-from app.constants.auth import DEV_USER_HEADER
+from app.config.workos import get_async_workos_client, with_shared_signing_keys
+from app.constants.auth import DEV_USER_HEADER, SESSION_HINT_COOKIE
+from app.constants.cache import BOT_USER_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import (
@@ -29,12 +33,21 @@ class _SessionCookieFlags(TypedDict):
 # Lax: web and API are same-site and the OAuth callback is a top-level navigation;
 # the cross-site desktop renderer rewrites wos_session to None itself (session.ts).
 _SESSION_COOKIE_FLAGS = _SessionCookieFlags(path="/", httponly=True, samesite="lax")
+# The hint carries no secret, so Starlette's default flags (Path=/, SameSite=Lax, not
+# HttpOnly: the web app's JavaScript reads it) are its flags.
+_SESSION_HINT_VALUE = "1"
+
+# Bundled Public Suffix List snapshot, private section included (github.io is a suffix
+# to browsers): never fetched at runtime, so the answer is fixed per release.
+_PUBLIC_SUFFIXES = tldextract.TLDExtract(
+    suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True
+)
 
 
 def set_session_cookie(
     response: Response, connection: HTTPConnection, *, name: str, value: str, max_age: int
 ) -> None:
-    """Set a session cookie (WorkOS or local) with the one set of flags every session uses."""
+    """Set a session cookie (WorkOS or local) and its signed-in hint, with the one set of flags every session uses."""
     response.set_cookie(
         key=name,
         value=value,
@@ -42,11 +55,51 @@ def set_session_cookie(
         secure=session_cookie_secure(connection),
         **_SESSION_COOKIE_FLAGS,
     )
+    set_session_hint_cookie(response, connection, max_age=max_age)
 
 
 def clear_session_cookie(response: Response, connection: HTTPConnection, *, name: str) -> None:
-    """Expire a session cookie with the flags it was set with, so the browser matches and drops it."""
+    """Expire a session cookie and its hint with the flags they were set with, so the browser matches and drops them."""
     response.delete_cookie(name, secure=session_cookie_secure(connection), **_SESSION_COOKIE_FLAGS)
+    clear_session_hint_cookie(response, connection)
+
+
+def set_session_hint_cookie(
+    response: Response, connection: HTTPConnection, *, max_age: int
+) -> None:
+    """Tell the web app a session exists, so a signed-out visitor is never sent to /user/me."""
+    response.set_cookie(
+        key=SESSION_HINT_COOKIE,
+        value=_SESSION_HINT_VALUE,
+        max_age=max_age,
+        secure=session_cookie_secure(connection),
+        domain=session_hint_cookie_domain(settings.HOST, settings.FRONTEND_URL),
+    )
+
+
+def clear_session_hint_cookie(response: Response, connection: HTTPConnection) -> None:
+    """Expire the signed-in hint on the domain it was set on."""
+    response.delete_cookie(
+        SESSION_HINT_COOKIE,
+        secure=session_cookie_secure(connection),
+        domain=session_hint_cookie_domain(settings.HOST, settings.FRONTEND_URL),
+    )
+
+
+def session_hint_cookie_domain(api_url: str, frontend_url: str) -> str | None:
+    """Return the site both URLs share (api.heygaia.io + heygaia.io -> .heygaia.io), else None for host-only.
+
+    Host-only is right when web and API are one host (self-host, localhost: cookies ignore
+    ports) or share no registrable domain, where a parent Domain would be rejected.
+    """
+    api_host = urlsplit(api_url).hostname
+    web_host = urlsplit(frontend_url).hostname
+    if not api_host or not web_host or api_host == web_host:
+        return None
+    site = _PUBLIC_SUFFIXES(api_host).top_domain_under_public_suffix
+    if not site or site != _PUBLIC_SUFFIXES(web_host).top_domain_under_public_suffix:
+        return None
+    return f".{site}"
 
 
 def session_cookie_secure(connection: HTTPConnection) -> bool:
@@ -169,6 +222,11 @@ def build_user_context(
     )
 
 
+def bot_user_cache_key(platform: str, platform_user_id: str) -> str:
+    """Return the cache key holding a bot-platform account's resolved user context."""
+    return f"{BOT_USER_CACHE_PREFIX}:{platform}:{platform_user_id}"
+
+
 async def resolve_bot_user(platform: str, platform_user_id: str) -> AuthenticatedUser | None:
     """Resolve a bot-platform account to its user context, or None when unlinked.
 
@@ -218,12 +276,17 @@ async def authenticate_workos_session(
 
     try:
         # Load and authenticate the WorkOS session
-        session = await workos.user_management.load_sealed_session(
-            sealed_session=session_token,
-            cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+        session = with_shared_signing_keys(
+            await workos.user_management.load_sealed_session(
+                sealed_session=session_token,
+                cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+            )
         )
 
-        auth_response = session.authenticate()
+        # Sync SDK verification fetches keys on a cache miss: off the shared loop.
+        # session.refresh below still verifies on the loop (cache hit except at
+        # expiry/rotation, bounded by WORKOS_JWKS_FETCH_TIMEOUT_SECONDS).
+        auth_response = await asyncio.to_thread(session.authenticate)
         new_session = None
         workos_user = None
 

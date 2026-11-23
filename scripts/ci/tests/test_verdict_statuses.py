@@ -47,7 +47,7 @@ FAKE_CHECKS = {
         _check("cli:type-check", "lint-node", "type-check", "node"),
         _check("ci:ruff", "lint-python", "ruff", "python"),
         _check("ci:lint-imports", "lint-python", "lint-imports", "python", cwd="apps/api"),
-        _check("ci:gitleaks", "repo-policy", "gitleaks", "security", runner="action"),
+        _check("ci:semgrep", "scan", "semgrep", "security", runner="action"),
         _check("web:build", "ts-build-test", "build", "build"),
     ]
 }
@@ -182,22 +182,22 @@ def test_a_passing_task_writes_no_check_verdict(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("step", "state"),
-    [("gitleaks=failure", "failure"), ("gitleaks=cancelled", "error"), ("gitleaks=", "error")],
+    [("semgrep=failure", "failure"), ("semgrep=cancelled", "error"), ("semgrep=", "error")],
 )
 def test_an_action_checks_step_outcome_is_its_status(
     api: FakeGitHub, tmp_path: Path, step: str, state: str
 ) -> None:
-    assert _post(tmp_path, "repo-policy", {}, "--step", step) == 1
+    assert _post(tmp_path, "scan", {}, "--step", step) == 1
 
-    assert _states(api) == {"ci / security / gitleaks": state}
+    assert _states(api) == {"ci / security / semgrep": state}
 
 
 def test_an_action_check_whose_step_is_not_passed_is_skipped(
     api: FakeGitHub, tmp_path: Path
 ) -> None:
-    assert _post(tmp_path, "repo-policy", {}) == 0
+    assert _post(tmp_path, "scan", {}) == 0
 
-    assert _statuses(api)["ci / security / gitleaks"]["description"].startswith("skipped")
+    assert _statuses(api)["ci / security / semgrep"]["description"].startswith("skipped")
 
 
 def test_every_status_links_to_the_job_that_ran_the_check(api: FakeGitHub, tmp_path: Path) -> None:
@@ -279,10 +279,10 @@ def test_a_post_that_keeps_failing_fails_the_step_after_trying_every_check(
 def test_a_transient_post_failure_is_retried(api: FakeGitHub, tmp_path: Path) -> None:
     api.on("POST", STATUSES, Reply(502, {}), Reply(201, {}))
 
-    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
+    assert _post(tmp_path, "scan", {}, "--step", "semgrep=success") == 0
     assert [fields["context"] for fields in _posted(api)] == [
-        "ci / security / gitleaks",
-        "ci / security / gitleaks",
+        "ci / security / semgrep",
+        "ci / security / semgrep",
     ]
 
 
@@ -290,7 +290,7 @@ def test_a_rejected_post_is_not_retried(api: FakeGitHub, tmp_path: Path) -> None
     # A 422 is the request being wrong; repeating it cannot land the status.
     api.on("POST", STATUSES, Reply(422, {"message": "Validation Failed"}))
 
-    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
+    assert _post(tmp_path, "scan", {}, "--step", "semgrep=success") == 1
     assert len(_posted(api)) == 1
 
 
@@ -311,10 +311,10 @@ def test_a_status_github_answered_500_to_but_recorded_counts_as_landed(
     api.on("POST", STATUSES, Reply(500, {}))
     api.on(
         "GET", COMMIT_STATUSES, Reply(body=[]),
-        Reply(body=[_recorded("ci / security / gitleaks")]),
+        Reply(body=[_recorded("ci / security / semgrep")]),
     )  # fmt: skip
 
-    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
+    assert _post(tmp_path, "scan", {}, "--step", "semgrep=success") == 0
     reads = [r for r in api.requests if r.method == "GET"]
     assert len(reads) == 2
 
@@ -334,10 +334,10 @@ def test_a_recorded_status_matches_even_when_github_rewrote_its_description(
     api: FakeGitHub, tmp_path: Path
 ) -> None:
     api.on("POST", STATUSES, Reply(500, {}))
-    rewritten = {**_recorded("ci / security / gitleaks"), "description": "pass…"}
+    rewritten = {**_recorded("ci / security / semgrep"), "description": "pass…"}
     api.on("GET", COMMIT_STATUSES, Reply(body=[rewritten]))
 
-    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
+    assert _post(tmp_path, "scan", {}, "--step", "semgrep=success") == 0
 
 
 @pytest.mark.parametrize("job_id", ["", "0"])
@@ -354,18 +354,18 @@ def test_a_status_that_never_shows_on_read_back_fails_the_step(
     api: FakeGitHub, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     api.on("POST", STATUSES, Reply(500, {}))
-    other = {**_recorded("ci / security / gitleaks"), "state": "failure"}
+    other = {**_recorded("ci / security / semgrep"), "state": "failure"}
     api.on("GET", COMMIT_STATUSES, Reply(body=[other]))
 
-    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
+    assert _post(tmp_path, "scan", {}, "--step", "semgrep=success") == 1
     assert len([r for r in api.requests if r.method == "GET"]) == verdict.STATUS_READ_BACKS
-    assert "1 status(es) never landed: ci / security / gitleaks" in capsys.readouterr().out
+    assert "1 status(es) never landed: ci / security / semgrep" in capsys.readouterr().out
 
 
 def test_a_rejected_post_is_not_read_back(api: FakeGitHub, tmp_path: Path) -> None:
     api.on("POST", STATUSES, Reply(422, {"message": "Validation Failed"}))
 
-    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
+    assert _post(tmp_path, "scan", {}, "--step", "semgrep=success") == 1
     assert [r for r in api.requests if r.method == "GET"] == []
 
 
@@ -391,14 +391,14 @@ def test_no_post_posts_nothing_but_still_decides_the_job(api: FakeGitHub, tmp_pa
 
 def test_each_check_posts_under_its_area(api: FakeGitHub, tmp_path: Path) -> None:
     _post(tmp_path, "lint-python", {"ci:ruff": "success"})
-    _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success")
+    _post(tmp_path, "scan", {}, "--step", "semgrep=success")
     _post(tmp_path, "ts-build-test", {"web:build": "success"})
 
     assert sorted(_statuses(api)) == [
         "ci / build / build",
         "ci / python / lint-imports",
         "ci / python / ruff",
-        "ci / security / gitleaks",
+        "ci / security / semgrep",
     ]
 
 

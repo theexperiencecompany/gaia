@@ -61,7 +61,7 @@
         "files": ["src/app/styles/hero.ts"],
         "rules": ["deslop/unused-export"]
       },
-      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompt.ts and the
+      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompts.ts and the
       // openui pre-commit sync hook — consumed outside the scanned graph.
       {
         "files": ["src/config/openui/promptSpecs.ts"],
@@ -134,6 +134,14 @@
         "files": ["src/config/openui/components/VideoBlockView.tsx"],
         "rules": ["react-doctor/iframe-missing-sandbox"]
       },
+      // A shared PDF frames its content-origin URL (<content_id>.heygaia.link):
+      // browsers refuse to render a PDF in a sandboxed frame, so the isolation is
+      // that cookieless per-file origin and the API's PDF CSP (frame-ancestors
+      // the app). The other frame in this file (HTML and SVG) keeps its sandbox.
+      {
+        "files": ["src/features/short-links/components/PublicWorkspaceFileView.tsx"],
+        "rules": ["react-doctor/iframe-missing-sandbox"]
+      },
       // timezoneSearchText() returns a string; .includes(query) is substring
       // matching, not array membership (verified against utils/timezoneUtils.ts
       // and reproduced with an out-of-repo fixture).
@@ -146,6 +154,13 @@
       // behavior; staying sequential re-trips the rule.
       {
         "files": ["src/features/skills/components/SkillImportForm.tsx"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // The push-sync drain loop syncs one batch of pushed ids per pass and
+      // re-reads the set after each await: ids pushed while a sync runs join
+      // the next batch, so one row is never synced twice at once.
+      {
+        "files": ["src/hooks/useBackgroundSync.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
       // setToolOverride responses each return the WHOLE preferences doc —

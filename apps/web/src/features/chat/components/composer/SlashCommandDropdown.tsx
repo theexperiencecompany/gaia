@@ -1,11 +1,19 @@
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { InputGroup, TextField } from "@heroui/react";
 import { Cancel01Icon, SearchIcon } from "@icons";
+import { getToolDisplayName } from "@shared/icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   buildCategories,
   handleSlashCommandKey,
@@ -16,16 +24,17 @@ import {
 } from "@/features/chat/hooks/useSlashCommandItems";
 import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
-
 import { CategoryTabs } from "./CategoryTabs";
 import { LockedCategorySection } from "./LockedCategorySection";
 import { LockedToolItem } from "./LockedToolItem";
 import type { VirtualItemType } from "./virtualItemTypes";
+
+const subscribeToNothing = () => () => undefined;
 
 // Component to render each virtualized item
 interface VirtualizedItemProps {
@@ -89,7 +98,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
       >
         <button
           type="button"
-          className={`relative mx-2 mb-1 block w-full cursor-pointer rounded-xl border-none text-left transition-colors duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
+          className={`relative mx-2 mb-1 block w-[calc(100%_-_1rem)] cursor-pointer rounded-xl border-none text-left transition-colors duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
           onClick={() => {
             track("chat:slash_command_selected", {
               tool_name: match.tool.name,
@@ -104,25 +113,24 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
             {/* Icon */}
             <div className="shrink-0">
               {/* Same shape as the tool-call thread: tinted background, 21px glyph. */}
-              {getToolCategoryIcon(
-                match.tool.category,
-                { width: 21, height: 21 },
-                categoryDisplayMap[match.tool.category]?.iconUrl,
-              )}
+              <IntegrationIcon
+                integrationId={match.tool.category}
+                iconUrl={categoryDisplayMap[match.tool.category]?.iconUrl}
+                size={21}
+                showBackground
+              />
             </div>
 
             {/* Content */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm text-foreground-600">
+                <span className="truncate text-sm text-zinc-300">
                   {formatToolName(match.tool.name)}
                 </span>
                 {selectedCategory === "all" && (
                   <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
-                    {formatToolName(
-                      categoryDisplayMap[match.tool.category]?.displayName ||
-                        match.tool.category,
-                    )}
+                    {categoryDisplayMap[match.tool.category]?.displayName ??
+                      getToolDisplayName(match.tool.category)}
                   </span>
                 )}
               </div>
@@ -330,7 +338,16 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     scrollToIndex: rowVirtualizer.scrollToIndex,
   });
 
-  return (
+  // Portaled to <body>: inside the composer it sat in the searchbar's z-2
+  // stacking context, so message-area overlays (HeroUI popovers, z-50) covered it.
+  const isClient = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  );
+  if (!isClient) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isVisible && matches.length > 0 && (
         <m.div
@@ -363,25 +380,30 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             <div className="flex items-center gap-2 p-3">
               {/* SearchIcon Input */}
               <div className="flex-1">
-                <Input
-                  type="text"
-                  placeholder="Search tools..."
+                <TextField
+                  aria-label="Search tools"
                   value={searchQuery}
-                  radius="full"
-                  startContent={<SearchIcon size={16} />}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+                  onChange={setSearchQuery}
+                >
+                  <InputGroup>
+                    <InputGroup.Prefix>
+                      <SearchIcon size={16} />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input placeholder="Search tools..." />
+                  </InputGroup>
+                </TextField>
               </div>
               {/* Close Button */}
-              <Button
+              <GaiaButton
+                aria-label="Close"
+                shape="pill"
                 onPress={onClose}
                 isIconOnly
                 size="sm"
-                radius="full"
-                variant="flat"
+                variant="default-soft"
               >
                 <Cancel01Icon size={14} />
-              </Button>
+              </GaiaButton>
             </div>
           )}
 
@@ -397,7 +419,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           {/* Tool List */}
           <div
             ref={scrollContainerRef}
-            className={`relative z-1 h-fit ${maxHeight} overflow-y-auto`}
+            className={`relative z-1 h-fit ${maxHeight} overflow-x-hidden overflow-y-auto`}
           >
             <div className="py-2">
               {/* Single virtualized container for everything */}
@@ -433,7 +455,8 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           </div>
         </m.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };
 

@@ -8,9 +8,9 @@ from dataclasses import dataclass
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import (
-    INTEGRATION_STATUS_CONNECTED,
     MAX_ACCOUNTS_PER_INTEGRATION,
     AccountConnectOutcome,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
 from app.models.integration_models import (
@@ -108,7 +108,7 @@ async def _restore_account(
     account: IntegrationAccount,
 ) -> AccountConnected:
     """Bring an account signed back in under its own id to life; its name and role stay."""
-    if account.status == INTEGRATION_STATUS_CONNECTED:
+    if account.status == IntegrationStatus.CONNECTED:
         return AccountConnected(
             account=account, primary_changed=False, outcome=AccountConnectOutcome.ALREADY_CONNECTED
         )
@@ -135,7 +135,7 @@ async def _restore_account(
     restored = account.model_copy(
         update={
             **update,
-            "status": INTEGRATION_STATUS_CONNECTED,
+            "status": IntegrationStatus.CONNECTED,
             "expired_at": None,
             "expired_reason": None,
         }
@@ -209,7 +209,7 @@ async def record_connected_account(
     )
     if superseded is None:
         outcome = AccountConnectOutcome.ADDED
-    elif superseded.status == INTEGRATION_STATUS_CONNECTED:
+    elif superseded.status == IntegrationStatus.CONNECTED:
         outcome = AccountConnectOutcome.ALREADY_CONNECTED
     else:
         outcome = AccountConnectOutcome.RECONNECTED
@@ -263,7 +263,7 @@ async def _set_primary_account(
 ) -> UserIntegrationDocument:
     integration = composio_integration(integration_id)
     record = await _require_record(user_id, integration_id)
-    if _require_account(record, account_id).status != "connected":
+    if _require_account(record, account_id).status != IntegrationStatus.CONNECTED:
         raise AppError(
             message="Reconnect this account before making it primary",
             status_code=409,
@@ -330,18 +330,17 @@ async def remove_account(
     record = await _require_record(user_id, integration_id)
     target = _require_account(record, account_id)
     remaining = [a for a in record.accounts if a.id != account_id]
-    capture(
-        UserId(user_id),
-        IntegrationAccountRemoved(integration_id=integration_id, account_count=len(remaining)),
-    )
+    removed = IntegrationAccountRemoved(integration_id=integration_id, account_count=len(remaining))
     if not remaining:
         # The last account out is a full disconnect: every stale Composio account goes too.
         await disconnect_integration(user_id, integration_id)
+        capture(UserId(user_id), removed)
         return None
 
     await get_composio_service().delete_connected_account(target.connected_account_id)
     primary = pick_primary(remaining, record.primary_account_id)
     saved = await save_accounts(user_id, integration_id, remaining, primary)
+    capture(UserId(user_id), removed)
     if primary != record.primary_account_id:
         await resync_primary_bound_triggers(user_id, integration)
     return saved

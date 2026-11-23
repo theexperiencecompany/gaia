@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as RequestModel,
@@ -14,14 +15,12 @@ from app.schemas.integrations.requests import (
 )
 from app.schemas.integrations.responses import (
     CreateCustomIntegrationResponse,
-    CustomIntegrationConnectionResult,
     IntegrationSuccessResponse,
     PublishIntegrationResponse,
     UnpublishIntegrationResponse,
 )
 from app.services.analytics_service import capture
 from app.services.integrations.custom_crud import (
-    CustomConnectionResult,
     create_and_connect_custom_integration,
     delete_custom_integration,
     update_custom_integration,
@@ -57,7 +56,6 @@ async def create_custom_mcp_integration(
             user={"id": user_id},
         )
         mcp_client = await get_mcp_client(user_id=user_id)
-        connection: CustomConnectionResult
         integration, connection = await create_and_connect_custom_integration(
             user_id,
             RequestModel(
@@ -77,7 +75,7 @@ async def create_custom_mcp_integration(
         log.set(outcome="success")
         # OAuth-managed connects complete at the MCP OAuth callback; only a
         # direct (no-auth / bearer) connect finishes here.
-        if connection.get("status") == "connected":
+        if connection.status == IntegrationStatus.CONNECTED:
             capture(
                 UserId(user_id),
                 IntegrationConnected(
@@ -89,12 +87,7 @@ async def create_custom_mcp_integration(
             message="Custom integration created",
             integration_id=integration.integration_id,
             name=integration.name,
-            connection=CustomIntegrationConnectionResult(
-                status=connection["status"],
-                tools_count=connection.get("tools_count"),
-                oauth_url=connection.get("oauth_url"),
-                error=connection.get("error"),
-            ),
+            connection=connection,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

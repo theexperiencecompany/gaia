@@ -48,7 +48,7 @@ pytestmark = [
 
 API_ROOT = Path(__file__).resolve().parents[3]  # apps/api
 APP_MODULE = "app.main:app"
-DEV_USER = "schemathesis@gaia.local"
+DEV_USER = "delivered+schemathesis@resend.dev"
 EXAMPLES_PER_OP = int(os.environ.get("SCHEMA_FUZZ_EXAMPLES", "3"))
 REQUEST_TIMEOUT = float(os.environ.get("SCHEMA_FUZZ_TIMEOUT", "30"))
 FUZZ_FULL = os.environ.get("SCHEMA_FUZZ_FULL", "0") == "1"
@@ -78,7 +78,7 @@ SCOPED_OPERATIONS: set[tuple[str, str]] = {
     ("POST", "/api/v1/conversations"),
     ("GET", "/api/v1/users/me"),
     ("PATCH", "/api/v1/users/me"),
-    ("GET", "/api/v1/integrations/status"),
+    ("GET", "/api/v1/integrations/me"),
     ("GET", "/api/v1/health"),
 }
 

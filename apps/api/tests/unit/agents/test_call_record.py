@@ -96,6 +96,8 @@ class TestSuccessfulCallLines:
             {"success": False, "error": "not found"},
             {"success": False},
             {"error": "quota exceeded", "data": []},
+            {"successful": False, "data": {}},
+            {"successful": False, "error": "Gmail connection expired", "data": {}},
         ],
     )
     def test_a_call_whose_ok_message_carries_an_error_envelope_is_dropped(
@@ -122,6 +124,7 @@ class TestSuccessfulCallLines:
         [
             {"success": True, "error": None, "data": [{"id": 1}]},
             {"success": True, "error": "", "data": [{"id": 1}]},
+            {"successful": True, "error": None, "data": [{"id": 1}]},
         ],
     )
     def test_an_empty_error_field_is_not_an_error(self, payload: dict[str, object]) -> None:
@@ -311,7 +314,7 @@ class TestTheRecordBlockIsExact:
 @pytest.mark.unit
 async def test_an_empty_result_is_still_marked_empty_when_a_middleware_appended_a_note() -> None:
     """The loop guard appends its warning in-band; the result is the JSON document the content starts with."""
-    messages = [
+    messages: list[AnyMessage] = [
         AIMessage(content="", tool_calls=[{"name": "list_todos", "args": {}, "id": "c1"}]),
         ToolMessage(
             content='{"todos": [], "count": 0}'

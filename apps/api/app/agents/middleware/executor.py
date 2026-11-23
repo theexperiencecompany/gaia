@@ -39,6 +39,7 @@ from langgraph.graph.message import Messages
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.core.subagents.call_record import tool_call_failed
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
@@ -67,6 +68,8 @@ from shared.py.wide_events import log
 # ever feeds and consumes ModelResponse, so the model chain is narrowed to it.
 ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
 ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]]
+# Calls the model on messages, bound with exactly these tools: none leaves it no tool to call.
+ModelInvoke = Callable[[list[AnyMessage], list[BaseTool | dict[str, object]]], Awaitable[AIMessage]]
 
 MIDDLEWARE_FAILURE_TEMPLATE = (
     "`{tool}` was NOT run: a safety check that runs before every tool call failed "
@@ -334,12 +337,13 @@ class MiddlewareExecutor:
         config: RunnableConfig,
         store: BaseStore | None,
         tools: list[BaseTool | dict[str, object]],
-        invoke_fn: Callable[..., Awaitable[AIMessage]],
+        invoke_fn: ModelInvoke,
     ) -> AIMessage:
         """Wrap the model invocation with all wrap_model_call middleware.
 
-        Creates a chain of handlers where each middleware wraps the next;
-        the innermost handler calls the actual model.
+        Creates a chain of handlers where each middleware wraps the next; the
+        innermost handler calls the model bound with the request's tools, as a
+        middleware left or changed them.
         """
         runtime = self._create_runtime(config, store)
         request = create_model_request(model, state, runtime, tools)
@@ -352,7 +356,7 @@ class MiddlewareExecutor:
             if req.system_message:
                 messages_to_send.append(req.system_message)
             messages_to_send.extend(req.messages)
-            response = await invoke_fn(messages_to_send)
+            response = await invoke_fn(messages_to_send, req.tools)
             return ModelResponse(result=[response])
 
         # Wrap with middleware (reverse order so first middleware is outermost)
@@ -414,7 +418,7 @@ class MiddlewareExecutor:
                 error_type=type(e).__name__,
             )
             # Fallback to direct invocation
-            return await invoke_fn(state.get("messages", []))
+            return await invoke_fn(state.get("messages", []), tools)
 
     def _build_tool_chain(
         self, final_handler: ToolCallHandler, chain: _ToolChainState
@@ -492,7 +496,12 @@ class MiddlewareExecutor:
                 # A pre-tool middleware broke, and it may be the approval gate: fail
                 # closed. The tool never runs on a check that did not complete.
                 return _middleware_failure_message(tool_name, tool_call.get("id") or "")
-        observe_tool_call(perf_counter() - chain_start, tool_name=metric_name, status="success")
+        failed = isinstance(result, ToolMessage) and tool_call_failed(result)
+        observe_tool_call(
+            perf_counter() - chain_start,
+            tool_name=metric_name,
+            status="error" if failed else "success",
+        )
         return result
 
     def has_wrap_model_call(self) -> bool:

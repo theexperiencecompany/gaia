@@ -7,6 +7,7 @@ from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.config.oauth_config import all_integrations
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.repositories.integrations import integration_repository
@@ -143,7 +144,7 @@ async def add_public_integration(
 
         existing = await user_integration_repository.get_for_user(user_id, integration_id)
         if existing:
-            if existing.status == "connected":
+            if existing.status == IntegrationStatus.CONNECTED:
                 return AddIntegrationResponse(
                     integration_id=integration_id,
                     name=integration_name,
@@ -160,7 +161,7 @@ async def add_public_integration(
                 await add_user_integration(
                     user_id=user_id,
                     integration_id=integration_id,
-                    initial_status="created",
+                    initial_status=IntegrationStatus.CREATED,
                 )
 
             await integration_repository.increment_clone_count(integration_id)

@@ -9,13 +9,13 @@ This repository is global, so any user's write bumps the single generation
 and orphans *every* user's query-cache entries — deliberate, since
 get_by_email cannot know which user it will resolve to before it reads.
 
-The one exception is touch_last_active, which writes last_active_at through
-the cache-exempt path: it fires on every request, so bumping the generation
-there would invalidate the whole cache. A cached read may carry a slightly
-stale last_active_at; nothing reads that field off a cached path.
+The one exception is set_last_active, which writes last_active_at through
+the cache-exempt path: it fires on every active minute, so bumping the
+generation there would invalidate the whole cache. A cached read may carry a
+stale last_active_at; activity is read through get_activity_dates instead.
 """
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable, Mapping
 from datetime import UTC, datetime
 import re
 from typing import cast
@@ -25,8 +25,6 @@ from bson import ObjectId
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
 from app.constants.cache import (
-    LAST_ACTIVE_DEBOUNCE_SECONDS,
-    LAST_ACTIVE_GATE_PREFIX,
     REPO_GLOBAL_SCOPE,
     USER_CACHE_PREFIX,
 )
@@ -35,38 +33,44 @@ from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_AT_FIELD,
     FIRST_STEPS_COLLAPSED_FIELD,
 )
-from app.constants.log_tags import LogTag
+from app.constants.notifications import DEFAULT_CHANNEL_PREFERENCES
 from app.constants.onboarding import (
     GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
 )
-from app.db.redis import redis_cache
-from app.db.repositories.base import MongoRepository, cached_query
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedMongoRepository, cached_query
 from app.models.onboarding_models import (
     PersistedTriageSummary,
     SocialProfile,
     WritingStyleExampleBlocks,
 )
 from app.models.quiet_hours_models import QuietHours
+from app.models.user_activity_models import UserActivityDates, UserActivityRow, status_window
 from app.models.user_models import (
     BioStatus,
+    NamedEmailRow,
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
     PlatformLinkRecord,
     StartingJobs,
     UserDocument,
+    UserHours,
     UserUpdate,
 )
+from app.utils.email_utils import canonical_email
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 from shared.py.wide_events import log
 
 _SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
+# $unset reads only the field names; the value is ignored.
+_UNSET = ""
 
 
-class UserRepository(MongoRepository[UserDocument, UserUpdate]):
+class UserRepository(CachedMongoRepository[UserDocument, UserUpdate]):
     """The users collection repository — see the module docstring for the caching contract."""
 
     collection_name = "users"
@@ -77,10 +81,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ---------------------------------------------------------------- reads
 
+    def id_created_at(self, user_id: str) -> datetime:
+        """When user_id was minted, read from the timestamp its ObjectId carries."""
+        return ObjectId(user_id).generation_time
+
     @cached_query(UserDocument)
     async def get_by_email(self, email: str) -> UserDocument | None:
         """Return a user by email — the authentication hot path."""
-        return await self._find_one({"email": email})
+        return await self._find_one({"email": canonical_email(email)})
 
     async def find_by_email_ignoring_case(self, email: str) -> list[UserDocument]:
         """Every user whose email equals this one in any case — account erasure refuses all but one."""
@@ -98,8 +106,24 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._find_one({f"platform_links.{platform}.id": platform_user_id})
 
     async def list_all_ids(self) -> list[str]:
-        """Return every user id — the bulk workspace-provisioning scan."""
-        return [doc.id for doc in await self._find({})]
+        """Return every user id — the bulk workspace-provisioning scan, reading no document whole."""
+        return await self._distinct("_id")
+
+    async def get_hours(self, user_id: str) -> UserHours | None:
+        """Read only the user's timezone and quiet hours, as a migration may: never the whole user."""
+        return await self._find_one_projected(
+            self._identity_filter(user_id), {"timezone": True, "quiet_hours": True}, UserHours
+        )
+
+    async def find_named_with_email(self) -> list[NamedEmailRow]:
+        """Return every user holding both a name and an email — the derived-name cleanup scan."""
+        return await self._aggregate(
+            [
+                {"$match": {"name": {"$nin": [None, ""]}, "email": {"$nin": [None, ""]}}},
+                {"$project": {"_id": 0, "id": {"$toString": "$_id"}, "name": 1, "email": 1}},
+            ],
+            NamedEmailRow,
+        )
 
     async def count_created_before(self, created_at: datetime) -> int:
         """Return the number of users created before created_at — the holo-card rank."""
@@ -125,34 +149,52 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             limit=limit,
         )
 
-    async def find_inactive_email_candidates(self, before: datetime) -> list[UserDocument]:
-        """Active users inactive since before, not yet emailed since then (throttling is per-user)."""
-        return await self._find_lenient(
-            {
-                "last_active_at": {"$lt": before},
-                "is_active": {"$ne": False},
-                "$or": [
-                    {"last_inactive_email_sent": {"$exists": False}},
-                    {"last_inactive_email_sent": {"$lt": before}},
-                ],
-            }
-        )
+    def _activity_filter(self, status: ActivityStatus, now: datetime) -> dict[str, object]:
+        """Match users whose last-seen instant (last_active_at, else created_at) is in status."""
+        after, until = status_window(status, now)
+        window: dict[str, datetime] = {}
+        if after is not None:
+            window["$gt"] = after
+        if until is not None:
+            window["$lte"] = until
+        branches: list[dict[str, object]] = [
+            {"last_active_at": window},
+            {"last_active_at": None, "created_at": window},
+        ]
+        if status is ActivityStatus.DORMANT:
+            branches.append({"last_active_at": None, "created_at": None})
+        return {"$or": branches}
 
-    async def find_dormant_since(self, before: datetime) -> list[UserDocument]:
-        """Users with no activity since before — the dormancy sweep's cohort.
-
-        last_active_at missing means never seen active, which also counts as
-        dormant; a bare $lt would silently skip those.
-        """
-        return await self._find_lenient(
-            {
-                "is_active": {"$ne": False},
-                "$or": [
-                    {"last_active_at": {"$lt": before}},
-                    {"last_active_at": {"$exists": False}},
-                    {"last_active_at": None},
-                ],
+    def _status_query(
+        self, status: ActivityStatus, among: Collection[str] | None
+    ) -> dict[str, object]:
+        """Live users in status now, optionally only those whose id is in among (invalid ids skipped)."""
+        query: dict[str, object] = {
+            **self._activity_filter(status, datetime.now(UTC)),
+            "is_active": {"$ne": False},
+        }
+        if among is not None:
+            query["_id"] = {
+                "$in": [self._id_value(user_id) for user_id in among if self.is_valid_id(user_id)]
             }
+        return query
+
+    async def find_by_activity_status(
+        self, status: ActivityStatus, *, among: Collection[str] | None = None
+    ) -> list[UserDocument]:
+        """Live users in status now, as whole documents; a sweep needing only ids reads find_activity_rows."""
+        return await self._find_lenient(self._status_query(status, among))
+
+    async def find_activity_rows(
+        self, status: ActivityStatus, *, among: Collection[str] | None = None
+    ) -> list[UserActivityRow]:
+        """Live users in status now, as their id and last-seen instant only."""
+        return await self._aggregate(
+            [
+                {"$match": self._status_query(status, among)},
+                {"$project": {"_id": 0, "id": {"$toString": "$_id"}, "last_active_at": True}},
+            ],
+            UserActivityRow,
         )
 
     async def find_nurture_candidates(self, created_since: datetime) -> list[UserDocument]:
@@ -184,30 +226,26 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         return [doc.id for doc in docs]
 
-    def _backfill_query(
-        self, active_since: datetime, eligible_before: datetime
-    ) -> dict[str, object]:
+    def _backfill_query(self, eligible_before: datetime) -> dict[str, object]:
         # ``_id`` is an ObjectId whose generation time is the account's creation
         # instant, so the launch cutoff is expressed against it directly — the
         # id-codec that belongs inside the repository.
         return {
-            "last_active_at": {"$gte": active_since},
+            **self._activity_filter(ActivityStatus.ACTIVE, datetime.now(UTC)),
             "_id": {"$lt": ObjectId.from_datetime(eligible_before)},
             "memory_backfilled": {"$exists": False},
         }
 
-    async def count_backfill_candidates(
-        self, active_since: datetime, eligible_before: datetime
-    ) -> int:
-        """Recently-active, pre-launch users not yet memory-backfilled."""
-        return await self._count(self._backfill_query(active_since, eligible_before))
+    async def count_backfill_candidates(self, eligible_before: datetime) -> int:
+        """Active, pre-launch users not yet memory-backfilled."""
+        return await self._count(self._backfill_query(eligible_before))
 
     async def find_backfill_candidate_ids(
-        self, active_since: datetime, eligible_before: datetime, *, limit: int
+        self, eligible_before: datetime, *, limit: int
     ) -> list[str]:
         """Ids of the next batch of backfill candidates, most-recently-active first."""
         docs = await self._find(
-            self._backfill_query(active_since, eligible_before),
+            self._backfill_query(eligible_before),
             sort=[("last_active_at", -1)],
             limit=limit,
         )
@@ -227,36 +265,29 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     ids.append(platform_user_id)
         return ids
 
-    # ------------------------------------------------------- last-active bump
+    # ------------------------------------------------------- activity
 
-    async def touch_last_active(self, email: str) -> None:
-        """Debounced, cache-exempt last_active_at bump; failures are logged, never raised.
+    async def get_activity_dates(self, user_id: str) -> UserActivityDates | None:
+        """Read the user's activity dates from Mongo, never the cache.
 
-        A Redis SET NX EX gate collapses per-request writes to one per user per
-        debounce window; if Redis is unavailable the gate is skipped and every
-        call writes (correctness over the write-rate optimization).
+        set_last_active skips the cache, so a cached user can carry a
+        last_active_at that is days old.
         """
-        try:
-            client = redis_cache.redis
-            if client is not None:
-                acquired = await client.set(
-                    f"{LAST_ACTIVE_GATE_PREFIX}:{email}",
-                    "1",
-                    nx=True,
-                    ex=LAST_ACTIVE_DEBOUNCE_SECONDS,
-                )
-                if not acquired:
-                    return
-            await self._update_fields_no_invalidate(
-                {"email": email}, {"last_active_at": datetime.now(UTC)}
-            )
-        except Exception as exc:
-            log.warning(
-                f"{LogTag.API} touch_last_active failed for",
-                email=email,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
+        return await self._find_one_projected(
+            self._identity_filter(user_id),
+            {"last_active_at": 1, "created_at": 1},
+            UserActivityDates,
+        )
+
+    async def set_last_active(self, user_id: str, at: datetime) -> None:
+        """Write last_active_at past the cache: it moves on every active minute.
+
+        Bumping the generation that often would invalidate every user's cache,
+        and nothing reads activity off a cached user (see get_activity_dates).
+        """
+        await self._update_fields_no_invalidate(
+            self._identity_filter(user_id), {"last_active_at": at}
+        )
 
     # ------------------------------------------------------- onboarding writes
 
@@ -267,7 +298,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         phase: OnboardingPhase,
         bio_status: BioStatus,
         preferences: OnboardingPreferences,
-        timezone: str | None = None,
         completed_at: datetime | None = None,
     ) -> UserDocument | None:
         """Atomically mark onboarding complete (gated on it not being complete yet).
@@ -286,12 +316,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         }
         for field, value in preferences.model_dump(exclude_unset=True).items():
             set_fields[f"onboarding.preferences.{field}"] = value
-        if timezone is not None:
-            set_fields["timezone"] = timezone
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={"onboarding.completed": {"$ne": True}},
         )
 
@@ -302,16 +329,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         set_fields: dict[str, object] = {}
         for field, value in preferences.model_dump(exclude_unset=True).items():
             set_fields[f"onboarding.preferences.{field}"] = value
-        return await self._apply_raw_update(
-            {"_id": self._id_value(user_id)}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._apply_raw_update({"_id": self._id_value(user_id)}, {"$set": set_fields})
 
     async def set_starting_jobs(self, user_id: str, jobs: StartingJobs) -> None:
         """Store the jobs drafted for the welcome thread and the paywall preview."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_first_conversation_id(
@@ -327,15 +351,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {f"onboarding.{GETTING_STARTED_CONVERSATION_ID_FIELD}": conversation_id}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def reset_onboarding(self, user_id: str) -> None:
         """Wipe the user's onboarding subdocument."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$unset": {"onboarding": ""}},
-            scope=REPO_GLOBAL_SCOPE,
+            {"$unset": {"onboarding": _UNSET}},
             return_document=False,
         )
 
@@ -349,7 +371,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {field: reached_at}},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={field: {"$exists": False}},
             return_document=False,
         )
@@ -372,7 +393,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -399,7 +419,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -438,7 +457,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={
                 "$or": [
                     {_SOCIAL_PROFILES_FIELD: {"$exists": False}},
@@ -470,7 +488,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -479,7 +496,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"quiet_hours": hours.model_dump()}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_chat_channel_priority(self, user_id: str, priority: list[str]) -> None:
@@ -487,16 +503,23 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"chat_channel_priority": priority}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
+
+    async def clear_name_if_unchanged(self, user_id: str, name: str) -> bool:
+        """Unset the user's name while it still equals name; False when it changed or the user is gone."""
+        before = await self._apply_raw_update(
+            {"_id": self._id_value(user_id), "name": name},
+            {"$unset": {"name": ""}},
+            return_document=False,
+        )
+        return before is not None
 
     async def set_bio_status(self, user_id: str, bio_status: BioStatus) -> None:
         """Update the onboarding bio-generation status (e.g. back to processing on a Gmail reconnect)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.bio_status": bio_status}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -505,7 +528,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.writing_style.user_edited_summary": summary}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -514,7 +536,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -527,7 +548,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -547,7 +567,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "inactive_email_count": count,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -564,7 +583,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                 "$addToSet": {"nurture.completed_steps": step_key},
                 "$push": {"nurture.history": {"step": step_key, "at": at, "status": status}},
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -587,7 +605,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                 ],
             },
             {"$set": {"last_limit_email_sent": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -600,7 +617,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"last_limit_email_sent": previous}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -634,7 +650,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "highest_activity_tier_at": datetime.now(UTC),
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_first_steps_collapsed(self, user_id: str, collapsed: bool) -> bool:
@@ -647,7 +662,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     FIRST_STEPS_COLLAPSED_AT_FIELD: datetime.now(UTC) if collapsed else None,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
         return updated is not None
@@ -666,8 +680,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         matched = await self._apply_raw_update_unfetched(
             {"_id": self._id_value(user_id)},
             {"$set": {delivery.value: now for delivery in deliveries}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
         )
         return matched > 0
 
@@ -676,7 +688,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"memory_backfilled": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -687,39 +698,24 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"role": role.value}},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={"role": None},
         )
         return updated is not None
 
-    async def set_channel_preferences(
-        self,
-        user_id: str,
-        *,
-        telegram: bool | None = None,
-        discord: bool | None = None,
-        whatsapp: bool | None = None,
-        slack: bool | None = None,
-        email: bool | None = None,
-    ) -> None:
-        """Set the given notification channel flags; a None argument leaves that channel untouched."""
-        set_fields: dict[str, object] = {}
-        if telegram is not None:
-            set_fields["notification_channel_prefs.telegram"] = telegram
-        if discord is not None:
-            set_fields["notification_channel_prefs.discord"] = discord
-        if whatsapp is not None:
-            set_fields["notification_channel_prefs.whatsapp"] = whatsapp
-        if slack is not None:
-            set_fields["notification_channel_prefs.slack"] = slack
-        if email is not None:
-            set_fields["notification_channel_prefs.email"] = email
+    async def set_channel_preferences(self, user_id: str, preferences: Mapping[str, bool]) -> None:
+        """Set the given notification channel flags; unlisted channels are left untouched."""
+        unknown = sorted(set(preferences) - set(DEFAULT_CHANNEL_PREFERENCES))
+        if unknown:
+            raise ValueError(f"Unknown notification channels: {unknown}")
+        set_fields: dict[str, object] = {
+            f"notification_channel_prefs.{channel}": enabled
+            for channel, enabled in preferences.items()
+        }
         if not set_fields:
             return
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -728,7 +724,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {f"feature_flags.{flag.value}": enabled}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return updated is not None
 
@@ -743,7 +738,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "email_memory_count": memory_count,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -752,7 +746,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"integration_scan_states.gmail.last_scan_timestamp": timestamp}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -761,7 +754,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"selected_voice_id": voice_id}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -770,7 +762,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"starred_voice_ids": voice_ids}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -786,7 +777,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "onboarding.overlay_opacity": overlay_opacity,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
         return updated is not None
@@ -805,7 +795,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     f"platform_links_connected_at.{platform}": connected_at,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def unlink_platform(self, user_id: str, platform: str) -> UserDocument | None:
@@ -814,11 +803,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"_id": self._id_value(user_id)},
             {
                 "$unset": {
-                    f"platform_links.{platform}": "",
-                    f"platform_links_connected_at.{platform}": "",
+                    f"platform_links.{platform}": _UNSET,
+                    f"platform_links_connected_at.{platform}": _UNSET,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
 

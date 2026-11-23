@@ -11,6 +11,9 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor
+from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
+from app.models.agent_config import AgentConfigurableView
 from app.models.trigger_gate_models import AuthoredGate, GateEdit
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.workflow.subagent_output import FinalizedOutput
@@ -48,6 +51,7 @@ def _workflow(trigger_config: TriggerConfig, **overrides: object) -> Workflow:
         "prompt": "Summarize my inbox",
         "steps": [],
         "trigger_config": trigger_config,
+        "delivery": WorkflowDelivery.NOW,
     }
     fields.update(overrides)
     return Workflow(**fields)  # type: ignore[arg-type]  # overrides bag is dict[str, object] by design; pydantic validates
@@ -219,7 +223,11 @@ class TestApplyWorkflowEdit:
         with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = workflow
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=writer
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=writer,
+                run=AgentConfigurableView(),
             )
 
         mock_update.assert_awaited_once()
@@ -247,7 +255,11 @@ class TestApplyWorkflowEdit:
             mock_update.return_value = workflow
             mock_regen.return_value = None
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=writer
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=writer,
+                run=AgentConfigurableView(),
             )
 
         mock_regen.assert_awaited_once_with(
@@ -268,7 +280,11 @@ class TestApplyWorkflowEdit:
         with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = _workflow(current, title="Evening digest")
             result = await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=writer
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=writer,
+                run=AgentConfigurableView(),
             )
 
         assert result["message"] == (
@@ -276,6 +292,39 @@ class TestApplyWorkflowEdit:
             " The integration trigger itself was left unchanged. Its config is set "
             "in the workflow editor in the app."
         )
+
+    async def test_a_trigger_sent_to_the_editor_keeps_the_run_waiting_on_its_save(self) -> None:
+        current = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_email")
+        workflow = _workflow(current)
+        draft = _draft(trigger_type="integration", trigger_slug="gmail_new_labeled_email")
+        run = AgentConfigurableView(conversation_id="conv-1", execution_mode="interactive")
+
+        with (
+            patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock),
+            patch("app.utils.workflow_utils.wait_for_user", new_callable=AsyncMock) as wait,
+        ):
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock(), run=run
+            )
+
+        wait.assert_awaited_once_with(
+            run, USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, workflow.id, workflow.title
+        )
+
+    async def test_an_edit_the_agent_applies_itself_keeps_nothing_waiting(self) -> None:
+        workflow = _workflow(TriggerConfig(type=TriggerType.MANUAL))
+        draft = _draft(title="Renamed")
+        run = AgentConfigurableView(conversation_id="conv-1", execution_mode="interactive")
+
+        with (
+            patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock),
+            patch("app.utils.workflow_utils.wait_for_user", new_callable=AsyncMock) as wait,
+        ):
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock(), run=run
+            )
+
+        wait.assert_not_awaited()
 
     async def test_an_integration_trigger_change_alone_is_sent_to_the_editor(self) -> None:
         current = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_email")
@@ -285,7 +334,11 @@ class TestApplyWorkflowEdit:
 
         with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
             result = await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=writer
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=writer,
+                run=AgentConfigurableView(),
             )
 
         mock_update.assert_not_awaited()
@@ -330,7 +383,11 @@ class TestEditKeepsTheGate:
         ):
             mock_update.return_value = workflow
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=MagicMock(),
+                run=AgentConfigurableView(),
             )
 
         request = mock_update.await_args.args[1]
@@ -345,7 +402,11 @@ class TestEditKeepsTheGate:
         with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = workflow
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=MagicMock(),
+                run=AgentConfigurableView(),
             )
 
         request = mock_update.await_args.args[1]
@@ -361,7 +422,11 @@ class TestEditKeepsTheGate:
         with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = workflow
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=MagicMock(),
+                run=AgentConfigurableView(),
             )
 
         request = mock_update.await_args.args[1]
@@ -376,7 +441,11 @@ class TestEditKeepsTheGate:
         with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = workflow
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=MagicMock(),
+                run=AgentConfigurableView(),
             )
 
         request = mock_update.await_args.args[1]
@@ -396,7 +465,11 @@ class TestEditKeepsTheGate:
         with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = workflow
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+                draft=draft,
+                workflow=workflow,
+                user_id=USER_ID,
+                writer=MagicMock(),
+                run=AgentConfigurableView(),
             )
 
         mock_update.assert_not_awaited()
@@ -441,7 +514,9 @@ class TestCreateWorkflowDirectly:
             mock_create.return_value = _workflow(
                 TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
             )
-            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=writer, delivery=WorkflowDelivery.NOW
+            )
 
         request = mock_create.await_args.kwargs["request"]
         assert request.description == "Priority-ordered digest of my unread Gmail"
@@ -454,7 +529,9 @@ class TestCreateWorkflowDirectly:
 
         with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = _workflow(TriggerConfig(type=TriggerType.MANUAL))
-            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=writer, delivery=WorkflowDelivery.NOW
+            )
 
         request = mock_create.await_args.kwargs["request"]
         assert request.description == "Morning digest"
@@ -467,8 +544,26 @@ class TestCreateWorkflowDirectly:
 
         with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = _workflow(TriggerConfig(type=TriggerType.MANUAL))
-            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=writer, delivery=WorkflowDelivery.NOW
+            )
 
         request = mock_create.await_args.kwargs["request"]
         assert request.prompt == "Summarize my unread Gmail"
         assert request.description == "Summarize my unread Gmail"
+
+    async def test_the_agents_delivery_choice_is_saved(self) -> None:
+        draft = _draft()
+        workflow = _workflow(
+            TriggerConfig(type=TriggerType.MANUAL),
+            id="wf_1",
+            delivery=WorkflowDelivery.BRIEF,
+        )
+
+        with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = workflow
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=MagicMock(), delivery=WorkflowDelivery.BRIEF
+            )
+
+        assert mock_create.await_args.kwargs["request"].delivery is WorkflowDelivery.BRIEF

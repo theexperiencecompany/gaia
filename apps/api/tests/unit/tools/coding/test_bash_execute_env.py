@@ -7,24 +7,34 @@ seeded first — no standing sandbox-wide token, ever.
 
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import AbstractAsyncContextManager, ExitStack
+import time
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from e2b import TimeoutException
+from langchain_core.runnables import RunnableConfig
 import pytest
 from tests.helpers import captured_wide_event
 
-from app.agents.tools.coding import bash_tool
-from app.agents.tools.coding.bash_tool import bash, build_bash_tool
+from app.agents.tools.coding._artifacts import artifact_links_note
+from app.agents.tools.coding.bash_tool import _publish_artifacts, bash, build_bash_tool
 from app.agents.workspace.paths import WORKSPACE_ROOT, runs_log_dir, session_dir
-from app.constants.sandbox import BASH_MAX_COMMAND_LENGTH, BASH_MAX_TIMEOUT_SECONDS
+from app.constants.sandbox import (
+    ARTIFACT_MTIME_SKEW_SECONDS,
+    BASH_MAX_COMMAND_LENGTH,
+    BASH_MAX_TIMEOUT_SECONDS,
+)
+from app.models.short_link_models import ShortLink, ShortLinkTargetType, WorkspaceFileTarget
+from app.services.links.placeholders import link_placeholder
 from app.services.sandbox import SandboxAcquisitionError
-from app.services.storage import FsOps, fs_timer
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
+from shared.py.wide_events import log
 
+ARTIFACTS_MODULE = "app.agents.tools.coding._artifacts"
 MODULE = "app.agents.tools.coding.bash_tool"
-CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
+CONFIG = RunnableConfig(configurable={"user_id": "u1", "stream_id": "s1"})
 EXECUTE_ENV = {
     "GAIA_EXECUTE_URL": "https://api.test/api/v1/sandbox/execute",
     "GAIA_EXECUTE_TOKEN": "tok-1",
@@ -51,7 +61,7 @@ def _code_mode_on(mint: MagicMock) -> ExitStack:
     return stack
 
 
-def _acquire(sbx: AsyncMock) -> MagicMock:
+def _acquire(sbx: object) -> MagicMock:
     manager = MagicMock()
     manager.__aenter__ = AsyncMock(return_value=sbx)
     manager.__aexit__ = AsyncMock(return_value=False)
@@ -198,7 +208,7 @@ class TestBashExecuteEnv:
         assert mint.call_args.kwargs["command_timeout_seconds"] == BASH_MAX_TIMEOUT_SECONDS
 
 
-SESSION_CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "conv1"}}
+SESSION_CONFIG = RunnableConfig(configurable={"user_id": "u1", "conversation_id": "conv1"})
 
 
 def _streaming_run(stdout: str = "out", stderr: str = "err") -> AsyncMock:
@@ -268,7 +278,7 @@ class TestBashRunContract:
         sbx.commands.run = _streaming_run()
         with (
             patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
-            patch(f"{MODULE}._publish_artifacts", new=AsyncMock()),
+            patch(f"{MODULE}._publish_artifacts", new=AsyncMock(return_value={})),
             patch(f"{MODULE}.safe_emit") as emit,
         ):
             await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
@@ -283,7 +293,7 @@ class TestBashRunContract:
     ) -> None:
         # A command can write artifacts many ways (cat, python, mv), so the tool
         # enumerates them after every foreground run; a detached one has not run yet.
-        publish = AsyncMock()
+        publish = AsyncMock(return_value={})
         foreground = _sbx()
         foreground.commands.run = _streaming_run()
         background = _sbx()
@@ -297,7 +307,8 @@ class TestBashRunContract:
                 await bash.ainvoke(
                     {"command": "sleep 99", "background": True}, config=SESSION_CONFIG
                 )
-        publish.assert_awaited_once_with(foreground, "u1", "conv1")
+        publish.assert_awaited_once()
+        assert publish.await_args.args == (foreground, "u1", "conv1")
 
     async def test_the_background_started_event_carries_the_runs_id(self) -> None:
         sbx = _sbx()
@@ -324,6 +335,133 @@ class TestBashRunContract:
         path, body = sbx.files.write.await_args.args
         assert path == f"{runs_log_dir()}/{run_id}.log"
         assert body.startswith("ok")
+
+
+SHORT_URL = "https://heygaia.link/abcdefghijk"
+RUN_STARTED_AT = 1_700_000_000.0
+ARTIFACT_SIZE = 3
+
+
+def _artifact_listing(*records: tuple[str, float]) -> str:
+    """Build the NUL-delimited find stream _publish_artifacts parses (path, size, mtime)."""
+    return "".join(f"{rel}\0{ARTIFACT_SIZE}\0{mtime}\0" for rel, mtime in records)
+
+
+@pytest.mark.unit
+class TestBashArtifactLinks:
+    async def test_the_result_hands_the_agent_the_links_of_what_the_run_wrote(self) -> None:
+        sbx = _sbx()
+        publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        timed: list[str] = []
+
+        def recording_timer(op: str, **labels: str) -> AbstractAsyncContextManager[None]:
+            timed.append(op)
+            return fs_timer(op, **labels)
+
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=publish),
+            patch(f"{MODULE}.fs_timer", new=recording_timer),
+        ):
+            before = time.time()
+            out = await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
+            after = time.time()
+        assert out.endswith(artifact_links_note({"report.html": SHORT_URL}))
+        assert FsOps.TOOL_BASH_PUBLISH in timed
+        assert publish.await_args.args == (sbx, "u1", "conv1")
+        assert before <= publish.await_args.kwargs["changed_since"] <= after
+
+    async def test_the_links_follow_the_runs_output_instead_of_replacing_it(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = _streaming_run(stdout="built report.html", stderr="")
+        publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=publish),
+        ):
+            out = await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
+        output, trailing = out.split(artifact_links_note({"report.html": SHORT_URL}))
+        assert trailing == ""
+        assert output.startswith("exit_code: 0")
+        assert "built report.html" in output
+
+    async def test_a_run_outside_a_session_publishes_nothing(self) -> None:
+        sbx = _sbx()
+        publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=publish),
+        ):
+            out = await bash.ainvoke({"command": "make"}, config=CONFIG)
+        publish.assert_not_awaited()
+        assert SHORT_URL not in out
+
+    async def test_only_files_written_since_the_run_started_get_a_link(self) -> None:
+        sbx = _sbx()
+        boundary = RUN_STARTED_AT - ARTIFACT_MTIME_SKEW_SECONDS
+        sbx.commands.run = AsyncMock(
+            return_value=SimpleNamespace(
+                stdout=_artifact_listing(
+                    ("old.md", boundary - 0.5),
+                    ("skewed.md", boundary),
+                    ("new.md", RUN_STARTED_AT + 1),
+                )
+            )
+        )
+        with (
+            patch(
+                f"{ARTIFACTS_MODULE}.attach_link",
+                new=AsyncMock(
+                    side_effect=lambda user_id, target: ShortLink(
+                        slug="abcdefghijk", user_id=user_id, target=target
+                    )
+                ),
+            ) as mint,
+            patch(f"{ARTIFACTS_MODULE}.safe_emit") as card,
+        ):
+            links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
+        assert links == {
+            name: link_placeholder(
+                WorkspaceFileTarget(
+                    type=ShortLinkTargetType.WORKSPACE_FILE, conversation_id="conv1", path=name
+                )
+            )
+            for name in ("skewed.md", "new.md")
+        }
+        # Only what the run wrote is shared; listing an older file never mints for it.
+        assert [c.args[1].path for c in mint.await_args_list] == ["skewed.md", "new.md"]
+        # Every artifact is still carded, linked or not, so its card stays live.
+        cards = [c.args[0]["artifact_data"] for c in card.call_args_list]
+        assert [c["path"] for c in cards] == ["old.md", "skewed.md", "new.md"]
+        assert "short_url" not in cards[0]
+
+    async def test_a_file_whose_publish_failed_gets_no_link(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(
+            return_value=SimpleNamespace(stdout=_artifact_listing(("new.md", RUN_STARTED_AT)))
+        )
+        with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=None)):
+            links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
+        assert links == {}
+
+    async def test_each_artifact_is_published_with_its_size_and_mtime(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(
+            return_value=SimpleNamespace(stdout=_artifact_listing(("notes.md", RUN_STARTED_AT)))
+        )
+        with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=SHORT_URL)) as pub:
+            await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
+        pub.assert_awaited_once_with(
+            "u1",
+            "conv1",
+            ArtifactInfo(
+                path="notes.md",
+                size_bytes=ARTIFACT_SIZE,
+                mtime=RUN_STARTED_AT,
+                content_type="text/markdown",
+            ),
+            written_this_turn=True,
+        )
 
 
 def _error_event(run_id: str, chunk: str, session_id: str | None) -> object:
@@ -375,7 +513,7 @@ class TestBashRequestValidation:
         sbx = _sbx()
         with (
             patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
-            patch(f"{MODULE}._publish_artifacts", new=AsyncMock()),
+            patch(f"{MODULE}._publish_artifacts", new=AsyncMock(return_value={})),
         ):
             await bash.ainvoke({"command": "pwd"}, config=SESSION_CONFIG)
         assert sbx.commands.run.await_args.kwargs["cwd"] == session_dir("conv1")
@@ -415,7 +553,7 @@ class TestBashRunTelemetry:
         timer = MagicMock(wraps=fs_timer)
         with (
             patch(f"{MODULE}.acquire_sandbox", new=acquire),
-            patch(f"{MODULE}._publish_artifacts", new=AsyncMock()),
+            patch(f"{MODULE}._publish_artifacts", new=AsyncMock(return_value={})),
             patch(f"{MODULE}.fs_timer", new=timer),
         ):
             await bash.ainvoke({"command": "echo hi"}, config=SESSION_CONFIG)
@@ -476,7 +614,7 @@ class TestBashFailures:
         with (
             patch(f"{MODULE}.acquire_sandbox", new=acquire),
             patch(f"{MODULE}.safe_emit") as emit,
-            patch.object(bash_tool.log, "error") as log_error,
+            patch.object(log, "error") as log_error,
         ):
             out = await bash.ainvoke({"command": "sleep 999", "timeout": 45}, config=SESSION_CONFIG)
         run_id = emit.call_args_list[0].args[0]["bash_data"]["id"]

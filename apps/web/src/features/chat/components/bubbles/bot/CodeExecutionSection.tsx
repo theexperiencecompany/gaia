@@ -1,13 +1,15 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Skeleton } from "@heroui/skeleton";
+import { Accordion, Skeleton } from "@heroui/react";
 import dynamic from "next/dynamic";
 import type React from "react";
 import { useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 
 import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import { copyWithFeedback } from "@/lib/clipboard";
 import type { CodeData } from "@/types/features/toolDataTypes";
 import CodeExecutionOutput from "./CodeExecutionOutput";
+
+const accordionStyles = accordionVariants({ variant: "shadow" });
 
 // recharts (~100 KB gz) is only needed when a code-execution result actually
 // contains charts, which is rare. Lazy-load it so it stays out of the chat
@@ -32,6 +34,10 @@ const createCopyHandler = (
   };
 };
 
+const TRIGGER_CLASS = "text-sm font-medium text-gray-300 hover:text-white";
+// v2 sized this chevron to the trigger's 14px text, not its heading's 24px
+const INDICATOR_CLASS = accordionStyles.indicator({ className: "size-[1em]" });
+
 const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
   code_data,
 }) => {
@@ -51,59 +57,70 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
   return (
     <div className="w-full max-w-[30vw] rounded-3xl rounded-l-none bg-zinc-800 px-3 py-4">
       <Accordion
-        selectionMode="multiple"
+        allowsMultipleExpanded
         defaultExpandedKeys={["output", "charts"]}
-        className="w-full"
-        variant="shadow"
+        className={accordionStyles.base({ className: "w-full" })}
       >
-        <AccordionItem
-          key="code"
-          aria-label="Executed Code"
-          title="Executed Code"
-          classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-white",
-            content: "pt-0",
-          }}
-        >
-          <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
-            <ChatCodeBlock className={`language-${code_data.language}`}>
-              {code_data.code}
-            </ChatCodeBlock>
-          </div>
-        </AccordionItem>
+        <Accordion.Item id="code">
+          <Accordion.Heading>
+            <Accordion.Trigger
+              className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
+            >
+              Executed Code
+              <Accordion.Indicator className={INDICATOR_CLASS} />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className="pb-2">
+              <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
+                <ChatCodeBlock className={`language-${code_data.language}`}>
+                  {code_data.code}
+                </ChatCodeBlock>
+              </div>
+            </div>
+          </Accordion.Panel>
+        </Accordion.Item>
 
         {/* Output Section */}
-        <AccordionItem
-          key="output"
-          aria-label="Output"
-          title="Output"
-          classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-white",
-            content: "pt-0",
-          }}
-        >
-          <CodeExecutionOutput
-            output={code_data.output}
-            status={code_data.status}
-            language={code_data.language}
-            onCopy={handleCopyOutput}
-            copied={outputCopied}
-          />
-        </AccordionItem>
+        <Accordion.Item id="output">
+          <Accordion.Heading>
+            <Accordion.Trigger
+              className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
+            >
+              Output
+              <Accordion.Indicator className={INDICATOR_CLASS} />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className="pb-2">
+              <CodeExecutionOutput
+                output={code_data.output}
+                status={code_data.status}
+                language={code_data.language}
+                onCopy={handleCopyOutput}
+                copied={outputCopied}
+              />
+            </div>
+          </Accordion.Panel>
+        </Accordion.Item>
 
         {/* Charts Component */}
         {code_data.charts && code_data.charts.length > 0 ? (
-          <AccordionItem
-            key="charts"
-            aria-label="Charts"
-            title="Charts"
-            classNames={{
-              trigger: "text-sm font-medium text-gray-300 hover:text-white",
-              content: "pt-0",
-            }}
-          >
-            <ChartDisplay charts={code_data.charts} />
-          </AccordionItem>
+          <Accordion.Item id="charts">
+            <Accordion.Heading>
+              <Accordion.Trigger
+                className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
+              >
+                Charts
+                <Accordion.Indicator className={INDICATOR_CLASS} />
+              </Accordion.Trigger>
+            </Accordion.Heading>
+            <Accordion.Panel>
+              <div className="pb-2">
+                <ChartDisplay charts={code_data.charts} />
+              </div>
+            </Accordion.Panel>
+          </Accordion.Item>
         ) : null}
       </Accordion>
     </div>

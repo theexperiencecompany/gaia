@@ -9,18 +9,18 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.constants.cache import USER_INTEGRATION_CACHE_PREFIX
-from app.db.repositories.base import UserScopedRepository, cached_query
+from app.constants.integrations import IntegrationStatus, ToolsSetup
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedUserScopedRepository, cached_query
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
-    UserIntegrationStatus,
     UserIntegrationUpdate,
 )
 
 
 class UserIntegrationsRepository(
-    UserScopedRepository[UserIntegrationDocument, UserIntegrationUpdate]
+    CachedUserScopedRepository[UserIntegrationDocument, UserIntegrationUpdate]
 ):
     collection_name = "user_integrations"
     document_model = UserIntegrationDocument
@@ -59,7 +59,7 @@ class UserIntegrationsRepository(
 
     async def is_connected(self, user_id: str, integration_id: str) -> bool:
         doc = await self.get_for_user(user_id, integration_id)
-        return doc is not None and doc.status == "connected"
+        return doc is not None and doc.status == IntegrationStatus.CONNECTED
 
     async def has_connected_before(self, user_id: str, integration_id: str) -> bool:
         """Whether this user's record was ever connected; connected_at survives a later expiry or re-auth."""
@@ -73,14 +73,14 @@ class UserIntegrationsRepository(
         status check just says "not usable".
         """
         doc = await self.get_for_user(user_id, integration_id)
-        return doc is not None and doc.status == "expired"
+        return doc is not None and doc.status == IntegrationStatus.EXPIRED
 
     async def set_status(
         self,
         user_id: str,
         integration_id: str,
         *,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> bool:
         """Upsert the user's connection status; always succeeds (the upsert matches or inserts).
@@ -93,19 +93,33 @@ class UserIntegrationsRepository(
             "user_id": user_id,
             "integration_id": integration_id,
         }
-        if status == "connected":
+        if status == IntegrationStatus.CONNECTED:
             set_fields["connected_at"] = datetime.now(UTC)
             set_fields["expired_at"] = None
             set_fields["expired_reason"] = None
-        elif status == "expired":
+        elif status == IntegrationStatus.EXPIRED:
             set_fields["expired_at"] = datetime.now(UTC)
             set_fields["expired_reason"] = expired_reason
         doc = await self._apply_raw_update(
             {"user_id": user_id, "integration_id": integration_id},
             {"$set": set_fields, "$setOnInsert": {"created_at": datetime.now(UTC)}},
-            scope=user_id,
             upsert=True,
         )
+        return doc is not None
+
+    async def set_tools_setup(
+        self,
+        user_id: str,
+        integration_id: str,
+        state: ToolsSetup,
+        *,
+        only_from: ToolsSetup | None = None,
+    ) -> bool:
+        """Record where the integration's tool discovery stands; with only_from, only out of that state."""
+        query: dict[str, object] = {"user_id": user_id, "integration_id": integration_id}
+        if only_from is not None:
+            query["tools_setup"] = only_from
+        doc = await self._apply_raw_update(query, {"$set": {"tools_setup": state}})
         return doc is not None
 
     async def save_accounts(
@@ -115,7 +129,7 @@ class UserIntegrationsRepository(
         *,
         accounts: list[IntegrationAccount],
         primary_account_id: str | None,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> UserIntegrationDocument:
         """Replace the account list and primary, with the status derived from them, in one write.
@@ -130,17 +144,16 @@ class UserIntegrationsRepository(
             "primary_account_id": primary_account_id,
             "status": status,
         }
-        if status == "connected":
+        if status == IntegrationStatus.CONNECTED:
             set_fields["connected_at"] = now
             set_fields["expired_at"] = None
             set_fields["expired_reason"] = None
-        elif status == "expired":
+        elif status == IntegrationStatus.EXPIRED:
             set_fields["expired_at"] = now
             set_fields["expired_reason"] = expired_reason
         doc = await self._apply_raw_update(
             {"user_id": user_id, "integration_id": integration_id},
             {"$set": set_fields, "$setOnInsert": {"created_at": now}},
-            scope=user_id,
             upsert=True,
         )
         if doc is None:
@@ -158,7 +171,6 @@ class UserIntegrationsRepository(
                 "accounts.id": account_id,
             },
             {"$set": {"accounts.$[account].nickname": nickname}},
-            scope=user_id,
             array_filters=[{"account.id": account_id}],
         )
 
@@ -169,7 +181,7 @@ class UserIntegrationsRepository(
         *,
         accounts: list[IntegrationAccount],
         primary_account_id: str | None,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
     ) -> UserIntegrationDocument | None:
         """Move a pre-multi-account record onto its account list, dropping its single account id."""
         return await self._apply_raw_update(
@@ -182,7 +194,6 @@ class UserIntegrationsRepository(
                 },
                 "$unset": {"connected_account_id": ""},
             },
-            scope=user_id,
         )
 
     async def user_ids_with_integration(self, integration_id: str) -> list[str]:

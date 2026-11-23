@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.models.integration_models import UserIntegrationDocument, UserIntegrationStatus
+from app.models.integration_models import UserIntegrationDocument
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import OAuthContext
@@ -28,7 +28,7 @@ def bypass_cacheable():
         yield
 
 
-def _ui_doc(integration_id: str, status: UserIntegrationStatus) -> UserIntegrationDocument:
+def _ui_doc(integration_id: str, status: str) -> UserIntegrationDocument:
     """Build a UserIntegrationDocument as list_for_user would return it."""
     return UserIntegrationDocument(user_id="user123", integration_id=integration_id, status=status)
 

@@ -138,10 +138,10 @@ async def _fetch_smithery_icon(server_url: str) -> str | None:
         return None
 
 
-def legacy_favicon_url(server_url: str) -> str:
-    """Google's favicon service keyed by the registered domain (the default fallback)."""
-    extracted = tldextract.extract(server_url)
-    return GOOGLE_FAVICON_URL.format(domain=extracted.top_domain_under_public_suffix)
+def legacy_favicon_url(server_url: str) -> str | None:
+    """Google's favicon service keyed by the registered domain; None for an IP, localhost or empty host."""
+    domain = tldextract.extract(server_url).top_domain_under_public_suffix
+    return GOOGLE_FAVICON_URL.format(domain=domain) if domain else None
 
 
 def _make_absolute_url(href: str, base_url: str) -> str:

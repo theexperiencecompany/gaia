@@ -10,9 +10,9 @@ from __future__ import annotations
 from app.config.oauth_config import all_integrations
 from app.constants.cache import OAUTH_STATUS_KEY
 from app.constants.integrations import (
-    INTEGRATION_STATUS_CONNECTED,
     MANAGED_BY_COMPOSIO,
     MANAGED_BY_MCP,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
@@ -50,7 +50,7 @@ async def _get_cached_integrations_status(user_id: str) -> dict[str, bool]:
 
     user_integrations = await user_integration_repository.list_for_user(user_id, limit=100)
     mongo_status = {
-        ui.integration_id: ui.status == INTEGRATION_STATUS_CONNECTED for ui in user_integrations
+        ui.integration_id: ui.status == IntegrationStatus.CONNECTED for ui in user_integrations
     }
 
     # Track which platform integrations need external verification

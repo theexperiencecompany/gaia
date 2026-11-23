@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.arq_redis import arq_redis_settings
+from app.constants.db import ARQ_REDIS_CONNECT_TIMEOUT_SECONDS
 from app.utils.redis_utils import RedisPoolManager
 
 # ---------------------------------------------------------------------------
@@ -44,28 +46,28 @@ class TestRedisPoolManagerSingleton:
 class TestGetPool:
     async def test_creates_pool_on_first_call(self) -> None:
         mock_pool = AsyncMock()
-        mock_redis_settings = MagicMock()
 
         with (
             patch.dict(
                 "sys.modules",
                 {
                     "arq": MagicMock(create_pool=AsyncMock(return_value=mock_pool)),
-                    "arq.connections": MagicMock(
-                        RedisSettings=MagicMock(
-                            from_dsn=MagicMock(return_value=mock_redis_settings)
-                        )
-                    ),
                 },
             ),
-            patch(
-                "app.config.settings.settings",
-                MagicMock(REDIS_URL="redis://localhost:6379/0"),
-            ),
+            patch("app.config.arq_redis.arq_redis_settings", MagicMock()),
         ):
             pool = await RedisPoolManager.get_pool()
 
         assert pool is mock_pool
+
+    async def test_the_pool_connects_with_the_shared_arq_redis_settings(self) -> None:
+        create_pool = AsyncMock(return_value=AsyncMock())
+
+        with patch("arq.create_pool", create_pool):
+            await RedisPoolManager.get_pool()
+
+        create_pool.assert_awaited_once_with(arq_redis_settings())
+        assert create_pool.await_args.args[0].conn_timeout == ARQ_REDIS_CONNECT_TIMEOUT_SECONDS
 
     async def test_returns_cached_pool_on_second_call(self) -> None:
         """If _pool is already set, get_pool returns it immediately."""
@@ -78,23 +80,15 @@ class TestGetPool:
     async def test_raises_when_create_pool_fails(self) -> None:
         """If arq.create_pool raises, the exception propagates."""
         mock_create = AsyncMock(side_effect=ConnectionError("Redis down"))
-        mock_redis_settings_cls = MagicMock()
-        mock_redis_settings_cls.from_dsn = MagicMock(return_value=MagicMock())
 
         with (
             patch.dict(
                 "sys.modules",
                 {
                     "arq": MagicMock(create_pool=mock_create),
-                    "arq.connections": MagicMock(
-                        RedisSettings=mock_redis_settings_cls,
-                    ),
                 },
             ),
-            patch(
-                "app.config.settings.settings",
-                MagicMock(REDIS_URL="redis://localhost:6379/0"),
-            ),
+            patch("app.config.arq_redis.arq_redis_settings", MagicMock()),
         ):
             with pytest.raises(ConnectionError, match="Redis down"):
                 await RedisPoolManager.get_pool()
@@ -114,23 +108,14 @@ class TestGetPool:
             await asyncio.sleep(0.01)
             return sentinel_pool
 
-        mock_redis_settings_cls = MagicMock()
-        mock_redis_settings_cls.from_dsn = MagicMock(return_value=MagicMock())
-
         with (
             patch.dict(
                 "sys.modules",
                 {
                     "arq": MagicMock(create_pool=fake_create_pool),
-                    "arq.connections": MagicMock(
-                        RedisSettings=mock_redis_settings_cls,
-                    ),
                 },
             ),
-            patch(
-                "app.config.settings.settings",
-                MagicMock(REDIS_URL="redis://localhost:6379/0"),
-            ),
+            patch("app.config.arq_redis.arq_redis_settings", MagicMock()),
         ):
             results = await asyncio.gather(
                 RedisPoolManager.get_pool(),

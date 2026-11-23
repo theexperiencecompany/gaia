@@ -14,11 +14,11 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 import random
 from typing import NamedTuple, cast
+from uuid import uuid4
 
 from arq import Retry
 from arq.connections import ArqRedis
 
-from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
     TodoRunCancelledError,
@@ -29,10 +29,12 @@ from app.agents.core.background.todo_run_delivery import (
     FinishedTodoRun,
     finish_todo_run,
     hand_unfinished_run_to_job,
+    report_form_of,
     report_unfinished_run,
 )
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
@@ -54,26 +56,35 @@ from app.constants.todos import (
     TodoWakeKind,
     WaitingOn,
 )
+from app.constants.user_activity import ActivityStatus
+from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
-from app.models.message_models import TodoRunWake
+from app.models.conversation_log_models import TodoRun
+from app.models.notification.details_models import TodoFailedNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
+from app.models.todo_wake_models import TodoRunWake
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
+from app.services.conversation.work_log import logged_decision
 from app.services.conversation_service import get_or_create_todo_conversation
+from app.services.hil.errors import ApprovalRequestNotFoundError
+from app.services.hil.ticket import approval_ticket
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
-from app.services.todo_activity import record_activity
+from app.services.quiet_hours import get_quiet_hours, message_class
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.inbox_desk import with_desk_notes
 from app.services.todos.open_state import wake_budget_update
 from app.services.tracked_todo_service import tracked_todo_service
@@ -90,7 +101,7 @@ from app.services.triggers.todo_trigger_window import (
     trigger_window_end,
 )
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
-from app.services.user_service import get_quiet_hours
+from app.services.user_activity.status import activity_status_of
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
@@ -104,7 +115,11 @@ from app.workers.tasks.todo_run_settle import Settlement, settle
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.todos import TodosOpenStateRepaired
-from shared.py.analytics.context import analytics_context, worker_context
+from shared.py.analytics.context import (
+    analytics_context,
+    current_analytics_context,
+    worker_context,
+)
 from shared.py.wide_events import log
 
 #: The surface a paywalled tracked-todo run is attributed to in the funnel.
@@ -118,7 +133,7 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
     an unset zone as UTC.
     """
     # The full context: narrowing to the fields read here would drop
-    # onboarding, which construct_langchain_messages needs.
+    # onboarding, which the run's context needs.
     user_data = await require_owner(user_id)
     return user_data, Timezone.parse(user_data.timezone)
 
@@ -269,7 +284,7 @@ async def _handle_held_lock(
         )
         doc = await todo_repository.get_by_id(todo_id)
         if doc is not None:
-            await record_activity(
+            await record_todo_activity(
                 todo_id,
                 doc.user_id,
                 TodoActivityEvent.RUN_SKIPPED,
@@ -310,7 +325,7 @@ async def _paused_result(
         )
     else:
         await _hold_fire_events_for_catch_up(doc.id, origin, coalesced)
-    await record_activity(doc.id, doc.user_id, TodoActivityEvent.RUN_SKIPPED, paused)
+    await record_todo_activity(doc.id, doc.user_id, TodoActivityEvent.RUN_SKIPPED, paused)
     log.set(tracked_todo={"paused": paused})
     return f"paused:{doc.id}"
 
@@ -396,7 +411,7 @@ async def _begin_run(
 
 async def _walled_result(todo_id: str, user_id: str, walled: CostBudgetExceededException) -> str:
     """Skip a run the cost wall refused, naming when it lifts: expected while spent, never a failed job."""
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.RUN_SKIPPED, f"skipped: {walled.message}"
     )
     log.set(tracked_todo={"walled": walled.period.value})
@@ -439,7 +454,7 @@ async def _schedule_retry(
             coalesced=list(coalesced),
             _defer_until=next_attempt,
         )
-    await record_activity(
+    await record_todo_activity(
         doc.id,
         doc.user_id,
         TodoActivityEvent.RETRY_SCHEDULED,
@@ -483,13 +498,34 @@ async def _owner_ready_to_run(
 async def _withheld_result(
     doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
 ) -> str | None:
-    """Return the result of a fire the todo's pause or its owner's lapsed plan withholds, or None."""
+    """Return the result of a fire the todo's pause, its owner's lapsed plan or absence withholds, or None."""
     if doc.pause_reason is not None:
         log.info("tracked_todo.execute_paused", todo_id=doc.id, pause_reason=doc.pause_reason)
         await _hold_events_while_paused(doc.id, origin, coalesced)
         return f"paused:{doc.id}"
     if not await is_paid(doc.user_id):
-        return await _pause_unpaid(doc, origin, coalesced)
+        log.warning(
+            "tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id
+        )
+        capture_paywall_block(doc.user_id, PAYWALL_FEATURE_TRACKED_TODO)
+        await _pause_for_owner(
+            doc,
+            DeactivationReason.SUBSCRIPTION_LAPSED,
+            "paused: runs need an active subscription, and resume when it starts",
+            origin,
+            coalesced,
+        )
+        return f"paused:{doc.id} (subscription required)"
+    if await activity_status_of(doc.user_id) is ActivityStatus.DORMANT:
+        log.info("tracked_todo.paused_owner_dormant", todo_id=doc.id, user_id=doc.user_id)
+        await _pause_for_owner(
+            doc,
+            DeactivationReason.USER_DORMANT,
+            "paused: you have been away a while; runs resume when you are back",
+            origin,
+            coalesced,
+        )
+        return f"paused:{doc.id} (owner dormant)"
     return None
 
 
@@ -508,25 +544,22 @@ async def _hold_events_while_paused(
             )
 
 
-async def _pause_unpaid(
-    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
-) -> str:
-    """Pause a todo whose owner is not paid, so the paywall blocks it once rather than every fire."""
-    log.warning("tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id)
-    capture_paywall_block(doc.user_id, PAYWALL_FEATURE_TRACKED_TODO)
+async def _pause_for_owner(
+    doc: TodoDocument,
+    reason: DeactivationReason,
+    note: str,
+    origin: TriggerOrigin | None,
+    coalesced: Sequence[TriggerOrigin],
+) -> None:
+    """Pause a todo for its owner's state, so it is withheld once rather than every fire.
+
+    resume_paused_for(reason) undoes it and replays the trigger events held meanwhile.
+    """
     await todo_repository.update(
-        doc.id,
-        user_id=doc.user_id,
-        update=TodoUpdate(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED),
+        doc.id, user_id=doc.user_id, update=TodoUpdate(pause_reason=reason)
     )
-    await record_activity(
-        doc.id,
-        doc.user_id,
-        TodoActivityEvent.RUN_SKIPPED,
-        "paused: runs need an active subscription, and resume when it starts",
-    )
+    await record_todo_activity(doc.id, doc.user_id, TodoActivityEvent.RUN_SKIPPED, note)
     await _hold_events_while_paused(doc.id, origin, coalesced)
-    return f"paused:{doc.id} (subscription required)"
 
 
 async def _give_up_occurrence(
@@ -537,7 +570,7 @@ async def _give_up_occurrence(
     Labelling it failed would stop every later run until a human noticed, for an
     outage that is usually gone by the next occurrence.
     """
-    await record_activity(
+    await record_todo_activity(
         doc.id,
         doc.user_id,
         TodoActivityEvent.OCCURRENCE_GIVEN_UP,
@@ -585,7 +618,7 @@ async def _advance_schedule(
         return False
     if next_run:
         await tracked_todo_service.schedule_execution(doc.id, next_run)
-        await record_activity(
+        await record_todo_activity(
             doc.id,
             doc.user_id,
             TodoActivityEvent.SCHEDULED,
@@ -597,7 +630,7 @@ async def _advance_schedule(
 
 async def _record_open_state_repair(woke: TodoDocument, next_check: datetime) -> None:
     """Say loudly, in the todo's activity, the log and analytics, that code had to park it."""
-    await record_activity(
+    await record_todo_activity(
         woke.id,
         woke.user_id,
         TodoActivityEvent.OPEN_STATE_REPAIRED,
@@ -688,7 +721,7 @@ async def _skip_reason(
             await todo_repository.update(
                 todo_id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None)
             )
-            await record_activity(
+            await record_todo_activity(
                 todo_id,
                 doc.user_id,
                 TodoActivityEvent.RUN_SKIPPED,
@@ -709,7 +742,7 @@ async def _skip_reason(
             scheduled_at=scheduled,
             armed_for=armed_for.isoformat() if armed_for else None,
         )
-        await record_activity(
+        await record_todo_activity(
             todo_id,
             doc.user_id,
             TodoActivityEvent.RUN_SKIPPED,
@@ -748,6 +781,14 @@ def _woken_by(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) 
     return f"run on {1 + len(coalesced)} events ({names})"
 
 
+def _message_class(
+    origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> ProactiveMessageClass:
+    """URGENT when an event the trigger gate let through quiet hours woke the run."""
+    events = [origin, *coalesced] if origin else []
+    return message_class(any(event.quiet_hours_bypass for event in events))
+
+
 def _wake(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) -> TodoRunWake:
     """Say what woke a run, for the user's side of the todo's chat."""
     if origin is None:
@@ -760,6 +801,26 @@ def _wake(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) -> T
         kind=TodoWakeKind.TRIGGER,
         trigger_names=_event_names(origin, coalesced),
         approval_summary=None,
+    )
+
+
+def _todo_run(
+    doc: TodoDocument,
+    trigger_type: TriggerType,
+    wake: TodoRunWake,
+    message_class: ProactiveMessageClass,
+) -> TodoRun:
+    """Name one run of the todo, attributed to whatever bound this job's analytics context."""
+    return TodoRun(
+        todo_id=doc.id,
+        run_id=str(uuid4()),
+        title=doc.title,
+        trigger_type=trigger_type,
+        runs_once=doc.runs_once,
+        wake=wake,
+        report_form=report_form_of(doc),
+        attribution=current_analytics_context().attribution,
+        message_class=message_class,
     )
 
 
@@ -803,16 +864,17 @@ async def _execute_on_executor(
         await run_todo_on_executor(
             TodoRunRequest(
                 user=user_data,
-                todo_run=TodoRun(
-                    todo_id=todo_id, trigger_type=_trigger_type(origin), runs_once=doc.runs_once
+                todo_run=_todo_run(
+                    doc,
+                    _trigger_type(origin),
+                    _wake(origin, coalesced),
+                    _message_class(origin, coalesced),
                 ),
-                todo_title=doc.title,
                 task=prompt,
                 conversation_id=conversation_id,
                 fresh_thread=True,
-                wake=_wake(origin, coalesced),
                 on_started=partial(
-                    record_activity,
+                    record_todo_activity,
                     todo_id,
                     user_id,
                     TodoActivityEvent.RUN_STARTED,
@@ -822,7 +884,7 @@ async def _execute_on_executor(
         )
     except ExecutorBusyError:
         # A follow-up turn or an approval's run holds the chat: this run waits, it did not fail.
-        await record_activity(
+        await record_todo_activity(
             todo_id,
             user_id,
             TodoActivityEvent.RUN_SKIPPED,
@@ -830,12 +892,12 @@ async def _execute_on_executor(
         )
         raise
     except TodoRunCancelledError:
-        await record_activity(
+        await record_todo_activity(
             todo_id, user_id, TodoActivityEvent.RUN_CANCELLED, f"{woken_by} stopped by the user"
         )
         raise
     except Exception as exc:
-        await record_activity(
+        await record_todo_activity(
             todo_id,
             user_id,
             TodoActivityEvent.RUN_FAILED,
@@ -867,7 +929,7 @@ async def resume_tracked_todo(
     A resume must inherit the parked run's thread — its reasoning, partial tool
     results, and checkpoint live there — so unlike a new run it does not reset the
     todo chat's executor thread. If a newer run has reset it since, the resume
-    reads that run's thread instead; the receipt it carries still says what ran.
+    reads that run's thread instead; the ticket it redeems names what was approved.
     """
     log.set(todo_id=todo_id, approval_id=approval_id)
     job = _ResumeJob(todo_id, conversation_id, approval_id, receipt)
@@ -881,8 +943,8 @@ async def resume_tracked_todo(
     try:
         return await _resume_holding_lock(todo_id, conversation_id, approval_id, receipt)
     except ExecutorBusyError as busy:
-        # Another run holds the todo's chat (the approval's own ticket run, or a
-        # follow-up turn): the resume waits its turn, as for the todo's lock.
+        # Another run holds the todo's chat (a follow-up turn, a denial's verdict
+        # run): the resume waits its turn, as for the todo's lock.
         log.set_ns("tracked_todo", resume_deferred_by=type(busy).__name__)
         return await _defer_resume(pool, job, attempt, reason="executor busy")
     finally:
@@ -895,7 +957,7 @@ async def _defer_resume(pool: ArqRedis, job: _ResumeJob, attempt: int, *, reason
         log.warning("tracked_todo.resume_dropped", todo_id=job.todo_id, reason=reason)
         # The grant entry said the run continues; the todo's log must say it did not.
         if doc := await todo_repository.get_by_id(job.todo_id):
-            await record_activity(
+            await record_todo_activity(
                 doc.id,
                 doc.user_id,
                 TodoActivityEvent.RUN_SKIPPED,
@@ -933,27 +995,27 @@ async def _resume_holding_lock(
     try:
         await enforce_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
-        message = (
-            f"Approval {approval_id} was granted: {receipt} "
-            "The action has run — verify with a read if you need certainty, "
-            "never re-run the granted call blind. Continue the run from here."
-        )
+        row = await approval_ledger_repository.get_by_approval_id(approval_id)
+        if row is None:
+            raise ApprovalRequestNotFoundError()
+        decision = await logged_decision(row.conversation_id, row.user_id, approval_id)
+        if decision is None:
+            raise ApprovalRequestNotFoundError()
         # The parked conversation, so the executor continues its own thread.
         await run_todo_on_executor(
             TodoRunRequest(
                 user=user_data,
-                todo_run=TodoRun(
-                    todo_id=todo_id, trigger_type=_trigger_type(None), runs_once=doc.runs_once
+                todo_run=_todo_run(
+                    doc,
+                    _trigger_type(None),
+                    TodoRunWake(
+                        kind=TodoWakeKind.APPROVAL, trigger_names=[], approval_summary=receipt
+                    ),
+                    ProactiveMessageClass.ROUTINE,
                 ),
-                todo_title=doc.title,
-                task=message,
+                task=approval_ticket(row, decision),
                 conversation_id=conversation_id,
                 fresh_thread=False,
-                wake=TodoRunWake(
-                    kind=TodoWakeKind.APPROVAL,
-                    trigger_names=[],
-                    approval_summary=receipt,
-                ),
             )
         )
         return f"resumed:{todo_id}"
@@ -963,12 +1025,12 @@ async def _resume_holding_lock(
     except CostBudgetExceededException as walled:
         return await _walled_result(todo_id, user_id, walled)
     except TodoRunCancelledError:
-        await record_activity(
+        await record_todo_activity(
             todo_id, user_id, TodoActivityEvent.RUN_CANCELLED, "approval resume stopped by the user"
         )
         return f"cancelled:{todo_id}"
     except Exception as exc:
-        await record_activity(
+        await record_todo_activity(
             todo_id,
             user_id,
             TodoActivityEvent.RUN_FAILED,
@@ -985,8 +1047,7 @@ async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -
     """
     # The envelope already puts the job id (the run's) and job_try on the event.
     log.set(todo_id=undone.todo_id)
-    user, _ = await _load_user_with_tz(undone.user_id)
-    left = await finish_todo_run(undone, user)
+    left = await finish_todo_run(undone)
     if left is None:
         return f"finished:{undone.todo_id}"
     if left.finish_entry != undone.finish_entry:
@@ -1006,7 +1067,7 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
     # The execution path skips failed todos until a manual reset, so leaving the
     # subscriptions armed would burn events on a todo that can never run.
     await teardown_subscriptions(todo_id, user_id, reason="failed")
-    await record_activity(
+    await record_todo_activity(
         todo_id,
         user_id,
         TodoActivityEvent.MARKED_FAILED,
@@ -1024,13 +1085,18 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
 async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
     """Tell the user in-app that a run used up its attempts; a failed send is only logged."""
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(doc.user_id, "todo_run_failed", doc.id, str(doc.scheduled_at)),
                 user_id=doc.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.ERROR,
                 content=NotificationContent(title=f"Scheduled Task Failed: {doc.title}", body=body),
-                metadata={"todo_id": doc.id, "retry_count": MAX_RETRY_ATTEMPTS},
+                details=TodoFailedNotification(
+                    kind=NotificationKind.TODO_FAILED,
+                    todo_id=doc.id,
+                    retry_count=MAX_RETRY_ATTEMPTS,
+                ),
             )
         )
     except Exception as notify_exc:

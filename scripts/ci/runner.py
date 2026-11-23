@@ -48,7 +48,7 @@ Env contract:
   every API call      lib/github.py's (token, base URL, timeout, retries).
   select              GITHUB_REPOSITORY, RUNNER_LABEL (heavy, default
                       gaia-home), SERVICES_RUNNER_LABEL (default gaia-home),
-                      FALLBACK_RUNNER (default ["ubuntu-latest"]), FORCE_HOME,
+                      FALLBACK_RUNNER (default [HOSTED_LINUX_IMAGE]), FORCE_HOME,
                       FORCE_GITHUB, PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION,
                       GITHUB_ACTOR, BLACKSMITH_LABEL, HOSTED_QUEUE_THRESHOLD
                       (5); writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
@@ -93,7 +93,7 @@ import sys
 import time
 import urllib.parse
 
-from lib import nx_affected
+from lib import nx_affected, runner_host
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 
 HERE = Path(__file__).resolve().parent
@@ -102,7 +102,11 @@ CPU_SLOTS_SH = HERE / "lib" / "cpu-slots.sh"
 
 DEFAULT_REPO = "theexperiencecompany/gaia"
 DEFAULT_HOME_LABEL = "gaia-home"
-DEFAULT_FALLBACK = '["ubuntu-latest"]'
+# The GitHub-hosted Linux image, by release: ubuntu-latest moves under us (it
+# rolled to 26.04 job by job, run 45079269367). check_tool_pins.py holds every
+# literal runs-on in .github to this release.
+HOSTED_LINUX_IMAGE = "ubuntu-24.04"
+DEFAULT_FALLBACK = json.dumps([HOSTED_LINUX_IMAGE])
 # GitHub-hosted jobs waiting for a VM at which GitHub counts as saturated. The
 # org's Free plan runs 20 hosted jobs at once and a full CI run peaks at 12
 # (run 40178782875, every job started within 6 s), so jobs only pile up queued
@@ -114,9 +118,6 @@ TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
 MUTATION_WAVE = 6
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
-# The box's runners are gaia-home-<n> (gaia-infra setup.sh RUNNER_NAME_PREFIX); the
-# runner kind cannot tell it from Blacksmith, which reports self-hosted too.
-BOX_RUNNER_NAME_PREFIX = "gaia-home-"
 
 
 ACTIVE_RUN_STATUSES = frozenset({"queued", "pending", "waiting", "in_progress"})
@@ -277,8 +278,8 @@ def class_demand() -> dict[RunnerClass, int]:
     slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
     with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
     return {
-        # detect, lint-node, lint-python, lint-mixed, repo-policy, python-audit, scan
-        RunnerClass.LIGHT: 7,
+        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
+        RunnerClass.LIGHT: 6,
         # probe, ts-build-test, docker-image, plus the slices that need no services
         RunnerClass.HEAVY: 3 + len(slices) - with_services,
         # the slices that need services (test-python, test-python-engines), test-mutation's wave
@@ -750,16 +751,18 @@ def _cancel(gh: GitHub, repo: str, run_id: int, why: str) -> None:
 
 
 # A production deploy is never cancelled mid-flight: a cancelled wrangler deploy
-# leaves R2's prerendered cache half-filled. The newer run deploys after it,
-# queued behind the deploy job's own concurrency group.
-DEPLOY_JOB_PREFIX = "deploy-web"
+# leaves R2's prerendered cache half-filled, a cancelled stack deploy a half-rolled
+# Swarm. A deploy phase's jobs exist only once the gate let it start, so any of
+# them not yet completed means it has started. The newer run deploys after it,
+# queued behind the deploy jobs' own concurrency groups.
+DEPLOY_JOB_PREFIXES = ("deploy-web", "trigger-build")
 
 
 def _deploying(gh: GitHub, repo: str, run_id: int) -> bool:
     jobs = gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100", "jobs")
     return any(
-        field_of(job, "name", str).startswith(DEPLOY_JOB_PREFIX)
-        and field_of(job, "status", str) == "in_progress"
+        field_of(job, "name", str).startswith(DEPLOY_JOB_PREFIXES)
+        and field_of(job, "status", str) != "completed"
         for job in jobs
     )
 
@@ -1335,8 +1338,7 @@ def cmd_health(_args: list[str]) -> int:
     load1, load5, load15 = os.getloadavg()
     report = {
         # Off the box this whole report is about a machine running no CI.
-        "is_runner_host": counts["runner_listeners"] > 0
-        or os.environ.get("RUNNER_NAME", "").startswith(BOX_RUNNER_NAME_PREFIX),
+        "is_runner_host": counts["runner_listeners"] > 0 or runner_host.on_the_box(),
         "listeners": _listeners(),
         "loadavg": {"1m": round(load1, 2), "5m": round(load5, 2), "15m": round(load15, 2)},
         "threads": os.cpu_count() or 0,

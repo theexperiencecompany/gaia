@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 
 from app.api.v1.middleware.logging import LoggingMiddleware
 from app.models.user_models import AuthenticatedUser
+from app.services.turn_timings import close_ingress
 from shared.py.wide_events import log as wide_log
 
 # ---------------------------------------------------------------------------
@@ -62,6 +63,11 @@ def _build_test_app(skip_paths: frozenset | None = None):
         request.state.user = AuthenticatedUser(user_id="user_42")
         wide_log.set(user={"id": "handler_chosen_id"})
         return {"result": "ok"}
+
+    @app.post("/api/v1/accept")
+    async def accept_route():
+        ingress = close_ingress()
+        return {"ingress": None if ingress is None else sorted(ingress)}
 
     app.add_middleware(LoggingMiddleware)
     return app
@@ -204,8 +210,10 @@ class TestLoggingMiddlewareExceptionHandling:
             resp = client.get("/api/v1/raise")
         # FastAPI converts unhandled exceptions to 500
         assert resp.status_code == 500
-        # Logger should have been called
-        assert mock_logger.bind.called
+        context = mock_logger.bind.call_args.kwargs
+        assert context["path"] == "/api/v1/raise"
+        assert context["status_code"] == 500
+        mock_bound.log.assert_called_once_with("ERROR", "http_request")
 
 
 class TestLoggingMiddlewareRequestSize:
@@ -238,3 +246,12 @@ class TestLoggingMiddlewareRequestSize:
         assert resp.status_code == 200
         context = mock_logger.bind.call_args[1]
         assert context["request_size_bytes"] == 0
+
+
+class TestLoggingMiddlewareTurnTimings:
+    """A chat turn's ingress is measured from the request's arrival at the middleware."""
+
+    def test_a_request_that_accepts_a_message_reports_its_ingress(self) -> None:
+        with patch("app.api.v1.middleware.logging.request_logger"):
+            resp = TestClient(_build_test_app()).post("/api/v1/accept")
+        assert resp.json() == {"ingress": ["other"]}

@@ -45,7 +45,7 @@ export interface Integration {
   name: string;
   description: string;
   category: IntegrationCategoryValue;
-  status: "connected" | "not_connected" | "created" | "expired" | "error";
+  status: "connected" | "not_connected" | "created" | "expired";
   /** ISO timestamp of when the upstream grant died. Only set when `status` is `expired`. */
   expiredAt?: string;
   displayPriority?: number;
@@ -63,6 +63,8 @@ export interface Integration {
   createdBy?: string;
   tools?: Array<{ name: string; description?: string }>;
   toolCount?: number;
+  /** Where the server's post-connect tool discovery stands; absent when none ran. */
+  toolsSetup?: MyIntegrationItem["toolsSetup"];
   iconUrl?: string;
   creator?: {
     name: string | null;

@@ -31,9 +31,17 @@ def _noop_stream_writer(_: object) -> None:
     return
 
 
-def to_agent_state(state: State) -> AgentState[object]:
+class GaiaAgentState(AgentState[object], total=False):
+    """AgentState plus the graph state keys GAIA's own middleware reads."""
+
+    verbatim_message_ids: list[str]
+
+
+def to_agent_state(state: State) -> GaiaAgentState:
     """Convert graph state into LangChain AgentState-compatible shape."""
-    agent_state: AgentState[object] = AgentState(messages=list(state.get("messages", [])))
+    agent_state = GaiaAgentState(messages=list(state.get("messages", [])))
+    if "verbatim_message_ids" in state:
+        agent_state["verbatim_message_ids"] = state["verbatim_message_ids"]
     jump_to = state.get("jump_to")
     if jump_to in {"tools", "model", "end"}:
         agent_state["jump_to"] = jump_to

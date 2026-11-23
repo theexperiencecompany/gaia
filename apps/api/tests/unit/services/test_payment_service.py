@@ -24,6 +24,8 @@ from app.constants.cache import (
     ACTIVE_PLANS_CACHE_KEY,
     CHECKOUT_SCAN_MISS_CACHE_PREFIX,
     CHECKOUT_SCAN_MISS_TTL,
+    SUBSCRIPTION_PLAN_CACHE_PREFIX,
+    SUBSCRIPTION_PLAN_CACHE_TTL,
 )
 from app.constants.log_tags import LogTag
 from app.constants.payments import CHECKOUT_SESSION_SCAN_LIMIT, PAYMENT_HISTORY_LIMIT
@@ -1072,6 +1074,27 @@ class TestGetCachedPlanType:
         assert plan is PlanType.PRO
         assert event["payment"]["plan_source"] == "subscription"
         assert event["payment"]["plan_type"] == "pro"
+
+    async def test_a_planless_subscription_status_reads_and_caches_as_free(
+        self, payment_service, mock_redis_cache
+    ):
+        """No plan on the status means FREE limits, not None — None would blow up every limit lookup downstream."""
+        mock_redis_cache.get = AsyncMock(return_value=None)
+
+        with patch.object(
+            payment_service,
+            "get_user_subscription_status",
+            new_callable=AsyncMock,
+            return_value=UserSubscriptionStatus(user_id=FAKE_USER_ID, plan_type=None),
+        ):
+            plan = await payment_service.get_cached_plan_type(FAKE_USER_ID)
+
+        assert plan is PlanType.FREE
+        mock_redis_cache.set.assert_awaited_once_with(
+            f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{FAKE_USER_ID}",
+            {"plan_type": PlanType.FREE.value},
+            ttl=SUBSCRIPTION_PLAN_CACHE_TTL,
+        )
 
     async def test_every_user_is_pro_where_plans_are_not_enforced(
         self, payment_service, mock_redis_cache, mock_subscription_repository, monkeypatch

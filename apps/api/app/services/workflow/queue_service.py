@@ -5,6 +5,7 @@ import hashlib
 import json
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import EXECUTE_WORKFLOW_TASK
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
@@ -70,12 +71,13 @@ class WorkflowQueueService:
                 default=str,
             )
             job_id = (
-                "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
+                f"{EXECUTE_WORKFLOW_TASK}:"
+                + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
             )
 
             job = await enqueue_worker_job(
                 pool,
-                "execute_workflow_by_id",
+                EXECUTE_WORKFLOW_TASK,
                 workflow_id,
                 context or {},
                 _job_id=job_id,

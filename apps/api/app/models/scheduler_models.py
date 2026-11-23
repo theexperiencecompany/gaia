@@ -43,6 +43,8 @@ class DeactivationReason(str, Enum):
     OWNER_NOT_FOUND = "owner_not_found"
     #: A self-host administrator removed the owner; nothing resumes it automatically.
     MEMBER_REMOVED = "member_removed"
+    #: Its trigger type was retired; it moved to the successor and runs once its owner switches it on.
+    TRIGGER_RETIRED = "trigger_retired"
 
 
 class TaskOutcome(str, Enum):

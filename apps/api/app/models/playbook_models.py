@@ -43,7 +43,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 
 #: The key marking an argument value as a replay-time slot, not data. A `$`
@@ -597,6 +597,11 @@ class PlaybookDocument(PlaybookBody, MongoDocument):
     revision: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def log_fields(self) -> dict[str, str]:
+        """What names this playbook on a log line."""
+        return {"playbook_id": self.playbook_id, "workflow_id": self.workflow_id}
 
 
 class PlaybookUpdate(BaseModel):

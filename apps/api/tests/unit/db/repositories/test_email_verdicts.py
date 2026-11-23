@@ -51,7 +51,7 @@ async def test_keep_writes_the_verdict_its_urgency_and_a_fresh_utc_anchor() -> N
     # cannot encode and a reader would have to guess at.
     assert type(update["bucket"]) is str
     assert all(type(judgment) is str for judgment in update["answers"])
-    assert written.kwargs == {"scope": None, "upsert": True}
+    assert written.kwargs == {"upsert": True}
 
 
 async def test_a_duplicate_key_retries_the_same_upsert_once() -> None:
@@ -63,4 +63,4 @@ async def test_a_duplicate_key_retries_the_same_upsert_once() -> None:
     assert first == second
     assert first.args[0] == KEY
     assert first.args[1]["$set"]["urgency"] == {"probability": 0.9, "choice": "meeting"}
-    assert first.kwargs == {"scope": None, "upsert": True}
+    assert first.kwargs == {"upsert": True}

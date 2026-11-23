@@ -43,6 +43,7 @@ The official Slack bot for GAIA - your proactive personal AI assistant.
    - `im:history`
    - `im:read`
    - `im:write`
+   - `reactions:write`
 3. Install the app to your workspace
 4. Copy the "Bot User OAuth Token" (starts with `xoxb-`)
 

@@ -8,11 +8,14 @@ import math
 from typing import NamedTuple, NoReturn
 import uuid
 
-from pymongo.errors import BulkWriteError, DuplicateKeyError
-
-from app.constants.todos import GAIA_TRACKED_LABEL, REOPENED_IN_THE_APP_DETAIL, TodoActivityEvent
-from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    REOPENED_IN_THE_APP_DETAIL,
+    TodoActivityEvent,
+    TodoCompleter,
+)
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -30,13 +33,12 @@ from app.models.todo_models import (
     ProjectUpdate,
     SearchMode,
     SubTask,
+    TodoDayWindow,
     TodoDocument,
-    TodoLabelCount,
     TodoListResponse,
     TodoModel,
     TodoResponse,
     TodoSearchParams,
-    TodoStats,
     TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
@@ -44,9 +46,12 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
+from app.services.briefing.errors import refuse_a_missing_brief
+from app.services.briefing.held import release_on_tell_me_now
 from app.services.conversation_service import delete_todo_conversations
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
-from app.services.todo_activity import record_activity
+from app.services.hil.pending import pending_approvals_by_owner
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
@@ -111,22 +116,15 @@ async def _get_workflow_categories_for_todos(
 async def _get_pending_approvals_for_todos(
     todos: list[TodoDocument],
 ) -> dict[str, PendingApprovalRef]:
-    """Oldest live approval parked per todo, for the list/detail jump link.
-
-    One query per page, not per row (same shape as the workflow-categories
-    enrichment above). Cross-domain read via the ledger repository.
-    """
+    """Oldest approval each todo's run still waits on, for the list/detail jump link."""
     todo_ids = [todo.id for todo in todos if todo.id]
     if not todo_ids:
         return {}
-    rows = await approval_ledger_repository.list_live_by_owners("todo", todo_ids)
-    refs: dict[str, PendingApprovalRef] = {}
-    for row in rows:
-        if row.owner_id not in refs:
-            refs[row.owner_id] = PendingApprovalRef(
-                approval_id=row.approval_id, conversation_id=row.conversation_id
-            )
-    return refs
+    waiting = await pending_approvals_by_owner("todo", todo_ids)
+    return {
+        owner: PendingApprovalRef(approval_id=row.approval_id, conversation_id=row.conversation_id)
+        for owner, row in waiting.items()
+    }
 
 
 async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoResponse]:
@@ -229,7 +227,7 @@ async def _refuse_a_bulk_bad_run_schedule(
 
 
 async def raise_ref_taken(
-    user_id: str, ref: ExternalRef | None, error: DuplicateKeyError
+    user_id: str, ref: ExternalRef | None, error: AlreadyExistsError
 ) -> NoReturn:
     """Re-raise the open-ref index's rejection as a conflict naming the open todo holding ref."""
     holder = await todo_repository.find_open_by_external_ref(user_id, ref) if ref else None
@@ -314,7 +312,7 @@ async def reopening_todos(
         raise
     reopened_tracked = [todo.id for todo in todos if todo.completed and todo.vfs_path]
     for todo_id in reopened_tracked:
-        await record_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
+        await record_todo_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
         await set_canvas_completed(todo_id, completed=False)
     if reopened_tracked:
         schedule_gaia_tasks_sync(user_id)
@@ -334,7 +332,7 @@ async def _persist_update(
         return await todo_repository.get(todo_id, user_id=user_id)
     try:
         return await todo_repository.update(todo_id, user_id=user_id, update=update)
-    except DuplicateKeyError as e:
+    except AlreadyExistsError as e:
         # Reopening a todo whose outside object another open todo now holds.
         reopened = await todo_repository.get(todo_id, user_id=user_id)
         await raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
@@ -347,7 +345,8 @@ async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
 
 
 async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> None:
-    """Refuse, before any write, a bulk update that may only be made one todo at a time."""
+    """Refuse, before any write, a bulk update that may only be made one todo at a time, or no brief carries."""
+    await refuse_a_missing_brief(user_id, request.updates.delivery)
     # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
     if request.updates.workflow_id is not None:
         raise AppError(
@@ -368,6 +367,7 @@ class _TrackedCompletion(NamedTuple):
     completed: list[str]
     failed: list[str]
     plain: list[str]
+    already_completed: frozenset[str] = frozenset()
 
 
 async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _TrackedCompletion:
@@ -380,16 +380,20 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
         tracked_todo_service,
     )
 
-    tracked = {
-        doc.id for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
-    }
+    tracked_docs = [
+        doc for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
+    ]
+    tracked = {doc.id for doc in tracked_docs}
     completion = _TrackedCompletion(
-        completed=[], failed=[], plain=[todo_id for todo_id in todo_ids if todo_id not in tracked]
+        completed=[],
+        failed=[],
+        plain=[todo_id for todo_id in todo_ids if todo_id not in tracked],
+        already_completed=frozenset(doc.id for doc in tracked_docs if doc.completed),
     )
     for todo_id in (todo_id for todo_id in todo_ids if todo_id in tracked):
         try:
             await tracked_todo_service.complete_tracked_todo(
-                todo_id, user_id, summary="Completed via bulk operation"
+                todo_id, user_id, summary="Completed via bulk operation", by=TodoCompleter.USER
             )
         except Exception as e:
             # Reported per todo in the response; the todos already completed keep their completion.
@@ -405,16 +409,46 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
     return completion
 
 
+def _stamp_users_completion(update: TodoUpdate) -> None:
+    """Stamp when the user completed the todo and that they did; reopening clears both."""
+    if update.completed is None:
+        return
+    update.completed_at = datetime.now(UTC) if update.completed else None
+    update.completed_by = TodoCompleter.USER if update.completed else None
+
+
+def _capture_bulk_update(
+    user_id: str, update: TodoUpdate, succeeded: list[str], already_completed: frozenset[str]
+) -> None:
+    """Capture a bulk update for the todos it changed; a bulk that changed none captures nothing.
+
+    An already-completed todo is a no-op only when completion was all the update asked for.
+    """
+    if _drop_completion_fields(update).model_fields_set:
+        already_completed = frozenset()
+    written = sum(1 for todo_id in succeeded if todo_id not in already_completed)
+    if not written:
+        return
+    # As in the single update: a completion either way is a toggle, anything else an edit.
+    capture(
+        UserId(user_id),
+        TodosToggled(completed=update.completed, bulk_count=written)
+        if update.completed is not None
+        else TodosUpdated(bulk_count=written),
+    )
+
+
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     """Rebuild update without the completion fields.
 
     A TodoUpdate writes exactly the fields that are *set* on it, and a field
     cannot be un-set in place, so dropping one means rebuilding from the rest.
     """
-    fields = update.model_dump(exclude_unset=True)
-    fields.pop("completed", None)
-    fields.pop("completed_at", None)
-    return TodoUpdate(**fields)
+    return TodoUpdate(
+        **update.model_dump(
+            exclude_unset=True, exclude={"completed", "completed_at", "completed_by"}
+        )
+    )
 
 
 async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -> TodoUpdate:
@@ -432,7 +466,7 @@ async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -
         )
 
         await tracked_todo_service.complete_tracked_todo(
-            todo_id, user_id, summary="Completed via UI"
+            todo_id, user_id, summary="Completed via UI", by=TodoCompleter.USER
         )
     except Exception as e:
         log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
@@ -447,23 +481,6 @@ class TodoService:
         """Resolve (creating on first use) the user's default Inbox project id."""
         inbox = await project_repository.get_or_create_inbox(user_id)
         return inbox.id
-
-    @staticmethod
-    def _needs_inbox_default(params: TodoSearchParams) -> bool:
-        """Return True when the unfiltered main list should scope to Inbox; filtered views never do."""
-        return not (
-            params.project_id
-            or params.q
-            or params.completed is not None
-            or params.priority
-            or params.labels
-            or params.parent_todo_id
-        )
-
-    @staticmethod
-    async def _calculate_stats(user_id: str) -> TodoStats:
-        """Todo statistics for a user (cached inside the repository)."""
-        return await todo_repository.compute_stats(user_id=user_id)
 
     # CRUD Operations
     @classmethod
@@ -524,13 +541,13 @@ class TodoService:
             gaia_retry_count=todo.gaia_retry_count,
             expires_at=todo.expires_at,
             references=todo.references,
-            notify_on_run=todo.notify_on_run,
+            delivery=todo.delivery,
             external_ref=external_ref,
             parent_todo_id=parent_todo_id,
         )
         try:
             created = await todo_repository.create(document)
-        except DuplicateKeyError as e:
+        except AlreadyExistsError as e:
             # The open-ref unique index turned this insert away: the loser reads the winner.
             await raise_ref_taken(user_id, external_ref, e)
 
@@ -576,9 +593,7 @@ class TodoService:
             # Embeddings carry no parent id, so one parent's sub-todos are searched by text.
             params = params.model_copy(update={"mode": SearchMode.TEXT})
 
-        inbox_project_id = (
-            await cls._get_inbox_id(user_id) if cls._needs_inbox_default(params) else None
-        )
+        inbox_project_id = await cls._get_inbox_id(user_id) if params.defaults_to_inbox else None
         page = await todo_repository.list_page(
             user_id=user_id, params=params, inbox_project_id=inbox_project_id
         )
@@ -595,7 +610,9 @@ class TodoService:
         )
         response = TodoListResponse(data=data, meta=meta)
         if params.include_stats:
-            response.stats = await cls._calculate_stats(user_id)
+            response.stats = await todo_repository.compute_stats(
+                user_id=user_id, window=params.required_day_window
+            )
         return response
 
     @classmethod
@@ -614,15 +631,13 @@ class TodoService:
             },
         )
         update = _to_todo_update(updates)
+        await refuse_a_missing_brief(user_id, updates.delivery)
         await _refuse_what_a_tracked_todo_cannot_take(todo_id, user_id, updates)
 
         if update.project_id is not None:
             await require_project(user_id, update.project_id)
 
-        # Track completion timestamp (explicit None clears it when un-completing).
-        if update.completed is not None:
-            update.completed_at = datetime.now(UTC) if update.completed else None
-
+        _stamp_users_completion(update)
         if update.completed is True:
             update = await _complete_if_tracked(todo_id, user_id, update)
 
@@ -648,6 +663,7 @@ class TodoService:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
+        await release_on_tell_me_now(user_id, [todo_id], updates.delivery)
         if updates.completed is not None:
             # Toggle semantics: fires for both completing and un-completing,
             # tracked or plain.
@@ -721,6 +737,7 @@ class TodoService:
         await _refuse_a_bulk_update(request, user_id)
         reopening = request.updates.completed is False
         update = _to_todo_update(request.updates)
+        _stamp_users_completion(update)
         if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
@@ -749,7 +766,7 @@ class TodoService:
             ):
                 try:
                     modified = await todo_repository.bulk_update(user_id, plain_ids, update)
-                except BulkWriteError:
+                except AlreadyExistsError:
                     # A create or reopen took a ref after the check above; the writes before it landed.
                     if reopening:
                         await _refuse_a_reopen_of_a_taken_ref(
@@ -768,6 +785,8 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
             schedule_user_todos_sync(user_id)
+            await release_on_tell_me_now(user_id, succeeded, request.updates.delivery)
+            _capture_bulk_update(user_id, update, succeeded, completion.already_completed)
 
         return BulkOperationResponse(
             success=succeeded,
@@ -888,7 +907,9 @@ class TodoService:
         )
         response = TodoListResponse(data=paginated_results, meta=meta)
         if params.include_stats:
-            response.stats = await cls._calculate_stats(user_id)
+            response.stats = await todo_repository.compute_stats(
+                user_id=user_id, window=params.required_day_window
+            )
         return response
 
 
@@ -980,10 +1001,11 @@ async def get_all_todos(
     priority: Priority | None = None,
     has_due_date: bool | None = None,
     overdue: bool | None = None,
+    day_window: TodoDayWindow | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> list[TodoResponse]:
-    """Compatibility wrapper for old get_all_todos function."""
+    """Compatibility wrapper for old get_all_todos function; overdue needs day_window."""
 
     params = TodoSearchParams(
         q=None,
@@ -993,6 +1015,7 @@ async def get_all_todos(
         priority=priority,
         has_due_date=has_due_date,
         overdue=overdue,
+        day_window=day_window,
         page=(skip // limit) + 1 if limit > 0 else 1,
         per_page=limit,
         include_stats=False,
@@ -1057,12 +1080,6 @@ async def search_todos(
     return response.data
 
 
-# Additional compatibility functions that might be used elsewhere
-async def get_todo_stats(user_id: str) -> TodoStats:
-    """Get statistics about user's todos."""
-    return await TodoService._calculate_stats(user_id)
-
-
 async def get_todos_by_date_range(
     user_id: str, start_date: datetime, end_date: datetime
 ) -> list[TodoResponse]:
@@ -1080,12 +1097,6 @@ async def get_todos_by_date_range(
 
     response = await TodoService.list_todos(user_id, params)
     return response.data
-
-
-async def get_all_labels(user_id: str) -> list[TodoLabelCount]:
-    """Get all unique labels used by the user with counts."""
-    stats = await TodoService._calculate_stats(user_id)
-    return stats.labels or []
 
 
 async def get_todos_by_label(user_id: str, label: str) -> list[TodoResponse]:

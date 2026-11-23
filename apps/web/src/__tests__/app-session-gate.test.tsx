@@ -39,18 +39,6 @@ vi.mock("@/features/notification/hooks/useNotifications", () => ({
 vi.mock("@/features/notification/hooks/useNotificationWebSocket", () => ({
   useNotificationWebSocket: () => paidSessionHook("notification_ws"),
 }));
-vi.mock("@/features/chat/hooks/useBgMessageWebSocket", () => ({
-  useBgMessageWebSocket: () => paidSessionHook("bg_messages"),
-}));
-vi.mock("@/features/chat/hooks/useExecutorStream", () => ({
-  useExecutorStream: () => paidSessionHook("executor_stream"),
-}));
-vi.mock("@/features/chat/hooks/useExecutorCancelWebSocket", () => ({
-  useExecutorCancelWebSocket: () => paidSessionHook("executor_cancel"),
-}));
-vi.mock("@/features/chat/hooks/useApprovalDecisionWebSocket", () => ({
-  useApprovalDecisionWebSocket: () => paidSessionHook("approvals"),
-}));
 vi.mock("@/features/todo/hooks/useTodoWorkflowGlobalListener", () => ({
   useTodoWorkflowGlobalListener: () => paidSessionHook("todo_listener"),
 }));

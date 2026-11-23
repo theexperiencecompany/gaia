@@ -9,11 +9,16 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationView,
 )
+from app.services.briefing.notification_email import BRIEFING_EMAIL_RENDERERS
 from app.utils.notification.actions import (
     ActionHandler,
 )
 from app.utils.notification.channels import ChannelAdapter
-from app.utils.notification.orchestrator import NotificationOrchestrator
+from app.utils.notification.channels.email import EmailRenderers
+from app.utils.notification.orchestrator import NotificationOrchestrator, Notified
+
+#: Every notification kind's email renderer, as the email channel reads them.
+EMAIL_RENDERERS: EmailRenderers = {**BRIEFING_EMAIL_RENDERERS}
 
 
 # Service Factory
@@ -21,11 +26,12 @@ class NotificationService:
     """Main notification service - facade for the entire system."""
 
     def __init__(self) -> None:
-        self.orchestrator = NotificationOrchestrator()
+        self.orchestrator = NotificationOrchestrator(EMAIL_RENDERERS)
 
     # Expose orchestrator methods
-    async def create_notification(self, request: NotificationRequest) -> NotificationRecord | None:
-        return await self.orchestrator.create_notification(request)
+    async def notify(self, request: NotificationRequest) -> Notified:
+        """Tell the user something GAIA found on its own; the one entry point, idempotent on request.id."""
+        return await self.orchestrator.notify(request)
 
     async def execute_action(
         self,

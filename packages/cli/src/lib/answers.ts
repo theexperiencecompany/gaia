@@ -37,6 +37,10 @@ export interface UpFlags extends LlmFlags {
   webPort?: number;
   /** Public domain; the proxy serves HTTPS for it on 80/443. False on --no-domain. */
   domain?: DomainFlag;
+  /** A domain whose /<slug> redirects to the domain's /l/<slug>. False on --no-link-domain. */
+  linkDomain?: DomainFlag;
+  /** A domain that serves shared files' bytes apart from GAIA. False on --no-usercontent-domain. */
+  usercontentDomain?: DomainFlag;
   build?: boolean;
   /**
    * Opt in (true) or out (false) of the Docker-socket code sandbox; undefined

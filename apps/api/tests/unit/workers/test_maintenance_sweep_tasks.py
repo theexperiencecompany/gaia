@@ -4,8 +4,7 @@ The cron that keeps tracked todos honest: expired todos get a health-check
 agent pass (archive/notify), overdue todos get an individual notification,
 dormant todos get re-queued or bundled into a digest. The backoff escalation
 (_register_notification) is the load-bearing part — a stuck todo must stop
-nagging once the schedule is exhausted, and the daytime gate must keep
-notifications out of the user's night.
+nagging once the schedule is exhausted.
 """
 
 from collections.abc import Iterator
@@ -13,19 +12,25 @@ from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
+import time_machine
 
 from app.agents.llm.client import metered_config
 from app.constants.chat import MAX_MESSAGE_LENGTH
+from app.constants.notifications import NotificationKind
 from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
+from app.constants.user_activity import ActivityStatus
+from app.models.notification.details_models import DormantTodosNotification, TodoNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.todo_models import TodoDocument
-from app.models.user_models import UserDocument
+from app.models.user_activity_models import UserActivityRow
 from app.workers.tasks.maintenance_sweep_tasks import (
     DORMANT_DAYS,
     NOTIFICATION_BACKOFF_DAYS,
@@ -39,7 +44,6 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     _health_check_expired,
     _health_check_verdict,
     _is_dormant,
-    _is_user_daytime,
     _normalize_all_canvases,
     _notify_overdue,
     _register_notification,
@@ -82,7 +86,6 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
     defaults = {
         "list": [_doc()],
         "migration": [],
-        "daytime": True,
         "canvas": "",
         "health": "NEEDS_ATTENTION: nothing to do",
     }
@@ -92,7 +95,6 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         "list": AsyncMock(return_value=defaults["list"]),
         "migration_finder": AsyncMock(return_value=defaults["migration"]),
         "get_pool": AsyncMock(return_value=pool),
-        "daytime": AsyncMock(return_value=defaults["daytime"]),
         "canvas": AsyncMock(return_value=defaults["canvas"]),
         "health": AsyncMock(return_value=defaults["health"]),
         "archive": AsyncMock(),
@@ -111,15 +113,14 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
             create=True,
         ),
         patch(f"{MODULE}.RedisPoolManager.get_pool", mocks["get_pool"]),
-        patch(f"{MODULE}._is_user_daytime", mocks["daytime"]),
         patch(f"{MODULE}._read_canvas", mocks["canvas"]),
         patch(f"{MODULE}._health_check_verdict", mocks["health"]),
         patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", mocks["archive"]),
         patch(f"{MODULE}.tracked_todo_service.schedule_execution", mocks["schedule"]),
         patch(f"{MODULE}.todo_repository.update", mocks["store_schedule"]),
-        patch(f"{MODULE}.record_activity", mocks["activity"]),
+        patch(f"{MODULE}.record_todo_activity", mocks["activity"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
-        patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
+        patch(f"{MODULE}.notification_service.notify", mocks["notify"]),
         patch(f"{MODULE}.tracked_todo_service.normalize_stored_canvas", mocks["migrate"]),
     ]
     return pool, mocks, patches
@@ -290,6 +291,8 @@ class TestHealthCheckExpired:
             "gaia_maintenance_notified:todo-1", "1", ex=SECONDS_PER_DAY
         )
 
+    # 02:00 on the 16th in Kolkata is still the 15th in UTC: the id is dated in UTC.
+    @time_machine.travel(datetime(2026, 1, 16, 2, 0, tzinfo=ZoneInfo("Asia/Kolkata")), tick=False)
     async def test_notify_decision_sends_a_warning_notification(self):
         pool = _pool()
         notify = AsyncMock()
@@ -299,8 +302,8 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(return_value="NOTIFY: Your todo expired and needs a decision."),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
-            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{MODULE}.notification_service.notify", notify),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()) as activity,
         ):
             outcome = await _health_check_expired(_doc(title="Ship the report"), pool)
 
@@ -309,6 +312,7 @@ class TestHealthCheckExpired:
             "todo-1", "user-1", TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
         )
         request = notify.await_args.args[0]
+        assert request.id == notification_id("user-1", "todo_health", "todo-1", "2026-01-15")
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.WARNING
@@ -316,7 +320,7 @@ class TestHealthCheckExpired:
         assert request.content.body == "Your todo expired and needs a decision."
         assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == "/todos?todoId=todo-1"
-        assert request.metadata == {"todo_id": "todo-1"}
+        assert request.details == TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
 
     async def test_muted_todo_after_backoff_is_exhausted_sends_nothing(self):
         pool = _pool()
@@ -328,7 +332,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(return_value="NOTIFY: still expired"),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
         ):
             outcome = await _health_check_expired(_doc(), pool)
 
@@ -344,7 +348,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(side_effect=ValueError("No human message or selected tool")),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             pytest.raises(ValueError, match="No human message"),
         ):
             await _health_check_expired(_doc(), pool)
@@ -369,7 +373,7 @@ class TestHealthCheckDormant:
             patch(f"{MODULE}._health_check_verdict", verdict),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
             patch(f"{MODULE}.todo_repository.update", store) as store,
-            patch(f"{MODULE}.record_activity", syslog),
+            patch(f"{MODULE}.record_todo_activity", syslog),
         ):
             before = datetime.now(UTC)
             outcome = await _health_check_dormant(_doc(), pool)
@@ -439,9 +443,9 @@ class TestNotifyOverdue:
         notify = AsyncMock()
         add_labels = AsyncMock()
         with (
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.todo_repository.add_labels", add_labels),
-            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()) as activity,
         ):
             # due_date is relative to real now — _notify_overdue computes
             # "days overdue" from its own clock, not the test's frozen NOW.
@@ -467,7 +471,7 @@ class TestNotifyOverdue:
         pool.get = AsyncMock(return_value="4")
         notify = AsyncMock()
         with (
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.todo_repository.add_labels", AsyncMock()),
         ):
             result = await _notify_overdue(_doc(), pool)
@@ -520,49 +524,6 @@ class TestRegisterNotification:
 
 
 # ---------------------------------------------------------------------------
-# _is_user_daytime — quiet-hours gate
-# ---------------------------------------------------------------------------
-
-
-class TestIsUserDaytime:
-    async def test_utc_noon_is_daytime(self):
-        with patch(
-            f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
-        ):
-            assert await _is_user_daytime("user-1", NOW, {}) is True
-
-    async def test_utc_3am_is_night(self):
-        night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
-        with patch(
-            f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
-        ):
-            assert await _is_user_daytime("user-1", night, {}) is False
-
-    async def test_local_timezone_wins(self):
-        night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
-        with patch(
-            f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="Asia/Tokyo"))
-        ):
-            assert await _is_user_daytime("user-1", night, {}) is True
-
-    async def test_result_is_cached_per_sweep(self):
-        lookup = AsyncMock(return_value=UserDocument(timezone="UTC"))
-        cache: dict[str, bool] = {}
-        with patch(f"{MODULE}.get_user_by_id", lookup):
-            first = await _is_user_daytime("user-1", NOW, cache)
-            second = await _is_user_daytime("user-1", NOW, cache)
-
-        assert first == second
-        lookup.assert_awaited_once()
-
-    async def test_user_lookup_failure_does_not_raise(self):
-        night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
-        with patch(f"{MODULE}.get_user_by_id", AsyncMock(side_effect=Exception("mongo down"))):
-            result = await _is_user_daytime("user-1", night, {})
-        assert result is False
-
-
-# ---------------------------------------------------------------------------
 # _send_user_dormant_digest — redirect-action tests moved to test_todo_notifications.py
 # ---------------------------------------------------------------------------
 
@@ -570,23 +531,26 @@ class TestIsUserDaytime:
 class TestSendUserDormantDigest:
     async def test_single_todo_digest(self):
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with patch(f"{MODULE}.notification_service.notify", notify):
             await _send_user_dormant_digest(
                 "user-1", [_doc(title="Unfinished thing", updated_at=NOW - timedelta(days=7))], NOW
             )
 
         request = notify.await_args.args[0]
+        assert request.id == notification_id("user-1", "dormant_digest", "", "2026-01-15")
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.INFO
         assert request.content.title == "1 dormant todo needs attention"
         assert request.content.body == "- Unfinished thing (idle 7d)"
-        assert request.metadata == {"todo_count": 1}
+        assert request.details == DormantTodosNotification(
+            kind=NotificationKind.DORMANT_TODOS, todo_count=1
+        )
         assert request.content.actions[0].config.redirect.url == "/todos?todoId=todo-1"
 
     async def test_multi_todo_digest_counts_and_links_to_the_list(self):
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with patch(f"{MODULE}.notification_service.notify", notify):
             await _send_user_dormant_digest(
                 "user-1",
                 [
@@ -604,7 +568,7 @@ class TestSendUserDormantDigest:
 
     async def test_notification_failure_is_swallowed(self):
         with patch(
-            f"{MODULE}.notification_service.create_notification",
+            f"{MODULE}.notification_service.notify",
             AsyncMock(side_effect=RuntimeError("notification bus down")),
         ):
             await _send_user_dormant_digest("user-1", [_doc()], NOW)
@@ -779,6 +743,27 @@ class TestMaintenanceSweep:
         assert migrate.await_count == _MIGRATION_PAGE_SIZE + 1
         assert "done-legacy" in [c.args[0].id for c in migrate.await_args_list]
         assert classify.await_args.args[2] == active
+
+    async def test_a_dormant_owners_todos_are_not_swept(self):
+        """The health checks call the LLM and notify; for an absent user both are spend nobody reads."""
+        away = _doc(
+            id="away", user_id="user-away", expires_at=datetime.now(UTC) - timedelta(hours=1)
+        )
+        here = _doc(
+            id="here", user_id="user-here", expires_at=datetime.now(UTC) - timedelta(hours=1)
+        )
+        with (
+            _sweep(list=[away, here], health="ARCHIVE: done") as (_pool, mocks),
+            patch(
+                f"{MODULE}.user_repository.find_activity_rows",
+                AsyncMock(return_value=[UserActivityRow(id="user-away")]),
+            ) as find,
+        ):
+            summary = await maintenance_sweep_tracked_todos({})
+
+        find.assert_awaited_once_with(ActivityStatus.DORMANT, among={"user-away", "user-here"})
+        assert summary.startswith("archived:1 ")
+        assert [c.args[0] for c in mocks["archive"].await_args_list] == ["here"]
 
     async def test_migration_failure_does_not_abort_the_sweep(self):
         with _sweep(migration=[_doc(id="a", updated_at=NOW)]) as (_pool, mocks):
@@ -1018,7 +1003,7 @@ class TestExpiredTierContainment:
         with (
             patch(f"{MODULE}._read_canvas", canvas),
             patch(f"{MODULE}._health_check_verdict", health),
-            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.notification_service.notify", AsyncMock()),
         ):
             outcome = await _health_check_expired(doc, pool)
 
@@ -1112,15 +1097,6 @@ class TestOverdueTier:
             error_type="RuntimeError",
         )
 
-    async def test_the_night_gate_defers_an_overdue_todo(self) -> None:
-        with _sweep(list=[self._overdue("due-1")], daytime=False) as (_p, mocks):
-            summary = await maintenance_sweep_tracked_todos({})
-
-        assert (
-            summary == "archived:0 notified_expired:0 notified_overdue:0 requeued:0 digest_items:0"
-        )
-        mocks["notify"].assert_not_awaited()
-
 
 @pytest.mark.unit
 class TestDormantTierDetails:
@@ -1153,7 +1129,7 @@ class TestDormantTierDetails:
             ),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", AsyncMock()) as schedule,
             patch(f"{MODULE}.todo_repository.update", AsyncMock()),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
             patch(f"{MODULE}.random.randint", return_value=42) as randint,
         ):
             outcome = await _health_check_dormant(_doc(), pool)

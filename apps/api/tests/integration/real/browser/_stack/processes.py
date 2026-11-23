@@ -27,8 +27,8 @@ import time
 import httpx
 from redis.asyncio import Redis
 
-from app.constants.browser import BROWSER_HOST_KEY_HEADER, BrowserEngine
-from app.workers.browser_worker import browser_worker_health_key
+from app.constants.browser import BROWSER_HOST_KEY_HEADER, BROWSER_JOB_QUEUE, BrowserEngine
+from app.workers.queue_workers import queue_worker_health_key
 from tests.helpers import pick_free_port
 
 API_ROOT = Path(__file__).resolve().parents[5]
@@ -36,6 +36,8 @@ API_ROOT = Path(__file__).resolve().parents[5]
 SELFHOST_CADDYFILE = API_ROOT.parents[1] / "packages" / "cli" / "selfhost" / "Caddyfile"
 #: The health key the worker process's reaper (a main-queue ARQ worker) refreshes while it polls.
 REAPER_HEALTH_KEY = "browser-stack:reaper:health"
+#: How long the reaper keeps each conversation sweep's ARQ result: a test's proof that a sweep ran.
+SWEEP_RESULT_SECONDS = 600.0
 #: How long a process gets to boot: a cold import of the app, or an engine launch.
 READY_SECONDS = 120.0
 _SERVE_MODULE = "tests.integration.real.browser._stack.serve"
@@ -223,7 +225,7 @@ class BrowserWorker:
         self._log_dir = log_dir
         #: The stack's own database, where both of the process's ARQ workers record their health.
         self._redis = redis
-        self._health_keys = (browser_worker_health_key(), REAPER_HEALTH_KEY)
+        self._health_keys = (queue_worker_health_key(BROWSER_JOB_QUEUE), REAPER_HEALTH_KEY)
         self._generation = 0
         self.process = self._next()
 

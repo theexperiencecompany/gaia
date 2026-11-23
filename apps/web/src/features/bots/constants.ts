@@ -1,16 +1,23 @@
 import { BOT_URLS, TELEGRAM_BOT_USERNAME } from "@shared/constants/bots";
 import { BOT_PLATFORM_ICONS, type BotPlatform } from "@/config/botPlatforms";
-import { siteConfig } from "@/lib/seo";
+import { signupCtaHref } from "@/features/auth/utils/signupCta";
+import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
 
 export type { BotPlatform };
 
 /** GAIA Cloud's bots; a self-hosted instance reaches its own through useBotLinks. */
 export const BOT_LINKS: Record<BotPlatform, string> = {
-  discord: `${siteConfig.url}/discord-bot`,
+  discord: BOT_URLS.discordInstall,
   telegram: BOT_URLS.telegram,
-  slack: "/slack-bot",
+  slack: BOT_URLS.slackInstall,
   whatsapp: BOT_URLS.whatsapp,
-  imessage: "/settings/linked-accounts",
+  imessage: LINKED_ACCOUNTS_SETTINGS_PATH,
+};
+
+/** iMessage is connected from a signed-in page, so a signed-out visitor signs up first; onboarding offers the connect step. */
+export const SIGNED_OUT_BOT_LINKS: Record<BotPlatform, string> = {
+  ...BOT_LINKS,
+  imessage: signupCtaHref(),
 };
 
 export interface BotAction {

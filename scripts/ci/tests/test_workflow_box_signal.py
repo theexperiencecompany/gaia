@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import subprocess
 
+from lib import runner_host
 import pytest
 import yaml
 
@@ -83,11 +84,19 @@ def test_ci_on_the_box_reads_the_runner_name(runner_name: str, on_the_box: bool)
     assert (proc.returncode == 0) is on_the_box
 
 
-def test_runner_py_names_the_same_box_prefix_as_the_shell() -> None:
-    runner = (SCRIPTS_CI / "runner.py").read_text()
-    assert re.search(
-        rf'^BOX_RUNNER_NAME_PREFIX = "{re.escape(_box_prefix_from_shell())}"$', runner, re.MULTILINE
-    )
+def test_the_python_box_signal_names_the_same_prefix_as_the_shell() -> None:
+    assert _box_prefix_from_shell() == runner_host.BOX_RUNNER_NAME_PREFIX
+
+
+@pytest.mark.parametrize(
+    ("runner_name", "on_the_box"),
+    [("gaia-home-3", True), ("blacksmith-4vcpu-ubuntu-2404-abc", False), ("", False)],
+)
+def test_on_the_box_reads_the_runner_name(
+    monkeypatch: pytest.MonkeyPatch, runner_name: str, on_the_box: bool
+) -> None:
+    monkeypatch.setenv("RUNNER_NAME", runner_name)
+    assert runner_host.on_the_box() is on_the_box
 
 
 def test_every_home_label_is_runner_pys() -> None:
@@ -108,3 +117,20 @@ def test_every_home_label_is_runner_pys() -> None:
         name: spec.get("default") for name, spec in selector["inputs"].items() if "label" in name
     }
     assert set(filter(None, defaults.values())) <= {label}, defaults
+
+
+BLOBLESS_OFF_THE_BOX = "${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}"
+
+
+def test_a_full_history_checkout_is_blobless_off_the_box_only() -> None:
+    """Every branch's blobs cost ~20 s per job on a hosted runner; the box's persistent clone stays whole."""
+    jobs = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    full = {
+        name: step["with"].get("filter")
+        for name, job in jobs.items()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+        and str(step["with"].get("fetch-depth")) == "0"
+    }
+    assert full, "no full-history checkout found: did ci.yml change shape?"
+    assert {name: f for name, f in full.items() if f != BLOBLESS_OFF_THE_BOX} == {}

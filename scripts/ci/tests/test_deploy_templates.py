@@ -43,16 +43,41 @@ def _render(compose: dict[str, Any], secrets: list[str]) -> dict[str, Any]:
     return _load(dt.render_yaml(*dt.build_render(compose, secrets)))
 
 
+def _render_groups_of(render: dict[str, Any], service: str) -> list[list[dict[str, Any]]]:
+    """Return the env vars of every Render env group a service links."""
+    groups = {group["name"]: group["envVars"] for group in render["envVarGroups"]}
+    entry = next(s for s in render["services"] if s["name"] == service)
+    return [groups[var["fromGroup"]] for var in entry["envVars"] if "fromGroup" in var]
+
+
 def test_every_cli_machine_secret_reaches_both_templates(
     compose: dict[str, Any], secrets: list[str]
 ) -> None:
     coolify_env = _coolify(compose, secrets)["services"]["gaia-backend"]["environment"]
-    render_group = _render(compose, secrets)["envVarGroups"][0]["envVars"]
+    render_backend = [
+        var
+        for group in _render_groups_of(_render(compose, secrets), "gaia-backend")
+        for var in group
+    ]
 
-    assert "GAIA_BOT_API_KEY" in secrets
+    assert {"GAIA_BOT_API_KEY", "INTERNAL_API_TOKEN"} <= set(secrets)
     for name in secrets:
         assert coolify_env[name].startswith("${SERVICE_PASSWORD_64_")
-        assert {"key": name, "generateValue": True} in render_group
+        assert {"key": name, "generateValue": True} in render_backend
+
+
+def test_the_web_server_holds_the_backends_own_rate_limit_token(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    coolify = _coolify(compose, secrets)["services"]
+    render = _render(compose, secrets)
+    token = {"key": "INTERNAL_API_TOKEN", "generateValue": True}
+
+    backend_token = coolify["gaia-backend"]["environment"]["INTERNAL_API_TOKEN"]
+    assert f"INTERNAL_API_TOKEN={backend_token}" in coolify["gaia-web"]["environment"]
+    web_groups = _render_groups_of(render, "gaia-web")
+    assert web_groups == [[token]]
+    assert web_groups[0] in _render_groups_of(render, "gaia-backend")
 
 
 def test_a_secret_coolify_cannot_map_fails_the_generator(
@@ -105,6 +130,25 @@ def test_a_compose_change_reaches_both_templates(
     assert {"key": "MONGO_NEW_FLAG", "value": "1"} in render_mongo["envVars"]
 
 
+def test_both_templates_run_the_migrations_before_the_api_and_worker(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    coolify = _coolify(compose, secrets)["services"]
+    render = {s["name"]: s for s in _render(compose, secrets)["services"]}
+    migrate = " && ".join(
+        " ".join(compose["services"][name]["command"]) for name in ("migrate", "gaia-migrate")
+    )
+
+    for app in ("gaia-backend", "arq-worker"):
+        assert coolify[app]["depends_on"]["migrate"] == {
+            "condition": "service_completed_successfully"
+        }
+    assert coolify["migrate"]["exclude_from_hc"] is True
+    assert coolify["migrate"]["restart"] == "no"
+    assert render["gaia-backend"]["preDeployCommand"] == migrate
+    assert render["gaia-worker"]["preDeployCommand"] == migrate
+
+
 def test_the_inline_caddyfile_holds_no_compose_interpolation(
     compose: dict[str, Any], secrets: list[str]
 ) -> None:
@@ -113,6 +157,26 @@ def test_the_inline_caddyfile_holds_no_compose_interpolation(
     assert "$" not in content
     assert ":80 {" in content
     assert "reverse_proxy gaia-backend:8000" in content
+
+
+def test_the_inline_caddyfile_drops_the_share_domain_blocks(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    """Coolify has no `gaia up --link-domain`: the blocks only ever bound *.gaia.invalid there."""
+    content = _coolify(compose, secrets)["services"]["proxy"]["volumes"][0]["content"]
+
+    assert ".invalid" not in content
+    assert "--link-domain" not in content
+    assert "/api/v1/usercontent/" not in content
+    assert content.count("{") == content.count("}")
+    assert "http://localhost, http://host.docker.internal {" in content
+
+
+def test_a_share_domain_block_split_across_paragraphs_fails_loud() -> None:
+    split = "{$GAIA_X_SITE_ADDRESS:http://x.gaia.invalid} {\n\trespond 404\n\n}\n"
+
+    with pytest.raises(SystemExit, match="share-domain"):
+        dt._without_share_domains(split)
 
 
 @pytest.mark.parametrize(
@@ -125,3 +189,29 @@ def test_the_inline_caddyfile_holds_no_compose_interpolation(
 )
 def test_render_images_name_their_registry(image: str, full: str) -> None:
     assert dt._docker_hub(image) == full
+
+
+def test_coolify_runs_the_migration_once_before_the_api_and_the_worker(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    services = _coolify(compose, secrets)["services"]
+
+    migrate = services["gaia-migrate"]
+    assert migrate["command"] == ["python", "-m", "scripts.migrate_conversations"]
+    assert migrate["restart"] == "no" and migrate["exclude_from_hc"] is True
+    assert "AGENT_SECRET" in migrate["environment"]
+    for app in ("gaia-backend", "arq-worker"):
+        assert services[app]["depends_on"]["gaia-migrate"] == {
+            "condition": "service_completed_successfully"
+        }
+
+
+def test_render_runs_the_migration_before_each_backend_deploy(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    services = {s["name"]: s for s in _render(compose, secrets)["services"]}
+
+    assert services["gaia-backend"]["preDeployCommand"] == (
+        "python -m scripts.post_deploy --apply && python -m scripts.migrate_conversations"
+    )
+    assert "gaia-migrate" not in services

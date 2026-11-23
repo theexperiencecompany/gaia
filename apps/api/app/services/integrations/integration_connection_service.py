@@ -5,7 +5,6 @@ from typing import TypedDict, Unpack
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict
-import pymongo.errors
 
 from app.config.oauth_config import (
     CatalogCached,
@@ -13,11 +12,12 @@ from app.config.oauth_config import (
     get_integration_by_id,
 )
 from app.constants.integrations import (
-    INTEGRATION_STATUS_CONNECTED,
     MAX_ACCOUNTS_PER_INTEGRATION,
     NOT_SET_UP_ON_INSTANCE,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import RepositoryError
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
@@ -31,7 +31,9 @@ from app.schemas.integrations.responses import (
 )
 from app.services.composio.auth_config_resolver import auth_config_id_for
 from app.services.composio.composio_service import get_composio_service
+from app.services.composio.error_detail import AuthConfigNotFoundError, composio_error_fields
 from app.services.integrations.custom_crud import delete_custom_integration
+from app.services.integrations.hook_registry import emit_disconnected
 from app.services.integrations.integration_accounts import at_account_limit, get_account_record
 from app.services.integrations.integration_resolver import (
     IntegrationResolver,
@@ -143,7 +145,9 @@ async def _handle_auth_required(
 ) -> ConnectIntegrationResponse:
     """Return bearer_required for bearer servers; everything else gets the OAuth redirect."""
     if not target.is_platform:
-        await update_user_integration_status(target.user_id, target.integration_id, "created")
+        await update_user_integration_status(
+            target.user_id, target.integration_id, IntegrationStatus.CREATED
+        )
 
     if detected_auth_type == "bearer":
         return ConnectIntegrationResponse(
@@ -175,7 +179,9 @@ async def _handle_connect_failure(
 ) -> ConnectIntegrationResponse:
     """Surface a connection failure as a structured error, never a 500."""
     if not target.is_platform:
-        await update_user_integration_status(target.user_id, target.integration_id, "created")
+        await update_user_integration_status(
+            target.user_id, target.integration_id, IntegrationStatus.CREATED
+        )
     log.warning(
         f"{LogTag.INTEGRATION} MCP connection failed for",
         integration_id=target.integration_id,
@@ -295,7 +301,9 @@ async def _connect_with_bearer_token(
     try:
         tools = await mcp_client.connect(target.integration_id)
         # Busts the full per-user integration cache set (status + tools:user:*).
-        await update_user_integration_status(target.user_id, target.integration_id, "connected")
+        await update_user_integration_status(
+            target.user_id, target.integration_id, IntegrationStatus.CONNECTED
+        )
     except Exception as e:
         # Rollback: clean up stored credentials on connection failure
         await token_store.delete_credentials(target.integration_id)
@@ -336,7 +344,7 @@ def _composio_connect_target(
     account = record.find_account(reconnect_account_id) if record else None
     if account is None:
         return f"That {integration_name} account is no longer connected. Add it again instead."
-    if account.status == INTEGRATION_STATUS_CONNECTED:
+    if account.status == IntegrationStatus.CONNECTED:
         return f"{account.display_name} is already connected."
     return account
 
@@ -384,7 +392,7 @@ async def connect_composio_integration(
     else:
         # Adding a further account must not demote a working integration to pending.
         if record is None or not record.accounts:
-            await update_user_integration_status(user_id, integration_id, "created")
+            await update_user_integration_status(user_id, integration_id, IntegrationStatus.CREATED)
         connect_link = await composio_service.connect_account(
             provider, user_id, state_token=state_token
         )
@@ -465,13 +473,21 @@ async def initiate_integration_connection(
                 reconnect_account_id=reconnect_account_id,
             )
         return _error(f"Unsupported integration type: {resolved.managed_by}")
+    except AuthConfigNotFoundError as e:
+        log.error(
+            f"{LogTag.INTEGRATION} Integration has no auth config in this Composio project",
+            integration_id=integration_id,
+            auth_config_id=e.auth_config_id,
+            user_id=user_id,
+        )
+        log.set(integration={"id": integration_id, "status": "not_set_up"})
+        return _error(f"{resolved.name} {NOT_SET_UP_ON_INSTANCE}")
     except Exception as e:
         log.error(
-            f"{LogTag.INTEGRATION} Failed to initiate connection for",
+            f"{LogTag.INTEGRATION} Failed to initiate connection",
             integration_id=integration_id,
-            error=str(e),
-            error_type=type(e).__name__,
             user_id=user_id,
+            **composio_error_fields(e),
         )
         log.set(integration={"id": integration_id, "status": "error"})
         return _error(connect_failure_copy(resolved.name))
@@ -508,6 +524,7 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
         raise ValueError(f"Integration {integration_id} disconnect not supported")
 
     await _invalidate_caches(user_id, integration_id, resolved.managed_by)
+    await emit_disconnected(user_id, integration_id)
 
     # Reflect the reduced connected set in the user's workspace VFS.
     schedule_user_integrations_sync(user_id)
@@ -555,7 +572,7 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: Mana
                     f"{LogTag.INTEGRATION} Removed platform integration record",
                     integration_id=integration_id,
                 )
-            except pymongo.errors.PyMongoError as e:
+            except RepositoryError as e:
                 log.warning(
                     f"{LogTag.INTEGRATION} Failed to remove integration record",
                     error=str(e),
@@ -566,12 +583,14 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: Mana
         else:
             # Custom integrations: preserve in workspace by setting status to "created"
             try:
-                await update_user_integration_status(user_id, integration_id, "created")
+                await update_user_integration_status(
+                    user_id, integration_id, IntegrationStatus.CREATED
+                )
                 log.info(
                     f"{LogTag.INTEGRATION} Updated status to 'created' for custom integration",
                     integration_id=integration_id,
                 )
-            except pymongo.errors.PyMongoError as e:
+            except RepositoryError as e:
                 log.warning(
                     f"{LogTag.INTEGRATION} Failed to update status",
                     error=str(e),

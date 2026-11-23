@@ -265,6 +265,20 @@ def test_survivors_rejects_a_foreign_json_instead_of_crashing(tmp_path: Path) ->
     assert "shard.verdict.json" in result.stderr
 
 
+def test_survivors_names_a_record_missing_its_status(tmp_path: Path) -> None:
+    """A record with a module but no status is malformed: name the file, never a KeyError."""
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "app_x.py.json").write_text(json.dumps({"module": "app/x.py"}))
+
+    result = _run(["survivors", str(records)])
+
+    assert result.returncode != 0
+    assert "app_x.py.json" in result.stderr
+    assert "not a mutation record" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_survivors_rejects_a_null_module_list(tmp_path: Path) -> None:
     """A record set whose modules is null is malformed, not an empty run with no survivors."""
     broken = tmp_path / "shard.verdict.json"
@@ -468,6 +482,7 @@ def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
         (LOG_LIB, "lib/log.sh"),
         (CPU_SLOTS_LIB, "lib/cpu-slots.sh"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "runner-host.sh", "lib/runner-host.sh"),
+        (REPO_ROOT / "scripts" / "ci" / "lib" / "runner_host.py", "lib/runner_host.py"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_gap.py", "lib/mutation_gap.py"),
         (REPORT, "lib/mutation_report.py"),
     ):
@@ -550,7 +565,14 @@ def repo_verdicts_untouched() -> Iterator[None]:
 
 def _run_shard(root: Path, module: str = "app/services/x.py") -> subprocess.CompletedProcess[str]:
     group = json.dumps(
-        [{"module": module, "testfiles": '["tests/unit/test_x.py"]', "ranges": "[[2,2]]"}]
+        [
+            {
+                "module": module,
+                "testfiles": '["tests/unit/test_x.py"]',
+                "ranges": "[[2,2]]",
+                "mutants": "1",
+            }
+        ]
     )
     return subprocess.run(
         [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
@@ -707,6 +729,7 @@ def _shard_with_env(root: Path, **env: str) -> subprocess.CompletedProcess[str]:
                 "module": "app/services/x.py",
                 "testfiles": '["tests/unit/test_x.py"]',
                 "ranges": "[[2,2]]",
+                "mutants": "1",
             }
         ]
     )
@@ -781,6 +804,7 @@ def test_the_shard_falls_back_to_the_runner_temp_rung(tmp_path: Path) -> None:
                         "module": "app/services/x.py",
                         "testfiles": '["tests/unit/test_x.py"]',
                         "ranges": "[[2,2]]",
+                        "mutants": "1",
                     }
                 ]
             ),
@@ -1039,6 +1063,51 @@ def test_replay_fails_loudly_when_the_diff_no_longer_matches(tmp_path: Path) -> 
     assert "does not match the file on disk" in result.stderr
 
 
+COUNTER_SOURCE = '''class Counter:
+    def __init__(self, start: int) -> None:
+        """Start one past the seed.
+
+        The seed itself is reserved.
+        """
+        self.value = start + 1
+
+    def bump(self, by: int) -> int:
+        return self.value + by
+'''
+# Verbatim `mutmut show` (3.7) output for two methods of COUNTER_SOURCE: a method
+# prints dedented to column 0, while a docstring's continuation lines keep their
+# file column, and the hunk can open on a blank context line.
+COUNTER_INIT_DIFF = (
+    "--- app/calc.py\n+++ app/calc.py\n@@ -3,4 +3,4 @@\n \n"
+    "         The seed itself is reserved.\n"
+    '         """\n'
+    "-    self.value = start + 1\n"
+    "+    self.value = None"
+)
+COUNTER_BUMP_DIFF = (
+    "--- app/calc.py\n+++ app/calc.py\n@@ -1,2 +1,2 @@\n"
+    " def bump(self, by: int) -> int:\n"
+    "-    return self.value + by\n"
+    "+    return self.value - by"
+)
+
+
+@pytest.mark.parametrize(
+    ("diff", "hint", "before", "after"),
+    [
+        (COUNTER_INIT_DIFF, 7, "start + 1", "None"),
+        (COUNTER_BUMP_DIFF, 10, "self.value + by", "self.value - by"),
+    ],
+)
+def test_replay_applies_a_method_mutant_at_the_methods_indent(
+    diff: str, hint: int, before: str, after: str
+) -> None:
+    patched, line = report_lib.apply_hunk(COUNTER_SOURCE.splitlines(), diff, hint)
+
+    assert patched == COUNTER_SOURCE.replace(before, after).splitlines()
+    assert line == hint
+
+
 def test_mutation_py_asks_for_the_verdict_directory_instead_of_deriving_it() -> None:
     """`verdict.py dir` is the only thing that knows where verdicts go.
 
@@ -1091,8 +1160,8 @@ def test_mutation_py_exposes_replay() -> None:
     assert "replay <verdict|dir|shard.log>" in usage.stderr
 
 
-def test_mutation_py_exposes_survivors_and_one() -> None:
-    """Both actionable commands are reachable and self-documenting from the entrypoint."""
+def test_mutation_py_exposes_survivors() -> None:
+    """The survivors command is reachable and self-documenting from the entrypoint."""
     survivors = subprocess.run(
         [sys.executable, str(MUTATION_PY), "survivors"],
         capture_output=True,
@@ -1103,16 +1172,6 @@ def test_mutation_py_exposes_survivors_and_one() -> None:
     assert survivors.returncode == 2
     assert "usage: mutation.py survivors" in survivors.stderr
 
-    one = subprocess.run(
-        [sys.executable, str(MUTATION_PY), "one"],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=REPO_ROOT,
-    )
-    assert one.returncode == 2
-    assert "usage: mutation.py one" in one.stderr
-
     usage = subprocess.run(
         [sys.executable, str(MUTATION_PY), "nonsense"],
         capture_output=True,
@@ -1121,7 +1180,6 @@ def test_mutation_py_exposes_survivors_and_one() -> None:
         cwd=REPO_ROOT,
     )
     assert "survivors <verdict|dir|shard.log>" in usage.stderr
-    assert "one <mod> [tests]" in usage.stderr
 
 
 @pytest.mark.parametrize(
@@ -1136,3 +1194,30 @@ def test_mutation_py_exposes_survivors_and_one() -> None:
 def test_change_summary_names_the_edit(removed: list[str], added: list[str], expected: str) -> None:
     """The one-line change is the whole point: a name plus `→` beats a diff to scan."""
     assert report_lib.change_summary(removed, added) == expected
+
+
+def test_replay_keeps_each_replacement_lines_own_indent_in_a_mixed_removal_run() -> None:
+    source = 'class C:\n    def text(self) -> str:\n        return """a\nb"""\n'
+    diff = (
+        "--- app/c.py\n+++ app/c.py\n@@ -1,3 +1,3 @@\n"
+        " def text(self) -> str:\n"
+        '-    return """a\n'
+        '-b"""\n'
+        '+    return """XXa\n'
+        '+bXX"""'
+    )
+
+    patched, _ = report_lib.apply_hunk(source.splitlines(), diff, 3)
+
+    assert patched == source.replace("a\nb", "XXa\nbXX").splitlines()
+
+
+def test_replay_breaks_a_tie_by_the_edited_line_not_the_block_start() -> None:
+    source = "a\nb\nc\nd\n\nclass K:\n    a\n    b\n    c\n    d\n".splitlines()
+    diff = "--- app/k.py\n+++ app/k.py\n@@ -1,4 +1,4 @@\n a\n b\n c\n-d\n+D"
+
+    patched, line = report_lib.apply_hunk(source, diff, 4)
+
+    assert line == 4
+    assert patched[3] == "D"
+    assert patched[9] == "    d"

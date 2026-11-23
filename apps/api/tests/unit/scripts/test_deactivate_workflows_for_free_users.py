@@ -12,6 +12,8 @@ from scripts.deactivate_workflows_for_free_users import (
     run_migration,
 )
 
+from app.services.system_workflows.registry import UNPAUSABLE_KEYS
+
 MODULE = "scripts.deactivate_workflows_for_free_users"
 # The script lists what a lapse may pause through the pause module's own finder.
 PAUSE = "app.services.workflow.subscription_pause"
@@ -48,7 +50,10 @@ class TestFindFreeUserCandidates:
             candidates = await find_free_user_candidates()
 
         assert [c.user_id for c in candidates] == [FREE_USER]
-        workflow_repo.find_activated_for_user.assert_awaited_once_with(FREE_USER)
+        # The briefs pause on their own schedule, never with the free-plan sweep.
+        workflow_repo.find_activated_for_user.assert_awaited_once_with(
+            FREE_USER, excluding_keys=UNPAUSABLE_KEYS
+        )
 
     async def test_skips_public_template_workflows_owned_by_a_free_user(self) -> None:
         workflow_repo, subscription_repo = _repos(

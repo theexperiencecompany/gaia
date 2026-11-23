@@ -1,0 +1,65 @@
+"""What earlier briefs remember of each candidate, so a thing already told reads as still open, not news.
+
+App signals are remembered by their scout pass, which reads them; every other candidate
+the daily pool holds is remembered here, under GAIA's own key for it.
+"""
+
+from collections.abc import Sequence
+from datetime import datetime, timedelta
+
+from app.constants.briefing import GAIA_SOURCE, OVERDUE_RESHOW_DAYS
+from app.db.repositories.signal_memory import signal_memory_repository
+from app.models.brief_candidate_models import BriefCandidate, GaiaRef, GaiaRefKind
+from app.models.scout_models import Sighting
+from app.services.briefing.clock import UserClock
+
+
+def sighting(candidate: BriefCandidate) -> Sighting | None:
+    """Return how memory keys the candidate; None for what is new each time (events, held results)."""
+    if candidate.signal is not None:
+        signal = candidate.signal
+        return Sighting(signal.integration_id, signal.external_id, signal.state)
+    if candidate.todo_id is not None:
+        todo = GaiaRef(kind=GaiaRefKind.TODO, id=candidate.todo_id)
+        return Sighting(GAIA_SOURCE, str(todo), candidate.state)
+    if candidate.seen_as is not None:
+        return Sighting(GAIA_SOURCE, str(candidate.seen_as), candidate.state)
+    return None
+
+
+async def remember_candidates(
+    user_id: str, candidates: Sequence[BriefCandidate], now: datetime
+) -> list[BriefCandidate]:
+    """Return each candidate with its memory as it stood before today, then record today's sighting."""
+    keyed = {
+        i: seen
+        for i, c in enumerate(candidates)
+        if c.signal is None and (seen := sighting(c)) is not None
+    }
+    if not keyed:
+        return list(candidates)
+    known = {
+        (m.integration_id, m.external_id): m
+        for m in await signal_memory_repository.find_for(user_id, list(keyed.values()))
+    }
+    remembered: list[BriefCandidate] = []
+    for i, candidate in enumerate(candidates):
+        seen = keyed.get(i)
+        memory = known.get((seen.integration_id, seen.external_id)) if seen else None
+        if memory is None:
+            remembered.append(candidate)
+            continue
+        moved = memory.last_state not in (None, candidate.state)
+        remembered.append(candidate.model_copy(update={"memory": memory, "moved": moved}))
+    await signal_memory_repository.record_seen(user_id, list(keyed.values()), now)
+    return remembered
+
+
+def rests_today(candidate: BriefCandidate, clock: UserClock) -> bool:
+    """Whether a daily brief holds back an overdue item: past its first day overdue and shown too recently."""
+    memory = candidate.memory
+    if candidate.due_at is None or memory is None or memory.last_shown is None:
+        return False
+    first_overdue = clock.day_of(candidate.due_at) + timedelta(days=1)
+    shown_ago = (clock.today - clock.day_of(memory.last_shown)).days
+    return candidate.is_repeat and clock.today > first_overdue and shown_ago < OVERDUE_RESHOW_DAYS

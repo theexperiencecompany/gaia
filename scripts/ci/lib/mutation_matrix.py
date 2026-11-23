@@ -9,8 +9,10 @@ when any test file imports it, imports from it, or names it in a string
 literal (patch target).
 
 Input:  changed app module paths on stdin (one per line, repo-root-relative).
-Output: [{"module": ..., "testfiles": [...], "changed_lines": [...]}, ...]
+Output: [{"module": ..., "testfiles": [...], "changed_lines": [...], "mutants": N}, ...]
         Every test file referencing the module, not one — see with_unit_mirror.
+        `mutants` estimates how many mutants mutmut will generate on the
+        changed lines; mutation.py plans its shards by it.
 Exit 1 with a ::error message when a changed module has no test file.
 """
 
@@ -33,6 +35,23 @@ TESTS_DIR = Path("apps/api/tests")
 # The repo has one base branch (CLAUDE.md); local runs diff against it so a
 # local mutation run scopes exactly like the PR lane does.
 LOCAL_BASE_BRANCH = "master"
+# The nodes mutmut 3.7 rewrites, counted inside function bodies (it mutates
+# nothing else). On PR #1799's 132 graded modules the count's rank correlation
+# with the real mutant count was 0.92, at 1.04 real mutants per counted node.
+MUTABLE_NODES = (
+    ast.Assign,
+    ast.AugAssign,
+    ast.BinOp,
+    ast.BoolOp,
+    ast.Call,
+    ast.Compare,
+    ast.Constant,
+    ast.Lambda,
+    ast.Return,
+    ast.Subscript,
+    ast.UnaryOp,
+    ast.keyword,
+)
 
 
 def _base_ref() -> str:
@@ -453,7 +472,10 @@ def main() -> int:
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
         failures.append(
             f"changed module {rel} has no test file anywhere (looked for {unit_mirror} "
-            "and AST importers/patch targets). Changed code must ship tests."
+            "and AST importers/patch targets). Changed code must ship tests: add "
+            f"apps/api/{unit_mirror} or any test that imports the module. To try it locally "
+            f"against a test file you name, run `python3 scripts/ci/mutation.py module {rel} "
+            "<tests/...py>`; that does not satisfy this check."
         )
     if failures:
         for failure in failures:
@@ -471,8 +493,39 @@ def _entry(module_rel: str, testfiles: list[str], merge_base: str) -> dict[str, 
     failures — otherwise a 1-line import fix would demand full-module test
     coverage.
     """
-    ranges = _changed_line_ranges(f"apps/api/{module_rel}", merge_base)
-    return {"module": module_rel, "testfiles": testfiles, "changed_lines": ranges}
+    path = f"apps/api/{module_rel}"
+    ranges = _changed_line_ranges(path, merge_base)
+    mutants = estimate_mutants(Path(path).read_text(encoding="utf-8"), ranges) if ranges else 0
+    return {
+        "module": module_rel,
+        "testfiles": testfiles,
+        "changed_lines": ranges,
+        "mutants": mutants,
+    }
+
+
+def estimate_mutants(source: str, ranges: Sequence[Sequence[int]]) -> int:
+    """Count the mutable nodes inside functions that start on a changed line."""
+    changed = {line for start, end in ranges for line in range(start, end + 1)}
+    counted: set[ast.AST] = set()
+    for function in ast.walk(ast.parse(source)):
+        if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        counted.update(
+            node
+            for node in ast.walk(function)
+            if isinstance(node, MUTABLE_NODES) and getattr(node, "lineno", 0) in changed
+        )
+    return len(counted)
+
+
+def _is_untracked(path: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", path], capture_output=True, check=False
+        ).returncode
+        != 0
+    )
 
 
 def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
@@ -484,9 +537,16 @@ def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
     """
     if not merge_base:
         return []
+    # Off CI the working tree counts, uncommitted and untracked, as in `changes.sh
+    # files`: a local run checks what is about to be committed. CI's tree is the commit.
+    in_ci = bool(os.environ.get("GITHUB_ACTIONS"))
+    if not in_ci and _is_untracked(path):
+        line_count = len(Path(path).read_text().splitlines())
+        return [[1, line_count]] if line_count else []
+    revisions = [merge_base, "HEAD"] if in_ci else [merge_base]
     try:
         out = subprocess.check_output(
-            ["git", "diff", "--unified=0", merge_base, "HEAD", "--", path],
+            ["git", "diff", "--unified=0", *revisions, "--", path],
             text=True,
             stderr=subprocess.DEVNULL,
         )

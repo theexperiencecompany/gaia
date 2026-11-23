@@ -15,11 +15,13 @@ between those two — runs for real. Nothing here runs mutmut.
 
 from collections.abc import Callable
 import json
+import math
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -27,6 +29,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.py"
 REPORT_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
+RUNNER_HOST_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "runner_host.py"
 
 
 # Read out of the script under test rather than mirrored here. A hand-copied
@@ -35,18 +38,27 @@ REPORT_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
 # The packing it drives is what keeps a huge diff producing a matrix at all,
 # rather than blowing GitHub's 256-job hard limit and yielding none — and a lane
 # with no matrix is a lane that counts as a pass.
-def _max_shards() -> int:
+def _constant(name: str) -> float:
     source = PLAN_SCRIPT.read_text()
-    match = re.search(r"^MAX_SHARDS = (\d+)$", source, re.MULTILINE)
-    assert match, "MAX_SHARDS not found in mutation.py — did the plan script change shape?"
-    return int(match.group(1))
+    match = re.search(rf"^{name} = ([\d.]+)$", source, re.MULTILINE)
+    assert match, f"{name} not found in mutation.py — did the plan script change shape?"
+    return float(match.group(1))
 
 
-MAX_SHARDS = _max_shards()
+MAX_SHARDS = int(_constant("MAX_SHARDS"))
+MUTATION_WAVE = int(_constant("MUTATION_WAVE"))
+SHARD_BUDGET_SECONDS = _constant("SHARD_BUDGET_SECONDS")
+UNIT_RATE = _constant("UNIT_SECONDS_PER_MUTANT")
+OVERHEAD = _constant("MODULE_OVERHEAD_SECONDS")
 
-# Round-robin packing gives the first shard the ceiling of the even split.
+# Heavy enough that the whole diff needs more than MAX_SHARDS budgets, so the
+# bound is what decides the count. Equal costs pack evenly, the first shards
+# taking the ceiling of the split.
 HUGE_DIFF_MODULES = 430
+HUGE_DIFF_MUTANTS = 2000
 FIRST_SHARD_SIZE = -(-HUGE_DIFF_MODULES // MAX_SHARDS)
+# Mutants that make a module cost over half the budget, so no two share a shard.
+OVER_HALF_A_BUDGET = int((SHARD_BUDGET_SECONDS / 2 - OVERHEAD) / UNIT_RATE) + 1
 
 
 def _install(scripts: Path) -> None:
@@ -55,6 +67,7 @@ def _install(scripts: Path) -> None:
     lib = scripts / "lib"
     lib.mkdir(exist_ok=True)
     shutil.copy(REPORT_LIB, lib / "mutation_report.py")
+    shutil.copy(RUNNER_HOST_LIB, lib / "runner_host.py")
 
 
 def _stub_changes(scripts: Path, changed: list[str]) -> None:
@@ -71,9 +84,7 @@ def _stub_detector(scripts: Path, body: str) -> None:
     stub.chmod(0o755)
 
 
-PlanRun = Callable[
-    [list[dict[str, object]]], tuple[subprocess.CompletedProcess[str], dict[str, str]]
-]
+PlanRun = Callable[..., tuple[subprocess.CompletedProcess[str], dict[str, str]]]
 
 
 @pytest.fixture
@@ -87,7 +98,14 @@ def harness(tmp_path: Path) -> PlanRun:
 
     def run(
         matrix: list[dict[str, object]],
+        measured: dict[str, dict[str, float]] | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+        # measured: run id -> {module: seconds}, as `history` lands earlier runs' shards.
+        history = tmp_path / "history"
+        for run_id, durations in (measured or {}).items():
+            shard = history / run_id / "mutation-durations-0"
+            shard.mkdir(parents=True)
+            (shard / "shard.durations.json").write_text(json.dumps(durations))
         # The changed-file list the real `matrix` filtering runs over: every
         # module in the fixture, under the apps/api/app/ prefix it selects on.
         _stub_changes(
@@ -103,7 +121,11 @@ def harness(tmp_path: Path) -> PlanRun:
             capture_output=True,
             text=True,
             check=False,
-            env={"PATH": "/usr/bin:/bin", "GITHUB_OUTPUT": str(github_output)},
+            env={
+                "PATH": "/usr/bin:/bin",
+                "GITHUB_OUTPUT": str(github_output),
+                "MUTATION_HISTORY_DIR": str(history),
+            },
         )
         outputs = dict(
             line.split("=", 1) for line in github_output.read_text().splitlines() if "=" in line
@@ -113,8 +135,15 @@ def harness(tmp_path: Path) -> PlanRun:
     return run
 
 
-def _entry(module: str, testfiles: list[str], changed_lines: list[int]) -> dict[str, object]:
-    return {"module": module, "testfiles": testfiles, "changed_lines": changed_lines}
+def _entry(
+    module: str, testfiles: list[str], changed_lines: list[int], mutants: int = 1
+) -> dict[str, object]:
+    return {
+        "module": module,
+        "testfiles": testfiles,
+        "changed_lines": changed_lines,
+        "mutants": mutants,
+    }
 
 
 def _matrix(outputs: dict[str, str]) -> list[dict[str, str]]:
@@ -133,8 +162,8 @@ def test_the_matrix_value_is_the_label_alone(harness: PlanRun) -> None:
     # what made a skipped job render `${{ matrix.label }}` literally.
     _, outputs = harness(
         [
-            _entry("app/a.py", ["tests/unit/test_a.py"], [1]),
-            _entry("app/b.py", ["tests/unit/test_b.py"], [1]),
+            _entry("app/a.py", ["tests/unit/test_a.py"], [1], mutants=OVER_HALF_A_BUDGET),
+            _entry("app/b.py", ["tests/unit/test_b.py"], [1], mutants=OVER_HALF_A_BUDGET),
         ]
     )
 
@@ -142,11 +171,11 @@ def test_the_matrix_value_is_the_label_alone(harness: PlanRun) -> None:
     assert set(json.loads(outputs["shard_defs"])) == {"app/a.py", "app/b.py"}
 
 
-def test_every_changed_module_gets_its_own_shard(harness: PlanRun) -> None:
+def test_modules_that_cannot_share_a_budget_get_a_shard_each(harness: PlanRun) -> None:
     process, outputs = harness(
         [
-            _entry("app/a.py", ["tests/unit/test_a.py"], [1, 2]),
-            _entry("app/b.py", ["tests/unit/test_b.py"], [7]),
+            _entry("app/a.py", ["tests/unit/test_a.py"], [1, 2], mutants=OVER_HALF_A_BUDGET),
+            _entry("app/b.py", ["tests/unit/test_b.py"], [7], mutants=OVER_HALF_A_BUDGET),
         ]
     )
 
@@ -196,7 +225,7 @@ def test_no_changed_modules_yields_an_empty_matrix_and_a_zero_count(harness: Pla
 
 
 class TestPackingAHugeDiff:
-    """Over MAX_SHARDS modules, shards carry several modules each.
+    """A diff too costly for MAX_SHARDS budgets still gets MAX_SHARDS shards, no more.
 
     GitHub refuses a matrix larger than 256 jobs outright, and the lane would
     then produce NO matrix — which the gate reads as a skip, and a skipped
@@ -205,7 +234,10 @@ class TestPackingAHugeDiff:
 
     @staticmethod
     def _many(count: int) -> list[dict[str, object]]:
-        return [_entry(f"app/m{i}.py", [f"tests/unit/test_m{i}.py"], [i]) for i in range(count)]
+        return [
+            _entry(f"app/m{i}.py", [f"tests/unit/test_m{i}.py"], [i], mutants=HUGE_DIFF_MUTANTS)
+            for i in range(count)
+        ]
 
     def test_the_matrix_never_exceeds_the_job_limit(self, harness: PlanRun) -> None:
         process, outputs = harness(self._many(HUGE_DIFF_MODULES))
@@ -233,11 +265,43 @@ class TestPackingAHugeDiff:
             re.fullmatch(rf"shard \d+/{MAX_SHARDS} \(\d+ modules\)", label) for label in labels
         )
 
-    def test_exactly_the_limit_still_gets_one_module_each(self, harness: PlanRun) -> None:
-        _, outputs = harness(self._many(MAX_SHARDS))
 
-        assert int(outputs["count"]) == MAX_SHARDS
-        assert all(len(group) == 1 for group in _groups(outputs))
+def test_a_cheap_diff_runs_in_one_shard(harness: PlanRun) -> None:
+    # Each shard pays a checkout, a uv sync and a runner slot from the org's
+    # pool of 20; six one-module shards spent ~6x that setup on ~100 s of mutants.
+    _, outputs = harness([_entry(f"app/m{i}.py", [UNIT_TEST], [i]) for i in range(MUTATION_WAVE)])
+
+    assert int(outputs["count"]) == 1
+    assert [item["label"] for item in _matrix(outputs)] == [f"shard 1/1 ({MUTATION_WAVE} modules)"]
+
+
+def test_a_cheap_diff_gets_the_fewest_shards_its_cost_fits(harness: PlanRun) -> None:
+    modules = 40
+    _, outputs = harness([_entry(f"app/m{i}.py", [UNIT_TEST], [i]) for i in range(modules)])
+
+    per_module = OVERHEAD + UNIT_RATE
+    assert int(outputs["count"]) == math.ceil(modules * per_module / SHARD_BUDGET_SECONDS)
+    for group in _groups(outputs):
+        assert len(group) * per_module <= SHARD_BUDGET_SECONDS
+
+
+def test_a_costly_diff_gets_as_many_shards_as_it_needs_to_fit_the_budget(
+    harness: PlanRun,
+) -> None:
+    # PR #1799: 222 modules worth ~10,000 s were forced into six shards, and
+    # every shard ran past its 28-minute deadline. The count follows the cost,
+    # and shards past the wave queue behind max-parallel.
+    mutants = int((SHARD_BUDGET_SECONDS / 3 - OVERHEAD) / UNIT_RATE) - 1  # three per shard
+    entries = [_entry(f"app/m{i}.py", [UNIT_TEST], [i], mutants=mutants) for i in range(40)]
+
+    process, outputs = harness(entries)
+
+    assert process.returncode == 0, process.stderr
+    per_module = OVERHEAD + mutants * UNIT_RATE
+    assert MUTATION_WAVE < int(outputs["count"]) <= MAX_SHARDS
+    for group in _groups(outputs):
+        assert len(group) * per_module <= SHARD_BUDGET_SECONDS
+    assert "::warning::" not in process.stdout
 
 
 def test_a_failing_detector_fails_the_plan(tmp_path: Path) -> None:
@@ -262,7 +326,10 @@ def test_a_failing_detector_fails_the_plan(tmp_path: Path) -> None:
         env={"PATH": "/usr/bin:/bin", "GITHUB_OUTPUT": str(tmp_path / "out")},
     )
 
-    assert process.returncode != 0
+    assert process.returncode == 1
+    # The detector's own line is the whole message: a traceback after it buries it.
+    assert "no test file for app/a.py" in process.stderr
+    assert "Traceback" not in process.stderr
 
 
 def test_matrix_only_offers_the_detector_mutatable_app_modules(tmp_path: Path) -> None:
@@ -378,10 +445,10 @@ def test_no_shard_mixes_the_two_pools(harness: PlanRun) -> None:
 
 def test_the_two_pools_share_one_shard_budget(harness: PlanRun) -> None:
     # MAX_SHARDS bounds the PLAN, not each pool: two pools helping themselves to
-    # six each would double the wave and walk back toward GitHub's job limit.
+    # MAX_SHARDS each would double it and walk back toward GitHub's job limit.
     _, outputs = harness(
-        [_entry(f"app/repo{i}.py", [CONTRACT_TEST], [i]) for i in range(10)]
-        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(30)]
+        [_entry(f"app/repo{i}.py", [CONTRACT_TEST], [i], mutants=HEAVY_MUTANTS) for i in range(30)]
+        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i], mutants=HEAVY_MUTANTS) for i in range(30)]
     )
 
     assert int(outputs["count"]) == MAX_SHARDS
@@ -391,12 +458,12 @@ def test_the_two_pools_share_one_shard_budget(harness: PlanRun) -> None:
 
 
 def test_the_heavier_pool_gets_the_spare_shards(harness: PlanRun) -> None:
-    # Every live pool starts at one shard and the rest follow the diff. The
-    # typical PR touches one repository and many plain modules, so the services
-    # pool takes one shard and the unit pool takes the remaining five.
+    # Cut back to MAX_SHARDS, every live pool starts at one shard and the rest
+    # follow the cost: one repository beside many costly plain modules leaves
+    # the services pool one shard and the unit pool the rest.
     _, outputs = harness(
         [_entry("app/repo.py", [CONTRACT_TEST], [1])]
-        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(20)]
+        + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i], mutants=HEAVY_MUTANTS) for i in range(40)]
     )
 
     shards_per_pool: dict[str, int] = {}
@@ -416,7 +483,179 @@ def test_a_services_shard_says_so_in_its_check_name(harness: PlanRun) -> None:
 def test_the_matrix_runs_as_many_shards_at_once_as_the_plan_makes() -> None:
     """More shards than max-parallel queue behind each other; fewer leave runners idle."""
     workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
-    assert workflow["jobs"]["test-mutation"]["strategy"]["max-parallel"] == MAX_SHARDS
+    assert workflow["jobs"]["test-mutation"]["strategy"]["max-parallel"] == MUTATION_WAVE
     # runner.py sizes the box's services pool for one wave of them.
     runner = (REPO_ROOT / "scripts" / "ci" / "runner.py").read_text()
-    assert re.search(rf"^MUTATION_WAVE = {MAX_SHARDS}$", runner, re.MULTILINE)
+    assert re.search(rf"^MUTATION_WAVE = {MUTATION_WAVE}$", runner, re.MULTILINE)
+
+
+def test_a_shard_uploads_only_files_its_own_job_wrote() -> None:
+    # The home runner keeps its checkout (clean: false): a shard that failed in
+    # setup uploaded the previous job's shard.durations.json as its own.
+    steps = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())["jobs"][
+        "test-mutation"
+    ]["steps"]
+    shard = next(s for s in steps if s.get("run") == "python3 scripts/ci/mutation.py shard")
+    uploaded = [
+        line.strip()
+        for s in steps
+        if s.get("uses", "").startswith("actions/upload-artifact@")
+        for line in s["with"]["path"].splitlines()
+        if line.strip()
+    ]
+
+    assert shard["env"]["SHARD_LOG"] == "${{ runner.temp }}/shard.log"
+    assert uploaded
+    assert all(path.startswith("${{ runner.temp }}/shard.") for path in uploaded)
+
+
+# ---------------------------------------------------------------------------
+# Cost — shards are balanced by estimated work, not by module count.
+#
+# PR #1799 packed 222 modules six ways by count: shard 3/6 drew 54 modules and
+# hit the 30-minute step timeout, while the two services shards each carried a
+# ~15-minute module beside thirty others. A module's cost is its estimated
+# mutant count times its mapped test files, at the pool's per-test rate.
+# ---------------------------------------------------------------------------
+
+HEAVY_MUTANTS = 2000
+
+
+def _shard_of(outputs: dict[str, str], module: str) -> list[str]:
+    """Return the modules sharing a shard with `module`, itself included."""
+    for group in _groups(outputs):
+        modules = [entry["module"] for entry in group]
+        if module in modules:
+            return modules
+    raise AssertionError(f"{module} is in no shard")
+
+
+def test_two_heavy_modules_never_share_a_shard(harness: PlanRun) -> None:
+    # Round-robin by index put modules 0 and 6 together whatever they weighed.
+    entries = [_entry("app/heavy0.py", [UNIT_TEST], [1], mutants=HEAVY_MUTANTS)]
+    entries += [_entry(f"app/light{i}.py", [UNIT_TEST], [1]) for i in range(1, 6)]
+    entries += [_entry("app/heavy6.py", [UNIT_TEST], [1], mutants=HEAVY_MUTANTS)]
+    entries += [_entry(f"app/light{i}.py", [UNIT_TEST], [1]) for i in range(7, 12)]
+
+    _, outputs = harness(entries)
+
+    assert _shard_of(outputs, "app/heavy0.py") == ["app/heavy0.py"]
+    assert _shard_of(outputs, "app/heavy6.py") == ["app/heavy6.py"]
+
+
+def test_a_few_costly_services_modules_get_shards_of_their_own(harness: PlanRun) -> None:
+    # Three repository modules each worth ~12 serial minutes outweigh twenty
+    # cheap unit modules; by count the services pool got one shard for all three.
+    contracts = [f"tests/contracts/test_repo{n}.py" for n in range(8)]
+    entries = [_entry(f"app/repo{i}.py", contracts, [1], mutants=500) for i in range(3)]
+    entries += [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(20)]
+
+    _, outputs = harness(entries)
+
+    services = [item for item in _matrix(outputs) if item["pool"] == "services"]
+    assert len(services) == 3
+    # The twenty cheap unit modules fit one budget together.
+    assert int(outputs["count"]) == len(services) + 1
+
+
+def test_a_shard_over_the_budget_is_announced_by_the_plan(harness: PlanRun) -> None:
+    contracts = [f"tests/contracts/test_repo{n}.py" for n in range(8)]
+
+    process, _ = harness([_entry("app/repo.py", contracts, [1], mutants=5000)])
+
+    assert process.returncode == 0, process.stderr
+    assert "::warning::mutation plan: app/repo.py (services) is estimated at" in process.stdout
+
+
+def test_each_module_carries_its_mutant_estimate_to_the_shard(harness: PlanRun) -> None:
+    _, outputs = harness([_entry("app/a.py", [UNIT_TEST], [1], mutants=42)])
+
+    assert _groups(outputs)[0][0]["mutants"] == "42"
+
+
+class TestAModuleMeasuredOnAnEarlierRunIsPlannedAtThatCost:
+    """No static feature predicts the slow modules (#1799: liveness.py estimated 36 s, took 673 s)."""
+
+    SLOW: ClassVar[dict[str, float]] = {f"app/m{i}.py": 500.0 for i in range(10)}
+
+    def _entries(self) -> list[dict[str, object]]:
+        return [_entry(module, [UNIT_TEST], [1]) for module in self.SLOW]
+
+    def test_unmeasured_modules_are_planned_from_the_estimate(self, harness: PlanRun) -> None:
+        _, outputs = harness(self._entries())
+
+        assert int(outputs["count"]) == 1
+
+    def test_measured_modules_get_the_shards_their_real_cost_needs(self, harness: PlanRun) -> None:
+        process, outputs = harness(self._entries(), {"101": self.SLOW})
+
+        assert process.returncode == 0, process.stderr
+        assert int(outputs["count"]) == len(self.SLOW)
+        assert all(len(group) == 1 for group in _groups(outputs))
+        assert all(group[0]["seconds"] == "500.0" for group in _groups(outputs))
+
+    def test_one_module_alone_over_the_budget_adds_no_shards(self, harness: PlanRun) -> None:
+        # More shards cannot split a single module, so a 673 s module takes one
+        # shard of its own and the 39 cheap ones take only what their cost needs.
+        entries = [_entry(f"app/m{i}.py", [UNIT_TEST], [1]) for i in range(40)]
+
+        process, outputs = harness(entries, {"101": {"app/m0.py": 673.0}})
+
+        assert process.returncode == 0, process.stderr
+        cheap = math.ceil(39 * (OVERHEAD + UNIT_RATE) / SHARD_BUDGET_SECONDS)
+        assert int(outputs["count"]) == 1 + cheap
+        assert _shard_of(outputs, "app/m0.py") == ["app/m0.py"]
+
+    def test_the_newest_runs_measurement_wins(self, harness: PlanRun) -> None:
+        _, outputs = harness(
+            [_entry("app/a.py", [UNIT_TEST], [1])],
+            {"101": {"app/a.py": 900.0}, "205": {"app/a.py": 40.0}},
+        )
+
+        ((module,),) = _groups(outputs)
+        assert module["seconds"] == "40.0"
+
+
+GH_STUB = """#!/usr/bin/env python3
+import json, os, pathlib, sys
+calls = pathlib.Path(os.environ["GH_CALLS"])
+calls.write_text(calls.read_text() + " ".join(sys.argv[1:]) + "\\n")
+if sys.argv[1] == "api":
+    print(json.dumps([9, 7, 5]))
+elif sys.argv[1:3] == ["run", "download"] and sys.argv[3] == "9":
+    out = pathlib.Path(sys.argv[sys.argv.index("-D") + 1]) / "mutation-durations-0"
+    out.mkdir(parents=True)
+    (out / "shard.durations.json").write_text(json.dumps({"app/a.py": 42.0}))
+"""
+
+
+def test_history_lands_the_durations_of_this_prs_earlier_runs(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gh").write_text(GH_STUB)
+    (bin_dir / "gh").chmod(0o755)
+    calls = tmp_path / "calls"
+    calls.write_text("")
+    history = tmp_path / "history"
+
+    process = subprocess.run(
+        [sys.executable, str(PLAN_SCRIPT), "history"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "GH_CALLS": str(calls),
+            "GITHUB_REPOSITORY": "acme/gaia",
+            "PR_BRANCH": "feat/x",
+            "MUTATION_HISTORY_DIR": str(history),
+        },
+    )
+
+    assert process.returncode == 0, process.stderr
+    downloads = [line for line in calls.read_text().splitlines() if line.startswith("run download")]
+    # Each run is asked for its durations only, never its multi-MB shard logs.
+    assert [line.split()[2] for line in downloads] == ["9", "7", "5"]
+    assert all("-p mutation-durations-*" in line for line in downloads)
+    assert "branch=feat/x&event=pull_request" in calls.read_text()
+    assert "1 module(s) measured across 3 run(s)" in process.stdout

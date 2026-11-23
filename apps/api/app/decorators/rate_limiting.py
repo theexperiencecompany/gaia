@@ -28,7 +28,6 @@ from app.constants.log_tags import LogTag
 from app.core.request_context import resolve_caller
 from app.models.agent_config import read_run_metadata
 from app.models.agent_models import current_stream_writer
-from app.models.chat_models import ToolDataEntry
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.services.cost_budget import (
@@ -45,7 +44,9 @@ from app.services.limit_upsell import (
     schedule_limit_upsell,
 )
 from app.services.payments.payment_service import payment_service
+from app.services.turn_timings import TurnStep, turn_step
 from shared.py.analytics import UserId
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 
 # The LangChain-injected parameter every @with_rate_limiting tool must declare:
@@ -349,13 +350,11 @@ async def enforce_tiered_limit(
     auth middleware, and so can't use the decorator form.
     """
     origin = origin or current_limit_origin()
-    subscription = await payment_service.get_user_subscription_status(user_id)
-    user_plan = subscription.plan_type or PlanType.FREE
     # The limiter records the hit (capture_limit_hit) itself before it raises.
     await tiered_limiter.check_and_increment(
         user_id=user_id,
         feature_key=feature_key,
-        user_plan=user_plan,
+        user_plan=await payment_service.get_cached_plan_type(user_id),
         origin=origin,
     )
 
@@ -384,7 +383,8 @@ def tiered_rate_limit(
                 raise HTTPException(status_code=401, detail="User ID not found")
 
             # Check rate limits before executing function
-            await enforce_tiered_limit(user_id, feature_key, origin=origin)
+            with turn_step(TurnStep.RATE_LIMIT):
+                await enforce_tiered_limit(user_id, feature_key, origin=origin)
 
             # Execute the original function
             result = await func(*args, **kwargs)

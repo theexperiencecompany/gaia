@@ -36,7 +36,7 @@ jobs:
   # lane when ci:selfhost-e2e (tools/ci/project.json) does.
   changes:
     name: Ask nx which checks this change reaches
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -80,7 +80,7 @@ jobs:
     name: Self-host smoke (ENV=selfhost)
     needs: [changes]
     if: contains(fromJSON(needs.changes.outputs.tasks), 'api:test')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -111,6 +111,7 @@ jobs:
           AGENT_SECRET: ci-selfhost-smoke
           BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
           EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+          INTERNAL_API_TOKEN: ci-selfhost-smoke
         run: |
           uv run --frozen --no-sync python -c "
           from app.config.settings import get_settings
@@ -138,6 +139,7 @@ jobs:
           AGENT_SECRET: ci-selfhost-smoke
           BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
           EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+          INTERNAL_API_TOKEN: ci-selfhost-smoke
         run: |
           echo "::group::pytest setup contract"
           uv run --frozen --no-sync pytest tests/integration/endpoints/test_setup_api.py -q --tb=short --override-ini=addopts="--strict-markers --timeout=30"
@@ -164,6 +166,7 @@ jobs:
           AGENT_SECRET: ci-selfhost-smoke
           BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
           EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+          INTERNAL_API_TOKEN: ci-selfhost-smoke
         run: |
           echo "::group::pytest prod_isolation (selfhost)"
           uv run --frozen --no-sync pytest tests/unit/config/test_prod_isolation.py -q -k selfhost --tb=short --override-ini=addopts="--strict-markers --timeout=30"
@@ -184,7 +187,7 @@ jobs:
     name: Self-host end to end (gaia up + Playwright)
     needs: [changes]
     if: needs.changes.outputs.selfhost_e2e == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       E2E_OUT: ${{ github.workspace }}/selfhost-e2e

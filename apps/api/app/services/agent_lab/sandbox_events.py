@@ -11,7 +11,7 @@ from typing import Final
 from app.constants.todos import TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, run_subscriptions
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.triggers.subscription_dispatch import fire_subscription
 
 
@@ -37,7 +37,7 @@ async def report_sandbox_event(user_id: str, kind: SandboxEventKind, detail: str
         if not subscriptions:
             continue
         seen += 1
-        await record_activity(
+        await record_todo_activity(
             todo.id, todo.user_id, TodoActivityEvent.SANDBOX_EVENT, f"{kind.value}: {detail}"
         )
         if kind in _WAKES:

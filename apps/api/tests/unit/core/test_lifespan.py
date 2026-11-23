@@ -16,6 +16,9 @@ from app.core.lifespan import lifespan
 
 def _boot_patches(mocker: MockerFixture) -> None:
     mocker.patch("app.core.lifespan.unified_startup", new=mocker.AsyncMock())
+    # The runtime's ports build an LLM, and the stubbed startup registered no provider.
+    mocker.patch("app.core.lifespan.build_runtime_ports")
+    mocker.patch("app.core.lifespan.install_runtime_ports")
     mocker.patch("app.core.lifespan.start_browser_reaper")
     mocker.patch("app.core.lifespan.start_revoke_listener")
     mocker.patch("app.core.lifespan.start_up_listener")
@@ -152,3 +155,26 @@ async def test_partial_config_never_initialises_client(mocker: MockerFixture) ->
         pass
 
     providers_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_render_browser_is_closed_when_the_app_stops(mocker: MockerFixture) -> None:
+    _set_posthog(mocker, None, None)
+    _boot_patches(mocker)
+    close_chromium = mocker.patch("app.core.lifespan.close_chromium", new=mocker.AsyncMock())
+
+    async with lifespan(None):
+        close_chromium.assert_not_awaited()
+
+    close_chromium.assert_awaited_once_with()
+
+
+async def test_boot_installs_the_conversation_runtime_it_builds(mocker: MockerFixture) -> None:
+    _set_posthog(mocker, None, None, DeploymentKind.SELFHOST)
+    _boot_patches(mocker)
+    ports = mocker.sentinel.ports
+    mocker.patch("app.core.lifespan.build_runtime_ports", return_value=ports)
+    install = mocker.patch("app.core.lifespan.install_runtime_ports")
+
+    async with lifespan(None):
+        install.assert_called_once_with(ports)

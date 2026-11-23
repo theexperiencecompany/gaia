@@ -15,9 +15,25 @@ import { createTheme } from "@openuidev/react-ui/ThemeProvider";
  * zinc-100/400/500, `radius3xl`(Card)=16px=GAIA `rounded-2xl`.
  */
 
-// GAIA data-viz palettes (DESIGN.md). Cyan-led, matching the previous OpenUI charts.
-const CHART_PALETTE = ["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"];
-const PIE_PALETTE = ["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"];
+/**
+ * GAIA's chart palette (DESIGN.md), the one source for every chart's series colours.
+ * react-ui themes carry none, so the chart components pass it as customPalette.
+ */
+export const CHART_PALETTE = [
+  "#00bbff",
+  "#34d399",
+  "#60a5fa",
+  "#f472b6",
+  "#fb923c",
+];
+/** The pie and radial variant of CHART_PALETTE, as documented in DESIGN.md. */
+export const PIE_PALETTE = [
+  "#00bbff",
+  "#34d399",
+  "#60a5fa",
+  "#a78bfa",
+  "#f472b6",
+];
 
 export const gaiaOpenUITheme = createTheme({
   // ── Surfaces ────────────────────────────────────────────────────────────
@@ -103,14 +119,4 @@ export const gaiaOpenUITheme = createTheme({
   shadowS: "none",
   shadowM: "none",
   shadowL: "none",
-
-  // ── Charts ──────────────────────────────────────────────────────────────
-  defaultChartPalette: CHART_PALETTE,
-  barChartPalette: CHART_PALETTE,
-  lineChartPalette: CHART_PALETTE,
-  areaChartPalette: CHART_PALETTE,
-  radarChartPalette: CHART_PALETTE,
-  horizontalBarChartPalette: CHART_PALETTE,
-  pieChartPalette: PIE_PALETTE,
-  radialChartPalette: PIE_PALETTE,
 });

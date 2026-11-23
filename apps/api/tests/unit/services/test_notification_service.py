@@ -19,6 +19,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.services.briefing.notification_email import BRIEFING_EMAIL_RENDERERS
 from app.services.notification_service import NotificationService, notification_service
 
 _MOD = "app.services.notification_service"
@@ -28,7 +29,7 @@ _MOD = "app.services.notification_service"
 def service():
     with patch(f"{_MOD}.NotificationOrchestrator") as m_orchestrator_cls:
         orchestrator = MagicMock()
-        orchestrator.create_notification = AsyncMock()
+        orchestrator.notify = AsyncMock()
         orchestrator.execute_action = AsyncMock()
         orchestrator.mark_as_read = AsyncMock()
         orchestrator.get_user_notifications = AsyncMock()
@@ -46,10 +47,10 @@ class TestNotificationService:
     async def test_create_notification_delegates(self, service):
         svc, orchestrator = service
         request = MagicMock()
-        orchestrator.create_notification.return_value = None
+        orchestrator.notify.return_value = None
 
-        assert await svc.create_notification(request) is None
-        orchestrator.create_notification.assert_awaited_once_with(request)
+        assert await svc.notify(request) is None
+        orchestrator.notify.assert_awaited_once_with(request)
 
     async def test_execute_action_delegates_with_request(self, service):
         svc, orchestrator = service
@@ -151,3 +152,9 @@ class TestNotificationService:
 class TestGlobalInstance:
     def test_module_singleton_is_a_notification_service(self):
         assert isinstance(notification_service, NotificationService)
+
+    def test_the_orchestrator_emails_every_briefing_kind_with_its_renderer(self):
+        with patch(f"{_MOD}.NotificationOrchestrator") as m_orchestrator_cls:
+            NotificationService()
+
+        m_orchestrator_cls.assert_called_once_with(BRIEFING_EMAIL_RENDERERS)

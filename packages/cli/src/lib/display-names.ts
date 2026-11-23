@@ -10,6 +10,8 @@ const SERVICE_NAMES: Record<string, string> = {
   "gaia-web": "web app",
   "gaia-backend": "server",
   arq_worker: "background jobs",
+  migrate: "data update",
+  "gaia-migrate": "data migration",
   mongo: "MongoDB",
   postgres: "PostgreSQL",
   redis: "Redis",

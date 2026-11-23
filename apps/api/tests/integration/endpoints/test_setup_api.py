@@ -149,6 +149,7 @@ class TestStatus:
         }
         assert body["registration_policy"] == "invite_only"
         assert set(body["providers"]) == {
+            "cloudflare",
             "openrouter",
             "gemini",
             "ollama",
@@ -466,7 +467,14 @@ class TestProviderCatalog:
 
     async def test_llm_keys_mirror_the_needs_setup_rule(self, anon_client: AsyncClient) -> None:
         body = (await anon_client.get(f"{API}/catalog")).json()
-        assert body["llm_provider_keys"] == ["openrouter", "gemini", "openai", "ollama", "custom"]
+        assert body["llm_provider_keys"] == [
+            "cloudflare",
+            "openrouter",
+            "gemini",
+            "openai",
+            "ollama",
+            "custom",
+        ]
 
     async def test_catalog_groups_every_provider_under_a_feature(
         self, anon_client: AsyncClient

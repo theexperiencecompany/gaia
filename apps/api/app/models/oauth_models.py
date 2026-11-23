@@ -78,6 +78,8 @@ class OAuthIntegration(BaseModel):
     included_integrations: list[str] = []
     is_featured: bool = False
     short_name: str | None = None
+    #: Ids this integration was stored under before a rename; old connection records carry them.
+    legacy_ids: list[str] = []
     managed_by: ManagedBy
     composio_config: ComposioConfig | None = None
     mcp_config: MCPConfig | None = None
