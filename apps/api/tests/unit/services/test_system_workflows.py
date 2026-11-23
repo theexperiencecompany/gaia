@@ -1,7 +1,7 @@
 """Unit tests for app/services/system_workflows/provisioner.py.
 
 Covers:
-- provision_system_workflows: no entries, idempotent skip, success, DuplicateKeyError, generic error
+- provision_system_workflows: no entries, idempotent skip, success, AlreadyExistsError, generic error
 - _notify_workflows_provisioned: single vs multiple workflows, notification failure
 - reset_system_workflow_to_default: not found, no registry key, success with trigger re-registration,
   trigger registration failure, old trigger unregister failure (non-fatal)
@@ -10,14 +10,18 @@ Covers:
 from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import AlreadyExistsError
+from app.models.notification.notification_models import notification_id
 from app.models.payment_models import PlanType
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
-from app.services.system_workflows.provisioner import reset_system_workflow_to_default
+from app.services.system_workflows.provisioner import (
+    _notify_workflows_provisioned,
+    reset_system_workflow_to_default,
+)
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -152,7 +156,7 @@ class TestProvisionSystemWorkflows:
         mock_notify: AsyncMock,
     ) -> None:
         mock_repo.find_system_workflow = AsyncMock(return_value=None)
-        mock_workflow_svc.create_workflow = AsyncMock(side_effect=DuplicateKeyError("dup"))
+        mock_workflow_svc.create_workflow = AsyncMock(side_effect=AlreadyExistsError("dup"))
         factory = _make_factory()
 
         with patch.dict(
@@ -163,10 +167,12 @@ class TestProvisionSystemWorkflows:
                 provision_system_workflows,
             )
 
-            await provision_system_workflows("user-1", "gmail", "Gmail")
+            with patch(f"{MODULE}.log") as log:
+                await provision_system_workflows("user-1", "gmail", "Gmail")
 
-        # No notification because nothing was created
+        # No notification because nothing was created, and a concurrent create is no failure
         mock_notify.assert_not_awaited()
+        log.error.assert_not_called()
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
@@ -256,8 +262,8 @@ class TestNotifyWorkflowsProvisioned:
         req = _make_workflow_request("Email Digest", "Daily digest of important emails")
         await _notify_workflows_provisioned("user-1", "Gmail", [req])
 
-        mock_svc.create_notification.assert_awaited_once()
-        call_args = mock_svc.create_notification.call_args
+        mock_svc.notify.assert_awaited_once()
+        call_args = mock_svc.notify.call_args
         notification = call_args[0][0]
         assert "I set up a workflow" in notification.content.title
         assert "Gmail" in notification.content.title
@@ -276,8 +282,25 @@ class TestNotifyWorkflowsProvisioned:
         req2 = _make_workflow_request("Sorter", "desc2")
         await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
 
-        notification = mock_svc.create_notification.call_args[0][0]
+        notification = mock_svc.notify.call_args[0][0]
         assert "2 workflows" in notification.content.title
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.NotificationService")
+    async def test_one_set_of_workflows_is_announced_under_one_id_in_any_order(
+        self, mock_notif_cls: MagicMock
+    ) -> None:
+        mock_svc = AsyncMock()
+        mock_notif_cls.return_value = mock_svc
+        digest = _make_workflow_request("Digest", "desc1")
+        sorter = _make_workflow_request("Sorter", "desc2")
+
+        await _notify_workflows_provisioned("user-1", "Gmail", [sorter, digest])
+
+        notification = mock_svc.notify.call_args[0][0]
+        assert notification.id == notification_id(
+            "user-1", "system_workflows_provisioned", "Gmail", "Digest,Sorter"
+        )
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.NotificationService")
@@ -296,7 +319,7 @@ class TestNotifyWorkflowsProvisioned:
         req2 = _make_workflow_request("Sorter", "Files your mail")
         await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
 
-        notification = mock_svc.create_notification.call_args[0][0]
+        notification = mock_svc.notify.call_args[0][0]
         assert notification.content.body == (
             "Here's what I've got running for you:\n\n"
             "\u2022 Digest: Daily digest\n"
@@ -308,7 +331,7 @@ class TestNotifyWorkflowsProvisioned:
     @patch(f"{MODULE}.NotificationService")
     async def test_notification_failure_does_not_raise(self, mock_notif_cls: MagicMock) -> None:
         mock_svc = AsyncMock()
-        mock_svc.create_notification = AsyncMock(side_effect=RuntimeError("notify fail"))
+        mock_svc.notify = AsyncMock(side_effect=RuntimeError("notify fail"))
         mock_notif_cls.return_value = mock_svc
 
         from app.services.system_workflows.provisioner import (

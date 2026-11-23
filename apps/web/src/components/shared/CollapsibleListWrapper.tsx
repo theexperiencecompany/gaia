@@ -1,6 +1,9 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
 import type { Selection } from "@heroui/react";
+import { Accordion } from "@heroui/react";
 import { type ReactNode, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 interface CollapsibleListWrapperProps {
   children: ReactNode;
@@ -36,32 +39,33 @@ export default function CollapsibleListWrapper({
 
   return (
     <div className="w-full">
-      {/* @ts-ignore - HeroUI Accordion has overly complex union types */}
       <Accordion
-        className="w-full max-w-(--breakpoint-sm) px-0"
+        className="w-full max-w-(--breakpoint-sm)"
         defaultExpandedKeys={defaultKeys}
-        itemClasses={{ trigger: "cursor-pointer" }}
-        onSelectionChange={(keys) => {
+        onExpandedChange={(keys) => {
           setIsExpanded(keys instanceof Set && keys.has("1"));
         }}
       >
-        <AccordionItem
-          key="1"
-          aria-label={`${label} List`}
-          indicator={null}
-          title={
-            <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
-              {icon}
-              <div>
-                {isExpanded ? "Hide" : "Show"} {getCountLabel()}
+        <Accordion.Item id="1" className="w-screen max-w-(--breakpoint-sm)">
+          <Accordion.Heading>
+            <Accordion.Trigger
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
+            >
+              <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
+                {icon}
+                <div>
+                  {isExpanded ? "Hide" : "Show"} {getCountLabel()}
+                </div>
               </div>
-            </div>
-          }
-          className="w-screen max-w-(--breakpoint-sm) px-0"
-          isCompact
-        >
-          {children}
-        </AccordionItem>
+              <Accordion.Indicator className={accordionStyles.indicator()} />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>{children}</div>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
     </div>
   );

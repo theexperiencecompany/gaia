@@ -1,13 +1,15 @@
 """Behavior tests for app.agents.tools.desktop_tools.
 
 Locks: desktop-only gating (a non-desktop source is refused with the
-not-desktop error), the stream/user context guard, the bridge outcome shapes
+not-desktop error), the user context guard, the bridge outcome shapes
 (error strings for the LLM on failure), screenshot persistence with graceful
 degradation when the workspace write fails, and the window list formatting.
 """
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from langchain_core.tools import StructuredTool
 
 from app.agents.tools.desktop_tools import (
     _MISSING_CONTEXT_ERROR,
@@ -19,12 +21,14 @@ from app.agents.tools.desktop_tools import (
     take_screenshot,
     write_clipboard,
 )
+from app.constants.log_tags import LogTag
 from app.services.desktop.bridge import DesktopToolOutcome
 from app.utils.image_codec import InlineImage
+from app.utils.multimodal import ContentBlock
+from tests.tool_helpers import tool_coroutine
 
 MODULE = "app.agents.tools.desktop_tools"
 
-STREAM_ID = "stream-1"
 USER_ID = "user-1"
 
 
@@ -32,7 +36,6 @@ def _config(source: str = "desktop") -> dict[str, Any]:
     return {
         "configurable": {
             "conversation_source": source,
-            "stream_id": STREAM_ID,
             "user_id": USER_ID,
             "conversation_id": "conv-1",
         }
@@ -43,30 +46,35 @@ def _desktop_config() -> dict[str, Any]:
     return _config("desktop")
 
 
+async def _screenshot(query: str) -> str | list[ContentBlock]:
+    """Run take_screenshot from a desktop conversation."""
+    run = cast(StructuredTool, take_screenshot).coroutine
+    assert run is not None
+    result: str | list[ContentBlock] = await run(config=_desktop_config(), query=query)
+    return result
+
+
 class TestDesktopGating:
     async def test_non_desktop_source_is_refused(self) -> None:
         with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
-            result = await read_clipboard.coroutine(config=_config("web"))
+            result = await tool_coroutine(read_clipboard, str)(config=_config("web"))
 
         assert result == _NOT_DESKTOP_ERROR
-        action.assert_not_called()
-
-    async def test_missing_stream_context_is_refused(self) -> None:
-        config = _desktop_config()
-        config["configurable"].pop("stream_id")
-        with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
-            result = await read_clipboard.coroutine(config=config)
-
-        assert result == _MISSING_CONTEXT_ERROR
         action.assert_not_called()
 
     async def test_missing_user_id_is_refused(self) -> None:
         config = _desktop_config()
         config["configurable"].pop("user_id")
-        with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
-            result = await read_clipboard.coroutine(config=config)
+        with (
+            patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action,
+            patch(f"{MODULE}.log") as logger,
+        ):
+            result = await tool_coroutine(read_clipboard, str)(config=config)
 
         assert result == _MISSING_CONTEXT_ERROR
+        logger.warning.assert_called_once_with(
+            f"{LogTag.TOOL} Desktop tool missing user_id in config", tool_name="read_clipboard"
+        )
         action.assert_not_called()
 
 
@@ -76,7 +84,7 @@ class TestReadClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"text": "copied!"})),
         ):
-            result = await read_clipboard.coroutine(config=_desktop_config())
+            result = await tool_coroutine(read_clipboard, str)(config=_desktop_config())
 
         assert result == "Clipboard contents:\ncopied!"
 
@@ -85,7 +93,7 @@ class TestReadClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"text": ""})),
         ):
-            result = await read_clipboard.coroutine(config=_desktop_config())
+            result = await tool_coroutine(read_clipboard, str)(config=_desktop_config())
 
         assert result == "The clipboard is empty (or contains non-text content)."
 
@@ -94,7 +102,7 @@ class TestReadClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="app not open")),
         ):
-            result = await read_clipboard.coroutine(config=_desktop_config())
+            result = await tool_coroutine(read_clipboard, str)(config=_desktop_config())
 
         assert result == "Could not read the clipboard: app not open"
 
@@ -105,7 +113,7 @@ class TestWriteClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True)),
         ) as action:
-            result = await write_clipboard.coroutine(config=_desktop_config(), text="hi")
+            result = await tool_coroutine(write_clipboard, str)(config=_desktop_config(), text="hi")
 
         assert result == "Copied to the user's clipboard."
         action.assert_awaited_once()
@@ -117,7 +125,7 @@ class TestWriteClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="nope")),
         ):
-            result = await write_clipboard.coroutine(config=_desktop_config(), text="hi")
+            result = await tool_coroutine(write_clipboard, str)(config=_desktop_config(), text="hi")
 
         assert result == "Could not write to the clipboard: nope"
 
@@ -128,7 +136,9 @@ class TestOpenApp:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True)),
         ):
-            result = await open_app.coroutine(config=_desktop_config(), app_name="Safari")
+            result = await tool_coroutine(open_app, str)(
+                config=_desktop_config(), app_name="Safari"
+            )
 
         assert result == "Opened Safari on the user's computer."
 
@@ -137,7 +147,9 @@ class TestOpenApp:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="no such app")),
         ):
-            result = await open_app.coroutine(config=_desktop_config(), app_name="Safari")
+            result = await tool_coroutine(open_app, str)(
+                config=_desktop_config(), app_name="Safari"
+            )
 
         assert result == "Could not open 'Safari': no such app"
 
@@ -148,7 +160,9 @@ class TestOpenUrl:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True)),
         ):
-            result = await open_url.coroutine(config=_desktop_config(), url="https://gaia.local")
+            result = await tool_coroutine(open_url, str)(
+                config=_desktop_config(), url="https://gaia.local"
+            )
 
         assert result == "Opened https://gaia.local in the user's default browser."
 
@@ -157,7 +171,9 @@ class TestOpenUrl:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="blocked")),
         ):
-            result = await open_url.coroutine(config=_desktop_config(), url="https://gaia.local")
+            result = await tool_coroutine(open_url, str)(
+                config=_desktop_config(), url="https://gaia.local"
+            )
 
         assert result == "Could not open the URL: blocked"
 
@@ -179,7 +195,7 @@ class TestListWindows:
                 )
             ),
         ):
-            result = await list_windows.coroutine(config=_desktop_config())
+            result = await tool_coroutine(list_windows, str)(config=_desktop_config())
 
         assert "- Safari: GAIA" in result
         assert "- Notes: (untitled)" in result
@@ -190,7 +206,7 @@ class TestListWindows:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"windows": []})),
         ):
-            result = await list_windows.coroutine(config=_desktop_config())
+            result = await tool_coroutine(list_windows, str)(config=_desktop_config())
 
         assert result == "No open windows were reported."
 
@@ -199,7 +215,7 @@ class TestListWindows:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="bridge down")),
         ):
-            result = await list_windows.coroutine(config=_desktop_config())
+            result = await tool_coroutine(list_windows, str)(config=_desktop_config())
 
         assert result == "Could not list windows: bridge down"
 
@@ -234,8 +250,9 @@ class TestTakeScreenshot:
                 AsyncMock(return_value=("", "/workspace/screenshots/shot.png")),
             ) as save,
         ):
-            result = await take_screenshot.coroutine(config=_desktop_config(), query="find the bug")
+            result = await _screenshot("find the bug")
 
+        assert isinstance(result, list)
         assert len(result) == 2
         assert result[0]["type"] == "text"
         assert "saved to /workspace/screenshots/shot.png" in result[0]["text"]
@@ -271,10 +288,11 @@ class TestTakeScreenshot:
             patch(f"{MODULE}.ImageCodec.from_base64", AsyncMock(return_value=self._image())),
             patch(f"{MODULE}.write_session_file", AsyncMock(side_effect=RuntimeError("no jfs"))),
         ):
-            result = await take_screenshot.coroutine(config=_desktop_config(), query="find the bug")
+            result = await _screenshot("find the bug")
 
         # The note is pinned by the sentence it forms, not by containment: a
         # padded or re-cased variant still "contains" the original substring.
+        assert isinstance(result, list)
         assert result[0]["text"].startswith(
             "Screenshot of the user's screen, not saved to the workspace, so it cannot "
             "be re-read later, answer from it now. Looking for: find the bug"
@@ -288,7 +306,7 @@ class TestTakeScreenshot:
                 AsyncMock(return_value=DesktopToolOutcome(ok=False, error="no permission")),
             ),
         ):
-            result = await take_screenshot.coroutine(config=_desktop_config(), query="look")
+            result = await _screenshot("look")
 
         assert result == "Could not capture the screen: no permission"
 
@@ -300,7 +318,7 @@ class TestTakeScreenshot:
                 AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"image_b64": None})),
             ),
         ):
-            result = await take_screenshot.coroutine(config=_desktop_config(), query="look")
+            result = await _screenshot("look")
 
         assert result == "Could not capture the screen: the desktop app returned no image."
 
@@ -312,7 +330,7 @@ class TestTakeScreenshot:
                 AsyncMock(return_value=DesktopToolOutcome(ok=True, data={})),
             ),
         ):
-            result = await take_screenshot.coroutine(config=_desktop_config(), query="look")
+            result = await _screenshot("look")
 
         assert result == "Could not capture the screen: unknown error"
 
@@ -329,8 +347,9 @@ class TestTakeScreenshot:
                 f"{MODULE}.ImageCodec.from_base64", AsyncMock(side_effect=InvalidImageError("bad"))
             ),
         ):
-            result = await take_screenshot.coroutine(config=_desktop_config(), query="look")
+            result = await _screenshot("look")
 
+        assert isinstance(result, str)
         assert result.startswith("Could not read the captured screen")
 
     async def test_workspace_save_failure_still_returns_the_pixels(self) -> None:
@@ -343,8 +362,9 @@ class TestTakeScreenshot:
             patch(f"{MODULE}.ImageCodec.from_base64", AsyncMock(return_value=self._image())),
             patch(f"{MODULE}.write_session_file", AsyncMock(side_effect=OSError("no jfs"))),
         ):
-            result = await take_screenshot.coroutine(config=_desktop_config(), query="look")
+            result = await _screenshot("look")
 
+        assert isinstance(result, list)
         assert result[0]["type"] == "text"
         assert "not saved to the workspace" in result[0]["text"]
         assert result[1]["type"] == "image"

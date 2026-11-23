@@ -5,11 +5,15 @@ Constants for authentication and JWT operations.
 """
 
 from enum import StrEnum
+import re
 
 JWT_ALGORITHM = "HS256"
 
 # Token expiration defaults (minutes)
 AGENT_TOKEN_EXPIRY_MINUTES = 20
+
+# The routes the voice worker calls with its agent token: send a turn, report a barge-in, follow the events.
+AGENT_TOKEN_PATHS = re.compile(r"/api/v1/conversations/[^/]+/(messages|barge-in|events)")
 
 # Login-free integration-connect magic link: opaque, single-use, server-side
 # bound to one (user, integration). 12 bytes -> 96 bits of entropy, unguessable
@@ -28,11 +32,16 @@ PLATFORM_LINK_CODE_BYTES = 16
 WOS_SESSION_COOKIE = "wos_session"
 # How long a WorkOS session cookie lives, set at sign-in and at every refresh.
 WOS_SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
+# Non-secret "a session exists" cookie the web reads before asking /user/me; it rides
+# with every session cookie. Paired with SESSION_HINT_COOKIE in libs/shared/ts/src/utils/sessionCookies.ts.
+SESSION_HINT_COOKIE = "gaia_signed_in"
 
 # Dev auth bypass: per-request impersonation header (development only). When the
 # bypass is active, this header selects the Mongo user to authenticate as instead
 # of DEV_AUTH_BYPASS_EMAIL, letting one server act as many users without restarts.
 DEV_USER_HEADER = "X-Dev-User"
+# Carried by every bot request; the bot middleware identifies its user, never the dev bypass.
+BOT_API_KEY_HEADER = "X-Bot-API-Key"
 # Remediation shown when the resolved dev-bypass user does not exist. The exact
 # "mint it via ..." phrasing is the actionable fix — keep it in the message.
 DEV_USER_MISSING_HINT = "mint it via POST /api/v1/dev/users"
@@ -83,3 +92,15 @@ INVITE_TTL_DAYS = 7
 
 # instance_settings key holding the self-host registration policy.
 REGISTRATION_SETTINGS_KEY = "registration"
+
+# WorkOS JWT signing keys, cached per process. A key WorkOS removes keeps
+# verifying for up to the cache lifespan; forging with it still needs our cookie
+# password, since a token is checked only after its cookie unseals.
+WORKOS_JWKS_CACHE_SECONDS = 120
+# Minimum gap between refetches forced by a token naming a key outside the set:
+# a rotated key is picked up within it, and a stale cookie cannot force a fetch
+# per request.
+WORKOS_JWKS_REFRESH_COOLDOWN_SECONDS = 5
+# A key fetch holds the shared client's lock and a worker thread; bound it so a
+# WorkOS outage fails auth fast instead of queueing every request behind it.
+WORKOS_JWKS_FETCH_TIMEOUT_SECONDS = 5

@@ -1,4 +1,5 @@
 import type { ApprovalRequestData } from "@shared/chat";
+import dynamic from "next/dynamic";
 import type React from "react";
 import type {
   MemoryData,
@@ -14,7 +15,7 @@ import { DeviceOnboardingPrompt } from "@/features/chat/components/bubbles/bot/D
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
-import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
+import { MCPAppLoading } from "@/features/chat/components/tools/MCPAppLoading";
 import type { DeviceApprovalRequiredData } from "@/features/devices/types";
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 import type {
@@ -67,6 +68,16 @@ import SupportTicketSection from "../SupportTicketSection";
 import TodoSection from "../TodoSection";
 import TwitterSearchSection from "../TwitterSearchSection";
 import TwitterUserSection from "../TwitterUserSection";
+
+// @mcp-ui/client ships its own zod, whose eval probe the CSP reports; load it only when an MCP app renders.
+// Its own loading card keeps the suspend local instead of blanking the surrounding messages.
+const MCPAppRenderer = dynamic(
+  () =>
+    import("@/features/chat/components/tools/MCPAppRenderer").then(
+      (m) => m.MCPAppRenderer,
+    ),
+  { ssr: false, loading: MCPAppLoading },
+);
 
 // Utility type: union of all possible tool_name/data pairs
 export type ToolDataUnion = {
@@ -182,9 +193,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   calendar_fetch_data: (data) => (
     <CalendarListCard events={Array.isArray(data) ? data : [data]} />
   ),
-  // Restored-history only: old conversations still carry this key, and a
-  // null renderer left them blank. Read-only list, no draft or add flows
-  // (those moved to HIL approvals by design).
   calendar_list_fetch_data: (data) => (
     <CalendarListFetchSection calendars={Array.isArray(data) ? data : [data]} />
   ),
@@ -386,20 +394,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // HIL approval — grouped so many decisions don't stack a full card each:
   // pending show side by side, settled are removed (reply reflects them).
-  // Each approval_id is one entry, replaced in place via upsertApprovalToolData.
+  // The screen draws exactly one card per approval, from its log entries.
   approval_request: (data) => {
-    const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];
-    // A resumed stream replays the gate-time PENDING frame after the decision
-    // already settled it — collapse by approval_id, settled wins over pending.
-    // (Sibling identity is owned by the keyed wrapper at the call site.)
-    const byId = new Map<string, ApprovalRequestData>();
-    for (const item of raw) {
-      const prev = byId.get(item.approval_id);
-      if (!prev || prev.status === "pending" || item.status !== "pending") {
-        byId.set(item.approval_id, item);
-      }
-    }
-    return <ApprovalRequestGroup items={[...byId.values()]} />;
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as ApprovalRequestData[];
+    return <ApprovalRequestGroup items={items} />;
   },
 };
 

@@ -1,12 +1,12 @@
 """Repository for the projects collection."""
 
 from app.constants.cache import PROJECT_CACHE_PREFIX
-from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedUserScopedRepository, cached_query
 from app.models.todo_models import ProjectDocument, ProjectUpdate, ProjectWithCount
 
 
-class ProjectsRepository(UserScopedRepository[ProjectDocument, ProjectUpdate]):
+class ProjectsRepository(CachedUserScopedRepository[ProjectDocument, ProjectUpdate]):
     collection_name = "projects"
     document_model = ProjectDocument
     update_model = ProjectUpdate
@@ -19,7 +19,7 @@ class ProjectsRepository(UserScopedRepository[ProjectDocument, ProjectUpdate]):
 
     async def delete_all_for_user(self, user_id: str) -> int:
         """Delete every project owned by user_id (dev-data reset); returns the count."""
-        return await self._delete_many({"user_id": user_id}, scope=user_id)
+        return await self._delete_many({"user_id": user_id})
 
     async def get_or_create_inbox(self, user_id: str) -> ProjectDocument:
         """Return the user's Inbox project, creating it on first access."""

@@ -11,9 +11,8 @@ execution pipeline (trigger → webhook → queue → agent) handles them with n
 
 from collections.abc import Callable
 
-from pymongo.errors import DuplicateKeyError
-
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
 from app.models.notification.notification_models import (
@@ -26,6 +25,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -120,7 +120,7 @@ async def provision_system_workflows(
             # Last: the workflow runs without its recipe (the agent authors one), so a
             # failed install is logged below and costs only the shortcut.
             await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
-        except DuplicateKeyError:
+        except AlreadyExistsError:
             log.info(
                 f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
                 key=key,
@@ -194,8 +194,14 @@ async def _notify_workflows_provisioned(
 
     try:
         notification_service = NotificationService()
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(
+                    user_id,
+                    "system_workflows_provisioned",
+                    integration_display_name,
+                    ",".join(sorted(r.title for r in created)),
+                ),
                 user_id=user_id,
                 source=NotificationSourceEnum.SYSTEM_WORKFLOWS_PROVISIONED,
                 type=NotificationType.SUCCESS,

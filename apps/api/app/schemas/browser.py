@@ -97,6 +97,8 @@ class BrowserHandoffSnapshot(BaseModel):
     #: A sign-in the user finishes here is kept for the next task. False when
     #: login persistence is off, so no surface promises a save that never happens.
     saves_login: bool = False
+    #: The one-time link a chat-platform user takes the browser over with; None on a run asked on the web.
+    live_view_url: str | None = None
 
 
 class BrowserResultSnapshot(BaseModel):

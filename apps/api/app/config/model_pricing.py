@@ -12,6 +12,7 @@ unit suite fails if a runtime-referenced model has no rate.
 from typing import NamedTuple
 
 from app.config.settings import settings
+from app.constants.llm import SIM_STUB_MODEL_NAME
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -52,6 +53,13 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         input_cost_per_1k=0.00015,
         output_cost_per_1k=0.0006,
         cached_input_cost_per_1k=0.000003,
+    ),
+    # CLOUDFLARE_MODEL_NAME, every role while Workers AI is configured. Cloudflare list
+    # price 2026-11-13: $0.30/$1.20/$0.006 per 1M in/out/cached.
+    "@cf/deepseek-ai/deepseek-v4.1-flash-1017": ModelPricing(
+        input_cost_per_1k=0.0003,
+        output_cost_per_1k=0.0012,
+        cached_input_cost_per_1k=0.000006,
     ),
     # BROWSER_AGENT_MODEL / BROWSER_USE_JEV_TEXT_MODEL, and DEFAULT_MODEL_NAME until
     # 2026-11-02: historical llm_call events still meter at the rate actually served.
@@ -98,6 +106,8 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0012,
         cached_input_cost_per_1k=0.00002,
     ),
+    # GAIA_SIM_MODE's scripted stub (tools/llm-stub): every sim call names it, and it costs nothing.
+    SIM_STUB_MODEL_NAME: ModelPricing(input_cost_per_1k=0.0, output_cost_per_1k=0.0),
     # LOCAL DEV TESTING ONLY (DEV_LLM_MODEL=gpt-4.1-mini over the OpenAI custom
     # lane) - do not ship. OpenAI list price: $0.40/$1.60 per 1M in/out, $0.10 cached.
     "gpt-4.1-mini": ModelPricing(

@@ -18,7 +18,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.scheduler_models import (
     BaseScheduledTask,
     DeactivationReason,
@@ -420,6 +420,10 @@ class CreateWorkflowRequest(BaseModel):
             "Integration ids this workflow uses — picked by the user or identified "
             "from intent. Scopes the tool palette when generating steps."
         ),
+    )
+    draft_id: str | None = Field(
+        default=None,
+        description="The chat draft this workflow was created from, so what waited on it resumes.",
     )
 
     # System workflow fields — set by provisioner, not by regular API users
@@ -839,6 +843,17 @@ class PublicWorkflowRow(WorkflowDocument):
     # Explore-only curation field; absent on community/related rows (defaults to
     # ``["featured"]`` there, matching the legacy ``.get(..., ["featured"])`` read).
     use_case_categories: list[str] = Field(default_factory=lambda: ["featured"], exclude=True)
+
+
+class StoredTriggerRow(BaseModel):
+    """Projection of a workflow whose stored trigger type no TriggerType names."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(validation_alias="_id")
+    user_id: str
+    activated: bool = False
+    trigger_type: str
 
 
 class WorkflowUpdate(BaseModel):

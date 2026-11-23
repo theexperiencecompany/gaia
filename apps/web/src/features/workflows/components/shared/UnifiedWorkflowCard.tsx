@@ -1,9 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import { PlayIcon } from "@icons";
+import type { ImageProps } from "next/image";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type {
   CommunityWorkflow,
@@ -14,6 +16,7 @@ import type {
 } from "@/types/features/workflowTypes";
 import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
+import { WORKFLOW_CARD_ICON_SIZE } from "../../constants/workflowIconStyle";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
 import { isSystemCreator } from "../../utils/creator";
 import { useWorkflowCardActions } from "./useWorkflowCardActions";
@@ -66,6 +69,8 @@ interface UnifiedWorkflowCardProps {
   showCreator?: boolean;
   useBlurEffect?: boolean;
   showDescriptionAsTooltip?: boolean;
+  /** Eager for a card in the first viewport: its icons and avatar load with the page. */
+  imageLoading?: ImageProps["loading"];
 
   // Action configuration
   primaryAction?: WorkflowCardAction;
@@ -96,6 +101,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     showExecutions = true,
     useBlurEffect = false,
     showDescriptionAsTooltip = false,
+    imageLoading,
     onCardClick,
     onActionComplete,
     actionButtonLabel,
@@ -162,8 +168,9 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       steps={steps}
       icon={customIcon}
       iconColor={customIconColor}
-      iconSize={25}
+      iconSize={WORKFLOW_CARD_ICON_SIZE}
       maxIcons={3}
+      loading={imageLoading}
     />
   );
 
@@ -220,7 +227,11 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
         <div className="mt-1 flex items-center justify-between gap-2">
           <div className="min-w-0 space-y-1">
             {shouldShowCreator && creator && (
-              <CreatorAvatar creator={creator} showName />
+              <CreatorAvatar
+                creator={creator}
+                showName
+                loading={imageLoading}
+              />
             )}
 
             {shouldShowTrigger && triggerDisplay && (
@@ -266,7 +277,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
               >
                 <WorkflowActionButton
                   label={buttonConfig.label}
-                  isLoading={isLoading}
+                  isPending={isLoading}
                   onPress={handlePrimaryAction}
                   variant={buttonConfig.variant}
                 />
@@ -279,18 +290,18 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
   );
 
   return showDescriptionAsTooltip ? (
-    <Tooltip
-      content={workflow?.prompt || displayDescription}
-      placement="top"
-      className="max-w-xs"
-      showArrow
-      classNames={{
-        content: "bg-zinc-800 p-4 rounded-3xl",
-      }}
-      delay={200}
-      closeDelay={0}
-    >
-      {cardContent}
+    <Tooltip delay={200} closeDelay={0}>
+      <Tooltip.Trigger className="block w-full">{cardContent}</Tooltip.Trigger>
+      <Tooltip.Content
+        placement="top"
+        showArrow
+        className={overlayVariants({
+          surface: "raised",
+          className: "max-w-xs rounded-3xl",
+        })}
+      >
+        <div className="p-2">{workflow?.prompt || displayDescription}</div>
+      </Tooltip.Content>
     </Tooltip>
   ) : (
     cardContent
@@ -399,7 +410,7 @@ function getButtonConfig(
   action: WorkflowCardAction,
   customLabel?: string,
   propActionType?: "prompt" | "workflow",
-): { label: string; variant: "primary" | "flat" } {
+): { label: string; variant: "primary" | "accent-soft" } {
   if (customLabel) {
     return { label: customLabel, variant: "primary" };
   }
@@ -411,13 +422,13 @@ function getButtonConfig(
 
   switch (action) {
     case "run":
-      return { label: "Run", variant: "flat" };
+      return { label: "Run", variant: "accent-soft" };
     case "create":
       return { label: "Create", variant: "primary" };
     case "insert-prompt":
       return { label: "Insert Prompt", variant: "primary" };
     case "navigate":
-      return { label: "View", variant: "flat" };
+      return { label: "View", variant: "accent-soft" };
     default:
       return { label: "Try", variant: "primary" };
   }
@@ -426,31 +437,29 @@ function getButtonConfig(
 // Unified action button component
 interface WorkflowActionButtonProps {
   label: string;
-  isLoading: boolean;
+  isPending: boolean;
   onPress: (e: React.MouseEvent) => void;
-  variant?: "primary" | "flat";
+  variant?: "primary" | "accent-soft";
   size?: "sm" | "md";
 }
 
 function WorkflowActionButton({
   label,
-  isLoading,
+  isPending,
   onPress,
   variant = "primary",
   size = "sm",
 }: WorkflowActionButtonProps) {
-  const buttonVariant = variant === "flat" ? "flat" : "solid";
-
   return (
-    <Button
-      color="primary"
+    <GaiaButton
       size={size}
-      variant={buttonVariant}
-      className={`font-medium rounded-xl ${variant === "flat" ? "text-primary" : ""}`}
-      isLoading={isLoading}
+      shape="md"
+      variant={variant}
+      className="font-medium"
+      isPending={isPending}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
     >
       {label}
-    </Button>
+    </GaiaButton>
   );
 }

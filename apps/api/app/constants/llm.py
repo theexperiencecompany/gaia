@@ -21,6 +21,8 @@ class LLMProviderName(StrEnum):
     # OLLAMA_BASE_URL picks the endpoint at load time; nothing keys off the name
     # beyond registration.
     OLLAMA = "ollama"
+    # Workers AI's OpenAI-compatible API. Configured, it serves every role ahead of the rest.
+    CLOUDFLARE = "cloudflare"
 
 
 class LLMProviderKey(StrEnum):
@@ -35,6 +37,7 @@ class LLMProviderKey(StrEnum):
     CUSTOM = "custom_llm"
     OPENAI = "openai_llm"
     OLLAMA = "ollama_llm"
+    CLOUDFLARE = "cloudflare_llm"
 
 
 class ModelUse(StrEnum):
@@ -174,9 +177,6 @@ WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# When this few supersteps remain before the limit, acall_model injects a
-# wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
-RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
 # starts showing the wrap-up notice, so the model answers before GraphRecursionError.
 # Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
@@ -361,6 +361,15 @@ OPENAI_MAX_OUTPUT_TOKENS = 16_000
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = DEFAULT_MODEL_NAME
 
+#: Cloudflare Workers AI. The 1M-token window equals DEFAULT_MAX_TOKENS; the model takes
+#: images, tools and reasoning_effort none|low|high|max (developers.cloudflare.com/workers-ai).
+CLOUDFLARE_MODEL_NAME = "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
+CLOUDFLARE_AI_API_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
+#: One effort for every chat role, comms included: comms ran at "none" on OpenAI, and the
+#: model's own default ("high") would stall voice and chat replies.
+CLOUDFLARE_REASONING_EFFORT = "low"
+CLOUDFLARE_MAX_OUTPUT_TOKENS = 64_000
+
 OPENAI_API_URL = "https://api.openai.com/v1"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
 # Which OpenRouter models accept image input, straight from the live catalog's
@@ -528,7 +537,7 @@ LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
 # "Repeat" counts identical calls issued this run, consecutive or not, regardless of
 # success or failure: a successful call whose result won't change is as much a loop
-# as a failing one (the failure counters above only see status="error").
+# as a failing one (the failure counters above only see failed calls).
 LOOP_GUARD_WARN_REPEAT = 3
 LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so counters are keyed by the run

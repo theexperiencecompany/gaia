@@ -5,12 +5,13 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq import Retry
-from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.payments import PAID_PERSON_SYNC_RETRY_DELAY
+from app.db.repositories.errors import RepositoryError
 from app.models.payment_models import SubscriptionDocument
+from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 
 EVENTS = "app.services.payments.subscription_events"
@@ -72,16 +73,19 @@ class TestSyncPaidPersonPropertiesTask:
             },
         )
 
-    @pytest.mark.parametrize(("ctx", "factor"), [({}, 1), ({"job_try": 1}, 1), ({"job_try": 3}, 4)])
+    @pytest.mark.parametrize(
+        ("ctx", "factor"),
+        [(ArqJobContext(), 1), (ArqJobContext(job_try=1), 1), (ArqJobContext(job_try=3), 4)],
+    )
     async def test_an_unreadable_row_asks_arq_for_a_backed_off_retry(
-        self, ctx: dict[str, int], factor: int
+        self, ctx: ArqJobContext, factor: int
     ) -> None:
         defer = PAID_PERSON_SYNC_RETRY_DELAY * factor
         with (
             patch(
                 f"{EVENTS}.subscription_repository.get_by_dodo_id",
                 new_callable=AsyncMock,
-                side_effect=PyMongoError("down"),
+                side_effect=RepositoryError("down"),
             ),
             patch(f"{TASK}.log") as log,
             pytest.raises(Retry) as retry,
@@ -91,7 +95,7 @@ class TestSyncPaidPersonPropertiesTask:
         assert retry.value.defer_score == defer / timedelta(milliseconds=1)
         log.warning.assert_called_once_with(
             f"{LogTag.PAYMENT} Paid person properties sync could not read the row; retrying",
-            error_type="PyMongoError",
+            error_type="RepositoryError",
             defer_seconds=defer.total_seconds(),
         )
 

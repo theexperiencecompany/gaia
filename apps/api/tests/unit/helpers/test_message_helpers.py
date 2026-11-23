@@ -7,7 +7,8 @@ import pytest
 
 from app.agents.prompts.workflow_prompts import TRIGGERED_ACCOUNT_SECTION
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
-from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS, ConversationSource
+from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.helpers.message_helpers import (
     _uploaded_file_lines,
     create_system_message,
@@ -18,13 +19,9 @@ from app.helpers.message_helpers import (
     format_workflow_execution_message,
 )
 from app.models.calendar_models import GoogleCalendarEventDateTime
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.workflow_models import WorkflowStep
+from shared.py.conversation_wire import ReplyToMessageData
 
 # ---------------------------------------------------------------------------
 # create_system_message
@@ -36,9 +33,15 @@ class TestCreateSystemMessage:
 
     def test_comms_agent_static_is_per_channel(self) -> None:
         """Different user_name must produce identical content on the same channel; different channels differ."""
-        web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
-        web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
-        whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
+        web_a = create_system_message(
+            user_name="Foo", agent_type="comms", source=ConversationSource.WEB
+        )
+        web_b = create_system_message(
+            user_name="Bar", agent_type="comms", source=ConversationSource.WEB
+        )
+        whatsapp = create_system_message(
+            user_name="Foo", agent_type="comms", source=ConversationSource.WHATSAPP
+        )
         assert isinstance(web_a, SystemMessage)
         assert web_a.content == web_b.content
         assert web_a.content != whatsapp.content
@@ -56,15 +59,24 @@ class TestCreateSystemMessage:
         assert len(msg_a.content) > 0
 
     def test_default_name_not_injected(self) -> None:
-        msg = create_system_message()
+        msg = create_system_message(source=ConversationSource.WEB)
         # "there" used to be injected as user_name fallback; no longer.
         assert "{user_name}" not in msg.content
 
     def test_unknown_agent_type_defaults_to_comms(self) -> None:
-        msg = create_system_message(user_name="X", agent_type="unknown")  # type: ignore[arg-type]  # out-of-Literal value exercises the unknown-agent branch
-        comms = create_system_message(agent_type="comms")
+        msg = create_system_message(
+            user_name="X",
+            agent_type="unknown",  # type: ignore[arg-type]  # out-of-Literal value exercises the unknown-agent branch
+            source=ConversationSource.WEB,
+        )
+        comms = create_system_message(agent_type="comms", source=ConversationSource.WEB)
         assert isinstance(msg, SystemMessage)
         assert msg.content == comms.content
+
+    def test_a_comms_prompt_without_its_surface_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            create_system_message(agent_type="comms")
+        assert str(refused.value) == "a comms prompt needs the surface its reply is read on"
 
 
 # ---------------------------------------------------------------------------
@@ -615,6 +627,34 @@ class TestWorkflowExecutionMessageBranches:
             )
 
         assert result.endswith(note)
+
+    @pytest.mark.asyncio
+    async def test_a_run_started_by_a_met_wait_is_told_what_the_user_did(self) -> None:
+        note = "The user just connected Gmail. Pick it up from where it stopped."
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(), user_id="u1", trigger_context={WAIT_MET_CONTEXT_KEY: note}
+            )
+
+        assert result.endswith(note)
+
+    @pytest.mark.asyncio
+    async def test_a_met_wait_note_keeps_the_replay_evidence_before_it(self) -> None:
+        evidence = "<already_ran>archived 3 threads</already_ran>"
+        note = "The user just connected Gmail."
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    PLAYBOOK_FALLBACK_CONTEXT_KEY: evidence,
+                    WAIT_MET_CONTEXT_KEY: note,
+                },
+            )
+
+        assert result.endswith(f"{evidence}\n\n{note}")
 
     @pytest.mark.asyncio
     async def test_the_same_evidence_reaches_an_email_triggered_fallback(self) -> None:

@@ -8,24 +8,21 @@ call follows the same feed into its own run's stream while it blocks.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from functools import partial
-from uuid import uuid4
+from collections.abc import Callable
 
-from app.agents.core.background.executor_queue import open_detached_stream
-from app.agents.core.background.folded_stream import close_folded_stream
-from app.agents.core.background.redis_writer import publish_to_stream
-from app.constants.browser import BROWSER_JOB_STREAM_ID_PREFIX
+from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
+from app.agents.core.background.session_writer import collect_frame
 from app.constants.log_tags import LogTag
-from app.constants.streaming import DetachedStreamKind
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
+from app.services.browser.job_stop import browser_job_task_id, stop_job
 from app.services.browser.jobs import done_state, get_conversation_slot
+from app.services.conversation.work_deltas import WorkDeltas
 from shared.py.wide_events import log
 
 #: Takes one card frame of the feed, in order.
-CardSink = Callable[[dict[str, object]], Awaitable[None]]
+CardSink = Callable[[dict[str, object]], None]
 
 
 async def follow_job_cards(job_id: str, conversation_id: str, sink: CardSink) -> None:
@@ -42,7 +39,7 @@ async def follow_job_cards(job_id: str, conversation_id: str, sink: CardSink) ->
         for entry_id, payload in events:
             if payload == JOB_TERMINAL_FRAME:
                 return
-            await sink(payload)
+            sink(payload)
             cursor = entry_id
         if (
             not events
@@ -63,21 +60,23 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
     outlives it: a crash here costs the cards, never the job.
     """
     log.set(browser={"job_id": request.job_id})
-    stream_id = f"{BROWSER_JOB_STREAM_ID_PREFIX}{uuid4()}"
-    await open_detached_stream(
-        stream_id,
-        conversation_id=request.conversation_id,
-        user_id=request.user_id,
-        task_id=request.job_id,
-        bot_message_id=request.message_id,
-        kind=DetachedStreamKind.SUBAGENT,
-    )
+    stream_id = browser_job_task_id(request.job_id)
+    if not await open_folded_stream(
+        stream_id, conversation_id=request.conversation_id, user_id=request.user_id
+    ):
+        # A Stop landed before the relay could log the job: it stops the job it could not cover.
+        await stop_job(request.job_id)
+        return
+    deltas = WorkDeltas(request.conversation_id, stream_id)
+
+    def publish(data: dict[str, object]) -> None:
+        collect_frame(stream_id, data)
+        deltas(data)
+
     try:
         # Until the feed itself expires: past the latest the worker lets the job end.
         async with asyncio.timeout(browser_job_ttl_seconds()):
-            await follow_job_cards(
-                request.job_id, request.conversation_id, partial(publish_to_stream, stream_id)
-            )
+            await follow_job_cards(request.job_id, request.conversation_id, publish)
     except TimeoutError:
         log.warning(
             f"{LogTag.BROWSER} Browser job relay gave up before the job finished",
@@ -91,9 +90,9 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
             browser={"job_id": request.job_id},
         )
     finally:
+        await deltas.drain()
         await close_folded_stream(
             stream_id,
             conversation_id=request.conversation_id,
             user_id=request.user_id,
-            message_id=request.message_id,
         )

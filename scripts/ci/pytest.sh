@@ -11,7 +11,8 @@
 #                            the object, is the matrix value so the job row reads
 #                            `test-python (unit-a)`. CI_TIER=fast keeps only the
 #                            slices whose `tier` is fast (a PR push) and no engine
-#                            slice; unset or `full` keeps every slice.
+#                            slice; `verified` (a master push the merge queue
+#                            already passed) keeps none; unset or `full` keeps every slice.
 #   slice                    Run one test-python slice, either whole or on the
 #                            test-impact selection this job's `test_impact.py
 #                            select` wrote. Reads its inputs from the env.
@@ -20,8 +21,13 @@
 #   flake-gate <cmd...>      Run a pytest command under pytest-rerunfailures: a
 #                            failure reruns once, and one that passes only on
 #                            the rerun fails a PR (warns in the queue/master).
-#   regression-proof <base>  Prove the NEW @pytest.mark.regression tests in this
+#   regression-proof [--services true|false] [--lane L] <base>
+#                            Prove the NEW @pytest.mark.regression tests in this
 #                            diff FAIL on <base-ref> — red-first, mechanically.
+#                            --services false proves only the files service-free
+#                            slices own (lint-python, on every push), true the
+#                            rest (the integration slice, in the queue); unset,
+#                            every changed file. --lane names the verdict.
 #
 # Env contract:
 #   slice             SLICE_NAME, SLICE_PATHS, XDIST_N (all required);
@@ -64,13 +70,15 @@ SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
 cmd_slices() {
   local tier="${CI_TIER:-full}"
   case "$tier" in
-    fast|full) ;;
-    *) echo "pytest.sh slices: CI_TIER must be fast or full, got '$tier'" >&2; exit 2 ;;
+    fast|full|verified) ;;
+    *) echo "pytest.sh slices: CI_TIER must be fast, full or verified, got '$tier'" >&2; exit 2 ;;
   esac
   python3 -c 'import json, sys
 slices = json.load(open(sys.argv[1]))["slices"]
 if sys.argv[2] == "fast":
     slices = [s for s in slices if s["tier"] == "fast"]
+elif sys.argv[2] == "verified":
+    slices = []
 for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
     chosen = [s["name"] for s in slices if s["engines"] == engines]
     print(key + "=" + json.dumps(chosen, separators=(",", ":")))
@@ -290,8 +298,15 @@ cmd_flake_gate() {
 # Exit 0: no changed tests, or all of this diff's NEW regression tests fail on
 # base (as they should). Exit 1: one PASSES on base — its fix may be moot.
 cmd_regression_proof() {
-  local BASE API_DIR
-  BASE="${1:?usage: pytest.sh regression-proof <base-ref>}"
+  local BASE API_DIR SERVICES="" LANE="regression-proof"
+  while [ "$#" -gt 1 ]; do
+    case "$1" in
+      --services) SERVICES="${2:?--services needs true or false}"; shift 2 ;;
+      --lane) LANE="${2:?--lane needs a lane id}"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+  BASE="${1:?usage: pytest.sh regression-proof [--services true|false] [--lane L] <base-ref>}"
   API_DIR="$REPO_ROOT/apps/api"
 
   # git pathspecs are cwd-relative — resolve from the repo root or the
@@ -305,10 +320,15 @@ cmd_regression_proof() {
   # whose status nothing sees. while-read (not mapfile) for macOS bash 3.2.
   local changed=() diff_out
   diff_out="$(git diff --diff-filter=ACMR --name-only "$BASE"...HEAD -- 'apps/api/tests/test_*.py' 'apps/api/tests/**/test_*.py')"
+  # Scoped before the base worktree exists, so a tier with nothing to prove costs no checkout.
+  if [ -n "$SERVICES" ] && [ -n "$diff_out" ]; then
+    # shellcheck disable=SC2086 # deliberate word splitting: test paths hold no spaces
+    diff_out="$(python3 "$SCRIPT_DIR/verdict.py" regression-proof-scope --services "$SERVICES" $diff_out)"
+  fi
   while IFS= read -r f; do [ -n "$f" ] && changed+=("$f"); done <<< "$diff_out"
   if [ "${#changed[@]}" -eq 0 ]; then
-    ci_verdict --lane regression-proof --status skip \
-      --summary "no changed test files — nothing to prove on base"
+    ci_verdict --lane "$LANE" --status skip \
+      --summary "no changed test files${SERVICES:+ in this tier (--services $SERVICES)} — nothing to prove on base"
     exit 0
   fi
   echo "regression-proof: ${#changed[@]} changed test file(s):"
@@ -325,7 +345,8 @@ cmd_regression_proof() {
   # which is exactly how this failed on the Linux runner while working locally.
   JUNIT="$(mktemp)"
   BASE_COPIES="$(mktemp -d)"
-  trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT" "$BASE_COPIES"' EXIT
+  RUNS="$(mktemp -d)"
+  trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT" "$BASE_COPIES" "$RUNS"' EXIT
 
   git worktree add --detach "$WT" "$BASE" >/dev/null
 
@@ -355,7 +376,7 @@ cmd_regression_proof() {
     fi
   done
   if [ -z "$VENV_PY" ]; then
-    ci_verdict_die --lane regression-proof --status error \
+    ci_verdict_die --lane "$LANE" --status error \
       --summary "main checkout venv not found under $REPO_ROOT" \
       --advice "setup-python-test-env leaves one; this lane cannot run the base revision without it."
   fi
@@ -401,7 +422,7 @@ cmd_regression_proof() {
   done
   SELECTED="$(mktemp -p "$BASE_COPIES")"
   if ! "$VENV_PY" "$SCRIPT_DIR/verdict.py" regression-proof-select "${select_args[@]}" > "$SELECTED"; then
-    ci_verdict_die --lane regression-proof --status fail \
+    ci_verdict_die --lane "$LANE" --status fail \
       --summary "could not attribute this diff's regression marks to tests" \
       --advice "Put the mark on the test function, its class, the module's pytestmark, or a pytest.param case."
   fi
@@ -410,7 +431,7 @@ cmd_regression_proof() {
     [ -n "$node_id" ] && new_regression_ids+=("${node_id#"$API_DIR"/}")
   done < "$SELECTED"
   if [ "${#new_regression_ids[@]}" -eq 0 ]; then
-    ci_verdict --lane regression-proof --status skip \
+    ci_verdict --lane "$LANE" --status skip \
       --summary "no NEW @pytest.mark.regression tests in this diff — nothing to prove"
     exit 0
   fi
@@ -419,35 +440,53 @@ cmd_regression_proof() {
 
   local rc
   set +e
-  # -W ignore::DeprecationWarning: this lane runs the BRANCH's pytest.ini
-  # (filterwarnings included) against the BASE's product code. Base code
-  # legitimately predates this branch's deprecation fixes (e.g. the
-  # mcp_use.exceptions import fixed on this branch), so warning-as-error here
-  # measures base deprecations, not whether the pinned bug exists. The
-  # warnings policy's job is policing the branch's code — that happens in the
-  # main test-python run. This lane's job is assertion-level proof on base.
-  "$VENV_PY" -m pytest "${new_regression_ids[@]}" -m regression -q --tb=no --no-header \
-    -p no:cacheprovider -o addopts="--strict-markers" -W ignore::DeprecationWarning \
-    --junitxml="$JUNIT" > "$LOG" 2>&1
+  regression_proof_run "$JUNIT" "$LOG" "${new_regression_ids[@]}"
   rc=$?
   set -e
 
   # Exit 5: verdict.py named marked tests that pytest's own `-m regression` then
   # did not collect. The two disagree, so nothing was proven.
   if [ "$rc" -eq 5 ]; then
-    ci_verdict_die --lane regression-proof --status fail \
+    ci_verdict_die --lane "$LANE" --status fail \
       --summary "pytest collected none of the ${#new_regression_ids[@]} regression test(s) verdict.py selected" \
       --advice "The mark is on something pytest -m regression does not see; put it on the test, its class, pytestmark, or a pytest.param case."
   fi
 
-  # No report at all means pytest never ran (missing interpreter, unwritable path,
-  # a collection abort). That is a failure, not a pass — an earlier version of
-  # this script redirected into a directory absent on the runner, so pytest never
-  # executed and every check below was skipped on the way to printing success.
-  if [ ! -s "$JUNIT" ]; then
+  # Any other exit but 0/1 is a collection abort (2, or 4 for a conftest or a
+  # node id whose module would not import): pytest ran nothing, so one head-only
+  # import voided every test. Only then is each test file run alone, so the abort
+  # costs only the tests under the broken file and every other one still gets its
+  # own result. The everything-imports path stays one pytest start.
+  local runs=(--run "$JUNIT" "$LOG")
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+    local files=() file node_id file_ids n=0
+    for node_id in "${new_regression_ids[@]}"; do
+      file="${node_id%%::*}"
+      case " ${files[*]-} " in *" $file "*) ;; *) files+=("$file") ;; esac
+    done
+    echo "regression-proof: the base run could not collect (pytest exit $rc); running each of ${#files[@]} test file(s) alone"
+    runs=()
+    for file in "${files[@]}"; do
+      file_ids=()
+      for node_id in "${new_regression_ids[@]}"; do
+        if [ "${node_id%%::*}" = "$file" ]; then file_ids+=("$node_id"); fi
+      done
+      n=$((n + 1))
+      set +e
+      regression_proof_run "$RUNS/$n.xml" "$RUNS/$n.log" "${file_ids[@]}"
+      rc=$?
+      set -e
+      echo "  $file: pytest exit $rc"
+      runs+=(--run "$RUNS/$n.xml" "$RUNS/$n.log")
+    done
+  elif [ ! -s "$JUNIT" ]; then
+    # No report at all means pytest never ran (missing interpreter, unwritable
+    # path). That is a failure, not a pass — an earlier version of this script
+    # redirected into a directory absent on the runner, so pytest never executed
+    # and every check below was skipped on the way to printing success.
     echo "       The check did not run; treating that as a failure, not a pass."
     tail -40 "$LOG"
-    ci_verdict_die --lane regression-proof --status error \
+    ci_verdict_die --lane "$LANE" --status error \
       --summary "pytest wrote no JUnit report (exit $rc) — the check did not run" \
       --advice "That is a failure, not a pass: an earlier version of this script redirected into a directory absent on the runner and printed success."
   fi
@@ -456,18 +495,38 @@ cmd_regression_proof() {
   # summary line: a run can be "0 passed" while proving nothing, because a test
   # that ERRORS never reached its assertions. See `verdict.py regression-proof-verdict`,
   # which also writes this lane's verdict — one finding per test that did not go
-  # red on base, at the test's own file and line. Paths in the JUnit are
-  # relative to apps/api, hence --path-prefix.
-  if ! uv run --no-project "$SCRIPT_DIR/verdict.py" regression-proof-verdict "$JUNIT" \
-    --lane regression-proof --path-prefix apps/api/; then
+  # red on base, at the test's own file and line, and one per conftest or module
+  # that cannot import on base, read from the run's report or its output. Paths in
+  # the JUnit are relative to apps/api, hence --path-prefix.
+  if ! uv run --no-project "$SCRIPT_DIR/verdict.py" regression-proof-verdict "${runs[@]}" \
+    --base-root "$WT/apps/api" --lane "$LANE" --path-prefix apps/api/; then
     echo "--- pytest output (base revision) ---"
     tail -40 "$LOG"
     exit 1
   fi
 }
 
+# One base-revision pytest run over the given node ids: report to $1, output to $2.
+# -W ignore::DeprecationWarning: this lane runs the BRANCH's pytest.ini
+# (filterwarnings included) against the BASE's product code. Base code
+# legitimately predates this branch's deprecation fixes (e.g. the
+# mcp_use.exceptions import fixed on this branch), so warning-as-error here
+# measures base deprecations, not whether the pinned bug exists. The
+# warnings policy's job is policing the branch's code — that happens in the
+# main test-python run. This lane's job is assertion-level proof on base.
+# PY_COLORS=0: the verdict reads the error line out of this output and the
+# report, and an inherited FORCE_COLOR wraps both in escape codes; pytest lets
+# PY_COLORS override FORCE_COLOR and --color alike.
+regression_proof_run() {
+  local junit="$1" log="$2"
+  shift 2
+  PY_COLORS=0 "$VENV_PY" -m pytest "$@" -m regression -q --tb=no --no-header \
+    -p no:cacheprovider -o addopts="--strict-markers" -W ignore::DeprecationWarning \
+    --junitxml="$junit" > "$log" 2>&1
+}
+
 usage() {
-  sed -n '2,24p' "$0" >&2
+  sed -n '2,30p' "$0" >&2
 }
 
 main() {

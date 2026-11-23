@@ -29,6 +29,7 @@ import urllib.request
 USER_AGENT = "gaia-seo-audit/1.0 (+https://heygaia.io)"
 TIMEOUT_S = 30
 RETRIES = 2
+TRANSPORT_RETRIES = 5
 LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 LOCALE_PREFIX = re.compile(r"^/(de|es|fr|ja|ko|pt-br)(?=/|$)")
 SNIPPET_CONFIG = Path(__file__).resolve().parents[3] / "apps/web/src/config/seoSnippet.json"
@@ -60,23 +61,33 @@ class Response:
 
 
 def fetch(url: str, method: str = "GET", host: str | None = None) -> Response:
-    """One request without following redirects; retries only transport errors and 5xx."""
+    """One request without following redirects; retries 5xx a few times and a transport failure longer, since a deploy's cold edge drops connections for seconds."""
     headers = {"User-Agent": USER_AGENT} | ({"Host": host} if host else {})
     request = urllib.request.Request(url, method=method, headers=headers)  # noqa: S310 - http(s) URLs from the audited site's own sitemap and pages
-    for attempt in range(RETRIES + 1):
+    server_errors = transport_errors = 0
+    while True:
         try:
             with _OPENER.open(request, timeout=TIMEOUT_S) as resp:
                 body = resp.read().decode("utf-8", "replace") if method == "GET" else ""
                 return Response(resp.status, {k.lower(): v for k, v in resp.headers.items()}, body)
         except urllib.error.HTTPError as exc:
-            if exc.code < 500 or attempt == RETRIES:
+            if exc.code < 500 or server_errors == RETRIES:
                 return Response(exc.code, {k.lower(): v for k, v in exc.headers.items()}, "")
-        # HTTPException: a body cut short (IncompleteRead) or a dropped connection (RemoteDisconnected).
-        except (urllib.error.URLError, TimeoutError, http.client.HTTPException) as exc:
-            if attempt == RETRIES:
+            server_errors += 1
+            time.sleep(2 ** (server_errors - 1))
+        # HTTPException: a body cut short (IncompleteRead) or a dropped connection
+        # (RemoteDisconnected). ConnectionError: an RST during the read itself,
+        # which urllib never wraps in URLError.
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            http.client.HTTPException,
+            ConnectionError,
+        ) as exc:
+            if transport_errors == TRANSPORT_RETRIES:
                 return Response(0, {}, f"transport error: {exc}")
-        time.sleep(2**attempt)
-    raise AssertionError("unreachable")
+            transport_errors += 1
+            time.sleep(2 ** (transport_errors - 1))
 
 
 class _PageParser(HTMLParser):
@@ -198,7 +209,11 @@ def _check_snippet(url: str, page: _PageParser, findings: Findings) -> None:
         findings.warn(f"title under {TITLE_RANGE[0]} chars", f"{len(page.title)} {url}")
     if not page.description:
         findings.error("missing meta description", url)
-    elif not DESCRIPTION_RANGE[0] <= len(page.description) <= DESCRIPTION_RANGE[1]:
+    elif (
+        len(page.description) > DESCRIPTION_RANGE[1]
+        or len(page.description) + len(WIDE_CHARACTER.findall(page.description))
+        < DESCRIPTION_RANGE[0]
+    ):
         findings.warn("meta description length", f"{len(page.description)} {url}")
     if page.h1_count != 1:
         findings.warn("H1 count is not 1", f"{page.h1_count} {url}")

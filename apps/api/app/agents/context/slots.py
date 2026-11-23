@@ -31,13 +31,16 @@ ONBOARDING_MARKER = "onboarding_context"
 #: stays in the CONVERSATION slot (inline, never pruned) but is not the user's words.
 PRESENCE_NOTE_MARKER = "presence_note"
 
+#: Written only by the retired instant-reaction note; replayed checkpoints still carry it, inline.
+REACTION_NOTE_MARKER = "reaction_note"
+
 #: Pre-split threads carried one combined dynamic message marked with both
 #: ``dynamic_context`` and this. Checkpoints written then are still replayed, so
 #: it must keep resolving to the stable dynamic slot.
 LEGACY_DYNAMIC_MARKER = "memory_message"
 
-#: The background-executor result is identified by ``name`` rather than a marker:
-#: the comms narrator builds it with no graph-state context to stamp one.
+#: Written only by the retired comms narrator, identified by ``name`` rather than a
+#: marker; replayed checkpoints still carry it.
 BACKGROUND_EXECUTOR_NAME = "background_executor"
 
 #: ``additional_kwargs["lc_source"]`` LangChain stamps on the summary it writes.
@@ -75,7 +78,7 @@ LEADING_SLOTS: frozenset[PromptSlot] = frozenset(
 )
 
 
-def has_marker(message: AnyMessage, name: str) -> bool:
+def has_marker(message: BaseMessage, name: str) -> bool:
     """Whether message carries marker name.
 
     Checks additional_kwargs (where LangChain persists custom kwargs) and
@@ -92,13 +95,14 @@ def has_marker(message: AnyMessage, name: str) -> bool:
 def is_gaia_authored_note(message: AnyMessage) -> bool:
     """Whether message is a note GAIA wrote into a turn rather than something the user said.
 
-    The presence note, the per-turn recall block and the clock: true for the turn
+    The presence and reaction notes, the per-turn recall block and the clock: true for the turn
     that wrote them, so they stay inline with it and fold away with it, never
     restated as summary text that would read as current.
     """
-    return has_marker(message, PRESENCE_NOTE_MARKER) or slot_of(message) in (
-        PromptSlot.MEMORY_RECALL,
-        PromptSlot.TIME,
+    return (
+        has_marker(message, PRESENCE_NOTE_MARKER)
+        or has_marker(message, REACTION_NOTE_MARKER)
+        or slot_of(message) in (PromptSlot.MEMORY_RECALL, PromptSlot.TIME)
     )
 
 
@@ -118,7 +122,7 @@ _SLOT_BY_MARKER: tuple[tuple[str, PromptSlot], ...] = (
 )
 
 
-def slot_of(message: AnyMessage) -> PromptSlot:
+def slot_of(message: BaseMessage) -> PromptSlot:
     """Which slot message belongs in.
 
     Check order is load-bearing: a block marked both volatile and dynamic is

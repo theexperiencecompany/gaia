@@ -33,7 +33,7 @@ Sort each failure into one bucket before touching code:
 |---|---|---|
 | Failing tests | `test-python (unit-a)` | step 2 |
 | Mutation | survivors, or a module that "reached no verdict" | step 3 |
-| regression-proof | "ERRORED on base", "SKIPPED on base" | step 4 |
+| regression-proof | "cannot run on base", "ERRORED on base", "SKIPPED on base" | step 4 |
 | Lint / static | mypy, ruff, ratchets, package-hygiene | step 5 |
 | Not ours | new advisory, stale runner cache, timing flake | prove it (step 6) |
 
@@ -89,7 +89,16 @@ mapped tests and a ready replay selector. Fix in this order:
 ## 4. regression-proof
 
 It runs the PR's **newly marked** `@pytest.mark.regression` tests against the base app
-and needs each one to FAIL there. An ERROR (import) or SKIP proves nothing.
+and needs each one to FAIL there. An ERROR (import) or SKIP proves nothing. A test only
+the unit slices own is proven on every push (lint-python's `regression-proof` check); one
+that needs services, in the integration slice in the merge queue.
+
+"cannot run on base — <file>: <error>" means the PR's test tree does not even collect
+there: a conftest or test module imports a name only the head has (pytest exit 4/2). The
+lane then reruns each test file alone, so only the tests under that file lose their proof
+and every other one still reports. Make the named file import only what base has, or keep
+the head-only import out of shared conftest/module scope; the tests that need it must still
+fail by assertion.
 
 - The test imports a **module** that doesn't exist on base, or tests a feature base
   doesn't have: the test is gap-fill, so remove the mark (`apps/api/tests/CLAUDE.md`).
@@ -102,7 +111,8 @@ and needs each one to FAIL there. An ERROR (import) or SKIP proves nothing.
 Verify locally. It diffs `base...HEAD`, so commit first:
 
 ```bash
-cd apps/api && USE_REAL_SERVICES=1 bash ../../scripts/ci/pytest.sh regression-proof origin/master
+bash scripts/ci/pytest.sh regression-proof --services false origin/master  # the PR check
+cd apps/api && USE_REAL_SERVICES=1 bash ../../scripts/ci/pytest.sh regression-proof --services true origin/master
 ```
 
 ## 5. Prove mutation locally, slow and sure
@@ -117,7 +127,7 @@ nohup python3 scripts/ci/mutation.py local app/x.py app/y.py > /tmp/mut.out 2>&1
 ```
 
 - For ONE module, skip the background job entirely: `mise mutation:one app/x.py`
-  runs it in the foreground and prints the survivors with their diffs.
+  runs the same `local` path in the foreground and prints the survivors with their diffs.
 - Watch `/tmp/mut.out` for `pass` / `SURVIVORS` / `ERROR`. Per-module logs are in
   `verify-logs/mutation/`; `mise mutation:survivors verify-logs/mutation/<module>.verdict.json`
   re-prints any of them.

@@ -1,6 +1,6 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { MessageMultiple02Icon, SearchIcon } from "@icons";
 import type { SearchResultsResponse } from "@shared/api/generated";
 import { Command } from "cmdk";
@@ -92,13 +92,13 @@ function MessageResults({
     <Command.Group heading="Messages">
       {messages.slice(0, 3).map((message) => (
         <Command.Item
-          key={`message-${message.message.message_id}`}
+          key={`message-${message.item.id}`}
           value={message.snippet}
           onSelect={() => {
             track("search:result_clicked", {
               result_type: "message",
               conversation_id: message.conversation_id,
-              message_id: message.message.message_id ?? undefined,
+              message_id: message.item.id,
             });
             onOpen(message.conversation_id);
           }}
@@ -113,9 +113,7 @@ function MessageResults({
               className={COMMAND_MENU_STYLES.resultSubtitle}
               suppressHydrationWarning
             >
-              {message.message.date
-                ? new Date(message.message.date).toLocaleDateString()
-                : null}
+              {new Date(message.item.at).toLocaleDateString()}
             </div>
           </div>
         </Command.Item>
@@ -387,7 +385,9 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                   placeholder="Search or run a command..."
                   className={COMMAND_MENU_STYLES.input}
                 />
-                <Kbd keys={[modifierKeyName]}> K</Kbd>
+                <Kbd>
+                  <Kbd.Abbr keyValue={modifierKeyName} /> K
+                </Kbd>
               </div>
 
               <Command.List ref={listRef} className={COMMAND_MENU_STYLES.list}>

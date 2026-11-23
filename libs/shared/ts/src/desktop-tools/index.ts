@@ -18,7 +18,6 @@ export type {
 } from "./types";
 export {
   DESKTOP_SERVER_FORM_PARAM,
-  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   DESKTOP_TOOL_NAMES,
   isDesktopToolName,
 } from "./types";

@@ -23,15 +23,17 @@ from typing import Any, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 import uuid
 
-from pymongo.errors import DuplicateKeyError
 import pytest
+from redis.exceptions import RedisError
 
 from app.agents.core.integration_capabilities import (
     get_user_integration_capabilities,
 )
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, MAX_ACCOUNTS_PER_INTEGRATION
+from app.core.websocket_manager import websocket_manager
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
@@ -69,6 +71,7 @@ from app.services.integrations.custom_crud import (
 )
 from app.services.integrations.integration_connection_service import (
     _handle_auth_required,
+    _invalidate_caches,
     _McpConnectTarget,
     _redirect_to_oauth,
     build_integrations_config,
@@ -653,7 +656,7 @@ class TestUpdateUserIntegrationStatus:
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
     async def test_update_status_connected_success(self, mock_repo, mock_sched, mock_ws):
         mock_repo.set_status = AsyncMock(return_value=True)
-        mock_ws.broadcast_to_user = AsyncMock()
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "connected"
@@ -669,42 +672,42 @@ class TestUpdateUserIntegrationStatus:
         mock_sched.assert_called_once_with(USER_ID)
         # The connected transition pushes a live status update so an open card
         # flips without a reload (this is what makes the inline chat card live).
-        mock_ws.broadcast_to_user.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID, "status": "connected"},
-            },
+        mock_ws.announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": "integration_status_update", "data": {"integration_id": INTEGRATION_ID}},
         )
 
-    @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_connected_broadcast_failure_is_non_fatal(self, mock_repo, mock_sched, mock_ws):
+    async def test_connected_broadcast_failure_is_non_fatal(self, mock_repo, mock_sched):
         # Best-effort: status is already persisted, client recovers on next catalog
         # read, so a broadcast failure (Redis down) mustn't fail the connection —
         # but it must still show in the wide event; silent swallowing is the risk.
         mock_repo.set_status = AsyncMock(return_value=True)
-        mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("redis down"))
 
-        async with captured_wide_event() as event:
-            result = await _uncached(update_user_integration_status)(
-                USER_ID, INTEGRATION_ID, "connected"
-            )
+        with patch.object(
+            websocket_manager, "broadcast_to_user", AsyncMock(side_effect=RedisError("redis down"))
+        ):
+            async with captured_wide_event() as event:
+                result = await _uncached(update_user_integration_status)(
+                    USER_ID, INTEGRATION_ID, "connected"
+                )
 
         assert result is True
         (warning,) = event["warnings"]
-        assert "Failed to broadcast connected status" in warning["msg"]
-        assert warning["integration_id"] == INTEGRATION_ID
+        assert "Failed to announce a change" in warning["msg"]
+        assert warning["announced"] == "integration_status_update"
         assert warning["error"] == "redis down"
-        assert warning["error_type"] == "RuntimeError"
+        assert warning["error_type"] == "RedisError"
 
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_update_status_created_does_not_schedule(self, mock_repo, mock_sched, mock_ws):
+    async def test_update_status_created_tells_open_pages_without_scheduling(
+        self, mock_repo, mock_sched, mock_ws
+    ):
         mock_repo.set_status = AsyncMock(return_value=True)
-        mock_ws.broadcast_to_user = AsyncMock()
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(USER_ID, INTEGRATION_ID, "created")
 
@@ -716,15 +719,22 @@ class TestUpdateUserIntegrationStatus:
             expired_reason=None,
         )
         mock_sched.assert_not_called()
-        # Only the connected transition broadcasts; created must not.
-        mock_ws.broadcast_to_user.assert_not_awaited()
+        # A failed connect falls back to created: a page waiting on its tools must hear it.
+        mock_ws.announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": "integration_status_update", "data": {"integration_id": INTEGRATION_ID}},
+        )
 
+    @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_update_status_expired_passes_the_reason_through(self, mock_repo, mock_sched):
+    async def test_update_status_expired_passes_the_reason_through(
+        self, mock_repo: MagicMock, mock_sched: MagicMock, mock_ws: MagicMock
+    ) -> None:
         # The expiry transition owns the VFS resync itself, so this chokepoint
         # must keep scheduling it only on connect.
         mock_repo.set_status = AsyncMock(return_value=True)
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "expired", expired_reason="refresh_token_revoked"
@@ -738,6 +748,10 @@ class TestUpdateUserIntegrationStatus:
             expired_reason="refresh_token_revoked",
         )
         mock_sched.assert_not_called()
+        mock_ws.announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": INTEGRATION_STATUS_UPDATE_EVENT, "data": {"integration_id": INTEGRATION_ID}},
+        )
 
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
@@ -746,7 +760,7 @@ class TestUpdateUserIntegrationStatus:
         self, mock_repo: MagicMock, mock_sched: MagicMock, mock_ws: MagicMock
     ) -> None:
         mock_repo.set_status = AsyncMock(return_value=False)
-        mock_ws.broadcast_to_user = AsyncMock()
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "connected"
@@ -754,7 +768,7 @@ class TestUpdateUserIntegrationStatus:
 
         assert result is False
         mock_sched.assert_not_called()
-        mock_ws.broadcast_to_user.assert_not_awaited()
+        mock_ws.announce.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -1509,7 +1523,7 @@ class TestCreateCustomIntegration:
     async def test_create_race_returns_winner(self, mock_repo, mock_add_user):
         # Both racers pass the pre-check; the unique index rejects the loser,
         # which returns the winner instead of surfacing a 500.
-        mock_repo.create = AsyncMock(side_effect=DuplicateKeyError("dup key"))
+        mock_repo.create = AsyncMock(side_effect=AlreadyExistsError("dup key"))
         winner = _make_custom_integration(integration_id="int-winner")
         mock_repo.find_custom_by_server_url = AsyncMock(return_value=winner)
 
@@ -1529,12 +1543,12 @@ class TestCreateCustomIntegration:
     async def test_create_race_without_winner_raises(self, mock_repo, mock_add_user):
         # A duplicate-key error the re-lookup cannot explain (e.g. an
         # integration_id collision) must stay loud, not turn into a None.
-        mock_repo.create = AsyncMock(side_effect=DuplicateKeyError("dup key"))
+        mock_repo.create = AsyncMock(side_effect=AlreadyExistsError("dup key"))
         mock_repo.find_custom_by_server_url = AsyncMock(return_value=None)
 
         request = CreateCustomIntegrationRequest(name="Raced MCP", server_url=SERVER_URL)
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await create_custom_integration(USER_ID, request)
 
 
@@ -3707,3 +3721,36 @@ class TestConnectMorePaths:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://auth.example.com"
+
+
+class TestInvalidateCachesWhenTheStoreFails:
+    """A failed record write on disconnect is logged and the per-user caches still bust."""
+
+    _MODULE = "app.services.integrations.integration_connection_service"
+
+    @pytest.mark.parametrize(
+        ("platform", "writer"),
+        [(True, "remove_user_integration"), (False, "update_user_integration_status")],
+    )
+    async def test_the_failure_is_logged_and_the_caches_still_bust(
+        self, platform: bool, writer: str
+    ) -> None:
+        with (
+            patch(
+                f"{self._MODULE}.get_integration_by_id",
+                return_value=MagicMock() if platform else None,
+            ),
+            patch(
+                f"{self._MODULE}.{writer}",
+                new_callable=AsyncMock,
+                side_effect=RepositoryError("down"),
+            ),
+            patch(
+                f"{self._MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock
+            ) as bust,
+            patch(f"{self._MODULE}.log") as log,
+        ):
+            await _invalidate_caches("user-1", "gmail", "composio")
+
+        bust.assert_awaited_once_with("user-1")
+        assert log.warning.call_args.kwargs["error_type"] == "RepositoryError"

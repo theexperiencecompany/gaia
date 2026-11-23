@@ -69,14 +69,17 @@ class TestUserReads:
         assert await repo.get_by_email("x@y.com") == created
         assert await repo.get_by_email("missing@y.com") is None
 
-    async def test_find_by_email_ignoring_case_matches_whole_address_only(self, repo, make_user):
-        upper = await repo.create(make_user(email="Erase.Me@Y.com"))
+    async def test_find_by_email_ignoring_case_matches_whole_address_only(
+        self, repo, make_user, raw_collection
+    ):
+        # A legacy row written before emails were stored lowercase.
+        legacy = await raw_collection.insert_one({"email": "Erase.Me@Y.com", "name": "A"})
         await repo.create(make_user(email="erase.me@y.com.evil"))
         await repo.create(make_user(email="eraseXme@y.com"))
 
         found = await repo.find_by_email_ignoring_case("erase.me@y.com")
 
-        assert [u.id for u in found] == [upper.id]
+        assert [u.id for u in found] == [str(legacy.inserted_id)]
 
     async def test_find_by_ids_skips_invalid(self, repo, make_user):
         a = await repo.create(make_user(email="c1@b.com"))
@@ -91,6 +94,29 @@ class TestUserReads:
         dump = (await repo.get(created.id)).model_dump()
         assert dump["custom_flag"] is True
         assert dump["nested"] == {"k": "v"}
+
+
+class TestEmailIsCaseInsensitive:
+    """An address is one account in any case: stored lowercase, looked up lowercase."""
+
+    async def test_create_stores_the_lowercase_address(self, repo, make_user, raw_collection):
+        await repo.create(make_user(email="Mixed.Case@Y.com"))
+
+        assert await raw_collection.find_one({"email": "mixed.case@y.com"}) is not None
+
+    async def test_get_by_email_ignores_the_callers_case(self, repo, make_user):
+        created = await repo.create(make_user(email="idp@y.com"))
+
+        assert await repo.get_by_email("IdP@Y.com") == created
+
+    async def test_touch_last_active_ignores_the_callers_case(
+        self, repo, make_user, raw_collection
+    ):
+        await repo.create(make_user(email="seen@y.com"))
+
+        await repo.touch_last_active("Seen@Y.com")
+
+        assert (await raw_collection.find_one({"email": "seen@y.com"}))["last_active_at"]
 
 
 class TestCacheFreshness:
@@ -123,6 +149,20 @@ class TestCacheFreshness:
         assert await repo.delete(created.id)
         assert await repo.get(created.id) is None
         assert await repo.get_by_email("gone@y.com") is None
+
+    async def test_one_users_write_leaves_anothers_cached_record_alone(
+        self, repo, make_user, raw_collection
+    ):
+        writer = await repo.create(make_user(email="writer@y.com", name="Writer"))
+        bystander = await repo.create(make_user(email="bystander@y.com", name="Bystander"))
+        await repo.get(writer.id)
+        await repo.get(bystander.id)
+        await raw_collection.update_many({}, {"$set": {"name": "written-behind-the-repo"}})
+
+        await repo.update(writer.id, UserUpdate(name="Renamed"))
+
+        assert (await repo.get(writer.id)).name == "Renamed"
+        assert (await repo.get(bystander.id)).name == "Bystander"
 
     async def test_touch_last_active_does_not_bump_the_generation(self, repo, make_user):
         # The one cache-exempt write: it fires on every authenticated request, so

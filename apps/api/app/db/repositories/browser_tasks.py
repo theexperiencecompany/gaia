@@ -15,7 +15,6 @@ class BrowserTasksRepository(UserScopedRepository[BrowserTaskDocument, BrowserTa
     document_model = BrowserTaskDocument
     update_model = BrowserTaskUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def list_recent_for_user(
         self, user_id: str, *, limit: int = 20

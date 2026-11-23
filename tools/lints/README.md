@@ -23,7 +23,10 @@ remediation, and a link back to the relevant section here.
 Every rule carries an `ALLOWLIST` of the offenders that predate it, checked into
 the rule file with a per-entry reason. The list is a **ratchet**: remove an
 entry when you fix its target; never add one. A new violation cannot be
-allowlisted away — it must be fixed, which is the point.
+allowlisted away — it must be fixed, which is the point. CI enforces it:
+`scripts/ci/baselines.py growth` (the `baseline-growth` check) fails an
+allowlist that gains an entry or a raised count, and the `*_baseline.txt`
+files below that gain a line.
 
 ---
 
@@ -130,7 +133,7 @@ secrets or raw user content (tokens, message bodies, email addresses) as a field
 
 ## repository-boundaries
 
-**Rule:** the repository layer is the only path to MongoDB. Four checks:
+**Rule:** the repository layer is the only path to MongoDB. Six checks:
 
 1. `app.db.mongodb.collections` is imported only inside `app/db/repositories/`
    and `app/db/mongodb/`.
@@ -142,6 +145,13 @@ secrets or raw user content (tokens, message bodies, email addresses) as a field
    `app/db/` (the repository `CachePolicy`) and `app/decorators/` (the
    `@Cacheable` / `@CacheInvalidator` machinery). The raw `redis_cache` client
    (locks / rate-limits) is not banned.
+5. The Mongo client — `app.db.mongodb.mongodb` (`MongoDB` / `init_mongodb`) and
+   any `.get_collection(...)` call — stays inside `app/db/` and `app/scripts/`.
+   Check 1 alone misses a service that is handed a `MongoDB` and builds its own
+   collection handle: it never imports `collections`.
+6. `pymongo` / `motor` is imported only inside `app/db/` (and `app/scripts/`).
+   A repository call raises `RepositoryError` / `AlreadyExistsError` from
+   `app/db/repositories/errors.py`; the base translates the driver's errors.
 
 **Why:** services reach Mongo through typed domain repositories
 (`app/db/repositories/CLAUDE.md`). Raw collection handles, `ObjectId`, Mongo
@@ -151,7 +161,8 @@ a typed model. mypy strictness cannot catch all of this (a strict module can
 still hand a `dict[str, Any]` outward), so the boundary is held mechanically here.
 
 **Fix:** call the domain repository (`todo_repository.get(...)`) instead of the
-collection; keep `ObjectId` conversion inside the repository; annotate public
+collection; keep `ObjectId` conversion inside the repository; catch the
+repository's error types, never `PyMongoError` / `DuplicateKeyError`; annotate public
 repository methods with the domain's typed models.
 
 **Allowlist:** checks 1, 2 and 4 each carry a ratchet `ALLOWLIST` of the call
@@ -160,7 +171,39 @@ as each remaining reader migrates — never added; a new violation must be fixed
 not allowlisted. Check 4's allowlist is the legitimate NON-entity caches
 (aggregate rollups, tokens, external-data / derived-display caches) — the ban is
 only on hand-caching a repository-managed *entity* behind the repo's back. Check 3
-has no allowlist (the layer is new — it starts clean).
+has no allowlist (the layer is new — it starts clean). Check 5's two allowlists
+are not debt: `CLIENT_IMPORT_ALLOWLIST` names the startup caller that opens the
+connection, and `GET_COLLECTION_CALL_ALLOWLIST` names the Chroma call sites the
+AST cannot tell from Mongo's. A Mongo call site is never added to either.
+
+---
+
+## comms-graph-owner
+
+**Rule:** outside `app/services/conversation/comms_runner.py` (the owner: the
+conversation runtime's comms runner, which the step drives) and
+`app/agents/core/graph_builder/` (which builds and registers the graph but runs
+no conversation on it), a module under `app/` must not:
+
+1. name the comms graph: `GraphName.COMMS`, or the string `"comms_agent"` passed
+   to `GraphManager.get_graph` / `providers.get` / `providers.aget`;
+2. call a comms graph constructor (`COMMS_ENTRY_FUNCTIONS`: `build_comms_graph`,
+   `build_comms_agent`);
+3. in a module that does either, call `astream` / `ainvoke` / `aget_state` /
+   `aupdate_state` or their siblings (`GRAPH_THREAD_METHODS`).
+
+**Why:** the comms graph checkpoints each conversation on a thread whose id is
+the conversation id. Two pieces of code running or writing that thread at once
+fork it, and one side's messages vanish from the model's memory. The runner is
+the one owner, and only the step starts it; this rule stops a second writer
+appearing.
+
+**Fix:** run or write the conversation through the comms runner, driven by the
+conversation step. Executor and subagent threads (prefixed thread ids,
+`GraphName.EXECUTOR`) are not in scope.
+
+**Limitation:** check 3 is syntactic, not data flow: a graph handed to a module
+that names neither the symbol nor a constructor is not seen.
 
 ---
 
@@ -281,9 +324,10 @@ exemption to "has this PR touched the file" turns each PR that happens to
 edit a grandfathered file into the moment its debt gets paid down, without
 blocking unrelated work everywhere else.
 
-**Fix:** if the violation is new, simplify the function (or, if it's a
-genuine one-off, justify it in review and add it to the baseline with
-`--update`). If it's grandfathered but your PR touches that file, fix the
+**Fix:** if the violation is new, simplify the function (or, only on the
+founder's explicit approval, add it to the baseline with `--update` and write
+`# growth approved by <login> on YYYY-MM-DD: <reason>` above the new line —
+`scripts/ci/baselines.py growth` fails a baseline that grows without one). If it's grandfathered but your PR touches that file, fix the
 violation now and delete its line from the baseline.
 
 **Scope:** on a PR, "touched" is the same `scripts/ci/changes.sh files py`
@@ -347,6 +391,9 @@ a registration, not a read. A read on a name annotated with a TypedDict
 declared shape that mypy key-checks — Type Safety item 6 — so it is exempt too:
 TypedDicts are discovered from `class X(TypedDict)` across the scan, and the
 library ones (`ToolCall`, `RunnableConfig`) are named in `EXTERNAL_TYPEDDICTS`.
+A TypeVar bound to a TypedDict (`T = TypeVar("T", bound=SomeTypedDict)`) counts
+as one within the module that declares it: mypy key-checks a read through it
+against the bound.
 The check is syntactic: a TypedDict reached through an attribute chain or an
 unannotated loop variable is still flagged — bind it to an annotated local.
 
@@ -585,6 +632,32 @@ big enough to be a named helper or a paragraph in the PR — not a comment.
 
 ---
 
+## mutation-pragmas
+
+**Rule:** a `# pragma: no mutate` under `app/` must sit where mutmut 3 reads it.
+mutmut honours a trailing pragma for the expressions that start on its line (and,
+after a statement's last line, for the statement's first line), and a comment-only
+`start` / `end` / `block` only between statements. Reported placements:
+
+1. a comment-only pragma inside brackets (a list, dict or call spread over lines);
+2. a comment-only pragma with no `start` / `end` / `block` token;
+3. a trailing pragma on a closing-bracket line that does not end the statement;
+4. a trailing pragma on a plain name argument of a call opened on an earlier line, or
+   on a keyword argument whose value holds nothing mutmut mutates (names, attributes,
+   subscripts, f-strings) when the call's own line has no pragma: `kw=None` and the
+   dropped argument are mutants of the call node, positioned on the call's line.
+
+**Why:** mutmut ignores all four silently, so the mutant the pragma was written for
+survives and reds the mutation lane, often a whole CI round later.
+
+**Fix:** put the pragma on the line where the mutated expression starts (a call's
+first line for its arguments), or wrap the statement in
+`# pragma: no mutate start` / `# pragma: no mutate end`.
+
+**No allowlist**, no `noqa`.
+
+---
+
 ## tool-pins
 
 **Rule:** the Python lint and audit tools (ruff, bandit, interrogate, xenon,
@@ -617,6 +690,20 @@ file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
 `.python-version`, or a `python:3.x` / `rust:1.x` image tag all fail the guard —
 `apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
 drift that motivated it.
+
+The GitHub-hosted runner image is pinned the same way. `HOSTED_LINUX_IMAGE` in
+`scripts/ci/runner.py` declares the Ubuntu release (it routes every
+`select-runner` pool); a literal `runs-on` cannot read it, so every
+`ubuntu-NN.NN` label in a workflow, composite or `scripts/ci` file must name
+the same release, and any `ubuntu-latest` / `macos-latest` / `windows-latest`
+label fails. `ubuntu-latest` rolled to 26.04 one job at a time and broke the
+Playwright browser install in the merge queue (run 45079269367).
+
+A pin only holds where mise resolves the binary. A prek hook inherits the PATH
+of whatever shell ran `git commit`, so every `repo: local` hook in every
+tracked `.pre-commit-config.yaml` starts with `mise exec --` (or `mise run`, or
+an explicit path). The guard fails on an entry that names a bare program: an
+agent shell with uv 0.10.6 first on PATH broke the lint-imports hook that way.
 
 **Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
 (0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an

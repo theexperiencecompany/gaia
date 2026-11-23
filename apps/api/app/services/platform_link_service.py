@@ -44,6 +44,7 @@ from app.services.photon.photon_client import (
     register_shared_user,
     unregister_shared_user,
 )
+from app.utils.auth_utils import bot_user_cache_key
 from app.utils.errors import AppError, create_error
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotChatOpened
@@ -425,13 +426,13 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     log.audit(
         "platform account unlinked",
         actor=user_id,
+        resource=platform_user_id,
         provider=platform,
     )
     capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
 
     if platform_user_id:
-        cache_key = f"bot_user:{platform}:{platform_user_id}"
-        await redis_cache.client.delete(cache_key)
+        await redis_cache.client.delete(bot_user_cache_key(platform, platform_user_id))
 
     return result
 

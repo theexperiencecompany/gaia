@@ -19,8 +19,11 @@ from app.config.settings import settings
 from app.config.workos import get_async_workos_client
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
+    AGENT_TOKEN_PATHS,
+    BOT_API_KEY_HEADER,
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
+    SESSION_HINT_COOKIE,
     WOS_SESSION_COOKIE,
     WOS_SESSION_MAX_AGE_SECONDS,
 )
@@ -32,14 +35,18 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import ErrorEnvelope, error_response
+from app.services.turn_timings import TurnStep, turn_step
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
+    clear_session_hint_cookie,
     resolve_dev_bypass_user,
     set_session_cookie,
+    set_session_hint_cookie,
 )
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
     LocalSessionFailure,
     authenticate_local_session,
 )
@@ -129,11 +136,37 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
 
 
+def _response_sets_hint(response: Response) -> bool:
+    """Whether the route already set or cleared the signed-in hint (login, logout, rotation)."""
+    prefix = f"{SESSION_HINT_COOKIE}="
+    return any(header.startswith(prefix) for header in response.headers.getlist("set-cookie"))
+
+
+def _sync_session_hint(
+    request: Request, response: Response, *, session_cookie: str, max_age: int
+) -> None:
+    """Keep the signed-in hint matching the session cookie the request carried.
+
+    A session from before the hint existed gets one; a hint whose session is gone or
+    rejected is dropped, so the web stops asking /user/me. A transient auth error
+    (no auth_failure recorded) leaves it alone.
+    """
+    if _response_sets_hint(response):
+        return
+    has_session = bool(request.cookies.get(session_cookie))
+    has_hint = SESSION_HINT_COOKIE in request.cookies
+    if request.state.authenticated:
+        if has_session and not has_hint:
+            set_session_hint_cookie(response, request, max_age=max_age)
+    elif has_hint and (not has_session or getattr(request.state, "auth_failure", None)):
+        clear_session_hint_cookie(response, request)
+
+
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     """Authenticate WorkOS session cookies; populate request.state.user.
 
-    Handles cookie refresh and an agent-token fallback for the chat-stream
-    endpoint. Unauthenticated requests still pass through — route handlers
+    Handles cookie refresh and an agent-token fallback for the voice worker's
+    conversation routes. Unauthenticated requests still pass through — route handlers
     are responsible for enforcing auth via :func:get_current_user.
     """
 
@@ -156,9 +189,10 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/oauth/login",
-            "/oauth/workos/callback",
-            "/oauth/google/callback",
+            "/api/v1/oauth/login",
+            "/api/v1/oauth/workos/callback",
+            "/api/v1/oauth/workos/mobile/callback",
+            "/api/v1/oauth/workos/desktop/callback",
             "/health",
             "/api/v1/bot",
             "/api/v1/webhook",
@@ -222,9 +256,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         self._exclude_prefix: list[str] = [
             p for p in self.exclude_paths if p not in self._exclude_exact
         ]
-        # Routes that also accept an "Authorization: Bearer <agent JWT>" in
-        # addition to a WorkOS session cookie.
-        self.agent_only_paths = ["/api/v1/chat-stream"]
         self.user_cache_expiry = 3600
         self.dev_bypass_email = (
             settings.DEV_AUTH_BYPASS_EMAIL if settings.deployment.dev_tools else None
@@ -250,7 +281,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             self._publish_user(request)
             return await call_next(request)
 
-        if self.dev_bypass_email:
+        # A bot names its user with its own token, so it authenticates exactly as in production.
+        if self.dev_bypass_email and BOT_API_KEY_HEADER not in request.headers:
             return await self._dispatch_dev_bypass(request, call_next)
 
         # Self-host mode: authenticate via the local session JWT instead of
@@ -269,10 +301,10 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.authenticated = False
         request.state.new_session = None
 
-        if wos_session:
-            await self._authenticate_wos_session(request, wos_session)
-
-        await self._authenticate_agent_token(request, auth_provider="workos")
+        with turn_step(TurnStep.AUTH):
+            if wos_session:
+                await self._authenticate_wos_session(request, wos_session)
+            await self._authenticate_agent_token(request, auth_provider="workos")
 
         self._publish_user(request)
         response = await call_next(request)
@@ -283,6 +315,13 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 request,
                 name=WOS_SESSION_COOKIE,
                 value=request.state.new_session,
+                max_age=WOS_SESSION_MAX_AGE_SECONDS,
+            )
+        else:
+            _sync_session_hint(
+                request,
+                response,
+                session_cookie=WOS_SESSION_COOKIE,
                 max_age=WOS_SESSION_MAX_AGE_SECONDS,
             )
 
@@ -317,12 +356,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     async def _authenticate_agent_token(self, request: Request, *, auth_provider: str) -> None:
         """Resolve an agent bearer token onto request.state, if it carries one.
 
-        One implementation serves both dispatch branches: voice and desktop
-        clients present an AGENT_SECRET-signed JWT instead of a browser cookie,
-        but only on the agent-only paths. auth_provider names which session
+        One implementation serves both dispatch branches: the voice worker
+        presents an AGENT_SECRET-signed JWT instead of a browser cookie, honoured
+        only on AGENT_TOKEN_PATHS. auth_provider names which session
         system the request would otherwise have used.
         """
-        if request.state.authenticated or request.url.path not in self.agent_only_paths:
+        if request.state.authenticated or not AGENT_TOKEN_PATHS.fullmatch(request.url.path):
             return
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
@@ -383,7 +422,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.user = build_user_context(user_data, auth_provider="workos", dev_bypass=True)
         request.state.authenticated = True
         self._publish_user(request)
-        return await call_next(request)
+        response = await call_next(request)
+        # The bypass has no session cookie; the hint still lets marketing pages show the dev user.
+        if SESSION_HINT_COOKIE not in request.cookies and not _response_sets_hint(response):
+            set_session_hint_cookie(response, request, max_age=WOS_SESSION_MAX_AGE_SECONDS)
+        return response
 
     async def _dispatch_local_session(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -407,16 +450,21 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
         if token:
             session = await authenticate_local_session(token)
-            if isinstance(session, LocalSessionFailure):
-                request.state.auth_failure = session
-            else:
+            if isinstance(session, AuthenticatedUser):
                 request.state.user = session
                 request.state.authenticated = True
+            # An unavailable check is transient, like the WorkOS path's error: no rejection.
+            elif session is not LocalSessionFailure.UNAVAILABLE:
+                request.state.auth_failure = session
 
         await self._authenticate_agent_token(request, auth_provider="email")
 
         self._publish_user(request)
-        return await call_next(request)
+        response = await call_next(request)
+        _sync_session_hint(
+            request, response, session_cookie=LOCAL_SESSION_COOKIE, max_age=SESSION_TTL_SECONDS
+        )
+        return response
 
     @staticmethod
     def _publish_user(request: Request) -> None:

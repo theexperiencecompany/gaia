@@ -1,7 +1,6 @@
 import {
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
-  reconcileIntegrationStatus,
 } from "@gaia/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -12,16 +11,11 @@ import {
   type ConnectIntegrationResult,
   connectIntegration,
   disconnectIntegration,
-  fetchIntegrationStatuses,
   fetchIntegrations,
 } from "../api/integrations-api";
 import type { Integration } from "../types";
 
 const INTEGRATIONS_QUERY_KEY = ["integrations"] as const;
-const INTEGRATION_STATUS_QUERY_KEY = [
-  ...INTEGRATIONS_QUERY_KEY,
-  "status",
-] as const;
 
 const OAUTH_POLL_INTERVAL_MS = 1000;
 const OAUTH_POLL_DURATION_MS = 5000;
@@ -56,33 +50,17 @@ export function useIntegrations(): UseIntegrationsResult {
     queryFn: fetchIntegrations,
     staleTime: 30 * 1000,
   });
-  const statusQuery = useQuery({
-    queryKey: INTEGRATION_STATUS_QUERY_KEY,
-    queryFn: fetchIntegrationStatuses,
-    staleTime: 30 * 1000,
-  });
 
   const integrations = useMemo(() => {
-    const statuses = statusQuery.data;
-    return (query.data ?? [])
-      .map((integration) => ({
-        ...integration,
-        status: reconcileIntegrationStatus(
-          integration.status,
-          statuses?.[integration.id],
-          integration.managedBy,
-          integration.requiresAuth,
-        ),
-      }))
-      .toSorted((a, b) => {
-        const priorityA =
-          INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];
-        const priorityB =
-          INTEGRATION_STATE_ORDER[integrationConnectionState(b.status)];
-        if (priorityA !== priorityB) return priorityA - priorityB;
-        return a.name.localeCompare(b.name);
-      });
-  }, [query.data, statusQuery.data]);
+    return (query.data ?? []).toSorted((a, b) => {
+      const priorityA =
+        INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];
+      const priorityB =
+        INTEGRATION_STATE_ORDER[integrationConnectionState(b.status)];
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return a.name.localeCompare(b.name);
+    });
+  }, [query.data]);
 
   const invalidateIntegrations = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: INTEGRATIONS_QUERY_KEY });

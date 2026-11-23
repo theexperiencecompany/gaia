@@ -1,14 +1,11 @@
 "use client";
-import { Button } from "@heroui/button";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
-import Link from "next/link";
-import React, { type FC, useState } from "react";
+import { DISPLAY_STATE } from "@shared/conversation";
+import React, { memo, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { useConversationDisplay } from "@/features/chat/live/useLiveChat";
 import { usePathname } from "@/i18n/navigation";
-import {
-  useIsConversationAwaitingApproval,
-  useIsConversationStreaming,
-} from "@/stores/streamStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -26,7 +23,9 @@ interface ChatTabProps {
   hasPendingApproval?: boolean;
 }
 
-export const ChatTab: FC<ChatTabProps> = ({
+// Memoized: the sidebar lists every conversation, and a send reorders the list,
+// which re-rendered every row and its dropdown before the turn could paint.
+export const ChatTab = memo(function ChatTab({
   name,
   id,
   starred,
@@ -34,18 +33,15 @@ export const ChatTab: FC<ChatTabProps> = ({
   systemPurpose,
   isUnread = false,
   hasPendingApproval = false,
-}) => {
+}: ChatTabProps) {
   const pathname = usePathname();
   const [buttonHovered, setButtonHovered] = useState(false);
 
-  // Per-conversation: multiple conversations can stream concurrently.
-  const isStreaming = useIsConversationStreaming(id);
-  const isAwaitingApproval = useIsConversationAwaitingApproval(id);
-  // A turn paused on an approval has left the streaming phase (SSE closed), so
-  // the dot keys off both; hasPendingApproval covers reloads and background
-  // runs where no stream state exists.
-  const showApprovalDot = isAwaitingApproval || hasPendingApproval;
-  const isBusy = isStreaming || showApprovalDot;
+  // Live for a conversation open on this device; hasPendingApproval covers the rest.
+  const display = useConversationDisplay(id);
+  const showApprovalDot =
+    display === DISPLAY_STATE.AWAITING_APPROVAL || hasPendingApproval;
+  const isBusy = display !== DISPLAY_STATE.IDLE || showApprovalDot;
 
   // Derive current conversation ID from pathname during render
   const pathParts = pathname.split("/");
@@ -82,27 +78,27 @@ export const ChatTab: FC<ChatTabProps> = ({
       onFocus={() => setButtonHovered(true)}
       onBlur={() => setButtonHovered(false)}
     >
-      <Button
-        className={`w-full justify-start px-2 font-light text-sm ${isUnread ? "text-white font-normal" : isActive ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
-        size="sm"
-        as={Link}
+      <LinkButton
         href={`/c/${id}`}
-        variant={isActive ? "flat" : "light"}
-        onPress={() => setButtonHovered(false)}
-        startContent={
-          getIcon() &&
+        className={`w-full justify-start font-light text-sm ${isUnread ? "font-normal" : ""}`}
+        size="sm"
+        inset="tight"
+        tone={isUnread ? "white" : isActive ? "dim" : "muted"}
+        hoverTone={isUnread || isActive ? "none" : "dim"}
+        variant={isActive ? "default-soft" : "ghost"}
+        onClick={() => setButtonHovered(false)}
+      >
+        {getIcon() &&
           React.cloneElement(getIcon()!, {
             width: 18,
             height: 18,
-          })
-        }
-      >
+          })}
         <div className="flex w-full items-center justify-start gap-2">
           {/* Streaming indicator — amber when blocked on your approval, else
               the blue "actively streaming" pulse. */}
           {isBusy && (
             <div
-              className={`size-2 shrink-0 rounded-full animate-pulse ${showApprovalDot ? "bg-warning" : "bg-primary"}`}
+              className={`size-2 shrink-0 rounded-full animate-pulse ${showApprovalDot ? "bg-warning" : "bg-accent"}`}
               title={
                 showApprovalDot ? "Waiting for your approval" : "Streaming..."
               }
@@ -110,13 +106,13 @@ export const ChatTab: FC<ChatTabProps> = ({
           )}
           {/* Unread indicator */}
           {!isBusy && isUnread && (
-            <div className="size-2.5 shrink-0 rounded-full bg-primary" />
+            <div className="size-2.5 shrink-0 rounded-full bg-accent" />
           )}
           {/* min-w-0 + truncate so a long title shrinks/ellipsizes instead of
               squeezing the fixed-size indicator dot out of view. */}
           <span className="min-w-0 truncate">{name.replace('"', "")}</span>
         </div>
-      </Button>
+      </LinkButton>
 
       <div className={`absolute right-0`}>
         <ChatOptionsDropdown
@@ -129,4 +125,4 @@ export const ChatTab: FC<ChatTabProps> = ({
       </div>
     </div>
   );
-};
+});

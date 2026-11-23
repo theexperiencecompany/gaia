@@ -29,10 +29,10 @@ from langgraph.store.base import BaseStore, SearchItem
 from pydantic import Field, TypeAdapter
 
 from app.agents.core.subagents.active_integrations import get_active
-from app.agents.core.subagents.integration_resolution import (
+from app.agents.core.subagents.integration_resolution import is_per_user_mcp
+from app.agents.core.subagents.integration_target import (
     CustomMcpSubagent,
     get_integration_target,
-    is_per_user_mcp,
 )
 from app.agents.core.subagents.registry import get_subagent_by_id, providers_named_in
 from app.agents.tools.core.registry import (

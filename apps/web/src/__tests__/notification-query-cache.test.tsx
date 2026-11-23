@@ -132,7 +132,7 @@ describe("notification query cache", () => {
     markAsRead.mockReset();
   });
 
-  it("lands a websocket push in the list the UI renders", async () => {
+  it("re-reads the list from the server when a push says it changed", async () => {
     getNotifications.mockResolvedValue(page([makeNotification("a")]));
 
     withProviders(<Probe />);
@@ -140,27 +140,41 @@ describe("notification query cache", () => {
       expect(screen.getByTestId("ids").textContent).toBe("a");
     });
 
+    getNotifications.mockResolvedValue(
+      page([makeNotification("b"), makeNotification("a")]),
+    );
     act(() => {
       emit("notification.delivered", {
         type: "notification.delivered",
         notification: makeNotification("b"),
       });
     });
-
     await waitFor(() => {
-      // Prepended, not appended — newest notification first.
       expect(screen.getByTestId("ids").textContent).toBe("b,a");
     });
     expect(screen.getByTestId("unread").textContent).toBe("2");
+  });
 
-    // A repeat of the same push must not duplicate the row.
+  it("shows a read made on another device once the server says so", async () => {
+    getNotifications.mockResolvedValue(page([makeNotification("a")]));
+
+    withProviders(<Probe />);
+    await waitFor(() => {
+      expect(screen.getByTestId("unread").textContent).toBe("1");
+    });
+
+    getNotifications.mockResolvedValue(
+      page([makeNotification("a", NotificationStatus.READ)]),
+    );
     act(() => {
-      emit("notification.delivered", {
-        type: "notification.delivered",
-        notification: makeNotification("b"),
+      emit("notification.read", {
+        type: "notification.read",
+        notification_id: "a",
       });
     });
-    expect(screen.getByTestId("ids").textContent).toBe("b,a");
+    await waitFor(() => {
+      expect(screen.getByTestId("unread").textContent).toBe("0");
+    });
   });
 
   it("rolls the optimistic mark-as-read back when the request fails", async () => {

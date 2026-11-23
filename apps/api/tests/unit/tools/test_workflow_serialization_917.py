@@ -4,7 +4,7 @@ get/pause/resume_workflow, apply_workflow_edit, and the workflow tool
 returns serialized Workflow models in python mode, whose BaseScheduledTask
 base always carries created_at/updated_at native datetimes. The
 stream-writer payload is JSON-encoded with stdlib json.dumps downstream
-(redis_writer.py), so every emission crashed with "Object of type datetime
+(session_writer.py), so every emission crashed with "Object of type datetime
 is not JSON serializable", and get_workflow's return value degraded to
 Python reprs inside the ToolMessage. These tests pin the boundary contract:
 whatever crosses into a stream frame or a tool return is JSON-safe.
@@ -22,6 +22,7 @@ from app.agents.tools.workflow_tool import (
     pause_workflow,
     resume_workflow,
 )
+from app.models.agent_config import AgentConfigurableView
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -167,7 +168,11 @@ class TestWorkflowToolSerialization917:
             mock_update.return_value = updated
 
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=FAKE_USER_ID, writer=writer
+                draft=draft,
+                workflow=workflow,
+                user_id=FAKE_USER_ID,
+                writer=writer,
+                run=AgentConfigurableView(),
             )
 
         mock_update.assert_awaited_once()

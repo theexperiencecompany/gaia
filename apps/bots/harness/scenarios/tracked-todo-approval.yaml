@@ -1,0 +1,21 @@
+# A tracked todo's own run asks before creating a todo. No bot follows the todo's
+# chat, so the question reaches Telegram on its own: once, with a link to approve
+# it in the app, and never an invitation to reply YES, which answers nothing there.
+#
+#   mise dev --sim   (plus `nx worker api` for the scheduler)
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/tracked-todo-approval.yaml
+name: tracked todo approval
+emulate: telegram
+user: bot-tracked-approval-scenario@gaia.local
+askBefore: [create_todo]
+turns:
+  - send: 'watch it for me [[tool:create_tracked_todo {"title":"bot-tracked-ap","description":"[[tool:create_todo {\"title\":\"from-tracked\"}]] [[say:Added from-tracked.]]","scheduled_at":"1m","waiting_on":"time"}]] [[say:Tracking it.]]'
+    # The run fires a minute after it is set; the outbound consumer waits for its question.
+    settleMs: 150000
+    expect:
+      - delivered:
+          - "Tracking it."
+          - "<b>Want me to add “from-tracked” to your todos?</b>"
+      - contains: ">Approve or decline it in GAIA</a>"
+      - contains: "/c/"
+      - excludes: ["Reply YES", "reply yes", "Added from-tracked."]

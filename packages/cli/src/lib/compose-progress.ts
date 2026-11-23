@@ -189,8 +189,9 @@ function applyContainerEvent(
     );
     return;
   }
-  // "Running": compose found it up already; "Healthy": a dependency check passed.
-  const up = ["Started", "Running", "Healthy"].includes(e.text ?? "");
+  // "Running": compose found it up already; "Healthy": a dependency check passed;
+  // "Exited": a one-shot service a dependent waits on finished cleanly.
+  const up = ["Started", "Running", "Healthy", "Exited"].includes(e.text ?? "");
   if (e.status === "Error") {
     state.errors.push(`${service}: ${e.details ?? e.text ?? "error"}`);
   }
@@ -198,7 +199,9 @@ function applyContainerEvent(
   if (e.text === "Starting") state.starting.add(service);
   if (up) state.starting.delete(service);
   if (e.text === "Waiting") state.awaitingHealth.add(service);
-  if (e.text === "Healthy") state.awaitingHealth.delete(service);
+  if (e.text === "Healthy" || e.text === "Exited") {
+    state.awaitingHealth.delete(service);
+  }
   if (e.text === "Started" && !state.started.has(service)) {
     state.started.add(service);
     state.finished.push(`Started ${serviceName(service)}`);

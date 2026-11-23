@@ -20,13 +20,17 @@ One command per intent. Each starts infra in Docker (`nx run docker:docker:up`, 
 | You need… | Command | Why |
 |---|---|---|
 | **Agent driving, real LLM** (API + web natively, zero login) | `mise dev --agent` | Dev auth bypass ON — every request is `DEV_USER` (default `dev@gaia.local`), no WorkOS. Hot reload, API on host `:8000`. The default for this skill. JuiceFS-dependent paths raise `JuiceFSUnavailable` here — expected, not a bug. |
-| **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev --sim` | `--agent` + the scripted LLM stub (`tools/llm-stub`, `:9797`). Bypass also ON. Model replies come from directives in the chat message (§3). Run `mise seed` once the API is up. |
+| **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev --sim` | The sim stack (`scripts/dev/sim-stack.sh up`): stub, API, **ARQ worker** and web, all with the bypass and the scripted LLM (`tools/llm-stub`), detached. Returns once `/health/ready` answers, the worker has registered and `DEV_USER` is minted **with Pro** (no paywall). `mise run sim:status` (pids, ports, log paths), `mise run sim:logs api`, `mise run sim:down` (`--purge` drops this worktree's database). Model replies come from directives in the chat message (§3). |
 | **JuiceFS paths** — workspace v2, file uploads, artifact streaming, sandbox file ops | `mise dev:vm --agent` | Runs the API in a container with the FUSE mount; web stays native. `--agent` (or `--sim`, reaching the host stub via `host.docker.internal`) turns on the bypass; plain `mise dev:vm` is real login. Use the moment you hit `JuiceFSUnavailable`. |
 | **Real login flow** (human testing, no bypass) | `mise dev` | Same native stack, no flag — the real WorkOS login, for testing signup/auth as an actual user. Not for agent driving. |
 
 Every bypass command authenticates as `DEV_USER` (default `dev@gaia.local`); set `DEV_USER=<email>` to be someone else (it also becomes the `mise seed` target — §2).
 
 Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for the full list.)
+
+**Config in a fresh worktree.** It has no `apps/api/.env`. Team members boot with Infisical, `mise infisical -- dev --sim`: what this shell and `.env.worktree` set wins over Infisical, so the worktree keeps its own ports, database and Redis. A script that imports `app.*` outside mise has no `ENV` and stops with `InfisicalConfigError: ENV is not set`, never falling through to production; run it through mise (`mise exec -- uv run ...`) so `.env.worktree` supplies `ENV=development`.
+
+**Logs.** Under `--sim` each process writes its own log in `.sim-stack/` (`stub.log`, `api.log`, `worker.log`, `web.log`); a process that dies during boot stops the whole stack and prints its last 40 lines.
 
 ### No Docker daemon? (cloud sandboxes, CI runners, dev containers)
 
@@ -52,14 +56,14 @@ curl -X POST localhost:8000/api/v1/dev/users \
 ```
 
 Three things that will cost you an hour if you don't know them, all encoded in
-those scripts: the app reads the **`GAIA`** database, not the one named in
-`MONGO_DB`'s path, so seeding the URI's database leaves startup validation
-still failing; RabbitMQ must run as the `rabbitmq` user, not root; and
+those scripts: the app reads the database `MONGO_DB_NAME` names (`GAIA` when
+unset), not the one in `MONGO_DB`'s path, so seeding the URI's database leaves
+startup validation still failing; RabbitMQ must run as the `rabbitmq` user, not root; and
 `LOG_FORMAT=json` makes `configure_file_logging()` a no-op, so logs go to
 stdout and `apps/api/logs/` stays empty — that is correct behavior, not a
 broken sink (see `reading-gaia-logs`).
 
-**Ports.** `API_PORT` / `WEB_PORT` are honored everywhere (default 8000 / 3000). For several branches at once, `mise run wt:env` writes a per-worktree `.env.worktree` with collision-free ports (API 8000+offset, web 3000+offset, stub 9797+offset, bots 3200-3203+offset) that mise auto-loads. `mise dev` preflights those ports and refuses to start when one is taken (adding the stub port under `--sim`), naming the process that holds it — a stale server from another worktree used to silently absorb the whole session's traffic. Full workflow: **`parallel-worktrees` skill** — don't reinvent it here.
+**Worktrees are isolated.** In a linked worktree run `mise run wt:env` once: it writes `.env.worktree` with a slot no other worktree holds, so this worktree gets its own ports (API, web, stub, ARQ metrics, bots), its own Mongo database (`MONGO_DB_NAME=gaia_wt<offset>`), a private Redis (ARQ queue, streams, worker health key) and its own RabbitMQ vhost. mise loads it for every task. Without it, dev processes in a linked worktree refuse to start and say so, instead of falling back to `:8000` and the shared `GAIA` database. Two sim stacks in two worktrees run side by side. `mise dev` preflights the ports and names the process holding a taken one. Full workflow: **`parallel-worktrees` skill**.
 
 **WorkOS keys.** `DevelopmentSettings` still requires `WORKOS_API_KEY` / `WORKOS_CLIENT_ID` / `WORKOS_COOKIE_PASSWORD` even under the bypass (WorkOS is never called). Dummy values are fine locally; missing ones fail startup.
 
@@ -67,7 +71,7 @@ broken sink (see `reading-gaia-logs`).
 
 ## 2. Become a user — the dev auth bypass (zero login)
 
-The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
+The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). The web app gets this worktree's API URL from `.env.worktree` (`NEXT_PUBLIC_API_BASE_URL`) and is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
 
 `apps/api/.env` keeps `DEV_AUTH_BYPASS_EMAIL` **commented out** on purpose so plain `mise dev` is a real login flow — enable the bypass through the `--agent`/`--sim` flag (pass `DEV_USER=<email>` to change the identity), don't hardcode it back into `.env`.
 
@@ -78,11 +82,12 @@ The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and
 `mise seed` is a thin curl wrapper over the two endpoints below — it `POST`s `/dev/users` then `/dev/seed` against the running API. This is the canonical bootstrap:
 
 ```bash
-mise seed                                   # dev@gaia.local, 5 todos + 2 conversations
+mise seed                                   # dev@gaia.local with Pro, 5 todos + 2 conversations
 DEV_USER=alice@gaia.local SEED_TODOS=3 mise seed
+DEV_USER=free@gaia.local SEED_PRO=false mise seed   # a new free user, to see the paywall
 ```
 
-To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=alice@gaia.local mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below).
+To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=alice@gaia.local mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below) — that is how to act as the free user above. `SEED_PRO=false` never removes a subscription, so it must name a user that was never minted with Pro (not the default `dev@gaia.local`, which `mise dev --sim` already made Pro).
 
 ### The endpoints directly (`X-Dev-User` for multi-user)
 
@@ -121,9 +126,13 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 ```text
 [[tool:<name> <json-args>]]   one scripted tool call — repeatable, ordered
 [[say:<text>]]                the final assistant reply — at most one, terminal
+[[fail:<message>]]            break the final call after streaming the say text
+[[wait:<ms>]]                 hold the next step (tool call or reply) this long
+[[pace:<ms>]]                 stream the say text one word per chunk, this far apart
 ```
 
 - A message with **no** directives → the canned reply `ok (llm-stub)`.
+- Only agent turns (streamed, with tools) run your script. Background calls (memory extraction, follow-up actions, titles, compaction) get a neutral, schema-valid answer (`tools/llm-stub/background.py`), so a scripted tool runs once per turn and those helpers log no errors.
 - The stub is stateless: each call it counts the tool-call turns already in the request and emits the next pending directive, then the `say` text once all tools are consumed.
 - **Malformed directive JSON → HTTP 500** echoing the bad directive (fail loud) — e.g. `[[tool:foo {bad}]]`. Fix the JSON; don't retry blindly.
 - GAIA's two-agent front door is handled automatically: a directive naming an executor-only tool becomes one `call_executor` hand-off that replays the whole script to the executor. Keep one script to one agent level (don't mix comms-only tools like `add_memory` with executor tools).
@@ -131,10 +140,12 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 - **Nesting works.** A tool directive's args end where its JSON value ends, not at the first `]]`, so args may contain a literal `]]` — including a whole nested directive, at any depth. That is how you script a hand-off: `[[tool:handoff {"subagent_id":"gmail","task":"[[tool:GMAIL_FETCH_MESSAGES {\"max_results\":3}]]"}]]`. JSON-encode the args (`json.dumps`) and the escaping takes care of itself.
 - **Limitation:** a `[[say:…]]` body is plain text and ends at the first `]]`, so say text cannot contain that sequence. Put nested scripts in tool args.
 - **A directive opened but never closed → HTTP 500**, not a silent fall-through to the canned reply.
+- **Timing.** A wait belongs to the next tool directive after it, or to the reply when no tool follows; waits add up; a non-integer or negative count → HTTP 500. Each tier waits only on steps it emits itself: comms forwards executor tools at once and the executor waits on them, so `[[tool:create_todo {"title":"a"}]] [[wait:10000]] [[tool:create_todo {"title":"b"}]] [[say:Done]]` gets a quick reply and keeps background work running ~10s between the two todos — the window to send a second message into. A wait before the say is honoured by every tier that says it. `[[wait:3000]] [[say:hi]]` holds the first model output; `[[pace:200]] [[say:a long reply]]` streams it slowly for a mid-text send.
+- **Results are re-voiced.** A result payload (`<executor_result>`, `<executor_error>`, `<browser_*>`) handed to a tier after its newest script is answered with its own text, so a background run's result bubble reads the executor's say text.
 
 Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
 
-Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `OPENROUTER_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --no-project --with pytest pytest tools/llm-stub -q`.
+Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `OPENROUTER_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --frozen --isolated --only-group harness pytest tools/llm-stub -q`.
 
 ---
 
@@ -142,17 +153,20 @@ Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1)
 
 All routes under `/api/v1`. Under the bypass, add `-H 'X-Dev-User: <email>'` to act as a specific seeded user; omit it to be `DEV_AUTH_BYPASS_EMAIL`.
 
-**Chat (streaming turn).** `POST /api/v1/chat-stream` (`app/api/v1/endpoints/chat.py:99`). Body is `MessageRequestWithHistory` (`app/models/message_models.py`): `messages` is a list of `{role, content}`; `conversation_id` optional (server mints one if absent); `turn_id` optional idempotency key (duplicate → 409). Response is SSE (`text/event-stream`); the stream id is on the `X-Stream-Id` response header, and the turn **continues in the background and persists to Mongo even if you disconnect**.
+**Chat (send a message, follow its events).** `POST /api/v1/conversations/{id}/messages` (`app/api/v1/endpoints/conversations.py`). Body is `SendMessageRequest` (`app/models/conversation_send_models.py`): a client-minted `message_id` (a resend is a no-op) and `text`; the conversation id is client-minted too and is created on its first message. It returns 202 with the message's `seq`; the reply arrives on the conversation's events stream and **persists to Mongo whether or not anyone is listening**.
 
 ```bash
-curl -sN -X POST "http://localhost:${API_PORT:-8000}/api/v1/chat-stream" \
+CONV=$(uuidgen)
+curl -s -X POST "http://localhost:${API_PORT:-8000}/api/v1/conversations/$CONV/messages" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
-  -d '{"messages":[{"role":"user","content":"[[say:hello from sim]]"}]}'
-# SSE frames stream as `data: ...`; grab X-Stream-Id from the response headers (-D -) to reattach/cancel.
+  -d "{\"message_id\":\"$(uuidgen)\",\"text\":\"[[say:hello from sim]]\"}"
+curl -sN "http://localhost:${API_PORT:-8000}/api/v1/conversations/$CONV/events?after=0" \
+  -H 'X-Dev-User: alice@gaia.local'
+# SSE `data:` lines are ConversationEvent frames; the reply is done at its reply_settled entry.
 ```
 
-- Reattach to a live/finished stream: `GET /api/v1/stream/{stream_id}` (replays the event log).
-- Cancel: `POST /api/v1/cancel-stream/{stream_id}`.
+- Resume: `after=<seq>` replays the log after it; `after=<stream id>` (the frame's `id:`) resumes exactly after that frame.
+- Stop: `POST /api/v1/conversations/{id}/stop`.
 
 **Todos.** `GET /api/v1/todos` (list), `POST /api/v1/todos` (create) (`app/api/v1/endpoints/todos.py`):
 
@@ -163,13 +177,15 @@ curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
   -d '{"title":"from curl"}'
 ```
 
-**Verify it landed — check Mongo, not stdout.** The API's database is `GAIA` (`app/db/mongodb/mongodb.py`, `get_database("GAIA")`), regardless of the db path in `MONGO_DB`. Resolve the user id from the mint/seed response, then:
+**Verify it landed — check Mongo, not stdout.** The API's database is `$MONGO_DB_NAME` (`app/db/mongodb/mongodb.py`): `gaia_wt<offset>` in a linked worktree (`.env.worktree`), `GAIA` in the main checkout. Resolve the user id from the mint/seed response, then:
 
 ```bash
-mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
+# this shell may not have .env.worktree loaded (mise loads it only for tasks)
+[ -f .env.worktree ] && set -a && . ./.env.worktree && set +a
+mongosh "mongodb://localhost:27017/${MONGO_DB_NAME:-GAIA}" --quiet --eval \
   'db.todos.countDocuments({user_id:"<USER_ID>"})'
 # chat persisted → the conversation + messages exist:
-mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
+mongosh "mongodb://localhost:27017/${MONGO_DB_NAME:-GAIA}" --quiet --eval \
   'db.conversations.find({user_id:"<USER_ID>"}).sort({_id:-1}).limit(1).toArray()'
 ```
 
@@ -177,7 +193,7 @@ mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
 
 ## 5. Drive the executor in isolation
 
-The full chain is comms → executor. §4's `/chat-stream` always enters at comms; this dev-only route (same mount gate as the rest of `/dev`, §2) enters at the executor, so you can test it without scripting the comms hop above it. Integrations, including MCP servers, are activated inside the executor with `activate_integration`; there is no per-integration subagent to enter. Responses are plain JSON — the agent's final message — not SSE.
+The full chain is comms → executor. §4's send always enters at comms; this dev-only route (same mount gate as the rest of `/dev`, §2) enters at the executor, so you can test it without scripting the comms hop above it. Integrations, including MCP servers, are activated inside the executor with `activate_integration`; there is no per-integration subagent to enter. Responses are plain JSON — the agent's final message — not SSE.
 
 ```bash
 # run the EXECUTOR directly (skips comms entirely)
@@ -234,8 +250,9 @@ Flags (see `apps/bots/harness/src/cli.ts`):
 
 Details:
 - `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — the only residual is a conformance-locked `supportsEdit` map (`apps/bots/harness/src/emulation.ts`).
-- Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `--sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
-- Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
+- Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `--sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
+- Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`, `reaction`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
+- A scenario turn is one `send` or a `burst` of messages at `afterMs` gaps, sent without waiting for each other's replies; every platform posts each one at once and the turn ends once the conversation is idle with every reply shown. Inbound events are recorded on arrival. Order assertions: `delivered` (every message's final text in first-appearance order, proactive deliveries included), `bubbles` (the same without proactive deliveries) and `reactedTo` (which inbound positions got a reaction). Example: `scenarios/burst-during-work.yaml`.
 - A golden conformance suite (`apps/bots/__tests__/harness/conformance.test.ts`, wired into `mise test:bots`) drives the harness and the real adapter with only the SDK faked and fails CI if their output diverges. WhatsApp webhook replay lives in `apps/bots/__tests__/whatsapp/webhook-replay.e2e.test.ts`. See `apps/bots/CLAUDE.md`.
 
 ---
@@ -261,7 +278,7 @@ Every way to test or simulate GAIA, in one table — this skill covers the live-
 
 | Surface | Command | Docs |
 |---|---|---|
-| Chat via comms (SSE, full chain) | `curl POST /api/v1/chat-stream` (§4) | this skill |
+| Chat via comms (full chain) | `curl POST /api/v1/conversations/{id}/messages` + `/events` (§4) | this skill |
 | Executor directly | `curl POST /api/v1/dev/executor` (§5) | this skill |
 | Browser (scripted) | `mise e2e:web` / `E2E_SIM=1 mise e2e:web` (§6) | this skill, `apps/web/e2e/` |
 | Bots (emulated platforms) | `pnpm nx run bot-harness:sim -- send\|run` (§7) | this skill, `apps/bots/CLAUDE.md` |

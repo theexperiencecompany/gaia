@@ -8,7 +8,7 @@ substituted seam.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,10 +17,16 @@ import pytest
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.redis import delete_cache
+from app.db.repositories.conversation_log import conversation_log_repository
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingAnswers, OnboardingNeed, OnboardingRequest
+from app.services.conversation.mongo_log import MongoConversationLog
+from app.services.conversation.ports import RuntimePorts
+from app.services.conversation.runtime import install_runtime_ports
 from app.services.onboarding import onboarding_service
 from app.services.platform_link_service import PlatformLinkService
+from app.utils.artifact_utils import FILE_LINKS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import (
     OnboardingCompleted,
@@ -29,6 +35,15 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingStep,
 )
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
+from tests.helpers import stored_conversation
+from tests.unit.services.conversation.runtime_doubles import (
+    RecordingAnalytics,
+    RecordingEffects,
+    RecordingFrames,
+    ScriptedApprovals,
+    ScriptedRunner,
+    TickGate,
+)
 
 pytestmark = pytest.mark.service
 
@@ -102,6 +117,29 @@ async def test_a_reset_starts_a_new_run(mongo_db, captured: MagicMock) -> None:
     assert captured.call_count == 2
 
 
+async def _no_tick() -> None:
+    return None
+
+
+@pytest.fixture
+def runtime() -> None:
+    """Install the real Mongo conversation log the seeded welcome is written to; nothing it appends runs a step."""
+    install_runtime_ports(
+        RuntimePorts(
+            log=MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC)),
+            runner=ScriptedRunner(TickGate()),
+            frames=RecordingFrames(),
+            effects=RecordingEffects(),
+            approvals=ScriptedApprovals(),
+            analytics=RecordingAnalytics(),
+            clock=lambda: datetime.now(UTC),
+            tick=_no_tick,
+            links=FILE_LINKS,
+        )
+    )
+
+
+@pytest.mark.usefixtures("runtime")
 async def test_the_bot_link_landing_finishes_onboarding_once(mongo_db, captured: MagicMock) -> None:
     """A paid user who taps Start in Telegram and never returns to the web tab is not left unfinished."""
     await onboarding_service.save_onboarding_answers(
@@ -124,9 +162,9 @@ async def test_the_bot_link_landing_finishes_onboarding_once(mongo_db, captured:
         c.args[1] for c in captured.call_args_list if isinstance(c.args[1], OnboardingCompleted)
     ]
     assert [c.linked_platform for c in completions] == ["telegram"]
-    seeded = await mongo_db["conversations"].find_one(
-        {"conversation_id": onboarding["getting_started_conversation_id"]}
+    seeded = await stored_conversation(
+        mongo_db["conversations"], onboarding["getting_started_conversation_id"]
     )
-    await mongo_db["conversations"].delete_many({"user_id": USER_ID})
+    await conversation_repository.delete_all_for_user(USER_ID)
     assert seeded is not None
-    assert "Telegram" in json.dumps(seeded["messages"], default=str)
+    assert "Telegram" in json.dumps(seeded["items"], default=str)

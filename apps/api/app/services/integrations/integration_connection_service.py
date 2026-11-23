@@ -5,7 +5,6 @@ from typing import Literal, TypedDict, Unpack
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict
-import pymongo.errors
 
 from app.config.oauth_config import (
     CatalogCached,
@@ -20,6 +19,7 @@ from app.constants.integrations import (
     NOT_SET_UP_ON_INSTANCE,
 )
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import RepositoryError
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
@@ -32,6 +32,7 @@ from app.schemas.integrations.responses import (
 )
 from app.services.composio.auth_config_resolver import auth_config_id_for
 from app.services.composio.composio_service import get_composio_service
+from app.services.composio.error_detail import AuthConfigNotFoundError, composio_error_fields
 from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.integrations.integration_accounts import at_account_limit, get_account_record
 from app.services.integrations.integration_resolver import (
@@ -538,13 +539,21 @@ async def initiate_integration_connection(
                 redirect_path=redirect_path,
             )
         return _error(f"Unsupported integration type: {resolved.managed_by}")
+    except AuthConfigNotFoundError as e:
+        log.error(
+            f"{LogTag.INTEGRATION} Integration has no auth config in this Composio project",
+            integration_id=integration_id,
+            auth_config_id=e.auth_config_id,
+            user_id=user_id,
+        )
+        log.set(integration={"id": integration_id, "status": "not_set_up"})
+        return _error(f"{resolved.name} {NOT_SET_UP_ON_INSTANCE}")
     except Exception as e:
         log.error(
-            f"{LogTag.INTEGRATION} Failed to initiate connection for",
+            f"{LogTag.INTEGRATION} Failed to initiate connection",
             integration_id=integration_id,
-            error=str(e),
-            error_type=type(e).__name__,
             user_id=user_id,
+            **composio_error_fields(e),
         )
         log.set(integration={"id": integration_id, "status": "error"})
         return _error(connect_failure_copy(resolved.name))
@@ -634,7 +643,7 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
                     f"{LogTag.INTEGRATION} Removed platform integration record",
                     integration_id=integration_id,
                 )
-            except pymongo.errors.PyMongoError as e:
+            except RepositoryError as e:
                 log.warning(
                     f"{LogTag.INTEGRATION} Failed to remove integration record",
                     error=str(e),
@@ -650,7 +659,7 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
                     f"{LogTag.INTEGRATION} Updated status to 'created' for custom integration",
                     integration_id=integration_id,
                 )
-            except pymongo.errors.PyMongoError as e:
+            except RepositoryError as e:
                 log.warning(
                     f"{LogTag.INTEGRATION} Failed to update status",
                     error=str(e),

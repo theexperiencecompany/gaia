@@ -11,8 +11,9 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 import re
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
-from app.db.repositories.base import MongoRepository
+from app.constants.cache import INTEGRATION_CACHE_PREFIX
+from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedMongoRepository, cached_query
 from app.helpers.integration_helpers import dedup_server_url_key
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.integration_models import (
@@ -51,15 +52,17 @@ _TOOLS_RECORD_PROJECTION: dict[str, object] = {
 }
 
 
-class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
+class IntegrationsRepository(CachedMongoRepository[Integration, IntegrationUpdate]):
     collection_name = "integrations"
     document_model = Integration
     update_model = IntegrationUpdate
     uses_object_id = False
     identity_field = "integration_id"
     auto_stamp_timestamps = False
-    cache_policy = None
+    # Resolved on every custom-MCP tool lookup; every write here goes through the base.
+    cache_policy = CachePolicy(prefix=INTEGRATION_CACHE_PREFIX)
 
+    @cached_query(Integration)
     async def find_by_id_prefix_or_name(self, search: str) -> Integration | None:
         """Resolve a partial id or exact name to an integration.
 
@@ -111,9 +114,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
 
     async def delete_custom(self, integration_id: str, created_by: str) -> bool:
         """Delete a custom integration only if created_by owns it (creator-only)."""
-        return await self._remove(
-            integration_id, REPO_GLOBAL_SCOPE, {"source": "custom", "created_by": created_by}
-        )
+        return await self._remove(integration_id, {"source": "custom", "created_by": created_by})
 
     async def list_public_custom(self, category: str | None = None) -> list[Integration]:
         """Public custom integrations for the marketplace, newest first, optionally by category.
@@ -183,8 +184,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         await self._apply_raw_update_unfetched(
             {"integration_id": integration_id},
             {"$set": {"requires_auth": requires_auth, "auth_type": auth_type}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=integration_id,
         )
 
     # ---- creator-lookup aggregations (marketplace detail + community) ----
@@ -343,7 +342,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
 
     async def increment_clone_count(self, integration_id: str) -> None:
         """Bump the clone counter when a user adds a public integration."""
-        await self._increment(integration_id, "clone_count", 1, scope=REPO_GLOBAL_SCOPE)
+        await self._increment(integration_id, "clone_count", 1)
 
     async def set_mcp_auth(self, integration_id: str, requires_auth: bool, auth_type: str) -> bool:
         """Sync the stored mcp_config auth flags after server probe discovery.
@@ -358,8 +357,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
                     "mcp_config.auth_type": auth_type,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=integration_id,
         )
         return matched > 0
 
@@ -418,8 +415,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
                     "content": content.model_dump() if content is not None else None,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=integration_id,
         )
         return matched > 0
 
@@ -428,8 +423,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         matched = await self._apply_raw_update_unfetched(
             {"integration_id": integration_id},
             {"$set": {"is_public": False}, "$unset": {"published_at": ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=integration_id,
         )
         return matched > 0
 
@@ -449,8 +442,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
                     "integration_id": integration_id,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=integration_id,
             upsert=True,
         )
 
@@ -478,10 +469,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
 
     async def delete_tools_stub(self, integration_id: str) -> bool:
         """Delete the tools-only stub for an id; a full Integration document is never matched."""
-        # Equivalent under mutation: cache_policy is None here, so the scope only feeds no-op eviction.
-        return await self._remove(
-            integration_id, REPO_GLOBAL_SCOPE, _TOOLS_STUB_FILTER
-        )  # pragma: no mutate
+        return await self._remove(integration_id, _TOOLS_STUB_FILTER)
 
     async def all_with_tools(self) -> list[IntegrationToolsRecord]:
         """Every integration that has stored tools, projected for the global roll-up."""

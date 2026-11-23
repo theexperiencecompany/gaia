@@ -23,7 +23,6 @@ class ProcessedWebhooksRepository(
     update_model = ProcessedWebhookUpdate
     uses_object_id = True
     identity_field = "webhook_id"
-    cache_policy = None
 
     async def claim(self, webhook_id: str, *, event_type: str) -> bool:
         """Take ownership of a delivery before handling it.

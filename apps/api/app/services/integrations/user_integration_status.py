@@ -7,39 +7,59 @@ oauth_service.py and integration_service.py.
 
 from collections.abc import Awaitable
 
-from pymongo.errors import PyMongoError
-
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
-from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, ToolsSetup
 from app.constants.log_tags import LogTag
+from app.constants.waits import WaitCondition
 from app.core.websocket_manager import websocket_manager
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import UserIntegrationStatus
+from app.services.conversation.integration_log import continue_after_connect
+from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.integrations_fs import schedule_user_integrations_sync
+from app.services.wait_service import report_wait_met
 from shared.py.wide_events import log
 
 
+async def announce_integration_changed(user_id: str, integration_id: str) -> None:
+    """Tell the user's open clients to re-read one integration's catalog entry, after its write succeeded."""
+    await websocket_manager.announce(
+        user_id,
+        {"type": INTEGRATION_STATUS_UPDATE_EVENT, "data": {"integration_id": integration_id}},
+    )
+
+
 async def publish_connected(user_id: str, integration_id: str) -> None:
-    """Reflect a newly connected integration in the workspace VFS and on any open page."""
+    """Reflect a newly connected integration in the workspace VFS, on any open page, and to anything waiting on it."""
     schedule_user_integrations_sync(user_id)
-    # Best-effort: a missed push catches up on the next catalog read, so a
-    # broadcast failure (Redis down) must not fail the connect.
+    await announce_integration_changed(user_id, integration_id)
+
+    # Best-effort for the same reason: the connect itself already succeeded.
     try:
-        await websocket_manager.broadcast_to_user(
-            user_id=user_id,
-            message={
-                "type": INTEGRATION_STATUS_UPDATE_EVENT,
-                "data": {"integration_id": integration_id, "status": "connected"},
-            },
-        )
+        await continue_after_connect(user_id, integration_id)
     except Exception as e:
-        log.warning(
-            f"{LogTag.INTEGRATION} Failed to broadcast connected status",
+        log.error(
+            f"{LogTag.INTEGRATION} Failed to continue conversations waiting on the connect",
             integration_id=integration_id,
             error=str(e),
             error_type=type(e).__name__,
         )
+    await report_wait_met(user_id, WaitCondition.INTEGRATION_CONNECTED, integration_id)
+
+
+async def publish_tools_setup(
+    user_id: str, integration_id: str, state: ToolsSetup, *, only_from: ToolsSetup | None = None
+) -> bool:
+    """Record where the integration's tool discovery stands and tell open pages; False when nothing was in only_from."""
+    if not await user_integration_repository.set_tools_setup(
+        user_id, integration_id, state, only_from=only_from
+    ):
+        return False
+    await invalidate_user_integration_caches(user_id)
+    await announce_integration_changed(user_id, integration_id)
+    return True
 
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
@@ -73,6 +93,8 @@ async def update_user_integration_status(
     )
     if status == "connected":
         await publish_connected(user_id, integration_id)
+    else:
+        await announce_integration_changed(user_id, integration_id)
     return True
 
 
@@ -86,7 +108,7 @@ async def reconnect_or_unknown(
     """
     try:
         return await connected_before
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.INTEGRATION} Could not tell whether the connect is a reconnect",
             integration_id=integration_id,

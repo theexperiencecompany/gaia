@@ -25,10 +25,9 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from fastapi.responses import HTMLResponse, Response
 from jwt import PyJWTError
-from starlette.websockets import WebSocketState
 import websockets
 
-from app.browser_host.pumps import pump_until_first_close
+from app.browser_host.pumps import is_closed, pump_until_first_close
 from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
@@ -196,7 +195,7 @@ async def _proxy_live_view(client_ws: WebSocket, host_ws_url: str, ends: _Connec
             f"{LogTag.BROWSER} browser live view host unreachable", error_type=type(exc).__name__
         )
     finally:
-        if client_ws.application_state is not WebSocketState.DISCONNECTED:
+        if not is_closed(client_ws):
             await client_ws.close()
     log.info(f"{LogTag.BROWSER} browser live view proxy closed")
 

@@ -157,6 +157,18 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("uv.lock", "voice-agent:docker:build"),
         ("apps/bots/Dockerfile", "bot-discord:docker:build"),
         ("libs/shared/ts/src/index.ts", "bot-slack:docker:build"),
+        # The screen-over-time suite: the chat on web, the conversation runtime on the API.
+        ("apps/web/src/features/chat/live/connection.ts", "web:e2e-screen"),
+        ("libs/shared/ts/src/conversation/view.ts", "web:e2e-screen"),
+        ("apps/api/app/services/conversation/step.py", "web:e2e-screen"),
+        ("apps/web/e2e/screen-over-time.spec.ts", "web:e2e-screen"),
+        # The bot harness scenarios: the shared bot pipeline, the runtime and the scripts.
+        ("libs/shared/ts/src/bots/conversation/follower.ts", "bot-harness:e2e"),
+        ("apps/api/app/services/hil/conversational.py", "bot-harness:e2e"),
+        ("apps/bots/harness/scenarios/approval-yes-no.yaml", "bot-harness:e2e"),
+        # Anything the stack runs: a hand-kept list missed the services the flows go through.
+        ("apps/api/app/services/mail/email_verdict.py", "web:e2e-screen"),
+        ("apps/api/app/services/mail/email_verdict.py", "bot-harness:e2e"),
         # A deleted file is a change: a per-file-ignores entry for it goes stale.
         ("apps/api/app/gone_module.py", "ci:ignore-staleness"),
     ],
@@ -177,10 +189,36 @@ def test_detect_selects(path: str, task: str) -> None:
         ("scripts/ci/deploy.sh", "ci:desktop-package"),
         ("apps/api/CLAUDE.md", "api:docker:build"),
         ("pnpm-lock.yaml", "api:docker:build"),
+        # The sim lanes wake on what the stack runs, never on the API's own tests or another app.
+        ("apps/api/tests/conftest.py", "web:e2e-screen"),
+        ("apps/api/tests/conftest.py", "bot-harness:e2e"),
+        ("apps/voice-agent/src/agent.py", "bot-harness:e2e"),
+        ("apps/desktop/src/main/index.ts", "web:e2e-screen"),
     ],
 )
 def test_detect_leaves_out(path: str, task: str) -> None:
     assert task not in nx_affected.select([f"--files={path}"]).tasks
+
+
+@pytest.mark.parametrize(
+    ("path", "event", "packages"),
+    [
+        # ts-build-test builds desktop:build on the PR; packaging what web reaches is the queue's.
+        ("apps/web/src/app/page.tsx", "pull_request", False),
+        ("apps/web/src/app/page.tsx", "merge_group", True),
+        ("libs/shared/ts/src/index.ts", "pull_request", False),
+        ("libs/shared/ts/src/index.ts", "merge_group", True),
+        ("apps/desktop/src/main/index.ts", "pull_request", True),
+        ("apps/desktop/package.json", "pull_request", True),
+        (".github/workflows/desktop-pr-build.yml", "pull_request", True),
+        ("apps/api/app/main.py", "merge_group", False),
+    ],
+)
+def test_a_pr_packages_desktop_only_when_the_desktop_app_changed(
+    path: str, event: str, packages: bool
+) -> None:
+    selection = nx_affected.select([f"--files={path}"])
+    assert ("desktop-build" in nx_affected.job_tasks(selection, event, None)) is packages
 
 
 @pytest.mark.parametrize("path", ["README.md", "docs/introduction.mdx", "apps/api/CLAUDE.md"])

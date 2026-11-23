@@ -11,6 +11,7 @@ export default function WorkflowsDemo() {
       title={config.title}
       schedule={config.schedule}
       steps={config.steps}
+      eagerFirstIcon
     />
   );
 }

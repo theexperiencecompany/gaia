@@ -540,6 +540,25 @@ export const tools: Tool[] = [
   },
 ];
 
+/**
+ * Favicon URL for a tool's site.
+ *
+ * The thanks page prefers the richer metadata returned by the API's
+ * `fetch-url-metadata` endpoint, but that endpoint requires a session and the
+ * page renders server-side for anonymous visitors. This gives every tool a
+ * logo that always resolves, using the same favicon service as the rest of the
+ * marketing site.
+ */
+export function toolFaviconUrl(url: string): string {
+  let host = url;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // Not an absolute URL — Google accepts bare hosts too.
+  }
+  return `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+}
+
 export const toolCategories: ToolCategory[] = [
   "Build & Development",
   "AI & Machine Learning",

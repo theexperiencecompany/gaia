@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import TypedDict
 
 from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
@@ -28,6 +27,7 @@ from app.services.storage._vfs_common import (
     READONLY_DIR_MODE,
     RW_DIR_MODE,
     TodoProjectionMeta,
+    VfsProjection,
     folder_name as common_folder_name,
     hash_body_with_meta,
     meta_body,
@@ -72,10 +72,9 @@ class GaiaTaskMeta(TodoProjectionMeta):
     expires_at: datetime | None
 
 
-class GaiaTaskProjection(TypedDict):
+class GaiaTaskProjection(VfsProjection):
     """In-memory shape passed from the Mongo glue to the materializer."""
 
-    id: str
     canvas: str
     activity: str
     observations: str
