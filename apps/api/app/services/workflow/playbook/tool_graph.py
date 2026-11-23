@@ -7,7 +7,7 @@ metadata is set by hand, since LangGraph does not derive it from configurable.
 from collections.abc import Mapping, Sequence
 from typing import cast
 
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AnyMessage, BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
@@ -24,7 +24,7 @@ from app.override.langgraph_bigtool.utils import State
 
 
 async def run_tool_graph(
-    model: BaseChatModel,
+    model: LanguageModelLike,
     tools: Mapping[str, BaseTool],
     messages: Sequence[BaseMessage],
     *,
