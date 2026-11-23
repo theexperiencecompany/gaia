@@ -28,6 +28,7 @@ from app.constants.execute import (
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
+from app.services.sandbox.local_sandbox import CodingSandbox
 
 # Stdlib-only client seeded into the sandbox per bash invocation (idempotent
 # write, no template rebuild, no network install). The __TOKEN__ placeholders
@@ -120,9 +121,9 @@ def sandbox_execute_enabled() -> bool:
     return bool(settings.SANDBOX_EXECUTE_TOKEN_SECRET and settings.SANDBOX_EXECUTE_CALLBACK_URL)
 
 
-async def seed_execute_client(sbx: object) -> None:
+async def seed_execute_client(sbx: CodingSandbox) -> None:
     """Write the gaia client into the sandbox (idempotent, one round-trip)."""
-    await sbx.files.write(f"{SANDBOX_CLIENT_DIR}/gaia.py", GAIA_SANDBOX_CLIENT_SOURCE)  # type: ignore[attr-defined]  # e2b SDK ships no stubs
+    await sbx.files.write(f"{SANDBOX_CLIENT_DIR}/gaia.py", GAIA_SANDBOX_CLIENT_SOURCE)
 
 
 def mint_execute_env(
