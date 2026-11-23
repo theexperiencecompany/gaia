@@ -73,6 +73,11 @@ def observe_llm_call_failed(provider: LLMProviderName | None, error: BaseExcepti
     _count_call(provider, LLMCallOutcome.RATE_LIMITED if rate_limited else LLMCallOutcome.FAILED)
 
 
+def observe_llm_call_timed_out(provider: LLMProviderName | None) -> None:
+    """Count a model call the caller's deadline ended while the provider had not answered."""
+    _count_call(provider, LLMCallOutcome.FAILED)
+
+
 def observe_llm_fallback(outcome: LLMFallbackOutcome) -> None:
     """Count a fallback to the default model by how it ended."""
     LLM_FALLBACK_TOTAL.labels(outcome.value).inc()

@@ -46,6 +46,7 @@ from app.agents.llm.metrics import (
     fallback_leg,
     observe_llm_call_failed,
     observe_llm_call_ok,
+    observe_llm_call_timed_out,
     observe_llm_fallback,
 )
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
@@ -1251,7 +1252,7 @@ async def ainvoke_llm(
             )
             # The deadline fires outside the provider call, so a hung provider is counted here.
             if isinstance(call_error, TimeoutError) and not primary_counted:
-                observe_llm_call_failed(provider, call_error)
+                observe_llm_call_timed_out(provider)
             raise
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
