@@ -38,7 +38,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openai import APIConnectionError, AuthenticationError, RateLimitError
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 import pytest
 import tenacity
 
@@ -2114,6 +2114,16 @@ class _Closing(BaseModel):
     achieved: bool
 
 
+class _CappedNote(BaseModel):
+    text: str = Field(min_length=1, max_length=40)
+
+
+class _Capped(BaseModel):
+    headline: str = Field(max_length=12)
+    tags: list[str] = Field(max_length=2)
+    note: _CappedNote
+
+
 def _provider_replies_with(arguments: str, finish_reason: str = "tool_calls") -> Any:
     """Patch ChatOpenRouter's wire so both its streamed and unstreamed paths return one raw tool call.
 
@@ -2384,6 +2394,41 @@ class TestStructuredReplyParsing:
             "response_mime_type": "application/json",
             "response_json_schema": _Closing.model_json_schema(),
         }
+
+    def test_a_strict_tool_offers_no_size_cap_for_the_provider_to_cut_a_string_at(self) -> None:
+        """Regression: a provider holding a strict maxLength cut a brief's headline mid-sentence."""
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(
+            client_module._structured_tool_runnable(llm, _Capped, strict=True)
+        )
+
+        offered = json.dumps(binding.kwargs["tools"][0]["function"]["parameters"])
+        assert "maxLength" not in offered
+        assert "maxItems" not in offered
+        assert '"minLength": 1' in offered
+        assert binding.kwargs["tools"][0]["function"]["name"] == "_Capped"
+
+    def test_a_gemini_response_schema_offers_no_size_cap(self) -> None:
+        gemini = ChatGoogleGenerativeAI(model="gemini-x", api_key=SecretStr("k"))
+
+        binding = self._tool_binding(client_module._gemini_schema_runnable(gemini, _Capped))
+
+        held = json.dumps(binding.kwargs["response_json_schema"])
+        assert "maxLength" not in held
+        assert "maxItems" not in held
+
+    def test_a_reply_past_a_cap_the_provider_was_not_held_to_is_malformed_naming_it(
+        self,
+    ) -> None:
+        reply = AIMessage(
+            content='{"headline": "Three things are on today", "tags": [], "note": {"text": "ok"}}'
+        )
+
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            client_module._parse_json_reply(reply, _Capped)
+
+        assert "at most 12 characters" in raised.value.reason
 
     def test_the_gemini_reply_is_read_as_the_schema_under_the_schemas_name(self) -> None:
         fake = GenericFakeChatModel(

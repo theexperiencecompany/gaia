@@ -75,3 +75,18 @@ def test_mongo_refuses_an_unknown_action(env: dict[str, str]) -> None:
 
     assert result.returncode != 0
     assert not Path(env["DOCKER_CALLS"]).exists()
+
+
+def test_logs_keeps_the_cli_build_log_a_failed_up_points_at(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    cli_logs = Path(env["HOME"]) / ".gaia" / "logs"
+    cli_logs.mkdir(parents=True)
+    (cli_logs / "compose-build-2026-11-22T23-39-02.log").write_text("Type error: boom\n")
+    out_dir = tmp_path / "out"
+
+    result = _run({**env, "OUT_DIR": str(out_dir)}, "logs")
+
+    assert result.returncode == 0, result.stderr
+    kept = out_dir / "gaia-cli" / "compose-build-2026-11-22T23-39-02.log"
+    assert kept.read_text() == "Type error: boom\n"

@@ -655,3 +655,47 @@ def test_secrets_needs_the_lane_its_verdict_is_written_under(
 
     assert proc.returncode == 1
     assert "--lane <job>/<check> is required" in proc.stderr
+
+
+# --- evlog ------------------------------------------------------------------
+
+
+@pytest.fixture
+def evlog_repo(tmp_path: Path) -> Path:
+    """Return a repo on a branch off a pushed master, with no Python change to ratchet."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "-q", "origin", "master")
+    _git(repo, "checkout", "-q", "-b", "feature")
+    return repo
+
+
+@pytest.mark.parametrize("base", ["master", "origin/master", "sha"])
+def test_evlog_takes_its_base_as_a_branch_a_remote_ref_or_a_commit(
+    tmp_path: Path, evlog_repo: Path, base: str
+) -> None:
+    """Regression: ci:local hands over origin/master, which the ratchet read as origin/origin/master."""
+    pr_base = _git(evlog_repo, "rev-parse", "master") if base == "sha" else base
+
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "evlog"],
+        cwd=evlog_repo,
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": os.environ.get("HOME", "/tmp"),
+            "RUNNER_TEMP": str(tmp_path),
+            "GAIA_PR_BASE": pr_base,
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "no changed Python files to ratchet" in proc.stdout

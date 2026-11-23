@@ -39,7 +39,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "web-e2e-screen"
+          "job": "bot-harness-e2e"
         }
       }
     },

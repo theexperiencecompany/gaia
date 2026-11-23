@@ -10,7 +10,9 @@
 #                  --code-sandbox`, and wait until /health/ready answers 200.
 #   mongo <pause|unpause>
 #                  Freeze or thaw the stack's MongoDB container.
-#   logs           Write every stack container's logs into $OUT_DIR.
+#   logs           Write every stack container's logs, and the CLI's own logs
+#                  (the compose build output a failed image build names), into
+#                  $OUT_DIR.
 #
 # Env contract:
 #   prepare        GITHUB_ACTIONS (frees disk only on a runner).
@@ -130,6 +132,11 @@ cmd_logs() {
 
   : "${OUT_DIR:?OUT_DIR is required}"
   mkdir -p "$OUT_DIR"
+  # A failed `gaia up` prints only "Full log: ~/.gaia/logs/…"; the compile error is in there.
+  # Copied before the Docker calls: they abort under set -e when the daemon is down.
+  if [[ -d "$HOME/.gaia/logs" ]]; then
+    cp -R "$HOME/.gaia/logs" "$OUT_DIR/gaia-cli"
+  fi
   docker ps -a --filter "label=com.docker.compose.project=$COMPOSE_PROJECT" > "$OUT_DIR/containers.txt"
   local id service
   for id in $(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT"); do
