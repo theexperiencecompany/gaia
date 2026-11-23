@@ -52,12 +52,14 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.llm import LLMProviderName
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, ExecutorRunItem
 from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.models.user_models import AuthenticatedUser
 from app.utils import liveness
 from shared.py.analytics import Dedupe
+from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
@@ -342,7 +344,7 @@ class TestSafeConfigurable:
     def test_warns_and_drops_a_value_that_cannot_be_serialized(self) -> None:
         configurable = {"thread_id": "t", "model_kwargs": {"provider": object()}}
 
-        with patch(f"{eq.__name__}.log.warning") as warn:
+        with patch.object(log, "warning") as warn:
             kept = safe_configurable(cast(AgentConfigurable, configurable))
 
         assert kept == {"thread_id": "t"}
@@ -476,7 +478,7 @@ class TestPrepareRunFromItem:
                     "user_name": "Uno",
                     "workflow_id": "wf-1",
                     "workflow_title": "Digest",
-                    "workflow_notify_on_completion": False,
+                    "workflow_delivery": WorkflowDelivery.SILENT,
                 }
             ),
             claim=LockClaim.SEIZE,
@@ -490,7 +492,7 @@ class TestPrepareRunFromItem:
         assert run.user_message_id == "msg-1"
         assert run.workflow_id == "wf-1"
         assert run.workflow_title == "Digest"
-        assert run.workflow_notify_on_completion is False
+        assert run.workflow_delivery is WorkflowDelivery.SILENT
 
     async def test_bot_message_id_threads_into_the_resumed_run(self, redis, stream_side) -> None:
         """A HIL resume continues the ORIGINAL turn's message: the resumed run and the browser both need that id, or the client opens a second placeholder and renders its own tool accordion beside the first."""

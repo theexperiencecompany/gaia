@@ -106,6 +106,13 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0012,
         cached_input_cost_per_1k=0.00002,
     ),
+    # ARTIFACT_MODEL_NAME, create_artifact's lane direct on OpenAI, at the rate OpenRouter
+    # lists for openai/gpt-6-luna (2026-11-03), which passes OpenAI's price through.
+    "gpt-6-luna": ModelPricing(
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0005,
+        cached_input_cost_per_1k=0.00001,
+    ),
     # GAIA_SIM_MODE's scripted stub (tools/llm-stub): every sim call names it, and it costs nothing.
     SIM_STUB_MODEL_NAME: ModelPricing(input_cost_per_1k=0.0, output_cost_per_1k=0.0),
     # LOCAL DEV TESTING ONLY (DEV_LLM_MODEL=gpt-4.1-mini over the OpenAI custom

@@ -1,8 +1,8 @@
 """External messaging-platform notification adapter.
 
-Renders the notification as CommonMark and logs it as a Notice in the user's DM
-conversation on the platform; the bot's follower reads it off that conversation's
-events and sends it. Subclasses set only the platform.
+Renders the notification as CommonMark and posts it into the user's DM conversation
+on the platform through post_to_platform_chat, which holds it for quiet hours and logs
+it there as a Notice the bot's follower sends. Subclasses set only the platform.
 """
 
 from __future__ import annotations
@@ -10,32 +10,31 @@ from __future__ import annotations
 from abc import abstractmethod
 from dataclasses import dataclass
 
+from app.agents.core.background.platform_chat import ProactiveMessage, post_to_platform_chat
 from app.config.settings import settings
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
-from app.models.conversation_log_models import Notice
 from app.models.notification.notification_models import (
     ActionType,
     ChannelDeliveryStatus,
     NotificationRequest,
+    NotificationStatus,
 )
-from app.models.platform_models import PlatformLinkEntry
-from app.services.bot_service import BotService
-from app.services.conversation.log import accept
-from app.services.conversation.runtime import runtime_ports
-from app.services.platform_link_service import linked_platforms_of
+from app.services.delivery.chat_channel import channel_for
+from app.services.outbound_delivery import OutboundResult
 from app.utils.auth_utils import build_user_context
-from app.utils.message_breaks import split_message_bubbles
 from app.utils.notification.channels.base import ChannelAdapter
 
 
 @dataclass(slots=True, frozen=True)
 class ExternalPayload:
-    """The Notice this adapter logs in the user's DM conversation."""
+    """What this adapter posts: the rendered text, what produced it, and the notification that keys it."""
 
     notification_id: str
     text: str
     origin: str
+    message_class: ProactiveMessageClass
 
 
 def _join_nonempty(*segments: str, sep: str = "\n") -> str:
@@ -75,7 +74,7 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
 
     @property
     def channel_type(self) -> str:
-        # CHANNEL_TYPE_X and ConversationSource.X.value are the same string, so
+        # NotificationChannel.X and ConversationSource.X.value are the same string, so
         # derive the channel type from the platform instead of restating it.
         return self.platform.value
 
@@ -89,31 +88,39 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
             notification_id=notification.id,
             text=render_notification_text(notification),
             origin=notice_origin(notification),
+            message_class=notification.message_class,
         )
 
     async def deliver(self, content: ExternalPayload, user_id: str) -> ChannelDeliveryStatus:
-        """Log the Notice in the user's DM on this platform, keyed by the notification so a retry logs it once.
+        """Post the text into the user's DM on this platform, keyed by the notification so a retry posts it once.
 
-        Skipped when the user has no account linked here or there is nothing to send.
+        PENDING when quiet hours hold it, an error when the post fails, and a skip when
+        the user has no account linked here or there is nothing to send.
         """
-        if not split_message_bubbles(content.text):
+        if not content.text.strip():
             return self._skipped(f"{self.channel_type}: nothing to send")
-        user = await user_repository.get(user_id)
-        entry: PlatformLinkEntry | None = (
-            linked_platforms_of(user).get(self.platform.value) if user else None
-        )
-        platform_user_id = entry.get("platformUserId") if entry else None
-        if user is None or not platform_user_id:
+        user_doc = await user_repository.get(user_id)
+        # The orchestrator already decided this channel should get the notification.
+        channel = channel_for(user_doc, self.platform) if user_doc else None
+        if user_doc is None or channel is None:
             return self._skipped(f"{self.channel_type}: not linked")
-        conversation_id = await BotService.get_or_create_session(
-            platform=self.platform.value,
-            platform_user_id=str(platform_user_id),
-            channel_id=None,
-            user=build_user_context(user, auth_provider=None),
-            is_dm=True,
+        result = await post_to_platform_chat(
+            user=build_user_context(user_doc, auth_provider=None),
+            channel=channel,
+            message=ProactiveMessage(
+                notice_id=f"notice:{content.notification_id}",
+                text=content.text,
+                origin=content.origin,
+                message_class=content.message_class,
+            ),
         )
-        notice = Notice(
-            id=f"notice:{content.notification_id}", text=content.text, origin=content.origin
-        )
-        await accept(runtime_ports(), conversation_id, user_id, notice)
-        return self._success()
+        if result is OutboundResult.PUBLISHED:
+            return self._success()
+        if result is OutboundResult.DEFERRED:
+            # Held for quiet hours; a scheduled job posts it when they end.
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type, status=NotificationStatus.PENDING
+            )
+        if result is OutboundResult.FAILED:
+            return self._error(f"{self.channel_type}: outbound post failed")
+        return self._skipped(f"{self.channel_type}: not linked or nothing to send")

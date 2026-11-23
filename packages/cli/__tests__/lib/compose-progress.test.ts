@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyComposeEvent,
   createComposeProgress,
-  describeComposeProgress,
-} from "../../src/lib/compose-progress.js";
+} from "../../src/lib/compose-events.js";
+import { describeComposeProgress } from "../../src/lib/compose-progress.js";
 import type {
   ComposeEvent,
   ComposePhase,
@@ -272,6 +272,33 @@ describe("describeComposeProgress while building and starting", () => {
         ),
       )?.label,
     ).toBe("Starting GAIA: 1 of 1 services up");
+  });
+
+  // Order verbatim from a real `up` (Compose v5) of a one-shot service the
+  // others wait on with service_completed_successfully.
+  it("stops waiting on the data update once it exits", () => {
+    const container = (service: string, text: string): ComposeEvent => ({
+      id: `Container gaia-selfhost-${service}-1`,
+      status: ["Waiting", "Starting"].includes(text) ? "Working" : "Done",
+      text,
+    });
+    const { phases } = run([
+      container("migrate", "Started"),
+      container("migrate", "Waiting"),
+    ]);
+    expect(phases.at(-1)?.label).toBe(
+      "Starting GAIA: waiting for data update to be ready (1 of 1 up)",
+    );
+
+    const { phases: after } = run([
+      container("migrate", "Started"),
+      container("migrate", "Waiting"),
+      container("migrate", "Exited"),
+      container("gaia-backend", "Starting"),
+    ]);
+    expect(after.at(-1)?.label).toBe(
+      "Starting GAIA: starting server (1 of 2 up)",
+    );
   });
 
   // Order verbatim from Compose v5.5: a service_completed_successfully

@@ -6,10 +6,12 @@ import type {
 } from "@shared/api/generated";
 import type {
   ApprovalRequestData,
+  ArtifactCardData,
   RateLimitData as SharedRateLimitData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
 } from "@shared/chat";
+import type { BriefCard } from "@/features/briefing";
 import type {
   DeviceApprovalRequiredData,
   DeviceOnboardingRequiredData,
@@ -155,6 +157,7 @@ const TOOL_REGISTRY = {
   todo_data: null as unknown as TodoToolData,
   notification_data: null as unknown as { notifications: NotificationView[] },
   send_notification_data: null as unknown as SendNotificationData,
+  briefing_data: null as unknown as BriefCard,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   connect_options: null as unknown as ConnectOptionsData,
   integration_list_data: null as unknown as IntegrationListStreamData,
@@ -170,6 +173,7 @@ const TOOL_REGISTRY = {
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as SharedRateLimitData,
   artifact_data: null as unknown as ArtifactData[],
+  artifact_done: null as unknown as ArtifactCardData,
   screenshot_data: null as unknown as ScreenshotData,
   browser_task_data: null as unknown as BrowserTaskSnapshot,
   memory_data: null as unknown as MemoryData,
@@ -179,9 +183,7 @@ const TOOL_REGISTRY = {
 export type ToolName = keyof typeof TOOL_REGISTRY;
 export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 
-// Tools Message Schema
-// The API's tool data entry with its name and data narrowed by TOOL_REGISTRY.
-// Used by the base message registry.
+/** The API's tool-data entry with its tool name and data typed by TOOL_REGISTRY. */
 export type TypedToolDataEntry = Omit<ToolDataEntry, "tool_name" | "data"> & {
   tool_name: ToolName;
   data: ToolDataMap[ToolName];

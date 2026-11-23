@@ -7,9 +7,13 @@ from langchain_core.exceptions import OutputParserException
 from pydantic import ValidationError
 import pytest
 
+from app.constants.briefing import BriefingFrequency
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.errors import AlreadyExistsError
 from app.models.scheduler_models import (
     UNSET,
@@ -35,6 +39,7 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
     WorkflowStep,
 )
+from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.services.workflow.generation_service import (
     WorkflowGenerationService,
     WorkflowPromptRequest,
@@ -57,6 +62,7 @@ from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
+from tests.briefing_helpers import briefs_on
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
 # ---------------------------------------------------------------------------
@@ -102,6 +108,7 @@ def _make_workflow(
     if trigger_config is None:
         trigger_config = _make_trigger_config()
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=USER_ID,
         title="Test Workflow",
@@ -128,6 +135,7 @@ def _make_create_request(
     if trigger_config is None:
         trigger_config = _make_trigger_config()
     return CreateWorkflowRequest(
+        delivery=WorkflowDelivery.NOW,
         title=title,
         prompt=prompt,
         description=description,
@@ -640,6 +648,78 @@ class TestCreateWorkflow:
 # ===========================================================================
 
 
+class TestBriefDeliveryWhileBriefsOff:
+    """With briefs off, a workflow may not send its results to a brief that never comes."""
+
+    @pytest.fixture(autouse=True)
+    def _briefs_are_off(self):
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
+        ):
+            yield
+
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_creating_a_brief_workflow_is_refused_before_the_write(self, mock_create):
+        request = _make_create_request().model_copy(update={"delivery": WorkflowDelivery.BRIEF})
+
+        with pytest.raises(AppError) as refused:
+            await WorkflowService.create_workflow(request, USER_ID)
+
+        assert (refused.value.status_code, refused.value.code) == (409, BRIEFS_OFF)
+        mock_create.assert_not_awaited()
+
+    @patch(
+        "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_a_workflow_that_tells_the_user_now_is_still_created(
+        self, mock_create, _mock_activate, mock_chroma, _mock_scheduler, _mock_queue
+    ):
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+
+        result = await WorkflowService.create_workflow(_make_create_request(), USER_ID)
+
+        assert result.delivery is WorkflowDelivery.NOW
+        mock_create.assert_awaited_once()
+
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_moving_a_workflow_onto_the_brief_is_refused_before_the_write(
+        self, mock_update, mock_get
+    ):
+        mock_get.return_value = _make_workflow()
+
+        with pytest.raises(AppError) as refused:
+            await WorkflowService.update_workflow(
+                WORKFLOW_ID, UpdateWorkflowRequest(delivery=WorkflowDelivery.BRIEF), USER_ID
+            )
+
+        assert (refused.value.status_code, refused.value.code) == (409, BRIEFS_OFF)
+        mock_update.assert_not_awaited()
+
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_moving_a_workflow_off_the_brief_still_goes_through(self, mock_update, mock_get):
+        wf = _make_workflow()
+        mock_get.side_effect = [wf, wf]
+        mock_update.return_value = _make_workflow_doc(wf)
+
+        result = await WorkflowService.update_workflow(
+            WORKFLOW_ID, UpdateWorkflowRequest(delivery=WorkflowDelivery.SILENT), USER_ID
+        )
+
+        assert result is not None
+        mock_update.assert_awaited_once()
+
+
 class TestGetWorkflow:
     """Tests for WorkflowService.get_workflow."""
 
@@ -733,7 +813,7 @@ class TestListWorkflows:
         # The todo-exclusion filter is the repository's contract; the service just
         # forwards the flag (and the unpaginated limit/offset).
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, limit=None, offset=0
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True, limit=None, offset=0
         )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
@@ -741,7 +821,7 @@ class TestListWorkflows:
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=False)
 
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=False, limit=None, offset=0
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=False, limit=None, offset=0
         )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
@@ -766,9 +846,11 @@ class TestListWorkflows:
         _result, total = await WorkflowService.list_workflows(USER_ID, limit=10, offset=20)
 
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, limit=10, offset=20
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True, limit=10, offset=20
         )
-        mock_count.assert_awaited_once_with(USER_ID, exclude_todo_workflows=True)
+        mock_count.assert_awaited_once_with(
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True
+        )
         assert total == 42
 
     @patch(f"{_REPO}.count_for_user", new_callable=AsyncMock)
@@ -879,6 +961,37 @@ class TestUpdateWorkflow:
         new_callable=AsyncMock,
     )
     @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_a_timezone_move_reschedules_from_the_given_base(
+        self, mock_update, mock_get, mock_scheduler
+    ):
+        """Same cron on a new clock is a new schedule, counted from next_run_base."""
+        old_trigger = _make_trigger_config(
+            trigger_type=TriggerType.SCHEDULE, cron_expression="0 8 * * *"
+        ).model_copy(update={"timezone": "UTC"})
+        new_trigger = old_trigger.model_copy(update={"timezone": "Asia/Kolkata"})
+        wf = _make_workflow(trigger_config=old_trigger, activated=True)
+        mock_get.side_effect = [wf, _make_workflow(trigger_config=new_trigger)]
+        mock_update.return_value = _make_workflow_doc(wf)
+        mock_scheduler.reschedule_workflow = AsyncMock(return_value=True)
+        base = datetime(2026, 10, 13, 18, 30, tzinfo=UTC)  # 14 Oct, local midnight
+
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID,
+            _make_update_request(trigger_config=new_trigger),
+            USER_ID,
+            next_run_base=base,
+        )
+
+        workflow_id, next_run = mock_scheduler.reschedule_workflow.await_args.args
+        assert workflow_id == WORKFLOW_ID
+        assert next_run == datetime(2026, 10, 14, 2, 30, tzinfo=UTC)  # 08:00 IST that day
+
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch(
+        "app.services.workflow.service.WorkflowService.get_workflow",
+        new_callable=AsyncMock,
+    )
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
     async def test_update_disable_schedule_cancels(self, mock_update, mock_get, mock_scheduler):
         old_trigger = _make_trigger_config(
             trigger_type=TriggerType.SCHEDULE,
@@ -894,6 +1007,8 @@ class TestUpdateWorkflow:
         updated_wf = _make_workflow(trigger_config=new_trigger)
         mock_get.side_effect = [wf, updated_wf]
         mock_update.return_value = _make_workflow_doc(updated_wf)
+        # The update stamps the schedule's timezone, which re-arms it on that clock.
+        mock_scheduler.reschedule_workflow = AsyncMock(return_value=True)
 
         request = _make_update_request(trigger_config=new_trigger)
         result = await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
@@ -1165,6 +1280,7 @@ class TestCreateWorkflowGate:
                 "prompt": "Draft a reply to the billing email",
                 "trigger_config": {"type": "integration", "trigger_name": "gmail_new_message"},
                 "steps": [{"id": "s1", "title": "Draft", "description": "Draft the reply"}],
+                "delivery": "now",
                 **fields,
             }
         )

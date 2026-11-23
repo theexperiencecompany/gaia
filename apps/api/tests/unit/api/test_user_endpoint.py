@@ -16,6 +16,7 @@ from app.api.v1.endpoints.user import get_me
 from app.config.settings import settings
 from app.config.workos import workos_signing_keys
 from app.constants.auth import SESSION_HINT_COOKIE
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     AuthenticatedUser,
@@ -25,7 +26,6 @@ from app.models.user_models import (
     OnboardingSubdocument,
     ProfilePictureUpload,
     UserDocument,
-    UserUpdate,
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from shared.py.analytics import UserId
@@ -63,7 +63,7 @@ class TestQuietHours:
 
     async def test_a_user_who_never_set_them_reads_the_default(self, client: AsyncClient):
         with patch(
-            "app.services.user_service.user_repository.get",
+            "app.services.quiet_hours.user_repository.get",
             AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
         ):
             response = await client.get(f"{USER_BASE}/quiet-hours")
@@ -74,7 +74,7 @@ class TestQuietHours:
     async def test_a_user_reads_the_hours_they_saved_on_a_logged_read(self, client: AsyncClient):
         saved = QuietHours(enabled=False, start_hour=1, end_hour=6)
         with patch(
-            "app.services.user_service.user_repository.get",
+            "app.services.quiet_hours.user_repository.get",
             AsyncMock(return_value=UserDocument(id=FAKE_USER_ID, quiet_hours=saved)),
         ) as read:
             async with captured_wide_event() as live:
@@ -86,14 +86,27 @@ class TestQuietHours:
         read.assert_awaited_once_with(FAKE_USER_ID)
         assert (event["user"], event["operation"]) == ({"id": FAKE_USER_ID}, "read_quiet_hours")
 
-    async def test_saved_hours_are_stored_echoed_and_reported(self, client: AsyncClient):
+    async def test_saved_hours_are_stored_echoed_reported_and_move_the_brief(
+        self, client: AsyncClient
+    ):
         body = {"enabled": True, "start_hour": 23, "end_hour": 7}
+        stored = UserDocument(id=FAKE_USER_ID)
         with (
             patch(
-                "app.services.user_service.user_repository.set_quiet_hours",
+                "app.services.quiet_hours.user_repository.get",
                 AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
+            ),
+            patch(
+                "app.services.quiet_hours.user_repository.set_quiet_hours",
+                AsyncMock(return_value=stored),
             ) as update,
-            patch("app.services.user_service.capture") as capture,
+            patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
+            patch(
+                "app.services.user_quiet_hours.briefing_state_repository.state_for",
+                AsyncMock(return_value=BriefingStateDocument(user_id=FAKE_USER_ID)),
+            ) as state_for,
+            patch("app.services.user_quiet_hours.follow_the_brief") as desk,
+            patch("app.services.user_quiet_hours.capture") as capture,
         ):
             async with captured_wide_event() as live:
                 response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
@@ -108,24 +121,54 @@ class TestQuietHours:
         update.assert_awaited_once_with(
             FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
         )
+        resync.assert_awaited_once_with(stored)
+        state_for.assert_awaited_once_with(FAKE_USER_ID)
+        desk.assert_awaited_once_with(FAKE_USER_ID, "0 7 * * *", "0 7 * * *")
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID),
             SettingsQuietHoursUpdated(enabled=True, start_hour=23, end_hour=7),
         )
 
+    async def test_a_user_deleted_while_saving_is_a_404_naming_them(self, client: AsyncClient):
+        body = {"enabled": True, "start_hour": 23, "end_hour": 7}
+        with (
+            patch(
+                "app.services.quiet_hours.user_repository.get",
+                AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
+            ),
+            patch(
+                "app.services.quiet_hours.user_repository.set_quiet_hours",
+                AsyncMock(return_value=None),
+            ),
+            patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
+        ):
+            response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
+
+        assert response.status_code == 404
+        assert response.json()["why"] == f"User {FAKE_USER_ID} does not exist"
+        resync.assert_not_awaited()
+
     async def test_hours_for_a_user_that_does_not_exist_are_a_404(self, client: AsyncClient):
         body = {"enabled": True, "start_hour": 23, "end_hour": 7}
         with (
             patch(
-                "app.services.user_service.user_repository.set_quiet_hours",
+                "app.services.quiet_hours.user_repository.get", AsyncMock(return_value=None)
+            ) as get,
+            patch(
+                "app.services.quiet_hours.user_repository.set_quiet_hours",
                 AsyncMock(return_value=None),
             ),
-            patch("app.services.user_service.capture") as capture,
+            patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
+            patch("app.services.user_quiet_hours.capture") as capture,
         ):
             response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
 
         assert response.status_code == 404
         assert response.json()["message"] == "User not found"
+        assert response.json()["why"] == f"User {FAKE_USER_ID} does not exist"
+        assert response.json()["fix"] == "Sign in again"
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        resync.assert_not_awaited()
         capture.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -142,7 +185,7 @@ class TestQuietHours:
         self, client: AsyncClient, body: dict[str, object]
     ):
         with patch(
-            "app.services.user_service.user_repository.set_quiet_hours", AsyncMock()
+            "app.services.quiet_hours.user_repository.set_quiet_hours", AsyncMock()
         ) as update:
             response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
 
@@ -167,14 +210,14 @@ class TestGetMe:
     ):
         mock_onboarding.return_value = ONBOARDING_STATUS
         with patch(
-            "app.api.v1.dependencies.oauth_dependencies.user_repository.update", AsyncMock()
-        ) as update:
+            "app.api.v1.dependencies.oauth_dependencies.set_user_timezone", AsyncMock()
+        ) as store:
             response = await client.get(f"{USER_BASE}/me", headers={"x-timezone": "Asia/Kolkata"})
             await asyncio.sleep(0)
 
         assert response.status_code == 200
         assert response.json()["timezone"] == "Asia/Kolkata"
-        update.assert_awaited_once_with(FAKE_USER_ID, UserUpdate(timezone="Asia/Kolkata"))
+        store.assert_awaited_once_with(FAKE_USER_ID, "Asia/Kolkata")
 
     @patch(
         "app.api.v1.endpoints.user.get_user_onboarding_status",
@@ -410,7 +453,42 @@ class TestUpdateUserName:
 class TestUpdateTimezone:
     """PATCH /api/v1/user/timezone."""
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    async def test_a_missing_user_is_a_404_naming_them(self, client: AsyncClient):
+        with (
+            patch(
+                "app.services.user_timezone.user_repository.update",
+                AsyncMock(return_value=None),
+            ) as update,
+            patch("app.services.user_timezone.resync_briefing_schedules") as resync,
+        ):
+            response = await client.patch(
+                f"{USER_BASE}/timezone", data={"timezone": "Asia/Kolkata"}
+            )
+
+        assert response.status_code == 404
+        assert response.json()["why"] == f"User {FAKE_USER_ID} does not exist"
+        assert update.await_args.args[0] == FAKE_USER_ID
+        resync.assert_not_awaited()
+
+    async def test_the_stored_user_is_what_the_briefs_move_onto(self, client: AsyncClient):
+        stored = UserDocument(timezone="Asia/Kolkata")
+        with (
+            patch(
+                "app.services.user_timezone.user_repository.update",
+                AsyncMock(return_value=stored),
+            ),
+            patch("app.services.user_timezone.resync_briefing_schedules") as resync,
+            patch("app.api.v1.endpoints.user.schedule_account_sync"),
+        ):
+            response = await client.patch(
+                f"{USER_BASE}/timezone", data={"timezone": "Asia/Kolkata"}
+            )
+
+        assert response.status_code == 200
+        resync.assert_awaited_once_with(stored)
+
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_success(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="America/New_York")
         with (
@@ -430,7 +508,8 @@ class TestUpdateTimezone:
             UserId(FAKE_USER.user_id), ProfileUpdated(changed_field_count=1)
         )
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_utc(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="UTC")
         response = await client.patch(
@@ -446,7 +525,8 @@ class TestUpdateTimezone:
         )
         assert response.status_code == 400
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_user_not_found(
         self, mock_update: AsyncMock, client: AsyncClient
     ):
@@ -461,7 +541,8 @@ class TestUpdateTimezone:
         response = await client.patch(f"{USER_BASE}/timezone")
         assert response.status_code == 422
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_db_error(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.side_effect = Exception("db error")
         response = await client.patch(
@@ -637,6 +718,32 @@ class TestLogout:
         )
         # Verified against the process's cached signing keys, not a fresh per-session fetch.
         assert session.jwks is workos_signing_keys(_JWKS_URL)
+
+    @patch("app.api.v1.endpoints.user.get_workos_client")
+    async def test_logout_to_switch_accounts_comes_back_to_sign_in_then_the_page(
+        self, mock_workos: MagicMock, client: AsyncClient
+    ):
+        """Ending the hosted session too is what lets the next sign-in pick another account."""
+        session = MagicMock()
+        session.user_management.get_jwks_url.return_value = _JWKS_URL
+        session.get_logout_url.return_value = "https://auth.example.com/logout"
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
+        client.cookies.set("wos_session", "sealed_token")
+        with patch("app.api.v1.endpoints.user.capture"):
+            response = await client.post(f"{USER_BASE}/logout", params={"return_url": "/l/abc"})
+
+        assert response.status_code == 200
+        session.get_logout_url.assert_called_once_with(
+            return_to=f"{settings.FRONTEND_URL}/login?return_url=%2Fl%2Fabc"
+        )
+
+    @pytest.mark.parametrize("unsafe", ["//evil.com", "https://evil.com", "/\\evil.com"])
+    async def test_logout_refuses_a_return_url_off_this_site(self, client: AsyncClient, unsafe):
+        response = await client.post(f"{USER_BASE}/logout", params={"return_url": unsafe})
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "invalid_return_url"
+        assert response.json()["message"] == "return_url must be a path on this site"
 
     @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_track_failure_is_logged_not_fatal(

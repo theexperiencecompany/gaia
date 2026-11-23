@@ -1,6 +1,6 @@
 import type { SetupStatusResponse } from "@shared/api/generated";
 import { connection } from "next/server";
-
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { isSelfhostWeb } from "@/lib/selfhost";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
@@ -17,6 +17,7 @@ export async function getSetupStatusServer(): Promise<SetupStatusResponse> {
   }
   const response = await fetch(`${apiBaseUrl}/setup/status`, {
     cache: "no-store",
+    headers: internalApiHeaders(),
   });
   if (!response.ok) {
     throw new Error(

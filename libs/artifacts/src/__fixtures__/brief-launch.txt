@@ -1,0 +1,9 @@
+Make me a dashboard of Atlas's first launch week (launched 14 January 2027, today is 21 January 2027). Data from PostHog, Stripe and Linear:
+- Sign-ups 1,840 in seven days against a target of 1,500. Daily sign-ups Tue to Mon: 310, 420, 270, 230, 210, 190, 210. By channel per day (Tue..Mon): Product Hunt 190,160,70,40,30,20,20; Organic 80,170,130,120,110,110,120; Referral 40,90,70,70,70,60,70.
+- Activated (made a first plan): 41%. Paid: 96 (5.2% of sign-ups). MRR $1,152.
+- Funnel: signed up 1,840; connected a calendar 1,210; made a first plan 754; saw the paywall 612; paid 96.
+- Day-one retention 36% against a 30% target.
+- Plans created by weekday (Mon..Sun) and hour (6..21): mornings 8-9am peak at 41-61 on weekdays, weekends peak 20-21h at 18-29.
+- Revenue by plan: Personal 71 subscribers $568 (Monthly 52 / $416, Annual 19 / $152); Team 25 subscribers $584 (2-5 seats 21 / $420, 6+ seats 4 / $164).
+- Linear: fix this week: paywall copy test (Lena), Outlook 365 calendar connect bug (Dev); in progress: Sunday-evening planning reminder (Ana); shipped: referral credit (Dev), onboarding checklist (Ana).
+The headline: day-one retention is ahead of target and the paywall step loses the most people.

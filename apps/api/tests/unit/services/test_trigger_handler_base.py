@@ -9,6 +9,7 @@ from composio_client import APIStatusError, InternalServerError, PermissionDenie
 import httpx
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_configs import GmailPollInboxConfig, TriggerConfigData
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.triggers.base import TriggerHandler, _log_event_timing
@@ -122,6 +123,7 @@ class TestQueueOneWorkflowDispatch:
     @staticmethod
     def _workflow(trigger_name: str, trigger_data: TriggerConfigData | None) -> Workflow:
         return Workflow(
+            delivery=WorkflowDelivery.NOW,
             id="wf_disp",
             user_id="user_disp",
             title="Dispatch",
@@ -266,6 +268,7 @@ class TestTodoDispatchHandoff:
     @staticmethod
     def _workflow() -> Workflow:
         return Workflow(
+            delivery=WorkflowDelivery.NOW,
             id="wf_todo_tap",
             user_id="user-1",
             title="Tap",

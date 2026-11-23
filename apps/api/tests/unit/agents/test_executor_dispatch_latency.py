@@ -119,6 +119,7 @@ class TestDispatchLatency:
                 task_id="task-live",
                 configurable=_configurable(stream_id),
                 conversation_id="conv-1",
+                user_id=USER_ID,
                 handoff="call_1",
             )
 
@@ -140,6 +141,7 @@ class TestDispatchLatency:
                 task_id="task-second",
                 configurable=_configurable(stream_id),
                 conversation_id="conv-1",
+                user_id=USER_ID,
                 handoff="call_1",
             )
 
@@ -175,6 +177,7 @@ class TestDispatchLatency:
                 task_id="task-r",
                 configurable=_configurable(stream_id),
                 conversation_id="conv-1",
+                user_id=USER_ID,
                 handoff="call_1",
             )
 

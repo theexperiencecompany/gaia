@@ -286,13 +286,7 @@
       "AddUserIntegrationResponse": {
         "properties": {
           "connectionStatus": {
-            "enum": [
-              "created",
-              "connected",
-              "expired"
-            ],
-            "title": "Connectionstatus",
-            "type": "string"
+            "$ref": "#/components/schemas/IntegrationStatus"
           },
           "integrationId": {
             "title": "Integrationid",
@@ -585,6 +579,32 @@
           "value"
         ],
         "title": "ApprovalDetail",
+        "type": "object"
+      },
+      "ApprovalNotification": {
+        "additionalProperties": false,
+        "description": "A gated action waiting on the user's approval, in the conversation its card waits in.",
+        "properties": {
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "approval",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "conversation_id",
+          "approval_id"
+        ],
+        "title": "ApprovalNotification",
         "type": "object"
       },
       "ApprovalOutcome": {
@@ -934,6 +954,19 @@
         ],
         "title": "ArtifactInfo",
         "type": "object"
+      },
+      "ArtifactKind": {
+        "description": "What the artifact is; each kind has its own generated prompt\n(apps/api/app/agents/prompts/artifacts/<kind>.txt, from libs/artifacts/src/kinds.ts).",
+        "enum": [
+          "dashboard",
+          "report",
+          "plan",
+          "comparison",
+          "memo",
+          "document"
+        ],
+        "title": "ArtifactKind",
+        "type": "string"
       },
       "ArtifactRegistryEntry": {
         "description": "One element of ``ConversationDocument.artifacts``.\n\nThe conversation document stores it and mirrors it verbatim to the client.\n``mtime`` is a Unix timestamp, matching what every publisher in\n:mod:`app.services.artifact_events` stamps. ``body`` is present only for\nsmall textual artifacts inlined at write time.",
@@ -2474,6 +2507,1233 @@
         "title": "BotSettingsResponse",
         "type": "object"
       },
+      "BriefAction": {
+        "description": "What a brief item asks the reader to do; set only on items that need them.",
+        "enum": [
+          "approve",
+          "reply",
+          "review",
+          "retry",
+          "read",
+          "attend"
+        ],
+        "title": "BriefAction",
+        "type": "string"
+      },
+      "BriefCard": {
+        "description": "A brief folded to its card: what the archive, a postmark, the notification and GAIA's chat message show.",
+        "properties": {
+          "briefing_id": {
+            "title": "Briefing Id",
+            "type": "string"
+          },
+          "date": {
+            "description": "User-local YYYY-MM-DD.",
+            "title": "Date",
+            "type": "string"
+          },
+          "edition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditionImage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edition image; None for a quiet note."
+          },
+          "edition_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The daily edition family's name; None for the weekly recap and a quiet note.",
+            "title": "Edition Name"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BriefingKind"
+          },
+          "needs_you_count": {
+            "description": "Items in the brief's Needs you section, as its edition lists them.",
+            "minimum": 0.0,
+            "title": "Needs You Count",
+            "type": "integer"
+          },
+          "stamp_city_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Air Mail only: the stamp city's name.",
+            "title": "Stamp City Name"
+          }
+        },
+        "required": [
+          "briefing_id",
+          "date",
+          "kind",
+          "headline",
+          "edition",
+          "edition_name",
+          "stamp_city_name",
+          "needs_you_count"
+        ],
+        "title": "BriefCard",
+        "type": "object"
+      },
+      "BriefDeliveryWorkflow": {
+        "description": "A workflow whose results wait for the brief.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "BriefDeliveryWorkflow",
+        "type": "object"
+      },
+      "BriefDeliveryWorkflowsConflict": {
+        "additionalProperties": true,
+        "description": "The 409 body when briefs cannot turn off: the workflows still delivering to the brief.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Machine-readable error code.",
+            "title": "Code"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ValidationIssue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field-level failures; present only on 422.",
+            "title": "Errors"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Integration an INTEGRATION_NOT_CONNECTED error asks to connect.",
+            "title": "Integration Id"
+          },
+          "message": {
+            "description": "Human-readable description of the failure.",
+            "title": "Message",
+            "type": "string"
+          },
+          "toolkit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.",
+            "title": "Toolkit"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          },
+          "workflows": {
+            "items": {
+              "$ref": "#/components/schemas/BriefDeliveryWorkflow"
+            },
+            "title": "Workflows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "message",
+          "workflows"
+        ],
+        "title": "BriefDeliveryWorkflowsConflict",
+        "type": "object"
+      },
+      "BriefEditionNotification": {
+        "additionalProperties": false,
+        "description": "What a daily brief's or weekly recap's notification carries, for the in-app card and the email.",
+        "properties": {
+          "brief_url": {
+            "description": "The brief's heygaia.link.",
+            "title": "Brief Url",
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/BriefCard"
+          },
+          "kind": {
+            "enum": [
+              "briefing_daily",
+              "briefing_weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "brief_url",
+          "card"
+        ],
+        "title": "BriefEditionNotification",
+        "type": "object"
+      },
+      "BriefForm": {
+        "description": "What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.",
+        "enum": [
+          "edition",
+          "quiet_note"
+        ],
+        "title": "BriefForm",
+        "type": "string"
+      },
+      "BriefNoteNotification": {
+        "additionalProperties": false,
+        "description": "What a quiet note's notification carries: its kind alone, as it has no edition and no link.",
+        "properties": {
+          "kind": {
+            "const": "briefing_note",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "BriefNoteNotification",
+        "type": "object"
+      },
+      "BriefOutcome": {
+        "description": "The state a reported brief item reached; set only on items that need nothing from the reader.",
+        "enum": [
+          "approved",
+          "landed",
+          "drafted",
+          "booked",
+          "sent",
+          "finished",
+          "started",
+          "changed",
+          "failed"
+        ],
+        "title": "BriefOutcome",
+        "type": "string"
+      },
+      "BriefPoolItem": {
+        "description": "A pool item the composition left out, in its source's own words, for the full brief page.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemState"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "title",
+          "detail",
+          "kind",
+          "app",
+          "url",
+          "todo_id"
+        ],
+        "title": "BriefPoolItem",
+        "type": "object"
+      },
+      "BriefingEdition": {
+        "description": "One daily edition family, and where the user put it.",
+        "properties": {
+          "choice": {
+            "$ref": "#/components/schemas/EditionChoice"
+          },
+          "family": {
+            "$ref": "#/components/schemas/EditionFamily"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "name",
+          "choice"
+        ],
+        "title": "BriefingEdition",
+        "type": "object"
+      },
+      "BriefingEditions": {
+        "description": "Every daily edition family a brief can draw, and where the user put each.",
+        "properties": {
+          "editions": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingEdition"
+            },
+            "title": "Editions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "editions"
+        ],
+        "title": "BriefingEditions",
+        "type": "object"
+      },
+      "BriefingEditionsUpdate": {
+        "description": "Where the user puts each daily edition family; a family not named stays in the rotation.",
+        "properties": {
+          "choices": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditionChoice"
+            },
+            "title": "Choices",
+            "type": "object"
+          }
+        },
+        "required": [
+          "choices"
+        ],
+        "title": "BriefingEditionsUpdate",
+        "type": "object"
+      },
+      "BriefingEvent": {
+        "description": "One calendar event on the user's own clock, read from their calendar.",
+        "properties": {
+          "calendar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "guests": {
+            "default": 0,
+            "title": "Guests",
+            "type": "integer"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "organizer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organizer"
+          },
+          "response": {
+            "$ref": "#/components/schemas/CalendarResponse",
+            "default": "own"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "title"
+        ],
+        "title": "BriefingEvent",
+        "type": "object"
+      },
+      "BriefingFrequency": {
+        "description": "How often the user wants briefs: the one setting the briefing workflows follow.",
+        "enum": [
+          "daily",
+          "weekdays",
+          "weekly_only",
+          "off"
+        ],
+        "title": "BriefingFrequency",
+        "type": "string"
+      },
+      "BriefingItem": {
+        "description": "A single line inside a section, optionally bound to a todo.\n\nIt either asks something of the reader (action) or reports where a thing got to\n(outcome), never both, under a short title and at most one detail line.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App"
+          },
+          "count": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemState",
+            "default": "note"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "offer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "title": "People",
+            "type": "array"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "text": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "text",
+          "action",
+          "outcome",
+          "detail",
+          "todo_id",
+          "kind",
+          "link",
+          "count",
+          "app",
+          "source",
+          "url",
+          "people",
+          "offer"
+        ],
+        "title": "BriefingItem",
+        "type": "object"
+      },
+      "BriefingKind": {
+        "description": "Which brief a run makes; keys the payload variant and the one-per-day constraint.",
+        "enum": [
+          "daily",
+          "weekly"
+        ],
+        "title": "BriefingKind",
+        "type": "string"
+      },
+      "BriefingListResponse": {
+        "description": "One page of the archive, newest first, and where the next page starts.",
+        "properties": {
+          "briefings": {
+            "items": {
+              "$ref": "#/components/schemas/BriefCard"
+            },
+            "title": "Briefings",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as before to read the next page; None on the last page.",
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "briefings",
+          "next_cursor"
+        ],
+        "title": "BriefingListResponse",
+        "type": "object"
+      },
+      "BriefingMood": {
+        "description": "The hero treatment a brief is drawn with; the voice picks one of the daily moods.",
+        "enum": [
+          "clear",
+          "packed",
+          "idle",
+          "winback",
+          "weekly"
+        ],
+        "title": "BriefingMood",
+        "type": "string"
+      },
+      "BriefingPayload": {
+        "description": "The structured briefing the run emits and every channel renders.",
+        "properties": {
+          "artwork_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exhibition, Broadsheet and Almanac editions only: the painting (an artworks/artworks.json slug) this brief hangs, so a re-render hangs it again.",
+            "title": "Artwork Id"
+          },
+          "blocks": {
+            "description": "The brief as GAIA composed it, in reading order: each lead or items block names its section; charts, quotes, progress and notes carry their data. Empty on legacy rows.",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "items": "#/components/schemas/SectionBlock",
+                  "lead": "#/components/schemas/SectionBlock",
+                  "note": "#/components/schemas/NoteBlock",
+                  "progress": "#/components/schemas/ProgressBlock",
+                  "quote": "#/components/schemas/QuoteBlock"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SectionBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ChartBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/QuoteBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ProgressBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/NoteBlock"
+                }
+              ]
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "calendar": {
+            "description": "Today's calendar events, in start order.",
+            "items": {
+              "$ref": "#/components/schemas/BriefingEvent"
+            },
+            "title": "Calendar",
+            "type": "array"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "form": {
+            "$ref": "#/components/schemas/BriefForm",
+            "default": "edition"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User-local generation time, e.g. \"6:02 AM\".",
+            "title": "Generated At"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "hue": {
+            "default": 0,
+            "maximum": 360.0,
+            "minimum": 0.0,
+            "title": "Hue",
+            "type": "integer"
+          },
+          "kicker": {
+            "title": "Kicker",
+            "type": "string"
+          },
+          "lede": {
+            "title": "Lede",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.",
+            "title": "Message"
+          },
+          "mood": {
+            "$ref": "#/components/schemas/BriefingMood"
+          },
+          "new_stamp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewStamp"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when this brief's stamp is one the user had not collected before."
+          },
+          "recipient_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.",
+            "title": "Recipient Name"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "sources_read": {
+            "description": "The apps the brief read, by display name.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources Read",
+            "type": "array"
+          },
+          "sources_unavailable": {
+            "items": {
+              "$ref": "#/components/schemas/UnreadSource"
+            },
+            "title": "Sources Unavailable",
+            "type": "array"
+          },
+          "stamp_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Air Mail editions only: the city stamp (a stamps/cities.json slug) this brief carried. The Postmarks page reads it.",
+            "title": "Stamp City"
+          },
+          "stats": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingStat"
+            },
+            "title": "Stats",
+            "type": "array"
+          },
+          "tallies": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefingTallies"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "template_family": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditionFamily"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edition template family this brief was drawn in, persisted so the archive re-renders identically forever; None for a quiet note, which is drawn in none."
+          },
+          "uncomposed": {
+            "description": "Everything the brief read that the composition left out, for its full page.",
+            "items": {
+              "$ref": "#/components/schemas/BriefPoolItem"
+            },
+            "title": "Uncomposed",
+            "type": "array"
+          },
+          "undrawn": {
+            "description": "Composed blocks the drawn edition cannot draw in its idiom (a chart on the Menu), moved out of blocks onto the brief's full page.",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "items": "#/components/schemas/SectionBlock",
+                  "lead": "#/components/schemas/SectionBlock",
+                  "note": "#/components/schemas/NoteBlock",
+                  "progress": "#/components/schemas/ProgressBlock",
+                  "quote": "#/components/schemas/QuoteBlock"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SectionBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ChartBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/QuoteBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ProgressBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/NoteBlock"
+                }
+              ]
+            },
+            "title": "Undrawn",
+            "type": "array"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefingWeek"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kicker",
+          "date",
+          "headline",
+          "lede",
+          "stats",
+          "sections",
+          "mood",
+          "caption",
+          "hue",
+          "template_family",
+          "stamp_city",
+          "artwork_id",
+          "new_stamp",
+          "recipient_name",
+          "generated_at",
+          "form",
+          "calendar",
+          "tallies",
+          "week",
+          "sources_read",
+          "sources_unavailable",
+          "message",
+          "blocks",
+          "uncomposed",
+          "undrawn"
+        ],
+        "title": "BriefingPayload",
+        "type": "object"
+      },
+      "BriefingScheduleState": {
+        "description": "The stored schedule and whether it runs: briefs on a schedule are a Pro feature.",
+        "properties": {
+          "daily_brief_lands_at": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The local time the daily brief lands, past quiet hours; None without one.",
+            "title": "Daily Brief Lands At"
+          },
+          "frequency": {
+            "$ref": "#/components/schemas/BriefingFrequency",
+            "default": "daily"
+          },
+          "has_daily_brief": {
+            "description": "The schedule's frequency runs a daily brief.",
+            "title": "Has Daily Brief",
+            "type": "boolean"
+          },
+          "hour": {
+            "default": 8,
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Hour",
+            "type": "integer"
+          },
+          "next_daily_brief_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the next daily brief runs (UTC); None while no daily brief runs.",
+            "title": "Next Daily Brief At"
+          },
+          "paused_for_plan": {
+            "description": "The schedule sends briefs, but none run: the user is not on Pro.",
+            "title": "Paused For Plan",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused_for_plan",
+          "next_daily_brief_at",
+          "has_daily_brief",
+          "daily_brief_lands_at"
+        ],
+        "title": "BriefingScheduleState",
+        "type": "object"
+      },
+      "BriefingScheduleUpdate": {
+        "description": "A new briefing schedule; turning briefs off also says where brief-delivery workflows go.",
+        "properties": {
+          "frequency": {
+            "$ref": "#/components/schemas/BriefingFrequency",
+            "default": "daily"
+          },
+          "hour": {
+            "default": 8,
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Hour",
+            "type": "integer"
+          },
+          "workflow_deliveries": {
+            "additionalProperties": {
+              "enum": [
+                "now",
+                "silent"
+              ],
+              "type": "string"
+            },
+            "description": "New delivery per workflow id, for workflows that deliver to the brief",
+            "title": "Workflow Deliveries",
+            "type": "object"
+          }
+        },
+        "title": "BriefingScheduleUpdate",
+        "type": "object"
+      },
+      "BriefingSection": {
+        "description": "A group of items under the heading GAIA gave it, numbered in reading order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "numeral": {
+            "title": "Numeral",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "numeral",
+          "title",
+          "items"
+        ],
+        "title": "BriefingSection",
+        "type": "object"
+      },
+      "BriefingStat": {
+        "description": "One tuple in the stat row (e.g. value=\"12\" label=\"drafts staged\").",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "delta"
+        ],
+        "title": "BriefingStat",
+        "type": "object"
+      },
+      "BriefingTallies": {
+        "description": "Completed-todo counts behind the brief, computed from the todos store \u2014\nnever parsed back out of stat labels, so every renderer agrees with them.",
+        "properties": {
+          "done_by_gaia": {
+            "minimum": 0.0,
+            "title": "Done By Gaia",
+            "type": "integer"
+          },
+          "done_by_you": {
+            "minimum": 0.0,
+            "title": "Done By You",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "done_by_you",
+          "done_by_gaia"
+        ],
+        "title": "BriefingTallies",
+        "type": "object"
+      },
+      "BriefingView": {
+        "description": "A brief as its owner opens it: its card, the stored brief, and what its edition left out.",
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/BriefCard"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Delivered Channels",
+            "type": "array"
+          },
+          "left_out": {
+            "$ref": "#/components/schemas/EditionLeftOut"
+          },
+          "opened_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened At"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BriefingPayload"
+          }
+        },
+        "required": [
+          "card",
+          "payload",
+          "delivered_channels",
+          "opened_at",
+          "created_at",
+          "left_out"
+        ],
+        "title": "BriefingView",
+        "type": "object"
+      },
+      "BriefingWeek": {
+        "description": "The real week behind the weekly recap: Monday-to-Sunday completions and the\ncalendar ahead. Every field is counted or read, never estimated.",
+        "properties": {
+          "ahead": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingEvent"
+            },
+            "title": "Ahead",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingWeekDay"
+            },
+            "maxItems": 7,
+            "minItems": 7,
+            "title": "Days",
+            "type": "array"
+          }
+        },
+        "required": [
+          "days"
+        ],
+        "title": "BriefingWeek",
+        "type": "object"
+      },
+      "BriefingWeekDay": {
+        "description": "Todos completed on one day of the week, by owner.",
+        "properties": {
+          "gaia": {
+            "minimum": 0.0,
+            "title": "Gaia",
+            "type": "integer"
+          },
+          "you": {
+            "minimum": 0.0,
+            "title": "You",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "you",
+          "gaia"
+        ],
+        "title": "BriefingWeekDay",
+        "type": "object"
+      },
       "BrowserImportRequest": {
         "description": "A profile upload from the local CLI: the mint code plus a Playwright\nstorage_state (cookies + localStorage), split per host on the server.",
         "properties": {
@@ -3185,6 +4445,13 @@
       "CalendarEventsResponse": {
         "description": "Response for the multi-calendar reads (``POST /calendar/events/query`` and\n``GET /calendar/events``).",
         "properties": {
+          "calendars_failed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Calendars Failed",
+            "type": "array"
+          },
           "calendars_truncated": {
             "items": {
               "type": "string"
@@ -3285,6 +4552,18 @@
         ],
         "title": "CalendarPreferencesUpdateResponse",
         "type": "object"
+      },
+      "CalendarResponse": {
+        "description": "How the calendar's owner stands on an event: their own, accepted, tentative or unanswered.",
+        "enum": [
+          "own",
+          "accepted",
+          "tentative",
+          "needs_action",
+          "declined"
+        ],
+        "title": "CalendarResponse",
+        "type": "string"
       },
       "CardsDelta": {
         "additionalProperties": false,
@@ -3430,11 +4709,21 @@
         "type": "object"
       },
       "ChannelPreferences": {
-        "description": "User notification channel preferences.",
+        "description": "User notification channel preferences.\n\nOne field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out\nso FastAPI and mypy see real types, and a unit test pins the set against the\nenum so the two cannot drift.",
         "properties": {
           "discord": {
             "default": true,
             "title": "Discord",
+            "type": "boolean"
+          },
+          "email": {
+            "default": true,
+            "title": "Email",
+            "type": "boolean"
+          },
+          "imessage": {
+            "default": true,
+            "title": "Imessage",
             "type": "boolean"
           },
           "slack": {
@@ -3457,13 +4746,15 @@
           "telegram",
           "discord",
           "whatsapp",
-          "slack"
+          "slack",
+          "imessage",
+          "email"
         ],
         "title": "ChannelPreferences",
         "type": "object"
       },
       "ChannelPreferencesUpdate": {
-        "description": "Request body for updating channel preferences.",
+        "description": "Request body for updating channel preferences; omitted channels are untouched.",
         "properties": {
           "discord": {
             "anyOf": [
@@ -3475,6 +4766,28 @@
               }
             ],
             "title": "Discord"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "imessage": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imessage"
           },
           "slack": {
             "anyOf": [
@@ -3537,6 +4850,56 @@
         ],
         "title": "ChannelPriorityList",
         "type": "object"
+      },
+      "ChartBlock": {
+        "description": "A chart over real series, with the title and takeaway GAIA wrote for it.",
+        "properties": {
+          "chart": {
+            "$ref": "#/components/schemas/ChartKind"
+          },
+          "kind": {
+            "const": "chart",
+            "default": "chart",
+            "title": "Kind",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/DataSeries"
+            },
+            "minItems": 1,
+            "title": "Series",
+            "type": "array"
+          },
+          "takeaway": {
+            "title": "Takeaway",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "chart",
+          "title",
+          "takeaway",
+          "series"
+        ],
+        "title": "ChartBlock",
+        "type": "object"
+      },
+      "ChartKind": {
+        "description": "How a chart draws its series.",
+        "enum": [
+          "bar",
+          "line",
+          "spark",
+          "stacked_bar"
+        ],
+        "title": "ChartKind",
+        "type": "string"
       },
       "CheckoutSource": {
         "description": "Where in the product a checkout was started.\n\nThe server is the single emitter of ``payment:checkout_started``, so the\nattribution the funnel reads has to arrive on the request. Closed and\nrepository-owned: it mirrors ``CheckoutSource`` in\n``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new\nsurface adds a member on both sides in the same change.",
@@ -4227,6 +5590,26 @@
           "error"
         ],
         "title": "ConnectIntegrationResponse",
+        "type": "object"
+      },
+      "ContentTokenResponse": {
+        "description": "A short-lived URL that loads a link's content from the content origin.",
+        "properties": {
+          "content_url": {
+            "title": "Content Url",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_url",
+          "expires_at"
+        ],
+        "title": "ContentTokenResponse",
         "type": "object"
       },
       "ConversationActionResponse": {
@@ -5438,6 +6821,10 @@
       "CreateWorkflowRequest": {
         "description": "Request model for creating a new workflow.",
         "properties": {
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "description": "How a finished run's result reaches the user. Required: every creator (the user, the agent from the user's intent, a system definition) decides it explicitly."
+          },
           "description": {
             "anyOf": [
               {
@@ -5515,12 +6902,6 @@
             "title": "Is System Workflow",
             "type": "boolean"
           },
-          "notify_on_completion": {
-            "default": true,
-            "description": "Whether GAIA sends the automatic completion notification when a run finishes.",
-            "title": "Notify On Completion",
-            "type": "boolean"
-          },
           "prompt": {
             "description": "Detailed execution instructions for the AI",
             "minLength": 1,
@@ -5595,7 +6976,8 @@
         "required": [
           "title",
           "prompt",
-          "trigger_config"
+          "trigger_config",
+          "delivery"
         ],
         "title": "CreateWorkflowRequest",
         "type": "object"
@@ -5738,6 +7120,71 @@
           "status"
         ],
         "title": "CustomIntegrationConnectionResult",
+        "type": "object"
+      },
+      "DataSeries": {
+        "description": "Numeric history from one real source, counted or summed by code.",
+        "properties": {
+          "app": {
+            "description": "The source's display name",
+            "title": "App",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "description": "What is counted: \"Emails handled\", \"Meeting hours\"",
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesPoint"
+            },
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/SeriesShape"
+          },
+          "shown_not_total": {
+            "default": false,
+            "title": "Shown Not Total",
+            "type": "boolean"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What one y counts: \"emails\", \"hours\", \"USD\"; None when the source gives none",
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "unit",
+          "source",
+          "app",
+          "shape",
+          "points",
+          "shown_not_total"
+        ],
+        "title": "DataSeries",
         "type": "object"
       },
       "DeactivationReason": {
@@ -6651,6 +8098,151 @@
         ],
         "title": "DodoWebhookAckResponse",
         "type": "object"
+      },
+      "DormantTodosNotification": {
+        "additionalProperties": false,
+        "description": "The digest of the user's todos left idle.",
+        "properties": {
+          "kind": {
+            "const": "dormant_todos",
+            "title": "Kind",
+            "type": "string"
+          },
+          "todo_count": {
+            "minimum": 1.0,
+            "title": "Todo Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_count"
+        ],
+        "title": "DormantTodosNotification",
+        "type": "object"
+      },
+      "EditionChoice": {
+        "description": "Where the user put a daily edition family: in the rotation, out of it, or a favourite.",
+        "enum": [
+          "on",
+          "off",
+          "favourite"
+        ],
+        "title": "EditionChoice",
+        "type": "string"
+      },
+      "EditionFamily": {
+        "description": "Every edition family a brief is drawn in, one per vendored explorer template.\n\nWEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone\ncarries a city stamp. The editions package checks this set against the templates at import.",
+        "enum": [
+          "almanac",
+          "band",
+          "boardingpass",
+          "broadsheet",
+          "exhibition",
+          "flightplan",
+          "gradient",
+          "instrument",
+          "invoice",
+          "librarycard",
+          "memo",
+          "menu",
+          "metromap",
+          "playfair",
+          "postal",
+          "receipt",
+          "swiss",
+          "weekly"
+        ],
+        "title": "EditionFamily",
+        "type": "string"
+      },
+      "EditionImage": {
+        "description": "A brief's edition as a surface loads it: its signed URL, its fold and its paper.",
+        "properties": {
+          "fold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the edition's height where its letter folds.",
+            "title": "Fold"
+          },
+          "image_url": {
+            "description": "A signed URL that loads the edition image for a year.",
+            "title": "Image Url",
+            "type": "string"
+          },
+          "paper": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.",
+            "title": "Paper"
+          }
+        },
+        "required": [
+          "fold",
+          "paper",
+          "image_url"
+        ],
+        "title": "EditionImage",
+        "type": "object"
+      },
+      "EditionLeftOut": {
+        "description": "What the rendered edition left to the brief's page, listed under it.",
+        "properties": {
+          "events": {
+            "description": "The day's events past the rows it prints.",
+            "items": {
+              "$ref": "#/components/schemas/BriefingEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "items": {
+            "description": "The sections the edition could not draw, then the rows past its own.",
+            "items": {
+              "$ref": "#/components/schemas/BriefingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "uncomposed": {
+            "items": {
+              "$ref": "#/components/schemas/UncomposedItem"
+            },
+            "title": "Uncomposed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "events",
+          "uncomposed"
+        ],
+        "title": "EditionLeftOut",
+        "type": "object"
+      },
+      "EditionVariant": {
+        "description": "One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide.",
+        "enum": [
+          "png",
+          "jpg"
+        ],
+        "title": "EditionVariant",
+        "type": "string"
       },
       "EmailSearchResponse": {
         "description": "Contact-email addresses extracted from a web search, plus the raw search data.",
@@ -8009,6 +9601,22 @@
         "title": "GmailNewMessageConfig",
         "type": "object"
       },
+      "GmailPersonalizedNotification": {
+        "additionalProperties": false,
+        "description": "GAIA personalised itself from the user's Gmail.",
+        "properties": {
+          "kind": {
+            "const": "gmail_personalized",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "GmailPersonalizedNotification",
+        "type": "object"
+      },
       "GmailPollInboxConfig": {
         "description": "Config for interval-based Gmail polling.\n\nUses GMAIL_NEW_GMAIL_MESSAGE with an interval so Composio polls Gmail\non a schedule rather than firing on every single incoming email.\nDesigned for system workflows that batch-process emails periodically.",
         "properties": {
@@ -8028,6 +9636,80 @@
           }
         },
         "title": "GmailPollInboxConfig",
+        "type": "object"
+      },
+      "GoalState": {
+        "description": "A goal the user stated, and the work linked to it, counted from their todos.",
+        "properties": {
+          "done": {
+            "minimum": 0.0,
+            "title": "Done",
+            "type": "integer"
+          },
+          "done_by_gaia": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Done By Gaia",
+            "type": "integer"
+          },
+          "done_by_you": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Done By You",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "linked": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Linked",
+            "type": "array"
+          },
+          "open": {
+            "minimum": 0.0,
+            "title": "Open",
+            "type": "integer"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "stalled": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stalled",
+            "type": "array"
+          },
+          "statement": {
+            "minLength": 1,
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "statement",
+          "done",
+          "done_by_gaia",
+          "done_by_you",
+          "since",
+          "open",
+          "linked",
+          "stalled"
+        ],
+        "title": "GoalState",
         "type": "object"
       },
       "GoogleCalendarEventDateTime": {
@@ -8075,6 +9757,20 @@
         "additionalProperties": true,
         "description": "A single Google Calendar ``events`` resource, forwarded to the client verbatim.\n\nOnly the fields GAIA itself reads (filtering, sorting, display) or injects\n(``calendarId``/``calendarTitle``) are declared. Google owns the rest of this\nschema and varies it by event type, so everything else passes through untouched\nrather than guessing at a structure that would silently drop fields the web\nclient reads.",
         "properties": {
+          "attendees": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GoogleCalendarPerson"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendees"
+          },
           "calendarId": {
             "anyOf": [
               {
@@ -8150,6 +9846,27 @@
               }
             ],
             "title": "Id"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "organizer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoogleCalendarPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "recurrence": {
             "anyOf": [
@@ -8247,6 +9964,57 @@
           "id"
         ],
         "title": "GoogleCalendarListEntry",
+        "type": "object"
+      },
+      "GoogleCalendarPerson": {
+        "additionalProperties": true,
+        "description": "An event's organizer or one of its attendees; Google marks the calendar's owner self.",
+        "properties": {
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "resource": {
+            "default": false,
+            "title": "Resource",
+            "type": "boolean"
+          },
+          "responseStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsestatus"
+          },
+          "self": {
+            "default": false,
+            "title": "Self",
+            "type": "boolean"
+          }
+        },
+        "title": "GoogleCalendarPerson",
         "type": "object"
       },
       "GoogleDocsDocumentDeletedConfig": {
@@ -9143,6 +10911,33 @@
         "title": "IntegrationContent",
         "type": "object"
       },
+      "IntegrationExpiredNotification": {
+        "additionalProperties": false,
+        "description": "An integration whose connection expired, and how many workflows it paused.",
+        "properties": {
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "integration_expired",
+            "title": "Kind",
+            "type": "string"
+          },
+          "paused_workflows": {
+            "minimum": 0.0,
+            "title": "Paused Workflows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "integration_id",
+          "paused_workflows"
+        ],
+        "title": "IntegrationExpiredNotification",
+        "type": "object"
+      },
       "IntegrationFAQ": {
         "description": "A single FAQ entry for the integration detail page.",
         "properties": {
@@ -9202,9 +10997,8 @@
             "type": "string"
           },
           "status": {
-            "description": "Integration status: 'created' or 'connected'",
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/IntegrationStatus",
+            "description": "Integration connection status"
           }
         },
         "required": [
@@ -9402,6 +11196,16 @@
         "title": "IntegrationResponse",
         "type": "object"
       },
+      "IntegrationStatus": {
+        "description": "Connection state of a user's integration, as stored and sent to clients.",
+        "enum": [
+          "created",
+          "connected",
+          "expired"
+        ],
+        "title": "IntegrationStatus",
+        "type": "string"
+      },
       "IntegrationSuccessResponse": {
         "properties": {
           "integrationId": {
@@ -9586,6 +11390,18 @@
         "title": "InviteResponse",
         "type": "object"
       },
+      "ItemState": {
+        "description": "How an item stands: a GAIA action, a user ask, a look-back, work that failed, a plain note.\n\nAn item's text is only its title, so no renderer repeats its state.",
+        "enum": [
+          "gaia",
+          "you",
+          "lookback",
+          "failed",
+          "note"
+        ],
+        "title": "ItemState",
+        "type": "string"
+      },
       "JsonValue": {},
       "LabEventResponse": {
         "description": "Accepted; the payload itself is never echoed back.",
@@ -9663,6 +11479,248 @@
         "title": "LinearIssueUpdatedConfig",
         "type": "object"
       },
+      "LinkAccess": {
+        "description": "Who a link opens for.",
+        "enum": [
+          "public",
+          "unlisted",
+          "owner"
+        ],
+        "title": "LinkAccess",
+        "type": "string"
+      },
+      "LinkContent": {
+        "description": "The bytes a link frames from the content origin; the page asks for a content token to load them.",
+        "properties": {
+          "content_id": {
+            "title": "Content Id",
+            "type": "string"
+          },
+          "mime": {
+            "title": "Mime",
+            "type": "string"
+          },
+          "render": {
+            "$ref": "#/components/schemas/RenderMode"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_id",
+          "mime",
+          "size_bytes",
+          "render"
+        ],
+        "title": "LinkContent",
+        "type": "object"
+      },
+      "LinkDenial": {
+        "description": "Why a link did not open; each is one ErrorEnvelope code and one page the viewer sees.",
+        "enum": [
+          "link_not_found",
+          "link_revoked",
+          "link_expired",
+          "link_removed",
+          "link_target_deleted",
+          "link_sign_in_required",
+          "link_forbidden"
+        ],
+        "title": "LinkDenial",
+        "type": "string"
+      },
+      "LinkDenialEnvelope": {
+        "additionalProperties": true,
+        "description": "A link denial's body: code names the page the viewer sees.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/LinkDenial"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ValidationIssue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field-level failures; present only on 422.",
+            "title": "Errors"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Integration an INTEGRATION_NOT_CONNECTED error asks to connect.",
+            "title": "Integration Id"
+          },
+          "message": {
+            "description": "Human-readable description of the failure.",
+            "title": "Message",
+            "type": "string"
+          },
+          "signed_in_as": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed In As"
+          },
+          "toolkit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.",
+            "title": "Toolkit"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          }
+        },
+        "required": [
+          "message",
+          "code"
+        ],
+        "title": "LinkDenialEnvelope",
+        "type": "object"
+      },
+      "LinkEnvelope": {
+        "description": "What opening a link returns: its access level, the target's public view and any framed content.",
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/LinkAccess"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkContent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "downloadable": {
+            "title": "Downloadable",
+            "type": "boolean"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "owner_target": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "briefing": "#/components/schemas/RecordTarget",
+                    "openui_artifact": "#/components/schemas/RecordTarget",
+                    "todo_deliverable": "#/components/schemas/RecordTarget",
+                    "workflow_run": "#/components/schemas/RecordTarget",
+                    "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/RecordTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkspaceFileTarget"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Target"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/ShortLinkTargetType"
+          },
+          "view": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/PublicBriefing",
+                "openui_artifact": "#/components/schemas/PublicOpenUIArtifact",
+                "todo_deliverable": "#/components/schemas/PublicTodoDeliverable",
+                "workflow_run": "#/components/schemas/PublicWorkflowRun",
+                "workspace_file": "#/components/schemas/PublicWorkspaceFile"
+              },
+              "propertyName": "target_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicTodoDeliverable"
+              },
+              {
+                "$ref": "#/components/schemas/PublicBriefing"
+              },
+              {
+                "$ref": "#/components/schemas/PublicWorkspaceFile"
+              },
+              {
+                "$ref": "#/components/schemas/PublicWorkflowRun"
+              },
+              {
+                "$ref": "#/components/schemas/PublicOpenUIArtifact"
+              }
+            ],
+            "title": "View"
+          }
+        },
+        "required": [
+          "access",
+          "target_type",
+          "view",
+          "content",
+          "downloadable",
+          "is_owner",
+          "owner_target"
+        ],
+        "title": "LinkEnvelope",
+        "type": "object"
+      },
       "LinkPlatformRequest": {
         "description": "Request model for linking a platform account via secure token.",
         "properties": {
@@ -9721,6 +11779,147 @@
           "platform"
         ],
         "title": "LinkPlatformResponse",
+        "type": "object"
+      },
+      "LinkPreviewMeta": {
+        "description": "What a chat preview or a page's metadata may show for a link, by its access level and state.\n\ntitle and description are real content only for a live public or unlisted\nlink; any other link carries the kind line or the dead-link line. image_url\nis None when the preview card is generated from these fields.",
+        "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkAccess"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "indexable": {
+            "title": "Indexable",
+            "type": "boolean"
+          },
+          "live": {
+            "title": "Live",
+            "type": "boolean"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShortLinkTargetType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "live",
+          "target_type",
+          "access",
+          "indexable",
+          "title",
+          "description",
+          "image_url"
+        ],
+        "title": "LinkPreviewMeta",
+        "type": "object"
+      },
+      "LinkReportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/ReportReason"
+          },
+          "turnstile_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnstile Token"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "LinkReportRequest",
+        "type": "object"
+      },
+      "LinkSettings": {
+        "additionalProperties": false,
+        "description": "Who a link opens for and until when.",
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/LinkAccess",
+            "default": "unlisted"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "title": "LinkSettings",
+        "type": "object"
+      },
+      "LinkSettingsUpdate": {
+        "additionalProperties": false,
+        "description": "Owner changes to a live link; an omitted field keeps its value.",
+        "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkAccess"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "title": "LinkSettingsUpdate",
         "type": "object"
       },
       "LinkTokenInfoResponse": {
@@ -11289,6 +13488,22 @@
         "title": "MemoryOverviewResponse",
         "type": "object"
       },
+      "MemoryReadyNotification": {
+        "additionalProperties": false,
+        "description": "The user's memory was seeded from their past conversations.",
+        "properties": {
+          "kind": {
+            "const": "memory_ready",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "MemoryReadyNotification",
+        "type": "object"
+      },
       "MemoryRelationType": {
         "description": "How a memory version relates to its parent in the supersession chain.",
         "enum": [
@@ -11818,14 +14033,16 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "connected",
-              "created",
-              "expired",
-              "not_connected"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntegrationStatus"
+              },
+              {
+                "const": "not_connected",
+                "type": "string"
+              }
             ],
-            "title": "Status",
-            "type": "string"
+            "title": "Status"
           },
           "toolCount": {
             "default": 0,
@@ -11876,6 +14093,60 @@
           "total"
         ],
         "title": "MyIntegrationsResponse",
+        "type": "object"
+      },
+      "NewStamp": {
+        "description": "A city stamp the user collected for the first time with this brief.",
+        "properties": {
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "collected": {
+            "description": "Stamps collected, this one included.",
+            "minimum": 1.0,
+            "title": "Collected",
+            "type": "integer"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "total": {
+            "description": "How many city stamps can be collected.",
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "city",
+          "country",
+          "collected",
+          "total"
+        ],
+        "title": "NewStamp",
+        "type": "object"
+      },
+      "NoteBlock": {
+        "description": "A pattern GAIA noticed, a heads-up or a suggestion, rendered from its slots.",
+        "properties": {
+          "kind": {
+            "const": "note",
+            "default": "note",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "NoteBlock",
         "type": "object"
       },
       "NoteModel": {
@@ -12021,6 +14292,17 @@
             "title": "Id",
             "type": "string"
           },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
           "kind": {
             "const": "notice",
             "default": "notice",
@@ -12050,7 +14332,8 @@
           "bubbles",
           "tool_data",
           "timeline",
-          "follow_up_actions"
+          "follow_up_actions",
+          "image_url"
         ],
         "title": "NoticeItem",
         "type": "object"
@@ -12434,6 +14717,84 @@
             "title": "Created At",
             "type": "string"
           },
+          "details": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "approval": "#/components/schemas/ApprovalNotification",
+                    "briefing_daily": "#/components/schemas/BriefEditionNotification",
+                    "briefing_note": "#/components/schemas/BriefNoteNotification",
+                    "briefing_weekly": "#/components/schemas/BriefEditionNotification",
+                    "dormant_todos": "#/components/schemas/DormantTodosNotification",
+                    "gmail_personalized": "#/components/schemas/GmailPersonalizedNotification",
+                    "integration_expired": "#/components/schemas/IntegrationExpiredNotification",
+                    "memory_ready": "#/components/schemas/MemoryReadyNotification",
+                    "reminder": "#/components/schemas/ReminderNotification",
+                    "system_workflows_provisioned": "#/components/schemas/SystemWorkflowsProvisionedNotification",
+                    "todo": "#/components/schemas/TodoNotification",
+                    "todo_failed": "#/components/schemas/TodoFailedNotification",
+                    "todo_trigger_fired": "#/components/schemas/TodoTriggerFiredNotification",
+                    "workflow_completed": "#/components/schemas/WorkflowCompletedNotification",
+                    "workflow_failed": "#/components/schemas/WorkflowFailedNotification",
+                    "workflow_paused": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BriefEditionNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BriefNoteNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoTriggerFiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DormantTodosNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReminderNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowCompletedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IntegrationExpiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemWorkflowsProvisionedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MemoryReadyNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailPersonalizedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApprovalNotification"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -12449,10 +14810,9 @@
             ],
             "title": "Message"
           },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
+          "message_class": {
+            "$ref": "#/components/schemas/ProactiveMessageClass",
+            "default": "routine"
           },
           "priority": {
             "default": 3,
@@ -12652,7 +15012,7 @@
         "type": "string"
       },
       "NotificationView": {
-        "description": "A notification flattened for API/tool consumers.\n\nDistinct from ``NotificationRecord``: the record is the stored document (it\nnests the whole ``original_request``), while this is the flat shape the web\nand mobile clients actually read \u2014 ``content``/``source``/``type``/\n``metadata`` are lifted out of the request, and the channel entries are\nprojected. It mirrors ``NotificationRecord`` in the frontend's\n``notificationTypes.ts``.\n\nTimestamps are ``str`` because the producer emits ISO strings and that is\nthe published contract; parsing them into ``datetime`` here would re-emit\nthem in Pydantic's own format.\n\nBuilt by ``NotificationOrchestrator._serialize_notification``, which is\nstill the producer \u2014 this model is the named shape of what it returns.",
+        "description": "A notification flattened for API/tool consumers.\n\nDistinct from ``NotificationRecord``: the record is the stored document (it\nnests the whole ``original_request``), while this is the flat shape the web\nand mobile clients actually read \u2014 ``content``/``source``/``type``/\n``details`` are lifted out of the request, and the channel entries are\nprojected. It mirrors ``NotificationRecord`` in the frontend's\n``notificationTypes.ts``.\n\nTimestamps are ``str`` because the producer emits ISO strings and that is\nthe published contract; parsing them into ``datetime`` here would re-emit\nthem in Pydantic's own format.\n\nBuilt by ``NotificationOrchestrator._serialize_notification``, which is\nstill the producer \u2014 this model is the named shape of what it returns.",
         "properties": {
           "channels": {
             "items": {
@@ -12679,14 +15039,87 @@
             ],
             "title": "Delivered At"
           },
+          "details": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "approval": "#/components/schemas/ApprovalNotification",
+                    "briefing_daily": "#/components/schemas/BriefEditionNotification",
+                    "briefing_note": "#/components/schemas/BriefNoteNotification",
+                    "briefing_weekly": "#/components/schemas/BriefEditionNotification",
+                    "dormant_todos": "#/components/schemas/DormantTodosNotification",
+                    "gmail_personalized": "#/components/schemas/GmailPersonalizedNotification",
+                    "integration_expired": "#/components/schemas/IntegrationExpiredNotification",
+                    "memory_ready": "#/components/schemas/MemoryReadyNotification",
+                    "reminder": "#/components/schemas/ReminderNotification",
+                    "system_workflows_provisioned": "#/components/schemas/SystemWorkflowsProvisionedNotification",
+                    "todo": "#/components/schemas/TodoNotification",
+                    "todo_failed": "#/components/schemas/TodoFailedNotification",
+                    "todo_trigger_fired": "#/components/schemas/TodoTriggerFiredNotification",
+                    "workflow_completed": "#/components/schemas/WorkflowCompletedNotification",
+                    "workflow_failed": "#/components/schemas/WorkflowFailedNotification",
+                    "workflow_paused": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BriefEditionNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BriefNoteNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoTriggerFiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DormantTodosNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReminderNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowCompletedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IntegrationExpiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemWorkflowsProvisionedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MemoryReadyNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailPersonalizedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApprovalNotification"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
           "id": {
             "title": "Id",
             "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
           },
           "read_at": {
             "anyOf": [
@@ -13172,17 +15605,8 @@
             "type": "boolean"
           },
           "user": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Updated user data",
-            "title": "User"
+            "$ref": "#/components/schemas/OnboardingUser",
+            "description": "Updated user data"
           }
         },
         "required": [
@@ -13270,6 +15694,70 @@
         ],
         "title": "OnboardingStep",
         "type": "string"
+      },
+      "OnboardingUser": {
+        "description": "The user an onboarding write updated: its id and the onboarding state it left.",
+        "properties": {
+          "onboarding": {
+            "$ref": "#/components/schemas/OnboardingStatusResponse"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "onboarding"
+        ],
+        "title": "OnboardingUser",
+        "type": "object"
+      },
+      "OpenUIArtifactResponse": {
+        "description": "An artifact as its owner's viewer loads it.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "program": {
+            "title": "Program",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "program",
+          "conversation_id",
+          "created_at"
+        ],
+        "title": "OpenUIArtifactResponse",
+        "type": "object"
       },
       "PaginatedNotificationsResponse": {
         "description": "Response model for paginated notifications",
@@ -14075,6 +16563,73 @@
         "title": "PollPairingResponse",
         "type": "object"
       },
+      "Postmark": {
+        "description": "One collected Air Mail stamp: its city, where it sits, and the card of the brief it first came on.\n\nThe card carries that brief's edition, so the page can ready the letter before the\nstamp is pressed without fetching the brief, which would mark it opened.",
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/BriefCard"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "city_slug": {
+            "title": "City Slug",
+            "type": "string"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lng": {
+            "title": "Lng",
+            "type": "number"
+          },
+          "stamp_url": {
+            "title": "Stamp Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "city_slug",
+          "city",
+          "country",
+          "lat",
+          "lng",
+          "stamp_url",
+          "card"
+        ],
+        "title": "Postmark",
+        "type": "object"
+      },
+      "PostmarksResponse": {
+        "description": "The user's stamp collection, first arrival first.",
+        "properties": {
+          "postmarks": {
+            "items": {
+              "$ref": "#/components/schemas/Postmark"
+            },
+            "title": "Postmarks",
+            "type": "array"
+          },
+          "total": {
+            "description": "How many city stamps can be collected.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "postmarks"
+        ],
+        "title": "PostmarksResponse",
+        "type": "object"
+      },
       "Priority": {
         "enum": [
           "high",
@@ -14084,6 +16639,37 @@
         ],
         "title": "Priority",
         "type": "string"
+      },
+      "ProactiveMessageClass": {
+        "description": "What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.",
+        "enum": [
+          "routine",
+          "user_timed",
+          "user_triggered",
+          "urgent"
+        ],
+        "title": "ProactiveMessageClass",
+        "type": "string"
+      },
+      "ProgressBlock": {
+        "description": "Where one of the user's goals stands.",
+        "properties": {
+          "goal": {
+            "$ref": "#/components/schemas/GoalState"
+          },
+          "kind": {
+            "const": "progress",
+            "default": "progress",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "goal"
+        ],
+        "title": "ProgressBlock",
+        "type": "object"
       },
       "ProjectCreate": {
         "description": "Model for creating projects",
@@ -14630,6 +17216,52 @@
         "title": "ProviderTestResponse",
         "type": "object"
       },
+      "PublicBriefing": {
+        "additionalProperties": false,
+        "description": "A brief's front page, all anyone but its owner sees: never an item, a calendar entry or the edition.\n\nThe edition image draws every item, so it stays with the owner (BriefingView) too.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "full_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Url"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "kicker": {
+            "title": "Kicker",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BriefingKind"
+          },
+          "target_type": {
+            "const": "briefing",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "kind",
+          "kicker",
+          "date",
+          "headline"
+        ],
+        "title": "PublicBriefing",
+        "type": "object"
+      },
       "PublicHoloCardResponse": {
         "description": "Public-facing subset of a user's profile, keyed by user id (``card_id``).\n\nDeliberately excludes everything else on ``UserDocument`` (email, workflows,\nintegration state, etc.) \u2014 this endpoint is unauthenticated.",
         "properties": {
@@ -14847,6 +17479,54 @@
         "title": "PublicIntegrationDetailResponse",
         "type": "object"
       },
+      "PublicOpenUIArtifact": {
+        "additionalProperties": false,
+        "description": "An artifact create_artifact made: its program, which the page renders as data.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "program": {
+            "title": "Program",
+            "type": "string"
+          },
+          "shared_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared By"
+          },
+          "target_type": {
+            "const": "openui_artifact",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "kind",
+          "title",
+          "program",
+          "created_at",
+          "shared_by"
+        ],
+        "title": "PublicOpenUIArtifact",
+        "type": "object"
+      },
       "PublicSupportRequestCreate": {
         "description": "A contact-form request that may come from a visitor with no GAIA session.",
         "properties": {
@@ -14909,6 +17589,37 @@
           "turnstile_token"
         ],
         "title": "PublicSupportRequestCreate",
+        "type": "object"
+      },
+      "PublicTodoDeliverable": {
+        "additionalProperties": false,
+        "description": "A tracked todo's result: its title and the deliverable facet of its\ncanvas (``canvas_markdown.deliverable_markdown``), never the working sections.",
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "todo_deliverable",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "title",
+          "completed",
+          "content"
+        ],
+        "title": "PublicTodoDeliverable",
         "type": "object"
       },
       "PublicWorkflowCard": {
@@ -15049,6 +17760,62 @@
         "title": "PublicWorkflowCard",
         "type": "object"
       },
+      "PublicWorkflowRun": {
+        "additionalProperties": false,
+        "description": "One workflow execution's outcome.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "success",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "workflow_run",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "workflow_title": {
+            "title": "Workflow Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "workflow_title",
+          "status",
+          "started_at",
+          "completed_at",
+          "summary"
+        ],
+        "title": "PublicWorkflowRun",
+        "type": "object"
+      },
       "PublicWorkflowStep": {
         "description": "The step summary a marketplace card shows: what it does, not how.",
         "properties": {
@@ -15100,6 +17867,49 @@
           "total"
         ],
         "title": "PublicWorkflowsResponse",
+        "type": "object"
+      },
+      "PublicWorkspaceFile": {
+        "additionalProperties": false,
+        "description": "A file GAIA wrote in a conversation's workspace, as its link pinned it.\n\ntext is the file's text when it is shown as text (code, markdown, and HTML\nsource where the instance has no content origin); the page renders it\nitself. Every other file is framed from the content origin (LinkEnvelope.content)\nor offered as a download.",
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "target_type": {
+            "const": "workspace_file",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "target_type",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "text"
+        ],
+        "title": "PublicWorkspaceFile",
         "type": "object"
       },
       "PublishIntegrationResponse": {
@@ -15246,6 +18056,79 @@
         "title": "QuietHours",
         "type": "object"
       },
+      "QuoteBlock": {
+        "description": "Someone's own words, set apart.",
+        "properties": {
+          "kind": {
+            "const": "quote",
+            "default": "quote",
+            "title": "Kind",
+            "type": "string"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/QuoteSpan"
+          }
+        },
+        "required": [
+          "kind",
+          "quote"
+        ],
+        "title": "QuoteBlock",
+        "type": "object"
+      },
+      "QuoteSpan": {
+        "description": "Someone's own words, verbatim as their app holds them, with who wrote them and where.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "author": {
+            "minLength": 1,
+            "title": "Author",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "author",
+          "source",
+          "app",
+          "url",
+          "item_id"
+        ],
+        "title": "QuoteSpan",
+        "type": "object"
+      },
       "Reaction": {
         "additionalProperties": false,
         "description": "An emoji on a user message; a field updated in place, never a state change.",
@@ -15299,6 +18182,33 @@
           "dependencies"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RecordTarget": {
+        "additionalProperties": false,
+        "description": "A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id.",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "RecordTarget",
         "type": "object"
       },
       "RecordedCall": {
@@ -15787,6 +18697,27 @@
         "title": "RegistrationPolicyResponse",
         "type": "object"
       },
+      "ReminderNotification": {
+        "additionalProperties": false,
+        "description": "A reminder that came due.",
+        "properties": {
+          "kind": {
+            "const": "reminder",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reminder_id": {
+            "title": "Reminder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reminder_id"
+        ],
+        "title": "ReminderNotification",
+        "type": "object"
+      },
       "ReminderResponse": {
         "description": "Response model for reminder operations.\n\n``from_attributes`` so the endpoints can project a ``ReminderModel`` onto\nthis without a dict round-trip. Declared here rather than passed at each\ncall site: it is a property of this model, not of one conversion.",
         "properties": {
@@ -15913,6 +18844,20 @@
         "title": "ReminderResponse",
         "type": "object"
       },
+      "RenderMode": {
+        "description": "How a snapshot's bytes are shown, which fixes the headers the content origin serves them with.",
+        "enum": [
+          "frame_active",
+          "image",
+          "image_svg",
+          "pdf",
+          "text",
+          "media",
+          "download"
+        ],
+        "title": "RenderMode",
+        "type": "string"
+      },
       "ReplyDeltaFrame": {
         "additionalProperties": false,
         "description": "Streamed content of one comms attempt; reply_id is None until its reply entry exists.",
@@ -15999,6 +18944,17 @@
             "minLength": 1,
             "title": "Path",
             "type": "string"
+          },
+          "short_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Url"
           }
         },
         "required": [
@@ -16199,6 +19155,17 @@
         ],
         "title": "ReplyToMessageData",
         "type": "object"
+      },
+      "ReportReason": {
+        "enum": [
+          "phishing",
+          "malware",
+          "harassment",
+          "illegal",
+          "other"
+        ],
+        "title": "ReportReason",
+        "type": "string"
       },
       "ResetSessionResponse": {
         "description": "Response model for a bot session reset.",
@@ -16424,6 +19391,23 @@
           "paused"
         ],
         "title": "ScheduledTaskStatus",
+        "type": "string"
+      },
+      "ScoutSkipReason": {
+        "description": "Why a scout contributed nothing to this brief.",
+        "enum": [
+          "failed",
+          "budget",
+          "backoff",
+          "source_failed",
+          "no_read_only_tools",
+          "unknown_integration",
+          "signed_out",
+          "out_of_time",
+          "free_plan",
+          "dormant"
+        ],
+        "title": "ScoutSkipReason",
         "type": "string"
       },
       "ScreenFrame": {
@@ -16764,6 +19748,30 @@
           "notes"
         ],
         "title": "SearchResultsResponse",
+        "type": "object"
+      },
+      "SectionBlock": {
+        "description": "A lead or items block, stored as the payload section it became (sections[section]).",
+        "properties": {
+          "kind": {
+            "enum": [
+              "lead",
+              "items"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "section": {
+            "minimum": 0.0,
+            "title": "Section",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "section"
+        ],
+        "title": "SectionBlock",
         "type": "object"
       },
       "SelectedCalendarEventData": {
@@ -17250,6 +20258,35 @@
         "title": "SendMessageRequest",
         "type": "object"
       },
+      "SeriesPoint": {
+        "description": "One computed point: a day or a category, and its value.",
+        "properties": {
+          "x": {
+            "minLength": 1,
+            "title": "X",
+            "type": "string"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "SeriesPoint",
+        "type": "object"
+      },
+      "SeriesShape": {
+        "description": "How a series' points are laid out, which decides the charts that can draw it.",
+        "enum": [
+          "time_series",
+          "categorical"
+        ],
+        "title": "SeriesShape",
+        "type": "string"
+      },
       "SetToolOverrideRequest": {
         "description": "Body for setting or clearing one tool's approval override.",
         "properties": {
@@ -17364,6 +20401,152 @@
         ],
         "title": "SetupWizardResponse",
         "type": "object"
+      },
+      "ShareLinkRequest": {
+        "additionalProperties": false,
+        "description": "Share one of the owner's artifacts: its live link, minted with settings when none is live.",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/LinkSettings"
+          },
+          "target": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/RecordTarget",
+                "openui_artifact": "#/components/schemas/RecordTarget",
+                "todo_deliverable": "#/components/schemas/RecordTarget",
+                "workflow_run": "#/components/schemas/RecordTarget",
+                "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecordTarget"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceFileTarget"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "ShareLinkRequest",
+        "type": "object"
+      },
+      "ShortLinkResponse": {
+        "description": "One live heygaia.link and its settings.\n\ncontent_max_access is the widest level its file may be served at when the\nfile narrows it (a login form, an installer); None otherwise.",
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/LinkAccess"
+          },
+          "content_max_access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkAccess"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "slug",
+          "access",
+          "expires_at",
+          "content_max_access"
+        ],
+        "title": "ShortLinkResponse",
+        "type": "object"
+      },
+      "ShortLinkShareState": {
+        "description": "Whether one of the owner's artifacts is shared: its live link, or None.",
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShortLinkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "link"
+        ],
+        "title": "ShortLinkShareState",
+        "type": "object"
+      },
+      "ShortLinkTargetRequest": {
+        "additionalProperties": false,
+        "description": "One of the owner's artifacts, to read or stop sharing.",
+        "properties": {
+          "target": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/RecordTarget",
+                "openui_artifact": "#/components/schemas/RecordTarget",
+                "todo_deliverable": "#/components/schemas/RecordTarget",
+                "workflow_run": "#/components/schemas/RecordTarget",
+                "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecordTarget"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceFileTarget"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "ShortLinkTargetRequest",
+        "type": "object"
+      },
+      "ShortLinkTargetType": {
+        "description": "Every kind of artifact a heygaia.link can point at.",
+        "enum": [
+          "todo_deliverable",
+          "briefing",
+          "workspace_file",
+          "workflow_run",
+          "openui_artifact"
+        ],
+        "title": "ShortLinkTargetType",
+        "type": "string"
       },
       "SignupRequest": {
         "additionalProperties": false,
@@ -18058,6 +21241,20 @@
           "body"
         ],
         "title": "StaticReminderPayload",
+        "type": "object"
+      },
+      "StopSharingResult": {
+        "description": "Whether stopping killed a live link; False when the artifact was not shared.",
+        "properties": {
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "title": "StopSharingResult",
         "type": "object"
       },
       "StoredIntegrationTool": {
@@ -18925,10 +22122,32 @@
           "reminder_processing",
           "workflow_execution",
           "getting_started",
+          "briefing",
           "other"
         ],
         "title": "SystemPurpose",
         "type": "string"
+      },
+      "SystemWorkflowsProvisionedNotification": {
+        "additionalProperties": false,
+        "description": "Connecting an integration set up its system workflows.",
+        "properties": {
+          "integration_display_name": {
+            "title": "Integration Display Name",
+            "type": "string"
+          },
+          "kind": {
+            "const": "system_workflows_provisioned",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "integration_display_name"
+        ],
+        "title": "SystemWorkflowsProvisionedNotification",
+        "type": "object"
       },
       "TimelineCard": {
         "additionalProperties": false,
@@ -19053,6 +22272,33 @@
         "title": "TodoCounts",
         "type": "object"
       },
+      "TodoFailedNotification": {
+        "additionalProperties": false,
+        "description": "A scheduled todo that stopped after using up its attempts.",
+        "properties": {
+          "kind": {
+            "const": "todo_failed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "retry_count": {
+            "minimum": 1.0,
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_id",
+          "retry_count"
+        ],
+        "title": "TodoFailedNotification",
+        "type": "object"
+      },
       "TodoLabelCount": {
         "description": "One label with the number of (incomplete) todos carrying it.",
         "properties": {
@@ -19116,6 +22362,11 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "default": "now",
+            "description": "Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed."
           },
           "description": {
             "anyOf": [
@@ -19182,12 +22433,6 @@
             "maxItems": 10,
             "title": "Labels",
             "type": "array"
-          },
-          "notify_on_run": {
-            "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.",
-            "title": "Notify On Run",
-            "type": "boolean"
           },
           "priority": {
             "$ref": "#/components/schemas/Priority",
@@ -19291,6 +22536,27 @@
         "title": "TodoModel",
         "type": "object"
       },
+      "TodoNotification": {
+        "additionalProperties": false,
+        "description": "A notification about one todo: its run's result, or what its health check found.",
+        "properties": {
+          "kind": {
+            "const": "todo",
+            "title": "Kind",
+            "type": "string"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_id"
+        ],
+        "title": "TodoNotification",
+        "type": "object"
+      },
       "TodoResponse": {
         "description": "Complete todo response with all fields",
         "properties": {
@@ -19318,6 +22584,11 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "default": "now",
+            "description": "Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed."
           },
           "description": {
             "anyOf": [
@@ -19389,12 +22660,6 @@
             "maxItems": 10,
             "title": "Labels",
             "type": "array"
-          },
-          "notify_on_run": {
-            "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.",
-            "title": "Notify On Run",
-            "type": "boolean"
           },
           "parent_todo_id": {
             "anyOf": [
@@ -19560,7 +22825,7 @@
           "gaia_retry_count",
           "expires_at",
           "references",
-          "notify_on_run",
+          "delivery",
           "id",
           "user_id",
           "created_at",
@@ -19674,6 +22939,32 @@
         "title": "TodoStats",
         "type": "object"
       },
+      "TodoTriggerFiredNotification": {
+        "additionalProperties": false,
+        "description": "An event a todo's trigger subscription watches fired.",
+        "properties": {
+          "kind": {
+            "const": "todo_trigger_fired",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "string"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_id",
+          "subscription_id"
+        ],
+        "title": "TodoTriggerFiredNotification",
+        "type": "object"
+      },
       "TodoUpdateRequest": {
         "description": "Model for updating todos - all fields optional for partial updates",
         "properties": {
@@ -19687,6 +22978,16 @@
               }
             ],
             "title": "Completed"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "description": {
             "anyOf": [
@@ -19748,17 +23049,6 @@
               }
             ],
             "title": "Labels"
-          },
-          "notify_on_run": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notify On Run"
           },
           "priority": {
             "anyOf": [
@@ -20955,6 +24245,72 @@
         "title": "URLResponse",
         "type": "object"
       },
+      "UncomposedItem": {
+        "description": "What GAIA read but the composition left out, with the words for where it stands.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemState"
+          },
+          "state_label": {
+            "description": "The item's state in a few words, as the brief page shows it.",
+            "title": "State Label",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "title",
+          "detail",
+          "kind",
+          "app",
+          "url",
+          "todo_id",
+          "state_label"
+        ],
+        "title": "UncomposedItem",
+        "type": "object"
+      },
       "UnlinkAccountResponse": {
         "description": "Response model for unlinking a platform account.",
         "properties": {
@@ -20992,6 +24348,24 @@
           "integrationId"
         ],
         "title": "UnpublishIntegrationResponse",
+        "type": "object"
+      },
+      "UnreadSource": {
+        "description": "A connected app the brief could not read this time, and why.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ScoutSkipReason"
+          }
+        },
+        "required": [
+          "app",
+          "reason"
+        ],
+        "title": "UnreadSource",
         "type": "object"
       },
       "UpdateCustomIntegrationRequest": {
@@ -21519,6 +24893,16 @@
             ],
             "title": "Activated"
           },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "anyOf": [
               {
@@ -21578,17 +24962,6 @@
               }
             ],
             "title": "Integration Ids"
-          },
-          "notify_on_completion": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notify On Completion"
           },
           "prompt": {
             "anyOf": [
@@ -22767,6 +26140,32 @@
         "title": "WorkStatus",
         "type": "string"
       },
+      "WorkflowCompletedNotification": {
+        "additionalProperties": false,
+        "description": "A finished workflow run; its result is in the conversation.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "workflow_completed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "workflow_id",
+          "conversation_id"
+        ],
+        "title": "WorkflowCompletedNotification",
+        "type": "object"
+      },
       "WorkflowCreator": {
         "description": "The public-facing creator card built by ``format_creator``.\n\nA ``TypedDict``, not a model: it rides inside the untyped card dicts of\n``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it\nhas to stay a plain dict on the wire for both.",
         "properties": {
@@ -22804,6 +26203,16 @@
         ],
         "title": "WorkflowCreator",
         "type": "object"
+      },
+      "WorkflowDelivery": {
+        "description": "How a finished workflow run's result reaches the user.\n\nFailures always notify, whatever the mode: a broken workflow needs the user\nnow. A run whose narration decides there is nothing worth reporting reaches\nnobody in any mode.",
+        "enum": [
+          "now",
+          "brief",
+          "silent"
+        ],
+        "title": "WorkflowDelivery",
+        "type": "string"
       },
       "WorkflowExecution": {
         "description": "A single workflow execution record.",
@@ -23005,6 +26414,40 @@
         "title": "WorkflowExecutionsResponse",
         "type": "object"
       },
+      "WorkflowFailedNotification": {
+        "additionalProperties": false,
+        "description": "A workflow run that errored or that a limit stopped.",
+        "properties": {
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The exception's class name, when the worker saw it.",
+            "title": "Error Type"
+          },
+          "kind": {
+            "const": "workflow_failed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "workflow_id",
+          "error_type"
+        ],
+        "title": "WorkflowFailedNotification",
+        "type": "object"
+      },
       "WorkflowFiredItem": {
         "description": "The workflow card that started a run; the run's reply is its own item.",
         "properties": {
@@ -23072,6 +26515,36 @@
           "message"
         ],
         "title": "WorkflowMessageResponse",
+        "type": "object"
+      },
+      "WorkflowPausedNotification": {
+        "additionalProperties": false,
+        "description": "A workflow paused until the integrations it needs are connected.",
+        "properties": {
+          "kind": {
+            "const": "workflow_paused",
+            "title": "Kind",
+            "type": "string"
+          },
+          "missing_integrations": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Missing Integrations",
+            "type": "array"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "workflow_id",
+          "missing_integrations"
+        ],
+        "title": "WorkflowPausedNotification",
         "type": "object"
       },
       "WorkflowResponse": {
@@ -23327,6 +26800,10 @@
             ],
             "description": "Why the workflow is not activated. None means the user turned it off themselves \u2014 only system-paused workflows may be resumed automatically."
           },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "description": "How a finished run's result reaches the user: pushed now, held for the next brief, or kept silent in the workflow's conversation. Failures always notify."
+          },
           "description": {
             "default": "",
             "description": "Short display description for cards/UI (1-2 sentences)",
@@ -23479,12 +26956,6 @@
             ],
             "description": "Required integrations the user has not connected yet.",
             "title": "Missing Integrations"
-          },
-          "notify_on_completion": {
-            "default": true,
-            "description": "Whether GAIA sends the automatic completion notification when a run finishes. When False the run is silent (failures still notify) and the agent only notifies if the workflow's own instructions ask it to.",
-            "title": "Notify On Completion",
-            "type": "boolean"
           },
           "occurrence_count": {
             "default": 0,
@@ -23672,7 +27143,7 @@
           "gate",
           "activated",
           "deactivated_reason",
-          "notify_on_completion",
+          "delivery",
           "last_executed_at",
           "is_public",
           "is_explore",
@@ -23694,6 +27165,34 @@
           "missing_integrations"
         ],
         "title": "WorkflowWithIntegrations",
+        "type": "object"
+      },
+      "WorkspaceFileTarget": {
+        "additionalProperties": false,
+        "description": "A file GAIA wrote in one conversation's workspace, by its path under the workspace's files.",
+        "properties": {
+          "conversation_id": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "type": {
+            "const": "workspace_file",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "conversation_id",
+          "path"
+        ],
+        "title": "WorkspaceFileTarget",
         "type": "object"
       },
       "WritingStyleEditRequest": {
@@ -24096,6 +27595,128 @@
         "summary": "Post Approval Decision",
         "tags": [
           "Approvals"
+        ]
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}": {
+      "get": {
+        "description": "One of the user's artifacts, program included.",
+        "operationId": "artifacts_get_artifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenUIArtifactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Artifact",
+        "tags": [
+          "Artifacts"
+        ]
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}/pdf": {
+      "get": {
+        "description": "One of the user's artifacts as an A4 PDF.",
+        "operationId": "artifacts_get_artifact_pdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Artifact Pdf",
+        "tags": [
+          "Artifacts"
         ]
       }
     },
@@ -25565,6 +29186,586 @@
         "summary": "Unlink Platform Account",
         "tags": [
           "Bot"
+        ]
+      }
+    },
+    "/api/v1/briefings": {
+      "get": {
+        "description": "One page of the user's briefings archive (daily + weekly) as their cards, newest first.",
+        "operationId": "briefings_list_briefings",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The previous page's next_cursor; omit for the first page.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The previous page's next_cursor; omit for the first page.",
+              "title": "Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Briefings",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/editions": {
+      "get": {
+        "description": "Every daily edition family a brief can draw, and whether the user keeps it on or favours it.",
+        "operationId": "briefings_read_briefing_editions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingEditions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Briefing Editions",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      },
+      "put": {
+        "description": "Replace which daily edition families are off or favourited; at least one must stay on.",
+        "operationId": "briefings_update_briefing_editions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefingEditionsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingEditions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Briefing Editions",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/editions/{key}/{variant}": {
+      "get": {
+        "description": "Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.",
+        "operationId": "briefings_get_edition_image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "variant",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EditionVariant"
+            }
+          },
+          {
+            "description": "The signature the brief's edition URL carries.",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "description": "The signature the brief's edition URL carries.",
+              "title": "T",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {},
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Edition Image",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/postmarks": {
+      "get": {
+        "description": "The Air Mail city stamps the user has collected, each linked to its brief.",
+        "operationId": "briefings_get_postmarks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostmarksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Postmarks",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/schedule": {
+      "get": {
+        "description": "How often the user's briefs come, the daily brief's hour on their clock, and whether they run.",
+        "operationId": "briefings_read_briefing_schedule",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingScheduleState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Briefing Schedule",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      },
+      "put": {
+        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.",
+        "operationId": "briefings_update_briefing_schedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefingScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingScheduleState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefDeliveryWorkflowsConflict"
+                }
+              }
+            },
+            "description": "Briefs cannot turn off while workflows deliver to the brief"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Briefing Schedule",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/stamps/{slug}.webp": {
+      "get": {
+        "description": "Serve a catalogued city's web-sized stamp art, the same file for everyone; any other slug is a 404.",
+        "operationId": "briefings_get_stamp_art",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/webp": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Stamp Art",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/{briefing_id}": {
+      "get": {
+        "description": "Return one of the user's briefs; the first open marks it and emits briefing:opened.",
+        "operationId": "briefings_get_briefing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "briefing_id",
+            "required": true,
+            "schema": {
+              "title": "Briefing Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Briefing",
+        "tags": [
+          "Briefings",
+          "Briefings"
         ]
       }
     },
@@ -31439,6 +35640,1032 @@
         "summary": "Get Integration Tools Endpoint",
         "tags": [
           "Integrations"
+        ]
+      }
+    },
+    "/api/v1/l": {
+      "post": {
+        "description": "Share an artifact you own: its live link, minted with the given settings when none is live.\n\nTurns sharing back on for a target its owner had stopped sharing. The\ntarget's own read under your account is the ownership check.",
+        "operationId": "short_links_create_short_link_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Target not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Create Short Link Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/state": {
+      "post": {
+        "description": "Say whether one of your artifacts is shared, with its live link and settings. Never mints one.\n\nA POST only because a target is a structured reference, which a query string cannot carry.",
+        "operationId": "short_links_get_share_state_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkShareState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Share State Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/unshare": {
+      "post": {
+        "description": "Stop sharing one of your artifacts: its link goes dead immediately, and GAIA\nattaches no new one until you share it again. Idempotent; says whether a link died.",
+        "operationId": "short_links_stop_sharing_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopSharingResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Stop Sharing Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}": {
+      "get": {
+        "description": "Open a link: its target's public view and any framed content, or the denial the viewer sees.",
+        "operationId": "short_links_resolve_short_link_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Resolve Short Link Route",
+        "tags": [
+          "Short Links"
+        ]
+      },
+      "patch": {
+        "description": "Change who one of your live links opens for, or when it expires.",
+        "operationId": "short_links_update_link_settings_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Link not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Link Settings Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/content-token": {
+      "post": {
+        "description": "Sign a short-lived URL that loads the link's file from the content origin, after the link's access check.",
+        "operationId": "short_links_content_token_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Content Token Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/download": {
+      "get": {
+        "description": "Save the file behind a link: always an attachment, so it never renders on this origin.",
+        "operationId": "short_links_download_link_file_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Download Link File Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/meta": {
+      "get": {
+        "description": "What a chat preview or the page's metadata may show for a link, for anyone. No auth.",
+        "operationId": "short_links_link_preview_meta_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkPreviewMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Link Preview Meta Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/opened": {
+      "post": {
+        "description": "Open the link from the viewer's browser once the page shows: what they see, counted as an open.\n\nNot the resolve: public pages resolve during SSR, where neither the viewer's\nsession nor their browser is visible, and unfurl bots resolve them too.",
+        "operationId": "short_links_record_open_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Record Open Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/pdf": {
+      "get": {
+        "description": "What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for.",
+        "operationId": "short_links_get_short_link_pdf_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Short Link Pdf Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/report": {
+      "post": {
+        "description": "Report a link that breaks GAIA's terms; enough distinct reporters suspend it.",
+        "operationId": "short_links_report_link_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "Sign in to open this."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "You don't have access to this."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "This link doesn't exist."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDenialEnvelope"
+                }
+              }
+            },
+            "description": "The link is dead: revoked, expired, removed or its target deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Report Link Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/rotate": {
+      "post": {
+        "description": "Replace one of your live links with a new URL; the old one stops opening at once.",
+        "operationId": "short_links_rotate_link_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Link not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Rotate Link Route",
+        "tags": [
+          "Short Links"
         ]
       }
     },
@@ -42248,7 +47475,7 @@
     },
     "/api/v1/upload": {
       "post": {
-        "description": "Upload a file, persist metadata, and generate embeddings for images.",
+        "description": "Upload a file, persist metadata, and generate embeddings for images.\n\nA client that cancelled while the file was being stored never learns its id, so\nthe stored file is deleted here instead of being left orphaned.",
         "operationId": "file_upload_file_endpoint",
         "parameters": [
           {
@@ -42889,8 +48116,26 @@
     },
     "/api/v1/user/logout": {
       "post": {
-        "description": "Logout user and return logout URL for frontend redirection.",
+        "description": "Log the user out and return where the browser goes next.\n\nreturn_url, a path on this site, is for switching accounts: the identity\nprovider's logout lands on the sign-in page, which then returns there.",
         "operationId": "user_logout",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "return_url",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return Url"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

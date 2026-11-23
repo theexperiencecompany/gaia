@@ -36,6 +36,8 @@ export {
 } from "./models";
 export type { Note, NoteCreate, NoteListResponse, NoteUpdate } from "./notes";
 export type {
+  BriefingFrequency,
+  BriefingScheduleState,
   ChannelPlatform,
   ChannelPreferences,
   InAppNotification,
@@ -46,6 +48,8 @@ export type {
   PlatformLinksResponse,
 } from "./notification";
 export {
+  EMAIL_CHANNEL_DESCRIPTION,
+  NOTIFICATION_CHANNELS,
   NotificationActionStyle,
   NotificationActionType,
   NotificationStatus,
@@ -110,8 +114,6 @@ export type {
 export type {
   CommunityWorkflow,
   ContentCreator,
-  CreateWorkflowPayload,
-  ExecutionConfig,
   TriggerConfig,
   Workflow,
   WorkflowListResponse,

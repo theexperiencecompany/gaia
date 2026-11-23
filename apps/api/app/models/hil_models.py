@@ -47,6 +47,31 @@ class HILToolRiskRecord(MongoDocument):
     classified_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class ToolReadOnlyVerdict(MongoDocument):
+    """The cheap model's cached read-only verdict on one tool (Mongo tool_read_only_verdicts).
+
+    Keyed by tool_hash over name, description and input schema, and by the classifier (model
+    and prompt) that judged it: a change to either re-classifies.
+    """
+
+    tool_hash: str
+    classifier: str
+    tool_name: str
+    read_only: bool
+    rationale: str = ""
+    classified_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ToolReadOnlyVerdictUpdate(BaseModel):
+    """Partial update for a read-only verdict (repository write model)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    read_only: bool | None = None
+    rationale: str | None = None
+    classified_at: datetime | None = None
+
+
 class HILToolRiskUpdate(BaseModel):
     """Partial update for a tool-risk record (repository write model)."""
 

@@ -5,6 +5,7 @@ Pydantic models for bot chat, sessions, and related operations.
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.platform_links import Platform
 from app.models.document_models import MongoDocument
 from app.models.message_models import FileData
@@ -236,7 +237,7 @@ class IntegrationInfo(BaseModel):
 
     name: str = Field(..., description="Integration name")
     logo_url: str | None = Field(None, description="Integration logo URL")
-    status: str = Field(..., description="Integration status: 'created' or 'connected'")
+    status: IntegrationStatus = Field(..., description="Integration connection status")
 
 
 class BotSettingsResponse(BaseModel):

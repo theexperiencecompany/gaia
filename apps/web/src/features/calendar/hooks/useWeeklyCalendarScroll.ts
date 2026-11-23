@@ -1,5 +1,6 @@
 "use client";
 
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { RefObject } from "react";
@@ -226,8 +227,8 @@ export const useWeeklyCalendarScroll = (): UseWeeklyCalendarScrollResult => {
       const visibleDate = extendedDates[visibleDateIndex];
 
       if (visibleDate) {
-        const month = visibleDate.toLocaleDateString("en-US", {
-          month: "long",
+        const month = formatDate(visibleDate, "month", {
+          locale: FIXED_LOCALE,
         });
         const year = visibleDate.getFullYear().toString();
         setVisibleMonthYear(month, year);

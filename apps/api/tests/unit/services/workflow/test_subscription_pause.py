@@ -71,7 +71,7 @@ class TestDeactivateWorkflowsForLapsedSubscription:
     async def test_scopes_to_the_given_user_only(self) -> None:
         """Deactivating another user's workflows would be a real data-safety bug."""
 
-        async def _activated(user_id: str) -> list[MagicMock]:
+        async def _activated(user_id: str, *, excluding_keys: object) -> list[MagicMock]:
             return [_workflow("wf-mine")] if user_id == USER_ID else [_workflow("wf-other")]
 
         with (

@@ -1095,6 +1095,10 @@ class TestErrorHandling:
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new=AsyncMock(),
             ),
+            patch(
+                "app.services.mcp.mcp_client.user_integration_repository.has_connected_before",
+                new=AsyncMock(return_value=False),
+            ),
         ):
             with pytest.raises(ValueError, match="OAuth authorization required"):
                 await client.connect("no-token-int")

@@ -9,6 +9,8 @@ from uuid import NAMESPACE_URL, uuid5
 import time_machine
 
 from app.constants.chat import ConversationSource
+from app.constants.notifications import NotificationKind
+from app.models.notification.details_models import ApprovalNotification
 from app.models.notification.notification_models import (
     ChannelConfig,
     NotificationContent,
@@ -43,11 +45,9 @@ def _request(channels: list[ChannelConfig]) -> NotificationRequest:
         source=NotificationSourceEnum.APPROVAL,
         channels=channels,
         content=NotificationContent(title="GAIA needs your approval", body="Send the deck to Bob"),
-        metadata={
-            "type": "hil_approval",
-            "conversation_id": CONVERSATION_ID,
-            "approval_id": "ap_1",
-        },
+        details=ApprovalNotification(
+            kind=NotificationKind.APPROVAL, conversation_id=CONVERSATION_ID, approval_id="ap_1"
+        ),
         message=(
             "**OK to send the deck to Bob?**\n\n"
             f"[Approve or decline it in GAIA]({FILE_LINKS.conversation_page(CONVERSATION_ID)})"

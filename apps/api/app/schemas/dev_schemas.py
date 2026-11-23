@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from app.constants.briefing import BriefingKind, BriefingRunOutcome
+
 
 class CreateDevUserRequest(BaseModel):
     """Mint (find-or-create) a dev user by email."""
@@ -20,6 +22,16 @@ class SeedDevDataRequest(BaseModel):
         default_factory=list,
         description="Platforms to link (discord, slack, telegram, whatsapp)",
     )
+    postmarks: int = Field(
+        default=0,
+        ge=0,
+        description="Delivered past Air Mail briefs to seed, each with a distinct city stamp",
+    )
+    editions: int = Field(
+        default=0,
+        ge=0,
+        description="Delivered past daily briefs to seed, one per non-postal edition family, plus a weekly recap",
+    )
     pro: bool = Field(
         default=False,
         description="Grant an active dev Pro subscription, so paid-only surfaces open",
@@ -33,6 +45,8 @@ class SeedDevDataResponse(BaseModel):
     user_id: str
     todos_created: int
     conversations_created: int
+    postmarks_created: int
+    editions_created: int
     platforms_linked: list[str]
     pro: bool
     # Contract for harness clients: inject messages as these ids — never
@@ -76,6 +90,14 @@ class RunDevAgentRequest(BaseModel):
         max_length=100,
         description="DEV_MODEL_OPTIONS key (e.g. custom, minimax-m3). Unset = DEV_DEFAULT_MODEL.",
     )
+
+
+class DevBriefingRunResponse(BaseModel):
+    """How a dev-triggered briefing run ended."""
+
+    user_id: str
+    kind: BriefingKind
+    outcome: BriefingRunOutcome
 
 
 class DevAgentRunResponse(BaseModel):

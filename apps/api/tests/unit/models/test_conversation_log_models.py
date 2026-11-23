@@ -5,6 +5,7 @@ import pytest
 
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
+    ArtifactDeltaEvent,
     EntryFrame,
     EntryUpdatedFrame,
     FollowUpActionsEvent,
@@ -37,6 +38,7 @@ from app.models.conversation_log_models import (
     ReplySettled,
     UserMessage,
 )
+from app.models.openui_artifact_models import ArtifactDelta, ArtifactKind
 from app.models.stream_events import (
     MessageBoundaryPayload,
     ReasoningPayload,
@@ -227,6 +229,11 @@ _PAYLOADS: list[StreamPayload] = [
     FollowUpActionsEvent(follow_up_actions=["more"]),
     TodoProgressEvent(todo_progress={"done": 1}),
     ImageEvent(image_data=ImageData(url="https://x.dev/a.png", prompt="a fox")),
+    ArtifactDeltaEvent(
+        artifact_delta=ArtifactDelta(
+            stream_id="s1", kind=ArtifactKind.REPORT, title="Q3", delta="root = "
+        )
+    ),
 ]
 
 

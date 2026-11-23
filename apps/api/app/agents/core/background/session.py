@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
@@ -136,7 +138,8 @@ class ExecutorRun:
     #: own boundary can carry it and the ledger can attribute its calls to the run.
     workflow_execution_id: str | None = None
     workflow_title: str = ""
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
+    workflow_message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     active_todo_id: str | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
@@ -176,7 +179,8 @@ class ExecutorRun:
             workflow_id=view.workflow_id,
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=view.workflow_title,
-            workflow_notify_on_completion=view.workflow_notify_on_completion,
+            workflow_delivery=view.workflow_delivery,
+            workflow_message_class=view.workflow_message_class,
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,

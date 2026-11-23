@@ -1,5 +1,7 @@
 """Workflow generation prompts for GAIA workflow system."""
 
+from app.constants.workflows import WorkflowDelivery
+
 # =============================================================================
 # WHAT A WORKFLOW'S EXECUTION PROMPT MAY CONTAIN
 # =============================================================================
@@ -264,6 +266,14 @@ like "only if something needs my attention"), deliver that alert with send_notif
 Otherwise finish without notifying.
 """
 
+WORKFLOW_BRIEF_NOTIFY_SECTION = """
+NOTIFICATIONS: This workflow's result goes into the user's next brief. GAIA does NOT notify the
+user when the run finishes; it holds the result and the brief carries it. Do NOT call
+send_notification to announce or deliver the result. Only call it if the workflow instructions
+above explicitly ask for an immediate alert during the run (e.g. "ping me right away if an
+invoice is overdue").
+"""
+
 WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their behalf. This is an automated run, so finish it end to end and don't ask the user anything.
 
 **Workflow:** {workflow_title}
@@ -340,3 +350,11 @@ EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You're running the user's saved workflow, t
 
 Use the email above as context for the run, treat the whole workflow as one job, and get it all done in this run. If this workflow only fetches, reads, or summarizes data, do NOT create a tracked todo for it.
 """
+
+
+#: The notification rule a background workflow run follows, by its delivery mode.
+WORKFLOW_DELIVERY_SECTIONS: dict[WorkflowDelivery, str] = {
+    WorkflowDelivery.NOW: WORKFLOW_AUTO_NOTIFY_SECTION,
+    WorkflowDelivery.BRIEF: WORKFLOW_BRIEF_NOTIFY_SECTION,
+    WorkflowDelivery.SILENT: WORKFLOW_SILENT_NOTIFY_SECTION,
+}

@@ -7,7 +7,7 @@ the TTL anchor are what the assertions read.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -78,3 +78,24 @@ class TestEmailVerdictsRepository:
 
     async def test_an_unknown_message_reads_none(self, repo):
         assert await repo.get("never", user_id=USER) is None
+
+    async def test_list_since_returns_the_users_verdicts_asked_at_or_after_the_cutoff(
+        self, repo, raw_collection
+    ):
+        since = datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        for message_id, user_id, created_at in [
+            ("at-cutoff", USER, since),
+            ("later", USER, since + timedelta(hours=1)),
+            ("before", USER, since - timedelta(seconds=1)),
+            ("theirs", OTHER, since + timedelta(hours=1)),
+        ]:
+            doc = _verdict(user_id=user_id)
+            doc.message_id = message_id
+            await repo.keep(doc)
+            await raw_collection.update_one(
+                {"user_id": user_id, "message_id": message_id}, {"$set": {"created_at": created_at}}
+            )
+
+        found = await repo.list_since(USER, since=since)
+
+        assert sorted(v.message_id for v in found) == ["at-cutoff", "later"]

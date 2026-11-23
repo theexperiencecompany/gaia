@@ -1,15 +1,6 @@
-import { Spinner, Tooltip } from "@heroui/react";
-import { Cancel01Icon } from "@icons";
-import { formatFileSize } from "@shared/utils";
-import Image from "next/image";
-import { useState } from "react";
-import { GaiaButton } from "@/components/shared/GaiaButton";
-import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
-import {
-  getFileTypeExtension,
-  getFormattedFileType,
-} from "@/features/chat/components/files/fileTypeConfig";
-import { isPrivateBlobUrl } from "@/lib/privateBlob";
+import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import { FileCard } from "@/features/chat/components/files/FileCard";
+import { useSidebarPreview } from "@/features/chat/hooks/useSidebarPreview";
 
 export interface UploadedFilePreview {
   id: string;
@@ -27,88 +18,39 @@ interface FilePreviewProps {
   onRemove: (id: string) => void;
 }
 
-const FileChip: React.FC<{
+function ComposerFileCard({
+  file,
+  onRemove,
+}: {
   file: UploadedFilePreview;
   onRemove: (id: string) => void;
-}> = ({ file, onRemove }) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const isTruncated = file.name.length > 18;
+}) {
+  const preview = useSidebarPreview(
+    <FileViewerPanel
+      source={{ kind: "url", url: file.url }}
+      filename={file.name}
+      contentType={file.type}
+      sizeBytes={file.size}
+    />,
+  );
+  const canOpen = !file.isUploading && file.url !== "";
 
   return (
-    <div
-      className={`group/filetype group relative flex ${file.type.startsWith("image/") ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center" : "max-w-[220px] min-w-[180px] p-2 pr-8"} items-center rounded-xl bg-zinc-700 transition-colors hover:bg-zinc-900`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {file.isUploading && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/30">
-          <Spinner size="sm" />
-        </div>
-      )}
-
-      <GaiaButton
-        aria-label="Remove file"
-        isIconOnly
-        size="sm"
-        variant="tertiary"
-        isDisabled={file.isUploading}
-        shape="pill"
-        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 opacity-0 transition-opacity group-hover:opacity-100"
-        onPress={() => onRemove(file.id)}
-      >
-        <Cancel01Icon size={14} />
-      </GaiaButton>
-
-      {file.type.startsWith("image/") ? (
-        <div className="h-12 w-12 overflow-hidden rounded-md">
-          <Image
-            src={file.url}
-            unoptimized={isPrivateBlobUrl(file.url)}
-            alt={file.name}
-            width={40}
-            height={40}
-            className="h-full w-full object-cover"
-          />
-        </div>
-      ) : (
-        <>
-          <div className="mr-2.5 flex shrink-0 items-center">
-            <FileTypeIcon
-              extension={getFileTypeExtension(file.type, file.name)}
-              size={36}
-              isHovered={isHovered}
-            />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col">
-            {isTruncated ? (
-              <Tooltip isOpen={isHovered}>
-                <Tooltip.Trigger>
-                  <p className="truncate text-sm font-medium text-white">
-                    {file.name.substring(0, 15)}...
-                  </p>
-                </Tooltip.Trigger>
-                <Tooltip.Content placement="top start" showArrow>
-                  {file.name}
-                </Tooltip.Content>
-              </Tooltip>
-            ) : (
-              <p className="truncate text-sm font-medium text-white">
-                {file.name}
-              </p>
-            )}
-            <div className="flex items-center">
-              <span className="text-xs text-zinc-400">
-                {file.size !== undefined
-                  ? formatFileSize(file.size)
-                  : getFormattedFileType(file.type, file.name)}
-              </span>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <>
+      {preview.panel}
+      <FileCard
+        name={file.name}
+        mimeType={file.type}
+        sizeBytes={file.size}
+        thumbnailUrl={file.type.startsWith("image/") ? file.url : undefined}
+        surface="composer"
+        isUploading={file.isUploading}
+        onPress={canOpen ? preview.open : undefined}
+        onRemove={() => onRemove(file.id)}
+      />
+    </>
   );
-};
+}
 
 const FilePreview: React.FC<FilePreviewProps> = ({ files, onRemove }) => {
   if (files.length === 0) return null;
@@ -117,7 +59,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ files, onRemove }) => {
     <div className="mb-2 flex w-full flex-col gap-2 rounded-t-xl px-3 py-2">
       <div className="flex w-full flex-wrap gap-2">
         {files.map((file) => (
-          <FileChip key={file.id} file={file} onRemove={onRemove} />
+          <ComposerFileCard key={file.id} file={file} onRemove={onRemove} />
         ))}
       </div>
     </div>

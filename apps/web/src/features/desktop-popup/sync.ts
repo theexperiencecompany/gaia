@@ -7,7 +7,6 @@ import {
   useLiveConversationStore,
 } from "@/features/chat/live/liveConversationStore";
 import type { PaywallSource } from "@/lib/analytics";
-import { type AuxLoading, useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { UpgradeOffer } from "@/stores/upgradeModal.types";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -30,8 +29,6 @@ interface PopupChatState {
   activeConversationId: string | null;
   /** The active conversation as its event stream has built it. */
   live: LiveConversation | null;
-  /** Auxiliary (voice/upload) loading, mirrored as-is. */
-  auxLoading: AuxLoading | null;
   /**
    * Whether the paid-only wall is up, and the offer behind it. The composer
    * window is where a 402 lands (it owns sending), but it is a 420x48 pill
@@ -65,7 +62,6 @@ function snapshot(): PopupChatState {
     type: "state",
     activeConversationId: id,
     live: id ? liveConversation(id) : null,
-    auxLoading: useAuxLoadingStore.getState().auxLoading,
   };
 }
 
@@ -91,7 +87,6 @@ export function usePopupChatPublisher(): void {
 
     const unsubChat = useChatStore.subscribe(schedule);
     const unsubLive = useLiveConversationStore.subscribe(schedule);
-    const unsubAux = useAuxLoadingStore.subscribe(schedule);
     const unsubPaywall = useUpgradeModalStore.subscribe(schedule);
     channel.onmessage = (event: MessageEvent<PopupChatMessage>) => {
       if (event.data?.type === "hello") publish();
@@ -103,7 +98,6 @@ export function usePopupChatPublisher(): void {
       clearTimeout(timer);
       unsubChat();
       unsubLive();
-      unsubAux();
       unsubPaywall();
       channel.close();
     };
@@ -139,7 +133,6 @@ export function usePopupChatConsumer(): void {
         useLiveConversationStore
           .getState()
           .mirror(data.activeConversationId, data.live);
-      useAuxLoadingStore.setState({ auxLoading: data.auxLoading });
     };
 
     channel.postMessage({ type: "hello" } satisfies PopupChatHello);

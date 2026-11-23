@@ -28,6 +28,23 @@ describe("serverFetch", () => {
     fetchMock.mockReset();
   });
 
+  it("carries the server's INTERNAL_API_TOKEN on every attempt", async () => {
+    vi.stubEnv("INTERNAL_API_TOKEN", "t0ken");
+    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+    fetchMock
+      .mockRejectedValueOnce(timeout())
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    const pending = serverFetch(new Request(CONFIG_URL));
+    await vi.runAllTimersAsync();
+    await pending;
+
+    const sent = fetchMock.mock.calls.map(([input]) =>
+      (input as Request).headers.get("X-Gaia-Internal"),
+    );
+    expect(sent).toEqual(["t0ken", "t0ken"]);
+  });
+
   it("retries a build-time timeout and returns the response that arrives", async () => {
     vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
     fetchMock

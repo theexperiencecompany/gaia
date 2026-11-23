@@ -1,9 +1,11 @@
 """What a workflow run's prompt reads off the trigger that fired it."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.waits import WAIT_MET_CONTEXT_KEY
+from app.constants.workflows import WorkflowDelivery
+from app.models.legacy_delivery import LEGACY_RUN_NOTIFY_KEY, delivery_from_legacy_flag
 from app.models.trigger_gate_models import QuietHoursStamp
 
 
@@ -29,7 +31,7 @@ class WorkflowTriggerContext(BaseModel):
 
     tracked_todos_context: str = ""
     workflow_id: str | None = None
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
     playbook_fallback: str | None = Field(
         default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
     )
@@ -40,3 +42,11 @@ class WorkflowTriggerContext(BaseModel):
     trigger_data: dict[str, object] = Field(default_factory=dict)
     quiet_hours: QuietHoursStamp | None = None
     wait_met: str | None = Field(default=None, validation_alias=WAIT_MET_CONTEXT_KEY)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Map the old notify flag a context queued or logged before delivery modes carries."""
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_RUN_NOTIFY_KEY, delivery_key="workflow_delivery"
+        )

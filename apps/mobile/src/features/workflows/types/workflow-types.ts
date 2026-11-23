@@ -1,6 +1,7 @@
 import type { WorkflowExecution } from "@gaia/shared/api/generated";
 
 export type {
+  CreateWorkflowRequest,
   WorkflowExecution,
   WorkflowExecutionResponse,
 } from "@gaia/shared/api/generated";
@@ -10,8 +11,6 @@ import type { TriggerConfig, WorkflowStep } from "@gaia/shared/types";
 export type {
   CommunityWorkflow,
   ContentCreator,
-  CreateWorkflowPayload,
-  ExecutionConfig,
   TriggerConfig,
   Workflow,
   WorkflowListResponse,

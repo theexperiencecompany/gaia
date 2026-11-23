@@ -16,7 +16,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from prometheus_client import Counter
 
-from app.agents.tools.coding._artifacts import publish_artifact
+from app.agents.tools.coding._artifacts import artifact_links_note, publish_artifact
 from app.agents.tools.coding._context import (
     get_session_id,
     get_user_id,
@@ -25,6 +25,7 @@ from app.agents.tools.coding._context import (
 )
 from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
+    detect_content_type,
     is_under_workspace,
     runs_log_dir,
     session_artifacts,
@@ -32,6 +33,7 @@ from app.agents.workspace.paths import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    ARTIFACT_MTIME_SKEW_SECONDS,
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
     BASH_MAX_TIMEOUT_SECONDS,
@@ -64,7 +66,7 @@ from app.services.sandbox.execute_client import (
     sandbox_execute_enabled,
     seed_execute_client,
 )
-from app.services.storage import FsOps, fs_timer
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.services.triggers.subscription_service import unregister_subscription
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
@@ -447,6 +449,7 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
             if isinstance(lab_result, str):
                 return _emit_bash_error(run.run_id, lab_result, lab_result, run.session_id)
             lab, command_env = lab_result
+            started_at = time.time()
             try:
                 result = await _run_sandbox_command(
                     sbx=sbx,
@@ -463,7 +466,10 @@ async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) 
                 # curl -o, …), not just the write tool. Enumerate the session's
                 # artifacts/ from the sandbox itself (no cross-mount race) in real time.
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, run.session_id)
+                    links = await _publish_artifacts(
+                        sbx, run.user_id, run.session_id, changed_since=started_at
+                    )
+                result += artifact_links_note(links)
             # Equivalent under mutation: lab is set exactly when run_todo_id is
             # (_lab_run_and_env); the second test only narrows run_todo_id's type.
             if lab is not None and run_todo_id is not None:  # pragma: no mutate
@@ -508,21 +514,26 @@ async def _run_bash(
     return await _execute_invocation(run=run, run_todo_id=request.run_todo_id)
 
 
-async def _publish_artifacts(sbx: object, session_id: str) -> None:
-    """Put a card on the run for every file in the session's artifacts/, in one sandbox round-trip.
+async def _publish_artifacts(
+    sbx: object, user_id: str, session_id: str, *, changed_since: float
+) -> dict[str, str]:
+    """Card each file in artifacts/ on the run; return the links of the ones this command wrote.
 
-    Covers what the write tool cannot see (cat, python, mv, curl). Fields and records are
-    NUL-delimited, which no filename can contain: <path>\0<size>\0<mtime>\0.
+    Covers what the write tool cannot see (cat, python, mv, curl), in one sandbox round-trip.
+    Only a file with mtime at or after changed_since (less ARTIFACT_MTIME_SKEW_SECONDS for
+    host/sandbox clock drift) is linked, so a command never shares every file in the session.
+    Fields and records are NUL-delimited, which no filename can contain: <path>\0<size>\0<mtime>\0.
     """
     enumerate_cmd = (
         f"find {sh_quote(session_artifacts(session_id))} -type f "
         f"! -name '*{WORKSPACE_TMP_SUFFIX}' "
         f"-printf '%P\\0%s\\0%T@\\0' 2>/dev/null"
     )
+    links: dict[str, str] = {}
     try:
         res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
     except Exception:
-        return
+        return links
 
     # What follows the last NUL is never a field; a partial trailing record means find was cut short.
     stdout = getattr(res, "stdout", "") or ""  # pragma: no mutate — NUL-free text holds no field
@@ -539,7 +550,17 @@ async def _publish_artifacts(sbx: object, session_id: str) -> None:
             mtime = float(mtime_str) if mtime_str else time.time()
         except ValueError:
             mtime = time.time()
-        publish_artifact(session_id, rel, size_bytes, mtime)
+        placeholder = await publish_artifact(
+            user_id,
+            session_id,
+            ArtifactInfo(
+                path=rel, size_bytes=size_bytes, mtime=mtime, content_type=detect_content_type(rel)
+            ),
+            written_this_turn=mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS,
+        )
+        if placeholder:
+            links[rel] = placeholder
+    return links
 
 
 async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -> None:

@@ -6,11 +6,13 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
     Integration,
     UpdateCustomIntegrationRequest,
 )
+from app.schemas.integrations.responses import CustomIntegrationConnectionResult
 from app.services.integrations.publish_service import PublishError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
@@ -66,7 +68,9 @@ class TestCreateCustomIntegration:
             mock_mcp.return_value = MagicMock()
             mock_create.return_value = (
                 _integration(),
-                {"status": "connected", "tools_count": 3},
+                CustomIntegrationConnectionResult(
+                    status=IntegrationStatus.CONNECTED, tools_count=3
+                ),
             )
             resp = await client.post(BASE, json=_create_payload())
 
@@ -98,7 +102,9 @@ class TestCreateCustomIntegration:
             mock_mcp.return_value = MagicMock()
             mock_create.return_value = (
                 _integration(),
-                {"status": "connected", "tools_count": 3},
+                CustomIntegrationConnectionResult(
+                    status=IntegrationStatus.CONNECTED, tools_count=3
+                ),
             )
             resp = await client.post(BASE, json=_create_payload(bearer_token="tok-123"))
 
@@ -128,7 +134,9 @@ class TestCreateCustomIntegration:
         ):
             mock_create.return_value = (
                 _integration(),
-                {"status": "requires_oauth", "oauth_url": "https://auth.example.com/start"},
+                CustomIntegrationConnectionResult(
+                    status="requires_oauth", oauth_url="https://auth.example.com/start"
+                ),
             )
             resp = await client.post(BASE, json=_create_payload())
 
@@ -150,7 +158,7 @@ class TestCreateCustomIntegration:
         ):
             mock_create.return_value = (
                 _integration(),
-                {"status": "failed", "error": "connection refused"},
+                CustomIntegrationConnectionResult(status="failed", error="connection refused"),
             )
             resp = await client.post(BASE, json=_create_payload())
 

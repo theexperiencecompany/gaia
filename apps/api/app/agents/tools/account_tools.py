@@ -11,17 +11,22 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.agents.tools.core.mutations import define_mutation_tool
+from app.constants.briefing import BRIEFS_PAUSED_FOR_PLAN_NOTE, BriefingFrequency
 from app.decorators import enforce_rate_limit
+from app.models.brief_settings_models import BriefFreeDelivery
 from app.services.account_fs import schedule_account_sync
 from app.services.account_settings import (
     select_voice,
     set_notification_channels,
     set_preferences,
 )
+from app.services.briefing import schedule as briefing_schedule
+from app.services.briefing.run_times import describe_briefing_schedule, user_brief_slots
 from app.services.platform_link_service import (
     disconnect_platform_account,
     start_platform_connect,
 )
+from app.services.user_service import require_user
 from shared.py.analytics.catalog.settings import AccountSettingChanged
 from shared.py.wide_events import log
 
@@ -36,6 +41,7 @@ class UpdateNotificationSettingsArgs(BaseModel):
     discord: bool | None = Field(default=None, description="Enable/disable Discord notifications")
     whatsapp: bool | None = Field(default=None, description="Enable/disable WhatsApp notifications")
     slack: bool | None = Field(default=None, description="Enable/disable Slack notifications")
+    imessage: bool | None = Field(default=None, description="Enable/disable iMessage notifications")
     email: bool | None = Field(default=None, description="Enable/disable email notifications")
 
 
@@ -54,6 +60,25 @@ class SetSelectedVoiceArgs(BaseModel):
     voice: str = Field(
         description="Voice name (case-insensitive) or ElevenLabs voice id from "
         "account/voices/catalog.json"
+    )
+
+
+class SetBriefingScheduleArgs(BaseModel):
+    frequency: BriefingFrequency = Field(
+        description="daily: a brief every day plus the Sunday digest; weekdays: Monday to "
+        "Friday plus the digest; weekly_only: just the Sunday digest; off: no briefs"
+    )
+    hour: int | None = Field(
+        default=None,
+        ge=0,
+        le=23,
+        description="The daily brief's hour on the user's clock (0-23). Omit to keep the current one",
+    )
+    brief_workflows_to: BriefFreeDelivery | None = Field(
+        default=None,
+        description="Turning briefs off only: where the workflows that send their results to "
+        "the brief go instead, now (Tell me now) or silent (Don't notify me). Ask the user; "
+        "without it, off is refused while any such workflow exists",
     )
 
 
@@ -82,8 +107,8 @@ update_notification_settings = define_mutation_tool(
     area="notifications",
     description=(
         "Change which channels the user receives notifications on (email, telegram, "
-        "discord, whatsapp, slack). Only the flags you pass change; others are left as-is. "
-        + HIL_CONFIRM_NOTE
+        "discord, whatsapp, slack, imessage). Only the flags you pass change; others are "
+        "left as-is. " + HIL_CONFIRM_NOTE
     ),
     args_model=UpdateNotificationSettingsArgs,
     apply=set_notification_channels,
@@ -115,6 +140,37 @@ set_selected_voice = define_mutation_tool(
     apply=select_voice,
     event=AccountSettingChanged(area="voice"),
     resync=schedule_account_sync,
+)
+
+
+async def _set_briefing_schedule(
+    user_id: str,
+    *,
+    frequency: BriefingFrequency,
+    hour: int | None = None,
+    brief_workflows_to: BriefFreeDelivery | None = None,
+) -> str:
+    schedule = await briefing_schedule.set_briefing_schedule(
+        user_id, frequency, "agent", hour=hour, brief_workflows_to=brief_workflows_to
+    )
+    user = await require_user(user_id)
+    slots = user_brief_slots(user, schedule)
+    described = f"Briefing schedule updated: {describe_briefing_schedule(slots)}."
+    if await briefing_schedule.briefs_paused_for_plan(user_id, schedule):
+        return f"{described} {BRIEFS_PAUSED_FOR_PLAN_NOTE}"
+    return described
+
+
+set_briefing_schedule = define_mutation_tool(
+    name="set_briefing_schedule",
+    area="briefing",
+    description=(
+        "Change how often the user gets briefs (daily, weekdays, weekly_only, off) and the "
+        "hour the daily brief lands. Use it when they ask for fewer, more or no briefs, or "
+        "accept a lighter cadence a brief offered. " + HIL_CONFIRM_NOTE
+    ),
+    args_model=SetBriefingScheduleArgs,
+    apply=_set_briefing_schedule,
 )
 
 
@@ -160,5 +216,6 @@ tools = [
     update_notification_settings,
     update_preferences,
     set_selected_voice,
+    set_briefing_schedule,
     manage_linked_account,
 ]

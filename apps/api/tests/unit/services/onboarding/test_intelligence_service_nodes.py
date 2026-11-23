@@ -19,9 +19,11 @@ import pytest
 from app.agents.memory.email_processor import OnboardingFetchOptions
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
+from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
+    InboxTriageOutput,
     ProfileCardDesign,
     SocialProfile,
     UserProfileMetadata,
@@ -50,7 +52,6 @@ def _ctx(**overrides: Any) -> OnboardingContext:
         "user_id": USER,
         "name": "Ann",
         "profession": "dev",
-        "focus": "ship v2",
     }
     defaults.update(overrides)
     return OnboardingContext(**defaults)
@@ -233,7 +234,7 @@ class TestRunTriage:
             return _triage()
 
         with patch(f"{MODULE}.triage_inbox", AsyncMock(side_effect=triage_inbox)):
-            task = asyncio.create_task(_run_triage(USER, ctx, "dev", ""))
+            task = asyncio.create_task(_run_triage(USER, ctx, "dev"))
             await asyncio.sleep(0)
             assert not started.is_set(), "triage ran before the first batch was ready"
 
@@ -249,39 +250,112 @@ class TestRunTriage:
         triage_inbox = AsyncMock()
 
         with patch(f"{MODULE}.triage_inbox", triage_inbox):
-            assert await _run_triage(USER, ctx, "dev", "") is None
+            assert await _run_triage(USER, ctx, "dev") is None
 
         assert triage_inbox.await_count == 0
 
-    async def test_emails_profession_and_focus_reach_the_triager(self) -> None:
+    async def test_emails_and_profession_reach_the_triager(self) -> None:
         ctx = InboxScanContext()
         ctx.emails.append({"id": "1"})
         ctx.first_batch_ready.set()
         triage_inbox = AsyncMock(return_value=_triage())
 
         with patch(f"{MODULE}.triage_inbox", triage_inbox):
-            await _run_triage(USER, ctx, "lawyer", "close deals")
+            await _run_triage(USER, ctx, "lawyer")
 
         assert triage_inbox.await_args.args[0] == USER
-        assert triage_inbox.await_args.args[1] == [{"id": "1"}]
-        assert triage_inbox.await_args.kwargs == {"profession": "lawyer", "focus": "close deals"}
+        assert triage_inbox.await_args.args[1] == [GmailMessageSummary(id="1")]
+        assert triage_inbox.await_args.kwargs == {"profession": "lawyer"}
 
     async def test_triage_reads_a_snapshot_not_the_live_buffer(self) -> None:
         # The scan keeps appending; the triager must not see the list mutate.
         ctx = InboxScanContext()
         ctx.emails.append({"id": "1"})
         ctx.first_batch_ready.set()
-        captured: list[list[dict]] = []
+        captured: list[list[GmailMessageSummary]] = []
 
-        async def triage_inbox(user_id: str, emails: list[dict], **kwargs: Any) -> InboxTriage:
+        async def triage_inbox(
+            user_id: str, emails: list[GmailMessageSummary], **kwargs: Any
+        ) -> InboxTriage:
             captured.append(emails)
             return _triage()
 
         with patch(f"{MODULE}.triage_inbox", AsyncMock(side_effect=triage_inbox)):
-            await _run_triage(USER, ctx, "dev", "")
+            await _run_triage(USER, ctx, "dev")
 
         ctx.emails.append({"id": "2"})
-        assert captured[0] == [{"id": "1"}]
+        assert captured[0] == [GmailMessageSummary(id="1")]
+
+    @pytest.mark.regression
+    async def test_the_triage_prompt_names_real_senders_and_drops_noreply_ones(self) -> None:
+        """The scan buffers Gmail messages dumped by alias; triage read "sender", which only "from" carries."""
+        ctx = InboxScanContext()
+        ctx.emails.extend(
+            GmailMessagesResponse(
+                messages=[
+                    GmailMessageSummary.model_validate(
+                        {"id": "1", "from": "priya@client.com", "subject": "Contract redlines"}
+                    ),
+                    GmailMessageSummary.model_validate(
+                        {"id": "2", "from": "noreply@shop.com", "subject": "Your receipt"}
+                    ),
+                ]
+            ).raw_messages()
+        )
+        ctx.first_batch_ready.set()
+        prompts: list[str] = []
+
+        async def structured(_schema: type, prompt: str, **_: Any) -> InboxTriageOutput:
+            prompts.append(prompt)
+            return InboxTriageOutput(summary="s", important_emails=[], patterns=[])
+
+        with patch("app.services.onboarding.inbox_triage_service.ainvoke_structured", structured):
+            await _run_triage(USER, ctx, "dev")
+
+        [prompt] = prompts
+        assert "- priya@client.com | Contract redlines |" in prompt
+        assert "Your receipt" not in prompt
+
+    async def test_each_triage_line_names_its_labels_sender_and_subject_and_noise_is_judged_case_blind(
+        self,
+    ) -> None:
+        late_unsubscribe = "x" * 190 + "unsubscribe"  # its last letter is the 201st
+        ctx = InboxScanContext()
+        ctx.emails.extend(
+            GmailMessagesResponse(
+                messages=[
+                    GmailMessageSummary.model_validate(
+                        {
+                            "id": "1",
+                            "from": "priya@client.com",
+                            "subject": "Contract redlines",
+                            "snippet": "Sign by Friday",
+                            "labelIds": ["CATEGORY_UPDATES", "INBOX", "IMPORTANT"],
+                        }
+                    ),
+                    GmailMessageSummary.model_validate({"id": "2", "snippet": late_unsubscribe}),
+                    GmailMessageSummary.model_validate(
+                        {"id": "3", "from": "a@b.com", "snippet": "Click to UNSUBSCRIBE"}
+                    ),
+                ]
+            ).raw_messages()
+        )
+        ctx.first_batch_ready.set()
+        prompts: list[str] = []
+
+        async def structured(_schema: type, prompt: str, **_: Any) -> InboxTriageOutput:
+            prompts.append(prompt)
+            return InboxTriageOutput(summary="s", important_emails=[], patterns=[])
+
+        with patch("app.services.onboarding.inbox_triage_service.ainvoke_structured", structured):
+            await _run_triage(USER, ctx, "dev")
+
+        [prompt] = prompts
+        lines = [line for line in prompt.splitlines() if " | " in line]
+        assert lines == [
+            "- [updates, important] priya@client.com | Contract redlines | Sign by Friday",
+            f"- Unknown | (no subject) | {late_unsubscribe}",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -483,7 +557,7 @@ class TestRunHoloCard:
             f"{MODULE}.get_user_metadata",
             AsyncMock(return_value=UserProfileMetadata(account_number=1, member_since="2026")),
         ) as metadata:
-            assert await _run_holo_card(_ctx(focus="focus"), user, []) is True
+            assert await _run_holo_card(_ctx(), user, []) is True
 
         args = save.await_args.args
         assert args[0] == USER
@@ -516,7 +590,6 @@ class TestRunHoloCard:
             OnboardingContext(
                 user_id=USER,
                 name="Ann",
-                focus="ship v2",
                 triage=_triage(
                     important_emails=[
                         EmailSummary(sender="ann@x.com", subject="Contract", why_important="d"),
@@ -541,7 +614,6 @@ class TestRunHoloCard:
         assert "Key contacts: ann@x.com, bob@x.com" in summary
         assert "Terse" in summary
         assert "x: u1" in summary
-        assert "ship v2" in summary
         assert "Goal: grow the team" in summary
 
     async def test_only_the_top_five_contacts_reach_the_card(self, holo_stack: Any) -> None:
@@ -551,7 +623,7 @@ class TestRunHoloCard:
             EmailSummary(sender=f"s{i}@x.com", subject="s", why_important="w") for i in range(6)
         ]
         await _run_holo_card(
-            _ctx(focus="", triage=_triage(important_emails=emails)), UserDocument(id=USER), []
+            _ctx(triage=_triage(important_emails=emails)), UserDocument(id=USER), []
         )
 
         summary = content.await_args.args[1]
@@ -561,7 +633,7 @@ class TestRunHoloCard:
     async def test_blank_clarify_answers_are_skipped(self, holo_stack: Any) -> None:
         content, _ = holo_stack
         await _run_holo_card(
-            _ctx(focus="", clarify_answers=[{"kind": "goal", "value": "   "}]),
+            _ctx(clarify_answers=[{"kind": "goal", "value": "   "}]),
             UserDocument(id=USER),
             [],
         )
@@ -573,14 +645,14 @@ class TestRunHoloCard:
     ) -> None:
         content, _ = holo_stack
         await _run_holo_card(
-            _ctx(focus="", clarify_answers=[{"value": "some note"}]), UserDocument(id=USER), []
+            _ctx(clarify_answers=[{"value": "some note"}]), UserDocument(id=USER), []
         )
 
         assert "Context: some note" in content.await_args.args[1]
 
     async def test_absent_signals_produce_an_empty_summary(self, holo_stack: Any) -> None:
         content, _ = holo_stack
-        await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), [])
+        await _run_holo_card(_ctx(), UserDocument(id=USER), [])
 
         assert content.await_args.args[1] == ""
 
@@ -588,7 +660,7 @@ class TestRunHoloCard:
         # The caller links the public card page off this; a card that never got
         # persisted 404s there.
         with patch(f"{MODULE}.get_user_metadata", AsyncMock(side_effect=RuntimeError("mongo"))):
-            assert await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), []) is False
+            assert await _run_holo_card(_ctx(), UserDocument(id=USER), []) is False
 
     async def test_a_failed_save_reports_itself_as_not_viewable(self, holo_stack: Any) -> None:
         # The card only becomes viewable once its content lands in Mongo.
@@ -596,4 +668,4 @@ class TestRunHoloCard:
             f"{MODULE}.user_repository.save_personalization",
             AsyncMock(side_effect=RuntimeError("mongo")),
         ):
-            assert await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), []) is False
+            assert await _run_holo_card(_ctx(), UserDocument(id=USER), []) is False

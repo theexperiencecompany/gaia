@@ -26,6 +26,7 @@ import pytest
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.constants.llm import LLM_RETRY_MAX_ATTEMPTS
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -112,6 +113,7 @@ def _make_create_request(
 ) -> CreateWorkflowRequest:
     """Build a CreateWorkflowRequest with defaults."""
     return CreateWorkflowRequest(
+        delivery=WorkflowDelivery.NOW,
         title=title,
         prompt=prompt,
         trigger_config=_make_trigger_config(trigger_type, **trigger_kwargs),
@@ -130,6 +132,7 @@ def _make_workflow(
 ) -> Workflow:
     """Build a Workflow model instance for testing."""
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=user_id,
         title=title,
@@ -301,6 +304,7 @@ class TestWorkflowValidation:
         """CreateWorkflowRequest rejects empty/whitespace title."""
         with pytest.raises(ValueError):
             CreateWorkflowRequest(
+                delivery=WorkflowDelivery.NOW,
                 title="   ",
                 prompt="valid prompt",
                 trigger_config=_make_trigger_config(),
@@ -310,6 +314,7 @@ class TestWorkflowValidation:
         """CreateWorkflowRequest rejects empty/whitespace prompt."""
         with pytest.raises(ValueError):
             CreateWorkflowRequest(
+                delivery=WorkflowDelivery.NOW,
                 title="Valid Title",
                 prompt="   ",
                 trigger_config=_make_trigger_config(),
@@ -852,8 +857,9 @@ class TestQueueService:
         assert result is True
         args, kwargs = mock_pool.enqueue_job.call_args
         assert args == ("execute_workflow_by_id", FAKE_WORKFLOW_ID, {"source": "api"})
-        # A deterministic _job_id dedupes accidental duplicate enqueues.
-        assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
+        # A deterministic _job_id dedupes accidental duplicate enqueues: the task and 32 hex digits.
+        prefix, digest = kwargs["_job_id"].split(":")
+        assert (prefix, len(digest)) == ("execute_workflow_by_id", 32)
 
     async def test_queue_workflow_execution_deduped_enqueue_returns_true(self):
         """A None from enqueue_job means the same _job_id is already queued — deduped, which is success, not failure."""

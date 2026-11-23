@@ -3,7 +3,7 @@
 from langchain_core.runnables import RunnableConfig
 
 from app.config.oauth_config import get_integration_by_tool_slug
-from app.constants.integrations import ConnectMode
+from app.constants.integrations import ConnectMode, IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.models.agent_config import ComposioAccountSelection
 from app.models.execute_models import AccountChoice, DispatchError, DispatchErrorKind
@@ -19,10 +19,7 @@ from shared.py.wide_events import log
 
 
 def _account_names(record: UserIntegrationDocument) -> str:
-    return ", ".join(
-        f'"{a.display_name}" ({"expired" if a.status != "connected" else "connected"})'
-        for a in record.accounts
-    )
+    return ", ".join(f'"{a.display_name}" ({a.status})' for a in record.accounts)
 
 
 async def choose_account(
@@ -64,8 +61,8 @@ async def choose_account(
                 "Otherwise ask them which account they meant."
             ),
         )
-    live = [a for a in record.accounts if a.status == "connected"]
-    if chosen.status != "connected" and live:
+    live = [a for a in record.accounts if a.status == IntegrationStatus.CONNECTED]
+    if chosen.status != IntegrationStatus.CONNECTED and live:
         return DispatchError(
             kind=DispatchErrorKind.ACCOUNT_EXPIRED,
             detail=f"The {integration.name} account {chosen.display_name} needs reconnecting.",

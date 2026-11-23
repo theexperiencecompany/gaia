@@ -15,7 +15,7 @@ entity/generation cache would churn constantly for little read benefit, and
 the cross-user scan/routing reads are not keyed by id.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 import re
 from typing import Any
@@ -25,8 +25,10 @@ from app.constants.cache import (
     WORKFLOW_LIMIT_NOTICE_TTL,
 )
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
+from app.models.legacy_delivery import LEGACY_WORKFLOW_NOTIFY_KEY
 from app.models.scheduler_models import (
     DeactivationReason,
     ScheduledTaskStatus,
@@ -40,6 +42,7 @@ from app.models.workflow_models import (
     StoredTriggerRow,
     SystemWorkflowDefinition,
     TriggerType,
+    UnstoredDeliveryRow,
     WorkflowDocument,
     WorkflowStep,
     WorkflowUpdate,
@@ -87,14 +90,21 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
 
     @staticmethod
     def _list_query(
-        user_id: str, *, exclude_todo_workflows: bool, exclude_system_workflows: bool = False
+        user_id: str,
+        *,
+        unlisted_keys: Collection[str],
+        exclude_todo_workflows: bool,
+        exclude_system_workflows: bool = False,
     ) -> dict[str, object]:
-        """Build the shared filter for a user's listed workflows.
+        """Build the shared filter for a user's listed workflows, leaving out unlisted_keys.
 
         The single source of truth for both list_for_user and count_for_user,
         so a paginated list and its total can never drift apart.
         """
-        query: dict[str, object] = {"user_id": user_id}
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "system_workflow_key": {"$nin": sorted(unlisted_keys)},
+        }
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
@@ -108,6 +118,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self,
         user_id: str,
         *,
+        unlisted_keys: Collection[str],
         exclude_todo_workflows: bool = True,
         limit: int | None = None,
         offset: int = 0,
@@ -119,7 +130,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         stay strict so a fetch of a known id surfaces the corruption instead.
         """
         return await self._find_lenient(
-            self._list_query(user_id, exclude_todo_workflows=exclude_todo_workflows),
+            self._list_query(
+                user_id,
+                unlisted_keys=unlisted_keys,
+                exclude_todo_workflows=exclude_todo_workflows,
+            ),
             sort=[("created_at", -1)],
             limit=limit or 0,
             skip=offset,
@@ -129,6 +144,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self,
         user_id: str,
         *,
+        unlisted_keys: Collection[str],
         exclude_todo_workflows: bool = True,
         exclude_system_workflows: bool = False,
     ) -> int:
@@ -140,6 +156,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._count(
             self._list_query(
                 user_id,
+                unlisted_keys=unlisted_keys,
                 exclude_todo_workflows=exclude_todo_workflows,
                 exclude_system_workflows=exclude_system_workflows,
             )
@@ -170,6 +187,18 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {
                 "user_id": user_id,
                 "system_workflow_key": system_workflow_key,
+                "is_system_workflow": True,
+            }
+        )
+
+    async def find_system_workflows(
+        self, user_id: str, system_workflow_keys: Sequence[str]
+    ) -> list[WorkflowDocument]:
+        """Return the user's system workflows under any of system_workflow_keys."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "system_workflow_key": {"$in": list(system_workflow_keys)},
                 "is_system_workflow": True,
             }
         )
@@ -232,9 +261,24 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             query["trigger_config.trigger_name"] = trigger_name
         return await self._find(query)
 
-    async def find_activated_for_user(self, user_id: str) -> list[WorkflowDocument]:
-        """Every activated workflow a user owns — the dormancy sweep's pause set."""
-        return await self._find({"user_id": user_id, "activated": True})
+    async def find_brief_delivery_for_user(self, user_id: str) -> list[WorkflowDocument]:
+        """Return the user's workflows whose results wait for their brief, newest first."""
+        return await self._find(
+            {"user_id": user_id, "delivery": WorkflowDelivery.BRIEF.value},
+            sort=[("created_at", -1)],
+        )
+
+    async def find_activated_for_user(
+        self, user_id: str, *, excluding_keys: Collection[str]
+    ) -> list[WorkflowDocument]:
+        """Every activated workflow a user owns but those under excluding_keys."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "activated": True,
+                "system_workflow_key": {"$nin": sorted(excluding_keys)},
+            }
+        )
 
     async def find_paused_for_reason(
         self, user_id: str, reason: DeactivationReason
@@ -641,6 +685,20 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"$set": {"trigger_config.composio_trigger_ids": trigger_ids}},
         )
 
+    async def find_without_stored_delivery(self) -> list[UnstoredDeliveryRow]:
+        """Workflows whose record predates delivery modes, read as their id and legacy flag only.
+
+        A projection, not a WorkflowDocument: a record that old may hold any shape GAIA
+        has since dropped, and this migration reads nothing else.
+        """
+        return await self._aggregate(
+            [
+                {"$match": {"delivery": {"$exists": False}}},
+                {"$project": {LEGACY_WORKFLOW_NOTIFY_KEY: 1}},
+            ],
+            UnstoredDeliveryRow,
+        )
+
     async def find_on_unknown_trigger_types(self) -> list[StoredTriggerRow]:
         """Workflows stored with a trigger type no TriggerType names, read as a projection."""
         return await self._aggregate(
@@ -684,6 +742,22 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         matched = await self._apply_raw_update_unfetched(
             {"_id": workflow_id, "trigger_config.type": retired_type},
             {"$set": fields},
+        )
+        return matched > 0
+
+    async def store_delivery(self, workflow_id: str, delivery: WorkflowDelivery) -> bool:
+        """Persist delivery on a record that lacks one and drop its legacy flag; whether it matched.
+
+        Only a record still without a delivery is written, so a re-run never
+        overwrites a mode the user has since chosen.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"_id": workflow_id, "delivery": {"$exists": False}},
+            {
+                "$set": {"delivery": delivery.value},
+                # $unset ignores the value: "" is only the conventional placeholder.
+                "$unset": {LEGACY_WORKFLOW_NOTIFY_KEY: ""},  # pragma: no mutate
+            },
         )
         return matched > 0
 

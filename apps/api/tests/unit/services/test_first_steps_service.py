@@ -7,6 +7,7 @@ import pytest
 from app.models.first_steps_models import FirstStepKey, FirstStepsResponse, FirstStepsState
 from app.models.user_models import UserDocument
 from app.services.first_steps_service import get_first_steps, set_first_steps_collapsed
+from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import FirstStepsCollapsed
@@ -120,7 +121,10 @@ class TestGetFirstSteps:
 
         assert _done(result)[FirstStepKey.CREATE_WORKFLOW] is True
         repos["workflows"].count_for_user.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, exclude_system_workflows=True
+            USER_ID,
+            unlisted_keys=UNLISTED_KEYS,
+            exclude_todo_workflows=True,
+            exclude_system_workflows=True,
         )
 
     async def test_collapsed_is_read_from_the_user_document(self, repos) -> None:

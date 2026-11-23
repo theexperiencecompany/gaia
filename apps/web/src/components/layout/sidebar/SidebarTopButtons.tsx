@@ -8,6 +8,7 @@ import {
   ConnectIcon,
   Home11Icon,
   MessageMultiple02Icon,
+  News01Icon,
   ZapIcon,
 } from "@icons";
 import React from "react";
@@ -53,6 +54,11 @@ const buttonData: SidebarButton[] = [
     route: "/workflows",
     icon: <ZapIcon />,
     label: "Workflows",
+  },
+  {
+    route: "/briefings",
+    icon: <News01Icon />,
+    label: "Briefings",
   },
   {
     route: "/c",

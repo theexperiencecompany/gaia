@@ -6,6 +6,7 @@ import {
 } from "@icons";
 import type { Transition } from "motion/react";
 import type React from "react";
+import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
 import type { FirstStepKey } from "@/types/features/firstStepsTypes";
 
 export const FIRST_STEPS_QUERY_KEY = ["first-steps"] as const;
@@ -67,7 +68,7 @@ export const FIRST_STEP_DEFINITIONS: Record<FirstStepKey, FirstStepDefinition> =
       label: "Link a messaging app",
       description: "Chat from WhatsApp or Slack",
       icon: SmartPhone01Icon,
-      action: { kind: "navigate", href: "/settings/linked-accounts" },
+      action: { kind: "navigate", href: LINKED_ACCOUNTS_SETTINGS_PATH },
     },
     create_workflow: {
       label: "Create a workflow",

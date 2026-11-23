@@ -1,5 +1,5 @@
 import { expect, type Page, type Request, test } from "@playwright/test";
-import { API_BASE_URL, DEV_USER, SIM_ENABLED, sendMessage } from "./harness";
+import { API_BASE_URL, devUser, SIM_ENABLED, sendMessage } from "./harness";
 import {
   answerInEach,
   askBefore,
@@ -233,7 +233,7 @@ test.describe("screen surfaces", () => {
   }) => {
     const first = await (await browser.newContext()).newPage();
     const second = await (await browser.newContext()).newPage();
-    seedInAppNotification(DEV_USER, marker("notify"));
+    seedInAppNotification(devUser(), marker("notify"));
     await first.goto("/c");
     await second.goto("/c");
     await expect

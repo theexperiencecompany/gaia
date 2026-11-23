@@ -34,9 +34,14 @@ from app.utils.errors import EmptyUpdateError
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 
+class _FixtureDetail(BaseModel):
+    note: str | None
+
+
 class _FixtureDocument(UserScopedDocument):
     title: str
     count: int = 0
+    detail: _FixtureDetail | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -111,6 +116,18 @@ class TestFixtureRepository(UserScopedRepositoryContract):
 
 
 class TestBasePrimitives:
+    async def test_a_required_none_round_trips_while_a_defaulted_none_stays_absent(
+        self, repo, make_doc, raw_collection
+    ):
+        """A sparse index needs an unset field absent; a required one read back needs its null."""
+        created = await repo.create(make_doc(user_id="u", detail=_FixtureDetail(note=None)))
+
+        assert created.detail == _FixtureDetail(note=None)
+        raw = await raw_collection.find_one({"_id": ObjectId(created.id)})
+        assert raw["detail"] == {"note": None}
+        bare = await repo.create(make_doc(user_id="u"))
+        assert "detail" not in await raw_collection.find_one({"_id": ObjectId(bare.id)})
+
     async def test_find_filters_sorts_and_paginates(self, repo, make_doc):
         for i, title in enumerate(["a", "b", "c"]):
             await repo.create(make_doc(user_id="u", title=title, count=i))
@@ -477,3 +494,77 @@ class TestBusinessKeyIdentity:
         # MongoDocument.id must remain the model default, not str(_id).
         assert created.ref == "uuid-xyz"
         assert (await keyed_repo.get("uuid-xyz")).ref == "uuid-xyz"
+
+    async def test_a_business_key_document_stores_no_placeholder_id(
+        self, keyed_repo, raw_collection
+    ):
+        await keyed_repo.create(_KeyedDocument(ref="abc", label="first"))
+
+        raw = await raw_collection.find_one({"ref": "abc"})
+
+        assert set(raw) == {"_id", "ref", "label"}
+
+
+class _IdKeyedRepository(MongoRepository[_KeyedDocument, _KeyedUpdate]):
+    """Identity is the model's own id field, stored as a field beside the ObjectId _id."""
+
+    collection_name = "contract_fixture"
+    document_model = _KeyedDocument
+    update_model = _KeyedUpdate
+    uses_object_id = True
+    identity_field = "id"
+    cache_policy = None
+
+
+class TestIdFieldIdentity:
+    async def test_the_id_is_stored_and_read_back_by(self, raw_collection):
+        repo = _IdKeyedRepository()
+        await repo.create(_KeyedDocument(id="n-1", ref="abc"))
+
+        raw = await raw_collection.find_one({"ref": "abc"})
+        fetched = await repo.get("n-1")
+
+        assert (raw["id"], fetched.ref if fetched else None) == ("n-1", "abc")
+
+
+class _SparseLeaf(BaseModel):
+    note: str | None
+    tag: str | None = None
+
+
+class _SparseDocument(MongoDocument):
+    leaf: _SparseLeaf
+    leaves: list[_SparseLeaf]
+    by_key: dict[str, _SparseLeaf]
+    plain: list[int]
+
+
+class _SparseRepository(MongoRepository[_SparseDocument, _GlobalUpdate]):
+    collection_name = "contract_fixture"
+    document_model = _SparseDocument
+    update_model = _GlobalUpdate
+    uses_object_id = True
+    cache_policy = None
+
+
+class TestDefaultedNones:
+    """A None whose default is None is left out at any depth; a required None stays null."""
+
+    async def test_nested_defaulted_nones_are_absent_and_required_ones_null(self, raw_collection):
+        unset = _SparseLeaf(note=None)
+        tagged = _SparseLeaf(note="n", tag="t")
+        created = await _SparseRepository().create(
+            _SparseDocument(
+                leaf=unset, leaves=[tagged, unset], by_key={"a": unset, "b": tagged}, plain=[1]
+            )
+        )
+
+        raw = await raw_collection.find_one({"_id": ObjectId(created.id)})
+
+        assert {key: raw[key] for key in ("leaf", "leaves", "by_key", "plain")} == {
+            "leaf": {"note": None},
+            "leaves": [{"note": "n", "tag": "t"}, {"note": None}],
+            "by_key": {"a": {"note": None}, "b": {"note": "n", "tag": "t"}},
+            "plain": [1],
+        }
+        assert set(raw) == {"_id", "leaf", "leaves", "by_key", "plain"}

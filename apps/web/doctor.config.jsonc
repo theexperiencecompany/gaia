@@ -61,7 +61,7 @@
         "files": ["src/app/styles/hero.ts"],
         "rules": ["deslop/unused-export"]
       },
-      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompt.ts and the
+      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompts.ts and the
       // openui pre-commit sync hook — consumed outside the scanned graph.
       {
         "files": ["src/config/openui/promptSpecs.ts"],
@@ -132,6 +132,14 @@
       // breaks player state storage; the rule is origin-unaware.
       {
         "files": ["src/config/openui/components/VideoBlockView.tsx"],
+        "rules": ["react-doctor/iframe-missing-sandbox"]
+      },
+      // A shared PDF frames its content-origin URL (<content_id>.heygaia.link):
+      // browsers refuse to render a PDF in a sandboxed frame, so the isolation is
+      // that cookieless per-file origin and the API's PDF CSP (frame-ancestors
+      // the app). The other frame in this file (HTML and SVG) keeps its sandbox.
+      {
+        "files": ["src/features/short-links/components/PublicWorkspaceFileView.tsx"],
         "rules": ["react-doctor/iframe-missing-sandbox"]
       },
       // timezoneSearchText() returns a string; .includes(query) is substring

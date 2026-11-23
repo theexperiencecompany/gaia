@@ -1,7 +1,6 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
-from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.auth import get_current_user as get_request_user
@@ -28,7 +27,6 @@ from app.models.bot_models import (
     UnlinkAccountResponse,
 )
 from app.models.conversation_send_models import BotMessageAccepted
-from app.models.integration_models import UserIntegrationDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import ConversationStopResponse
 from app.schemas.errors import error_responses
@@ -115,11 +113,6 @@ async def require_bot_api_key(request: Request) -> None:
             "Invalid or missing bot API key",
             BOT_API_KEY_INVALID,
         )
-
-
-# ``get_user_integration_records`` returns dumped documents; the settings route
-# validates them back into the document model where they enter the handler.
-_USER_INTEGRATION_RECORDS = TypeAdapter(list[UserIntegrationDocument])
 
 
 async def _bot_turn_refused(user_id: str, platform: str) -> bool:
@@ -298,10 +291,7 @@ async def get_settings(
 
     connected_integrations_list = []
     try:
-        integrations = _USER_INTEGRATION_RECORDS.validate_python(
-            await get_user_integration_records(user_id)
-        )
-        for integration_doc in integrations:
+        for integration_doc in await get_user_integration_records(user_id):
             integration_id = integration_doc.integration_id
             status = integration_doc.status
             if integration_id:

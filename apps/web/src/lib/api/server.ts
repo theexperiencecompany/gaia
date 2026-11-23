@@ -4,6 +4,7 @@ import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import createClient from "openapi-fetch";
 import pRetry from "p-retry";
 import { cache } from "react";
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 import { toApiOrigin } from "./origin";
 
@@ -15,13 +16,19 @@ function isProductionBuild(): boolean {
   return process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
 }
 
-/** Fetch with the phase's per-attempt timeout, retrying timeouts and network errors. */
+/** Fetch the API with the phase's per-attempt timeout and the server's token, retrying timeouts and network errors. */
 export function serverFetch(request: Request): Promise<Response> {
   const { timeoutMs, retries } = isProductionBuild()
     ? BUILD_FETCH_POLICY
     : REQUEST_FETCH_POLICY;
   return pRetry(
-    () => fetch(request.clone(), { signal: AbortSignal.timeout(timeoutMs) }),
+    () => {
+      const attempt = request.clone();
+      for (const [name, value] of Object.entries(internalApiHeaders())) {
+        attempt.headers.set(name, value);
+      }
+      return fetch(attempt, { signal: AbortSignal.timeout(timeoutMs) });
+    },
     { retries },
   );
 }

@@ -22,6 +22,7 @@ from app.agents.tools.workflow_tool import (
     pause_workflow,
     resume_workflow,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_config import AgentConfigurableView
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 
@@ -43,6 +44,7 @@ def _cfg() -> RunnableConfig:
 def _workflow() -> Workflow:
     """Build a real document — its python-mode dump carries native datetimes."""
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         user_id=FAKE_USER_ID,
         title="Morning digest",
         steps=[],

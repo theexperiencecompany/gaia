@@ -1,9 +1,9 @@
-"""deploy.sh migrate: the pre-rollout conversation catch-up stops the old writers only when it must.
+"""deploy.sh migrate: the release step runs first; the conversation catch-up stops writers only when it must.
 
 ``docker`` is a fake on PATH that plays a small Swarm: the backend's task template,
 each writer's replica count and running tasks, and one task per job whose outcome
 the test sets. Every call is recorded, so a test asserts the order of the calls
-that matter: the check job, the scale-down, the catch-up job, the restore.
+that matter: the release job, the check job, the scale-down, the catch-up job, the restore.
 """
 
 from __future__ import annotations
@@ -109,6 +109,7 @@ def _swarm(
     tmp_path: Path,
     *,
     check: str,
+    release: str = "0",
     catch_up: str = "0",
     backend_replicas: int = 2,
     writers_stuck: bool = False,
@@ -119,6 +120,7 @@ def _swarm(
     for svc, replicas in ((BACKEND, backend_replicas), (WORKER, 1)):
         (state / f"replicas-{svc}").write_text(str(replicas))
         (state / f"running-{svc}").write_text(str(replicas))
+    (state / "outcome-release").write_text(release)
     (state / "outcome-check").write_text(check)
     (state / "outcome-catch-up").write_text(catch_up)
     (state / "writers-stuck").write_text("true" if writers_stuck else "false")
@@ -178,7 +180,7 @@ def test_no_catch_up_needed_touches_no_writer(tmp_path: Path) -> None:
     state = _swarm(tmp_path, check="0")
     result, calls, outputs = _migrate(tmp_path, state)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert _steps(calls) == ["create check", "rm check"]
+    assert _steps(calls) == ["create release", "rm release", "create check", "rm check"]
     assert outputs == {"catch_up": "none", "writers_down": "false"}
 
 
@@ -189,6 +191,8 @@ def test_a_needed_catch_up_runs_with_the_writers_stopped_and_leaves_them_down(
     result, calls, outputs = _migrate(tmp_path, state)
     assert result.returncode == 0, result.stdout + result.stderr
     assert _steps(calls) == [
+        "create release",
+        "rm release",
         "create check",
         "rm check",
         f"scale {BACKEND}=0 {WORKER}=0",
@@ -204,6 +208,8 @@ def test_a_failed_catch_up_restores_the_writers_replicas_and_fails(tmp_path: Pat
     result, calls, outputs = _migrate(tmp_path, state)
     assert result.returncode != 0
     assert _steps(calls) == [
+        "create release",
+        "rm release",
         "create check",
         "rm check",
         f"scale {BACKEND}=0 {WORKER}=0",
@@ -216,11 +222,20 @@ def test_a_failed_catch_up_restores_the_writers_replicas_and_fails(tmp_path: Pat
     assert "writers_down" not in outputs
 
 
+def test_a_failed_release_step_stops_nothing_and_skips_the_check(tmp_path: Path) -> None:
+    state = _swarm(tmp_path, release="1", check="3")
+    result, calls, outputs = _migrate(tmp_path, state)
+    assert result.returncode != 0
+    assert _steps(calls) == ["create release", "rm release"]
+    assert "the release's migrations failed (exit 1)" in result.stderr
+    assert outputs == {}
+
+
 def test_a_failed_check_stops_nothing(tmp_path: Path) -> None:
     state = _swarm(tmp_path, check="1")
     result, calls, _ = _migrate(tmp_path, state)
     assert result.returncode != 0
-    assert _steps(calls) == ["create check", "rm check"]
+    assert _steps(calls) == ["create release", "rm release", "create check", "rm check"]
     assert "the check job failed (exit 1)" in result.stderr
 
 
@@ -228,7 +243,7 @@ def test_a_check_job_that_never_runs_names_the_task_error_and_is_removed(tmp_pat
     state = _swarm(tmp_path, check="rejected")
     result, calls, _ = _migrate(tmp_path, state)
     assert result.returncode != 0
-    assert _steps(calls) == ["create check", "rm check"]
+    assert _steps(calls) == ["create release", "rm release", "create check", "rm check"]
     assert "task rejected: No such image" in result.stderr
 
 
@@ -253,8 +268,8 @@ def test_jobs_run_the_new_image_with_the_backends_secrets_networks_and_env(tmp_p
     state = _swarm(tmp_path, check="3", catch_up="0")
     result, calls, _ = _migrate(tmp_path, state)
     assert result.returncode == 0, result.stdout + result.stderr
-    check, catch_up = _creates(calls)
-    for create in (check, catch_up):
+    release, check, catch_up = _creates(calls)
+    for create in (release, check, catch_up):
         assert create[create.index("--mode") : create.index("--mode") + 2] == [
             "--mode",
             "replicated-job",
@@ -269,6 +284,13 @@ def test_jobs_run_the_new_image_with_the_backends_secrets_networks_and_env(tmp_p
             "net-shared",
             "net-browser",
         ]
+    assert release[release.index(IMAGE) :] == [
+        IMAGE,
+        "python",
+        "-m",
+        "scripts.post_deploy",
+        "--apply",
+    ]
     assert check[check.index(IMAGE) :] == [
         IMAGE,
         "python",

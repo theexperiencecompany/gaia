@@ -27,7 +27,7 @@ BYSTANDER_OID = ObjectId("6acc0dac0cc0a00000000103")
 
 
 @pytest.fixture(autouse=True)
-async def _users(mongo_db, real_redis):
+async def _users(mongo_db, real_redis, arq_pool):
     oids = [FIRST_OID, SECOND_OID, BYSTANDER_OID]
     await mongo_db["users"].delete_many({"_id": {"$in": oids}})
     await mongo_db["bot_sessions"].delete_many({})

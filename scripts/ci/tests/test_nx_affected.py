@@ -19,6 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 PYTHON = {"api", "shared-python", "voice-agent"}
 JS = {
+    "artifact-validate",
+    "artifacts",
     "bot-discord",
     "bot-harness",
     "bot-imessage",
@@ -30,6 +32,7 @@ JS = {
     "desktop",
     "mobile",
     "shared-typescript",
+    "usercontent-worker",
     "wake-word",
     "web",
 }

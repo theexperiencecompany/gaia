@@ -22,3 +22,9 @@ def test_a_deleted_file_is_carded_for_removal_by_its_path() -> None:
         "session_id": "c1",
         "path": "out/report.csv",
     }
+
+
+def test_the_link_the_writing_tool_attached_is_carried() -> None:
+    info = ArtifactInfo(path="out/report.csv", size_bytes=3, mtime=1_000.0, content_type="text/csv")
+    short_url = "https://heygaia.link/abcdefghijk"
+    assert upsert_event("c1", info, short_url=short_url)["short_url"] == short_url

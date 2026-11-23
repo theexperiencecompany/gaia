@@ -209,7 +209,7 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
         operations = [
             UpdateOne(
                 {"backfill_key": doc.backfill_key},
-                {"$setOnInsert": doc.model_dump(exclude={"id"}, exclude_none=True)},
+                {"$setOnInsert": self._storable(doc)},
                 upsert=True,
             )
             for doc in docs
