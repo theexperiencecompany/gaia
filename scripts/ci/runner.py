@@ -5,17 +5,18 @@
 """runner.py — everything about WHERE and HOW HARD a CI job runs.
 
 Subcommands:
-  select              Route each runner class to GitHub-hosted, overflowing to
-                      the home box once GitHub's queue is saturated and to
-                      Blacksmith once the box has no idle listener either. Writes light / heavy / services (runs-on JSON
-                      arrays) plus runner / runner_label / is_self_hosted /
-                      reason (the heavy class) to $GITHUB_OUTPUT (stdout when
-                      unset).
-  watchdog            Cancel this run once any job has stayed `queued` past
-                      the limit — a box that died after `select` decided.
+  select              Place this run by the live ci.yml runs ahead of it: the
+                      first stays GitHub-hosted, later ones move their test
+                      slices to free box / M4 slots, Blacksmith only once
+                      GitHub is saturated and no slot is free. Writes general /
+                      unit / services (runs-on JSON arrays) and is_self_hosted
+                      to $GITHUB_OUTPUT (stdout when unset).
+  watchdog            Re-dispatch or hand over this run once a self-hosted job
+                      has stayed `queued` past the limit on a machine with no
+                      live listener — one that died after `select` decided.
   requeue-stranded    Force-cancel and fully re-run any re-run attempt whose lanes
-                      are stuck queued on the home label while no home
-                      runner is online (scheduled: ci-requeue.yml).
+                      are stuck queued on a self-hosted label with no live
+                      listener (scheduled: ci-requeue.yml).
   cancel-superseded   Force-cancel older queued/in-progress runs of this workflow
                       on this branch (per-SHA concurrency needs it); on a
                       merge group, every active merge_group run whose head is
@@ -46,18 +47,20 @@ Subcommands:
 
 Env contract:
   every API call      lib/github.py's (token, base URL, timeout, retries).
-  select              GITHUB_REPOSITORY, RUNNER_LABEL (heavy, default
-                      gaia-home), SERVICES_RUNNER_LABEL (default gaia-home),
-                      FALLBACK_RUNNER (default [HOSTED_LINUX_IMAGE]), FORCE_HOME,
-                      FORCE_GITHUB, PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION,
-                      GITHUB_ACTOR, BLACKSMITH_LABEL, HOSTED_QUEUE_THRESHOLD
-                      (5); writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
-  watchdog            GITHUB_REPOSITORY, GITHUB_RUN_ID, WATCHDOG_JOB_NAME
-                      (required), RUNNER_LABEL (gaia-home), QUEUE_LIMIT_SECS
-                      (480), POLL_SECS (30), GITHUB_EVENT_NAME,
+  select              GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_EVENT_NAME,
                       GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF or GITHUB_REF_NAME,
-                      DEFAULT_BRANCH (merge_group: where ci-requeue.yml runs).
-  requeue-stranded    GITHUB_REPOSITORY, RUNNER_LABEL (gaia-home),
+                      RUNNER_LABEL (the box, default gaia-home), M4_LABEL
+                      (empty: no M4), FALLBACK_RUNNER (default
+                      [HOSTED_LINUX_IMAGE]), FORCE_HOME, FORCE_GITHUB,
+                      PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION, GITHUB_ACTOR,
+                      BLACKSMITH_LABEL (empty: never); writes $GITHUB_OUTPUT
+                      and $GITHUB_STEP_SUMMARY.
+  watchdog            GITHUB_REPOSITORY, GITHUB_RUN_ID, WATCHDOG_JOB_NAME
+                      (required), QUEUE_LIMIT_SECS (480), POLL_SECS (30),
+                      GITHUB_EVENT_NAME, GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF
+                      or GITHUB_REF_NAME, DEFAULT_BRANCH (merge_group: where
+                      ci-requeue.yml runs).
+  requeue-stranded    GITHUB_REPOSITORY,
                       QUEUE_LIMIT_SECS (480), CANCEL_WAIT_SECS (180),
                       POLL_SECS (10), REQUEUE_RUN_ID (one handed-over run
                       instead of the sweep).
@@ -77,11 +80,12 @@ Env contract:
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 import datetime
 from enum import StrEnum
-from functools import cached_property
 import hashlib
 import json
 import os
@@ -107,22 +111,12 @@ DEFAULT_HOME_LABEL = "gaia-home"
 # literal runs-on in .github to this release.
 HOSTED_LINUX_IMAGE = "ubuntu-24.04"
 DEFAULT_FALLBACK = json.dumps([HOSTED_LINUX_IMAGE])
-# GitHub-hosted jobs waiting for a VM at which GitHub counts as saturated. The
-# org's Free plan runs 20 hosted jobs at once and a full CI run peaks at 12
-# (run 40178782875, every job started within 6 s), so jobs only pile up queued
-# once the 20 slots are taken: 5 waiting is the cap already hit, while a lone
-# fan-out still being provisioned clears in seconds and rarely reads that high.
-HOSTED_SATURATED_QUEUE_DEPTH = 5
 TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
-# test-mutation's `max-parallel` in ci.yml: the shards one run holds at once.
-MUTATION_WAVE = 6
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 
 
 ACTIVE_RUN_STATUSES = frozenset({"queued", "pending", "waiting", "in_progress"})
-# A job wants a GitHub-hosted (or Blacksmith) VM when one of its labels names one.
-HOSTED_JOB_LABEL = re.compile(r"^(ubuntu|windows|macos|blacksmith)-")
 WORKFLOW_FILE = re.compile(r".*/\.github/workflows/([^@]+)@.*")
 USES_LINE = re.compile(
     r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_./-]+)", re.MULTILINE
@@ -195,6 +189,8 @@ class Pool:
     online: int
     idle: int
     total: int
+    # Online or busy: a busy listener is running a job whatever its status reads.
+    alive: int
 
     def describe(self) -> str:
         return f"{self.idle} idle / {self.online} online / {self.total} registered"
@@ -204,15 +200,19 @@ def _runner_labels(runner: Json) -> list[str]:
     return [field_of(label, "name", str) for label in records(runner, "labels")]
 
 
-def read_pool(gh: GitHub, repo: str, label: str) -> Pool | None:
-    """Read the pool carrying the label; None when no instance is registered with it."""
-    runners = gh.collect(f"repos/{repo}/actions/runners?per_page=100", "runners")
+def read_runners(gh: GitHub, repo: str) -> list[Json]:
+    return gh.collect(f"repos/{repo}/actions/runners?per_page=100", "runners")
+
+
+def pool_of(runners: list[Json], label: str) -> Pool | None:
+    """Count the instances carrying the label; None when no instance is registered with it."""
     matching = [r for r in runners if label in _runner_labels(r)]
     if not matching:
         return None
     online = [r for r in matching if field_of(r, "status", str) == "online"]
     idle = [r for r in online if field_of(r, "busy", bool) is False]
-    return Pool(label, len(online), len(idle), len(matching))
+    alive = [r for r in matching if r in online or field_of(r, "busy", bool)]
+    return Pool(label, len(online), len(idle), len(matching), len(alive))
 
 
 class HomeState(StrEnum):
@@ -224,22 +224,23 @@ class HomeState(StrEnum):
 def home_state(gh: GitHub, repo: str, label: str) -> HomeState:
     """Report whether any instance of the label is online; UNKNOWN is never a reason to act."""
     try:
-        pool = read_pool(gh, repo, label)
+        pool = pool_of(read_runners(gh, repo), label)
     except GitHubError as err:
         log(f"runners probe failed ({err}) — cannot say whether '{label}' is alive")
         return HomeState.UNKNOWN
-    online = pool.online if pool else 0
-    log(f"{online} runner(s) online with label '{label}'")
-    return HomeState.ONLINE if online else HomeState.OFFLINE
+    alive = pool.alive if pool else 0
+    log(f"{alive} runner(s) online or busy with label '{label}'")
+    return HomeState.ONLINE if alive else HomeState.OFFLINE
 
 
 # ── select ────────────────────────────────────────────────────────────────
 
 
-def _queued_jobs(gh: GitHub, repo: str, run: Json) -> list[Json]:
-    run_id = field_of(run, "id", int)
-    jobs = records(gh.get(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"), "jobs")
-    return [j for j in jobs if field_of(j, "status", str) == "queued"]
+# A run is placed by the runs ahead of it, never by GitHub's queue depth: runs
+# that start together each read that queue as empty (0-2 of a threshold of 5 in
+# a 4-run burst), so none overflowed, while every run exists the moment its push
+# lands. Each run computes the same placement for the runs ahead of it, so runs
+# deciding at once get distinct answers without talking to each other.
 
 
 def _job_labels(job: Json) -> list[str]:
@@ -249,52 +250,164 @@ def _job_labels(job: Json) -> list[str]:
     return [str(x) for x in labels]
 
 
-def _sampled_runs(gh: GitHub, repo: str, status: str, per_page: int) -> list[Json]:
-    """Sample runs, bounded: enough to see a real backlog inside a 2-minute job."""
-    return records(
-        gh.get(f"repos/{repo}/actions/runs?status={status}&per_page={per_page}"), "workflow_runs"
-    )
+class JobPool(StrEnum):
+    """Where a job may run: `general` stays GitHub-hosted, the slices can move."""
 
-
-def hosted_queue_depth(gh: GitHub, repo: str) -> int:
-    """Jobs waiting for a GitHub-hosted VM: queued runs plus the queued jobs of started ones."""
-    runs = _sampled_runs(gh, repo, "queued", 10) + _sampled_runs(gh, repo, "in_progress", 5)
-    return sum(
-        1
-        for run in runs
-        for job in _queued_jobs(gh, repo, run)
-        if any(HOSTED_JOB_LABEL.match(label) for label in _job_labels(job))
-    )
-
-
-class RunnerClass(StrEnum):
-    LIGHT = "light"
-    HEAVY = "heavy"
+    GENERAL = "general"
+    UNIT = "unit"
     SERVICES = "services"
 
 
-def class_demand() -> dict[RunnerClass, int]:
-    """Count the listeners one full run holds at once per class; a class shares one label."""
+# Services first: the box is their only machine, while unit slices can take the M4.
+PLACEMENT_ORDER = (JobPool.SERVICES, JobPool.UNIT)
+# Runs ahead that still leave a run on GitHub-hosted: a lone run never moves.
+HOSTED_RUNS = 1
+# Runs ahead at which GitHub's 20 hosted slots are taken (4 runs at once took
+# 21-32 min each, 12-14 alone): the precondition for paying for Blacksmith.
+SATURATED_RUNS = 2
+# Slices the 16-thread box runs at hosted speed: at 10 jobs its load hit 63-67.
+BOX_SLOTS = 4
+# Jobs the M4 VM's 20 GiB holds; three at once swapped.
+M4_SLOTS = 2
+# A run whose detect job completed has created every slice job it will run.
+DETECT_JOB = "detect"
+# Events whose newer run on a branch cancels the older one (cancel-superseded).
+SUPERSEDING_EVENTS = frozenset({"pull_request", "push"})
+JOB_READ_WORKERS = 8
+# Sorts after every ISO-8601 stamp: a run missing from the listing decides last.
+NOT_LISTED_YET = "~"
+# A run still `queued` this long after creation never started (select-runner starts
+# in seconds); three such runs from 11 Nov were still listed on 23 Nov with no job.
+NEVER_STARTED_SECS = 20 * 60
+
+
+def slice_demand(event: str) -> Counter[JobPool]:
+    """Count the slices of the event's tier in each pool: a PR runs the fast tier."""
     slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
-    with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
-    return {
-        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
-        RunnerClass.LIGHT: 6,
-        # probe, ts-build-test, docker-image, plus the slices that need no services
-        RunnerClass.HEAVY: 3 + len(slices) - with_services,
-        # the slices that need services (test-python, test-python-engines), test-mutation's wave
-        RunnerClass.SERVICES: with_services + MUTATION_WAVE,
-    }
+    fast_only = event == "pull_request"
+    return Counter(
+        JobPool(field_of(s, "pool", str))
+        for s in slices
+        if not fast_only or field_of(s, "tier", str) == "fast"
+    )
 
 
-# The order the box's idle listeners are handed out: the slowest lanes first.
-OVERFLOW_ORDER = (RunnerClass.SERVICES, RunnerClass.HEAVY, RunnerClass.LIGHT)
+@dataclass(frozen=True)
+class Machine:
+    label: str
+    slots: int
+    pools: frozenset[JobPool]
+    takes_merge_groups: bool
+
+    def serves(self, run: Run, pool: JobPool) -> bool:
+        return pool in self.pools and (run.event != "merge_group" or self.takes_merge_groups)
+
+
+@dataclass(frozen=True)
+class Run:
+    id: int
+    event: str
+    branch: str
+    started: str
+    trusted: bool
+
+    @classmethod
+    def parse(cls, doc: Json, repo: str) -> Run:
+        head = doc.get("head_repository")
+        actor = doc.get("triggering_actor") or doc.get("actor")
+        login = field_of(actor, "login", str) if isinstance(actor, dict) else ""
+        return cls(
+            id=field_of(doc, "id", int),
+            event=field_of(doc, "event", str),
+            branch=text_of(doc, "head_branch"),
+            # A re-run restarts run_started_at, so it decides behind the runs already deciding.
+            started=text_of(doc, "run_started_at") or text_of(doc, "created_at"),
+            trusted=isinstance(head, dict)
+            and field_of(head, "full_name", str) == repo
+            and not login.endswith("[bot]"),
+        )
+
+    def order(self) -> tuple[str, int]:
+        return self.started, self.id
+
+    @property
+    def movable(self) -> bool:
+        """Whether its slices may leave GitHub-hosted at all (a master push deploys from hosted)."""
+        return self.trusted and self.event != "push"
+
+
+def active_runs(gh: GitHub, repo: str, workflow: str, me: Run) -> list[Run]:
+    """List the workflow's live runs in decision order, superseded ones dropped."""
+    found = {me.id: me}
+    never_started = int(time.time()) - NEVER_STARTED_SECS
+    for status in ("queued", "in_progress"):
+        path = f"repos/{repo}/actions/workflows/{workflow}/runs?status={status}&per_page=100"
+        for doc in records(gh.get(path), "workflow_runs"):
+            if status == "queued" and epoch(text_of(doc, "created_at")) < never_started:
+                continue
+            run = Run.parse(doc, repo)
+            found[run.id] = run
+    ordered = sorted(found.values(), key=Run.order)
+    newest = {(r.event, r.branch): r for r in ordered if r.event in SUPERSEDING_EVENTS}
+    return [
+        r
+        for r in ordered
+        if r.id == me.id or r.event not in SUPERSEDING_EVENTS or newest[(r.event, r.branch)] is r
+    ]
+
+
+@dataclass(frozen=True)
+class Held:
+    """What a run ahead really holds, read from its jobs."""
+
+    # False while detect runs: its slice jobs do not exist yet.
+    settled: bool
+    slots: Counter[str]
+    # Labels with a job in progress: their listeners are alive whatever the runners API says.
+    running: frozenset[str]
+
+
+def read_held(gh: GitHub, repo: str, run_id: int, labels: frozenset[str]) -> Held:
+    listed = gh.collect(
+        f"repos/{repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100", "jobs"
+    )
+    settled = any(
+        field_of(j, "name", str) == DETECT_JOB and field_of(j, "status", str) == "completed"
+        for j in listed
+    )
+    slots: Counter[str] = Counter()
+    running: set[str] = set()
+    for job in listed:
+        status = field_of(job, "status", str)
+        for label in labels.intersection(_job_labels(job)):
+            if status != "completed":
+                slots[label] += 1
+            if status == "in_progress":
+                running.add(label)
+    return Held(settled, slots, frozenset(running))
+
+
+def plan_run(
+    run: Run, ahead: int, free: dict[str, int], machines: list[Machine]
+) -> dict[JobPool, Machine | None]:
+    """Place a run's movable slice pools, taking their slots from free; empty when it stays hosted."""
+    if not run.movable or ahead < HOSTED_RUNS:
+        return {}
+    demand = slice_demand(run.event)
+    placed: dict[JobPool, Machine | None] = {}
+    for pool in (p for p in PLACEMENT_ORDER if demand[p]):
+        machine = next(
+            (m for m in machines if m.serves(run, pool) and free[m.label] >= demand[pool]), None
+        )
+        if machine is not None:
+            free[machine.label] -= demand[pool]
+        placed[pool] = machine
+    return placed
 
 
 @dataclass(frozen=True)
 class Choice:
     runs_on: tuple[str, ...]
-    label: str
     reason: str
     note: str
 
@@ -339,94 +452,109 @@ def trust_gate(repo: str) -> tuple[str, str] | None:
 
 @dataclass
 class Router:
-    """One select invocation: GitHub-hosted first, the box as overflow, Blacksmith last.
-
-    Every probe runs at most once and is shared by the classes. The box is
-    reached only once GitHub's own queue is saturated: under load a box job
-    waited up to 48 min while an all-GitHub run waited at most 6 s per job.
-    """
+    """One select invocation: this run's place among the live runs decides its slices' runner."""
 
     gh: GitHub
     repo: str
     fallback: tuple[str, ...]
-    force_home: bool
+    machines: list[Machine]
     blacksmith: str
-    threshold: int
-    pools: dict[str, Pool | None | GitHubError] = field(default_factory=dict)
-    claimed: dict[str, int] = field(default_factory=dict)
+    me: Run
 
-    def fallback_choice(self, reason: str, note: str) -> Choice:
-        return Choice(self.fallback, self.fallback[0], reason, note)
+    def hosted(self, reason: str, note: str) -> dict[JobPool, Choice]:
+        return dict.fromkeys(JobPool, Choice(self.fallback, reason, note))
 
-    @cached_property
-    def hosted_depth(self) -> int | None:
-        """GitHub's own backlog, or None when it could not be read (never 0)."""
+    def route(self) -> dict[JobPool, Choice]:
         try:
-            depth = hosted_queue_depth(self.gh, self.repo)
+            runs = active_runs(self.gh, self.repo, workflow_file(), self.me)
+            ahead = runs[: [r.id for r in runs].index(self.me.id)]
+            if len(ahead) < HOSTED_RUNS or not self.me.movable:
+                return self.hosted("hosted-first", f"{len(ahead)} run(s) ahead")
+            free = self.free_slots(ahead)
+        except GitHubError as err:
+            warn(f"run or job listing failed ({err}) — every pool stays on GitHub-hosted")
+            return self.hosted("runs-unknown", "run or job listing unreadable")
+        log(f"[select-runner] runs ahead: {[r.id for r in ahead]}; free slots: {free}")
+        placed = plan_run(self.me, len(ahead), free, self.machines)
+        choices = self.hosted("hosted-general", "general jobs stay on GitHub-hosted")
+        for pool, machine in placed.items():
+            choices[pool] = self.choose(pool, machine, len(ahead))
+        return choices
+
+    def choose(self, pool: JobPool, machine: Machine | None, ahead: int) -> Choice:
+        note = f"{ahead} run(s) ahead"
+        if machine is not None:
+            return Choice((SELF_HOSTED, machine.label), "self-hosted", note)
+        if ahead < SATURATED_RUNS or not self.blacksmith:
+            return Choice(self.fallback, "no-free-slot", f"{note}; no self-hosted slot free")
+        warn(
+            f"{pool.value} slices of run {self.me.id} go to Blacksmith (`{self.blacksmith}`), "
+            f"which is paid per job-minute: {ahead} runs are ahead on GitHub-hosted and "
+            "neither the box nor the M4 has a free slot."
+        )
+        return Choice((self.blacksmith,), "blacksmith-last-resort", note)
+
+    def free_slots(self, ahead: list[Run]) -> dict[str, int]:
+        """Return each machine's free slots once every run ahead has taken what it holds."""
+        labels = frozenset(m.label for m in self.machines)
+        readable = [r for r in ahead if r.movable]
+        with ThreadPoolExecutor(max_workers=JOB_READ_WORKERS) as pool:
+            reads = pool.map(lambda r: read_held(self.gh, self.repo, r.id, labels), readable)
+            held = dict(zip((r.id for r in readable), reads, strict=True))
+        running = frozenset().union(*(h.running for h in held.values()))
+        free = self.capacity(running)
+        for position, run in enumerate(ahead):
+            reading = held.get(run.id)
+            if reading is not None and reading.settled:
+                for label, taken in reading.slots.items():
+                    free[label] -= taken
+            else:
+                plan_run(run, position, free, self.machines)
+        return free
+
+    def capacity(self, running: frozenset[str]) -> dict[str, int]:
+        try:
+            runners = read_runners(self.gh, self.repo)
         except GitHubError as err:
             warn(
-                f"hosted queue probe failed ({err}) — staying on the free GitHub-hosted "
-                "runners rather than overflowing blind."
+                f"runners API unavailable ({err}) — no self-hosted machine takes this run's slices"
             )
-            return None
-        log(f"[select-runner] hosted queue depth: {depth} job(s) (saturated at {self.threshold})")
-        return depth
-
-    def pool(self, label: str) -> Pool | None:
-        if label not in self.pools:
-            try:
-                self.pools[label] = read_pool(self.gh, self.repo, label)
-            except GitHubError as err:
-                warn(f"runners API unavailable ({err}) — cannot see `{label}`'s listeners")
-                self.pools[label] = err
-        reading = self.pools[label]
-        if isinstance(reading, GitHubError):
-            raise reading
-        return reading
-
-    def route(self, label: str, demand: int) -> Choice:
-        if self.force_home:
-            return self._forced_home(label)
-        depth = self.hosted_depth
-        if depth is None:
-            return self.fallback_choice("hosted-queue-unknown", "GitHub queue unreadable")
-        if depth < self.threshold:
-            return self.fallback_choice("github-hosted", f"GitHub queue {depth} < {self.threshold}")
-        return self._overflow(label, demand, f"GitHub queue {depth} >= {self.threshold}")
-
-    def _overflow(self, label: str, demand: int, saturated: str) -> Choice:
-        """Take the box only when every job of the class gets its own idle listener."""
-        try:
-            pool = self.pool(label)
-        except GitHubError:
-            return self._last_resort(f"{saturated}; `{label}` unreadable")
-        if pool is None:
-            return self._last_resort(f"{saturated}; no runner with label `{label}` registered")
-        free = pool.idle - self.claimed.get(label, 0)
-        note = f"{saturated}; `{label}`: {pool.describe()}, {free} free for {demand} job(s)"
-        if free >= demand:
-            self.claimed[label] = self.claimed.get(label, 0) + demand
-            return Choice((SELF_HOSTED, label), label, "home-overflow", note)
-        return self._last_resort(note)
-
-    def _last_resort(self, note: str) -> Choice:
-        if not self.blacksmith:
-            return self.fallback_choice("github-queued", f"{note}; Blacksmith not configured")
-        return Choice((self.blacksmith,), self.blacksmith, "blacksmith-overflow", note)
-
-    def _forced_home(self, label: str) -> Choice:
-        try:
-            pool = self.pool(label)
-        except GitHubError as err:
-            raise Die(f"HOME runner forced but the runners API probe failed ({err})") from err
-        if pool is None:
-            raise Die(f"HOME runner forced but no runner with label {label} is registered")
-        if not pool.online:
-            raise Die(f"HOME runner forced but `{label}` is offline ({pool.describe()})")
-        return Choice((SELF_HOSTED, label), label, "forced-home", f"`{label}`: {pool.describe()}")
+            return {m.label: 0 for m in self.machines}
+        capacity = {}
+        for machine in self.machines:
+            pool = pool_of(runners, machine.label)
+            alive = pool.alive if pool else 0
+            if not alive and machine.label in running:
+                log(
+                    f"[select-runner] the runners API lists no live `{machine.label}` listener, "
+                    "but a run ahead has a job in progress on it: trusting the job"
+                )
+                alive = machine.slots
+            capacity[machine.label] = min(machine.slots, alive)
+        return capacity
 
 
-def route() -> dict[RunnerClass, Choice]:
+def machines_from_env(box: str) -> list[Machine]:
+    """List the self-hosted machines in the order unit slices try them: the M4 first, when on."""
+    found = [Machine(box, BOX_SLOTS, frozenset({JobPool.UNIT, JobPool.SERVICES}), True)]
+    if m4 := os.environ.get("M4_LABEL", ""):
+        found.insert(0, Machine(m4, M4_SLOTS, frozenset({JobPool.UNIT}), False))
+    return found
+
+
+def forced_home(gh: GitHub, repo: str, label: str) -> Choice:
+    try:
+        pool = pool_of(read_runners(gh, repo), label)
+    except GitHubError as err:
+        raise Die(f"HOME runner forced but the runners API probe failed ({err})") from err
+    if pool is None:
+        raise Die(f"HOME runner forced but no runner with label {label} is registered")
+    if not pool.online:
+        raise Die(f"HOME runner forced but `{label}` is offline ({pool.describe()})")
+    return Choice((SELF_HOSTED, label), "forced-home", f"`{label}`: {pool.describe()}")
+
+
+def route() -> dict[JobPool, Choice]:
     repo = repository()
     fallback = _fallback_runner()
     gate = trust_gate(repo)
@@ -434,33 +562,30 @@ def route() -> dict[RunnerClass, Choice]:
     if gate is None and not gh.token:
         gate = ("no-token", "no API token available (local run)")
     if gate is not None:
-        reason, note = gate
-        same = Choice(fallback, fallback[0], reason, note)
-        return dict.fromkeys(RunnerClass, same)
+        return dict.fromkeys(JobPool, Choice(fallback, *gate))
+    box = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
+    if os.environ.get("FORCE_HOME") == "true":
+        return dict.fromkeys(JobPool, forced_home(gh, repo, box))
+    event = env_required("GITHUB_EVENT_NAME")
+    branch = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME", "")
+    me = Run(env_int("GITHUB_RUN_ID", 0), event, branch, NOT_LISTED_YET, trusted=True)
     router = Router(
         gh=gh,
         repo=repo,
         fallback=fallback,
-        force_home=os.environ.get("FORCE_HOME") == "true",
+        machines=machines_from_env(box),
         blacksmith=os.environ.get("BLACKSMITH_LABEL", ""),
-        threshold=env_int("HOSTED_QUEUE_THRESHOLD", HOSTED_SATURATED_QUEUE_DEPTH),
+        me=me,
     )
-    home = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
-    labels = dict.fromkeys(RunnerClass, home)
-    labels[RunnerClass.SERVICES] = os.environ.get("SERVICES_RUNNER_LABEL") or DEFAULT_HOME_LABEL
-    demand = class_demand()
-    routed = {cls: router.route(labels[cls], demand[cls]) for cls in OVERFLOW_ORDER}
-    return {cls: routed[cls] for cls in RunnerClass}
+    return router.route()
 
 
 def cmd_select(_args: list[str]) -> int:
     choices = route()
-    heavy = choices[RunnerClass.HEAVY]
+    self_hosted = any(choice.is_self_hosted for choice in choices.values())
     lines = [
-        f"runner_label={heavy.label}",
-        f"is_self_hosted={str(heavy.is_self_hosted).lower()}",
-        f"reason={heavy.reason}",
-        *(f"{cls.value}={choice.runs_on_json()}" for cls, choice in choices.items()),
+        f"is_self_hosted={str(self_hosted).lower()}",
+        *(f"{pool.value}={choice.runs_on_json()}" for pool, choice in choices.items()),
     ]
     output = os.environ.get("GITHUB_OUTPUT")
     if output:
@@ -471,11 +596,11 @@ def cmd_select(_args: list[str]) -> int:
     summary = [
         "### Runner selection",
         "",
-        "| class | runs-on | reason | why |",
+        "| pool | runs-on | reason | why |",
         "| --- | --- | --- | --- |",
         *(
-            f"| {cls.value} | `{c.runs_on_json()}` | {c.reason} | {c.note} |"
-            for cls, c in choices.items()
+            f"| {pool.value} | `{c.runs_on_json()}` | {c.reason} | {c.note} |"
+            for pool, c in choices.items()
         ),
     ]
     log("[select-runner] " + "\n".join(summary))
@@ -499,6 +624,7 @@ class Job:
     status: str
     created: int
     progress: int
+    labels: tuple[str, ...]
 
     @classmethod
     def parse(cls, doc: Json) -> Job:
@@ -508,19 +634,40 @@ class Job:
             status=field_of(doc, "status", str),
             created=epoch(text_of(doc, "created_at")),
             progress=max(stamps),
+            labels=tuple(_job_labels(doc)),
         )
 
+    @property
+    def machine(self) -> str:
+        """The self-hosted label this job waits for; empty for a GitHub-hosted or Blacksmith job."""
+        if SELF_HOSTED not in self.labels:
+            return ""
+        return next((label for label in self.labels if label != SELF_HOSTED), SELF_HOSTED)
 
-def _stalled_job(jobs: list[Job], limit: int) -> str:
+
+def _stalled_job(jobs: list[Job], limit: int) -> Job | None:
     last_progress = max((j.progress for j in jobs), default=0)
     now = int(time.time())
-    stalled = ""
-    for job in (j for j in jobs if j.status == "queued"):
+    stalled = None
+    for job in (j for j in jobs if j.status == "queued" and j.machine):
         age = now - max(job.created, last_progress)
         ok(f"watchdog: '{job.name}' eligible for {age}s (limit {limit}s)")
         if age > limit:
-            stalled = job.name
+            stalled = job
     return stalled
+
+
+def _machine_state(gh: GitHub, label: str, jobs: list[Job]) -> HomeState:
+    """Read a label's liveness; an "offline" listing loses to a job of this run in progress on it."""
+    state = home_state(gh, repository(), label)
+    running = next((j for j in jobs if j.status == "in_progress" and j.machine == label), None)
+    if state is HomeState.OFFLINE and running is not None:
+        warn(
+            f"the runners API lists no live '{label}' listener, but '{running.name}' is "
+            "in progress on it — trusting the job over the listing"
+        )
+        return HomeState.ONLINE
+    return state
 
 
 def _hand_to_requeue(gh: GitHub, stalled: str, limit: int, label: str) -> int:
@@ -574,7 +721,7 @@ def _redispatch_or_cancel(gh: GitHub, run: str, stalled: str, limit: int, label:
     return 0
 
 
-def _watch_once(gh: GitHub, run: str, me: str, limit: int, label: str) -> int | None:
+def _watch_once(gh: GitHub, run: str, me: str, limit: int) -> int | None:
     """One poll; an exit code when the watch is over, None to keep watching."""
     status = field_of(gh.get(run), "status", str)
     if status not in ACTIVE_RUN_STATUSES:
@@ -582,45 +729,43 @@ def _watch_once(gh: GitHub, run: str, me: str, limit: int, label: str) -> int | 
         return 0
     jobs = [Job.parse(j) for j in gh.collect(f"{run}/jobs?per_page=100", "jobs")]
     jobs = [j for j in jobs if j.name != me]
-    if not any(j.status == "queued" for j in jobs):
-        if not jobs:
-            # Lanes whose `needs:` have not resolved have no record yet.
-            ok(f"watchdog: no lanes created yet (run {status}) — waiting")
+    if not jobs:
+        # Lanes whose `needs:` have not resolved have no record yet.
+        ok(f"watchdog: no lanes created yet (run {status}) — waiting")
+        return None
+    if not any(j.status == "queued" and j.machine for j in jobs):
+        # The slices select moves off GitHub are created only when detect finishes.
+        if not any(j.name == DETECT_JOB and j.status == "completed" for j in jobs):
+            ok("watchdog: detect has not finished, so the slice lanes do not exist yet — waiting")
             return None
-        live = any(j.status != "completed" for j in jobs)
-        ok(
-            "watchdog: no queued jobs — every lane was picked up"
-            if live
-            else "watchdog: every lane finished"
-        )
+        ok("watchdog: every self-hosted lane was picked up")
         return 0
     stalled = _stalled_job(jobs, limit)
-    if not stalled:
+    if stalled is None:
         return None
-    match home_state(gh, repository(), label):
+    match _machine_state(gh, stalled.machine, jobs):
         case HomeState.ONLINE:
             warn(
-                f"'{stalled}' has been queued for over {limit}s, but instances labelled "
-                f"'{label}' are online — the box is busy, not dead. Not cancelling."
+                f"'{stalled.name}' has been queued for over {limit}s, but instances labelled "
+                f"'{stalled.machine}' are online — the machine is busy, not dead. Not cancelling."
             )
         case HomeState.UNKNOWN:
             warn(
-                f"'{stalled}' has been queued for over {limit}s and the runners API could "
+                f"'{stalled.name}' has been queued for over {limit}s and the runners API could "
                 "not be probed — not cancelling on an unknown."
             )
         case HomeState.OFFLINE:
-            return _redispatch_or_cancel(gh, run, stalled, limit, label)
+            return _redispatch_or_cancel(gh, run, stalled.name, limit, stalled.machine)
     return None
 
 
 def cmd_watchdog(_args: list[str]) -> int:
     limit = env_int("QUEUE_LIMIT_SECS", 480)
     poll = env_int("POLL_SECS", 30)
-    label = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
     me = env_required("WATCHDOG_JOB_NAME")
     run = f"repos/{env_required('GITHUB_REPOSITORY')}/actions/runs/{env_required('GITHUB_RUN_ID')}"
     gh = GitHub.from_env()
-    while (code := _watch_once(gh, run, me, limit, label)) is None:
+    while (code := _watch_once(gh, run, me, limit)) is None:
         time.sleep(poll)
     return code
 
@@ -653,14 +798,14 @@ def _requeue(gh: GitHub, run: str, wait: int, poll: int) -> bool:
     return True
 
 
-def _stranded_job(gh: GitHub, repo: str, run_id: int, label: str, limit: int) -> str:
+def _stranded_job(gh: GitHub, repo: str, run_id: int, limit: int) -> Job | None:
+    """Return a self-hosted job of the run queued past the limit, if any."""
     now = int(time.time())
     jobs = gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100", "jobs")
-    stranded = ""
-    for job in jobs:
-        queued_here = field_of(job, "status", str) == "queued" and label in _job_labels(job)
-        if queued_here and now - epoch(text_of(job, "created_at")) > limit:
-            stranded = field_of(job, "name", str)
+    stranded = None
+    for job in map(Job.parse, jobs):
+        if job.status == "queued" and job.machine and now - job.created > limit:
+            stranded = job
     return stranded
 
 
@@ -680,29 +825,34 @@ def _requeue_candidates(gh: GitHub, repo: str) -> list[int]:
 
 def cmd_requeue_stranded(_args: list[str]) -> int:
     limit = env_int("QUEUE_LIMIT_SECS", 480)
-    label = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
     wait = env_int("CANCEL_WAIT_SECS", 180)
     poll = env_int("POLL_SECS", 10)
     repo = env_required("GITHUB_REPOSITORY")
     gh = GitHub.from_env()
-    match home_state(gh, repo, label):
-        case HomeState.ONLINE:
-            ok(f"requeue-stranded: runners labelled '{label}' are online — nothing is stranded")
-            return 0
-        case HomeState.UNKNOWN:
-            # Touch nothing, but fail: a sweep that cannot see the runners has not done its job.
-            warn(
-                "requeue-stranded: the runners API could not be probed — not touching any run on an unknown"
-            )
-            return 1
+    states: dict[str, HomeState] = {}
     failed = 0
     for run_id in _requeue_candidates(gh, repo):
-        stranded = _stranded_job(gh, repo, run_id, label, limit)
-        if not stranded:
+        stranded = _stranded_job(gh, repo, run_id, limit)
+        if stranded is None:
             continue
+        label = stranded.machine
+        if label not in states:
+            states[label] = home_state(gh, repo, label)
+        match states[label]:
+            case HomeState.ONLINE:
+                ok(f"requeue-stranded: run {run_id}: '{label}' is online — busy, not stranded")
+                continue
+            case HomeState.UNKNOWN:
+                # Touch nothing, but fail: a sweep that cannot see the runners has not done its job.
+                warn(
+                    f"requeue-stranded: run {run_id}: the runners API could not be probed — "
+                    "not touching it on an unknown"
+                )
+                failed = 1
+                continue
         ok(
-            f"requeue-stranded: run {run_id}: '{stranded}' queued on '{label}' past {limit}s with "
-            f"no '{label}' runner online — force-cancelling to re-run in full"
+            f"requeue-stranded: run {run_id}: '{stranded.name}' queued on '{label}' past {limit}s "
+            f"with no '{label}' runner online — force-cancelling to re-run in full"
         )
         if _requeue(gh, f"repos/{repo}/actions/runs/{run_id}", wait, poll):
             ok(f"requeue-stranded: run {run_id} re-run in full — select-runner decides afresh")
@@ -1316,7 +1466,7 @@ def _process_counts() -> dict[str, int]:
 def _listeners() -> dict[str, int | None]:
     label = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
     try:
-        pool = read_pool(GitHub.from_env(), repository(), label)
+        pool = pool_of(read_runners(GitHub.from_env(), repository()), label)
     except GitHubError as err:
         log(f"health: listener probe failed ({err}) — reporting the pool as unknown")
         pool = None

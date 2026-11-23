@@ -138,6 +138,18 @@ def test_a_handed_over_first_attempt_is_rerun_in_full(github: FakeGitHub) -> Non
     assert proc.returncode == 0
 
 
+def test_a_rerun_stranded_on_a_dead_m4_is_rerun_while_the_box_is_up(github: FakeGitHub) -> None:
+    proc = sweep(
+        github,
+        Scenario(
+            jobs=[queued_job("test-python (unit-a)", ["self-hosted", "gaia-m4"], 900)],
+            runners=[runner("home-1", "online", "gaia-home"), runner("m4-1", "offline", "gaia-m4")],
+        ),
+    )
+
+    assert github.posts() == ["force-cancel", "rerun"], proc.stdout + proc.stderr
+
+
 def test_a_lane_queued_on_github_hosted_is_not_stranded(github: FakeGitHub) -> None:
     sweep(github, Scenario(jobs=[queued_job("lint", ["ubuntu-24.04"], 900)]))
 

@@ -1,58 +1,134 @@
-"""runner.py select: trust gates and per-class routing, against a local fake GitHub.
+"""runner.py select: trust gates and run-ordered routing, against a local fake GitHub.
 
-The home box runs only code from organisation members, and every trust gate is
-decided before any API call, so a gate that leaks shows up as a request to the
-fake server. Routing is GitHub-hosted first for every class, the box only once
-GitHub's queue is saturated, and Blacksmith only when the box has no idle listener.
+Every trust gate is decided before any API call, so a gate that leaks shows up
+as a request to the fake server. Routing reads this repo's active ci.yml runs
+and places each run by the runs ahead of it: the first stays GitHub-hosted, the
+later ones move their test slices to the box (4 slots) and the M4 (2 slots,
+unit slices only), and Blacksmith is the paid last resort once GitHub is
+saturated and no self-hosted slot is free. Runs that start together read the
+same list, so they get distinct answers instead of all reading an empty queue.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 
-from github_fake import REPO, RUNNER, FakeGitHub, Reply, run_runner, runner
+from github_fake import REPO, RUNNER, FakeGitHub, Reply, ago, run_runner, runner
 import pytest
 import runner as runner_mod
 
-HOME = '["self-hosted","gaia-home"]'
 HOSTED = runner_mod.DEFAULT_FALLBACK
+BOX_LABEL = "gaia-home"
+M4_LABEL = "gaia-m4"
+BOX = '["self-hosted","gaia-home"]'
+M4 = '["self-hosted","gaia-m4"]'
 BLACKSMITH = "blacksmith-4vcpu-ubuntu-2404"
+WORKFLOW_RUNS = r"/actions/workflows/ci\.yml/runs$"
 RUNNERS = r"/actions/runners$"
-RUNS = r"/actions/runs$"
+POOLS = ("general", "unit", "services")
+SLICES = json.loads((RUNNER.parent / "lib" / "test-slices.json").read_text())["slices"]
 
 
-def select(github: FakeGitHub, **env: str) -> dict[str, str]:
-    proc = run_runner("select", env=github.env(**{"PR_HEAD_REPO": REPO, **env}))
+def ci_run(
+    run_id: int,
+    event: str = "pull_request",
+    *,
+    branch: str = "",
+    started: str = "2026-11-23T10:00:00Z",
+) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "event": event,
+        "status": "in_progress",
+        "head_branch": branch or f"feature-{run_id}",
+        "run_started_at": started,
+        "created_at": started,
+        "run_attempt": 1,
+        "head_repository": {"full_name": REPO},
+        "triggering_actor": {"login": "agent"},
+    }
+
+
+def ci_job(name: str, status: str, labels: list[str]) -> dict[str, object]:
+    return {
+        "name": name,
+        "status": status,
+        "labels": labels,
+        "started_at": None if status == "queued" else ago(60),
+    }
+
+
+def jobs(github: FakeGitHub, run_id: int, *listed: dict[str, object]) -> None:
+    github.on("GET", rf"/actions/runs/{run_id}/jobs$", Reply(200, {"jobs": list(listed)}))
+
+
+def active(github: FakeGitHub, *runs: dict[str, object]) -> None:
+    """Serve the runs as this repo's in-progress ci.yml runs, each still in select-runner."""
+    github.on("GET", WORKFLOW_RUNS, Reply(200, {"workflow_runs": []}), query={"status": "queued"})
+    github.on(
+        "GET",
+        WORKFLOW_RUNS,
+        Reply(200, {"workflow_runs": list(runs)}),
+        query={"status": "in_progress"},
+    )
+    for run in runs:
+        jobs(github, int(str(run["id"])), ci_job("select-runner", "in_progress", [BLACKSMITH]))
+
+
+def listeners(github: FakeGitHub, *, box: int = 10, m4: int = 4) -> None:
+    pool = [runner(f"gaia-home-{i}", "online", BOX_LABEL) for i in range(box)]
+    pool += [runner(f"gaia-m4-{i}", "online", M4_LABEL) for i in range(m4)]
+    github.on("GET", RUNNERS, Reply(200, {"runners": pool}))
+
+
+def run_select(
+    github: FakeGitHub, run_id: int, event: str = "pull_request", **env: str
+) -> subprocess.CompletedProcess[str]:
+    is_pr = event == "pull_request"
+    return run_runner(
+        "select",
+        env=github.env(
+            **{
+                "PR_HEAD_REPO": REPO if is_pr else "",
+                "PR_AUTHOR_ASSOCIATION": "MEMBER" if is_pr else "",
+                "GITHUB_RUN_ID": str(run_id),
+                "GITHUB_EVENT_NAME": event,
+                "GITHUB_WORKFLOW_REF": f"{REPO}/.github/workflows/ci.yml@refs/heads/feature",
+                "M4_LABEL": M4_LABEL,
+                **env,
+            }
+        ),
+    )
+
+
+def outputs(proc: subprocess.CompletedProcess[str]) -> dict[str, str]:
     assert proc.returncode == 0, proc.stderr
     return dict(line.split("=", 1) for line in proc.stdout.splitlines() if "=" in line)
 
 
-def pool(github: FakeGitHub, *runners: dict[str, object]) -> None:
-    github.on("GET", RUNNERS, Reply(200, {"runners": list(runners)}))
+def select(
+    github: FakeGitHub, run_id: int = 1, event: str = "pull_request", **env: str
+) -> dict[str, str]:
+    return outputs(run_select(github, run_id, event, **env))
 
 
-def queued_jobs(github: FakeGitHub, status: str, labels: list[str], count: int) -> None:
-    """Serve one sampled run of the given status holding count jobs queued on labels."""
-    run_id = 500 if status == "queued" else 600
-    github.on(
-        "GET", RUNS, Reply(200, {"workflow_runs": [{"id": run_id}]}), query={"status": status}
-    )
-    jobs = [{"name": f"j{i}", "status": "queued", "labels": labels} for i in range(count)]
-    github.on("GET", rf"/actions/runs/{run_id}/jobs$", Reply(200, {"jobs": jobs}))
+def slice_count(tier: str, pool: str) -> int:
+    return sum(1 for s in SLICES if s["pool"] == pool and (tier == "full" or s["tier"] == "fast"))
 
 
-def no_runs(github: FakeGitHub) -> None:
-    github.on("GET", RUNS, Reply(200, {"workflow_runs": []}))
-
-
-def saturate(github: FakeGitHub, depth: int = 5) -> None:
-    """Serve a GitHub-hosted backlog of depth queued jobs."""
-    queued_jobs(github, "queued", [runner_mod.HOSTED_LINUX_IMAGE], depth)
-    queued_jobs(github, "in_progress", [runner_mod.HOSTED_LINUX_IMAGE], 0)
+def self_hosted_load(choices: list[dict[str, str]], tier: str) -> Counter[str]:
+    """Count the jobs a set of runs' choices put on each self-hosted label."""
+    load: Counter[str] = Counter()
+    for out in choices:
+        for pool in ("unit", "services"):
+            if out[pool] in (BOX, M4):
+                load[json.loads(out[pool])[1]] += slice_count(tier, pool)
+    return load
 
 
 # ── trust gates: decided before any probe ───────────────────────────────────
@@ -64,241 +140,296 @@ def saturate(github: FakeGitHub, depth: int = 5) -> None:
 def test_non_member_pr_never_reaches_the_box(github: FakeGitHub, association: str) -> None:
     out = select(github, PR_AUTHOR_ASSOCIATION=association)
     assert out["is_self_hosted"] == "false"
-    assert out["reason"] == "untrusted-author"
-    assert out["light"] == out["heavy"] == out["services"] == HOSTED
+    assert all(out[pool] == HOSTED for pool in POOLS)
     assert github.requests == []
 
 
-def test_fork_pr_is_rejected_before_the_author_check(github: FakeGitHub) -> None:
-    out = select(github, PR_HEAD_REPO="outsider/gaia", PR_AUTHOR_ASSOCIATION="MEMBER")
-    assert out["light"] == out["heavy"] == out["services"] == HOSTED
-    assert out["reason"] == "fork"
+def test_fork_pr_stays_hosted_without_an_api_call(github: FakeGitHub) -> None:
+    out = select(github, PR_HEAD_REPO="outsider/gaia")
+    assert all(out[pool] == HOSTED for pool in POOLS)
     assert github.requests == []
 
 
 @pytest.mark.parametrize("actor", ["dependabot[bot]", "github-actions[bot]", "renovate[bot]"])
 def test_bot_actor_never_reaches_the_box(github: FakeGitHub, actor: str) -> None:
-    out = select(github, PR_AUTHOR_ASSOCIATION="MEMBER", GITHUB_ACTOR=actor)
-    assert out["light"] == out["heavy"] == out["services"] == HOSTED
-    assert out["reason"] == "bot-actor"
+    out = select(github, GITHUB_ACTOR=actor)
+    assert all(out[pool] == HOSTED for pool in POOLS)
     assert github.requests == []
 
 
-def test_forced_github_skips_the_probe(github: FakeGitHub) -> None:
-    out = select(github, PR_AUTHOR_ASSOCIATION="OWNER", FORCE_GITHUB="true")
-    assert out["light"] == out["heavy"] == out["services"] == HOSTED
-    assert out["reason"] == "forced-github"
+def test_forced_github_skips_every_probe(github: FakeGitHub) -> None:
+    out = select(github, FORCE_GITHUB="true")
+    assert all(out[pool] == HOSTED for pool in POOLS)
     assert github.requests == []
 
 
-@pytest.mark.parametrize("association", ["OWNER", "MEMBER", ""])
-def test_member_pr_and_push_reach_the_probe(github: FakeGitHub, association: str) -> None:
-    no_runs(github)
-    out = select(github, PR_AUTHOR_ASSOCIATION=association)
-    assert out["reason"] == "github-hosted"
-    assert any(re.search(RUNS, r.path) for r in github.requests)
+# ── run-ordered routing ─────────────────────────────────────────────────────
 
 
-# ── routing: GitHub-hosted first, the box as overflow, Blacksmith last ──────
-
-
-def test_a_free_github_queue_keeps_every_class_off_an_idle_box(github: FakeGitHub) -> None:
-    pool(github, runner("home-1", "online", "gaia-home"))
-    no_runs(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert out["light"] == out["heavy"] == out["services"] == HOSTED
-    assert out["reason"] == "github-hosted"
+def test_a_lone_run_stays_hosted_and_reads_only_the_run_list(github: FakeGitHub) -> None:
+    active(github, ci_run(1))
+    listeners(github)
+    out = select(github, 1)
+    assert all(out[pool] == HOSTED for pool in POOLS)
     assert out["is_self_hosted"] == "false"
-    assert not any(re.search(RUNNERS, r.path) for r in github.requests)
+    assert [r.path for r in github.requests] == [f"/repos/{REPO}/actions/workflows/ci.yml/runs"] * 2
 
 
-@pytest.mark.parametrize(("depth", "expected"), [(4, HOSTED), (5, HOME)])
-def test_the_default_saturation_threshold_is_five_queued_jobs(
-    github: FakeGitHub, depth: int, expected: str
-) -> None:
-    pool(github, *idle_home(18))
-    saturate(github, depth)
-    out = select(github)
-    assert out["heavy"] == expected
+def test_simultaneous_pr_runs_get_distinct_places_within_every_cap(github: FakeGitHub) -> None:
+    """Four pushes land together; each select sees the same four runs and none of their slices."""
+    burst = [ci_run(i) for i in (11, 12, 13, 14)]
+    active(github, *burst)
+    listeners(github)
+    choices = [select(github, int(str(run["id"]))) for run in burst]
+
+    assert [c["unit"] for c in choices] == [HOSTED, M4, BOX, BOX]
+    assert all(c["general"] == HOSTED for c in choices)
+    load = self_hosted_load(choices, "fast")
+    assert load[BOX_LABEL] <= runner_mod.BOX_SLOTS
+    assert load[M4_LABEL] <= runner_mod.M4_SLOTS
 
 
-def idle_home(count: int, busy: int = 0) -> list[dict[str, object]]:
-    return [runner(f"home-{i}", "online", "gaia-home", busy=i < busy) for i in range(busy + count)]
+def test_full_tier_runs_never_put_more_than_four_slices_on_the_box(github: FakeGitHub) -> None:
+    groups = [ci_run(i, "merge_group") for i in (21, 22, 23)]
+    active(github, *groups)
+    listeners(github)
+    choices = [select(github, int(str(run["id"])), "merge_group") for run in groups]
+
+    assert choices[0]["unit"] == choices[0]["services"] == HOSTED
+    assert choices[1]["unit"] == choices[1]["services"] == BOX
+    assert choices[2]["unit"] == choices[2]["services"] == HOSTED
+    assert self_hosted_load(choices, "full")[BOX_LABEL] == runner_mod.BOX_SLOTS
 
 
-def test_a_saturated_github_queue_overflows_every_class_to_a_box_that_fits_them(
-    github: FakeGitHub,
-) -> None:
-    pool(github, *idle_home(sum(ci_class_demand().values()), busy=2))
-    saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert out["light"] == out["heavy"] == out["services"] == HOME
-    assert out["reason"] == "home-overflow"
-    assert out["is_self_hosted"] == "true"
+def test_the_m4_only_ever_takes_unit_slices(github: FakeGitHub) -> None:
+    active(github, ci_run(31, "workflow_dispatch"), ci_run(32, "workflow_dispatch"))
+    listeners(github, box=0)
+    out = select(github, 32, "workflow_dispatch")
+    assert out["unit"] == M4
+    assert out["services"] == out["general"] == HOSTED
 
 
-def test_one_idle_listener_takes_no_class_it_cannot_fit(github: FakeGitHub) -> None:
-    """Every job of a class goes to one label, so a class needing 5 listeners would queue behind 1."""
-    pool(github, *idle_home(1, busy=9))
-    saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert out["light"] == out["heavy"] == out["services"] == f'["{BLACKSMITH}"]'
+def test_a_merge_group_never_lands_on_the_m4(github: FakeGitHub) -> None:
+    active(github, ci_run(41), ci_run(42, "merge_group"))
+    listeners(github, box=0)
+    out = select(github, 42, "merge_group")
+    assert out["unit"] == out["services"] == HOSTED
 
 
-@pytest.mark.parametrize(
-    ("idle", "on_box"),
-    [(5, {"heavy"}), (9, {"services"}), (14, {"services", "heavy"}), (19, {"services", "heavy"})],
-)
-def test_idle_listeners_are_shared_out_class_by_class(
-    github: FakeGitHub, idle: int, on_box: set[str]
-) -> None:
-    pool(github, *idle_home(idle))
-    saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert {cls for cls in ("light", "heavy", "services") if out[cls] == HOME} == on_box
+def test_the_m4_is_off_until_its_label_is_set(github: FakeGitHub) -> None:
+    active(github, ci_run(51), ci_run(52))
+    listeners(github, box=0)
+    out = select(github, 52, M4_LABEL="")
+    assert out["unit"] == HOSTED
 
 
-def ci_class_demand() -> dict[str, int]:
-    """Count the jobs ci.yml routes to each class; a matrix counts at its concurrent width."""
-    repo = RUNNER.parent.parent.parent
-    workflow = (repo / ".github/workflows/ci.yml").read_text()
-    routed: dict[str, list[str]] = {"light": [], "heavy": [], "services": []}
-    job = ""
-    for line in workflow.splitlines():
-        if match := re.match(r"^  ([a-z][a-z0-9_-]*):$", line):
-            job = match.group(1)
-        elif "runs-on:" in line and job != "test-python":
-            if match := re.search(r"select-runner\.outputs\.(light|heavy|services)\)", line):
-                routed[match.group(1)].append(job)
-    assert routed["services"] == ["test-python-engines", "test-mutation"]
-    split = "[matrix.slice].services == 'true' && fromJSON(needs.select-runner.outputs.services)"
-    assert split in workflow, "test-python no longer picks its pool per slice"
-    slices = json.loads((repo / "scripts/ci/lib/test-slices.json").read_text())["slices"]
-    services = sum(1 for s in slices if s["services"] == "true")
-    wave = re.search(r"max-parallel: (\d+)", workflow[workflow.index("\n  test-mutation:") :])
-    assert wave is not None
-    return {
-        "light": len(routed["light"]),
-        "heavy": len(routed["heavy"]) + len(slices) - services,
-        "services": services + int(wave.group(1)),
-    }
+def test_a_run_ahead_past_detect_is_judged_by_its_real_jobs(github: FakeGitHub) -> None:
+    """The run ahead of 62 finished, so recomputing 62 would call it first in line and hosted."""
+    active(github, ci_run(62), ci_run(63))
+    jobs(
+        github,
+        62,
+        ci_job("detect", "completed", [runner_mod.HOSTED_LINUX_IMAGE]),
+        ci_job("test-python (unit-a)", "in_progress", ["self-hosted", BOX_LABEL]),
+        ci_job("test-python (unit-b)", "in_progress", ["self-hosted", BOX_LABEL]),
+        ci_job("test-python (integration)", "queued", ["self-hosted", BOX_LABEL]),
+    )
+    listeners(github, m4=0)
+    out = select(github, 63)
+    assert out["unit"] == HOSTED, "three of the box's four slots are taken and two are needed"
 
 
-@pytest.mark.parametrize("short", [0, 1])
-def test_the_box_takes_every_class_only_with_a_listener_per_ci_job(
-    github: FakeGitHub, short: int
-) -> None:
-    """A lane added to a class must raise that class's demand, or its jobs queue on the box."""
-    pool(github, *idle_home(sum(ci_class_demand().values()) - short))
-    saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    every = out["light"] == out["heavy"] == out["services"] == HOME
-    assert every is (short == 0)
+def test_slices_a_run_ahead_has_finished_free_their_slots(github: FakeGitHub) -> None:
+    active(github, ci_run(71), ci_run(72), ci_run(73))
+    jobs(
+        github,
+        72,
+        ci_job("detect", "completed", [runner_mod.HOSTED_LINUX_IMAGE]),
+        ci_job("test-python (unit-a)", "completed", ["self-hosted", BOX_LABEL]),
+        ci_job("test-python (unit-b)", "completed", ["self-hosted", BOX_LABEL]),
+        ci_job("mutation", "in_progress", [runner_mod.HOSTED_LINUX_IMAGE]),
+    )
+    listeners(github, m4=0)
+    out = select(github, 73)
+    assert out["unit"] == BOX
 
 
-@pytest.mark.parametrize(
-    "listeners",
-    [
-        idle_home(0, busy=10),
-        [runner("home-1", "offline", "gaia-home")],
-        [runner("lint-1", "online", "gaia-home-lint")],
-    ],
-    ids=["busy", "offline", "not-registered"],
-)
-def test_a_saturated_github_and_a_box_with_no_idle_listener_go_to_blacksmith(
-    github: FakeGitHub, listeners: list[dict[str, object]]
-) -> None:
-    pool(github, *listeners)
-    saturate(github)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert out["light"] == out["heavy"] == out["services"] == f'["{BLACKSMITH}"]'
-    assert out["reason"] == "blacksmith-overflow"
+def test_a_box_listed_offline_but_running_a_job_is_alive(github: FakeGitHub) -> None:
+    """The runners API once listed all 22 listeners offline while they ran jobs."""
+    active(github, ci_run(81), ci_run(82), ci_run(83))
+    jobs(
+        github,
+        82,
+        ci_job("detect", "completed", [runner_mod.HOSTED_LINUX_IMAGE]),
+        ci_job("test-python (unit-a)", "in_progress", ["self-hosted", BOX_LABEL]),
+        ci_job("test-python (unit-b)", "completed", ["self-hosted", BOX_LABEL]),
+    )
+    offline = [runner(f"gaia-home-{i}", "offline", BOX_LABEL) for i in range(10)]
+    github.on("GET", RUNNERS, Reply(200, {"runners": offline}))
+    out = select(github, 83, M4_LABEL="")
+    assert out["unit"] == BOX
+
+
+def test_an_offline_box_with_no_running_job_takes_nothing(github: FakeGitHub) -> None:
+    active(github, ci_run(91), ci_run(92))
+    offline = [runner(f"gaia-home-{i}", "offline", BOX_LABEL) for i in range(10)]
+    github.on("GET", RUNNERS, Reply(200, {"runners": offline}))
+    out = select(github, 92, M4_LABEL="")
+    assert out["unit"] == HOSTED
     assert out["is_self_hosted"] == "false"
 
 
-def test_without_blacksmith_a_saturated_everything_queues_on_github(github: FakeGitHub) -> None:
-    pool(github, runner("home-1", "online", "gaia-home", busy=True))
-    saturate(github)
-    out = select(github)
-    assert out["light"] == out["heavy"] == out["services"] == HOSTED
-    assert out["reason"] == "github-queued"
+def test_a_run_github_never_started_is_not_ahead(github: FakeGitHub) -> None:
+    """Three runs from 11 Nov still list as queued with no job; counted, they made every run later."""
+    zombie = {**ci_run(7, started="2026-11-11T20:33:51Z"), "status": "queued"}
+    github.on(
+        "GET", WORKFLOW_RUNS, Reply(200, {"workflow_runs": [zombie]}), query={"status": "queued"}
+    )
+    github.on(
+        "GET",
+        WORKFLOW_RUNS,
+        Reply(200, {"workflow_runs": [ci_run(8, started=ago(30))]}),
+        query={"status": "in_progress"},
+    )
+    listeners(github)
+    out = select(github, 8)
+    assert out["unit"] == HOSTED
+    assert not any("/runs/7/jobs" in r.path for r in github.requests)
 
 
-def test_an_unreadable_runners_list_is_loud_and_skips_the_box(github: FakeGitHub) -> None:
-    github.on("GET", RUNNERS, Reply(401, {"message": "Bad credentials"}))
-    saturate(github)
-    proc = run_runner("select", env=github.env(PR_HEAD_REPO=REPO, BLACKSMITH_LABEL=BLACKSMITH))
-    assert proc.returncode == 0, proc.stderr
+def test_a_superseded_run_on_the_same_branch_is_not_ahead(github: FakeGitHub) -> None:
+    active(github, ci_run(101, branch="feat"), ci_run(102, branch="feat"))
+    listeners(github)
+    out = select(github, 102)
+    assert out["unit"] == HOSTED
+
+
+def test_a_rerun_queues_behind_the_runs_already_deciding(github: FakeGitHub) -> None:
+    """Run 5 is old but its re-run started last: ordering by id alone put it first."""
+    active(
+        github,
+        ci_run(5, started="2026-11-23T10:05:00Z"),
+        ci_run(110, started="2026-11-23T10:01:00Z"),
+    )
+    listeners(github)
+    out = select(github, 5)
+    assert out["unit"] == M4
+
+
+# ── Blacksmith: paid, the last resort, never silent ─────────────────────────
+
+
+def test_one_run_ahead_and_no_free_slot_stays_hosted_not_blacksmith(github: FakeGitHub) -> None:
+    active(github, ci_run(121), ci_run(122))
+    listeners(github, box=0, m4=0)
+    out = select(github, 122, BLACKSMITH_LABEL=BLACKSMITH)
+    assert out["unit"] == HOSTED
+
+
+def test_a_saturated_github_and_full_machines_go_to_blacksmith_loudly(github: FakeGitHub) -> None:
+    active(github, ci_run(131), ci_run(132), ci_run(133))
+    listeners(github, box=0, m4=0)
+    proc = run_select(github, 133, BLACKSMITH_LABEL=BLACKSMITH)
+    out = outputs(proc)
+    assert out["unit"] == f'["{BLACKSMITH}"]'
+    assert out["general"] == HOSTED, "Blacksmith never takes the compute lanes"
+    assert re.search(r"::warning::.*Blacksmith.*paid", proc.stderr)
+
+
+def test_without_a_blacksmith_label_a_saturated_run_queues_on_github(github: FakeGitHub) -> None:
+    active(github, ci_run(141), ci_run(142), ci_run(143))
+    listeners(github, box=0, m4=0)
+    out = select(github, 143)
+    assert out["unit"] == HOSTED
+
+
+# ── API failures fail toward GitHub-hosted ──────────────────────────────────
+
+
+def test_an_unreadable_run_list_keeps_everything_hosted(github: FakeGitHub) -> None:
+    github.on("GET", WORKFLOW_RUNS, Reply(500, {"message": "Server Error"}))
+    proc = run_select(github, 1, BLACKSMITH_LABEL=BLACKSMITH)
+    out = outputs(proc)
+    assert "::warning::" in proc.stderr
+    assert all(out[pool] == HOSTED for pool in POOLS)
+
+
+def test_an_unreadable_runners_list_keeps_the_slices_hosted(github: FakeGitHub) -> None:
+    active(github, ci_run(151), ci_run(152))
+    github.on("GET", RUNNERS, Reply(403, {"message": "Resource not accessible by integration"}))
+    proc = run_select(github, 152, BLACKSMITH_LABEL=BLACKSMITH)
     assert "::warning::runners API unavailable" in proc.stderr
-    assert f'heavy=["{BLACKSMITH}"]' in proc.stdout
+    assert outputs(proc)["unit"] == HOSTED
 
 
-def test_a_custom_threshold_overrides_the_default(github: FakeGitHub) -> None:
-    pool(github, runner("home-1", "online", "gaia-home"))
-    saturate(github, 8)
-    out = select(github, HOSTED_QUEUE_THRESHOLD="9")
-    assert out["heavy"] == HOSTED
-
-
-@pytest.mark.parametrize("busy", [False, True])
-def test_force_home_takes_an_online_box_over_a_free_github(github: FakeGitHub, busy: bool) -> None:
-    pool(github, runner("home-1", "online", "gaia-home", busy=busy))
-    no_runs(github)
-    out = select(github, FORCE_HOME="true")
-    assert out["light"] == out["heavy"] == out["services"] == HOME
-    assert out["reason"] == "forced-home"
-
-
-def test_force_home_dies_rather_than_fall_back(github: FakeGitHub) -> None:
-    pool(github, runner("home-1", "offline", "gaia-home"))
-    no_runs(github)
-    proc = run_runner("select", env=github.env(FORCE_HOME="true"))
-    assert proc.returncode == 1
-    assert "::error::" in proc.stderr
-    assert "heavy=" not in proc.stdout
-
-
-def test_services_probe_their_own_label(github: FakeGitHub) -> None:
-    """A dispatch may point heavy at a trial pool; services must stay on the pool with services."""
-    trial = [runner(f"trial-{i}", "online", "gaia-trial") for i in range(9)]
-    pool(github, *trial, runner("home-1", "offline", "gaia-home"))
-    saturate(github)
-    out = select(github, RUNNER_LABEL="gaia-trial")
-    assert out["heavy"] == '["self-hosted","gaia-trial"]'
-    assert out["services"] == HOSTED
-
-
-def test_jobs_queued_for_the_home_box_are_not_github_saturation(github: FakeGitHub) -> None:
-    """The in-progress half once counted home-label jobs too, reading the box's queue as GitHub's."""
-    pool(github, runner("home-1", "online", "gaia-home"))
-    no_runs(github)
-    queued_jobs(github, "in_progress", ["self-hosted", "gaia-home"], 30)
-    out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
-    assert out["heavy"] == HOSTED
-    assert out["reason"] == "github-hosted"
-
-
-def test_an_unreadable_hosted_queue_is_not_an_empty_one(github: FakeGitHub) -> None:
-    """A 200 whose body has no workflow_runs is a failed probe, not a queue of zero."""
-    pool(github, runner("home-1", "online", "gaia-home"))
-    github.on("GET", RUNS, Reply(200, {"message": "Server Error"}))
-    proc = run_runner("select", env=github.env(PR_HEAD_REPO=REPO, BLACKSMITH_LABEL=BLACKSMITH))
-    assert proc.returncode == 0, proc.stderr
-    assert "::warning::hosted queue probe failed" in proc.stderr
-    assert "heavy=" + HOSTED in proc.stdout
-    assert "reason=hosted-queue-unknown" in proc.stdout
+def test_an_unreadable_job_list_keeps_the_slices_hosted(github: FakeGitHub) -> None:
+    active(github, ci_run(161), ci_run(162))
+    github.on("GET", r"/actions/runs/161/jobs$", Reply(500, {"message": "Server Error"}))
+    listeners(github)
+    proc = run_select(github, 162)
+    assert "::warning::" in proc.stderr
+    assert outputs(proc)["unit"] == HOSTED
 
 
 def test_a_runners_listing_spanning_pages_is_read_whole(github: FakeGitHub) -> None:
-    """The box has more listeners than one page holds; the home pool may be on page two."""
-    page_two = f"{github.url}/repos/theexperiencecompany/gaia/actions/runners?page=2"
-    lint = runner("lint-1", "online", "gaia-home-lint")
-    github.on("GET", RUNNERS, Reply(200, {"runners": [lint]}, link=f'<{page_two}>; rel="next"'))
-    github.on("GET", RUNNERS, Reply(200, {"runners": idle_home(18)}), query={"page": "2"})
-    saturate(github)
-    out = select(github)
-    assert out["heavy"] == HOME
-    assert out["reason"] == "home-overflow"
+    """The box and the M4 have more listeners than one page holds; the box may be on page two."""
+    active(github, ci_run(171), ci_run(172))
+    page_two = f"{github.url}/repos/{REPO}/actions/runners?page=2"
+    other = runner("lint-1", "online", "gaia-home-lint")
+    github.on("GET", RUNNERS, Reply(200, {"runners": [other]}, link=f'<{page_two}>; rel="next"'))
+    box = [runner(f"gaia-home-{i}", "online", BOX_LABEL) for i in range(10)]
+    github.on("GET", RUNNERS, Reply(200, {"runners": box}), query={"page": "2"})
+    out = select(github, 172, M4_LABEL="")
+    assert out["unit"] == BOX
+
+
+# ── dispatch overrides ──────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("busy", [False, True])
+def test_force_home_sends_every_pool_to_an_online_box(github: FakeGitHub, busy: bool) -> None:
+    github.on(
+        "GET", RUNNERS, Reply(200, {"runners": [runner("h", "online", BOX_LABEL, busy=busy)]})
+    )
+    out = select(github, 1, "workflow_dispatch", FORCE_HOME="true")
+    assert all(out[pool] == BOX for pool in POOLS)
+    assert out["is_self_hosted"] == "true"
+
+
+def test_force_home_dies_rather_than_fall_back(github: FakeGitHub) -> None:
+    github.on("GET", RUNNERS, Reply(200, {"runners": [runner("h", "offline", BOX_LABEL)]}))
+    proc = run_select(github, 1, "workflow_dispatch", FORCE_HOME="true")
+    assert proc.returncode == 1
+    assert "::error::" in proc.stderr
+    assert "unit=" not in proc.stdout
+
+
+def test_a_dispatched_box_label_replaces_the_box(github: FakeGitHub) -> None:
+    active(github, ci_run(181, "workflow_dispatch"), ci_run(182, "workflow_dispatch"))
+    trial = [runner(f"trial-{i}", "online", "gaia-trial") for i in range(4)]
+    github.on("GET", RUNNERS, Reply(200, {"runners": trial}))
+    out = select(github, 182, "workflow_dispatch", RUNNER_LABEL="gaia-trial", M4_LABEL="")
+    assert out["services"] == out["unit"] == '["self-hosted","gaia-trial"]'
+
+
+# ── the one pool declaration ────────────────────────────────────────────────
+
+
+def test_every_slice_declares_a_pool_select_publishes() -> None:
+    assert {s["pool"] for s in SLICES} <= set(POOLS)
+
+
+def test_every_routed_job_reads_a_pool_select_publishes() -> None:
+    """A job that names an output select does not write lands on a nameless runner."""
+    workflow = (RUNNER.parent.parent.parent / ".github/workflows/ci.yml").read_text()
+    asked = set(re.findall(r"needs\.select-runner\.outputs\.(\w+)", workflow))
+    assert asked <= {*POOLS, "is_self_hosted"}, asked
+    by_slice = (
+        "needs.select-runner.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]"
+    )
+    assert workflow.count(by_slice) == 2, (
+        "test-python and test-python-engines route by the slice's pool"
+    )
 
 
 # ── the composite and the path references ───────────────────────────────────
@@ -320,7 +451,7 @@ def test_the_select_runner_composite_runs_runner_py_select() -> None:
     action = (RUNNER.parent.parent.parent / ".github/actions/select-runner/action.yml").read_text()
     assert 'SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.py"' in action
     assert 'python3 "$SCRIPT" select' in action
-    for output in ("light", "heavy", "services"):
+    for output in (*POOLS, "is_self_hosted"):
         assert f"steps.probe.outputs.{output} }}}}" in action, output
 
 

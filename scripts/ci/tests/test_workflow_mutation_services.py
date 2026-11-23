@@ -12,14 +12,16 @@ for 13 stripes), so it rejects the lane and the job dies in setup. All six
 mutation shards died that way on run 34584038269, the first run after the
 composite was added to the whole job.
 
-So every shard runs on the services-capable pool (select-runner's `services`
-output), `mutation.py plan` marks each shard `services` or `unit`, and every
-services-only step is conditioned on that marker. The shards used to be split
-across both pools by the marker, until three stacked PRs put nine 30-minute
-unit shards on the nine lint instances while seven services-pool instances sat
-idle, and every short lint lane queued behind them. These tests pin each part,
-because any one of them alone either puts a shard back on a runner that cannot
-serve it or starts services a shard has no use for.
+So every shard runs on select-runner's `general` pool, which is GitHub-hosted
+(each job brings its own services) or, under force_home, the gaia-home label
+whose instances test-services.sh serves; never the box's slice slots, which a
+30-minute shard holding 8 CPU tokens would overrun. `mutation.py plan` marks
+each shard `services` or `unit`, and every services-only step is conditioned
+on that marker. The shards were once split across two pools by the marker,
+until three stacked PRs put nine 30-minute unit shards on the nine lint
+instances while seven services-pool instances sat idle. These tests pin each
+part, because any one of them alone either puts a shard back on a runner that
+cannot serve it or starts services a shard has no use for.
 """
 
 from __future__ import annotations
@@ -81,10 +83,9 @@ def test_the_selection_runs_the_selector_under_test(workflow: dict[str, Any]) ->
     assert checkout["with"]["persist-credentials"] is False
 
 
-def test_every_shard_runs_on_the_services_pool(shard: dict[str, Any]) -> None:
-    assert shard["runs-on"] == f"${{{{ fromJSON(needs.{SELECTION}.outputs.services) }}}}", (
-        "a unit shard on the light pool holds an instance for 30 minutes; the "
-        "short lanes that pool exists for queue behind it"
+def test_every_shard_runs_on_the_general_pool(shard: dict[str, Any]) -> None:
+    assert shard["runs-on"] == f"${{{{ fromJSON(needs.{SELECTION}.outputs.general) }}}}", (
+        "a shard on a slice pool holds one of the box's four slice slots for 30 minutes"
     )
 
 

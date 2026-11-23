@@ -100,7 +100,7 @@ def test_on_the_box_reads_the_runner_name(
 
 
 def test_every_home_label_is_runner_pys() -> None:
-    """ci-health and the selector name the box's runner label too; a renamed label left them watching nothing."""
+    """ci-health and the selector name the box's runner label (and the M4's variable); a renamed label left them watching nothing."""
     (label,) = re.findall(
         r'^DEFAULT_HOME_LABEL = "([^"]+)"$', (SCRIPTS_CI / "runner.py").read_text(), re.MULTILINE
     )
@@ -111,7 +111,7 @@ def test_every_home_label_is_runner_pys() -> None:
         for s in job["steps"]
         if "EXPECTED" in s.get("env", {})
     ]
-    assert expected == [label]
+    assert expected == [f"{label} ${{{{ vars.CI_M4_LABEL }}}}"]
     selector = yaml.safe_load((REPO_ROOT / ".github/actions/select-runner/action.yml").read_text())
     defaults = {
         name: spec.get("default") for name, spec in selector["inputs"].items() if "label" in name

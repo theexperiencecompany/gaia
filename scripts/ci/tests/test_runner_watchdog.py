@@ -19,18 +19,31 @@ WATCHDOG = "watchdog"
 RUN = r"/actions/runs/1$"
 JOBS = r"/actions/runs/1/jobs$"
 RUNNERS = r"/actions/runners$"
+HOME = ["self-hosted", "gaia-home"]
+M4 = ["self-hosted", "gaia-m4"]
+HOSTED = ["ubuntu-24.04"]
 
 
 def job(
-    name: str, status: str, created: str, started: str = "", completed: str = ""
+    name: str,
+    status: str,
+    created: str,
+    started: str = "",
+    completed: str = "",
+    labels: list[str] | None = None,
 ) -> dict[str, object]:
     return {
         "name": name,
         "status": status,
+        "labels": HOME if labels is None else labels,
         "created_at": created,
         "started_at": started or None,
         "completed_at": completed or None,
     }
+
+
+def detect_done() -> dict[str, object]:
+    return job("detect", "completed", ago(1200), ago(1190), ago(1000), labels=HOSTED)
 
 
 @dataclass
@@ -76,7 +89,6 @@ def run_watchdog(github: FakeGitHub, scenario: Scenario) -> subprocess.Completed
             WATCHDOG_JOB_NAME=WATCHDOG,
             QUEUE_LIMIT_SECS=str(scenario.limit),
             POLL_SECS="0",
-            RUNNER_LABEL="gaia-home",
             GITHUB_EVENT_NAME=scenario.event_name,
             GITHUB_HEAD_REF="ci/example",
             DEFAULT_BRANCH="master",
@@ -157,7 +169,7 @@ def test_busy_box_is_not_cancelled(github: FakeGitHub) -> None:
         ),
     )
     assert github.posts() == []
-    assert "the box is busy, not dead" in proc.stderr
+    assert "the machine is busy, not dead" in proc.stderr
     assert proc.returncode == 0
 
 
@@ -206,11 +218,61 @@ def test_age_runs_from_eligibility_not_creation(github: FakeGitHub) -> None:
 
 def test_all_lanes_picked_up_exits_clean(github: FakeGitHub) -> None:
     proc = run_watchdog(
-        github, Scenario(jobs=[job("build", "in_progress", ago(100), started=ago(90))])
+        github,
+        Scenario(jobs=[detect_done(), job("build", "in_progress", ago(100), started=ago(90))]),
     )
-    assert "every lane was picked up" in proc.stdout
+    assert "every self-hosted lane was picked up" in proc.stdout
     assert github.posts() == []
     assert proc.returncode == 0
+
+
+def test_a_run_still_in_detect_keeps_watching(github: FakeGitHub) -> None:
+    """The slices that go to the box are created only once detect finishes on GitHub-hosted."""
+    detect = job("detect", "in_progress", ago(60), started=ago(55), labels=HOSTED)
+    proc = run_watchdog(github, Scenario(jobs=[detect], polls_before_exit=2))
+    assert "picked up" not in proc.stdout
+    assert "nothing left to watch" in proc.stdout
+    assert github.posts() == []
+
+
+def test_a_lane_queued_on_github_hosted_is_not_a_dead_box(github: FakeGitHub) -> None:
+    proc = run_watchdog(
+        github,
+        Scenario(
+            jobs=[detect_done(), job("lint", "queued", ago(900), labels=HOSTED)], runners=OFFLINE
+        ),
+    )
+    assert github.posts() == []
+    assert proc.returncode == 0
+
+
+def test_a_stalled_lane_is_judged_by_its_own_machine(github: FakeGitHub) -> None:
+    """A unit slice parked on a dead M4 is stranded even while the box is up."""
+    proc = run_watchdog(
+        github,
+        Scenario(
+            jobs=[detect_done(), job("test-python (unit-a)", "queued", ago(900), labels=M4)],
+            runners=[runner("home-1", "online", "gaia-home"), runner("m4-1", "offline", "gaia-m4")],
+        ),
+    )
+    assert github.posts() == ["dispatches", "cancel"], proc.stdout + proc.stderr
+
+
+def test_a_machine_listed_offline_while_this_run_uses_it_is_not_dead(github: FakeGitHub) -> None:
+    """The runners API once listed all 22 listeners offline while they ran jobs."""
+    proc = run_watchdog(
+        github,
+        Scenario(
+            jobs=[
+                detect_done(),
+                job("test-python (unit-a)", "in_progress", ago(900), started=ago(600)),
+                job("test-python (integration)", "queued", ago(900)),
+            ],
+            runners=OFFLINE,
+        ),
+    )
+    assert github.posts() == []
+    assert "in progress on it" in proc.stderr
 
 
 @pytest.mark.parametrize("terminal", ["completed", "cancelled", "failure"])

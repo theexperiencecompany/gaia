@@ -31,8 +31,9 @@ name: CI
 # its own `ci / <area> / <check>` commit status and fails the job if any failed.
 # A check whose last pass on this PR still holds is skipped by `reuse-plan`.
 #
-# Compute lanes run on the home box when it is online and fall back to
-# GitHub-hosted runners otherwise; scripts/ci/runner.py select decides, once.
+# Every lane runs GitHub-hosted, except the test slices of a run that has other
+# runs ahead of it, which move to free slots on the home box and the M4;
+# scripts/ci/runner.py select decides, once (.github/CLAUDE.md "Where jobs run").
 
 on:
   # No `branches:` filter. That key matches the PR's BASE, so restricting it to
@@ -103,13 +104,12 @@ jobs:
       contents: read
       actions: write # cancel superseded runs
     outputs:
-      # The three pools a job can ask for: `light` (lint, detect, scans),
-      # `heavy` (build, unit slices, the image) and `services` (the slices and
-      # mutation shards that need the test-services namespace).
-      light: ${{ steps.pick.outputs.light }}
-      heavy: ${{ steps.pick.outputs.heavy }}
+      # The three pools a job can ask for: `general` (every job but the movable
+      # slices, GitHub-hosted), and the slices' `unit` and `services` pools
+      # (test-slices.json `pool`), which move off GitHub when other runs are ahead.
+      general: ${{ steps.pick.outputs.general }}
+      unit: ${{ steps.pick.outputs.unit }}
       services: ${{ steps.pick.outputs.services }}
-      runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
     steps:
       # The commit under test, like every other job: a pin to master made a
@@ -132,18 +132,20 @@ jobs:
         uses: ./.github/actions/select-runner
         with:
           blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
-          hosted-queue-threshold: ${{ vars.CI_HOSTED_QUEUE_THRESHOLD }}
+          # Unset keeps the M4 out of every route.
+          m4-label: ${{ vars.CI_M4_LABEL }}
           runner-label: ${{ inputs.runner_label || 'gaia-home' }}
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
   # ── Watchdog: a run parked on a box that died after selection ────────────
-  # select-runner decides once. If the box goes away before pickup, GitHub
-  # keeps the self-hosted jobs queued for up to 24 h (timeout-minutes starts
-  # at pickup). This GitHub-hosted job polls the run and re-dispatches it on
-  # GitHub-hosted runners once any job has queued past the limit. Not in the
-  # gate's needs: it only ever stops a run that could not have finished anyway.
+  # select-runner decides once. If the box or the M4 goes away before pickup,
+  # GitHub keeps the self-hosted jobs queued for up to 24 h (timeout-minutes
+  # starts at pickup). This GitHub-hosted job polls the run and re-dispatches it
+  # on GitHub-hosted runners once a self-hosted job has queued past the limit on
+  # a label with no live listener. Not in the gate's needs: it only ever stops a
+  # run that could not have finished anyway.
   runner-watchdog:
     name: watchdog
     needs: [select-runner]
@@ -164,9 +166,6 @@ jobs:
           # "unknown" reads as "no runner is online".
           GITHUB_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
           WATCHDOG_JOB_NAME: watchdog
-          # The pool select-runner actually chose: before cancelling, the
-          # watchdog re-probes it and leaves a merely-busy box alone.
-          RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
           # merge_group: ci-requeue.yml re-runs the run, dispatched from here.
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python3 scripts/ci/runner.py watchdog
@@ -177,7 +176,7 @@ jobs:
   # the reuse plan, and (full tier) the mutation plan.
   detect:
     needs: [select-runner]
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     # 15, not 5: the first install after a lockfile/layout change on a persistent
     # workspace converts the whole node_modules tree (one-time, >5 min).
     timeout-minutes: 15
@@ -334,20 +333,19 @@ jobs:
     # Diagnostic only — it held a runner instance on every PR for a 12s echo.
     if: github.event_name == 'workflow_dispatch'
     needs: [select-runner]
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.heavy) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     timeout-minutes: 5
     steps:
       - name: Runner provenance
         env:
-          RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
           SELF_HOSTED: ${{ needs.select-runner.outputs.is_self_hosted }}
         shell: bash
         run: |
           {
             echo "## Hybrid probe"
             echo ""
-            echo "- **Runner label:** \`$RUNNER_LABEL\`"
-            echo "- **is_self_hosted:** \`$SELF_HOSTED\`"
+            echo "- **Runner name:** \`$RUNNER_NAME\`"
+            echo "- **is_self_hosted (any pool):** \`$SELF_HOSTED\`"
             echo "- **Hostname:** \`$(hostname)\`"
             echo "- **nproc:** \`$(nproc)\` vCPUs"
             echo "- **Mem:** \`$(free -h | awk '/^Mem:/{print $2}')\`"
@@ -364,7 +362,7 @@ jobs:
     name: lint-node
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'lint-node') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     # Job-level because a workflow-level `env:` cannot read `needs`.
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
@@ -421,7 +419,7 @@ jobs:
     name: lint-python
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'lint-python') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     # Job-level because a workflow-level `env:` cannot read `needs`.
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
@@ -522,7 +520,7 @@ jobs:
     name: lint-mixed
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'lint-mixed') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     # Job-level because a workflow-level `env:` cannot read `needs`.
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
@@ -631,7 +629,7 @@ jobs:
     name: python-audit
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'python-audit') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     # Job-level because a workflow-level `env:` cannot read `needs`.
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
@@ -694,7 +692,7 @@ jobs:
     name: ts-build-test
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'ts-build-test') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.heavy) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     # Job-level because a workflow-level `env:` cannot read `needs`.
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
@@ -781,7 +779,7 @@ jobs:
     name: scan
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'scan') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     # Job-level because a workflow-level `env:` cannot read `needs`.
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
@@ -920,8 +918,8 @@ jobs:
     name: test-python
     needs: [select-runner, detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.tasks), 'api:test') }}
-    # A slice that needs the test-services namespace runs on that pool.
-    runs-on: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services == 'true' && fromJSON(needs.select-runner.outputs.services) || fromJSON(needs.select-runner.outputs.heavy) }}
+    # Each slice declares its pool once (test-slices.json `pool`); select placed the pools.
+    runs-on: ${{ fromJSON(needs.select-runner.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]) }}
     # The slice's definition, read once: steps cannot index needs by matrix
     # without repeating this lookup in every `if:`.
     env: &slice-env
@@ -1104,7 +1102,7 @@ jobs:
     name: test-python
     needs: [select-runner, detect, obscura-bin]
     if: ${{ !cancelled() && needs.obscura-bin.result == 'success' && needs.detect.outputs.engine_slices != '[]' }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.services) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs[fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].pool]) }}
     env: *slice-env
     timeout-minutes: ${{ fromJSON(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].timeout_minutes) }}
     permissions:
@@ -1253,7 +1251,7 @@ jobs:
     # files, the Python manifests, the pins below): a code-only change rebuilds
     # the last COPY layer and proves nothing the tests do not.
     if: ${{ !cancelled() && needs.detect.outputs.tier == 'full' && contains(fromJSON(needs.detect.outputs.jobs), 'docker-image') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.heavy) }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 40
@@ -1321,11 +1319,11 @@ jobs:
     name: mutation
     needs: [select-runner, detect]
     if: ${{ !cancelled() && needs.detect.outputs.mutation_count != '' && needs.detect.outputs.mutation_count != '0' }}
-    # The services pool, whatever the shard's pool says: the lint instances cannot
-    # serve a contract shard (test-services.sh serves lanes 0-12), and a
-    # 30-minute shard there starved the short lanes. The pool decides only
-    # whether the services are brought up.
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.services) }}
+    # The general pool: a shard holds up to 8 CPU tokens for up to 30 minutes, more
+    # than the box's 4 slices-at-hosted-speed budget leaves room for. Under
+    # force_home it lands on gaia-home, whose instances test-services.sh serves.
+    # The shard's own pool decides only whether the services are brought up.
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       SHARD_POOL: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].pool }}

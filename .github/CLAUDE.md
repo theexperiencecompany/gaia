@@ -56,40 +56,58 @@ work behind a runner's setup.
   secret (the PostHog ones) is a step, `runner: action`/`step` in its metadata.
 - **Never add a check twice.** One check, one nx target, one job.
 
-## Where jobs run: GitHub-hosted first, the home box as overflow
+## Where jobs run: placed by the runs ahead, not by GitHub's queue depth
 
 ci.yml opens with a `select-runner` job (the control-plane runner, no
-Tailscale needed) that reads GitHub's hosted queue and the Actions runners API
-via `scripts/ci/runner.py select` through the `./.github/actions/select-runner`
-composite, once. It publishes three pools — `light` (detect, the lint jobs,
-the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
-(the slices and mutation shards that need the test-services namespace) — and
-every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`.
-Every pool is routed the same way:
+Tailscale needed) that runs `scripts/ci/runner.py select` through the
+`./.github/actions/select-runner` composite, once. It publishes three pools:
+`general` (every job but the movable test slices), `unit` (unit-a, unit-b) and
+`services` (integration, bridge). A job outside test-python takes
+`runs-on: ${{ fromJSON(needs.select-runner.outputs.general) }}`; a slice
+declares its pool once, as `pool` in `scripts/ci/lib/test-slices.json`, and
+test-python indexes the outputs by it.
 
-1. `ubuntu-24.04` (`HOSTED_LINUX_IMAGE` in `runner.py`) by default (public
-   repo: 4 vCPU / 16 GB, 20 concurrent jobs on the org's Free plan).
-2. Once GitHub's hosted queue holds `HOSTED_SATURATED_QUEUE_DEPTH` (5) queued
-   jobs or more — the 20-job cap is hit; override with the
-   `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
-   has an idle listener for every job of the pool (`class_demand` in
-   `runner.py`: light 6, heavy 5, services 9, handed out services first). A
-   busy box is never queued on; a new lane in a pool raises its count.
-3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
+`select` lists this repo's live ci.yml runs (queued + in progress, 2 API calls),
+drops superseded ones (an older `pull_request`/`push` run on the same branch)
+and runs GitHub never started (`queued` for 20 min), and orders the rest by
+`(run_started_at, id)`. A re-run restarts `run_started_at`, so it decides
+behind the runs already deciding. A run's place depends only on the runs ahead
+of it, so runs that start together compute the same answer for each other:
 
-Measured: an all-GitHub run (dispatch `force_github`, run 40178782875) went
-green in 10.3 min with every job started within 6 s; the box needs 9.6 min
-idle, but under load its jobs waited up to 48 min and a merge-queue entry was
-ejected for `checks_timed_out`. An unreadable hosted queue keeps GitHub (with
-a warning); an unreadable runners list skips the box (with a warning). The
-`force_home` dispatch input sends every pool to an online box and fails when
-none is; `force_github` skips both probes. No job ever carries a bare
+1. No run ahead: every pool on `ubuntu-24.04` (`HOSTED_LINUX_IMAGE`). A lone run
+   is unchanged and pays only the two listing calls.
+2. One or more ahead: `services` moves to the box (`gaia-home`) and `unit` to the
+   M4 (`CI_M4_LABEL`; unset means off; never a merge group) or else the box,
+   when every job of the pool fits the machine's free slots: box `BOX_SLOTS` (4),
+   M4 `M4_SLOTS` (2). Free slots are capacity minus what the runs ahead hold: a
+   run whose `detect` finished holds its jobs that are not completed on that
+   label (one jobs call per run ahead, in parallel), and a run still in `detect`
+   holds what this rule gives it.
+3. Nothing free, two or more runs ahead, and `CI_BLACKSMITH_LABEL` set: the pool
+   goes to Blacksmith, with a `::warning::` that names the cost. Otherwise it
+   stays GitHub-hosted and queues.
+
+`general` never leaves GitHub-hosted except under `force_home`: ts-build-test
+(22 min cold on a loaded box against 8.2 hosted), browser (7.5 against 5.0) and
+the mutation shards (8 CPU tokens each, for up to 30 minutes) do not fit the box's
+4-job budget. Measured per slice, box at 4 jobs against hosted: unit-a 7.1/6.3,
+unit-b 5.6/5.9, integration 7.2/8.9, bridge 2.2/5.1 min; at 10 jobs the box's
+load reached 63-67 on 16 threads. A machine is usable when the runners API lists
+a listener online or busy, or when a run ahead has a job in progress on its label:
+that job is the second signal, because the API once listed all 22 self-hosted
+listeners offline while they ran jobs. An unreadable run or job list keeps every
+pool hosted; an unreadable runners list keeps the slices hosted (both with a
+warning). `force_home` sends every pool to an online box and fails when none
+is; `force_github` skips every probe; `runner_label` replaces the box label. The
+design note is `.agents/plans/ci-runner-routing.md`. No job ever carries a bare
 `runs-on: [self-hosted]`. `build.yml` and the deploy workflows are deliberately
 NOT routed through it: release images and deploys stay GitHub-hosted. Every
 box-only assumption in a lane (the persistent workspace, `RUNNER_LOCAL_CACHE`,
 the cpu-slots governor, the shared test services, the `gaia-ci` builder, the
-tools `setup.sh` installs) stays behind the box check, because any lane can land
-on any of the three. **The box is identified by runner name, never by
+tools `setup.sh` installs) stays behind the box check, because a slice can land
+on GitHub-hosted, the box, the M4 or Blacksmith. The M4 (`gaia-m4-<n>`) is not
+the box: it restores caches through actions/cache like a GitHub VM.
+**The box is identified by runner name, never by
 `runner.environment`**: Blacksmith reports `self-hosted` too, and every lane
 keyed on that broke there (`scan`: `trivy: command not found`; `docker-image`:
 "gaia-ci builder missing"). The box's runners are `gaia-home-<n>`
