@@ -79,6 +79,8 @@ const nextConfig = {
   // human dev server runs) lifts that without touching the default build.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   productionBrowserSourceMaps: true,
+  // A tokenless build (fork PR) waits out the API's per-minute 429 windows in serverFetch; the 60s default would cut a page off mid-wait.
+  staticPageGenerationTimeout: 600,
   // OpenNext file-traces every public/*.wasm into the Worker (even in unrelated
   // routes' .nft.json), collecting the desktop-only ~12MiB wake-word WASM past
   // Cloudflare's 10MiB limit. Exclude it on the Cloudflare build; Electron's standalone build copies public/ wholesale, unaffected.
