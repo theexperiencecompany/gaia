@@ -207,7 +207,7 @@ async def test_a_bodiless_status_keeps_its_headers_and_is_still_recorded() -> No
     assert response.status_code == 304
     assert response.headers["etag"] == '"v1"'
     assert response.body == b""
-    mock_log.set_ns.assert_called_once()
+    mock_log.warning.assert_called_once()
 
 
 async def test_the_registration_covers_every_kind_of_failure() -> None:
