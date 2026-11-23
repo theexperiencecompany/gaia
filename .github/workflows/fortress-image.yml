@@ -6,9 +6,9 @@ name: Fortress image
 # only, tagged with gaia's <apps_tag> and <commit sha>. Its own workflow so no
 # deploy waits on it: ci.yml calls it as a leaf after build-images (outside the
 # build.yml call trigger-build awaits), and build.yml calls it only on a
-# dispatch, where nothing awaits the whole workflow. A Fortress asset
-# re-uploaded upstream under its pinned tag reds this workflow alone, never the
-# gaia release, the deploy or the quality gate. Its runtime layers come from
+# dispatch, where nothing awaits the whole workflow.
+# A failure here reds the master CI run on purpose: a broken Fortress pin must be seen and fixed, not skipped.
+# Its runtime layers come from
 # gaia's own :buildcache, so only the Fortress layer is new.
 
 on:
