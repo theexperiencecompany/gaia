@@ -814,8 +814,9 @@ _GRAFANA_ADMIN_SECRET="/run/secrets/gaia_grafana_admin_password"
 # from inside the grafana container with the admin secret it already mounts.
 served_alert_rule_uids() {
   local cid
-  cid=$(docker --context prod ps -q --filter "label=com.docker.swarm.service.name=$_GRAFANA_SERVICE" | head -n 1)
-  [[ -n "$cid" ]] || return 1
+  cid=$(docker --context prod ps -q --filter "label=com.docker.swarm.service.name=$_GRAFANA_SERVICE")
+  # none is a task not up yet, two is Swarm mid-roll: neither is the release to judge
+  [[ "$(grep -c . <<< "$cid")" == 1 ]] || return 1
   docker --context prod exec "$cid" sh -c \
     'wget -qO- --header "Authorization: Basic $(printf "admin:%s" "$(cat '"$_GRAFANA_ADMIN_SECRET"')" | base64 | tr -d "\n")" http://localhost:3000/api/v1/provisioning/alert-rules' \
     | jq -r '.[].uid'
@@ -825,7 +826,8 @@ cmd_verify_alert_rules() {
   local file="${ALERT_RULES_FILE:-infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml}"
   [[ -s "$file" ]] || ci_die "deploy verify-alert-rules: $file is missing or empty"
   local expected served="" diff
-  expected=$(yq '.groups[].rules[].uid' "$file")
+  # every rule opens its list item with its uid; yq is not on every runner that runs this
+  expected=$(sed -nE 's/^[[:space:]]*-[[:space:]]+uid:[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*$/\1/p' "$file")
   [[ -n "$expected" ]] || ci_die "deploy verify-alert-rules: $file declares no rule uids"
   local deadline=$(( $(date +%s) + ${GRAFANA_VERIFY_TIMEOUT_SECS:-120} ))
   # the old task still answers while Swarm rolls the new one, so a difference is retried too
@@ -941,7 +943,7 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,85p' "$0" >&2
+  sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' >&2
 }
 
 main() {
