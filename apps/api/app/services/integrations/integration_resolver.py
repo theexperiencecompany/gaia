@@ -12,7 +12,7 @@ from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
 from app.models.mcp_config import MCPConfig
-from app.models.oauth_models import OAuthIntegration
+from app.models.oauth_models import ManagedBy, OAuthIntegration
 from shared.py.wide_events import log
 
 
@@ -24,7 +24,7 @@ class ResolvedIntegration:
     name: str
     description: str
     category: str
-    managed_by: str
+    managed_by: ManagedBy
     source: str  # "platform" or "custom"
     requires_auth: bool
     auth_type: str | None  # "none", "oauth", "bearer"
@@ -50,19 +50,6 @@ class IntegrationResolver:
         platform_integration = get_integration_by_id(integration_id)
 
         if platform_integration:
-            # Determine auth requirements
-            requires_auth = False
-            auth_type = None
-
-            if platform_integration.mcp_config:
-                requires_auth = platform_integration.mcp_config.requires_auth
-                auth_type = platform_integration.mcp_config.auth_type or (
-                    "oauth" if requires_auth else "none"
-                )
-            elif platform_integration.composio_config or platform_integration.managed_by == "self":
-                requires_auth = True
-                auth_type = "oauth"
-
             return ResolvedIntegration(
                 integration_id=integration_id,
                 name=platform_integration.name,
@@ -70,8 +57,8 @@ class IntegrationResolver:
                 category=platform_integration.category,
                 managed_by=platform_integration.managed_by,
                 source="platform",
-                requires_auth=requires_auth,
-                auth_type=auth_type,
+                requires_auth=platform_integration.requires_auth,
+                auth_type=platform_integration.auth_type,
                 mcp_config=platform_integration.mcp_config,
                 platform_integration=platform_integration,
                 custom_doc=None,

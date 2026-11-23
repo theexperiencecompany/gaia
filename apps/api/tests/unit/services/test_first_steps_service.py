@@ -94,7 +94,7 @@ class TestGetFirstSteps:
         repos["integrations"].assert_awaited_once_with(USER_ID)
 
     async def test_connect_integration_counts_gmail(self, repos) -> None:
-        """Gmail is self-managed, so only the canonical status map counts it as connected."""
+        """A Gmail account counts through the canonical connected-set reader."""
         repos["integrations"].return_value = {"gmail": True, "notion": False}
 
         assert _done(await get_first_steps(USER_ID))[FirstStepKey.CONNECT_INTEGRATION] is True
