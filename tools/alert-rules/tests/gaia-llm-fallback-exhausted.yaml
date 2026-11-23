@@ -15,7 +15,7 @@ tests:
         alertname: gaia-llm-fallback-exhausted
         exp_alerts:
           - exp_labels:
-              severity: critical
+              severity: warning
               service: api
             exp_annotations:
               description: >-

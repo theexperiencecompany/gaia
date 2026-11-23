@@ -17,7 +17,7 @@ tests:
         alertname: gaia-storage-ops-failing
         exp_alerts:
           - exp_labels:
-              severity: critical
+              severity: warning
               service: api
               operation: sbx_acquire
             exp_annotations:

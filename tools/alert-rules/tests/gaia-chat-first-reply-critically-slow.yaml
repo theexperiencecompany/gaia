@@ -1,4 +1,4 @@
-# gaia-chat-ttft-p95-critical: fires when over 30% of answered turns had first text after 60s, with at least 5 such turns.
+# gaia-chat-first-reply-critically-slow: fires when over 30% of answered turns had first text after 60s, with at least 5 such turns.
 # The le labels mirror _TTFT_BUCKETS in apps/api/app/services/latency_metrics.py as
 # prometheus_client renders them; the rule reads le="60.0", so a renamed edge fails the
 # trigger test. Failed turns are not counted: gaia-chat-turns-failing owns them.
@@ -6,7 +6,7 @@ rule_files: [../gaia-rules.yaml]
 evaluation_interval: 1m
 
 tests:
-  - name: gaia-chat-ttft-p95-critical fires when every answered turn had first text after 60s
+  - name: gaia-chat-first-reply-critically-slow fires when every answered turn had first text after 60s
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -49,7 +49,7 @@ tests:
         values: '0+1x60'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95-critical
+        alertname: gaia-chat-first-reply-critically-slow
         exp_alerts:
           - exp_labels:
               severity: 'critical'
@@ -57,11 +57,11 @@ tests:
             exp_annotations:
               description: >-
                 Same signal as the warning-tier rule, at the point where chat looks broken rather than slow: a third of users wait over a minute for the first word. This tier also pages email. Check the model provider first (llm_ttft_seconds and gaia-llm-provider-failing), then a conversation stuck behind a running executor (executor_queue_wait_seconds).
-              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical'
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-chat-first-reply-critically-slow'
               __dashboardUid__: 'gaia-latency'
               __panelId__: '1'
 
-  - name: gaia-chat-ttft-p95-critical stays quiet when every answered turn was faster
+  - name: gaia-chat-first-reply-critically-slow stays quiet when every answered turn was faster
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -104,10 +104,10 @@ tests:
         values: '0+1x60'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95-critical
+        alertname: gaia-chat-first-reply-critically-slow
         exp_alerts: []
 
-  - name: gaia-chat-ttft-p95-critical stays quiet when four turns were that slow
+  - name: gaia-chat-first-reply-critically-slow stays quiet when four turns were that slow
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -150,10 +150,10 @@ tests:
         values: '0x20 4x40'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95-critical
+        alertname: gaia-chat-first-reply-critically-slow
         exp_alerts: []
 
-  - name: gaia-chat-ttft-p95-critical stays quiet when only failed turns were that slow
+  - name: gaia-chat-first-reply-critically-slow stays quiet when only failed turns were that slow
     interval: 1m
     input_series:
       - series: 'chat_ttft_seconds_bucket{job="gaia-api",source="web",status="ok",le="0.1"}'
@@ -234,5 +234,5 @@ tests:
         values: '0+1x60'
     alert_rule_test:
       - eval_time: 50m
-        alertname: gaia-chat-ttft-p95-critical
+        alertname: gaia-chat-first-reply-critically-slow
         exp_alerts: []

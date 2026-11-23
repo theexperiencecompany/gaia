@@ -15,7 +15,7 @@ tests:
         alertname: gaia-bot-inbound-failing
         exp_alerts:
           - exp_labels:
-              severity: critical
+              severity: warning
               service: bots
               platform: discord
             exp_annotations:

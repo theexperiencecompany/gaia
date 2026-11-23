@@ -19,7 +19,7 @@ tests:
         alertname: gaia-bot-outbound-failing
         exp_alerts:
           - exp_labels:
-              severity: critical
+              severity: warning
               service: bots
               platform: telegram
             exp_annotations:
