@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from posthog import Posthog
 
 from app.agents.llm.metrics import create_llm_series
+from app.api.v1.middleware.internal_caller_metrics import create_internal_caller_series
 from app.config.settings import settings
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.log_tags import LogTag
@@ -75,6 +76,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             start_up_listener()
             start_runtime_config_subscriber()
             create_link_mint_series()
+            create_internal_caller_series()
             create_chat_turn_series()
             create_llm_series()
             create_scheduled_task_series()
