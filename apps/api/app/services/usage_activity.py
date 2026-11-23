@@ -66,7 +66,7 @@ def _day(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-async def record_activity(user_id: str, amount: int = 1) -> None:
+async def count_daily_actions(user_id: str, amount: int = 1) -> None:
     """Add to today's action count for a user. Fire-and-forget; never raises."""
     if not user_id or amount <= 0:
         return
@@ -76,7 +76,7 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
         )
     except RepositoryError as e:
         log.warning(
-            f"{LogTag.MONGO} record_activity failed",
+            f"{LogTag.MONGO} count_daily_actions failed",
             user={"id": user_id},
             error=str(e),
             error_type=type(e).__name__,

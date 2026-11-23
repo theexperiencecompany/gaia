@@ -1,11 +1,11 @@
 """Unit tests for app/api/v1/endpoints/integrations/user.py."""
 
 from datetime import UTC, datetime
-from typing import Literal
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import UserIntegration
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected, IntegrationDisconnected
@@ -17,12 +17,13 @@ BASE = "/api/v1/integrations/users/me/integrations"
 _USER = "app.api.v1.endpoints.integrations.user"
 
 
-def _user_integration(status: Literal["created", "connected"] = "connected") -> UserIntegration:
+def _user_integration(status: IntegrationStatus = IntegrationStatus.CONNECTED) -> UserIntegration:
     return UserIntegration(
         user_id="507f1f77bcf86cd799439011",
         integration_id="integ-001",
         status=status,
         created_at=datetime(2025, 1, 1, tzinfo=UTC),
+        connected_at=None,
     )
 
 
@@ -34,7 +35,7 @@ class TestAddIntegrationToWorkspace:
             patch(
                 f"{_USER}.add_user_integration_service",
                 new_callable=AsyncMock,
-                return_value=_user_integration("connected"),
+                return_value=_user_integration(IntegrationStatus.CONNECTED),
             ),
             patch(f"{_USER}.capture") as mock_capture,
         ):
@@ -57,7 +58,7 @@ class TestAddIntegrationToWorkspace:
             patch(
                 f"{_USER}.add_user_integration_service",
                 new_callable=AsyncMock,
-                return_value=_user_integration("created"),
+                return_value=_user_integration(IntegrationStatus.CREATED),
             ),
             patch(f"{_USER}.capture") as mock_capture,
         ):

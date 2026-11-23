@@ -1,3 +1,4 @@
+from datetime import datetime
 import secrets
 
 from app.constants.log_tags import LogTag
@@ -26,7 +27,10 @@ from app.models.workflow_models import (
     WorkflowWithIntegrations,
     public_workflow_steps,
 )
+from app.services.briefing.errors import refuse_a_missing_brief
+from app.services.briefing.held import release_on_tell_me_now
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.system_workflows.registry import UNLISTED_KEYS, behaviour_of
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.wait_service import report_wait_met
 from app.services.workflow.execution_service import new_execution_id
@@ -193,6 +197,7 @@ class WorkflowService:
 
         # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
         await require_owner(user_id)
+        await refuse_a_missing_brief(user_id, request.delivery)
 
         # A system workflow is one-per-user, keyed by system_workflow_key — hand
         # back the existing one instead of creating a near-duplicate.
@@ -260,7 +265,7 @@ class WorkflowService:
                     else AuthoredGate(condition=request.runs_only_when, author=GateAuthor.GAIA)
                 ),
                 activated=False,  # Start in pending state
-                notify_on_completion=request.notify_on_completion,
+                delivery=request.delivery,
                 user_id=user_id,
                 is_todo_workflow=is_todo_workflow,
                 source_todo_id=source_todo_id,
@@ -514,6 +519,7 @@ class WorkflowService:
         try:
             docs = await workflow_repository.list_for_user(
                 user_id,
+                unlisted_keys=UNLISTED_KEYS,
                 exclude_todo_workflows=exclude_todo_workflows,
                 limit=limit,
                 offset=offset,
@@ -523,7 +529,9 @@ class WorkflowService:
             # already holds every match, so counting again is a wasted round-trip.
             total = (
                 await workflow_repository.count_for_user(
-                    user_id, exclude_todo_workflows=exclude_todo_workflows
+                    user_id,
+                    unlisted_keys=UNLISTED_KEYS,
+                    exclude_todo_workflows=exclude_todo_workflows,
                 )
                 if limit is not None
                 else offset + len(docs)
@@ -576,11 +584,14 @@ class WorkflowService:
         request: UpdateWorkflowRequest,
         user_id: str,
         user_timezone: str | None = None,
+        *,
+        next_run_base: datetime | None = None,
     ) -> Workflow | None:
         """Update an existing workflow with timezone awareness.
 
         Uses Saga pattern for trigger updates: if new trigger registration fails,
-        attempts to restore the old triggers (compensation).
+        attempts to restore the old triggers (compensation). A rewritten schedule's
+        next run is the first occurrence after next_run_base (default: now).
         """
         # Track state for potential rollback. registered_trigger_ids is declared
         # out here because the compensation block in the `except` below reads it on
@@ -595,6 +606,7 @@ class WorkflowService:
             current_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not current_workflow:
                 return None
+            await refuse_a_missing_brief(user_id, request.delivery)
 
             # `model_fields_set` is what the client actually sent — the same
             # distinction `model_dump(exclude_unset=True)` encoded, kept on the
@@ -655,7 +667,7 @@ class WorkflowService:
                     )
                     new_trigger_config.timezone = timezone_to_use
                     if new_trigger_config.cron_expression:
-                        new_trigger_config.update_next_run(user_timezone=timezone_to_use)
+                        new_trigger_config.update_next_run(base_time=next_run_base)
 
                 # Check if we need to reschedule
                 old_config = current_workflow.trigger_config
@@ -671,6 +683,7 @@ class WorkflowService:
                 schedule_changed = (
                     old_config.type != new_trigger_config.type
                     or old_config.cron_expression != new_trigger_config.cron_expression
+                    or old_config.timezone != new_trigger_config.timezone
                     or old_config.enabled != new_trigger_config.enabled
                 )
 
@@ -758,6 +771,7 @@ class WorkflowService:
 
             if updated is None:
                 return None
+            await release_on_tell_me_now(user_id, [workflow_id], request.delivery)
             if trigger_config_changed:
                 await report_wait_met(
                     user_id, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, workflow_id
@@ -1098,6 +1112,9 @@ class WorkflowService:
 
             if deactivated is None:
                 return None
+            switched_off = behaviour_of(workflow.system_workflow_key).on_switched_off
+            if switched_off is not None:
+                await switched_off(user_id)
 
             log.set(workflow={"id": workflow_id, "status": "deactivated"})
             log.info(

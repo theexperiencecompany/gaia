@@ -324,6 +324,17 @@ exemption to "has this PR touched the file" turns each PR that happens to
 edit a grandfathered file into the moment its debt gets paid down, without
 blocking unrelated work everywhere else.
 
+**One waiver — `@tool` and `PLR0913` only:** a function decorated with
+LangChain's `@tool` (bare, called, or attribute form) is exempt from the
+argument-count rule. A tool's parameters are the JSON schema the model sees, so
+the argument list is the tool's contract, not accidental complexity — collapsing
+it into nested objects to satisfy a linter would change what the LLM is asked to
+emit. The waiver is per function and per rule: `PLR0911`/`0912`/`0915` still
+apply to a `@tool` body, and an undecorated function in the same file gets no
+cover from it. Implemented by inspecting the flagged function's decorators in
+`check_plr_complexity.py::_is_exempt` — not by a ruff or pyproject exclusion,
+which would silence the rule for whole files.
+
 **Fix:** if the violation is new, simplify the function (or, only on the
 founder's explicit approval, add it to the baseline with `--update` and write
 `# growth approved by <login> on YYYY-MM-DD: <reason>` above the new line —
@@ -690,6 +701,14 @@ file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
 `.python-version`, or a `python:3.x` / `rust:1.x` image tag all fail the guard —
 `apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
 drift that motivated it.
+
+The GitHub-hosted runner image is pinned the same way. `HOSTED_LINUX_IMAGE` in
+`scripts/ci/runner.py` declares the Ubuntu release (it routes every
+`select-runner` pool); a literal `runs-on` cannot read it, so every
+`ubuntu-NN.NN` label in a workflow, composite or `scripts/ci` file must name
+the same release, and any `ubuntu-latest` / `macos-latest` / `windows-latest`
+label fails. `ubuntu-latest` rolled to 26.04 one job at a time and broke the
+Playwright browser install in the merge queue (run 45079269367).
 
 A pin only holds where mise resolves the binary. A prek hook inherits the PATH
 of whatever shell ran `git commit`, so every `repo: local` hook in every

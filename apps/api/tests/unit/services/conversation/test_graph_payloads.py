@@ -1,6 +1,7 @@
 """payloads_for_stream_event never releases comms text it later takes back, and releases each MCP App's card once."""
 
 from collections.abc import Iterator
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
@@ -8,6 +9,7 @@ import pytest
 
 from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.agents.tools.core.registry import ToolRegistry
+from app.db.repositories.short_links import short_link_repository
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
     ReasoningEvent,
@@ -16,6 +18,7 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
     ToolOutputEvent,
 )
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, ToolOutputPayload
 from app.services.conversation.graph_payloads import (
     GraphStreamState,
@@ -23,6 +26,7 @@ from app.services.conversation.graph_payloads import (
     payloads_for_stream_event,
 )
 from app.services.conversation.reply_text import ReplyText
+from app.services.links.placeholders import link_placeholder
 from app.utils.errors import ShownReplyRetriedError
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
@@ -451,3 +455,69 @@ async def test_text_a_cancelled_run_never_closed_is_owed_and_kept() -> None:
     await _payloads(state, _chunk("m2", "<"))
     assert flush_held_payloads(state) == [ResponseEvent(response="<")]
     assert state.complete_message == f"Done.{NEW_MESSAGE_BREAKER}<"
+
+
+async def test_a_link_placeholder_streamed_in_pieces_is_released_whole_and_unresolved() -> None:
+    """Regression: the runtime merge resolved placeholders as comms streamed, so the stored reply held the URL."""
+    placeholder = link_placeholder(
+        RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+    )
+    head, tail = placeholder[:14], placeholder[14:]
+    live = AsyncMock(return_value=SimpleNamespace(slug="ab12cd"))
+    state = GraphStreamState()
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        payloads = [
+            payload
+            for event in (
+                _chunk("m1", f"Here it is: [the plan]({head}"),
+                _chunk("m1", f"{tail}) and more"),
+            )
+            async for payload in payloads_for_stream_event(event, state, True, None, "u1")
+        ]
+        payloads += flush_held_payloads(state)
+
+    shown = ReplyText()
+    for payload in payloads:
+        if isinstance(payload, ResponseEvent):
+            shown = shown.take(payload)
+    assert shown.text == f"Here it is: [the plan]({placeholder}) and more"
+    assert payloads[0] == ResponseEvent(response="Here it is: ")
+    live.assert_not_awaited()
+
+
+async def test_a_reply_ending_on_a_link_placeholder_flushes_it_unresolved() -> None:
+    placeholder = link_placeholder(
+        RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+    )
+    state = GraphStreamState()
+    streamed = [
+        payload
+        async for payload in payloads_for_stream_event(
+            _chunk("m1", f"Open {placeholder}"), state, True, None, "u1"
+        )
+    ]
+
+    assert streamed == [ResponseEvent(response="Open ")]
+    assert flush_held_payloads(state) == [ResponseEvent(response=placeholder)]
+
+
+async def test_a_preamble_ending_on_a_link_placeholder_is_said_unresolved_at_the_hand_off() -> None:
+    placeholder = link_placeholder(
+        RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+    )
+    handoff = AIMessage(
+        id="m1",
+        content=f"Drafted {placeholder}",
+        tool_calls=[{"name": "handoff", "args": {"task": "x"}, "id": "c1"}],
+    )
+    state = GraphStreamState()
+    payloads = [
+        payload
+        for event in (_chunk("m1", f"Drafted {placeholder}"), _node_end(handoff))
+        async for payload in payloads_for_stream_event(event, state, True, None, "u1")
+    ]
+
+    assert [p for p in payloads if isinstance(p, ResponseEvent)] == [
+        ResponseEvent(response="Drafted "),
+        ResponseEvent(response=placeholder),
+    ]

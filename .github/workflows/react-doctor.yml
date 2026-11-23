@@ -45,8 +45,8 @@ jobs:
   react-doctor:
     # Control-plane job (40 s of work): queue it behind the hosted backlog and
     # a PR waits 15+ min for a verdict. CI_DISPATCH_RUNNER unset keeps
-    # ubuntu-latest.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    # ubuntu-24.04.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     steps:
       # fetch-depth: 0 gives React Doctor the full git history it needs to find the merge base with the target branch. Without it a shallow checkout has no merge base, so PR runs can't compare against the base and fall back to reporting every issue in the changed files (pre-existing ones included) instead of only the ones the PR introduced.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

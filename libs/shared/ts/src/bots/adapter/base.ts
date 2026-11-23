@@ -942,11 +942,25 @@ export abstract class BaseBotAdapter {
             path: file.path,
             filename: file.path.split("/").pop() ?? file.path,
             content_type: file.content_type,
+            // The bot user never sees the web card, so the file carries its link.
+            caption: file.short_url,
           },
           isChannel,
           retryTransientPlatformCall,
         ),
       sendNotice,
+      sendPhoto: (url, caption) =>
+        this.deliverOutboundFile(
+          destination,
+          {
+            url,
+            filename: url.split("/").pop() ?? url,
+            content_type: null,
+            caption,
+          },
+          isChannel,
+          retryTransientPlatformCall,
+        ),
       react: async (platformMessageId, emoji, replaces) => {
         const outcome = await surface.react(platformMessageId, emoji, replaces);
         if (outcome === REACTION_OUTCOME.ATTACHED) {

@@ -87,7 +87,7 @@ env:
 jobs:
   deploy:
     if: inputs.action == 'deploy' || inputs.action == 'verify'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -131,11 +131,14 @@ jobs:
         id: before
         run: bash scripts/ci/deploy.sh served-commit
 
-      # The new API refuses to boot while a conversation holds data the
-      # conversation log does not match. A one-shot job on the new image checks
-      # first; only when it finds work are the old writers stopped for the
-      # catch-up, and the rollout below starts them on the new image.
-      - name: Migrate conversations before the rollout
+      # Everything the release needs before any new API or worker serves, as
+      # one-shot jobs of the image about to roll. First the release's data
+      # migrations, with the old build still serving; a failure stops the deploy
+      # here. Then the new API refuses to boot while a conversation holds data
+      # the conversation log does not match, so a check job looks for that work;
+      # only when it finds some are the old writers stopped for the catch-up,
+      # and the rollout below starts them on the new image.
+      - name: Migrate before the rollout
         if: inputs.action == 'deploy'
         id: migrate
         env:
@@ -272,18 +275,18 @@ jobs:
           CLEARS_WHEN: a deploy that verifies the commit prod serves
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify — conversation catch-up failed
+      - name: Notify — pre-rollout migration failed
         if: failure() && steps.migrate.outcome == 'failure'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           STATE: deploy_failed
-          SUBJECT: conversations were not migrated
+          SUBJECT: the release was not migrated
           IMPACT: on the previous build; the migrate step log says whether writers it stopped came back.
-          CAUSE: the pre-rollout migration check or catch-up job failed, so the new image was not rolled out
+          CAUSE: the release's migrations, the conversation check or the catch-up job failed, so the new image was not rolled out
           ACTION: read the job logs in the migrate step of this run.
-          CLEARS_WHEN: a deploy whose catch-up exits 0
+          CLEARS_WHEN: a deploy whose migrate step exits 0
         run: bash scripts/ci/deploy.sh notify
 
       # After a catch-up the old writers stay at 0 until the rollout starts them,
@@ -348,7 +351,7 @@ jobs:
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
@@ -498,7 +501,7 @@ jobs:
 
   notify-test:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'notify-test'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read

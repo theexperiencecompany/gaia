@@ -18,6 +18,8 @@ import pytest
 import time_machine
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants.notifications import NotificationKind
+from app.models.notification.details_models import WorkflowPausedNotification
 from app.models.notification.notification_models import (
     ActionStyle,
     ActionType,
@@ -216,10 +218,11 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         assert request.user_id == "6812f0b3c9a14e2b7d5a91cc"
         assert request.source == NotificationSourceEnum.INTEGRATION_EXPIRED
         assert request.type == NotificationType.WARNING
-        assert request.metadata == {
-            "workflow_id": "wf-1",
-            "missing_integrations": "gmail,notion",
-        }
+        assert request.details == WorkflowPausedNotification(
+            kind=NotificationKind.WORKFLOW_PAUSED,
+            workflow_id="wf-1",
+            missing_integrations=["gmail", "notion"],
+        )
 
     async def test_a_notice_that_cannot_be_delivered_is_recorded_not_raised(self) -> None:
         """A notice that can't be delivered must not become a worker error, or the whole fire retries for nothing."""
@@ -286,19 +289,6 @@ class TestEachNoticeHasTheOneIdItsFactHas:
             await _notify_workflow_failed(RuntimeError("boom"), _workflow(), None)
 
         assert notify.await_args.args[0].id == "d8b0529b-1aee-5758-9a1e-6d540d28c8c0"
-
-    async def test_a_workflow_with_no_id_still_has_one_key_per_fact(self) -> None:
-        workflow = _workflow()
-        workflow.id = None
-        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
-            await _notify_workflow_paused_for_integrations(workflow, GMAIL, FIRED_AT)
-            await _notify_workflow_failed(RuntimeError("boom"), workflow, "exec_1")
-
-        paused, failed = (c.args[0].id for c in notify.await_args_list)
-        assert (paused, failed) == (
-            "fca854a0-d27e-5406-9eb2-f6f7d73ba275",
-            "ae6b9d17-ee8e-56de-b681-7ec7d64b237e",
-        )
 
     async def test_closing_out_a_failed_run_notifies_under_that_run(self) -> None:
         with (

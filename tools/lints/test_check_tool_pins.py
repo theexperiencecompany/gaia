@@ -379,6 +379,20 @@ def test_pnpm_mirror_must_match_package_manager(
     assert "mirrors pnpm 10.16.0, package.json declares 10.17.1" in err
 
 
+def test_every_dockerfile_preparing_pnpm_is_a_mirror() -> None:
+    """apps/api/Dockerfile's artifact-validator stage ran corepack unguarded: a drifted pin passed."""
+    root = Path(__file__).resolve().parents[2]
+    tracked = subprocess.run(
+        ["git", "ls-files", "*Dockerfile"], cwd=root, capture_output=True, text=True, check=True
+    ).stdout.split()
+    preparing = {
+        root / rel
+        for rel in tracked
+        if "corepack prepare pnpm@" in check_tool_pins._executable_text((root / rel).read_text())
+    }
+    assert preparing <= {path for path, _pattern in check_tool_pins._PNPM_MIRRORS}
+
+
 def test_pnpm_action_setup_explicit_version_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -421,3 +435,42 @@ def test_an_action_is_pinned_by_commit_sha(
     workflow.write_text(f"jobs:\n  j:\n    steps:\n{line}\n")
     monkeypatch.setattr(check_tool_pins, "ACTION_SURFACES", (workflow,))
     assert bool(check_tool_pins._unpinned_action_violations()) is flagged
+
+
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ("    runs-on: ubuntu-latest", True),
+        ("    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}", True),
+        ("          - os: macos-latest", True),
+        ("          - os: windows-latest", True),
+        ("            runner: ubuntu-22.04", True),
+        ("    runs-on: ubuntu-26.04-arm", True),
+        ("    runs-on: ubuntu-24.04", False),
+        ("    runs-on: ubuntu-24.04-arm", False),
+        ("    runs-on: macos-26", False),
+        ("    runs-on: blacksmith-4vcpu-ubuntu-2404", False),
+        ("    # ubuntu-latest moved to 26.04 under us", False),
+    ],
+)
+def test_a_hosted_runner_label_names_the_declared_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, line: str, flagged: bool
+) -> None:
+    """Regression for merge-queue run 45079269367: ubuntu-latest rolled to 26.04 mid-run."""
+    declaration = tmp_path / "runner.py"
+    declaration.write_text('HOSTED_LINUX_IMAGE = "ubuntu-24.04"\n')
+    workflow = tmp_path / "w.yml"
+    workflow.write_text(f"jobs:\n  j:\n{line}\n")
+    monkeypatch.setattr(check_tool_pins, "HOSTED_IMAGE_DECLARATION", declaration)
+    monkeypatch.setattr(check_tool_pins, "RUNNER_LABEL_SURFACES", (workflow,))
+    assert bool(check_tool_pins._runner_label_violations()) is flagged
+
+
+def test_a_missing_hosted_image_declaration_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    declaration = tmp_path / "runner.py"
+    declaration.write_text("DEFAULT_FALLBACK = '[\"ubuntu-latest\"]'\n")
+    monkeypatch.setattr(check_tool_pins, "HOSTED_IMAGE_DECLARATION", declaration)
+    monkeypatch.setattr(check_tool_pins, "RUNNER_LABEL_SURFACES", ())
+    assert check_tool_pins._runner_label_violations()

@@ -96,8 +96,8 @@ jobs:
     # Measured 2026-10-22: a 13 s select-runner sat queued for 28 min in the
     # GitHub-hosted backlog while all 20 home listeners were idle. Point
     # CI_DISPATCH_RUNNER at a Blacksmith label to take it off that queue; unset
-    # keeps ubuntu-latest, so this is a one-variable rollback.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    # keeps ubuntu-24.04, so this is a one-variable rollback.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -148,7 +148,7 @@ jobs:
     name: watchdog
     needs: [select-runner]
     if: needs.select-runner.outputs.is_self_hosted == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       actions: write # cancel the run
@@ -884,7 +884,7 @@ jobs:
   obscura-bin:
     needs: [detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && needs.detect.outputs.engine_slices != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -932,6 +932,7 @@ jobs:
       SLICE_NODE: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].node }}
       SLICE_SERVICES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services }}
       SLICE_ENGINES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].engines }}
+      SLICE_CHROMIUM: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].chromium }}
       SLICE_SERIAL: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].serial }}
       SLICE_WORKERS: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].workers }}
       SLICE_AFTER: ${{ join(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].after, ' ') }}
@@ -961,6 +962,7 @@ jobs:
         with:
           node: ${{ env.SLICE_NODE }}
           services: ${{ env.SLICE_SERVICES }}
+          chromium: ${{ env.SLICE_CHROMIUM }}
       # An engine slice runs real browser hosts: Chrome from the runner image and
       # Obscura as the obscura-bin job built it. A missing binary fails the slice.
       - name: Fetch the Obscura binaries the obscura-bin job built
@@ -1125,7 +1127,7 @@ jobs:
   web-e2e-screen:
     needs: [detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'web-e2e-screen') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Boot (models, a cold Turbopack compile) plus the web suite, measured 8-15 min
     # locally; the bot scenarios add about 10.
     timeout-minutes: 50
@@ -1201,7 +1203,7 @@ jobs:
     needs: [select-runner, detect, test-python, test-python-engines]
     # No `!cancelled()`: with a slice red there is no complete data to combine.
     if: contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
@@ -1430,7 +1432,7 @@ jobs:
   changelog-sync:
     needs: [detect, ts-build-test]
     if: ${{ !cancelled() && github.event_name != 'merge_group' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
@@ -1487,7 +1489,7 @@ jobs:
   cache-warm:
     needs: [detect]
     if: needs.detect.outputs.tier == 'verified'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 15
@@ -1534,7 +1536,7 @@ jobs:
       # changelog-sync deliberately excluded: non-blocking, it opens a fix PR.
     # Required status check: it must report in seconds, so it rides the same
     # control-plane runner as the dispatcher, and it never waits on anything.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -1593,7 +1595,7 @@ jobs:
   # build-images reaches the same group.
   deploy-unwedge:
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Above unwedge's 15 min limit: it waits out a gate still inside it.
     timeout-minutes: 20
     permissions:
@@ -1677,3 +1679,33 @@ jobs:
       deployments: write
       actions: write # IndexNow reads earlier runs' deploy jobs; post-deploy-seo dispatches seo-crawl.yml
     secrets: inherit # pragma: allowlist secret
+
+  # ── Master only: ship the usercontent Worker (*.heygaia.link) ──────────
+  # Its build (a wrangler dry-run bundle) ran in ts-build-test behind the same
+  # gate. Off until vars.USERCONTENT_WORKER_DEPLOY is 'true': the heygaia.link
+  # zone, its wildcard DNS record and the INTERNAL_API_TOKEN and LINK_CONTENT_EDGE_TOKEN
+  # Worker secrets must exist first, or the deploy reds master. After turning it on, dispatch ci.yml on
+  # master once (a dispatch runs every task) to ship the first version.
+  deploy-usercontent-worker:
+    needs: [detect, quality-gate]
+    if: ${{ always() && vars.USERCONTENT_WORKER_DEPLOY == 'true' && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.quality-gate.result == 'success' && contains(fromJSON(needs.detect.outputs.tasks), 'usercontent-worker:build') }}
+    concurrency:
+      group: deploy-usercontent-worker
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Deploy to Cloudflare Workers (gaia-usercontent)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm --filter ./apps/usercontent-worker exec wrangler deploy --config wrangler.jsonc \
+            --tag "${GITHUB_SHA::7}" --message "GitHub Actions: ${GITHUB_ACTOR} run ${GITHUB_RUN_ID}"

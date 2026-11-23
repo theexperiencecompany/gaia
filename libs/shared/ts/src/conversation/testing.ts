@@ -99,6 +99,7 @@ export const noticeItem = (
   tool_data: [],
   timeline: NO_TIMELINE,
   follow_up_actions: [],
+  image_url: null,
 });
 
 /** A patch at the log head given; by default the head its item's own entry was logged at. */

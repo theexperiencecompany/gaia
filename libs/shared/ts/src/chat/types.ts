@@ -5,7 +5,12 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
-import type { ToolDataEntry, ToolProgress } from "../api/generated";
+import type {
+  ToolDataEntry,
+  ToolProgress,
+  WorkflowDelivery,
+} from "../api/generated";
+import type { ArtifactCardData } from "../artifacts/types";
 
 export type {
   RecurrenceData,
@@ -430,35 +435,6 @@ export interface TwitterSearchData {
   next_token?: string;
 }
 
-export interface TwitterTimelineData {
-  tweets: TwitterTweetData[];
-}
-
-export type TwitterFollowersData = TwitterUserData[];
-
-export interface TwitterPostCreatedData {
-  id: string;
-  text: string;
-  url: string;
-}
-
-export interface TwitterPostPreviewData {
-  text: string;
-  quote_tweet_id?: string;
-  reply_to_tweet_id?: string;
-  media_ids?: string[];
-  poll_options?: string[];
-}
-
-export type TwitterData =
-  | { type: "search"; data: TwitterSearchData }
-  | { type: "timeline"; data: TwitterTimelineData }
-  | { type: "users"; data: TwitterUserData[] }
-  | { type: "followers"; data: TwitterFollowersData }
-  | { type: "following"; data: TwitterFollowersData }
-  | { type: "post_created"; data: TwitterPostCreatedData }
-  | { type: "post_preview"; data: TwitterPostPreviewData };
-
 // ---------------------------------------------------------------------------
 // Todos (agent task planning)
 // ---------------------------------------------------------------------------
@@ -623,6 +599,8 @@ export interface WorkflowDraftData {
   trigger_type: "manual" | "scheduled" | "integration";
   trigger_slug?: string | null;
   cron_expression?: string | null;
+  /** Chosen by the agent from the user's words; absent on drafts saved before delivery modes. */
+  delivery?: WorkflowDelivery;
 }
 
 export interface WorkflowCreatedData {
@@ -794,6 +772,7 @@ export type ToolName =
   | "mcp_app"
   | "rate_limit_data"
   | "artifact_data"
+  | "artifact_done"
   | "memory_data"
   | "todo_progress"
   | "chart_data";
@@ -832,6 +811,7 @@ export interface ToolDataMap {
   mcp_app: MCPAppData;
   rate_limit_data: RateLimitData;
   artifact_data: ArtifactData[];
+  artifact_done: ArtifactCardData;
   memory_data: SharedMemoryData;
   todo_progress: TodoProgressData;
   chart_data: GenericToolData[];
@@ -870,6 +850,7 @@ export function isKnownTool(name: string): name is ToolName {
     "mcp_app",
     "rate_limit_data",
     "artifact_data",
+    "artifact_done",
     "memory_data",
     "todo_progress",
     "chart_data",

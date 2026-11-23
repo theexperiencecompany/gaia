@@ -101,6 +101,10 @@ def _external_ref_filter(ref: ExternalRef) -> dict[str, object]:
     }
 
 
+def _own_open_query(user_id: str) -> dict[str, object]:
+    return {"user_id": user_id, "completed": False, "labels": {"$nin": [GAIA_TRACKED_LABEL]}}
+
+
 def _first_count(buckets: list[_FacetCount]) -> int:
     return buckets[0].count if buckets else 0
 
@@ -406,6 +410,32 @@ class TodosRepository(CachedUserScopedRepository[TodoDocument, TodoUpdate]):
                 ],
             }
         )
+
+    async def list_completed_since(self, user_id: str, *, since: datetime) -> list[TodoDocument]:
+        """Return todos completed at or after since (UTC), newest completion first.
+
+        Used as the briefing's look-back set.
+        """
+        return await self._find(
+            {"user_id": user_id, "completed": True, "completed_at": {"$gte": since}},
+            sort=[("completed_at", -1)],
+        )
+
+    async def list_external_ref_activity_since(
+        self, user_id: str, source: ExternalRefSource, *, since: datetime
+    ) -> list[TodoDocument]:
+        """Return the user's todos about one kind of outside object opened or completed since (UTC)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "external_ref.source": source.value,
+                "$or": [{"created_at": {"$gte": since}}, {"completed_at": {"$gte": since}}],
+            }
+        )
+
+    async def list_open_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """Return the user's own (non-tracked) open todos, most-recently-updated first."""
+        return await self._find(_own_open_query(user_id), sort=[("updated_at", -1)], limit=limit)
 
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.

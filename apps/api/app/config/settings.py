@@ -9,6 +9,7 @@ app/config/capability_requirements.py.
 from functools import lru_cache
 import time
 from typing import Literal, Self, TypedDict, cast
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from pydantic import Field, ValidationInfo, computed_field, field_validator, model_validator
@@ -20,6 +21,7 @@ from app.config.deployment import (
     BlobStoreKind,
     DeploymentKind,
     DeploymentProfile,
+    LinkBase,
     deployment_profile,
 )
 from app.config.secrets import inject_infisical_secrets
@@ -31,6 +33,7 @@ from app.constants.bot import (
     GAIA_CLOUD_WHATSAPP_NUMBER,
 )
 from app.constants.browser import BrowserAgentEffort
+from app.constants.email import BRIEF_SENDER, BRIEF_SENDER_MAILBOX
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.files import S3AddressingStyle
 from app.constants.llm import DevLLMApi
@@ -39,7 +42,10 @@ from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
+from app.constants.short_links import SHORTLINK_WEB_ROUTE
 from shared.py.wide_events import log
+
+MIN_LINK_CONTENT_SIGNING_KEY_LENGTH = 32
 
 load_dotenv()
 
@@ -94,6 +100,18 @@ class Settings(BrowserHostSettings):
     # Unset signs requests for us-east-1, which MinIO and most S3-compatible services accept.
     S3_REGION: str | None = None
     S3_ADDRESSING_STYLE: S3AddressingStyle = S3AddressingStyle.VIRTUAL
+    # Shared-link file snapshots. Under BLOB_STORE=local or s3 they share the
+    # blob store; under cloudinary they go to this R2 bucket (R2_ACCOUNT_ID's keys).
+    LINK_CONTENT_BUCKET: str | None = None
+    # The content origin that serves snapshot bytes, with a {content_id}
+    # placeholder: https://{content_id}.heygaia.link on GAIA Cloud. Unset, HTML
+    # shows as source and other files as downloads (no active link content).
+    LINK_CONTENT_URL_TEMPLATE: str | None = None
+    # Signs the short-lived content tokens that origin checks (min 32 chars).
+    LINK_CONTENT_SIGNING_KEY: str | None = None
+    # Shared with GAIA Cloud's usercontent Worker, the only caller whose named content
+    # host is believed. Unset (any self-host: its proxy keeps the Host), none is.
+    LINK_CONTENT_EDGE_TOKEN: str | None = None
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None
@@ -139,6 +157,12 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Short-link base (heygaia.link/<slug> on GAIA Cloud). Unset elsewhere, it is
+    # FRONTEND_URL/l, the instance's own route. No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.link"
+    # Sender of notification and brief email. Unset on a self-host, it is
+    # brief@<FRONTEND_URL's host>: a domain its own Resend account must verify.
+    EMAIL_FROM: str = BRIEF_SENDER
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
@@ -158,7 +182,7 @@ class Settings(BrowserHostSettings):
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
 
-    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
@@ -591,6 +615,11 @@ class Settings(BrowserHostSettings):
     # Bot Configuration
     # ----------------------------------------------
     GAIA_BOT_API_KEY: str | None = None
+    # Shared with the web app's server. Only rate limiting reads it: its requests count
+    # against the token's ceiling and the viewer they name. Never grants auth.
+    INTERNAL_API_TOKEN: str | None = None
+    # The value being rotated out, still accepted until every web server sends the new one.
+    INTERNAL_API_TOKEN_PREVIOUS: str | None = None
     DISCORD_BOT_TOKEN: str | None = None
     DISCORD_CLIENT_ID: str | None = None
     SLACK_BOT_TOKEN: str | None = None
@@ -637,6 +666,67 @@ class Settings(BrowserHostSettings):
         self.DISCORD_OAUTH_CLIENT_ID = self.DISCORD_OAUTH_CLIENT_ID or GAIA_CLOUD_DISCORD_CLIENT_ID
         self.SLACK_OAUTH_CLIENT_ID = self.SLACK_OAUTH_CLIENT_ID or GAIA_CLOUD_SLACK_CLIENT_ID
         self.TELEGRAM_BOT_USERNAME = self.TELEGRAM_BOT_USERNAME or GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+        return self
+
+    @model_validator(mode="after")
+    def _short_links_on_the_instances_web_app(self) -> Self:
+        """Point minted links at this instance's web app /l route unless it resolves heygaia.link."""
+        if (
+            self.deployment.link_base is LinkBase.INSTANCE_WEB_ROUTE
+            and "SHORTLINK_BASE_URL" not in self.model_fields_set
+        ):
+            self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
+        return self
+
+    @model_validator(mode="after")
+    def _email_from_the_instances_domain(self) -> Self:
+        """Send from the instance's own web domain unless it is GAIA Cloud's or EMAIL_FROM is set."""
+        if not self.deployment.gaia_mail_domain and "EMAIL_FROM" not in self.model_fields_set:
+            self.EMAIL_FROM = f"{BRIEF_SENDER_MAILBOX}@{urlsplit(self.FRONTEND_URL).hostname}"
+        return self
+
+    @field_validator(
+        "LINK_CONTENT_URL_TEMPLATE",
+        "LINK_CONTENT_SIGNING_KEY",
+        "LINK_CONTENT_EDGE_TOKEN",
+        mode="after",
+    )
+    @classmethod
+    def _blank_link_content_setting_is_unset(cls, v: str | None) -> str | None:
+        # A templated deploy spells "unset" as blank; failing on "" once took the whole API down.
+        return v or None
+
+    @model_validator(mode="after")
+    def _link_content_origin_is_complete(self) -> Self:
+        """Turn off a content origin that cannot name a snapshot's host or sign its tokens.
+
+        A self-host refuses to boot (its .env is CLI-written); GAIA Cloud logs the
+        error and serves shared files as text or downloads until it is fixed.
+        """
+        template = self.LINK_CONTENT_URL_TEMPLATE
+        if template is None:
+            return self
+        key = self.LINK_CONTENT_SIGNING_KEY
+        problem = None
+        if "{content_id}" not in template:
+            problem = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
+        elif urlsplit(template).netloc.lower() in {
+            urlsplit(self.HOST).netloc.lower(),
+            urlsplit(self.FRONTEND_URL).netloc.lower(),
+        }:
+            # The API and app hosts carry the session; user bytes there are the stored XSS this origin exists to stop.
+            problem = "LINK_CONTENT_URL_TEMPLATE must name a host other than HOST and FRONTEND_URL"
+        elif key is None or len(key) < MIN_LINK_CONTENT_SIGNING_KEY_LENGTH:
+            problem = (
+                "LINK_CONTENT_URL_TEMPLATE is set but LINK_CONTENT_SIGNING_KEY is missing or "
+                f"shorter than {MIN_LINK_CONTENT_SIGNING_KEY_LENGTH} characters"
+            )
+        if problem is None:
+            return self
+        if self.deployment.requires_complete_config:
+            raise RuntimeError(problem)
+        log.error(f"{LogTag.STARTUP} link content origin turned off", problem=problem)
+        self.LINK_CONTENT_URL_TEMPLATE = None
         return self
 
     @model_validator(mode="before")

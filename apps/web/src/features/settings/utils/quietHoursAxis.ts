@@ -33,9 +33,3 @@ export function fromAxis([start, end]: [number, number]): Pick<
     end_hour: end % HOURS_PER_DAY,
   };
 }
-
-/** An hour of the day as the user's locale writes it, like "10 PM" or "22:00". */
-export function formatHour(hour: number, locale?: string): string {
-  const at = new Date(2000, 0, 1, hour % HOURS_PER_DAY);
-  return new Intl.DateTimeFormat(locale, { hour: "numeric" }).format(at);
-}

@@ -1,3 +1,4 @@
+import { formatDate } from "@shared/utils";
 import Image from "next/image";
 import type React from "react";
 import { LinkButton } from "@/components/shared/LinkButton";
@@ -6,10 +7,6 @@ import type { GoogleDocsData } from "@/types/features/toolDataTypes";
 interface GoogleDocsSectionProps {
   google_docs_data: GoogleDocsData;
 }
-
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString();
-};
 
 const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
   google_docs_data,
@@ -43,7 +40,7 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
               </span>
               <div className="flex gap-2 text-xs opacity-70">
                 <span suppressHydrationWarning>
-                  Modified: {formatDate(document.modified_time)}
+                  Modified: {formatDate(document.modified_time, "numeric")}
                 </span>
                 {action && (
                   <span className="capitalize">

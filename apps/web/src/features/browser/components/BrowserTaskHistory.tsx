@@ -8,6 +8,7 @@ import {
   ImageNotFound01Icon,
   PlayIcon,
 } from "@icons";
+import { formatRelativeDate } from "@shared/utils";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -17,7 +18,7 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { BOT_PLATFORM_LABELS, isBotPlatform } from "@/config/botPlatforms";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
 import type { BrowserTask } from "../types";
-import { BROWSER_STATUS_META, formatRelativeDate } from "../utils";
+import { BROWSER_STATUS_META } from "../utils";
 import { PlatformGlyph } from "./PlatformGlyph";
 
 // Sources whose conversation lives in this app, so we can deep-link to it.

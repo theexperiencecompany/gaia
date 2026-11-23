@@ -113,6 +113,17 @@ const config: KnipConfig = {
     // imported as modules — so knip reads them as unused files.
     "apps/api/app/agents/skills/builtin/**",
 
+    // Vendored edition-explorer templates: read by Python as text and inlined
+    // into the headless-Chromium render document (editions/explorer_render.py),
+    // never imported as JS modules — knip cannot see that consumption.
+    "apps/api/app/services/briefing/editions/explorer/js/**",
+    // The block plumbing those templates draw with: inlined into the same document the same way.
+    "apps/api/app/services/briefing/editions/explorer/shell/**",
+
+    // The edition reading-system rules: read by test_edition_reading_system.py and evaluated
+    // in the rendered page through Playwright, never imported.
+    "apps/api/tests/integration/render/edition_reading_rules.js",
+
     // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
     "apps/api/app/services/browser/jev/*.js",
 
@@ -144,6 +155,10 @@ const config: KnipConfig = {
     // see the import. Kept for the dev gallery.
     "apps/web/src/features/chat/components/dev/OpenUIPlayground.tsx",
     "apps/web/src/config/openui/examples/index.ts",
+
+    // The artifact playground and its sample programs, consumed only by the
+    // /dev/artifacts page (page.dev.tsx, ignored above).
+    "apps/web/src/features/artifacts/dev/**",
 
     // BuiltForEveryone: landing "positioning" section, parked — its dynamic
     // import and render are commented out in app/[locale]/(landing)/client.tsx.
@@ -243,6 +258,9 @@ const config: KnipConfig = {
   workspaces: {
     // ── Root ──────────────────────────────────────────────────────────
     ".": {
+      // The OpenUI prompt generator: run by checks.mjs openui-prompts through `pnpm exec tsx`, a
+      // subprocess knip can't trace. An entry, not an ignore, so the specs it imports count as used.
+      entry: ["scripts/openui/generate-prompts.ts"],
       ignoreDependencies: [
         // Spawned by scripts/ts/type-check.mjs at runtime. knip only traces
         // imports, so a compiler invoked through spawnSync reads as unused.
@@ -265,7 +283,7 @@ const config: KnipConfig = {
         // Invoked dynamically as `pnpm exec jscpd` inside
         // scripts/ci/checks.mjs duplication, so knip can't see the usage.
         "jscpd",
-        // Imported by scripts/openui/generate-prompt.ts (the OpenUI prompt
+        // Imported by scripts/openui/generate-prompts.ts (the OpenUI prompt
         // codegen). Declared in apps/web; resolved here via pnpm workspace
         // hoisting, so knip reads them as unlisted at the root.
         "@openuidev/react-lang",
@@ -434,6 +452,15 @@ const config: KnipConfig = {
       ignoreDependencies: ["@grpc/grpc-js", "nice-grpc", "nice-grpc-common"],
     },
 
+    // ── Usercontent Worker (*.heygaia.link) ─────────────────────────
+    "apps/usercontent-worker": {
+      entry: ["src/index.ts"],
+      // Tests are not live references — see apps/bots note.
+      project: ["src/**/*.ts", "!src/**/*.test.ts"],
+      // Pins the node types vitest and wrangler peer on to the workspace's 24.x, not the newest.
+      ignoreDependencies: ["@types/node"],
+    },
+
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
       // scripts/: generators run from package.json (bake:logo), not imported.
@@ -468,6 +495,16 @@ const config: KnipConfig = {
       includeEntryExports: false, // library exports consumed by other workspaces
       // Optional peer: zustand is a peerDependency consumed by importing apps.
       ignoreDependencies: ["zustand"],
+    },
+
+    // ── Artifact Library ─────────────────────────────────────────────
+    "libs/artifacts": {
+      // Every module is a package export ("./*"), read by apps/web, scripts/openui and the validator.
+      entry: ["src/*.ts"],
+      project: ["src/**/*.ts", "!src/**/*.test.ts"],
+      includeEntryExports: false,
+      // Peers of @openuidev/react-ui that the validator bundle inlines; nothing imports them directly.
+      ignoreDependencies: ["react", "react-dom"],
     },
 
     // ── Wake-word Library ────────────────────────────────────────────

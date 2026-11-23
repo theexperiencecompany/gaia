@@ -19,6 +19,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.services.briefing.notification_email import BRIEFING_EMAIL_RENDERERS
 from app.services.notification_service import NotificationService, notification_service
 
 _MOD = "app.services.notification_service"
@@ -151,3 +152,9 @@ class TestNotificationService:
 class TestGlobalInstance:
     def test_module_singleton_is_a_notification_service(self):
         assert isinstance(notification_service, NotificationService)
+
+    def test_the_orchestrator_emails_every_briefing_kind_with_its_renderer(self):
+        with patch(f"{_MOD}.NotificationOrchestrator") as m_orchestrator_cls:
+            NotificationService()
+
+        m_orchestrator_cls.assert_called_once_with(BRIEFING_EMAIL_RENDERERS)

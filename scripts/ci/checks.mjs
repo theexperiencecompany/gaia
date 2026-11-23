@@ -41,12 +41,24 @@
  *                       from the API's settings groups and capability table,
  *                       then fail if it differs from what is committed.
  *                       --write is `mise cli:schema`.
+ *   link-constants [--write]
+ *                       Regenerate link-constants.generated.json for the
+ *                       usercontent Worker and the CLI from
+ *                       apps/api/app/constants/short_links.py, check the
+ *                       self-host Caddyfile spells the same routes, then fail
+ *                       if either JSON differs from what is committed.
+ *                       --write is `mise links:constants`.
  *   deploy-templates [--write]
  *                       Regenerate deploy/coolify/gaia.yaml, render.yaml and
  *                       deploy/proxy.Dockerfile from the self-host compose
  *                       file, its Caddyfile and the CLI's machine secrets
  *                       (lib/deploy_templates.py), then fail if any differs
  *                       from what is committed. --write is `mise deploy:templates`.
+ *   openui-prompts [--write]
+ *                       Regenerate the comms OpenUI prompt and the artifact
+ *                       model's per-kind prompts (scripts/openui/generate-prompts.ts),
+ *                       then fail if any differs from what is committed.
+ *                       --write is `mise openui:prompts`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of

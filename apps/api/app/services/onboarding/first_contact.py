@@ -29,20 +29,15 @@ LINK_GREETING_WITH_NAME = "Hey {name}, I'm with you on {platform} now."
 LINK_GREETING = "Hey, I'm with you on {platform} now."
 
 
-def compose_link_greeting(platform: str, name: str | None) -> str:
-    """GAIA's hello on a freshly linked platform.
-
-    name is the GAIA user's full name; only the first token is used, because
-    a greeting that says the surname is an email, not a text.
-    """
+def compose_link_greeting(platform: str, first_name: str | None) -> str:
+    """GAIA's hello on a freshly linked platform, by first name when the user gave one."""
     from app.services.onboarding.first_conversation import (  # noqa: PLC0415 -- first_conversation imports the onboarding package for its phrases; a top-level import back would be a cycle
         platform_label,
     )
 
     label = platform_label(platform)
-    tokens = (name or "").split()
-    if tokens:
-        return LINK_GREETING_WITH_NAME.format(name=tokens[0], platform=label)
+    if first_name:
+        return LINK_GREETING_WITH_NAME.format(name=first_name, platform=label)
     return LINK_GREETING.format(platform=label)
 
 
@@ -222,10 +217,10 @@ def _join_clauses(clauses: list[str]) -> str:
 
 
 def _opening_bubbles(
-    platform: str, name: str | None, preferences: OnboardingPreferences
+    platform: str, first_name: str | None, preferences: OnboardingPreferences
 ) -> list[str]:
     """Build the hello, then the promise as its own bubble, so it reads as a few texts."""
-    bubbles = [compose_link_greeting(platform, name)]
+    bubbles = [compose_link_greeting(platform, first_name)]
     clauses = [NEED_CLAUSES[need] for need in preferences.needs or [] if need in NEED_CLAUSES]
     promise: list[str] = []
     if clauses:
@@ -271,7 +266,7 @@ def _ask_bubble(preferences: OnboardingPreferences) -> str:
 
 def compose_first_contact(
     platform: str,
-    name: str | None,
+    first_name: str | None,
     preferences: OnboardingPreferences,
     connect_links: list[tuple[str, str]],
 ) -> list[str]:
@@ -283,13 +278,13 @@ def compose_first_contact(
     without, it is one question about the first pick.
     """
     first_move = _connect_bubble(connect_links) if connect_links else _ask_bubble(preferences)
-    return [*_opening_bubbles(platform, name, preferences), first_move]
+    return [*_opening_bubbles(platform, first_name, preferences), first_move]
 
 
 async def build_first_contact(
     user_id: str,
     platform: str,
-    name: str | None,
+    first_name: str | None,
     preferences: OnboardingPreferences,
 ) -> list[str]:
     """Resolve and mint connect links, then build the first-contact bubbles.
@@ -316,4 +311,4 @@ async def build_first_contact(
             continue
         connect_links.append((integration_id, url))
 
-    return compose_first_contact(platform, name, preferences, connect_links)
+    return compose_first_contact(platform, first_name, preferences, connect_links)

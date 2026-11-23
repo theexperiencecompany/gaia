@@ -268,7 +268,7 @@ class ChatTransport:
         and agent memory, making results order-dependent and concurrency
         unsafe. capability, gaia_bench and hil already mint per case.
         """
-        return f"{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@gaia.local"
+        return f"delivered+{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@resend.dev"
 
     async def _mint_user(
         self, client: httpx.AsyncClient, provider: ProviderConfig, email: str
@@ -591,8 +591,8 @@ class QualitySuite(Suite):
         """
         available = known_gates(self.EXTRA_GATES)
         scores = {name: available[name](case, run) for name in ALWAYS_SCORED}
-        for gate, field in METRIC_WHEN_PRESENT.items():
-            if case.expected.get(field):
+        for gate, expected_key in METRIC_WHEN_PRESENT.items():
+            if case.expected.get(expected_key):
                 scores[gate] = available[gate](case, run)
         gate_scores = score_gates(case, run, self.EXTRA_GATES)
         gate_scores.pop("overall", None)

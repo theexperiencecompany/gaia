@@ -228,8 +228,8 @@ nothing. So end with a factual report of what you did and what changed, and do
 NOT call `send_notification` to announce it, which sends it twice. Every run's
 outcome, sent or not, is recorded in activity.md.
 
-`notify_on_run` (on `create_tracked_todo` / `update_tracked_todo`, default on)
-turns that delivery off entirely. It is the user's setting: change it only when
+`delivery` (on `create_tracked_todo` / `update_tracked_todo`, default `now`)
+set to `silent` turns that delivery off entirely. It is the user's setting: change it only when
 they ask. A silent todo reaches the user only if the run deliberately calls
 `send_notification`.
 
@@ -410,11 +410,12 @@ to announce one of them sends it to the user twice:
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
 - A finished **tracked todo** run is reported to the user's chat app when it
-  found something that matters, unless that todo has `notify_on_run` off. See
-  the `tracked-todos` doc.
+  found something that matters and cannot wait, or held for their next morning
+  brief when it can, unless that todo's `delivery` is `silent`. See the
+  `tracked-todos` doc.
 
 When one of these delivers the result, do not announce it again. A silent
-workflow, or a todo with `notify_on_run` off, delivers nothing, so there a
+workflow, or a todo whose `delivery` is `silent`, delivers nothing, so there a
 notification is the only way the user hears. Otherwise notify only for something
 genuinely separate and urgent.
 """
@@ -560,12 +561,14 @@ Offer to pause it instead, or point them to the app to delete.
 
 ## Results & notifications
 
-By default (`notify_on_completion` on) the final result is delivered
-automatically: posted as real messages into the user's linked messaging
-platforms (WhatsApp/Telegram/Discord/Slack) and surfaced as an in-app completion
-notification. A silent workflow delivers nothing on success; it only reaches the
-user if its own prompt sends something (e.g. an explicit `send_notification`).
-Failures always notify. So do NOT add a `send_notification` to announce a result
+Every workflow has a `delivery` mode that decides what a successful run does:
+`now` posts the result as real messages into the user's preferred messaging
+platform (WhatsApp/Telegram/Discord/Slack) and raises an in-app completion
+notification; `brief` holds it for the user's next brief and pushes nothing;
+`silent` keeps it in the workflow's conversation only. A `brief` or `silent`
+workflow reaches the user mid-run only if its own prompt sends something (e.g.
+an explicit `send_notification`). A run with nothing worth reporting reaches
+nobody in any mode. Failures always notify. So do NOT add a `send_notification` to announce a result
 that completion delivery already sends, and do NOT double-send if the prompt
 already messages the user. See the `notifications` doc for channel details.
 
@@ -866,11 +869,12 @@ these.
 | "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
 | "Always do X in every chat / clear my standing instructions" | `get_user_instructions(scope="global")`, then `update_user_instructions(scope="global", content=..., based_on_revision=...)` | `account` |
 | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
+| "Fewer / no briefs, weekdays only, brief me at 7" | `set_briefing_schedule(frequency, hour, brief_workflows_to)` | `account` |
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
-| "Stop showing me X / brief me at 7" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
+| "Stop showing me X" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Set a goal / make a roadmap / track progress on X" | break it into tracked todos | `tracked-todos` |
 | "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |
@@ -957,6 +961,7 @@ settings - plus a set of mutation tools that change the real thing.
 | Response style + home timezone | `account/preferences.json` | `update_preferences` |
 | Standing instructions (every conversation) | `account/custom-instructions.json` | `update_user_instructions(scope="global", ...)` |
 | Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
+| Brief frequency (daily/weekdays/weekly_only/off) + daily brief hour | - | `set_briefing_schedule(frequency, hour, brief_workflows_to)` |
 | Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
 
 Every account tool asks the user to confirm before it runs - ALWAYS, regardless

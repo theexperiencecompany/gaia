@@ -144,6 +144,10 @@ services:
       # A custom MCP server added as localhost runs on the machine hosting GAIA,
       # which these containers reach as host.docker.internal (extra_hosts below).
       LOOPBACK_HOST_ALIAS: host.docker.internal
+      # Shared with gaia-web, from the .env beside this file (`gaia up` writes it):
+      # the web server's page fetches name each visitor instead of all counting
+      # as the web container's one address.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     # The image CMD runs uvicorn with --proxy-headers --forwarded-allow-ips *.
     # That trust is safe here because port 8000 is never published: the only
     # peers are containers on gaia_network, and the bundled proxy (Caddy)
@@ -170,16 +174,19 @@ services:
     tty: true
     stdin_open: true
     depends_on:
-      chromadb:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      <<: &datastores
+        chromadb:
+          condition: service_healthy
+        postgres:
+          condition: service_healthy
+        redis:
+          condition: service_healthy
+        mongo:
+          condition: service_healthy
+        rabbitmq:
+          condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       gaia-migrate:
         condition: service_completed_successfully
     networks:
@@ -193,6 +200,25 @@ services:
       # outlasts 5 x 30s and compose fails the services waiting on a healthy API.
       start_period: 10m
       start_interval: 5s
+
+  # The release's data migrations (apps/api/scripts/post_deploy.py), run to the end before
+  # this image's API and worker start; a failed step fails the start and the next one retries.
+  migrate:
+    logging: *default_logging
+    image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
+    env_file: *backend_env_files
+    environment:
+      <<: *backend_environment
+      GAIA_SERVICE_NAME: migrate
+    command: ["python", "-m", "scripts.post_deploy", "--apply"]
+    restart: "no"
+    # A migration may move stored files (the blob store) or workspaces.
+    volumes:
+      - workspace:/mnt/jfs
+      - files:/var/lib/gaia/files
+    depends_on: *datastores
+    networks:
+      - gaia_network
 
   # One-shot, before the API and the worker start: moves conversations still in
   # an older build's shape into this one's and verifies them, or exits 1 and
@@ -239,6 +265,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       gaia-migrate:
         condition: service_completed_successfully
     networks:
@@ -260,6 +288,8 @@ services:
       # Browsers call the same-origin /api/v1/ baked into the image; server-side
       # (SSR) fetches reach the API directly over the private network.
       API_BASE_URL_INTERNAL: http://gaia-backend:8000/api/v1/
+      # The same token gaia-backend reads; see its environment.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     expose:
       - "3000"
     restart: on-failure
@@ -289,6 +319,10 @@ services:
       GAIA_SITE_ADDRESS: ${GAIA_DOMAIN:-:80}
       # "local_certs" for a domain no public CA certifies (gaia up --domain gaia.test).
       GAIA_CADDY_GLOBAL_OPTIONS: ${GAIA_CADDY_GLOBAL_OPTIONS:-}
+      # Optional share domains (gaia up --link-domain / --usercontent-domain);
+      # unset, a .invalid name no request carries (the Caddyfile's own fallback).
+      GAIA_LINK_SITE_ADDRESS: ${GAIA_LINK_DOMAIN:-http://link.gaia.invalid}
+      GAIA_USERCONTENT_SITE_ADDRESS: ${GAIA_USERCONTENT_DOMAIN:-http://usercontent.gaia.invalid}
     ports:
       - "${WEB_HOST_PORT:-3000}:80"
       - "${HTTPS_HOST_PORT:-3443}:443"

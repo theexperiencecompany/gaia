@@ -92,7 +92,7 @@ class TestAdapter extends BaseBotAdapter {
   }
 
   /** Sends a reply's session artifact the way a follow does, through the adapter's real follow surface. */
-  sendFollowFile(path: string): Promise<void> {
+  sendFollowFile(path: string, shortUrl?: string): Promise<void> {
     const surface = (
       this as unknown as {
         followSurface: (
@@ -106,6 +106,8 @@ class TestAdapter extends BaseBotAdapter {
     return surface.sendFile("conv-1", {
       path,
       content_type: "application/pdf",
+      opens_at: "https://app.gaia.test/c/conv-1",
+      short_url: shortUrl,
     });
   }
 }
@@ -256,6 +258,19 @@ describe("a follow's file the API cannot serve", () => {
     ).resolves.toMatchObject({ status: 503 });
     expect(axiosGet).toHaveBeenCalledTimes(RETRY_POLICY.OWN_API.retries + 1);
     expect(adapter.sentFile).toBeNull();
+  });
+
+  it("captions a reply's file with the short link its writing tool attached", async () => {
+    // Regression: the runtime merge sent bot file messages without their heygaia.link.
+    axiosGet.mockResolvedValue({
+      data: new Uint8Array(PNG).buffer,
+      headers: { "content-type": "application/pdf" },
+    });
+    const adapter = setup();
+
+    await adapter.sendFollowFile("report.pdf", "https://heygaia.link/ab12cd");
+
+    expect(adapter.sentFile?.caption).toBe("https://heygaia.link/ab12cd");
   });
 
   it("fetches once and keeps retrying the upload while the platform rate-limits it", async () => {

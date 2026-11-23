@@ -48,7 +48,7 @@ Env contract:
   every API call      lib/github.py's (token, base URL, timeout, retries).
   select              GITHUB_REPOSITORY, RUNNER_LABEL (heavy, default
                       gaia-home), SERVICES_RUNNER_LABEL (default gaia-home),
-                      FALLBACK_RUNNER (default ["ubuntu-latest"]), FORCE_HOME,
+                      FALLBACK_RUNNER (default [HOSTED_LINUX_IMAGE]), FORCE_HOME,
                       FORCE_GITHUB, PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION,
                       GITHUB_ACTOR, BLACKSMITH_LABEL, HOSTED_QUEUE_THRESHOLD
                       (5); writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
@@ -102,7 +102,11 @@ CPU_SLOTS_SH = HERE / "lib" / "cpu-slots.sh"
 
 DEFAULT_REPO = "theexperiencecompany/gaia"
 DEFAULT_HOME_LABEL = "gaia-home"
-DEFAULT_FALLBACK = '["ubuntu-latest"]'
+# The GitHub-hosted Linux image, by release: ubuntu-latest moves under us (it
+# rolled to 26.04 job by job, run 45079269367). check_tool_pins.py holds every
+# literal runs-on in .github to this release.
+HOSTED_LINUX_IMAGE = "ubuntu-24.04"
+DEFAULT_FALLBACK = json.dumps([HOSTED_LINUX_IMAGE])
 # GitHub-hosted jobs waiting for a VM at which GitHub counts as saturated. The
 # org's Free plan runs 20 hosted jobs at once and a full CI run peaks at 12
 # (run 40178782875, every job started within 6 s), so jobs only pile up queued

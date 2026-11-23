@@ -1189,7 +1189,7 @@ class TestTheNightRecord:
 
         await _skip()
 
-        night.tz.assert_awaited_once_with(USER_ID)
+        night.owner_read.assert_awaited_once_with(USER_ID)
 
 
 class TestTheUrgentAnswer:
@@ -1252,7 +1252,7 @@ class TestQuietHoursHold:
 
         assert await quiet_hours_hold(DESK, USER_ID) == GateHold(until=MORNING)
 
-        night.tz.assert_awaited_once_with(USER_ID)
+        night.owner_read.assert_awaited_once_with(USER_ID)
         night.enforced.assert_awaited_once_with(USER_ID)
         assert seen == [worker_context(Trigger.INTEGRATION_TRIGGER)]
 
@@ -1262,22 +1262,22 @@ class TestQuietHoursHold:
     async def test_the_hours_the_user_set_decide_when_the_hold_ends(
         self, night: SimpleNamespace
     ) -> None:
-        night.quiet_hours.return_value = QuietHours(enabled=True, start_hour=1, end_hour=6)
+        night.owner.quiet_hours = QuietHours(enabled=True, start_hour=1, end_hour=6)
 
         assert await quiet_hours_hold(DESK, USER_ID) == GateHold(until=MORNING.replace(hour=6))
-        night.quiet_hours.assert_awaited_once_with(USER_ID)
+        night.owner_read.assert_awaited_once_with(USER_ID)
 
     async def test_quiet_hours_the_user_set_by_day_hold_by_day(
         self, seams: SimpleNamespace
     ) -> None:
-        seams.quiet_hours.return_value = QuietHours(enabled=True, start_hour=13, end_hour=15)
+        seams.owner.quiet_hours = QuietHours(enabled=True, start_hour=13, end_hour=15)
 
         assert await quiet_hours_hold(DESK, USER_ID) == GateHold(
             until=datetime(2026, 10, 2, 15, 0, tzinfo=KOLKATA.tzinfo)
         )
 
     async def test_quiet_hours_the_user_turned_off_never_hold(self, night: SimpleNamespace) -> None:
-        night.quiet_hours.return_value = DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False})
+        night.owner.quiet_hours = DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False})
 
         assert await quiet_hours_hold(DESK, USER_ID) is None
 

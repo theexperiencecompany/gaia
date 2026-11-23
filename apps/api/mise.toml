@@ -9,8 +9,13 @@
 [env]
 PROJECT_NAME = "{{ config_root | basename }}"
 
+[tasks.migrate]
+description = "Run the release's data migrations (scripts/post_deploy.py), each once; dev and worker run it first"
+run = "uv run --group backend python -m scripts.post_deploy --apply"
+
 [tasks.dev]
 description = "Run development server with hot reload"
+depends = ["migrate"]
 run = "uv run --group backend uvicorn app.main:app --port 8000 --reload --reload-dir app --log-level info"
 
 [tasks."dev:vm"]
@@ -24,6 +29,7 @@ run = "uv run --group backend fastapi run"
 
 [tasks.worker]
 description = "Start ARQ worker"
+depends = ["migrate"]
 run = "uv run --group backend arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG"
 alias = "arq"
 

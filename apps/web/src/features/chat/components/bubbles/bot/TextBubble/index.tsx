@@ -4,9 +4,7 @@ import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
 } from "@shared/chat";
-import { parseOpenUISegments } from "@shared/utils";
 import * as m from "motion/react-m";
-import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
@@ -19,6 +17,7 @@ import {
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
+import { RichContentRenderer } from "../../../interface/RichContentRenderer";
 import { ChatItemBoundary } from "../ChatItemBoundary";
 import { StoppedNote } from "../StoppedNote";
 import type { ApprovalReceipt } from "../SubagentRow";
@@ -26,13 +25,6 @@ import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread, { type TimelineItem } from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
 import { useToolRenderAudit } from "./useToolRenderAudit";
-
-// OpenUI components use bg-zinc-800 (same as the bubble) and must render
-// OUTSIDE the imessage-bubble — see bubbles/bot/CLAUDE.md.
-const OpenUIRenderer = dynamic(
-  () => import("../../../interface/OpenUIRenderer"),
-  { ssr: false },
-);
 
 const REPLY_QUOTE_MAX_LENGTH = 40;
 
@@ -276,23 +268,14 @@ function MarkdownPartBubble({
 
 /** Mixed part: OpenUI segments render OUTSIDE the bubble. */
 function MixedPart({
-  segments,
+  part,
   isFirst,
   isLast,
-  baseId,
-  originalIndex,
   loading,
   disclaimer,
   replyToMessage,
   partTransition,
-}: Readonly<
-  TextPartProps & { segments: ReturnType<typeof parseOpenUISegments> }
->) {
-  const lastMdIdx = segments.reduce(
-    (acc, s, i) => (s.type === "markdown" && s.content.trim() ? i : acc),
-    -1,
-  );
-
+}: Readonly<TextPartProps & { part: string }>) {
   return (
     <m.div
       className="flex flex-col"
@@ -300,36 +283,28 @@ function MixedPart({
       animate={{ opacity: 1, y: 0 }}
       transition={partTransition}
     >
-      {segments.map((seg, segIdx) => {
-        const segKey = `${baseId}-seg-${originalIndex}-${segIdx}`;
-        if (seg.type === "openui") {
+      <RichContentRenderer
+        content={part}
+        isStreaming={loading}
+        renderMarkdown={(seg, segIdx, isLastMarkdown) => {
+          const isLastMdInLastPart = isLast && isLastMarkdown;
           return (
-            <OpenUIRenderer
-              key={segKey}
-              code={seg.content}
-              isStreaming={!!loading && !seg.isComplete}
-            />
+            <div
+              className={`imessage-bubble imessage-from-them ${isLastMdInLastPart ? "imessage-grouped-last" : "imessage-grouped-first"} mb-1.5`}
+            >
+              {isFirst && segIdx === 0 && replyToMessage?.content && (
+                <ReplyQuote replyToMessage={replyToMessage} />
+              )}
+              <BubbleContent
+                content={seg.content}
+                showDisclaimer={isLastMdInLastPart}
+                disclaimer={disclaimer}
+                isStreaming={loading}
+              />
+            </div>
           );
-        }
-        if (!seg.content.trim()) return null;
-        const isLastMdInLastPart = isLast && segIdx === lastMdIdx;
-        return (
-          <div
-            key={segKey}
-            className={`imessage-bubble imessage-from-them ${isLastMdInLastPart ? "imessage-grouped-last" : "imessage-grouped-first"} mb-1.5`}
-          >
-            {isFirst && segIdx === 0 && replyToMessage?.content && (
-              <ReplyQuote replyToMessage={replyToMessage} />
-            )}
-            <BubbleContent
-              content={seg.content}
-              showDisclaimer={isLastMdInLastPart}
-              disclaimer={disclaimer}
-              isStreaming={loading}
-            />
-          </div>
-        );
-      })}
+        }}
+      />
     </m.div>
   );
 }
@@ -481,8 +456,7 @@ export default function TextBubble({
                   const isFirst = visibleIndex === 0;
                   const isLast = visibleIndex === visibleParts.length - 1;
                   const isSingle = visibleParts.length === 1;
-                  const segments = parseOpenUISegments(part, !!loading);
-                  const hasOpenUI = segments.some((s) => s.type === "openui");
+                  const hasOpenUI = part.includes(":::openui");
                   const partKey = `${baseId}-text-part-${originalIndex}`;
                   const partTransition: PartTransition = {
                     duration: partChoreography.durationSeconds,
@@ -493,7 +467,7 @@ export default function TextBubble({
                   return hasOpenUI ? (
                     <MixedPart
                       key={partKey}
-                      segments={segments}
+                      part={part}
                       isFirst={isFirst}
                       isLast={isLast}
                       isSingle={isSingle}

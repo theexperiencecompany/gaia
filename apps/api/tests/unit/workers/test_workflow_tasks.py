@@ -14,9 +14,13 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
 )
 from app.config.rate_limits import RateLimitPeriod
+from app.constants.briefing import BriefItemSource
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource
@@ -28,6 +32,10 @@ from app.models.conversation_log_models import (
     WorkFinished,
     WorkflowFired,
     WorkOutcome,
+)
+from app.models.notification.details_models import (
+    WorkflowCompletedNotification,
+    WorkflowFailedNotification,
 )
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -43,14 +51,18 @@ from app.models.notification.notification_models import (
 )
 from app.models.playbook_models import PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType, WorkflowExecutionRequest, WorkflowStep
+from app.services.briefing.held import HeldSource
 from app.services.conversation.outcome import EntryOutcome
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.links.placeholders import link_placeholder
+from app.services.links.urls import build_url
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut, WorkflowTurnFailed
-from app.services.workflow.notifications import notify_workflow_result
+from app.services.workflow.notifications import WorkflowRunResult, notify_workflow_result
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.validators import WorkflowValidator
@@ -58,8 +70,11 @@ from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.utils.notification.orchestrator import Notified
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
+from app.workers.metrics import REGISTRY as WORKER_METRICS
+from app.workers.task_envelope import arq_task
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
+    _notify_run_finished,
     _rate_limit_failure_content,
     execute_workflow_as_chat,
     execute_workflow_by_id,
@@ -296,10 +311,39 @@ class TestExecuteWorkflowById:
             ),
         ):
             mock_wf_svc.increment_execution_count = mock_increment
-            result = await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(RuntimeError, match="^LLM timeout$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
         mock_increment.assert_awaited_once_with(workflow.id, workflow.user_id, is_successful=False)
-        assert "Error executing workflow" in result
+
+    async def test_a_failed_run_is_counted_as_a_failed_task(self, ctx):
+        """A failed run once returned a string, so the ARQ envelope counted it a success and no alert saw it."""
+        workflow = _make_workflow()
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+        _, p_scheduler = _patch_scheduler(workflow)
+        failed = {"task_name": execute_workflow_by_id.__name__, "status": "error"}
+        before = WORKER_METRICS.get_sample_value("arq_task_total", failed) or 0.0
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(side_effect=RuntimeError("LLM timeout")),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.notification_service"),
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            with pytest.raises(RuntimeError, match="^LLM timeout$"):
+                await arq_task(execute_workflow_by_id)(ctx, workflow.id)
+
+        assert WORKER_METRICS.get_sample_value("arq_task_total", failed) == before + 1
 
     @pytest.mark.parametrize(
         "context,expected_trigger_type",
@@ -371,7 +415,8 @@ class TestExecuteWorkflowById:
             ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(ValueError, match="^boom$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
         mock_scheduler.close.assert_not_awaited()
 
@@ -485,9 +530,9 @@ class TestExecuteWorkflowById:
             ),
             patch("app.workers.tasks.workflow_tasks._rearm_quietly", rearm),
         ):
-            result = await execute_workflow_by_id(ctx, workflow.id, context=context)
+            with pytest.raises(ValueError, match="^boom$"):
+                await execute_workflow_by_id(ctx, workflow.id, context=context)
 
-        assert "Error executing workflow" in result
         record_failure.assert_awaited_once_with(
             error, workflow, workflow.id, execution_id, record=None
         )
@@ -763,6 +808,7 @@ class TestProcessWorkflowGenerationTask:
                 workflow_id=workflow.id,
                 steps_count=len(workflow.steps),
                 is_todo_workflow=True,
+                delivery="now",
             ),
         )
 
@@ -1066,7 +1112,7 @@ class TestExecuteWorkflowAsChat:
         wf.title = "Morning Briefing"
         wf.description = "Daily morning workflow"
         wf.prompt = "Run the morning briefing"
-        wf.notify_on_completion = True
+        wf.delivery = WorkflowDelivery.NOW
         wf.steps = [WorkflowStep(id="s1", title="Step 1", description="Check mail")]
         wf.trigger_config.timezone = None
         return wf
@@ -1080,7 +1126,7 @@ class TestExecuteWorkflowAsChat:
         )
 
     async def test_the_fire_is_logged_with_everything_its_turn_needs(self, boundaries) -> None:
-        await self._run({"type": "gmail", "workflow_notify_on_completion": False})
+        await self._run({"type": "gmail", "workflow_delivery": WorkflowDelivery.SILENT})
         boundaries["get_or_create_workflow_conversation"].assert_awaited_once_with(
             workflow_id="wf_morning", user_id=USER_ID, workflow_title="Morning Briefing"
         )
@@ -1091,16 +1137,16 @@ class TestExecuteWorkflowAsChat:
         assert (fired.run.execution_id, fired.run.timezone) == ("exec_1", "Europe/Paris")
         assert (fired.run.trigger.type, fired.run.trigger.workflow_id) == ("gmail", "wf_morning")
         # A caller that fires quietly lowers the workflow's own default.
-        assert fired.run.trigger.workflow_notify_on_completion is False
+        assert fired.run.trigger.workflow_delivery is WorkflowDelivery.SILENT
 
-    async def test_a_silent_caller_keeps_the_workflows_own_notify_default(self, boundaries) -> None:
+    async def test_a_quiet_caller_keeps_the_workflows_own_delivery(self, boundaries) -> None:
         workflow = self._make_workflow()
-        workflow.notify_on_completion = False
+        workflow.delivery = WorkflowDelivery.BRIEF
         await execute_workflow_as_chat(
             workflow, AuthenticatedUser(user_id=USER_ID), {}, execution_id="exec_1"
         )
         fired: WorkflowFired = boundaries["accept"].await_args.args[3]
-        assert fired.run.trigger.workflow_notify_on_completion is False
+        assert fired.run.trigger.workflow_delivery is WorkflowDelivery.BRIEF
 
     async def test_the_wait_reads_the_same_log_the_fire_was_appended_to(self, boundaries) -> None:
         await self._run()
@@ -1154,7 +1200,7 @@ class TestExecuteWorkflowAsChat:
         delivered = boundaries["_notify_run_finished"].await_args
         assert delivered.args[0].id == "wf_morning"
         assert delivered.args[1:] == ("exec_1", "conv_wf", "Your brief")
-        assert delivered.kwargs == {"notify_on_completion": True}
+        assert delivered.kwargs == {"delivery": WorkflowDelivery.NOW, "broke_through": False}
 
     async def test_a_silent_run_delivers_nothing(self, boundaries) -> None:
         boundaries["await_outcome"].return_value = EntryOutcome(
@@ -1226,10 +1272,13 @@ class TestWorkflowNotificationSenders:
             await notify_workflow_result(
                 workflow_id="wf_1",
                 workflow_title="Morning Briefing",
-                execution_id="exec_9",
-                conversation_id="conv_xyz",
                 user_id=USER_ID,
-                result_text="Three meetings today.",
+                run=WorkflowRunResult(
+                    execution_id="exec_9",
+                    conversation_id="conv_xyz",
+                    text="Three meetings today.",
+                    message_class=ProactiveMessageClass.URGENT,
+                ),
             )
 
         (notif_req,) = mock_notif.notify.call_args.args
@@ -1238,6 +1287,7 @@ class TestWorkflowNotificationSenders:
         assert "Morning Briefing" in notif_req.content.title
         assert notif_req.content.body
         assert notif_req.message == "Three meetings today."
+        assert notif_req.message_class is ProactiveMessageClass.URGENT
         # Routed by the pipeline, not pinned to the inbox.
         assert notif_req.channels == []
         assert notif_req.type is NotificationType.SUCCESS
@@ -1253,10 +1303,9 @@ class TestWorkflowNotificationSenders:
             ),
         )
         assert action.model_dump(exclude={"id"}) == expected_action.model_dump(exclude={"id"})
-        assert notif_req.metadata == {
-            "workflow_id": "wf_1",
-            "conversation_id": "conv_xyz",
-        }
+        assert notif_req.details == WorkflowCompletedNotification(
+            kind=NotificationKind.WORKFLOW_COMPLETED, workflow_id="wf_1", conversation_id="conv_xyz"
+        )
 
     @pytest.mark.parametrize(
         ("status", "channels", "target", "expected"),
@@ -1312,13 +1361,131 @@ class TestWorkflowNotificationSenders:
             await notify_workflow_result(
                 workflow_id="wf_1",
                 workflow_title="Morning Briefing",
-                execution_id="exec_9",
-                conversation_id="conv_xyz",
                 user_id=USER_ID,
-                result_text="Three meetings today.",
+                run=WorkflowRunResult(
+                    execution_id="exec_9",
+                    conversation_id="conv_xyz",
+                    text="Three meetings today.",
+                    message_class=ProactiveMessageClass.URGENT,
+                ),
             )
 
         capture.assert_called_once_with(UserId(USER_ID), expected)
+
+
+class TestRunResultRoutesByDelivery:
+    """A finished run's result goes out now, waits for the brief, or stays in its conversation."""
+
+    @staticmethod
+    def _workflow() -> MagicMock:
+        wf = MagicMock()
+        wf.id = "wf_1"
+        wf.user_id = USER_ID
+        wf.title = "Morning Briefing"
+        return wf
+
+    async def _route(
+        self,
+        delivery: WorkflowDelivery,
+        *,
+        broke_through: bool = False,
+        carried: bool = True,
+        log: MagicMock | None = None,
+    ) -> tuple[AsyncMock, AsyncMock]:
+        notify, hold = AsyncMock(), AsyncMock()
+        with (
+            patch("app.workers.tasks.workflow_tasks.attach_link", AsyncMock(return_value=None)),
+            patch("app.workers.tasks.workflow_tasks.log", log or MagicMock()),
+            patch("app.workers.tasks.workflow_tasks.notify_workflow_result", notify),
+            patch("app.workers.tasks.workflow_tasks.hold_for_brief", hold),
+            patch(
+                "app.workers.tasks.workflow_tasks.brief_will_carry",
+                AsyncMock(return_value=carried),
+            ),
+        ):
+            await _notify_run_finished(
+                self._workflow(),
+                "exec_1",
+                "conv_1",
+                "Three meetings today.",
+                delivery=delivery,
+                broke_through=broke_through,
+            )
+        return notify, hold
+
+    async def test_now_notifies_as_routine(self) -> None:
+        notify, hold = await self._route(WorkflowDelivery.NOW)
+        notify.assert_awaited_once_with(
+            workflow_id="wf_1",
+            workflow_title="Morning Briefing",
+            user_id=USER_ID,
+            run=WorkflowRunResult(
+                execution_id="exec_1",
+                conversation_id="conv_1",
+                text="Three meetings today.",
+                message_class=ProactiveMessageClass.ROUTINE,
+            ),
+        )
+        hold.assert_not_awaited()
+
+    async def test_a_run_let_through_quiet_hours_notifies_as_urgent(self) -> None:
+        notify, _ = await self._route(WorkflowDelivery.NOW, broke_through=True)
+        assert notify.await_args.kwargs["run"].message_class is ProactiveMessageClass.URGENT
+
+    async def test_brief_holds_the_result_for_the_next_brief(self) -> None:
+        notify, hold = await self._route(WorkflowDelivery.BRIEF)
+        hold.assert_awaited_once_with(
+            USER_ID,
+            HeldSource(BriefItemSource.WORKFLOW, "wf_1", "Morning Briefing", "conv_1"),
+            ["Three meetings today."],
+        )
+        notify.assert_not_awaited()
+
+    async def test_brief_with_no_brief_to_carry_it_notifies_now(self) -> None:
+        log = MagicMock()
+        notify, hold = await self._route(WorkflowDelivery.BRIEF, carried=False, log=log)
+        notify.assert_awaited_once()
+        hold.assert_not_awaited()
+        log.set.assert_called_once_with(workflow_delivery="now")
+
+    async def test_the_wide_event_names_the_delivery_the_result_took(self) -> None:
+        log = MagicMock()
+        await self._route(WorkflowDelivery.BRIEF, log=log)
+        log.set.assert_called_once_with(workflow_delivery="brief")
+
+    async def test_the_result_closes_on_the_runs_link_with_every_placeholder_resolved(
+        self,
+    ) -> None:
+        """Regression: the runtime merge dropped the run's link from the delivered result."""
+        target = RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec_1")
+        link = ShortLink(slug="run123", user_id=USER_ID, target=target)
+        attach, live, notify = (
+            AsyncMock(return_value=link),
+            AsyncMock(return_value=link),
+            AsyncMock(),
+        )
+        with (
+            patch("app.workers.tasks.workflow_tasks.attach_link", attach),
+            patch.object(short_link_repository, "get_live_for_target", live),
+            patch("app.workers.tasks.workflow_tasks.notify_workflow_result", notify),
+        ):
+            await _notify_run_finished(
+                self._workflow(),
+                "exec_1",
+                "conv_1",
+                f"Done: {link_placeholder(target)}",
+                delivery=WorkflowDelivery.NOW,
+                broke_through=False,
+            )
+        url = build_url("run123")
+        assert notify.await_args.kwargs["run"].text == f"Done: {url}\n\n[Open this run]({url})"
+        attach.assert_awaited_once_with(USER_ID, target)
+        assert {call.args[0] for call in live.await_args_list} == {USER_ID}
+
+    async def test_silent_sends_and_holds_nothing(self) -> None:
+        notify, hold = await self._route(WorkflowDelivery.SILENT)
+        notify.assert_not_awaited()
+        hold.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -1384,7 +1551,7 @@ class TestExecuteWorkflowByIdNotifications:
             mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
+        assert f"Workflow {workflow.id} skipped: " in result
         mock_notif.notify.assert_awaited_once()
         notif_req = mock_notif.notify.call_args[0][0]
         assert "Resets" in notif_req.content.body
@@ -1418,7 +1585,7 @@ class TestExecuteWorkflowByIdNotifications:
             mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
+        assert f"Workflow {workflow.id} skipped: " in result
         notif_req = mock_notif.notify.call_args[0][0]
         assert "not available on your current plan" in notif_req.content.body
         assert "Upgrade to Pro" in notif_req.content.body
@@ -1450,7 +1617,7 @@ class TestExecuteWorkflowByIdNotifications:
             mock_notif.notify = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
+        assert f"Workflow {workflow.id} skipped: " in result
         notif_req = mock_notif.notify.call_args[0][0]
         # Falls back to the version without the reset time formatting
         assert "You've used all your workflow executions" in notif_req.content.body
@@ -1474,13 +1641,16 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.notify = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(ValueError, match="^Something broke$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
         notif_req = mock_notif.notify.call_args[0][0]
         assert "encountered an error" in notif_req.content.body
         # No upgrade action for generic errors
         assert notif_req.content.actions is None
+        assert notif_req.details == WorkflowFailedNotification(
+            kind=NotificationKind.WORKFLOW_FAILED, workflow_id=workflow.id, error_type="ValueError"
+        )
 
     async def test_a_run_that_did_not_complete_is_recorded_failed_and_notified_once(self, ctx):
         workflow = _make_workflow()
@@ -1496,7 +1666,8 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.notify = AsyncMock()
-            await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(WorkflowTurnFailed, match="^work failed$"):
+                await execute_workflow_by_id(ctx, workflow.id)
         mock_notif.notify.assert_awaited_once()
         assert mock_notif.notify.call_args[0][0].source == (NotificationSourceEnum.WORKFLOW_FAILED)
         assert complete.await_args.kwargs["status"] == "failed"
@@ -1524,9 +1695,8 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.notify = AsyncMock(side_effect=RuntimeError("Notification service down"))
-            result = await execute_workflow_by_id(ctx, workflow.id)
-
-        assert "Error executing workflow" in result
+            with pytest.raises(ValueError, match="^Original error$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
     async def test_complete_execution_failure_during_error_is_swallowed(self, ctx):
         """If complete_execution fails during error handling, it doesn't crash."""
@@ -1556,9 +1726,8 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.notify = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
-
-        assert "Error executing workflow" in result
+            with pytest.raises(RuntimeError, match="^LLM crash$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
     async def test_increment_execution_count_failure_during_error_is_swallowed(self, ctx):
         """If increment_execution_count fails during error handling, it doesn't crash."""
@@ -1590,9 +1759,8 @@ class TestExecuteWorkflowByIdNotifications:
                 side_effect=RuntimeError("Stats DB down")
             )
             mock_notif.notify = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
-
-        assert "Error executing workflow" in result
+            with pytest.raises(RuntimeError, match="^LLM crash$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
     async def test_no_execution_id_skips_complete_execution_on_error(self, ctx):
         """When create_execution itself fails, execution_id is None and complete_execution is not called."""
@@ -1617,9 +1785,9 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.notify = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(RuntimeError, match="^DB unavailable$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
         # complete_execution should NOT have been called since execution_id is None
         mock_complete_exec.assert_not_awaited()
 

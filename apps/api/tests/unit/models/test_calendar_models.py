@@ -11,6 +11,7 @@ from app.models.calendar_models import (
     BatchEventUpdateRequest,
     CalendarEventsQueryRequest,
     CalendarPreferencesUpdateRequest,
+    CalendarResponse,
     CreateEventInput,
     DeleteEventInput,
     EventCreateRequest,
@@ -21,6 +22,7 @@ from app.models.calendar_models import (
     FindEventInput,
     GetDaySummaryInput,
     GetEventInput,
+    GoogleCalendarEventResource,
     ListCalendarsInput,
     PatchEventInput,
     RecurrenceData,
@@ -822,3 +824,32 @@ class TestAddRecurrenceInput:
     def test_invalid_frequency(self):
         with pytest.raises(ValidationError):
             AddRecurrenceInput(event_id="evt1", frequency="HOURLY")
+
+
+_GOOGLE_EVENT: dict[str, object] = {
+    "id": "evt-1",
+    "organizer": {"email": "sam@x.test", "displayName": "Sam"},
+    "attendees": [
+        {"email": "ada@x.test", "self": True, "responseStatus": "tentative", "optional": True},
+        {"email": "sam@x.test", "responseStatus": "accepted"},
+        {"email": "room@x.test", "resource": True},
+    ],
+    "status": "confirmed",
+}
+
+
+class TestGoogleCalendarEventResource:
+    def test_the_people_on_an_event_reach_the_client_exactly_as_google_sent_them(self):
+        event = GoogleCalendarEventResource.model_validate(_GOOGLE_EVENT)
+
+        assert event.model_dump() == _GOOGLE_EVENT
+        assert event.model_dump(mode="json", by_alias=True) == _GOOGLE_EVENT
+
+    def test_the_owners_answer_the_organizer_and_the_guests_are_read_from_the_people(self):
+        event = GoogleCalendarEventResource.model_validate(_GOOGLE_EVENT)
+
+        assert (event.response, event.organizer_name, event.guests) == (
+            CalendarResponse.TENTATIVE,
+            "Sam",
+            1,
+        )

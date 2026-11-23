@@ -75,6 +75,10 @@ function recorder(behaviour: PlatformBehaviour = {}): {
   };
   const surface: FollowSurface = {
     sendNotice,
+    sendPhoto: async (url, caption) => {
+      if (behaviour.refusePhoto) throw behaviour.refusePhoto();
+      calls.push({ op: "photo", url, caption });
+    },
     windowClosed: async () => behaviour.windowClosed ?? false,
     links: { pricing: PRICING_LINK },
     requester: {
@@ -786,6 +790,57 @@ describe("a notice and a reply's files", () => {
       ]);
     },
   );
+
+  it("sends a notice's image as a photo captioned with its first bubble, the rest after it", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(3),
+      EDITING,
+      surface,
+      "c1",
+    );
+    const brief = {
+      ...noticeItem("n1", 4, "Good morning"),
+      bubbles: ["Good morning", "Three things need you"],
+      image_url: "https://cdn.test/edition.png",
+    };
+
+    await feed(follower, [insertFrame(brief), stateFrame(4, "idle")]);
+
+    expect(calls.filter((call) => call.op !== "send")).toEqual([
+      {
+        op: "photo",
+        url: "https://cdn.test/edition.png",
+        caption: "Good morning",
+      },
+      { op: "notice", bubbles: ["Three things need you"] },
+    ]);
+  });
+
+  it("sends a notice whose image the platform refused as its text and the image's link", async () => {
+    const { surface, calls } = recorder({
+      refusePhoto: () => new Error("too large"),
+    });
+    const follower = new ConversationFollower(
+      startAfter(3),
+      EDITING,
+      surface,
+      "c1",
+    );
+    const brief = {
+      ...noticeItem("n1", 4, "Good morning"),
+      image_url: "https://cdn.test/edition.png",
+    };
+
+    await feed(follower, [insertFrame(brief), stateFrame(4, "idle")]);
+
+    expect(calls.filter((call) => call.op !== "send")).toEqual([
+      {
+        op: "notice",
+        bubbles: ["Good morning", "https://cdn.test/edition.png"],
+      },
+    ]);
+  });
 
   it("renders a notice's markdown for the platform, like a reply", async () => {
     const { surface, calls } = recorder();

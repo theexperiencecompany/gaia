@@ -138,6 +138,8 @@ cmd_up() {
   mkdir -p "$state_dir"
   export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:-dev@gaia.local}"
   export GAIA_SIM_MODE=1
+  # The e2e suites drive the one dev user far faster than a person: past the per-user request ceiling.
+  export DEV_UNLIMITED_RATE_LIMITS=1
   export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
   # Forced, never inherited: an OPENROUTER_BASE_URL from Infisical would reach the real model.
   export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"

@@ -43,7 +43,6 @@ apps/mobile/src/features/search/api/search-api.ts:SearchConversationResult
 apps/mobile/src/features/search/api/search-api.ts:SearchNoteResult
 apps/mobile/src/features/search/api/search-api.ts:SearchResponse
 apps/mobile/src/features/settings/api/settings-api.ts:HoloCardColors
-apps/mobile/src/features/settings/api/settings-api.ts:UpdatePreferencesResponse
 apps/mobile/src/features/settings/api/settings-api.ts:UserProfile
 apps/mobile/src/features/settings/api/settings-api.ts:UserStats
 apps/mobile/src/features/skills/api/skills-api.ts:SkillsResponse
@@ -123,12 +122,7 @@ libs/shared/ts/src/chat/types.ts:TodoToolStats
 libs/shared/ts/src/chat/types.ts:ToolCallEntry
 libs/shared/ts/src/chat/types.ts:ToolDataMap
 libs/shared/ts/src/chat/types.ts:ToolName
-libs/shared/ts/src/chat/types.ts:TwitterData
-libs/shared/ts/src/chat/types.ts:TwitterFollowersData
-libs/shared/ts/src/chat/types.ts:TwitterPostCreatedData
-libs/shared/ts/src/chat/types.ts:TwitterPostPreviewData
 libs/shared/ts/src/chat/types.ts:TwitterSearchData
-libs/shared/ts/src/chat/types.ts:TwitterTimelineData
 libs/shared/ts/src/chat/types.ts:TwitterTweetData
 libs/shared/ts/src/chat/types.ts:TwitterUserData
 libs/shared/ts/src/chat/types.ts:WeatherData
@@ -184,6 +178,4 @@ libs/shared/ts/src/types/usage.ts:UsageActivity
 libs/shared/ts/src/types/usage.ts:UsagePeriod
 libs/shared/ts/src/types/workflow.ts:CommunityWorkflow
 libs/shared/ts/src/types/workflow.ts:ContentCreator
-libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload
-libs/shared/ts/src/types/workflow.ts:ExecutionConfig
 libs/shared/ts/src/types/workflow.ts:WorkflowMetadata

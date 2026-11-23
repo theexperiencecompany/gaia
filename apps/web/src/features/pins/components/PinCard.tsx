@@ -1,9 +1,9 @@
 import { itemText } from "@shared/conversation";
+import { formatMessageTime } from "@shared/utils";
 import Link from "next/link";
 import type React from "react";
 import { track } from "@/lib/analytics";
 import type { PinCardProps } from "@/types/features/pinTypes";
-import { parseDate } from "@/utils/date/dateUtils";
 
 export const PinCard: React.FC<PinCardProps> = ({ item, conversation_id }) => {
   const text = itemText(item);
@@ -28,7 +28,7 @@ export const PinCard: React.FC<PinCardProps> = ({ item, conversation_id }) => {
       </div>
 
       <div className="mt-auto text-xs text-zinc-400" suppressHydrationWarning>
-        {parseDate(item.at)}
+        {formatMessageTime(item.at)}
       </div>
     </Link>
   );

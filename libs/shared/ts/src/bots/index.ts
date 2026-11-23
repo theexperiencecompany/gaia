@@ -178,6 +178,7 @@ export {
   hashLogIdentifier,
   htmlToPlainText,
   initialDeliveryState,
+  isLegibleAsPhoto,
   isTableRow,
   isTableSeparator,
   LIVE_PREVIEW_SHARE,
