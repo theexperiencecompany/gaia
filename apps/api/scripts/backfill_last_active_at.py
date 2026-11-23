@@ -13,6 +13,8 @@ only ever moves last_active_at forward ($max), so a re-run changes nothing.
 import asyncio
 from datetime import UTC, datetime
 
+from bson import ObjectId
+
 from app.db.mongodb.collections import get_async_collection
 from app.db.mongodb.mongodb import object_id_filter
 from scripts._cli import apply_requested
@@ -31,9 +33,14 @@ async def backfill(apply: bool) -> int:
     """Raise each user's last_active_at to their latest metered day; return how many move."""
     mode = "APPLY" if apply else "DRY RUN"
     print(f"[{mode}] Raising users.last_active_at to each user's latest metered action\n")
-    moved = 0
+    moved = not_users = 0
     async for row in usage_daily_collection.aggregate(_LATEST_ACTIVE_DAY):
         user_id, day = str(row["_id"]), str(row["day"])
+        # usage_daily also meters non-user actors (e.g. "system"); they have no users row.
+        if not ObjectId.is_valid(user_id):
+            not_users += 1
+            print(f"  {user_id}: not a user id, skipped")
+            continue
         active_at = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=UTC)
         behind = {
             **object_id_filter(user_id),
@@ -48,7 +55,7 @@ async def backfill(apply: bool) -> int:
                 object_id_filter(user_id), {"$max": {"last_active_at": active_at}}
             )
 
-    print(f"\n[{mode}] Done. users={moved}")
+    print(f"\n[{mode}] Done. users={moved} not_users={not_users}")
     if not apply:
         print("Re-run with --apply to write these changes.")
     return moved
