@@ -147,7 +147,7 @@ def test_one_idle_listener_takes_no_class_it_cannot_fit(github: FakeGitHub) -> N
 
 @pytest.mark.parametrize(
     ("idle", "on_box"),
-    [(5, {"heavy"}), (9, {"services"}), (14, {"services", "heavy"}), (19, {"services", "heavy"})],
+    [(5, {"heavy"}), (10, {"services"}), (15, {"services", "heavy"}), (19, {"services", "heavy"})],
 )
 def test_idle_listeners_are_shared_out_class_by_class(
     github: FakeGitHub, idle: int, on_box: set[str]

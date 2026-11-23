@@ -7,16 +7,20 @@ import uuid
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
+from redis.asyncio import Redis
 from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
 from scripts.retire_legacy_triggers import migrate as retire_legacy_triggers
 
-from app.constants.workflows import WorkflowDelivery
+from app.config.settings import settings
+from app.constants.workflows import EXECUTE_WORKFLOW_TASK, WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_configs import GmailNewMessageConfig
 from app.models.workflow_models import TriggerType
+from app.services.workflow.scheduler import workflow_scheduler
 from scripts import post_deploy
 from tests.factories import make_user_id
+from tests.helpers import worker_redis_url
 
 
 def _steps(*names: str) -> dict[str, AsyncMock]:
@@ -88,12 +92,40 @@ async def test_a_step_a_live_runner_holds_is_waited_for_before_the_next_runs(
     assert second_saw_first_applied == [True]
 
 
-async def test_a_stale_claim_is_taken_over(steps: dict[str, AsyncMock], raw_collection) -> None:
+@pytest.mark.regression
+async def test_a_claim_left_by_a_release_job_killed_at_its_cap_is_taken_over(
+    steps: dict[str, AsyncMock], raw_collection
+) -> None:
+    """Regression: a 2h window blocked the re-run after deploy.sh's 1800s cap killed a step."""
+    killed_at_cap = datetime.now(UTC) - timedelta(minutes=36)
     await raw_collection.insert_one(
-        {"_id": "first", "claimed_at": datetime.now(UTC) - timedelta(days=1), "applied_at": None}
+        {"_id": "first", "claimed_at": killed_at_cap, "applied_at": None}
     )
 
-    assert await post_deploy.run_post_deploy(apply=True) == ["first", "second"]
+    run = post_deploy.run_post_deploy(apply=True)
+    assert await asyncio.wait_for(run, timeout=5) == ["first", "second"]
+
+
+@pytest.mark.regression
+async def test_a_workflow_a_release_step_arms_is_queued_in_arq_at_once(
+    steps: dict[str, AsyncMock], redis: Redis, redis_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the release job had no ARQ pool, so every workflow it activated went unqueued."""
+    monkeypatch.setattr(settings, "REDIS_URL", worker_redis_url(redis_url))
+    workflow_id = f"wf_{uuid.uuid4().hex[:12]}"
+    armed: list[bool] = []
+
+    async def first(apply: bool) -> None:
+        at = datetime.now(UTC) + timedelta(hours=1)
+        armed.append(await workflow_scheduler.schedule_workflow_execution(workflow_id, at))
+
+    steps["first"].side_effect = first
+
+    assert await post_deploy.release(apply=True) == ["first", "second"]
+
+    assert armed == [True]
+    assert await redis.keys(f"arq:job:{EXECUTE_WORKFLOW_TASK}:{workflow_id}:*") != []
+    assert workflow_scheduler.arq_pool is None
 
 
 #: The workflow migrations, in the order the real release runs them.

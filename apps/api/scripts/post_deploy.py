@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from pymongo.errors import DuplicateKeyError
 
 from app.db.mongodb.collections import get_async_collection
+from app.services.workflow.scheduler import workflow_scheduler
 from scripts._cli import apply_requested
 from scripts.backfill_last_active_at import backfill as backfill_last_active_at
 from scripts.clear_email_derived_names import clear_email_derived_names
@@ -44,7 +45,8 @@ POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
 )
 
 #: A claim older than this belongs to a runner that died mid-step; the next run takes it over.
-_STALE_CLAIM = timedelta(hours=2)
+#: Just above deploy.sh migrate's 1800s release-job cap, so no live release job holds one this old.
+_STALE_CLAIM = timedelta(minutes=35)
 #: How often a run waiting on another runner's step checks whether it has finished.
 _CLAIM_POLL = timedelta(seconds=5)
 
@@ -96,5 +98,14 @@ async def run_post_deploy(apply: bool) -> list[str]:
     return applied
 
 
+async def release(apply: bool) -> list[str]:
+    """Run the release with the workflow scheduler's ARQ pool open, so a workflow a step arms is queued now."""
+    await workflow_scheduler.initialize()
+    try:
+        return await run_post_deploy(apply)
+    finally:
+        await workflow_scheduler.close()
+
+
 if __name__ == "__main__":
-    asyncio.run(run_post_deploy(apply=apply_requested(__doc__)))
+    asyncio.run(release(apply=apply_requested(__doc__)))
