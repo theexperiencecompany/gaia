@@ -175,14 +175,17 @@ cmd_slice() {
   # the run; the lib's EXIT trap is the safety net for a failed or cancelled job.
   local N_SLOTS="${XDIST_N:?XDIST_N required}"
   cpu_slots_acquire "$N_SLOTS"
-  # Re-entered as a subprocess on purpose: /usr/bin/time -v measures the whole
+  # Re-entered as a subprocess on purpose: /usr/bin/time measures the whole
   # pytest tree, and the gate needs its own exit status through the pipe.
   # `set +e` around it because the verdict below must be written on the FAILING
   # path above all: that is the run whose findings somebody has to go read.
+  # GNU time on the Linux runners; macOS has BSD time, whose -l is the same report.
+  local measure=(/usr/bin/time -v)
+  /usr/bin/time -v true >/dev/null 2>&1 || measure=(/usr/bin/time -l)
   local rc=0
   set +e
   FLAKE_GATE_SELECTION="$([ "$SELECTION" = "FILE" ] && echo 1)" \
-    /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
+    "${measure[@]}" bash "$SCRIPT_DIR/pytest.sh" flake-gate \
     uv run --frozen pytest -n "$N_SLOTS" --dist worksteal \
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
     --tb=short -q \

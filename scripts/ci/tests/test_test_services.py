@@ -161,6 +161,24 @@ def test_github_hosted_uses_per_job_containers(tmp_path: Path) -> None:
     assert "5732" in proc.stdout  # 5432 + RUNNER_INDEX(3) * 100
 
 
+def test_per_job_up_starts_every_container_without_a_restart_policy(tmp_path: Path) -> None:
+    # macOS bash 3.2 treats an empty "${arr[@]}" as unbound under set -u, so a
+    # local per-job `up` died after starting Postgres alone.
+    proc = run(tmp_path, "up", RUNNER_NAME="GitHub Actions 1")
+    assert proc.returncode == 0, proc.stderr
+    runs = [line for line in docker_log(tmp_path).splitlines() if line.startswith("run ")]
+    assert len(runs) == 5
+    assert not any("--restart" in line for line in runs)
+
+
+def test_the_box_gives_every_container_a_restart_policy(tmp_path: Path) -> None:
+    proc = run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
+    assert proc.returncode == 0, proc.stderr
+    runs = [line for line in docker_log(tmp_path).splitlines() if line.startswith("run ")]
+    assert len(runs) == 5
+    assert all("--restart unless-stopped" in line for line in runs)
+
+
 # --- up reconciles a running container against changed flags ----------------
 
 

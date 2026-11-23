@@ -67,12 +67,6 @@ async def get_public_integration(
             None,
         )
         if native:
-            auth_type = None
-            if native.mcp_config:
-                auth_type = native.mcp_config.auth_type
-            elif native.managed_by in ("self", "composio"):
-                auth_type = "oauth"
-
             stored_tools = await get_integration_tools(native.id)
             integration_tools = [
                 IntegrationTool(name=t.name, description=t.description) for t in stored_tools
@@ -94,7 +88,7 @@ async def get_public_integration(
                 tool_count=len(integration_tools),
                 published_at=None,
                 source="platform",
-                auth_type=auth_type,
+                auth_type=native.auth_type,
                 content=native.content,
             )
 

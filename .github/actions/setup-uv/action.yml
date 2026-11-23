@@ -42,6 +42,13 @@ runs:
         version: ${{ inputs.version }}
         enable-cache: true
         prune-cache: true
+        # The default glob (**/pyproject.toml, **/uv.lock, ...) walks every
+        # node_modules tree a pnpm install left behind: 110-208 s of a
+        # web-e2e-screen job (run 45053628480). uv.lock already pins every
+        # workspace dependency; the PEP 723 script locks sit one level under tools/.
+        cache-dependency-glob: |
+          uv.lock
+          tools/*/*.py.lock
     # Before any `uv sync` / `uv run`, so a missing interpreter fails HERE, under
     # its own name, instead of inside whichever command first needed it
     # ("No interpreter found for Python 3.12.15", four red lanes after the pin

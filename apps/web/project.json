@@ -108,7 +108,7 @@
     "e2e-screen": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "E2E_SIM=1 pnpm exec playwright test e2e/screen- --workers=1",
+        "command": "E2E_SIM=1 pnpm exec playwright test e2e/screen-",
         "cwd": "{projectRoot}"
       },
       "cache": false,

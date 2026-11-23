@@ -228,7 +228,6 @@ class CredentialProviderName(StrEnum):
     OPENAI = "openai"
     RESEND = "resend"
     CLOUDINARY = "cloudinary"
-    GOOGLE_OAUTH = "google_oauth"
     FIRECRAWL = "firecrawl"
     OPENWEATHER = "openweather"
     LLAMAPARSE = "llamaparse"
@@ -385,10 +384,7 @@ PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
         label="Integrations",
         description="Connects your accounts, like Gmail, Calendar and Slack.",
         built_in=None,
-        providers=(
-            CredentialProviderName.COMPOSIO,
-            CredentialProviderName.GOOGLE_OAUTH,
-        ),
+        providers=(CredentialProviderName.COMPOSIO,),
     ),
     ProviderFeature.WEATHER: FeatureSpec(
         label="Weather",

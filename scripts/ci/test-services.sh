@@ -179,8 +179,12 @@ _fingerprint() { printf '%s' "$*" | sha256sum | cut -c1-16; }
 
 _run_labelled() {
   # _run_labelled <name> <fingerprint-source> <docker run args...>
+  # The box's shared set outlives any one job, so it restarts with the daemon.
   local name="$1" spec="$2"
   shift 2
+  if ci_on_the_box; then
+    set -- --restart unless-stopped "$@"
+  fi
   docker run -d --name "$name" --label "${CONFIG_LABEL}=$(_fingerprint "$spec")" "$@"
 }
 
@@ -194,7 +198,7 @@ _pg_spec() {
 
 start_postgres() {
   if ci_on_the_box; then
-    _run_labelled "$PG_NAME" "$(_pg_spec)" --restart unless-stopped \
+    _run_labelled "$PG_NAME" "$(_pg_spec)" \
       -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
       -e PGDATA=/var/lib/postgresql/data/pgdata \
       --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=6g \
@@ -222,9 +226,7 @@ _redis_databases() { if ci_on_the_box; then echo "$REDIS_DATABASES"; else echo "
 _redis_spec() { echo "${REDIS_IMAGE}|${REDIS_PORT}|databases=$(_redis_databases)"; }
 
 start_redis() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$REDIS_NAME" "$(_redis_spec)" "${restart[@]}" \
+  _run_labelled "$REDIS_NAME" "$(_redis_spec)" \
     -p "127.0.0.1:${REDIS_PORT}:6379" "$REDIS_IMAGE" \
     redis-server --databases "$(_redis_databases)" --save "" --appendonly no
 }
@@ -233,9 +235,7 @@ _mongo_tmpfs() { if ci_on_the_box; then echo 6g; else echo 2g; fi; }
 _mongo_spec() { echo "${MONGO_IMAGE}|${MONGO_PORT}|tmpfs=$(_mongo_tmpfs)"; }
 
 start_mongo() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$MONGO_NAME" "$(_mongo_spec)" "${restart[@]}" \
+  _run_labelled "$MONGO_NAME" "$(_mongo_spec)" \
     -e MONGO_INITDB_ROOT_USERNAME=gaia -e MONGO_INITDB_ROOT_PASSWORD=gaia \
     --tmpfs "/data/db:rw,noexec,nosuid,size=$(_mongo_tmpfs)" \
     -p "127.0.0.1:${MONGO_PORT}:27017" "$MONGO_IMAGE"
@@ -244,18 +244,14 @@ start_mongo() {
 _chroma_spec() { echo "${CHROMA_IMAGE}|${CHROMA_PORT}"; }
 
 start_chroma() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$CHROMA_NAME" "$(_chroma_spec)" "${restart[@]}" \
+  _run_labelled "$CHROMA_NAME" "$(_chroma_spec)" \
     -p "127.0.0.1:${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
 }
 
 _rabbitmq_spec() { echo "${RABBITMQ_IMAGE}|${RABBITMQ_PORT}"; }
 
 start_rabbitmq() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$RABBITMQ_NAME" "$(_rabbitmq_spec)" "${restart[@]}" \
+  _run_labelled "$RABBITMQ_NAME" "$(_rabbitmq_spec)" \
     -p "127.0.0.1:${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
 }
 
