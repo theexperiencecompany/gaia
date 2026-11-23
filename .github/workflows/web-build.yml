@@ -12,7 +12,7 @@ on:
 jobs:
   cf-build:
     name: cf-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # The public build values (vars.NEXT_PUBLIC_*) live on the production
     # environment, so only the build a master push deploys bakes them in; a PR

@@ -19,7 +19,7 @@ import pytest
 import runner as runner_mod
 
 HOME = '["self-hosted","gaia-home"]'
-HOSTED = '["ubuntu-latest"]'
+HOSTED = runner_mod.DEFAULT_FALLBACK
 BLACKSMITH = "blacksmith-4vcpu-ubuntu-2404"
 RUNNERS = r"/actions/runners$"
 RUNS = r"/actions/runs$"
@@ -51,8 +51,8 @@ def no_runs(github: FakeGitHub) -> None:
 
 def saturate(github: FakeGitHub, depth: int = 5) -> None:
     """Serve a GitHub-hosted backlog of depth queued jobs."""
-    queued_jobs(github, "queued", ["ubuntu-latest"], depth)
-    queued_jobs(github, "in_progress", ["ubuntu-latest"], 0)
+    queued_jobs(github, "queued", [runner_mod.HOSTED_LINUX_IMAGE], depth)
+    queued_jobs(github, "in_progress", [runner_mod.HOSTED_LINUX_IMAGE], 0)
 
 
 # ── trust gates: decided before any probe ───────────────────────────────────
