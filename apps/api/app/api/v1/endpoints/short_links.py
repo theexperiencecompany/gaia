@@ -98,7 +98,8 @@ def _user_key(request: Request) -> str:
 
 
 def _slug_key(request: Request) -> str:
-    return f"slug:{hash_short_link_slug(request.path_params.get('slug', ''))}"
+    """Count a route per link; slowapi already scopes each key to its route."""
+    return hash_short_link_slug(request.path_params.get("slug", ""))
 
 
 def _viewer(request: Request, user: AuthenticatedUser | None) -> LinkViewer:
