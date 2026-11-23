@@ -48,7 +48,10 @@
         "{workspaceRoot}/apps/web/next.config.mjs",
         "{workspaceRoot}/apps/web/tsconfig.json"
       ],
-      "outputs": ["{projectRoot}/.next", "{projectRoot}/.next/cache"]
+      "outputs": [
+        "{projectRoot}/.next/!(cache)/**/*",
+        "{projectRoot}/.next/!(cache)"
+      ]
     },
     "lint": {
       "executor": "nx:run-commands",
