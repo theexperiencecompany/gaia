@@ -9,6 +9,7 @@ import {
   expandCanonicalRedirects,
   RETIRED_PAGE_PAIRS,
 } from "./canonical-redirects.mjs";
+import { STATIC_PAGE_GENERATION_TIMEOUT_SECONDS } from "./build-rate-limit.mjs";
 import { IMAGE_QUALITIES } from "./image-qualities.mjs";
 import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
 import { POSTHOG_HOST } from "./third-party-origins.mjs";
@@ -79,6 +80,7 @@ const nextConfig = {
   // human dev server runs) lifts that without touching the default build.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   productionBrowserSourceMaps: true,
+  staticPageGenerationTimeout: STATIC_PAGE_GENERATION_TIMEOUT_SECONDS,
   // OpenNext file-traces every public/*.wasm into the Worker (even in unrelated
   // routes' .nft.json), collecting the desktop-only ~12MiB wake-word WASM past
   // Cloudflare's 10MiB limit. Exclude it on the Cloudflare build; Electron's standalone build copies public/ wholesale, unaffected.
