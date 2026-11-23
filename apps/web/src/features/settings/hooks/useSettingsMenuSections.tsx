@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { DEFAULT_SETTINGS_PATH } from "@/features/settings/config/sectionKeys";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -167,7 +168,7 @@ export function useSettingsMenuSections({
           key: "settings",
           label: "Settings",
           icon: Settings01Icon,
-          action: () => router.push("/settings"),
+          action: () => router.push(DEFAULT_SETTINGS_PATH),
         },
         {
           key: "logout",

@@ -63,6 +63,7 @@ from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.memory_node import memory_node
 from app.agents.core.subagents.subagent_runner import prepare_executor_execution
 from app.agents.middleware.factory import create_comms_history_fold
+from app.agents.tools import executor_tool
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
@@ -262,7 +263,7 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
 )
 from shared.py.wide_events import _spawned_tasks
-from tests.e2e._harness.graph_run import comms_graph
+from tests.e2e._harness.graph_run import call as graph_call, comms_graph
 from tests.helpers import item_text, shown_items
 from tests.integration.real.ledger_fixtures import Edges
 from tests.unit.services.conversation.log_helpers import described, workflow_run
@@ -2521,6 +2522,34 @@ async def test_a_run_whose_work_fails_reports_failure_and_delivers_nothing(
     assert raised.value.trace == [_CALL]
     assert raised.value.conversation_id == rig.conversation_id
     notified.assert_not_awaited()
+
+
+@pytest.mark.service
+@pytest.mark.usefixtures("tool_registry")
+@pytest.mark.parametrize("for_messages", [[], [1]])
+async def test_a_fire_hands_its_work_to_the_executor_through_call_executor(
+    rig_for: RigFactory, for_messages: list[int]
+) -> None:
+    # A fire reaches the model with no [#n] handle, so there is no message for the hand-off to name.
+    hand_off = AIMessage(
+        content="",
+        tool_calls=[graph_call("call_executor", {"task": "t", "for_messages": for_messages})],
+    )
+    model = gated(hand_off, "on it", "Three unread: rent, dentist, flights")
+    turns = _Turns()
+    async with _fire_rig(rig_for, model, turns) as (rig, notified):
+        with patch.object(executor_tool, "run_executor_background", _fake_executor("3 unread")):
+            await execute_workflow_as_chat(
+                _workflow(rig.user_id),
+                AuthenticatedUser(user_id=rig.user_id),
+                {"trigger_type": TriggerType.SCHEDULE.value},
+                execution_id="exec_h",
+            )
+            await rig.settle()
+    [handed] = [m for m in model.prompts[1] if isinstance(m, ToolMessage)]
+    assert (str(handed.content)[:22], handed.status) == ("Handed to the executor", "success")
+    assert [work.answers for work in await rig.of(WorkStarted)] == [("workflow:exec_h",)]
+    assert notified.await_args.args[3] == "Three unread: rent, dentist, flights"
 
 
 @pytest.mark.service

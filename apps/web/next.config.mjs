@@ -12,6 +12,7 @@ import {
 import { STATIC_PAGE_GENERATION_TIMEOUT_SECONDS } from "./build-rate-limit.mjs";
 import { IMAGE_QUALITIES } from "./image-qualities.mjs";
 import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
+import { settingsRedirects } from "./settings-redirects.mjs";
 import { POSTHOG_HOST } from "./third-party-origins.mjs";
 import { vanityRedirects } from "./vanity-redirects.mjs";
 
@@ -334,6 +335,7 @@ const nextConfig = {
       ...expandCanonicalRedirects(),
       ...expandCanonicalRedirects(RETIRED_PAGE_PAIRS),
       ...vanityRedirects(),
+      ...settingsRedirects(),
     ];
   },
 };
