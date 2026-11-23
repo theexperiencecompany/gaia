@@ -37,6 +37,9 @@
 #   verify-commit               Fail unless prod's /health (and each bot's,
 #                               when bots were deployed) serves the commit
 #                               baked into the deployed image. Writes commit=.
+#   verify-alert-rules          Fail unless the rule uids Grafana serves equal
+#                               the uids in the repo's alert-rules.yaml (read
+#                               from inside the running grafana container).
 #   changelog                   Commit subjects PREVIOUS..COMMIT (changes=).
 #   unwedge                     Force-cancel master runs parked on a deployment
 #                               gate nobody can release (no reviewers, no wait
@@ -74,6 +77,9 @@
 #   verify-commit  PROD_ORIGIN, GITHUB_OUTPUT; APPS_IMAGE_TAG (empty = latest),
 #           BOTS_IMAGE_TAG, VERIFY_TIMEOUT_SECS, VERIFY_CONSECUTIVE,
 #           VERIFY_POLL_SECS. Needs a GHCR login.
+#   verify-alert-rules  ALERT_RULES_FILE, GRAFANA_VERIFY_TIMEOUT_SECS,
+#           GRAFANA_VERIFY_POLL_SECS. Needs the `prod` docker context; reads the
+#           admin password from the grafana service's own Docker secret.
 #   changelog  COMMIT, GITHUB_REPOSITORY, GITHUB_OUTPUT; PREVIOUS. Needs GH_TOKEN.
 #   unwedge GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_OUTPUT (required);
 #           STUCK_LIMIT_SECS. Needs actions:write. Writes reaped=<run ids>.
@@ -794,6 +800,45 @@ cmd_verify_commit() {
   echo "commit=$apps_sha" >> "$GITHUB_OUTPUT"
 }
 
+# alert_rule_uid_diff <expected uids> <served uids> — newline lists in, one
+# `missing <uid>` / `extra <uid>` line per difference out; empty when equal.
+alert_rule_uid_diff() {
+  comm -23 <(sort -u <<< "$1") <(sort -u <<< "$2") | sed 's/^/missing /'
+  comm -13 <(sort -u <<< "$1") <(sort -u <<< "$2") | sed 's/^/extra /'
+}
+
+_GRAFANA_SERVICE="gaia-prod_grafana"
+_GRAFANA_ADMIN_SECRET="/run/secrets/gaia_grafana_admin_password"
+
+# served_alert_rule_uids — the uids Grafana's provisioning API lists, fetched
+# from inside the grafana container with the admin secret it already mounts.
+served_alert_rule_uids() {
+  local cid
+  cid=$(docker --context prod ps -q --filter "label=com.docker.swarm.service.name=$_GRAFANA_SERVICE" | head -n 1)
+  [[ -n "$cid" ]] || return 1
+  docker --context prod exec "$cid" sh -c \
+    'wget -qO- --header "Authorization: Basic $(printf "admin:%s" "$(cat '"$_GRAFANA_ADMIN_SECRET"')" | base64 | tr -d "\n")" http://localhost:3000/api/v1/provisioning/alert-rules' \
+    | jq -r '.[].uid'
+}
+
+cmd_verify_alert_rules() {
+  local file="${ALERT_RULES_FILE:-infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml}"
+  [[ -s "$file" ]] || ci_die "deploy verify-alert-rules: $file is missing or empty"
+  local expected served="" diff
+  expected=$(yq '.groups[].rules[].uid' "$file")
+  [[ -n "$expected" ]] || ci_die "deploy verify-alert-rules: $file declares no rule uids"
+  local deadline=$(( $(date +%s) + ${GRAFANA_VERIFY_TIMEOUT_SECS:-120} ))
+  until served=$(served_alert_rule_uids); do
+    (( $(date +%s) < deadline )) || ci_die "deploy verify-alert-rules: cannot read Grafana's rules from the $_GRAFANA_SERVICE container"
+    sleep "${GRAFANA_VERIFY_POLL_SECS:-5}"
+  done
+  diff=$(alert_rule_uid_diff "$expected" "$served")
+  if [[ -n "$diff" ]]; then
+    ci_die "deploy verify-alert-rules: Grafana serves different rules than $file (provisioning never deletes a rule whose entry vanished): ${diff//$'\n'/, }"
+  fi
+  ci_ok "deploy verify-alert-rules: Grafana serves exactly the $(wc -l <<< "$expected" | tr -d ' ') rules in $file"
+}
+
 cmd_served_commit() {
   : "${PROD_ORIGIN:?PROD_ORIGIN is required}"
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -896,7 +941,7 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,79p' "$0" >&2
+  sed -n '2,85p' "$0" >&2
 }
 
 main() {
@@ -912,6 +957,7 @@ main() {
     failing-checks) cmd_failing_checks "$@" ;;
     served-commit) cmd_served_commit "$@" ;;
     verify-commit) cmd_verify_commit "$@" ;;
+    verify-alert-rules) cmd_verify_alert_rules "$@" ;;
     changelog) cmd_changelog "$@" ;;
     unwedge) cmd_unwedge "$@" ;;
     *)

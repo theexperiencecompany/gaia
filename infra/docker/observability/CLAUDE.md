@@ -9,13 +9,16 @@ this repo is public and prod topology is not.
 
 Grafana provisioning is **baked into an image** (`grafana/Dockerfile`, in
 gaia-infra), not bind-mounted — so any change ships only via a rebuild of
-`ghcr.io/theexperiencecompany/gaia-grafana`.
+`ghcr.io/theexperiencecompany/gaia-grafana`. The `docker-grafana` job in
+`build.yml` copies `alert-rules.yaml` from this repo into the gaia-infra build
+context before building, and `deploy.sh verify-alert-rules` fails the deploy
+when the uids Grafana serves differ from the file's.
 
 ## Layout
 
 | Path | What it is | Where |
 |---|---|---|
-| `grafana/provisioning/alerting/alert-rules.yaml` | All alert rules | here |
+| `grafana/provisioning/alerting/alert-rules.yaml` | All alert rules (copied into the image build by `build.yml: docker-grafana`) | here |
 | `prometheus.yml` | Scrape jobs. Adding a target here is a prerequisite for alerting on it. | gaia-infra |
 | `blackbox.yml` | Blackbox exporter modules (`http_2xx`: 5s timeout, only 200 counts as success) | gaia-infra |
 | `grafana/provisioning/alerting/contact-points.yaml` | Slack + email receivers | gaia-infra |
