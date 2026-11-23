@@ -119,6 +119,20 @@ def test_every_home_label_is_runner_pys() -> None:
     assert set(filter(None, defaults.values())) <= {label}, defaults
 
 
+def test_setup_go_restores_its_cache_off_the_box_only() -> None:
+    """On the box ~/go persists; restoring into it cost 2-4 min and ~10.8k tar errors a run."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    steps = [
+        step
+        for job in ci["jobs"].values()
+        for step in job.get("steps") or []
+        if str(step.get("uses", "")).startswith("actions/setup-go@")
+    ]
+    assert steps
+    for step in steps:
+        assert step["with"]["cache"] == "${{ !startsWith(runner.name, 'gaia-home-') }}"
+
+
 BLOBLESS_OFF_THE_BOX = "${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}"
 
 

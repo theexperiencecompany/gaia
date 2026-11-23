@@ -563,6 +563,9 @@ jobs:
         with:
           go-version-file: tools/gaia-connect/go.mod
           cache-dependency-path: tools/gaia-connect/go.sum
+          # The box's ~/go persists: restoring the module cache into it cost 2-4 min
+          # plus a 2 min save and ~10.8k tar "File exists" errors per run.
+          cache: ${{ !startsWith(runner.name, 'gaia-home-') }}
       - name: Install vulture for dead-code
         if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-mixed'], 'ci:dead-code')
         run: uv tool install vulture
