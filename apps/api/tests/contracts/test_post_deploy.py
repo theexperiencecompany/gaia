@@ -1,7 +1,8 @@
 """The post-deploy step against real Mongo: each migration once, in order, a failure retried."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
+from typing import Any
 from unittest.mock import AsyncMock
 import uuid
 
@@ -21,6 +22,49 @@ from app.services.workflow.scheduler import workflow_scheduler
 from scripts import post_deploy
 from tests.factories import make_user_id
 from tests.helpers import worker_redis_url
+
+
+class _FakeClock:
+    """A stand-in for post_deploy's datetime whose now() only moves when the test advances it."""
+
+    def __init__(self, start: datetime) -> None:
+        self.now = start
+        self.claim_refreshed = asyncio.Event()
+        clock = self
+
+        class _Datetime(datetime):
+            @classmethod
+            def now(cls, tz: tzinfo | None = None) -> datetime:
+                return clock.now
+
+        self.datetime = _Datetime
+
+    def advance(self, by: timedelta) -> None:
+        self.now += by
+        self.claim_refreshed.clear()
+
+    def watching(self, collection: AsyncIOMotorCollection) -> "_ClaimWatcher":
+        return _ClaimWatcher(collection, self)
+
+
+class _ClaimWatcher:
+    """Wraps the deploy_steps collection and tells the clock once a heartbeat has stamped its current time."""
+
+    def __init__(self, collection: AsyncIOMotorCollection, clock: _FakeClock) -> None:
+        self._collection = collection
+        self._clock = clock
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._collection, name)
+
+    async def update_one(self, query: dict[str, Any], update: dict[str, Any], **kwargs: Any) -> Any:
+        result = await self._collection.update_one(query, update, **kwargs)
+        if (
+            update["$set"].get("claimed_at") == self._clock.now
+            and "applied_at" not in update["$set"]
+        ):
+            self._clock.claim_refreshed.set()
+        return result
 
 
 def _steps(*names: str) -> dict[str, AsyncMock]:
@@ -107,23 +151,33 @@ async def test_a_claim_left_by_a_release_job_killed_at_its_cap_is_taken_over(
 
 
 async def test_a_step_running_past_the_stale_window_keeps_its_claim_from_a_second_runner(
-    steps: dict[str, AsyncMock], monkeypatch: pytest.MonkeyPatch
+    steps: dict[str, AsyncMock], raw_collection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(post_deploy, "_CLAIM_HEARTBEAT", timedelta(milliseconds=20))
-    monkeypatch.setattr(post_deploy, "_STALE_CLAIM", timedelta(milliseconds=100))
+    clock = _FakeClock(datetime.now(UTC))
+    monkeypatch.setattr(post_deploy, "datetime", clock.datetime)
+    monkeypatch.setattr(post_deploy, "deploy_steps", clock.watching(raw_collection))
+    monkeypatch.setattr(post_deploy, "_CLAIM_HEARTBEAT", timedelta(milliseconds=10))
     monkeypatch.setattr(post_deploy, "_CLAIM_POLL", timedelta(milliseconds=10))
+    holding = asyncio.Event()
+    release_step = asyncio.Event()
 
     async def long_step(apply: bool) -> None:
-        await asyncio.sleep(0.5)
+        holding.set()
+        await release_step.wait()
 
     steps["first"].side_effect = long_step
 
-    first, second = await asyncio.wait_for(
-        asyncio.gather(
-            post_deploy.run_post_deploy(apply=True), post_deploy.run_post_deploy(apply=True)
-        ),
-        timeout=10,
-    )
+    async def scenario() -> tuple[list[str], list[str]]:
+        first = asyncio.create_task(post_deploy.run_post_deploy(apply=True))
+        await holding.wait()
+        clock.advance(post_deploy._STALE_CLAIM * 3)
+        await clock.claim_refreshed.wait()
+        second = asyncio.create_task(post_deploy.run_post_deploy(apply=True))
+        await asyncio.sleep(0.05)
+        release_step.set()
+        return await first, await second
+
+    first, second = await asyncio.wait_for(scenario(), timeout=10)
 
     assert steps["first"].await_count == 1
     assert sorted([*first, *second]) == ["first", "second"]
