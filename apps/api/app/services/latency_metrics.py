@@ -95,10 +95,10 @@ _CHAT_TTFT_SECONDS = _register_once(
     ),
 )
 
-_CHAT_E2E_ACK_SECONDS = _register_once(
-    "chat_e2e_ack_seconds",
+_CHAT_E2E_FULL_SECONDS = _register_once(
+    "chat_e2e_full_seconds",
     lambda: Histogram(
-        name="chat_e2e_ack_seconds",
+        name="chat_e2e_full_seconds",
         documentation="User message to its settled reply per chat turn in seconds",
         labelnames=("source", "status"),
         buckets=_TURN_BUCKETS,
@@ -382,7 +382,7 @@ def _bool_label(value: bool | str) -> str:
 # executor runs) are served rather than landing on an unscraped default registry.
 ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _CHAT_TTFT_SECONDS,
-    _CHAT_E2E_ACK_SECONDS,
+    _CHAT_E2E_FULL_SECONDS,
     _LLM_TTFT_SECONDS,
     _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
@@ -460,11 +460,11 @@ def observe_chat_ttft(
     _observe(_CHAT_TTFT_SECONDS, seconds, source=source.value, status=status.value)
 
 
-def observe_chat_e2e_ack(
+def observe_chat_e2e_full(
     seconds: float, *, source: ConversationSource, status: ChatTurnStatus
 ) -> None:
     """Record user message to the settle of the reply that answered it."""
-    _observe(_CHAT_E2E_ACK_SECONDS, seconds, source=source.value, status=status.value)
+    _observe(_CHAT_E2E_FULL_SECONDS, seconds, source=source.value, status=status.value)
 
 
 def observe_chat_turn_total(*, source: ConversationSource, status: ChatTurnStatus) -> None:
@@ -617,7 +617,7 @@ __all__ = [
     "ALL_COLLECTORS",
     "ChatTurnStatus",
     "create_chat_turn_series",
-    "observe_chat_e2e_ack",
+    "observe_chat_e2e_full",
     "observe_chat_ttft",
     "observe_chat_turn_total",
     "observe_comms_graph",

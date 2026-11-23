@@ -4,7 +4,7 @@ A reply counts only when it answers a user message, under that message's analyti
 and on its id, the stream_id its chat:message_submitted carried. A settle that covers finished
 background work also counts chat:background_update_resolved: a message, or silence.
 
-The same settle feeds the chat_turn_total, chat_ttft_seconds and chat_e2e_ack_seconds series,
+The same settle feeds the chat_turn_total, chat_ttft_seconds and chat_e2e_full_seconds series,
 which also count a failed turn.
 """
 
@@ -26,7 +26,7 @@ from app.models.conversation_log_models import (
 from app.services.conversation.ports import Appended, TurnAnalytics
 from app.services.latency_metrics import (
     ChatTurnStatus,
-    observe_chat_e2e_ack,
+    observe_chat_e2e_full,
     observe_chat_ttft,
     observe_chat_turn_total,
 )
@@ -180,7 +180,7 @@ def _observe_turn_end(
     surface: ConversationSource, status: ChatTurnStatus, ttft_ms: float | None, e2e_full_ms: float
 ) -> None:
     observe_chat_turn_total(source=surface, status=status)
-    observe_chat_e2e_ack(e2e_full_ms / 1000.0, source=surface, status=status)
+    observe_chat_e2e_full(e2e_full_ms / 1000.0, source=surface, status=status)
     if ttft_ms is not None:
         observe_chat_ttft(ttft_ms / 1000.0, source=surface, status=status)
 

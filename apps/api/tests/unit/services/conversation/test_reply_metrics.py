@@ -61,12 +61,12 @@ def test_a_settled_turn_counts_once_under_its_surface_and_status(
 def test_a_turn_records_its_first_text_and_its_settle_time_under_the_same_labels() -> None:
     labels = {"source": "slack", "status": "ok"}
     ttft = _sample("chat_ttft_seconds_sum", **labels)
-    ack = _sample("chat_e2e_ack_seconds_sum", **labels)
+    before = _sample("chat_e2e_full_seconds_sum", **labels)
 
     _end(ReplyOutcome.ANSWERED, ConversationSource.SLACK)
 
     assert _sample("chat_ttft_seconds_sum", **labels) == pytest.approx(ttft + 0.4)
-    assert _sample("chat_e2e_ack_seconds_sum", **labels) == pytest.approx(ack + 2.0)
+    assert _sample("chat_e2e_full_seconds_sum", **labels) == pytest.approx(before + 2.0)
 
 
 def test_a_turn_whose_reply_never_showed_records_no_first_text() -> None:
