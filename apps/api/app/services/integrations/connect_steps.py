@@ -3,9 +3,9 @@
 from app.constants.integrations import (
     CONNECT_INTEGRATION_TOOL,
     DISCONNECT_INTEGRATION_TOOL,
-    INTEGRATION_STATUS_EXPIRED,
     MAX_ACCOUNTS_PER_INTEGRATION,
     ConnectMode,
+    IntegrationStatus,
 )
 from app.models.integration_models import ConnectStep
 from app.models.oauth_models import OAuthIntegration
@@ -24,13 +24,13 @@ async def _reconnect_step(
     record = await get_account_record(user_id, integration.id)
     if record is None or not record.accounts:
         return ConnectStep(mode=ConnectMode.CONNECT)
-    expired = [a for a in record.accounts if a.status == INTEGRATION_STATUS_EXPIRED]
+    expired = [a for a in record.accounts if a.status == IntegrationStatus.EXPIRED]
     if account is not None:
         target = match_account(record, account)
         if target is None:
             names = ", ".join(a.display_name for a in record.accounts)
             return f"No {integration.name} account is named {account!r}. Its accounts: {names}."
-        if target.status != INTEGRATION_STATUS_EXPIRED:
+        if target.status != IntegrationStatus.EXPIRED:
             return f"✅ {integration.name} account {target.display_name} is connected and working."
         return ConnectStep(mode=ConnectMode.RECONNECT, account=target)
     if len(expired) == 1:

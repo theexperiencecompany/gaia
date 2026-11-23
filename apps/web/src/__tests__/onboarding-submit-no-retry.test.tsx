@@ -33,7 +33,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 // The chat bubble's markdown and line choreography are not under test: which text it gets is.
 vi.mock("@/features/onboarding/components/OnboardingBotBubble", () => ({
-  OnboardingBotBubble: ({ text }: { text: string }) => <p>{text}</p>,
+  OnboardingBotBubble: ({ lines }: { lines: readonly string[] }) => (
+    <p>{lines.join("\n\n")}</p>
+  ),
 }));
 
 vi.mock("@/i18n/navigation", () => ({

@@ -24,6 +24,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import RateLimitHit
+from tests.helpers import rate_limit_detail
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -45,26 +46,26 @@ class TestRateLimitExceededException:
     def test_basic_exception(self) -> None:
         exc = RateLimitExceededException("file_upload")
         assert exc.status_code == 429
-        assert exc.detail["code"] == "rate_limit_exceeded"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
-        assert exc.detail["feature"] == "file_upload"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
-        assert "plan_required" not in exc.detail
-        assert "reset_time" not in exc.detail
+        assert rate_limit_detail(exc)["code"] == "rate_limit_exceeded"
+        assert rate_limit_detail(exc)["feature"] == "file_upload"
+        assert "plan_required" not in rate_limit_detail(exc)
+        assert "reset_time" not in rate_limit_detail(exc)
 
     def test_with_plan_required(self) -> None:
         exc = RateLimitExceededException("file_upload", plan_required="pro")
-        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
-        assert "Upgrade to Pro" in exc.detail["message"]  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert rate_limit_detail(exc)["plan_required"] == "pro"
+        assert "Upgrade to Pro" in rate_limit_detail(exc)["message"]
 
     def test_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=UTC)
         exc = RateLimitExceededException("file_upload", reset_time=reset)
-        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert rate_limit_detail(exc)["reset_time"] == reset.isoformat()
 
     def test_with_all_fields(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=UTC)
         exc = RateLimitExceededException("file_upload", plan_required="pro", reset_time=reset)
-        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
-        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert rate_limit_detail(exc)["plan_required"] == "pro"
+        assert rate_limit_detail(exc)["reset_time"] == reset.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +147,8 @@ class TestTieredRateLimiterHelpers:
 class TestCheckAndIncrement:
     def setup_method(self) -> None:
         self.limiter = TieredRateLimiter()
-        self.limiter.redis = AsyncMock()
+        self.redis = AsyncMock()
+        self.limiter.redis = self.redis
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
@@ -165,7 +167,7 @@ class TestCheckAndIncrement:
 
         mock_limits.return_value = RateLimitConfig(day=100, month=1000)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter.redis.get = AsyncMock(return_value="5")
+        self.redis.get = AsyncMock(return_value="5")
 
         # Mock pipeline
         pipe_mock = AsyncMock()
@@ -179,15 +181,21 @@ class TestCheckAndIncrement:
 
         redis_mock = MagicMock()
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
-        self.limiter.redis.redis = redis_mock
+        self.redis.redis = redis_mock
 
-        with patch(
-            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
-            side_effect=_noop_create_task,
+        with (
+            patch(
+                "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
+                side_effect=_noop_create_task,
+            ),
+            patch(
+                "app.api.v1.middleware.tiered_rate_limiter.count_daily_actions", AsyncMock()
+            ) as counted,
         ):
             result = await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.PRO)
 
         assert "day" in result or "month" in result
+        counted.assert_called_once_with(USER_ID)
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
@@ -206,14 +214,14 @@ class TestCheckAndIncrement:
         mock_limits.return_value = RateLimitConfig(day=10, month=100)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         # Current usage already at limit
-        self.limiter.redis.get = AsyncMock(return_value="10")
+        self.redis.get = AsyncMock(return_value="10")
 
         with pytest.raises(RateLimitExceededException) as exc_info:
             await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         # A spent budget, not a paywall: the reset time tells the user when they
         # get more, and no upgrade prompt is offered.
-        detail = exc_info.value.detail
+        detail = rate_limit_detail(exc_info.value)
         assert detail["feature"] == "chat_messages"
         assert detail["current_plan"] == "free"
         assert detail["reset_time"] == datetime(2026, 4, 1, tzinfo=UTC).isoformat()
@@ -234,13 +242,13 @@ class TestCheckAndIncrement:
         """The Redis key is the scope; dropping the user, feature, or period from it shares one bucket across users or windows silently."""
         mock_limits.return_value = RateLimitConfig(day=10, month=100)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter.redis.get = AsyncMock(return_value="10")
+        self.redis.get = AsyncMock(return_value="10")
 
         with pytest.raises(RateLimitExceededException):
             await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
         # Raises on the first exhausted window, so exactly the day key is read.
-        self.limiter.redis.get.assert_awaited_once_with(
+        self.redis.get.assert_awaited_once_with(
             f"rate_limit:{USER_ID}:chat_messages:{RateLimitPeriod.DAY}:20260320", int
         )
         mock_twk.assert_called_once_with(RateLimitPeriod.DAY)
@@ -263,7 +271,7 @@ class TestCheckAndIncrement:
         """A 1-per-window allowance must reach the counter and be spendable once in either window, since the gate ANDs the two together."""
         mock_limits.return_value = RateLimitConfig(**{period: 1})
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter.redis.get = AsyncMock(return_value=None)
+        self.redis.get = AsyncMock(return_value=None)
 
         pipe_mock = AsyncMock()
         pipe_mock.watch = AsyncMock()
@@ -277,7 +285,7 @@ class TestCheckAndIncrement:
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
         redis_mock.incr = AsyncMock()
         redis_mock.expire = AsyncMock()
-        self.limiter.redis.redis = redis_mock
+        self.redis.redis = redis_mock
 
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
@@ -302,7 +310,7 @@ class TestCheckAndIncrement:
         with pytest.raises(RateLimitExceededException) as exc_info:
             await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
 
-        detail = exc_info.value.detail
+        detail = rate_limit_detail(exc_info.value)
         assert detail["feature"] == "chat_messages"
         assert detail["plan_required"] == "pro"
         assert detail["current_plan"] == "free"
@@ -327,7 +335,7 @@ class TestCheckAndIncrement:
         # day=0 is counted-only; month=1000 is enforced.
         mock_limits.return_value = RateLimitConfig(day=0, month=1000)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter.redis.get = AsyncMock(return_value="5")
+        self.redis.get = AsyncMock(return_value="5")
 
         pipe_mock = AsyncMock()
         pipe_mock.watch = AsyncMock()
@@ -341,7 +349,7 @@ class TestCheckAndIncrement:
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
         redis_mock.incr = AsyncMock()
         redis_mock.expire = AsyncMock()
-        self.limiter.redis.redis = redis_mock
+        self.redis.redis = redis_mock
 
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
@@ -370,8 +378,8 @@ class TestCheckAndIncrement:
 
         mock_limits.return_value = RateLimitConfig(day=100, month=1000)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter.redis.get = AsyncMock(return_value="5")
-        self.limiter.redis.redis = None
+        self.redis.get = AsyncMock(return_value="5")
+        self.redis.redis = None
 
         with pytest.raises(Exception, match="Redis connection not available"):
             await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.FREE)
@@ -393,7 +401,7 @@ class TestCheckAndIncrement:
 
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter.redis.get = AsyncMock(return_value="5")
+        self.redis.get = AsyncMock(return_value="5")
 
         pipe_mock = AsyncMock()
         call_count = 0
@@ -417,7 +425,7 @@ class TestCheckAndIncrement:
         # month=0 takes the counted-not-enforced plain INCR path.
         redis_mock.incr = AsyncMock()
         redis_mock.expire = AsyncMock()
-        self.limiter.redis.redis = redis_mock
+        self.redis.redis = redis_mock
 
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
@@ -445,7 +453,7 @@ class TestCheckAndIncrement:
         mock_limits.return_value = RateLimitConfig(day=10, month=0)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         # First check returns 9 (under limit), but pipeline read returns 10
-        self.limiter.redis.get = AsyncMock(side_effect=["9", "10"])
+        self.redis.get = AsyncMock(side_effect=["9", "10"])
 
         pipe_mock = AsyncMock()
         pipe_mock.watch = AsyncMock()
@@ -455,7 +463,7 @@ class TestCheckAndIncrement:
 
         redis_mock = MagicMock()
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
-        self.limiter.redis.redis = redis_mock
+        self.redis.redis = redis_mock
 
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
@@ -470,9 +478,9 @@ class TestCheckAndIncrement:
         # The in-transaction re-read must be of the very key WATCH guards.
         day_key = f"rate_limit:{USER_ID}:chat_messages:{RateLimitPeriod.DAY}:20260320"
         pipe_mock.watch.assert_awaited_once_with(day_key)
-        assert self.limiter.redis.get.await_args_list == [call(day_key, int), call(day_key, int)]
+        assert self.redis.get.await_args_list == [call(day_key, int), call(day_key, int)]
         mock_reset.assert_called_with(RateLimitPeriod.DAY)
-        detail = exc_info.value.detail
+        detail = rate_limit_detail(exc_info.value)
         assert detail["reset_time"] == datetime(2026, 4, 1, tzinfo=UTC).isoformat()
         assert "plan_required" not in detail
 
@@ -486,7 +494,8 @@ class TestCheckAndIncrement:
 class TestSyncUsageRealTime:
     def setup_method(self) -> None:
         self.limiter = TieredRateLimiter()
-        self.limiter.redis = AsyncMock()
+        self.redis = AsyncMock()
+        self.limiter.redis = self.redis
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.UsageService.save_usage_snapshot",
@@ -548,7 +557,8 @@ class TestSyncUsageRealTime:
 class TestCollectFeatureUsage:
     def setup_method(self) -> None:
         self.limiter = TieredRateLimiter()
-        self.limiter.redis = AsyncMock()
+        self.redis = AsyncMock()
+        self.limiter.redis = self.redis
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.get_feature_info",
@@ -575,7 +585,7 @@ class TestCollectFeatureUsage:
 
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter.redis.get = AsyncMock(return_value="5")
+        self.redis.get = AsyncMock(return_value="5")
 
         result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         # Both periods are collected — the zero-limit month is counted too so
@@ -603,7 +613,7 @@ class TestCollectFeatureUsage:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
-        self.limiter.redis.get = AsyncMock(side_effect=RuntimeError("redis down"))
+        self.redis.get = AsyncMock(side_effect=RuntimeError("redis down"))
 
         result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         # Exceptions are skipped, so result is empty
@@ -626,7 +636,7 @@ class TestCollectFeatureUsage:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
-        self.limiter.redis.get = AsyncMock(return_value="0")
+        self.redis.get = AsyncMock(return_value="0")
 
         result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         assert result == []
@@ -648,7 +658,7 @@ class TestCollectFeatureUsage:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
-        self.limiter.redis.get = AsyncMock(return_value="not_a_number")
+        self.redis.get = AsyncMock(return_value="not_a_number")
 
         result = await self.limiter._collect_feature_usage(USER_ID, PlanType.PRO)
         assert result == []
@@ -666,9 +676,7 @@ class TestTieredRateLimitDecorator:
     async def test_decorator_with_user_in_kwargs(
         self, mock_pay: MagicMock, mock_limiter: MagicMock
     ) -> None:
-        sub_mock = MagicMock()
-        sub_mock.plan_type = PlanType.PRO
-        mock_pay.get_user_subscription_status = AsyncMock(return_value=sub_mock)
+        mock_pay.get_cached_plan_type = AsyncMock(return_value=PlanType.PRO)
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
@@ -684,9 +692,7 @@ class TestTieredRateLimitDecorator:
     async def test_decorator_with_user_in_args(
         self, mock_pay: MagicMock, mock_limiter: MagicMock
     ) -> None:
-        sub_mock = MagicMock()
-        sub_mock.plan_type = PlanType.FREE
-        mock_pay.get_user_subscription_status = AsyncMock(return_value=sub_mock)
+        mock_pay.get_cached_plan_type = AsyncMock(return_value=PlanType.FREE)
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
@@ -716,14 +722,14 @@ class TestTieredRateLimitDecorator:
             await my_endpoint(user=AuthenticatedUser(user_id="", email="no_id"))
         assert exc_info.value.status_code == 401
 
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
     @patch("app.decorators.rate_limiting.tiered_limiter")
     @patch("app.decorators.rate_limiting.payment_service")
-    async def test_decorator_defaults_to_free_plan(
-        self, mock_pay: MagicMock, mock_limiter: MagicMock
+    async def test_decorator_forwards_the_cached_plan_unchanged(
+        self, mock_pay: MagicMock, mock_limiter: MagicMock, plan: PlanType
     ) -> None:
-        sub_mock = MagicMock()
-        sub_mock.plan_type = None
-        mock_pay.get_user_subscription_status = AsyncMock(return_value=sub_mock)
+        """The decorator meters exactly the tier get_cached_plan_type resolved — the None-to-FREE default lives there, not here."""
+        mock_pay.get_cached_plan_type = AsyncMock(return_value=plan)
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
@@ -731,8 +737,8 @@ class TestTieredRateLimitDecorator:
             return "ok"
 
         await my_endpoint(user=AuthenticatedUser(user_id="u1"))
-        call_args = mock_limiter.check_and_increment.call_args
-        assert call_args.kwargs["user_plan"] == PlanType.FREE
+        mock_pay.get_cached_plan_type.assert_awaited_once_with("u1")
+        assert mock_limiter.check_and_increment.call_args.kwargs["user_plan"] is plan
 
 
 # ---------------------------------------------------------------------------
@@ -746,7 +752,8 @@ class TestUpsellOnExceed:
 
     def setup_method(self) -> None:
         self.limiter = TieredRateLimiter()
-        self.limiter.redis = AsyncMock()
+        self.redis = AsyncMock()
+        self.limiter.redis = self.redis
 
     async def _exceed(self, **kwargs: LimitHitOrigin) -> tuple[MagicMock, AsyncMock, AsyncMock]:
         """Trip the plan gate for a FREE user, run the spawned upsell inline."""

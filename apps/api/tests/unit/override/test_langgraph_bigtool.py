@@ -10,8 +10,17 @@ from typing import Any, Protocol, cast, runtime_checkable
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import fakeredis
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
-from langchain_core.runnables import RunnableBinding, RunnableConfig
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    ToolCall,
+    ToolMessage,
+)
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import ConfigurableField, Runnable, RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
@@ -27,13 +36,18 @@ from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import BeforeModelResult
 from app.agents.tools import run_record
+from app.agents.tools.comms_turn_tools import turn_ending
 from app.agents.tools.run_record import read_run_record
-from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
+from app.constants.chat import ConversationSource
+from app.constants.comms import REACT_TOOL_NAME
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
     EXECUTOR_RECURSION_LIMIT,
     LANE_FIELD_ID,
+    LLM_LABEL_METADATA_KEY,
+    OPENAI_PROMPT_CACHE_KEY_MAX_CHARS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
     SUBAGENT_RECURSION_LIMIT,
@@ -49,6 +63,7 @@ from app.override.langgraph_bigtool.agent_config import (
 from app.override.langgraph_bigtool.create_agent import (
     REJECT_UNBOUND_TOOLS_NODE,
     _after_model_result,
+    _after_tools,
     _agent_sticky_key,
     _AgentDeps,
     _bind_session_id,
@@ -75,6 +90,7 @@ from app.override.langgraph_bigtool.create_agent import (
     reject_unbound_tools,
 )
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult, State
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,6 +112,10 @@ def dummy_tool_b(query: str) -> str:
     return "result_b"
 
 
+# A model call binds tools only when the agent has some: an empty tools array is a 400.
+_BINDS_TOOL_A = ToolRetrievalConfig(disable_retrieve_tools=True, initial_tool_ids=["dummy_tool_a"])
+
+
 def _make_tool_registry(*tools_list: BaseTool) -> dict[str, BaseTool]:
     return {t.name: t for t in tools_list}
 
@@ -108,6 +128,7 @@ def _make_llm() -> MagicMock:
     bound.ainvoke = AsyncMock(return_value=AIMessage(content="hello"))
     # ainvoke_llm/invoke_llm wrap the bound model in with_llm_retry first.
     bound.with_retry.return_value = bound
+    configured.with_retry.return_value = configured
     configured.bind_tools.return_value = bound
     llm.with_config.return_value = configured
     return llm
@@ -523,10 +544,8 @@ class TestCallModel:
         configured.bind_tools.return_value = bound
         llm.with_config.return_value = configured
 
-        registry = _make_tool_registry()
-        builder = create_agent(
-            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
-        )
+        registry = _make_tool_registry(dummy_tool_a)
+        builder = create_agent(llm, registry, tools_config=_BINDS_TOOL_A)
 
         agent_node = _agent_runnable(builder)
         state = _make_state()
@@ -543,8 +562,8 @@ class TestCallModel:
         )
         builder = create_agent(
             llm,
-            _make_tool_registry(),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
@@ -560,8 +579,8 @@ class TestCallModel:
         )
         builder = create_agent(
             llm,
-            _make_tool_registry(),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="executor_agent"),
         )
 
@@ -577,6 +596,25 @@ class TestCallModel:
         )
         builder = create_agent(
             llm,
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        result = _agent_runnable(builder).func(_make_state(), _make_config(), store=MagicMock())
+
+        assert result["messages"][-1].content == blocks
+
+    def test_sync_call_model_comms_agent_keeps_no_text_of_a_breaks_only_block_reply(self) -> None:
+        """Regression: a fallback lane's block reply of bare breaks reached the thread verbatim, for later turns to copy."""
+        reasoning = {"type": "reasoning", "reasoning": "nothing to add"}
+        llm = _make_llm()
+        # With no tools to bind, the node calls the bare model.
+        llm.with_config.return_value.invoke.return_value = AIMessage(
+            content=[reasoning, {"type": "text", "text": NEW_MESSAGE_BREAKER * 3998}]
+        )
+        builder = create_agent(
+            llm,
             _make_tool_registry(),
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             agent_config=AgentConfig(agent_name="comms_agent"),
@@ -584,7 +622,7 @@ class TestCallModel:
 
         result = _agent_runnable(builder).func(_make_state(), _make_config(), store=MagicMock())
 
-        assert result["messages"][-1].content == blocks
+        assert result["messages"][-1].content == [reasoning]
 
 
 class TestAcallModel:
@@ -593,9 +631,7 @@ class TestAcallModel:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
-        builder = create_agent(
-            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
-        )
+        builder = create_agent(llm, registry, tools_config=_BINDS_TOOL_A)
 
         agent_node = _agent_runnable(builder)
         state = _make_state()
@@ -606,9 +642,48 @@ class TestAcallModel:
         assert "messages" in result
 
     @pytest.mark.asyncio
+    async def test_the_provider_call_runs_under_the_runs_config_labelled_by_its_agent(
+        self,
+    ) -> None:
+        llm = _make_llm()
+        builder = create_agent(
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
+            agent_config=AgentConfig(agent_name="executor_agent"),
+        )
+
+        await _agent_runnable(builder).afunc(_make_state(), _make_config(), store=MagicMock())
+
+        bound = llm.with_config.return_value.bind_tools.return_value
+        sent = bound.ainvoke.await_args.kwargs["config"]
+        assert sent["recursion_limit"] == _RECURSION_LIMIT
+        assert sent["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
+
+    @pytest.mark.asyncio
+    async def test_a_call_with_no_tools_goes_out_on_the_bare_model(self) -> None:
+        """Workers AI answers a 400 to an empty tools array, so a tool-less call must bind none."""
+        llm = _make_llm()
+        configured = llm.with_config.return_value
+        configured.ainvoke = AsyncMock(return_value=AIMessage(content="bare"))
+        configured.with_retry.return_value = configured
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+        )
+
+        result = await _agent_runnable(builder).afunc(
+            _make_state(), _make_config(), store=MagicMock()
+        )
+
+        configured.bind_tools.assert_not_called()
+        assert result["messages"][-1].content == "bare"
+
+    @pytest.mark.asyncio
     async def test_acall_model_with_middleware_hooks(self) -> None:
         llm = _make_llm()
-        registry = _make_tool_registry()
+        registry = _make_tool_registry(dummy_tool_a)
 
         mw = MagicMock()
         mw.tools = []
@@ -626,7 +701,7 @@ class TestAcallModel:
             builder = create_agent(
                 llm,
                 registry,
-                tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+                tools_config=_BINDS_TOOL_A,
                 agent_config=AgentConfig(middleware=[mw]),
             )
             agent_node = _agent_runnable(builder)
@@ -655,10 +730,8 @@ class TestAcallModel:
         configured.bind_tools.return_value = bound
         llm.with_config.return_value = configured
 
-        registry = _make_tool_registry()
-        builder = create_agent(
-            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
-        )
+        registry = _make_tool_registry(dummy_tool_a)
+        builder = create_agent(llm, registry, tools_config=_BINDS_TOOL_A)
 
         agent_node = _agent_runnable(builder)
         state = _make_state()
@@ -676,8 +749,8 @@ class TestAcallModel:
         )
         builder = create_agent(
             llm,
-            _make_tool_registry(),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
@@ -714,8 +787,8 @@ class TestAcallModel:
         node = _agent_runnable(
             create_agent(
                 llm,
-                _make_tool_registry(),
-                tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+                _make_tool_registry(dummy_tool_a),
+                tools_config=_BINDS_TOOL_A,
                 agent_config=AgentConfig(agent_name="comms_agent"),
             )
         )
@@ -1150,7 +1223,7 @@ class TestBindSessionId:
         builder = create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name=agent),
         )
 
@@ -1170,7 +1243,7 @@ class TestBindSessionId:
         builder = create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
@@ -1241,6 +1314,40 @@ class TestBindSessionId:
         assert isinstance(bound, RunnableBinding)
         assert bound.kwargs["prompt_cache_key"] == "conv-1-comms_agent"
         assert "session_id" not in bound.kwargs
+
+    def test_a_key_past_openais_limit_is_digested_to_fit_and_stays_stable(self) -> None:
+        """Regression: a brief's long session id made OpenAI 400 on a 69-character key."""
+        llm = ChatOpenAI(model="gpt-x", api_key=SecretStr("sk-test")).bind_tools([])
+        session = "briefing-daily-6ace8c80b48519a26eda057a-2026-10-14-1f2e3d"
+        configurable: AgentConfigurable = {
+            "provider": LLMProviderName.OPENAI,
+            "session_id": session,
+        }
+
+        first = _bind_session_id(llm, configurable, "comms_agent")
+        second = _bind_session_id(llm, configurable, "comms_agent")
+        other_agent = _bind_session_id(llm, configurable, "executor_agent")
+
+        assert isinstance(first, RunnableBinding) and isinstance(second, RunnableBinding)
+        assert isinstance(other_agent, RunnableBinding)
+        key = first.kwargs["prompt_cache_key"]
+        assert len(key) <= 64
+        assert key == second.kwargs["prompt_cache_key"]
+        assert key != other_agent.kwargs["prompt_cache_key"]
+
+    def test_a_key_exactly_at_openais_limit_is_sent_unchanged(self) -> None:
+        llm = ChatOpenAI(model="gpt-x", api_key=SecretStr("sk-test")).bind_tools([])
+        suffix = "-comms_agent"
+        session = "s" * (OPENAI_PROMPT_CACHE_KEY_MAX_CHARS - len(suffix))
+        configurable: AgentConfigurable = {
+            "provider": LLMProviderName.OPENAI,
+            "session_id": session,
+        }
+
+        bound = _bind_session_id(llm, configurable, "comms_agent")
+
+        assert isinstance(bound, RunnableBinding)
+        assert bound.kwargs["prompt_cache_key"] == f"{session}{suffix}"
 
     def test_a_custom_lane_aimed_at_openai_gets_the_prompt_cache_key(self) -> None:
         """DEV_LLM_* may point the custom lane at OpenAI's own API; the client, not the provider name, decides."""
@@ -1327,6 +1434,28 @@ def _gemini_lane() -> ModelLane:
     )
 
 
+class _NamedChatModel(BaseChatModel):
+    """A chat model that answers with its own name and binds tools as real clients do."""
+
+    answer: str
+
+    @property
+    def _llm_type(self) -> str:
+        return "named"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: object = None,
+        **kwargs: object,
+    ) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.answer))])
+
+    def bind_tools(self, tools: Sequence[object], **kwargs: object) -> Runnable:
+        return self.bind(tools=[getattr(t, "name", t) for t in tools])
+
+
 def _next_is_gemini() -> Any:
     return patch.object(
         lane_module,
@@ -1358,8 +1487,10 @@ class TestFallbackPreparation:
 
     def test_the_fallback_targets_the_next_provider_with_the_same_tools(self) -> None:
         llm = MagicMock()
+        configured = MagicMock()
         bound = MagicMock()
-        llm.bind_tools.return_value = bound
+        llm.with_config.return_value = configured
+        configured.bind_tools.return_value = bound
         configurable = cast(
             AgentConfigurable, {LANE_FIELD_ID: _openrouter_lane().to_configurable()}
         )
@@ -1373,9 +1504,39 @@ class TestFallbackPreparation:
         assert fallback_lane.model == "gemini-x"
         # Zero-arg factory: the per-turn, tool-list-sized binding must not happen
         # unless the primary actually fails.
-        llm.bind_tools.assert_not_called()
+        configured.bind_tools.assert_not_called()
         assert factory() is bound
-        llm.bind_tools.assert_called_once_with([dummy_tool_a])
+        configured.bind_tools.assert_called_once_with([dummy_tool_a])
+
+    def test_the_fallback_runs_on_the_fallback_lanes_provider_not_the_default(self) -> None:
+        """Regression: bind_tools on the bare alternatives binds the default, so a fallback away from it re-ran the failed provider."""
+        llm = _NamedChatModel(answer="openrouter").configurable_alternatives(
+            ConfigurableField(id="provider"),
+            default_key=LLMProviderName.OPENROUTER,
+            prefix_keys=False,
+            gemini=_NamedChatModel(answer="gemini"),
+        )
+        config = cast(
+            RunnableConfig,
+            {
+                "configurable": {
+                    **_openrouter_lane().binding_keys(),
+                    LANE_FIELD_ID: _openrouter_lane().to_configurable(),
+                }
+            },
+        )
+
+        with _next_is_gemini():
+            prepared = _prepare_fallback(
+                llm, [dummy_tool_a], cast(AgentConfigurable, config["configurable"])
+            )
+
+        assert prepared is not None
+        factory, fallback_lane = prepared
+        reply = factory().invoke(
+            [HumanMessage(content="hi")], config=_fallback_config(config, fallback_lane)
+        )
+        assert reply.content == "gemini"
 
     def test_the_fallback_config_clears_the_failed_lanes_keys(self) -> None:
         """LangChain merges a passed config over a bound one, so the stale, just-failed provider's keys must be REMOVED, not merged."""
@@ -1604,6 +1765,7 @@ def _make_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        turn_ending=None,
     )
 
 
@@ -1887,6 +2049,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -1933,6 +2096,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -1986,6 +2150,7 @@ class TestGetBoundToolNamesChannels:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
 
         bound = _get_bound_tool_names(deps, cast("State", {}))
@@ -2055,7 +2220,7 @@ class TestModelNodeWiring:
         builder = create_agent(
             _make_llm(),
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             hooks_config=HookConfig(pre_model_hooks=[hook]),
         )
         state = _make_state(messages=[HumanMessage("hi")])
@@ -2091,7 +2256,7 @@ class TestModelNodeWiring:
         builder = create_agent(
             _make_llm(),
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
         )
         state = _make_state(messages=[HumanMessage("hi")])
 
@@ -2139,6 +2304,7 @@ def _make_branch_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        turn_ending=None,
     )
 
 
@@ -2374,6 +2540,56 @@ class TestWireEdgesPinning:
         assert (FINISH_TASK_NAME, END) in edges
 
 
+def _ends_on_react(message: AIMessage, _config: RunnableConfig) -> str | None:
+    return "ended" if message.tool_calls[-1]["name"] == "react" else None
+
+
+def _after_calls(*names: str) -> State:
+    calls: list[ToolCall] = [
+        {"name": name, "args": {}, "id": f"c{n}", "type": "tool_call"}
+        for n, name in enumerate(names)
+    ]
+    return _make_state(
+        messages=[
+            AIMessage(content="", tool_calls=calls),
+            *(ToolMessage(content="ok", tool_call_id=call["id"]) for call in calls),
+        ]
+    )
+
+
+class TestTheToolsNodeEndsATurnOnlyAfterACallThatEndsIt:
+    def _tools_branch(self, deps: _AgentDeps) -> tuple[Any, list[str]]:
+        builder = MagicMock()
+        _wire_edges(builder, deps)
+        (branch,) = [
+            call for call in builder.add_conditional_edges.call_args_list if call.args[0] == "tools"
+        ]
+        return branch.args[1], branch.kwargs["path_map"]
+
+    @pytest.mark.parametrize(
+        ("hooks", "exit_node"), [(None, END), ([MagicMock(name="end_hook")], "end_graph_hooks")]
+    )
+    def test_a_turn_ending_call_exits_and_any_other_goes_back_to_the_model(
+        self, hooks: list[Any] | None, exit_node: str
+    ) -> None:
+        deps = replace(_make_deps(), turn_ending=_ends_on_react, end_graph_hooks=hooks)
+
+        route, path_map = self._tools_branch(deps)
+
+        assert path_map == ["agent", exit_node]
+        assert route(_after_calls("react"), {}) == exit_node
+        assert route(_after_calls("web_search"), {}) == "agent"
+        assert route(_make_state(messages=[HumanMessage(content="hi")]), {}) == "agent"
+
+    def test_without_turn_endings_the_tools_node_always_returns_to_the_model(self) -> None:
+        builder = MagicMock()
+
+        _wire_edges(builder, _make_deps())
+
+        assert ("tools", "agent") in [c.args for c in builder.add_edge.call_args_list]
+        assert all(c.args[0] != "tools" for c in builder.add_conditional_edges.call_args_list)
+
+
 class TestCreateAgentWiring:
     """Pin that every resolved value lands in deps and every factory-built node lands under its graph name."""
 
@@ -2513,22 +2729,26 @@ class TestTheFallbackTheModelNodeHandsTheClient:
         return create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
     def _assert_failover_is_whole(self, kwargs: Any, llm: MagicMock) -> None:
         # The tools the PRIMARY bound this turn — the fallback must re-bind that
         # same list, not a stale or empty one.
-        primary_tools = llm.with_config.return_value.bind_tools.call_args.args[0]
+        selected = llm.with_config.return_value
+        primary_tools = selected.bind_tools.call_args.args[0]
 
         fallback = kwargs["fallback"]
         assert fallback is not None
         # Zero-arg factory: the tool-list-sized re-binding must not have happened
         # yet, since the primary has not failed.
+        assert selected.bind_tools.call_count == 1
+        assert fallback() is selected.bind_tools.return_value
+        assert selected.bind_tools.call_args.args[0] == primary_tools
+        # Bound on the fallback lane's provider: bare, bind_tools binds the default.
         llm.bind_tools.assert_not_called()
-        assert fallback() is llm.bind_tools.return_value
-        llm.bind_tools.assert_called_once_with(primary_tools)
+        llm.with_config.assert_called_with(configurable=_EXPECTED_FALLBACK_CONFIG["configurable"])
 
         assert kwargs["options"].fallback_config == _EXPECTED_FALLBACK_CONFIG
 
@@ -2593,3 +2813,34 @@ class TestTheFallbackTheModelNodeHandsTheClient:
 
         assert invoked.await_args.kwargs["fallback"] is None
         assert invoked.await_args.kwargs["options"].fallback_config is None
+
+
+class TestAfterTools:
+    """A turn ends after the tools only when its turn-ending calls all went through."""
+
+    @staticmethod
+    def route(state: State, config: RunnableConfig) -> str:
+        # Built per call: a route made at import would outlive the mutant under test.
+        return _after_tools(turn_ending, "end_turn")(state, config)
+
+    @staticmethod
+    def _reacted(emoji: str, status: str) -> State:
+        call = ToolCall(name=REACT_TOOL_NAME, args={"emoji": emoji, "message_id": 1}, id="r1")
+        return _make_state(
+            messages=[
+                AIMessage(content="", tool_calls=[call]),
+                ToolMessage(content="done", tool_call_id="r1", status=status),
+            ]
+        )
+
+    def test_a_turn_ending_call_that_went_through_ends_the_turn(self) -> None:
+        assert self.route(self._reacted("👍", "success"), {}) == "end_turn"
+
+    def test_a_turn_ending_call_that_failed_goes_back_to_the_model(self) -> None:
+        assert self.route(self._reacted("👍", "error"), {}) == "agent"
+
+    def test_a_reaction_the_runs_surface_refuses_goes_back_to_the_model(self) -> None:
+        telegram: RunnableConfig = {
+            "configurable": {"conversation_source": ConversationSource.TELEGRAM.value}
+        }
+        assert self.route(self._reacted("🔎", "success"), telegram) == "agent"

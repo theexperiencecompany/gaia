@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
 from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
@@ -11,27 +10,22 @@ from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
     TRIGGERED_ACCOUNT_SECTION,
-    WORKFLOW_AUTO_NOTIFY_SECTION,
+    WORKFLOW_DELIVERY_SECTIONS,
     WORKFLOW_EXECUTION_PROMPT,
-    WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
 from app.agents.workspace.paths import safe_upload_filename
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
-from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
-from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursStamp
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS, ConversationSource
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
+from app.models.trigger_gate_models import QuietHoursBypass
 from app.models.webhook_models import TriggerEventAccount
+from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
+from shared.py.conversation_wire import ReplyToMessageData
 from shared.py.wide_events import log
 
 
@@ -39,7 +33,7 @@ def create_system_message(
     user_id: str | None = None,
     user_name: str | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
-    source: str | None = None,
+    source: ConversationSource | None = None,
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
@@ -51,6 +45,8 @@ def create_system_message(
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
         return SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE)
+    if source is None:
+        raise ValueError("a comms prompt needs the surface its reply is read on")
     return SystemMessage(content=get_comms_static_prompt(source))
 
 
@@ -113,16 +109,6 @@ Use call_executor to delegate this task. The executor should:
 Execute immediately without asking for clarification."""
 
 
-class TriggerEmailData(BaseModel):
-    """The ``email_data`` of a Gmail-triggered run, as the prompt reads it."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    sender: str = "Unknown"
-    subject: str = "No Subject"
-    message_text: str = ""
-
-
 class _BatchedTriggerPayload(TypedDict, total=False):
     """A batched run's payload: its events, unchecked, as providers send anything."""
 
@@ -144,30 +130,6 @@ def _event_accounts(payload: Mapping[str, object]) -> list[str]:
             tagged: TriggerEventAccount = cast(TriggerEventAccount, source)
             names.add(tagged.get("gaia_account"))
     return sorted(name for name in names if isinstance(name, str) and name)
-
-
-class WorkflowTriggerContext(BaseModel):
-    """The keys ``format_workflow_execution_message`` reads off a run's trigger context.
-
-    The bag itself is open by construction — schedulers spread arbitrary provider
-    trigger data through it alongside the agent's own keys — so this is a view of
-    it, parsed once here, not its full shape.
-    """
-
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-
-    tracked_todos_context: str = ""
-    workflow_id: str | None = None
-    workflow_notify_on_completion: bool = True
-    playbook_fallback: str | None = Field(
-        default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
-    )
-    type: str | None = None
-    email_data: TriggerEmailData = Field(default_factory=TriggerEmailData)
-    triggered_at: str = "Unknown"
-    # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
-    trigger_data: dict[str, object] = Field(default_factory=dict)
-    quiet_hours: QuietHoursStamp | None = None
 
 
 async def format_workflow_execution_message(
@@ -221,17 +183,12 @@ async def format_workflow_execution_message(
             tracked_todos_context=tracked_todos_ctx
         )
 
-    # Background workflow runs send an automatic completion notification unless
-    # opted out; tell the agent which mode it's in so it neither double-notifies
-    # nor stays silent. Interactive runs get neither section.
+    # Tell a background workflow run how its result reaches the user so it
+    # neither double-notifies nor stays silent. Interactive runs get no section.
     notification_section = ""
     if trigger.workflow_id:
-        notify_on_completion = (
-            workflow.notify_on_completion if workflow else trigger.workflow_notify_on_completion
-        )
-        notification_section = (
-            WORKFLOW_AUTO_NOTIFY_SECTION if notify_on_completion else WORKFLOW_SILENT_NOTIFY_SECTION
-        )
+        delivery = workflow.delivery if workflow else trigger.workflow_delivery
+        notification_section = WORKFLOW_DELIVERY_SECTIONS[delivery]
 
     common_args = {
         "workflow_title": workflow_title,
@@ -247,6 +204,8 @@ async def format_workflow_execution_message(
     accounts = _event_accounts(trigger.trigger_data)
     if accounts:
         fallback_section += TRIGGERED_ACCOUNT_SECTION.format(accounts=", ".join(accounts))
+    if trigger.wait_met:
+        fallback_section += f"\n\n{trigger.wait_met}"
     if isinstance(trigger.quiet_hours, QuietHoursBypass):
         fallback_section += "\n\n" + QUIET_HOURS_BYPASS_NOTE.format(
             reason=trigger.quiet_hours.reason

@@ -24,10 +24,8 @@ const { connection, channel, connect } = vi.hoisted(() => {
 
 vi.mock("amqplib", () => ({ connect }));
 
-import type {
-  OutboundAttachment,
-  OutboundReaction,
-} from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
+import type { ActiveBotConversation } from "../../../../../libs/shared/ts/src/api/generated";
+import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
 import type { OutboundNotifications } from "../../../../../libs/shared/ts/src/bots/types";
 import { hashLogIdentifier } from "../../../../../libs/shared/ts/src/bots/utils/logger";
@@ -57,21 +55,18 @@ async function startAndCaptureHandler(
     isChannel: boolean,
   ) => Promise<void> = async () => undefined,
   gaiaApiUrl = "https://api.gaia.test",
-  deliverReaction: (
-    id: string,
-    reaction: OutboundReaction,
-    isChannel: boolean,
-  ) => Promise<void> = async () => undefined,
   notifications?: OutboundNotifications,
+  follow: (target: ActiveBotConversation) => Promise<void> = async () =>
+    undefined,
 ): Promise<Handler> {
   const consumer = new OutboundConsumer(
     platform,
     "amqp://test",
     deliver,
     deliverFile,
+    follow,
     gaiaApiUrl,
     reportFailure,
-    deliverReaction,
     notifications,
   );
   await consumer.start();
@@ -736,72 +731,6 @@ describe("OutboundConsumer message handling", () => {
     expect(channel.ack).toHaveBeenCalledWith(msg);
   });
 
-  it("routes a reaction to deliverReaction (not the text path) and acks", async () => {
-    const deliver = vi.fn().mockResolvedValue(undefined);
-    const deliverReaction = vi.fn().mockResolvedValue(undefined);
-    const handle = await startAndCaptureHandler(
-      "whatsapp",
-      deliver,
-      async () => undefined,
-      "https://api.gaia.test",
-      deliverReaction,
-    );
-    const msg = msgFor({
-      id: "1",
-      platform: "whatsapp",
-      destination_id: "1555",
-      reaction: { target_platform_message_id: "wamid.123", emoji: "👍" },
-      enqueued_at: "t",
-    });
-
-    await deliverMessage(handle, msg);
-
-    expect(deliverReaction).toHaveBeenCalledWith(
-      "1555",
-      { target_platform_message_id: "wamid.123", emoji: "👍" },
-      false,
-    );
-    expect(deliver).not.toHaveBeenCalled(); // no text bubble alongside the reaction
-    expect(channel.ack).toHaveBeenCalledWith(msg);
-  });
-
-  it("dead-letters a failed reaction WITHOUT requeue, even on first attempt", async () => {
-    // Attaching is idempotent upstream, but a failure already means the ack
-    // did not land — retrying the whole envelope would re-drive the attach
-    // against a target the platform just rejected. Dead-letter for inspection.
-    const deliverReaction = vi
-      .fn()
-      .mockRejectedValue(new Error("attach failed"));
-    const handle = await startAndCaptureHandler(
-      "whatsapp",
-      vi.fn().mockResolvedValue(undefined),
-      async () => undefined,
-      "https://api.gaia.test",
-      deliverReaction,
-    );
-    const msg = msgFor(
-      {
-        id: "1",
-        platform: "whatsapp",
-        destination_id: "1555",
-        reaction: { target_platform_message_id: "wamid.123", emoji: "👍" },
-        enqueued_at: "t",
-      },
-      false, // first attempt — still no requeue on the reaction path
-    );
-
-    await deliverMessage(handle, msg);
-
-    expect(channel.nack).toHaveBeenCalledWith(msg, false, false);
-    expect(channel.ack).not.toHaveBeenCalled();
-    expect(reportFailure).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        kind: "send_failed",
-        error_message: "attach failed",
-      }),
-    );
-  });
-
   it("delivers one chat's messages in published order while other chats proceed", async () => {
     const order: string[] = [];
     let releasePhoto: () => void = () => undefined;
@@ -852,6 +781,42 @@ describe("OutboundConsumer message handling", () => {
     await flush();
     expect(order).toEqual(["text:chat-b", "photo:chat-a", "text:chat-a"]);
   });
+
+  it("follows a wake for a reply cut inside its first bubble with its open messages", async () => {
+    const follow = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn(),
+      undefined,
+      undefined,
+      undefined,
+      follow,
+    );
+    const msg = msgFor({
+      id: "wake-1",
+      platform: "telegram",
+      destination_id: "42",
+      follow: {
+        conversation_id: "conv-1",
+        platform_user_id: "42",
+        channel_id: null,
+        is_dm: true,
+        after_seq: 3,
+        partial_reply: { reply_id: "r1", bubbles: 0, open_message_ids: ["9"] },
+      },
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(follow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        partial_reply: { reply_id: "r1", bubbles: 0, open_message_ids: ["9"] },
+      }),
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(channel.nack).not.toHaveBeenCalled();
+  });
 });
 
 describe("OutboundConsumer outside a platform's messaging window", () => {
@@ -881,7 +846,6 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
       deliver,
       async () => undefined,
       "https://api.gaia.test",
-      async () => undefined,
       notifications,
     );
     const msg = msgFor(twoBubbles);
@@ -906,13 +870,13 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
       deliver,
       async () => undefined,
       "https://api.gaia.test",
-      async () => undefined,
       notifications,
     );
 
     await deliverMessage(handle, msgFor(twoBubbles));
 
-    expect(deliver).toHaveBeenCalledTimes(2);
+    // The second bubble follows the first after BUBBLE_PAUSE_MS.
+    await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(2));
     expect(notifications.deliver).not.toHaveBeenCalled();
   });
 
@@ -924,7 +888,6 @@ describe("OutboundConsumer outside a platform's messaging window", () => {
       deliver,
       async () => undefined,
       "https://api.gaia.test",
-      async () => undefined,
       notifications,
     );
     const msg = msgFor(twoBubbles);
@@ -952,6 +915,7 @@ describe("OutboundConsumer lifecycle", () => {
     const consumer = new OutboundConsumer(
       "telegram",
       "amqp://test",
+      async () => undefined,
       async () => undefined,
       async () => undefined,
       "https://api.gaia.test",

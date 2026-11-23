@@ -27,7 +27,7 @@
 #
 #   Postgres  a database per lane        gaia_test_r<r>       (CREATE DATABASE)
 #   Redis     a 32-DB stripe per lane    GAIA_REDIS_DB_BASE=8+r*32
-#   MongoDB   a db-name prefix per lane  gaia_test_r<r>_gw<n>
+#   MongoDB   a db-name prefix per lane  gaia_test_r<r> (the app) + _gw<n>
 #   ChromaDB  a collection suffix        _r<r>   (Chroma has no namespaces)
 #   RabbitMQ  a vhost per lane           /r<r>
 #
@@ -179,8 +179,12 @@ _fingerprint() { printf '%s' "$*" | sha256sum | cut -c1-16; }
 
 _run_labelled() {
   # _run_labelled <name> <fingerprint-source> <docker run args...>
+  # The box's shared set outlives any one job, so it restarts with the daemon.
   local name="$1" spec="$2"
   shift 2
+  if ci_on_the_box; then
+    set -- --restart unless-stopped "$@"
+  fi
   docker run -d --name "$name" --label "${CONFIG_LABEL}=$(_fingerprint "$spec")" "$@"
 }
 
@@ -194,7 +198,7 @@ _pg_spec() {
 
 start_postgres() {
   if ci_on_the_box; then
-    _run_labelled "$PG_NAME" "$(_pg_spec)" --restart unless-stopped \
+    _run_labelled "$PG_NAME" "$(_pg_spec)" \
       -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
       -e PGDATA=/var/lib/postgresql/data/pgdata \
       --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=6g \
@@ -222,9 +226,7 @@ _redis_databases() { if ci_on_the_box; then echo "$REDIS_DATABASES"; else echo "
 _redis_spec() { echo "${REDIS_IMAGE}|${REDIS_PORT}|databases=$(_redis_databases)"; }
 
 start_redis() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$REDIS_NAME" "$(_redis_spec)" "${restart[@]}" \
+  _run_labelled "$REDIS_NAME" "$(_redis_spec)" \
     -p "127.0.0.1:${REDIS_PORT}:6379" "$REDIS_IMAGE" \
     redis-server --databases "$(_redis_databases)" --save "" --appendonly no
 }
@@ -233,9 +235,7 @@ _mongo_tmpfs() { if ci_on_the_box; then echo 6g; else echo 2g; fi; }
 _mongo_spec() { echo "${MONGO_IMAGE}|${MONGO_PORT}|tmpfs=$(_mongo_tmpfs)"; }
 
 start_mongo() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$MONGO_NAME" "$(_mongo_spec)" "${restart[@]}" \
+  _run_labelled "$MONGO_NAME" "$(_mongo_spec)" \
     -e MONGO_INITDB_ROOT_USERNAME=gaia -e MONGO_INITDB_ROOT_PASSWORD=gaia \
     --tmpfs "/data/db:rw,noexec,nosuid,size=$(_mongo_tmpfs)" \
     -p "127.0.0.1:${MONGO_PORT}:27017" "$MONGO_IMAGE"
@@ -244,18 +244,14 @@ start_mongo() {
 _chroma_spec() { echo "${CHROMA_IMAGE}|${CHROMA_PORT}"; }
 
 start_chroma() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$CHROMA_NAME" "$(_chroma_spec)" "${restart[@]}" \
+  _run_labelled "$CHROMA_NAME" "$(_chroma_spec)" \
     -p "127.0.0.1:${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
 }
 
 _rabbitmq_spec() { echo "${RABBITMQ_IMAGE}|${RABBITMQ_PORT}"; }
 
 start_rabbitmq() {
-  local restart=()
-  ci_on_the_box && restart=(--restart unless-stopped)
-  _run_labelled "$RABBITMQ_NAME" "$(_rabbitmq_spec)" "${restart[@]}" \
+  _run_labelled "$RABBITMQ_NAME" "$(_rabbitmq_spec)" \
     -p "127.0.0.1:${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
 }
 
@@ -492,7 +488,7 @@ _prepare_shared() {
   echo "Postgres: ${pg_db} created empty"
 
   flush_redis_stripe "$redis_base" || ci_warn "Redis: flushing the lane stripe failed — continuing"
-  drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}_* failed — continuing"
+  drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}[_*] failed — continuing"
   # Fatal, unlike the warnings around it: the lane's collections share one
   # server with every other lane's, so a listing that failed cleared nothing.
   reset_chroma "$chroma_suffix" || ci_die "ChromaDB: could not list collections to clear those ending in ${chroma_suffix}"
@@ -581,14 +577,15 @@ flush_redis_stripe() {
     "for db in \$(seq $base $((base + REDIS_STRIPE - 1))); do redis-cli -n \$db flushdb >/dev/null; done"
 }
 
-# Every worker database of this lane: gaia_test_r<lane>_gw0, _gw1, ...
+# Every database of this lane: the app's gaia_test_r<lane> (MONGO_DB_NAME, the one the
+# live-server fuzz boots on) and the workers' gaia_test_r<lane>_gw0, _gw1, ...
 drop_mongo_databases() {
   local lane="$1"
   docker exec "$MONGO_NAME" mongosh --quiet \
     -u gaia -p gaia --authenticationDatabase admin \
     --eval "db.adminCommand({listDatabases:1,nameOnly:true}).databases
       .map(d => d.name)
-      .filter(n => /^gaia_test_r${lane}_/.test(n))
+      .filter(n => /^gaia_test_r${lane}(_|$)/.test(n))
       .forEach(n => { db.getSiblingDB(n).dropDatabase(); print('dropped ' + n); })"
 }
 
@@ -666,9 +663,9 @@ cmd_reset() {
   fi
 
   if drop_mongo_databases "$lane"; then
-    echo "MongoDB: dropped gaia_test_r${lane}_* databases"
+    echo "MongoDB: dropped gaia_test_r${lane}[_*] databases"
   else
-    ci_warn "MongoDB: dropping gaia_test_r${lane}_* databases failed"
+    ci_warn "MongoDB: dropping gaia_test_r${lane}[_*] databases failed"
   fi
 
   reset_chroma "$suffix" || ci_warn "ChromaDB: resetting collections ending in ${suffix} failed"

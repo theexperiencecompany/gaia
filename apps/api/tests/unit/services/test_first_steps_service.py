@@ -7,6 +7,7 @@ import pytest
 from app.models.first_steps_models import FirstStepKey, FirstStepsResponse, FirstStepsState
 from app.models.user_models import UserDocument
 from app.services.first_steps_service import get_first_steps, set_first_steps_collapsed
+from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import FirstStepsCollapsed
@@ -93,7 +94,7 @@ class TestGetFirstSteps:
         repos["integrations"].assert_awaited_once_with(USER_ID)
 
     async def test_connect_integration_counts_gmail(self, repos) -> None:
-        """Gmail is self-managed, so only the canonical status map counts it as connected."""
+        """A Gmail account counts through the canonical connected-set reader."""
         repos["integrations"].return_value = {"gmail": True, "notion": False}
 
         assert _done(await get_first_steps(USER_ID))[FirstStepKey.CONNECT_INTEGRATION] is True
@@ -120,7 +121,10 @@ class TestGetFirstSteps:
 
         assert _done(result)[FirstStepKey.CREATE_WORKFLOW] is True
         repos["workflows"].count_for_user.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, exclude_system_workflows=True
+            USER_ID,
+            unlisted_keys=UNLISTED_KEYS,
+            exclude_todo_workflows=True,
+            exclude_system_workflows=True,
         )
 
     async def test_collapsed_is_read_from_the_user_document(self, repos) -> None:

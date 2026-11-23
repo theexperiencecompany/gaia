@@ -173,7 +173,7 @@ GET_TODAY_TODOS = """
     - Empty list if no todos due today
     - Error if retrieval fails
 
-    Note: Uses user's timezone if specified in todos.
+    Note: Today is the user's local calendar day in their home timezone.
     """
 
 GET_UPCOMING_TODOS = """
@@ -189,10 +189,10 @@ GET_UPCOMING_TODOS = """
     - When user asks about upcoming todos
 
     Input:
-    - days: Optional, number of days to look ahead (default: 7)
+    - days: Optional, number of days after today to look ahead (default: 7)
 
     Output:
-    - List of TodoResponse objects due within the period
+    - List of TodoResponse objects due within the period; today's todos are not included
     - Empty list if no upcoming todos
     - Error if retrieval fails
 
@@ -499,13 +499,13 @@ GET_TODOS_SUMMARY = """
 
     Output:
     A comprehensive summary dictionary containing:
-    - today: List of todos due today with priorities
-    - overdue: List of overdue todos needing attention
-    - upcoming_week: Todos due in the next 7 days
+    - today: Todos due on the user's local today
+    - overdue: Open todos due before today
+    - upcoming_week: Todos due in the 7 days after today
     - high_priority: All high priority incomplete todos
-    - stats: Quick stats (total, completed today, completion rate)
+    - stats: Quick stats over every todo (total, completed today, completion rate)
     - by_project: Task counts grouped by project
-    - recently_completed: Tasks completed in last 24 hours
+    - recently_completed: Tasks completed today
     - next_deadline: The nearest upcoming deadline
 
     Note: This is the go-to tool for any "summary", "overview", or "briefing" request.

@@ -13,7 +13,7 @@
   ],
   "breadcrumbName": "AI Assistant With Memory",
   "heading": "An AI assistant that remembers what matters about you",
-  "answer": "GAIA is a personal AI assistant with long-term memory. After each conversation it quietly picks out what you said about yourself, such as preferences, routines, the people you work with and the projects you are on, and brings it back whenever it is relevant. You never re-explain that you prefer morning meetings or who Priya is. Every memory is visible in settings, where you can edit it or delete it.",
+  "answer": "GAIA is a personal AI assistant with long-term memory. It remembers what you tell it about yourself and brings it back when it matters, and every memory can be edited or deleted in settings.",
   "sections": [
     {
       "heading": "What GAIA remembers",

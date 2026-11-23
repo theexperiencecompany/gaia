@@ -69,7 +69,7 @@ This is how most people should use GAIA — you skip standing up Postgres, Mongo
 
 ### Self-host — full control
 
-<img src="apps/web/public/images/readme/self-host-installer.webp" alt="The GAIA installer: Node.js, the GAIA CLI and Docker installed, then GAIA downloading with a progress bar and a row per service" width="720" />
+<img src="apps/web/public/images/readme/self-host-installer.jpg" alt="The GAIA installer: Node.js, the GAIA CLI and Docker installed, then GAIA downloading with a progress bar and a row per service" width="720" />
 
 Your own server, your own keys and models, your data on your disks.
 

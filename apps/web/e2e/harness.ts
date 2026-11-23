@@ -10,16 +10,27 @@
  * (see `mise run wt:env`) work without edits.
  */
 
+import { expect, type Locator, type Page } from "@playwright/test";
+
 const WEB_PORT = process.env.WEB_PORT ?? "3000";
 const API_PORT = process.env.API_PORT ?? "8000";
 
 /**
- * The seeded dev user, matching `mise seed` / `mise dev --sim` defaults. Ports
- * are per-worktree but Mongo is shared, so two worktrees running e2e against the
- * same `DEV_USER` clobber each other's data — run one worktree at a time, or set
- * a distinct `DEV_USER` here AND matching `DEV_AUTH_BYPASS_EMAIL` on its API.
+ * The seeded dev user — `DEV_USER`, defined once in `mise.toml` [env] and shared
+ * with `mise seed` / `mise dev --sim`. Ports are per-worktree but Mongo is
+ * shared, so two worktrees running e2e against the same `DEV_USER` clobber each
+ * other's data — run one worktree at a time, or export a distinct `DEV_USER` for
+ * both this suite and that worktree's API.
  */
-export const DEV_USER = process.env.DEV_USER ?? "dev@gaia.local";
+export function devUser(): string {
+  const email = process.env.DEV_USER;
+  if (!email) {
+    throw new Error(
+      "DEV_USER is unset — it is defined in mise.toml [env]; run the suite through mise (`mise e2e:web`)",
+    );
+  }
+  return email;
+}
 
 /** Fail loud on malformed seed counts instead of sending NaN/negatives to the API. */
 function seedCount(name: string, fallback: number, min: number): number {
@@ -107,7 +118,7 @@ async function devRequest(
 
 /** Remove the dev user + owned data so each run starts from a clean slate. */
 export async function resetDevUser(): Promise<void> {
-  await devRequest(`/dev/users/${encodeURIComponent(DEV_USER)}`, {
+  await devRequest(`/dev/users/${encodeURIComponent(devUser())}`, {
     method: "DELETE",
     tolerate404: true,
   });
@@ -117,7 +128,7 @@ export async function resetDevUser(): Promise<void> {
 export async function mintDevUser(): Promise<void> {
   await devRequest("/dev/users", {
     method: "POST",
-    body: JSON.stringify({ email: DEV_USER }),
+    body: JSON.stringify({ email: devUser() }),
   });
 }
 
@@ -131,10 +142,215 @@ export async function seedDevData(): Promise<void> {
   await devRequest("/dev/seed", {
     method: "POST",
     body: JSON.stringify({
-      email: DEV_USER,
+      email: devUser(),
       todos: SEED_TODOS,
       conversations: SEED_CONVERSATIONS,
       pro: true,
     }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Driving and observing a conversation the way a user sees it
+// ---------------------------------------------------------------------------
+
+export const COMPOSER_PLACEHOLDER = "What can I do for you today?";
+
+/** The start of the server's line under a reply the model broke (REPLY_FAILURE_LINE[MODEL_ERROR]). */
+export const MODEL_ERROR_LINE = /couldn't finish that reply/;
+
+/** How often {@link watchConversation} and {@link sendWhen} read the page. */
+const SAMPLE_INTERVAL_MS = 100;
+
+export function composer(page: Page): Locator {
+  return page.getByPlaceholder(COMPOSER_PLACEHOLDER, { exact: false });
+}
+
+/** Type a message into the composer and send it. */
+export async function sendMessage(page: Page, text: string): Promise<void> {
+  const box = composer(page);
+  await box.fill(text);
+  await box.press("Enter");
+}
+
+/** Send `text` the moment `condition` holds, failing if it never does within `timeoutMs`. */
+export async function sendWhen(
+  page: Page,
+  text: string,
+  condition: () => Promise<boolean>,
+  timeoutMs = 60_000,
+): Promise<void> {
+  await expect
+    .poll(condition, { timeout: timeoutMs, intervals: [SAMPLE_INTERVAL_MS] })
+    .toBe(true);
+  await sendMessage(page, text);
+}
+
+/** The "GAIA is thinking..." row under the conversation, with its tool prefix. */
+export function loadingRow(page: Page): Locator {
+  return page.getByTestId("chat-loading-row");
+}
+
+export interface BubbleSnapshot {
+  messageId: string;
+  role: "user" | "bot";
+  text: string;
+}
+
+/** Every rendered bubble, in DOM order; empty bot messages render nothing and are skipped. */
+export function listBubbles(page: Page): Promise<BubbleSnapshot[]> {
+  return page.evaluate(() =>
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-slot="message-scroller-item"]',
+      ),
+    ].flatMap((item): BubbleSnapshot[] => {
+      const user = item.querySelector<HTMLElement>(
+        ".chat_bubble_container.user",
+      );
+      const bubble =
+        user ?? item.querySelector<HTMLElement>(".chatbubblebot_parent");
+      if (!bubble) return [];
+      return [
+        {
+          messageId: item.dataset.messageId ?? "",
+          role: user ? "user" : "bot",
+          // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
+          text: bubble.innerText.trim(),
+        },
+      ];
+    }),
+  );
+}
+
+/** The text bubbles of each bot message, in DOM order: what one reply split into. */
+export function botBubbleParts(page: Page): Promise<string[][]> {
+  return page.evaluate(() =>
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-slot="message-scroller-item"] .chatbubblebot_parent',
+      ),
+    ].map((message) =>
+      [...message.querySelectorAll<HTMLElement>(".imessage-bubble")].map(
+        // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
+        (bubble) => bubble.innerText.trim(),
+      ),
+    ),
+  );
+}
+
+/** The reaction badge GAIA left on a user bubble ("" when it has none). */
+export async function bubbleReactions(
+  page: Page,
+  messageId: string,
+): Promise<string> {
+  const badge = page
+    .locator(`[id="${messageId}"]`)
+    .getByRole("group", { name: "Reactions" });
+  return (await badge.count()) === 0
+    ? ""
+    : ((await badge.textContent()) ?? "").trim();
+}
+
+/** One reading of the page: the loading row's text (null when hidden) and how much conversation is on screen. */
+export interface ConversationSample {
+  /** Milliseconds since the watch started. */
+  t: number;
+  loading: string | null;
+  contentLength: number;
+  /** The watched lines (a card title, a reply) the conversation showed at this reading. */
+  shown: string[];
+}
+
+export interface ConversationWatch {
+  /** Epoch ms the samples' `t` counts from. */
+  startedAt: number;
+  /** Stop sampling and return every sample; rethrows if a reading failed. */
+  stop: () => Promise<ConversationSample[]>;
+}
+
+/**
+ * Sample the loading row, the conversation's size and which of `lines` it shows every
+ * {@link SAMPLE_INTERVAL_MS} until stopped, so a window can start and end at the reading
+ * a line first showed in, not when a later poll noticed it.
+ */
+export function watchConversation(
+  page: Page,
+  lines: readonly string[] = [],
+): ConversationWatch {
+  const samples: ConversationSample[] = [];
+  const started = Date.now();
+  let running = true;
+  const loop = (async () => {
+    while (running) {
+      const reading = await page.evaluate((watched) => {
+        const row = document.querySelector('[data-testid="chat-loading-row"]');
+        const content = document.querySelector<HTMLElement>(
+          '[data-slot="message-scroller-content"]',
+        );
+        const onScreen = new Set(
+          // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
+          (content?.innerText ?? "").split("\n").map((line) => line.trim()),
+        );
+        return {
+          loading: row ? (row.textContent ?? "").trim() : null,
+          contentLength: content?.textContent?.length ?? 0,
+          shown: watched.filter((line) => onScreen.has(line)),
+        };
+      }, lines);
+      samples.push({ t: Date.now() - started, ...reading });
+      await page.waitForTimeout(SAMPLE_INTERVAL_MS);
+    }
+  })();
+  return {
+    startedAt: started,
+    stop: async () => {
+      running = false;
+      await loop;
+      return samples;
+    },
+  };
+}
+
+/**
+ * The longest time the conversation kept changing while no loading row was
+ * shown: within each stretch of hidden-row samples, the time from its first
+ * change to its last. A reply landing once is one interval; text or cards
+ * still growing with nothing telling the user GAIA is busy is blind work.
+ */
+export function longestBlindWorkMs(samples: ConversationSample[]): number {
+  let longest = 0;
+  let firstChange: number | null = null;
+  for (let i = 1; i < samples.length; i += 1) {
+    const [before, now] = [samples[i - 1], samples[i]];
+    if (now.loading !== null || before.loading !== null) {
+      firstChange = null;
+      continue;
+    }
+    if (now.contentLength === before.contentLength) continue;
+    firstChange ??= before.t;
+    longest = Math.max(longest, now.t - firstChange);
+  }
+  return longest;
+}
+
+/** When the watch first read `line` on screen; throws when it never did. */
+export function firstShownAt(
+  samples: ConversationSample[],
+  line: string,
+): number {
+  const first = samples.find((s) => s.shown.includes(line));
+  if (!first) throw new Error(`The watch never read "${line}" on screen`);
+  return first.t;
+}
+
+/** Samples inside [fromMs, toMs] that showed no loading row. */
+export function loadingGaps(
+  samples: ConversationSample[],
+  fromMs: number,
+  toMs: number,
+): ConversationSample[] {
+  return samples.filter(
+    (s) => s.t >= fromMs && s.t <= toMs && s.loading === null,
+  );
 }

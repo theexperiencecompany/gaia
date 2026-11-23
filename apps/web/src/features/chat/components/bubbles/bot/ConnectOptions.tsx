@@ -1,7 +1,8 @@
-import { Button } from "@heroui/button";
 import { PuzzleIcon } from "@icons";
 import { useRouter } from "next/navigation";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import type { ConnectOptionsData } from "@/features/integrations/types";
 
 interface ConnectOptionsProps {
@@ -18,31 +19,29 @@ export default function ConnectOptions({
   connect_options,
 }: ConnectOptionsProps) {
   const router = useRouter();
+  const { getIntegrationIconUrl } = useIntegrationLookup();
   if (!connect_options?.options?.length) return null;
 
   return (
     <div className="flex flex-wrap gap-2">
       {connect_options.options.map((option) => (
-        <Button
+        <GaiaButton
           key={option.href}
           size="sm"
-          variant="flat"
-          startContent={
-            option.integration_id ? (
-              getToolCategoryIcon(option.integration_id, {
-                size: 16,
-                width: 16,
-                height: 16,
-                showBackground: false,
-              })
-            ) : (
-              <PuzzleIcon className="size-4 shrink-0" />
-            )
-          }
+          variant="default-soft"
           onPress={() => router.push(option.href)}
         >
+          {option.integration_id ? (
+            <IntegrationIcon
+              integrationId={option.integration_id}
+              iconUrl={getIntegrationIconUrl(option.integration_id)}
+              size={16}
+            />
+          ) : (
+            <PuzzleIcon className="size-4 shrink-0" />
+          )}
           {option.label}
-        </Button>
+        </GaiaButton>
       ))}
     </div>
   );

@@ -1,19 +1,18 @@
 "use client";
 
-import { Badge } from "@heroui/badge";
-import { Button } from "@heroui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Badge, Popover, Spinner, Tabs, Tooltip } from "@heroui/react";
 import { NotificationIcon } from "@icons";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { track } from "@/lib/analytics";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
+import { NotificationCard } from "./NotificationCard";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
-import { NotificationItem } from "./NotificationItem";
+import { NotificationsEmptyState } from "./NotificationsEmptyState";
+import { UnreadCountChip } from "./UnreadCountChip";
 
 interface NotificationCenterProps {
   className?: string;
@@ -24,7 +23,6 @@ export function NotificationCenter({
 }: NotificationCenterProps) {
   const [activeTab, setActiveTab] = useState<"unread" | "all">("unread");
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
-  const router = useRouter();
 
   const notificationOptions = useMemo(
     () => ({
@@ -41,6 +39,7 @@ export function NotificationCenter({
     loading,
     markAsRead,
     markAllAsRead,
+    refetch,
   } = useNotifications(notificationOptions);
 
   // The loaded page can undercount unread notifications, so gating on
@@ -74,116 +73,116 @@ export function NotificationCenter({
   return (
     <div className={`relative ${className}`}>
       <Popover>
-        <PopoverTrigger>
-          <div className="relative">
-            <Badge
-              color="primary"
-              shape="circle"
-              size="sm"
-              content={unreadCount > 99 ? "99+" : unreadCount}
-              isInvisible={unreadCount === 0}
-              // pointer-events-none lets the bell underneath capture hover/press;
-              // select-none keeps the count from being text-selected.
-              classNames={{ badge: "pointer-events-none select-none border-0" }}
-            >
-              <SidebarHeaderButton
-                aria-label="Notifications"
-                tooltip="Notifications"
-              >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
-              </SidebarHeaderButton>
-            </Badge>
-          </div>
-        </PopoverTrigger>
-
-        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
-          <Tabs
-            selectedKey={activeTab}
-            onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
-            variant="underlined"
-            fullWidth
+        {/* The bell is the popover's trigger itself: wrapped in Popover.Trigger it
+            would be a second button with its own tab stop. */}
+        <Tooltip>
+          <GaiaButton
+            isIconOnly
+            variant="ghost"
+            aria-label="Notifications"
+            tone="muted"
+            hoverTone="accent"
           >
-            <Tab
-              key="unread"
-              title={
+            {/* pointer-events-none on the count lets the bell underneath
+                capture hover/press; select-none keeps it from being
+                text-selected. */}
+            <Badge.Anchor>
+              <NotificationIcon className="min-h-[20px] min-w-[20px]" />
+              {unreadCount > 0 && (
                 <Badge
-                  color="primary"
-                  size="sm"
+                  color="accent"
                   placement="top-right"
-                  content={unreadCount > 99 ? "99+" : unreadCount}
-                  isInvisible={unreadCount === 0}
-                  classNames={{ badge: "select-none border-0" }}
+                  size="sm"
+                  className="pointer-events-none border-0 select-none"
                 >
-                  {/* right padding gives the corner-anchored count room so it
-                      sits after the label instead of overlapping it */}
-                  <span className="pr-5">Unread</span>
+                  {unreadCount > 99 ? "99+" : unreadCount}
                 </Badge>
-              }
-            />
-            <Tab key="all" title="All" />
-          </Tabs>
+              )}
+            </Badge.Anchor>
+          </GaiaButton>
+          <Tooltip.Content>Notifications</Tooltip.Content>
+        </Tooltip>
 
-          {/* Notifications list */}
-          <ScrollArea className="w-full" viewportClassName="max-h-[70vh]">
+        <Popover.Content
+          className={overlayVariants({
+            surface: "raised",
+            className: "mr-4 w-96 border-1 border-zinc-700 shadow-xl",
+          })}
+        >
+          <div className="flex w-full items-center justify-between gap-2 px-3 pt-3">
+            <Tabs
+              selectedKey={activeTab}
+              onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
+              variant="secondary"
+            >
+              <Tabs.List>
+                <Tabs.Tab id="unread">
+                  <div className="flex items-center gap-1.5">
+                    <span>Unread</span>
+                    <UnreadCountChip count={unreadCount} />
+                  </div>
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+                <Tabs.Tab id="all">
+                  All
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              </Tabs.List>
+            </Tabs>
+
+            {canMarkAllAsRead && (
+              <GaiaButton
+                size="sm"
+                variant="ghost"
+                tone="muted"
+                className="text-xs"
+                onPress={handleMarkAllAsRead}
+                isPending={isMarkingAllRead}
+              >
+                Mark all as read
+              </GaiaButton>
+            )}
+          </div>
+
+          <ScrollArea className="w-full" viewportClassName="max-h-[60vh]">
             {loading ? (
-              <div className="flex items-center justify-center p-8">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-50" />
+              <div className="flex items-center justify-center p-10">
+                <Spinner size="sm" color="accent" />
               </div>
             ) : filteredNotifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
-                <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
-                <p className="font-medium text-zinc-300">
-                  {activeTab === "unread"
-                    ? "No unread notifications"
-                    : "No notifications yet"}
-                </p>
-                <p className="mt-1 text-sm text-zinc-400">
-                  {activeTab === "unread"
-                    ? "All caught up!"
-                    : "Notifications will appear here when you receive them"}
-                </p>
+              <div className="flex items-center justify-center p-10">
+                <NotificationsEmptyState
+                  title={
+                    activeTab === "unread"
+                      ? "No unread notifications"
+                      : "No notifications yet"
+                  }
+                  description={
+                    activeTab === "unread"
+                      ? "All caught up!"
+                      : "Notifications will appear here when you receive them."
+                  }
+                />
               </div>
             ) : (
               <div className="w-full space-y-2 p-3">
                 {filteredNotifications.map((notification) => (
-                  <NotificationItem
+                  <NotificationCard
                     key={notification.id}
                     notification={notification}
+                    clampBody
                     onMarkAsRead={handleMarkAsRead}
+                    onRefresh={refetch}
                   />
                 ))}
               </div>
             )}
           </ScrollArea>
 
-          <NotificationConnectBanner variant="compact" />
-
-          {/* Footer */}
-          <div className="flex w-full items-center justify-evenly gap-3 p-3">
-            {canMarkAllAsRead && (
-              <Button
-                size="sm"
-                fullWidth
-                onPress={handleMarkAllAsRead}
-                isLoading={isMarkingAllRead}
-                isDisabled={isMarkingAllRead}
-              >
-                Mark all as read
-              </Button>
-            )}
-
-            <Button
-              fullWidth
-              size="sm"
-              variant={canMarkAllAsRead ? "bordered" : "solid"}
-              onPress={() => {
-                router.push("/notifications");
-              }}
-            >
-              View all notifications
-            </Button>
+          <div className="pb-3">
+            <NotificationConnectBanner variant="compact" />
           </div>
-        </PopoverContent>
+        </Popover.Content>
       </Popover>
     </div>
   );

@@ -8,7 +8,9 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import read_agent_configurable
+from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
+from app.models.agent_models import AgentConfigurableView, read_agent_configurable
 from app.models.trigger_gate_models import GateEdit
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -17,6 +19,13 @@ from app.models.workflow_models import (
     UpdateWorkflowRequest,
     Workflow,
 )
+from app.models.workflow_tool_models import (
+    DataT,
+    WorkflowStatusData,
+    WorkflowToolError,
+    WorkflowToolSuccess,
+)
+from app.services.wait_service import wait_for_user
 from app.services.workflow.subagent_output import FinalizedOutput
 from shared.py.wide_events import log
 
@@ -92,17 +101,14 @@ def ensure_trigger_config_object(
     return TriggerConfig.model_validate(trigger_config)
 
 
-# The two envelopes below stay plain dicts: every workflow tool returns them
-# straight out of a `-> dict[str, Any]` handler, and mypy rejects a model where
-# a plain `dict` is declared (Type Safety item 14).
-def error_response(error_code: str, message: str) -> dict[str, object]:
+def error_response(error_code: str, message: str) -> WorkflowToolError:
     """Return a standardized error response."""
     return {"success": False, "error": error_code, "message": message}
 
 
-def success_response(data: object, message: str | None = None) -> dict[str, object]:
+def success_response(data: DataT, message: str | None = None) -> WorkflowToolSuccess[DataT]:
     """Return a standardized success response."""
-    response: dict[str, object] = {"success": True, "data": data}
+    response: WorkflowToolSuccess[DataT] = {"success": True, "data": data}
     if message:
         response["message"] = message
     return response
@@ -197,8 +203,9 @@ async def create_workflow_directly(
     draft: FinalizedOutput,
     user_id: str,
     writer: StreamWriter,
+    delivery: WorkflowDelivery,
     user_timezone: str = "UTC",
-) -> dict[str, object] | None:
+) -> WorkflowToolSuccess[WorkflowStatusData] | None:
     """
     Create a workflow directly from a finalized draft.
 
@@ -234,6 +241,7 @@ async def create_workflow_directly(
             steps=None,
             generate_immediately=True,
             integration_ids=draft.integration_ids,
+            delivery=delivery,
         )
 
         workflow = await WorkflowService.create_workflow(
@@ -447,14 +455,15 @@ async def apply_workflow_edit(
     workflow: Workflow,
     user_id: str,
     writer: StreamWriter,
+    run: AgentConfigurableView,
     user_timezone: str = "UTC",
-) -> dict[str, object]:
+) -> WorkflowToolSuccess[WorkflowStatusData] | WorkflowToolError:
     """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
 
     Applies title/description/prompt and manual/scheduled trigger changes directly.
     Integration-trigger changes are NOT applied here (their config — channels,
     repos, calendars — must be set in the app's workflow editor); the caller is
-    told so the user can adjust it there.
+    told so the user can adjust it there, and run waits for the editor save.
     """
     from app.services.workflow.service import WorkflowService
 
@@ -462,6 +471,10 @@ async def apply_workflow_edit(
     trigger_config, needs_editor = _edited_trigger(draft, workflow, user_timezone)
     if trigger_config is not None:
         update_fields["trigger_config"] = trigger_config
+    if needs_editor and workflow.id:
+        await wait_for_user(
+            run, user_id, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, workflow.id, workflow.title
+        )
 
     if not update_fields:
         if needs_editor:

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShineBorder } from "@/components/ui/shine-border";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
@@ -36,16 +36,16 @@ export function PaywallNotice({ className }: PaywallNoticeProps = {}) {
       <div className="searchbar relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-zinc-800 px-4 py-2.5">
         <ShineBorder borderWidth={1} shineColor={["#00bbff", "#A7F3FF"]} />
         <p className="text-xs text-zinc-400">{copy.composer}</p>
-        <Button
+        <GaiaButton
           size="sm"
-          color="primary"
-          className="shrink-0 font-medium text-black"
+          className="shrink-0 font-medium"
           onPress={() =>
             openUpgradeModal(undefined, { source: "composer_notice" })
           }
+          variant="primary"
         >
           {copy.cta}
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

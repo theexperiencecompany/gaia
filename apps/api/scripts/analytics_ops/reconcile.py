@@ -186,28 +186,43 @@ def posthog_signals(posthog: PostHogReader, window: Window) -> Signals:
 def human_messages_by_source(db: Database[Document], window: Window) -> dict[str, int]:
     """Count user-typed messages per conversation source, by each message's own date."""
     pipeline: list[Document] = [
-        {"$match": {"messages.type": "user", "is_system_generated": {"$ne": True}}},
-        {"$unwind": "$messages"},
         # A first-contact message was stored at account linking, and a todo-run wake by its
         # schedule or trigger: neither has a chat turn the user sent behind it.
         {
             "$match": {
-                "messages.type": "user",
-                "messages.first_contact": {"$ne": True},
-                "messages.todo_run_wake": None,
+                "type": "user",
+                "first_contact": {"$ne": True},
+                "todo_run_wake": None,
             }
         },
-        {
-            "$project": {
-                "source": {"$ifNull": ["$source", WEB_AND_DESKTOP]},
-                "date": {"$toDate": "$messages.date"},
-            }
-        },
+        {"$set": {"date": {"$toDate": "$date"}}},
         {"$match": {"date": window.mongo_range()}},
-        {"$group": {"_id": "$source", "count": {"$sum": 1}}},
+        {
+            "$lookup": {
+                "from": "conversations",
+                "let": {"conversation_id": "$conversation_id", "user_id": "$user_id"},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$and": [
+                                    {"$eq": ["$conversation_id", "$$conversation_id"]},
+                                    {"$eq": ["$user_id", "$$user_id"]},
+                                ]
+                            }
+                        }
+                    },
+                    {"$project": {"_id": 0, "source": 1, "is_system_generated": 1}},
+                ],
+                "as": "head",
+            }
+        },
+        {"$unwind": "$head"},
+        {"$match": {"head.is_system_generated": {"$ne": True}}},
+        {"$group": {"_id": {"$ifNull": ["$head.source", WEB_AND_DESKTOP]}, "count": {"$sum": 1}}},
     ]
     counts: Counter[str] = Counter()
-    for row in db.conversations.aggregate(pipeline):
+    for row in db.conversation_entries.aggregate(pipeline):
         if row["_id"] not in NON_HUMAN_SOURCES:
             counts[_bucket(str(row["_id"]))] += int(str(row["count"]))
     return dict(counts)
@@ -321,7 +336,7 @@ def compare(posthog: Signals, truth: Signals) -> list[Row]:
             f"messages, {source}",
             posthog.messages_by_source.get(source, 0),
             truth.messages_by_source.get(source, 0),
-            "conversations.messages type=user",
+            "conversation_entries type=user",
         )
         for source in sources
     ]

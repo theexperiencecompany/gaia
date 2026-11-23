@@ -13,6 +13,8 @@ import pytest
 
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.integration_tool import add_custom_mcp_server
+from app.constants.integrations import IntegrationStatus
+from app.schemas.integrations.responses import CustomIntegrationConnectionResult
 from tests.helpers import captured_wide_event
 
 _MODULE = "app.agents.tools.integration_tool"
@@ -68,7 +70,7 @@ async def test_no_auth_server_connects_and_reports_tool_count(seams):
     seams.mcp_client.probe_connection.return_value = {}
     seams.create_connect.return_value = (
         _integration(name="Sentry"),
-        {"status": "connected", "tools_count": 3},
+        CustomIntegrationConnectionResult(status=IntegrationStatus.CONNECTED, tools_count=3),
     )
 
     async with captured_wide_event() as event:
@@ -94,7 +96,10 @@ async def test_no_auth_server_connects_and_reports_tool_count(seams):
 async def test_no_auth_server_missing_tool_count_reports_zero(seams):
     # tools_count absent -> the "or 0" fallback, not a crash or a blank.
     seams.mcp_client.probe_connection.return_value = {}
-    seams.create_connect.return_value = (_integration(name="Sentry"), {"status": "connected"})
+    seams.create_connect.return_value = (
+        _integration(name="Sentry"),
+        CustomIntegrationConnectionResult(status=IntegrationStatus.CONNECTED),
+    )
 
     result = await _run()
 
@@ -105,7 +110,9 @@ async def test_oauth_server_shows_card_and_never_leaks_the_oauth_url(seams):
     seams.mcp_client.probe_connection.return_value = {"requires_auth": True, "auth_type": "oauth"}
     seams.create_connect.return_value = (
         _integration(integration_id="int-oauth"),
-        {"status": "requires_oauth", "oauth_url": "https://evil.example/secret-state-token"},
+        CustomIntegrationConnectionResult(
+            status="requires_oauth", oauth_url="https://evil.example/secret-state-token"
+        ),
     )
 
     result = await _run()
@@ -143,7 +150,7 @@ async def test_auth_required_but_not_bearer_still_connects(seams):
     seams.mcp_client.probe_connection.return_value = {"requires_auth": True, "auth_type": "oauth"}
     seams.create_connect.return_value = (
         _integration(),
-        {"status": "connected", "tools_count": 1},
+        CustomIntegrationConnectionResult(status=IntegrationStatus.CONNECTED, tools_count=1),
     )
 
     result = await _run()
@@ -165,7 +172,10 @@ async def test_probe_auth_type_is_carried_only_when_known(seams, probed, expecte
     # missing type) is dropped to None. requires_auth is False so this stays on
     # the connect path, not the bearer hand-off.
     seams.mcp_client.probe_connection.return_value = {"requires_auth": False, "auth_type": probed}
-    seams.create_connect.return_value = (_integration(), {"status": "connected", "tools_count": 0})
+    seams.create_connect.return_value = (
+        _integration(),
+        CustomIntegrationConnectionResult(status=IntegrationStatus.CONNECTED, tools_count=0),
+    )
 
     await _run()
 
@@ -217,7 +227,7 @@ async def test_trailing_slash_url_probed_and_stored_verbatim(seams):
     seams.mcp_client.probe_connection.return_value = {}
     seams.create_connect.return_value = (
         _integration(),
-        {"status": "connected", "tools_count": 0},
+        CustomIntegrationConnectionResult(status=IntegrationStatus.CONNECTED, tools_count=0),
     )
 
     await _run(server_url=raw)
@@ -256,7 +266,10 @@ async def test_a_name_matching_no_catalog_field_is_not_a_redirect(seams):
     # A name that matches neither id, name, nor short_name proceeds to probe —
     # proving the catalog guard is a real match, not an always-true short circuit.
     seams.mcp_client.probe_connection.return_value = {}
-    seams.create_connect.return_value = (_integration(), {"status": "connected", "tools_count": 0})
+    seams.create_connect.return_value = (
+        _integration(),
+        CustomIntegrationConnectionResult(status=IntegrationStatus.CONNECTED, tools_count=0),
+    )
     with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", _CATALOG):
         result = await _run(name="Totally Unrelated")
 
@@ -283,7 +296,7 @@ async def test_failed_connect_keeps_record_and_surfaces_id(seams):
     seams.mcp_client.probe_connection.return_value = {}
     seams.create_connect.return_value = (
         _integration(integration_id="int-9", name="Sentry"),
-        {"status": "failed", "error": "boom"},
+        CustomIntegrationConnectionResult(status="failed", error="boom"),
     )
 
     result = await _run()
@@ -296,7 +309,10 @@ async def test_failed_connect_keeps_record_and_surfaces_id(seams):
 
 async def test_failed_connect_without_error_uses_a_default_reason(seams):
     seams.mcp_client.probe_connection.return_value = {}
-    seams.create_connect.return_value = (_integration(integration_id="int-9"), {"status": "failed"})
+    seams.create_connect.return_value = (
+        _integration(integration_id="int-9"),
+        CustomIntegrationConnectionResult(status="failed"),
+    )
 
     result = await _run()
 

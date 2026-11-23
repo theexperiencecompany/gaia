@@ -9,7 +9,7 @@ working-tree files and touches no branch.
 Usage:
   mise pr:conflicts [PR ...]   default: your open, non-draft PRs
 
-Exit codes: 0 = every PR and pair merges cleanly; 1 = a conflict; 2 = usage/git error.
+Exit codes: 0 = every PR and pair merges cleanly; 1 = a conflict; 2 = usage, git or GitHub error.
 """
 
 from __future__ import annotations
@@ -17,16 +17,23 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from itertools import combinations
-import json
+from pathlib import Path
 import subprocess
 import sys
 
-from gaia_gh import eprint, gh
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
+from gaia_gh import eprint, parse_repo
+from lib.github import GitHub, GitHubError, field_of, records
 
 BASE_BRANCH = "master"
-GH_TIMEOUT_S = 30
 PR_REF_PREFIX = "refs/pr-conflicts"
 FILES_SHOWN = 5
+SEARCH_LIMIT = 100
+MY_OPEN_PRS_QUERY = f"""
+query($q:String!){{ search(query:$q,type:ISSUE,first:{SEARCH_LIMIT}){{
+  issueCount nodes{{ ... on PullRequest {{ number }} }} }} }}
+"""
 
 
 @dataclass(frozen=True)
@@ -69,15 +76,15 @@ def describe(files: tuple[str, ...]) -> str:
     return f"{shown} and {hidden} more" if hidden > 0 else shown
 
 
-def default_prs() -> list[int]:
-    rc, out, err = gh(
-        ["pr", "list", "--author", "@me", "--state", "open", "--json", "number,isDraft"],
-        GH_TIMEOUT_S,
-    )
-    if rc != 0:
-        eprint(f"gh pr list failed:\n{err.strip()[:400]}")
+def default_prs(github: GitHub, owner: str, name: str) -> list[int]:
+    """Your open, non-draft PRs in this repo, every one of them or none."""
+    query = f"repo:{owner}/{name} is:pr is:open draft:false author:@me"
+    search = field_of(github.graphql(MY_OPEN_PRS_QUERY, {"q": query}), "search", dict)
+    count = field_of(search, "issueCount", int)
+    if count > SEARCH_LIMIT:
+        eprint(f"pr:conflicts: you have {count} open PRs, over {SEARCH_LIMIT}; pass the numbers")
         sys.exit(2)
-    return sorted(pr["number"] for pr in json.loads(out) if not pr["isDraft"])
+    return sorted(field_of(pr, "number", int) for pr in records(search, "nodes"))
 
 
 def fetch(prs: list[int]) -> None:
@@ -93,7 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("prs", nargs="*", type=int, help="PR numbers (default: your open PRs)")
     args = parser.parse_args(argv)
-    prs = sorted(set(args.prs)) or default_prs()
+    try:
+        prs = sorted(set(args.prs)) or default_prs(GitHub.from_env(), *parse_repo())
+    except GitHubError as err:
+        eprint(f"pr:conflicts: listing your open PRs failed — {err}")
+        return 2
     if not prs:
         print("no open PRs to check")
         return 0

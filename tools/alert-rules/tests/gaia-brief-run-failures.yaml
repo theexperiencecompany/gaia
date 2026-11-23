@@ -1,0 +1,38 @@
+# gaia-brief-run-failures — fires when more than a tenth of an hour's brief runs failed.
+#
+# gaia_brief_run_total{kind,outcome} is the brief pipeline's run counter on the worker's
+# REGISTRY; a run that raised counts outcome="failed".
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-brief-run-failures fires when a fifth of the runs fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_brief_run_total{kind="daily",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_brief_run_total{kind="daily",outcome="sent"}'
+        values: '0+4x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-brief-run-failures
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                Users whose brief run failed got no brief this morning. The kind label says daily or weekly. Find the failed runs in the worker's wide events (workflow.briefing_outcome is absent, errors[] holds the cause) and fix what they share: a model provider, the edition renderer, Mongo.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-run-failures
+
+  - name: gaia-brief-run-failures stays quiet on a rare failure among many sends
+    interval: 1m
+    input_series:
+      - series: 'gaia_brief_run_total{kind="daily",outcome="failed"}'
+        values: '0x30 1x30'
+      - series: 'gaia_brief_run_total{kind="daily",outcome="sent"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-brief-run-failures
+        exp_alerts: []

@@ -52,13 +52,13 @@ const LOG_LEVEL_NAMES: Record<BotLogLevel, string> = {
   audit: "AUDIT",
 };
 
-type JsonValue =
+type LogValue =
   | string
   | number
   | boolean
   | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  | LogValue[]
+  | { [key: string]: LogValue };
 
 export type BotLogFields = Record<string, unknown>;
 
@@ -233,7 +233,7 @@ export function sanitizeErrorForLog(error: unknown): BotLogFields {
   return fields;
 }
 
-function toJsonValue(value: unknown, depth = 0): JsonValue {
+function toJsonValue(value: unknown, depth = 0): LogValue {
   if (depth > 3) return "[truncated]";
   if (value === null) return null;
 
@@ -263,7 +263,7 @@ function toJsonValue(value: unknown, depth = 0): JsonValue {
   }
 
   if (valueType === "object") {
-    const out: Record<string, JsonValue> = {};
+    const out: Record<string, LogValue> = {};
     for (const [key, entry] of Object.entries(
       value as Record<string, unknown>,
     )) {
@@ -308,8 +308,8 @@ function buildRecord(
   event: string,
   fields?: BotLogFields,
   error?: unknown,
-): Record<string, JsonValue> {
-  const record: Record<string, JsonValue> = {
+): Record<string, LogValue> {
+  const record: Record<string, LogValue> = {
     time,
     level: LOG_LEVEL_NAMES[level],
     env: resolveEnv(),
@@ -351,11 +351,11 @@ function buildRecord(
  * so the loss is visible in Loki rather than silent. Mirrors `_truncated_entry`
  * in `libs/shared/py/logging.py`.
  */
-function capLineSize(record: Record<string, JsonValue>, line: string): string {
+function capLineSize(record: Record<string, LogValue>, line: string): string {
   const originalSizeBytes = Buffer.byteLength(line, "utf8");
   if (originalSizeBytes <= MAX_JSON_LINE_BYTES) return line;
 
-  const truncated: Record<string, JsonValue> = {};
+  const truncated: Record<string, LogValue> = {};
   for (const key of ENVELOPE_KEYS) truncated[key] = record[key];
   truncated.message = String(record.message).slice(
     0,

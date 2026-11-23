@@ -7,6 +7,7 @@ the phase lands on PERSONALIZATION_COMPLETE in one write.
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,7 +27,6 @@ import pytest
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
-    FIRST_CONVERSATION_ID_FIELD,
     GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
@@ -171,6 +171,20 @@ def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
+def store_timezone() -> Iterator[AsyncMock]:
+    """Stub the one timezone setter; the tests that care assert on it."""
+    with patch(f"{SERVICE}.set_user_timezone", AsyncMock(return_value=MagicMock())) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def provision() -> Iterator[AsyncMock]:
+    """Stub briefing provisioning; the tests that care assert on it."""
+    with patch(f"{SERVICE}.provision_briefing_workflows", AsyncMock(return_value=[])) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
 def no_llm_question() -> Iterator[MagicMock]:
     """Stub the first-question resolver so no test reaches a model or Redis.
 
@@ -237,8 +251,21 @@ class TestCompleteOnboarding:
 
         result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["_id"] == sample_user_id
-        assert result["user_id"] == sample_user_id
+        assert result.user_id == sample_user_id
+
+    async def test_a_new_user_gets_the_briefing_workflows(
+        self,
+        mock_repo: MagicMock,
+        provision: AsyncMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = sample_user
+
+        await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        provision.assert_awaited_once_with(sample_user_id)
 
     async def test_persists_the_completed_phase(
         self,
@@ -253,7 +280,7 @@ class TestCompleteOnboarding:
             persisting_repo.complete_onboarding.await_args.kwargs["phase"]
             == OnboardingPhase.COMPLETED
         )
-        assert result["onboarding"]["phase"] == OnboardingPhase.COMPLETED.value
+        assert result.onboarding.phase == OnboardingPhase.COMPLETED.value
 
     async def test_queues_no_job_and_seeds_nothing(
         self,
@@ -297,11 +324,11 @@ class TestCompleteOnboarding:
         composed = seed.await_args.args[1]
         assert composed.question == "You're an engineer. What's first?"
         mock_repo.set_first_conversation_id.assert_awaited_once_with(sample_user_id, "conv-1")
-        assert result["onboarding"][GETTING_STARTED_CONVERSATION_ID_FIELD] == "conv-1"
+        assert result.onboarding.getting_started_conversation_id == "conv-1"
         # The legacy holo-card field is a different conversation; the seed must
         # not squat on it. It is now a declared field on OnboardingSubdocument,
         # so it serializes as null rather than being absent.
-        assert result["onboarding"][FIRST_CONVERSATION_ID_FIELD] is None
+        assert result.onboarding.first_message_conversation_id is None
 
     async def test_the_closing_question_is_resolved_for_this_user_and_these_answers(
         self,
@@ -390,8 +417,8 @@ class TestCompleteOnboarding:
         ):
             result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["user_id"] == sample_user_id
-        assert result["onboarding"]["completed"] is True
+        assert result.user_id == sample_user_id
+        assert result.onboarding.completed is True
         mock_repo.set_first_conversation_id.assert_not_awaited()
 
     async def test_a_seed_that_returned_no_id_writes_nothing(
@@ -407,7 +434,7 @@ class TestCompleteOnboarding:
         with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value=None)):
             result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["user_id"] == sample_user_id
+        assert result.user_id == sample_user_id
         mock_repo.set_first_conversation_id.assert_not_awaited()
 
     async def test_captures_the_completion_event_once(
@@ -505,6 +532,7 @@ class TestCompleteOnboarding:
     async def test_a_replay_captures_nothing(
         self,
         mock_repo: MagicMock,
+        provision: AsyncMock,
         sample_user: UserDocument,
         sample_user_id: str,
         sample_onboarding_request: OnboardingRequest,
@@ -517,6 +545,38 @@ class TestCompleteOnboarding:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         capture.assert_not_called()
+
+    async def test_a_replay_provisions_the_briefs_a_failed_first_submit_left_out(
+        self,
+        mock_repo: MagicMock,
+        provision: AsyncMock,
+        sample_user: UserDocument,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = sample_user
+
+        await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        provision.assert_awaited_once_with(sample_user_id)
+
+    async def test_a_provisioning_failure_on_replay_fails_the_submit_loudly(
+        self,
+        mock_repo: MagicMock,
+        provision: AsyncMock,
+        sample_user: UserDocument,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = sample_user
+        provision.side_effect = RuntimeError("workflow store down")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        assert exc_info.value.status_code == 500
 
     async def test_user_not_found(
         self,
@@ -546,11 +606,13 @@ class TestCompleteOnboarding:
 
         result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["_id"] == sample_user_id
+        assert result.user_id == sample_user_id
 
+    @pytest.mark.regression
     async def test_sets_timezone(
         self,
         mock_repo: MagicMock,
+        store_timezone: AsyncMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
@@ -561,11 +623,12 @@ class TestCompleteOnboarding:
 
         await complete_onboarding(sample_user_id, request)
 
-        assert mock_repo.complete_onboarding.call_args.kwargs["timezone"] == "America/New_York"
+        store_timezone.assert_awaited_once_with(sample_user_id, "America/New_York")
 
     async def test_passes_exact_normalized_kwargs_to_repository(
         self,
         mock_repo: MagicMock,
+        store_timezone: AsyncMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
@@ -578,9 +641,9 @@ class TestCompleteOnboarding:
 
         await complete_onboarding(sample_user_id, request)
 
+        store_timezone.assert_awaited_once_with(sample_user_id, "UTC")
         mock_repo.complete_onboarding.assert_awaited_once_with(
             sample_user_id,
-            timezone="UTC",
             phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.PENDING,
             preferences=OnboardingPreferences(
@@ -593,6 +656,7 @@ class TestCompleteOnboarding:
     async def test_an_absent_timezone_is_not_written(
         self,
         mock_repo: MagicMock,
+        store_timezone: AsyncMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
@@ -601,7 +665,7 @@ class TestCompleteOnboarding:
 
         await complete_onboarding(sample_user_id, request)
 
-        assert mock_repo.complete_onboarding.await_args.kwargs["timezone"] is None
+        store_timezone.assert_not_awaited()
 
     async def test_duplicate_needs_are_deduped_in_selection_order(self) -> None:
         request = OnboardingRequest(
@@ -1136,6 +1200,7 @@ class TestGetUserOnboardingStatus:
         result = await get_user_onboarding_status(sample_user_id)
 
         assert result.completed is True
+        assert result.completed_at == datetime(2024, 1, 1, tzinfo=UTC)
         assert result.preferences.profession == "Engineer"
 
     async def test_user_not_found_raises_404(
@@ -1370,8 +1435,7 @@ class TestUpdateOnboardingPreferences:
         prefs = OnboardingPreferences(profession="Designer", response_style="brief")
         result = await update_onboarding_preferences(sample_user_id, prefs)
 
-        assert result["_id"] == sample_user_id
-        assert result["user_id"] == sample_user_id
+        assert result.user_id == sample_user_id
 
     async def test_user_not_found(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.update_onboarding_preferences.return_value = None
@@ -1446,7 +1510,7 @@ class TestOnboardingServiceLogPins:
         with patch(f"{SERVICE}.log") as log:
             result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert result["_id"] == sample_user_id
+        assert result.user_id == sample_user_id
         mock_repo.get.assert_awaited_once_with(sample_user_id)
         log.info.assert_called_once_with(
             f"{LogTag.ONBOARDING} complete_onboarding replay — onboarding already submitted",
@@ -1557,7 +1621,6 @@ class TestCompleteOnboardingExactKwargs:
         await complete_onboarding(sample_user_id, request)
 
         kwargs = mock_repo.complete_onboarding.await_args.kwargs
-        assert kwargs["timezone"] == "UTC"
         assert kwargs["preferences"] == OnboardingPreferences(
             profession="Engineer",
             needs=[OnboardingNeed.MORNINGS],

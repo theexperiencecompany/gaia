@@ -1,4 +1,3 @@
-import { Alert01Icon } from "@icons";
 import {
   type ActionEvent,
   type ParseResult,
@@ -7,6 +6,10 @@ import {
 import { dispatchOpenUIAction, normalizeOpenUICode } from "@shared/utils";
 import React from "react";
 import { genericLibrary } from "@/config/openui/genericLibrary";
+import {
+  OpenUIErrorBoundary,
+  OpenUIErrorCard,
+} from "@/config/openui/OpenUIErrorBoundary";
 import { useAppendToInput } from "@/stores/composerStore";
 
 interface OpenUIRendererProps {
@@ -23,23 +26,6 @@ function OpenUIShimmer() {
         <div className="h-3 w-2/3 rounded-lg bg-zinc-700/70" />
       </div>
       <div className="mt-4 h-24 w-full rounded-xl bg-zinc-700/50" />
-    </div>
-  );
-}
-
-function OpenUIErrorCard({ code, error }: { code: string; error?: string }) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
-      <div className="flex items-center gap-2 mb-2">
-        <Alert01Icon className="h-4 w-4 text-red-400 shrink-0" />
-        <p className="text-sm font-medium text-red-400">
-          Component failed to render
-        </p>
-      </div>
-      {error && <p className="text-xs text-zinc-500 mb-2">{error}</p>}
-      <pre className="rounded-xl bg-zinc-900 p-3 text-xs text-zinc-400 overflow-x-auto whitespace-pre-wrap break-all">
-        {code}
-      </pre>
     </div>
   );
 }
@@ -129,44 +115,6 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
       </div>
     </>
   );
-}
-
-class OpenUIErrorBoundary extends React.Component<
-  { children: React.ReactNode; code: string },
-  { hasError: boolean; errorMessage: string }
-> {
-  constructor(props: { children: React.ReactNode; code: string }) {
-    super(props);
-    this.state = { hasError: false, errorMessage: "" };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, errorMessage: error.message };
-  }
-
-  override componentDidUpdate(prevProps: { code: string }) {
-    if (this.state.hasError && prevProps.code !== this.props.code) {
-      this.setState({ hasError: false, errorMessage: "" });
-    }
-  }
-
-  override componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error("[OpenUIRenderer] Render error:", error, info, {
-      code: this.props.code,
-    });
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return (
-        <OpenUIErrorCard
-          code={this.props.code}
-          error={this.state.errorMessage}
-        />
-      );
-    }
-    return this.props.children;
-  }
 }
 
 export default function OpenUIRenderer({

@@ -9,7 +9,6 @@ every write automatically.
 
 from datetime import datetime
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.payment_models import SubscriptionDocument, SubscriptionUpdate
 
@@ -19,7 +18,6 @@ class SubscriptionsRepository(MongoRepository[SubscriptionDocument, Subscription
     document_model = SubscriptionDocument
     update_model = SubscriptionUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_active_for_user(self, user_id: str) -> SubscriptionDocument | None:
         return await self._find_one({"user_id": user_id, "status": "active"})
@@ -55,7 +53,7 @@ class SubscriptionsRepository(MongoRepository[SubscriptionDocument, Subscription
 
         The local reset tool's way back to the paywall. Nothing in the product
         calls this: a real cancellation keeps its history."""
-        return await self._delete_many({"user_id": user_id}, scope=REPO_GLOBAL_SCOPE)
+        return await self._delete_many({"user_id": user_id})
 
     async def get_by_dodo_id(self, dodo_subscription_id: str) -> SubscriptionDocument | None:
         return await self._find_one({"dodo_subscription_id": dodo_subscription_id})
@@ -88,7 +86,6 @@ class SubscriptionsRepository(MongoRepository[SubscriptionDocument, Subscription
                     {"last_event_at": {"$lte": if_not_newer_than}},
                 ]
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
         return updated is not None

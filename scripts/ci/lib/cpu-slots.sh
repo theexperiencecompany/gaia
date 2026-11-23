@@ -126,7 +126,7 @@ _cpu_slots_dir() {
 # active (16 workers) the loadavg stayed at 5-10 and nothing timed out.
 #
 # nproc * 3 / 2 = 24 is the value between them: three 8-worker mutation shards
-# (mutation.py mutant_workers is nproc/2) plus headroom for a test slice, a
+# (mutation.py mutant_workers is nproc/2 on the box) plus headroom for a test slice, a
 # lone run's own 16 xdist workers still fitting exactly.
 _cpu_slots_total() {
   if _cpu_slots_is_uint "${GAIA_CPU_TOKENS:-}" && [ "${GAIA_CPU_TOKENS}" -ge 1 ]; then

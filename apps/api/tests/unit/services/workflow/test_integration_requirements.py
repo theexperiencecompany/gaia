@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.workflow.integration_requirements import confirm_disconnected
+from app.models.workflow_models import TriggerConfig, TriggerType
+from app.services.workflow.integration_requirements import (
+    compute_required_integrations,
+    confirm_disconnected,
+)
 
 MODULE = "app.services.workflow.integration_requirements"
 STATUS_TARGET = f"{MODULE}.get_all_integrations_status"
@@ -48,3 +52,18 @@ class TestConfirmDisconnected:
         with patch(STATUS_TARGET, AsyncMock()) as status:
             assert await confirm_disconnected(USER_ID, []) == []
         status.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestTheTriggerCountsAsARequirement:
+    def test_an_integration_trigger_requires_its_integration(self) -> None:
+        trigger = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+
+        assert compute_required_integrations([], trigger) == {"gmail"}
+
+    def test_a_schedule_trigger_requires_nothing_even_with_a_stale_trigger_name(self) -> None:
+        trigger = TriggerConfig(
+            type=TriggerType.SCHEDULE, cron_expression="0 9 * * *", trigger_name="gmail_new_message"
+        )
+
+        assert compute_required_integrations([], trigger) == set()

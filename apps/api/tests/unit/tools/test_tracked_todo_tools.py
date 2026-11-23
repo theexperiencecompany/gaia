@@ -52,9 +52,11 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
 )
 from app.constants import todos as todo_constants
-from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, WaitingOn
+from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, TodoCompleter, WaitingOn
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.models import agent_models
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -65,6 +67,7 @@ from app.models.todo_models import (
     TrackedTodoCreation,
 )
 from app.models.user_models import UserDocument
+from app.services.links.placeholders import link_placeholder
 from app.services.todos import errors as todo_errors
 from app.services.todos.errors import ExternalRefTakenError, OpenStateError, UnwatchedTodoKeptError
 from app.services.todos.todo_service import TodoService
@@ -537,7 +540,7 @@ class TestUpdateTrackedTodoValidation:
                 AsyncMock(return_value="Asia/Kolkata"),
             ) as user_tz,
         ):
-            result = await tool_coroutine(update_tracked_todo)(
+            result = await tool_coroutine(update_tracked_todo, str)(
                 config=_config(), todo_id="t1", scheduled_at=""
             )
         assert result == (
@@ -547,7 +550,7 @@ class TestUpdateTrackedTodoValidation:
         )
         user_tz.assert_awaited_once_with("u1")
 
-    @pytest.mark.parametrize("value", [True, False])
+    @pytest.mark.parametrize("value", [WorkflowDelivery.NOW, WorkflowDelivery.SILENT])
     async def test_toggling_delivery_writes_that_field(self, value):
         """A mistyped key or a dropped value leaves the todo on its old setting, silently."""
         existing = TodoDocument(id="t1", user_id="u1", title="t")
@@ -562,14 +565,21 @@ class TestUpdateTrackedTodoValidation:
                 new_callable=AsyncMock,
                 return_value=existing,
             ) as update,
+            patch(
+                "app.services.briefing.held.release_held_items", new_callable=AsyncMock
+            ) as release,
         ):
             result = await update_tracked_todo.coroutine(
-                config=_config(), todo_id="t1", notify_on_run=value
+                config=_config(), todo_id="t1", delivery=value
             )
 
         written = update.await_args.kwargs["update"]
-        assert written.model_dump(exclude_unset=True) == {"notify_on_run": value}
-        assert "notify_on_run" in result
+        assert written.model_dump(exclude_unset=True) == {"delivery": value}
+        assert "delivery" in result
+        # Tell me now owes at once what the todo held for the brief.
+        assert release.await_args_list == (
+            [call("u1", source_ids=["t1"])] if value is WorkflowDelivery.NOW else []
+        )
 
     async def test_todo_not_found_returns_error(self):
         with patch(
@@ -777,7 +787,7 @@ class TestCreateTrackedTodoValidation:
             await create_tracked_todo.coroutine(config=_config(), title="t")
 
         # Unset reaches the service, which delivers a top-level todo's runs and not a sub-todo's.
-        assert create.await_args.kwargs["notify_on_run"] is None
+        assert create.await_args.kwargs["delivery"] is None
 
     @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
     async def test_a_todo_with_no_next_step_gets_a_refusal_the_model_can_act_on(self) -> None:
@@ -793,7 +803,7 @@ class TestCreateTrackedTodoValidation:
                 AsyncMock(return_value="Asia/Kolkata"),
             ),
         ):
-            result = await tool_coroutine(create_tracked_todo)(config=_config(), title="t")
+            result = await tool_coroutine(create_tracked_todo, str)(config=_config(), title="t")
 
         assert result == (
             "Not created: an open tracked todo needs a next step, so it can never be forgotten.\n"
@@ -856,9 +866,11 @@ class TestCreateTrackedTodoValidation:
                 ),
                 reopened=False,
             )
-            await create_tracked_todo.coroutine(config=_config(), title="t", notify_on_run=False)
+            await create_tracked_todo.coroutine(
+                config=_config(), title="t", delivery=WorkflowDelivery.SILENT
+            )
 
-        assert create.await_args.kwargs["notify_on_run"] is False
+        assert create.await_args.kwargs["delivery"] is WorkflowDelivery.SILENT
 
     @pytest.mark.regression
     @pytest.mark.parametrize(("recurrence", "message"), _REFUSED_RECURRENCES)
@@ -976,7 +988,45 @@ class TestCompleteTrackedTodo:
             )
         assert "could not complete" in result
 
-    async def test_success_returns_confirmation(self):
+    async def test_success_returns_confirmation_with_the_link(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=TodoDocument(id="t1", user_id="u1", title="t"),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as complete,
+            patch(
+                "app.agents.tools.tracked_todo_tools.attach_link",
+                new_callable=AsyncMock,
+                return_value=ShortLink(
+                    slug="abcdefghijk",
+                    user_id="user-1",
+                    target=RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"),
+                ),
+            ) as mint,
+        ):
+            result = await complete_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", summary="done"
+            )
+        assert "completed and archived" in result
+        assert complete.await_args.kwargs["by"] is TodoCompleter.GAIA
+        # The agent reads its own tool result, so it carries the link's placeholder, never its URL.
+        assert (
+            link_placeholder(RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"))
+            in result
+        )
+        assert "abcdefghijk" not in result
+        mint.assert_awaited_once_with(
+            "user-1", RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1")
+        )
+
+    async def test_no_link_when_sharing_is_off_still_confirms(self):
+        """A todo the owner stopped sharing completes without handing out a link."""
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.get",
@@ -988,11 +1038,16 @@ class TestCompleteTrackedTodo:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.attach_link",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
             )
-        assert "completed and archived" in result
+        assert result == "Tracked todo t1 completed and archived."
 
     async def test_missing_todo_returns_error(self):
         with patch(
@@ -1017,13 +1072,20 @@ class TestCompleteTrackedTodo:
                 new_callable=AsyncMock,
                 return_value=True,
             ) as complete,
+            patch(
+                "app.agents.tools.tracked_todo_tools.attach_link",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="user stopped it", stop_recurrence=True
             )
 
         assert result == "Tracked todo t1 completed and archived."
-        complete.assert_awaited_once_with(todo_id="t1", user_id="user-1", summary="user stopped it")
+        complete.assert_awaited_once_with(
+            todo_id="t1", user_id="user-1", summary="user stopped it", by=TodoCompleter.GAIA
+        )
 
     async def test_active_recurrence_refuses_and_names_the_stop_procedure(self):
         with patch(
@@ -1782,7 +1844,7 @@ class TestUpdateTrackedTodoSuccess:
                 new_callable=AsyncMock,
             ) as waiting_logged,
         ):
-            result = await tool_coroutine(update_tracked_todo)(
+            result = await tool_coroutine(update_tracked_todo, str)(
                 config=config,
                 todo_id="t1",
                 scheduled_at="2d",
@@ -2291,7 +2353,7 @@ class TestCreateThreadTrackedTodo:
                 initial_canvas="# Lease",
                 labels=["waiting-for-reply"],
                 priority=Priority.HIGH,
-                notify_on_run=False,
+                delivery=WorkflowDelivery.SILENT,
                 gmail_thread_id="abc",
                 done_when=["Sam replied about the lease"],
                 evidence="a reply in the lease thread",
@@ -2304,7 +2366,7 @@ class TestCreateThreadTrackedTodo:
             "labels": ["waiting-for-reply"],
             "priority": Priority.HIGH,
             "source_conversation_id": None,
-            "notify_on_run": False,
+            "delivery": WorkflowDelivery.SILENT,
             "external_ref": ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="abc"),
             "references": None,
             "parent_todo_id": None,
@@ -2618,9 +2680,9 @@ class TestSubTodoTools:
         # Moved under a parent, it reports there like a new sub-todo.
         assert written.model_dump(exclude_unset=True) == {
             "parent_todo_id": self.DESK,
-            "notify_on_run": False,
+            "delivery": WorkflowDelivery.SILENT,
         }
-        assert result == "Updated tracked todo t1: parent_todo_id, notify_on_run"
+        assert result == "Updated tracked todo t1: parent_todo_id, delivery"
 
     async def test_a_thread_todo_moved_under_a_parent_still_tells_the_user(self):
         """A thread's news cannot wait for its parent's next run, so moving it keeps it speaking."""
@@ -2634,12 +2696,13 @@ class TestSubTodoTools:
             patch(self._GET, AsyncMock(return_value=existing)),
             patch(self._REQUIRE, AsyncMock()),
             patch(self._UPDATE, AsyncMock(return_value=existing)) as update,
+            patch("app.services.briefing.held.release_held_items", new_callable=AsyncMock),
         ):
             await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", parent_todo_id=self.DESK
             )
 
-        assert update.await_args.kwargs["update"].notify_on_run is True
+        assert update.await_args.kwargs["update"].delivery is WorkflowDelivery.NOW
 
     async def test_a_parent_completed_mid_move_rolls_the_move_back(self, recorded_changes):
         moving = TodoDocument(
@@ -2792,7 +2855,7 @@ class TestListTrackedTodos:
             updated_at=datetime(2026, 9, 30, 9, tzinfo=UTC),
         )
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[doc]):
-            result = await tool_coroutine(list_tracked_todos)(config=_config())
+            result = await tool_coroutine(list_tracked_todos, str)(config=_config())
 
         assert result == (
             "Active tracked todos (1):\n\n"

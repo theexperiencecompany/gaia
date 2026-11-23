@@ -18,8 +18,6 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from pymongo.errors import DuplicateKeyError
-
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
     CANVAS_DONE_WHEN_SECTION,
@@ -31,8 +29,11 @@ from app.constants.todos import (
     REOPEN_RESET_COUNTERS,
     SUB_TODO_PARENT_WAKE_DELAY,
     TodoActivityEvent,
+    TodoCompleter,
     WaitingOn,
 )
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.todos import todo_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
@@ -43,7 +44,7 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdate,
     TrackedTodoCreation,
-    default_notify_on_run,
+    default_delivery,
 )
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import (
@@ -57,8 +58,8 @@ from app.services.todo_activity import (
     activity_line,
     agent_actor,
     field_change_lines,
-    record_activity,
     record_field_changes,
+    record_todo_activity,
     record_waiting_change,
     waiting_change_line,
 )
@@ -217,6 +218,7 @@ async def _reconcile_parent_completion(user_id: str, parent_todo_id: str, child_
             child_id,
             user_id,
             summary="Parent completed while this sub-todo was being created.",
+            by=TodoCompleter.SYSTEM,
         )
 
 
@@ -287,7 +289,7 @@ class TrackedTodoService:
         labels: list[str] | None = None,
         initial_canvas: str | None = None,
         source_conversation_id: str | None = None,
-        notify_on_run: bool | None = None,
+        delivery: WorkflowDelivery | None = None,
         external_ref: ExternalRef | None = None,
         references: list[str] | None = None,
         parent_todo_id: str | None = None,
@@ -303,10 +305,8 @@ class TrackedTodoService:
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)
-        if notify_on_run is None:
-            notify_on_run = default_notify_on_run(
-                parent_todo_id=parent_todo_id, external_ref=external_ref
-            )
+        if delivery is None:
+            delivery = default_delivery(parent_todo_id=parent_todo_id, external_ref=external_ref)
         schedule = with_waiting_normalized(None, schedule or TodoUpdate())
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
@@ -340,7 +340,7 @@ class TrackedTodoService:
                     **schedule.model_dump(exclude_unset=True),
                     "title": title,
                     "labels": all_labels,
-                    "notify_on_run": notify_on_run,
+                    "delivery": delivery,
                     "parent_todo_id": parent_todo_id,
                     **{field: value for field, value in given.items() if value is not None},
                 }
@@ -361,7 +361,7 @@ class TrackedTodoService:
             project_id=project_id,
             priority=priority,
             labels=all_labels,
-            notify_on_run=notify_on_run,
+            delivery=delivery,
             references=references or [],
             scheduled_at=schedule.scheduled_at,
             recurrence=schedule.recurrence,
@@ -487,7 +487,7 @@ class TrackedTodoService:
                 written = await todo_repository.update_if_completed(
                     previous.id, user_id, update=update
                 )
-            except DuplicateKeyError as taken:
+            except AlreadyExistsError as taken:
                 # Another create opened a todo for the object after the lookup.
                 await raise_ref_taken(user_id, previous.external_ref, taken)
             if written is None:
@@ -529,8 +529,10 @@ class TrackedTodoService:
         return response
 
     @staticmethod
-    async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
-        """Complete a tracked todo and its open sub-todos: log it, mark it done, stop its watches."""
+    async def complete_tracked_todo(
+        todo_id: str, user_id: str, summary: str, *, by: TodoCompleter
+    ) -> bool:
+        """Complete a tracked todo and its open sub-todos, as by: log it, mark it done, stop its watches."""
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
@@ -540,18 +542,23 @@ class TrackedTodoService:
             return True
 
         # Sub-todos first, so a retry after a partial failure finds the parent still open.
-        await TrackedTodoService._complete_open_sub_todos(doc, summary)
+        await TrackedTodoService._complete_open_sub_todos(doc, summary, by)
 
         now = datetime.now(UTC)
 
-        await record_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
+        await record_todo_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
 
         # Derived, never the stored one: legacy docs carry a host-side /users/<uid>/todos/<id>
         # label this heals. The repository's cache refresh shows the completion at once.
         await todo_repository.update(
             todo_id,
             user_id=user_id,
-            update=TodoUpdate(completed=True, completed_at=now, vfs_path=build_vfs_label(todo_id)),
+            update=TodoUpdate(
+                completed=True,
+                completed_at=now,
+                completed_by=by,
+                vfs_path=build_vfs_label(todo_id),
+            ),
         )
 
         await set_canvas_completed(todo_id, completed=True)
@@ -561,10 +568,10 @@ class TrackedTodoService:
         await teardown_subscriptions(todo_id, user_id, reason="completed")
 
         # Again, for any sub-todo created after the first sweep and before the parent closed.
-        await TrackedTodoService._complete_open_sub_todos(doc, summary)
+        await TrackedTodoService._complete_open_sub_todos(doc, summary, by)
         # A sub-todo reports to its parent: its outcome is in the parent's next run.
         if doc.parent_todo_id:
-            await record_activity(
+            await record_todo_activity(
                 doc.parent_todo_id,
                 user_id,
                 TodoActivityEvent.SUB_TODO_COMPLETED,
@@ -591,13 +598,16 @@ class TrackedTodoService:
         await TrackedTodoService.schedule_execution(parent_id, wake_at)
 
     @staticmethod
-    async def _complete_open_sub_todos(parent: TodoDocument, summary: str) -> None:
+    async def _complete_open_sub_todos(
+        parent: TodoDocument, summary: str, by: TodoCompleter
+    ) -> None:
         for child in await todo_repository.find_sub_todos(parent.user_id, [parent.id]):
             if not child.completed:
                 await TrackedTodoService.complete_tracked_todo(
                     child.id,
                     parent.user_id,
                     summary=f'Parent "{parent.title}" completed: {summary}',
+                    by=by,
                 )
 
     @staticmethod
@@ -756,7 +766,7 @@ class TrackedTodoService:
         """
         try:
             return await TrackedTodoService.complete_tracked_todo(
-                todo_id, user_id, summary=f"Auto-archived: {reason}"
+                todo_id, user_id, summary=f"Auto-archived: {reason}", by=TodoCompleter.SYSTEM
             )
         except Exception as e:
             log.warning("tracked_todo.archive_failed", todo_id=todo_id, error=str(e))

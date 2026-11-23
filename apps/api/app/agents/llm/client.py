@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from functools import cache
 import math
 import time
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, Literal, TypedDict, TypeVar, cast
 from urllib.parse import urlparse
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -28,7 +28,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openrouter.utils import BackoffStrategy, RetryConfig
-from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, SecretStr, ValidationError
 
 from app.agents.llm.dev_lane import (
     build_custom_chat_model,
@@ -42,9 +42,13 @@ from app.agents.llm.exceptions import (
     MalformedStructuredOutputError,
 )
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
+from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_SESSION_SUFFIX,
+    CLOUDFLARE_AI_API_URL,
+    CLOUDFLARE_MAX_OUTPUT_TOKENS,
+    CLOUDFLARE_REASONING_EFFORT,
     COMMS_REASONING_EFFORT,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
@@ -86,6 +90,8 @@ from app.constants.providers import (
     HOSTED_ONE_SHOT_PROVIDERS,
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
+    OVERRIDE_PROVIDER,
+    PINNED_FALLBACKS,
     CredentialProviderName,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -478,6 +484,43 @@ def init_openai_llm() -> LanguageModelLike:
     return llm.configurable_fields(model_name=_MODEL_FIELD)
 
 
+def _cloudflare_openai_url(config: ProviderConfig) -> str:
+    """Return Workers AI's OpenAI-wire API root for a config whose account_id is already required."""
+    return CLOUDFLARE_AI_API_URL.format(account_id=config.account_id)
+
+
+@lazy_provider(
+    name=LLMProviderKey.CLOUDFLARE,
+    required_keys=[],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="Cloudflare Workers AI not configured. Every lane keeps its usual provider.",
+)
+def init_cloudflare_llm() -> LanguageModelLike:
+    """Initialize the Workers AI client over its OpenAI-compatible chat completions API.
+
+    The effort is fixed on the client (reasoning_effort), as on the OpenAI lane:
+    the lane's reasoning key is OpenRouter-wire only.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    config: ProviderConfig = _require_provider_config(LLMProviderName.CLOUDFLARE)
+    llm = without_sdk_retry(
+        ChatWorkersAI(
+            model=chat_model(LLMProviderName.CLOUDFLARE),
+            reasoning_effort=CLOUDFLARE_REASONING_EFFORT,
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            max_completion_tokens=CLOUDFLARE_MAX_OUTPUT_TOKENS,
+            max_retries=0,
+            api_key=SecretStr(str(config.api_key)),
+            base_url=_cloudflare_openai_url(config),
+        )
+    )
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm.configurable_fields(model_name=_MODEL_FIELD)
+
+
 def init_llm(
     preferred_provider: str | None = None,
     fallback_enabled: bool = True,
@@ -550,10 +593,9 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
 
 def provider_configured(provider_name: LLMProviderName) -> bool:
     """Report whether provider_name can serve a request under the active runtime config."""
-    if settings.GAIA_SIM_MODE:
-        # Sim mode pins EVERY lane to the scripted stub (the loaders return
-        # _sim_llm), mirroring the old behavior where the stub key satisfied
-        # every import-time required_keys list.
+    if settings.GAIA_SIM_MODE and provider_name is not OVERRIDE_PROVIDER:
+        # Every loader returns _sim_llm, so every lane is usable; the override
+        # reroutes every role, so it stays the operator's choice even here.
         return True
     credential = CredentialProviderName(provider_name)
     return is_usable(credential, resolved_config(credential))
@@ -576,8 +618,12 @@ def chat_route(exclude: LLMProviderName | None = None) -> tuple[LLMProviderName,
     """Return the highest-priority usable chat provider other than exclude, and its model.
 
     The default lane takes it with no exclusion; a lane's fallback excludes the
-    provider that just failed. None when nothing (else) is usable.
+    provider that just failed, and goes to its PINNED_FALLBACKS target first when
+    that one is usable. None when nothing (else) is usable.
     """
+    pinned = PINNED_FALLBACKS.get(exclude) if exclude else None
+    if pinned is not None and provider_configured(pinned) and (model := chat_model(pinned)):
+        return pinned, model
     return next((route for route in chat_routes() if route[0] != exclude), None)
 
 
@@ -647,6 +693,7 @@ def register_llm_providers() -> None:
     init_openrouter_llm()
     init_openai_llm()
     init_ollama_llm()
+    init_cloudflare_llm()
     # The custom endpoint never registers under SaaS production, so a stray
     # DEV_LLM_* env var there still can't route real traffic. Dev and self-host
     # register it; availability still follows the resolver.
@@ -704,12 +751,15 @@ def _one_shot_model(provider: LLMProviderName, use: ModelUse) -> str | None:
 def one_shot_route(use: ModelUse) -> tuple[LLMProviderName, str] | None:
     """Return the provider and model a one-shot use runs on, or None when nothing configured can serve it.
 
-    Production runs the hosted table and nothing else. Elsewhere the hosted
-    provider still comes first, then every configured provider in priority order.
+    A configured OVERRIDE_PROVIDER comes first everywhere. Then production runs the
+    hosted table and nothing else; elsewhere the hosted provider, then every
+    configured provider in priority order.
     """
     hosted = HOSTED_ONE_SHOT_PROVIDERS[use]
     candidates = (
-        (hosted,) if settings.deployment.hosted_models else (hosted, *LLM_PROVIDER_PRIORITY)
+        (OVERRIDE_PROVIDER, hosted)
+        if settings.deployment.hosted_models
+        else (OVERRIDE_PROVIDER, hosted, *LLM_PROVIDER_PRIORITY)
     )
     for provider in candidates:
         if provider_configured(provider) and (model := _one_shot_model(provider, use)):
@@ -779,6 +829,18 @@ def resolve_model(
                 base_url=_ollama_openai_url(config),
                 reasoning_effort=None,
             )
+        case LLMProviderName.CLOUDFLARE:
+            config = _require_provider_config(provider)
+            return _build_openai_wire_one_shot(
+                model,
+                temperature,
+                api_key=str(config.api_key),
+                base_url=_cloudflare_openai_url(config),
+                # Workers AI takes OpenAI's none/low for this model, and no "minimal".
+                reasoning_effort=OPENAI_REASONING_EFFORT[reasoning or ReasoningLevel.OFF],
+                # A one-shot streams too under astream_events, onto the same doubled usage.
+                chat_class=ChatWorkersAI,
+            )
         case LLMProviderName.CUSTOM:
             return build_custom_chat_model(
                 temperature=temperature,
@@ -831,9 +893,10 @@ def _build_openai_wire_one_shot(
     api_key: str,
     base_url: str | None,
     reasoning_effort: str | None,
+    chat_class: type[ChatOpenAI] = ChatOpenAI,
 ) -> BaseChatModel:
-    """Build a one-shot client for OpenAI itself (base_url None) or Ollama's OpenAI-wire API."""
-    llm = ChatOpenAI(
+    """Build a one-shot client for OpenAI itself (base_url None) or another OpenAI-wire API."""
+    llm = chat_class(
         model=model,
         temperature=temperature,
         max_completion_tokens=HELPER_MAX_OUTPUT_TOKENS,
@@ -1066,6 +1129,10 @@ class StructuredCallOptions:
     use: ModelUse = ModelUse.HELPER
     #: 1 disables retry, for a caller on a hard latency budget.
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
+    #: Have the provider hold the reply to the schema (strict tools on an OpenAI wire, the
+    #: response schema on Gemini), so a model cannot leave a field out. Every field of the
+    #: schema must then be required, with no defaults. Size caps are checked after, not held.
+    schema_held: bool = False
 
 
 _DEFAULT_STRUCTURED_OPTIONS = StructuredCallOptions()
@@ -1526,11 +1593,15 @@ async def _record_auxiliary_usage(
 
 
 class _OpenAIFunctionSpec(BaseModel):
-    """The function block of an OpenAI tool spec, read for the name the model calls."""
+    """The function block of an OpenAI tool spec: the name the model calls and its arguments' schema.
 
-    model_config = ConfigDict(extra="ignore")
+    Its description and strict flag ride along as extras, so a spec dumps back whole.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str
+    parameters: JsonValue = None
 
 
 class _OpenAIToolSpec(BaseModel):
@@ -1538,6 +1609,7 @@ class _OpenAIToolSpec(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    type: Literal["function"] = "function"
     function: _OpenAIFunctionSpec
 
 
@@ -1621,26 +1693,77 @@ def _structured_tool_choice(llm: BaseChatModel) -> str:
     return "required" if forced else "auto"
 
 
-def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) -> Runnable:
+#: The bounds a provider holding a reply to its schema enforces by cutting it short: a
+#: string ends mid-sentence at maxLength, a list at maxItems. Code checks them after.
+_SIZE_CAPS = frozenset({"maxLength", "maxItems"})
+
+
+def _without_size_caps(schema: JsonValue) -> JsonValue:
+    """Return the JSON schema without its size caps, so a held reply arrives whole and is checked."""
+    if isinstance(schema, list):
+        return [_without_size_caps(node) for node in schema]
+    if isinstance(schema, dict):
+        return {
+            key: _without_size_caps(node) for key, node in schema.items() if key not in _SIZE_CAPS
+        }
+    return schema
+
+
+def _structured_tool_runnable(
+    llm: BaseChatModel, schema: type[_StructuredT], *, strict: bool = False
+) -> Runnable:
     """Build the one-tool structured runnable every non-Gemini one-shot runs on.
 
     Not with_structured_output: it forces the tool by name, and it parses streamed
     arguments leniently. The call is unstreamed (streaming=False also holds under
     astream_events), so :func:_parse_structured_reply sees the arguments exactly as sent.
+    strict has the OpenAI wire hold the arguments to the schema, less its size caps.
     """
-    tool = convert_to_openai_tool(schema)
+    spec = _OpenAIToolSpec.model_validate(convert_to_openai_tool(schema, strict=strict or None))
+    if strict:
+        spec.function.parameters = _without_size_caps(spec.function.parameters)
+    tool = spec.model_dump()
     tool_choice = _structured_tool_choice(llm)
     bound = llm.model_copy(update={"streaming": False}).bind_tools(
-        [schema],
+        [tool],
         tool_choice=tool_choice,
         ls_structured_output_format={
             "kwargs": {"method": "function_calling", "tool_choice": tool_choice},
             "schema": tool,
         },
+        **({"strict": True} if strict else {}),
     )
     return bound | RunnableLambda(
         lambda message: _parse_structured_reply(message, schema),
         name=_structured_tool_name(schema),
+    )
+
+
+def _parse_json_reply(message: BaseMessage, schema: type[_StructuredT]) -> _StructuredT:
+    """Return the schema filled from a JSON reply; raise MalformedStructuredOutputError otherwise."""
+    name = _structured_tool_name(schema)
+    if not isinstance(message, AIMessage):
+        raise MalformedStructuredOutputError(
+            f"{name}: expected an AI reply, got {type(message).__name__}"
+        )
+    if _ReplyMetadata.model_validate(message.response_metadata).stopped_at_output_cap():
+        raise MalformedStructuredOutputError(f"{name}: reply stopped at the output cap")
+    try:
+        return schema.model_validate_json(message.text)
+    except ValidationError as error:
+        raise MalformedStructuredOutputError(
+            f"{name}: the reply does not fit the schema: {error}", llm_output=message.text
+        ) from error
+
+
+def _gemini_schema_runnable(llm: ChatGoogleGenerativeAI, schema: type[_StructuredT]) -> Runnable:
+    """Build a Gemini one-shot whose reply the response schema holds: JSON that fits, field for field."""
+    bound = llm.bind(
+        response_mime_type="application/json",
+        response_json_schema=_without_size_caps(schema.model_json_schema()),
+    )
+    return bound | RunnableLambda(
+        lambda message: _parse_json_reply(message, schema), name=_structured_tool_name(schema)
     )
 
 
@@ -1654,7 +1777,11 @@ def _structured_runnable(
     its provider (measured: rotation dips). Only an OpenRouter wire receives it.
     """
     model = resolve_model(options.use, temperature=options.temperature, reasoning=options.reasoning)
-    structured = _structured_tool_runnable(model, schema)
+    structured = (
+        _gemini_schema_runnable(model, schema)
+        if options.schema_held and isinstance(model, ChatGoogleGenerativeAI)
+        else _structured_tool_runnable(model, schema, strict=options.schema_held)
+    )
     session_id = _sticky_session_id(config, auxiliary=True)
     if session_id and _is_openrouter_wire(structured):
         structured = structured.bind(session_id=session_id)

@@ -4,7 +4,6 @@ Global, keyed by user_id (one preferences doc per user). Stores the ids of
 the calendars a user has selected to surface in the app.
 """
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.calendar_models import (
     CalendarPreferencesDocument,
@@ -17,7 +16,6 @@ class CalendarRepository(MongoRepository[CalendarPreferencesDocument, CalendarPr
     document_model = CalendarPreferencesDocument
     update_model = CalendarPreferencesUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_for_user(self, user_id: str) -> CalendarPreferencesDocument | None:
         return await self._find_one({"user_id": user_id})
@@ -30,10 +28,28 @@ class CalendarRepository(MongoRepository[CalendarPreferencesDocument, CalendarPr
         await self._apply_raw_update(
             {"user_id": user_id},
             {"$set": {"selected_calendars": selected_calendars}},
-            scope=REPO_GLOBAL_SCOPE,
             upsert=True,
         )
         return True
+
+    async def repair_selected_calendars(
+        self, user_id: str, loaded: list[str] | None, repaired: list[str]
+    ) -> None:
+        """Store the repaired selection only while the stored one is still what the read loaded.
+
+        loaded None means the read found no preferences doc, so only an absent doc is written.
+        """
+        if loaded is None:
+            await self._apply_raw_update_unfetched(
+                {"user_id": user_id},
+                {"$setOnInsert": {"selected_calendars": repaired}},
+                upsert=True,
+            )
+            return
+        await self._apply_raw_update_unfetched(
+            {"user_id": user_id, "selected_calendars": loaded},
+            {"$set": {"selected_calendars": repaired}},
+        )
 
 
 calendar_repository = CalendarRepository()

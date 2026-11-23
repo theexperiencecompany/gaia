@@ -20,7 +20,6 @@ class TestUpsertStorageStateBlob:
         filter_, update = args
         assert filter_ == {"user_id": "user-1", "domain": "example.com"}
         assert update["$set"] == {"storage_state_blob": "encrypted-blob"}
-        assert kwargs["scope"] == "user-1"
         assert kwargs["upsert"] is True
 
     async def test_sets_provenance_fields_when_given(self) -> None:
@@ -72,7 +71,6 @@ class TestUpsertStorageStateBlob:
             await repo.upsert_storage_state_blob("user-1", "example.com", "encrypted-blob")
 
         _, kwargs = apply_update.await_args
-        assert kwargs["scope"] == "user-1"
         assert kwargs["upsert"] is True
 
 
@@ -82,9 +80,7 @@ class TestDeleteForUser:
         with patch.object(repo, "_delete_many", new=AsyncMock(return_value=1)) as delete_many:
             count = await repo.delete_for_user("user-1", domain="example.com")
 
-        delete_many.assert_awaited_once_with(
-            {"user_id": "user-1", "domain": "example.com"}, scope="user-1"
-        )
+        delete_many.assert_awaited_once_with({"user_id": "user-1", "domain": "example.com"})
         assert count == 1
 
     async def test_deletes_every_profile_for_the_user_when_domain_is_none(self) -> None:
@@ -92,7 +88,7 @@ class TestDeleteForUser:
         with patch.object(repo, "_delete_many", new=AsyncMock(return_value=3)) as delete_many:
             count = await repo.delete_for_user("user-1")
 
-        delete_many.assert_awaited_once_with({"user_id": "user-1"}, scope="user-1")
+        delete_many.assert_awaited_once_with({"user_id": "user-1"})
         assert count == 3
 
 

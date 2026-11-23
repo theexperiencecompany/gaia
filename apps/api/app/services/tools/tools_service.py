@@ -16,15 +16,13 @@ from app.agents.tools.core.registry import (
 )
 from app.config.oauth_config import all_integrations
 from app.constants.cache import ONE_DAY_TTL
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.schemas.integrations.responses import IntegrationToolApproval
 from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key, mcp_tool_identity, mcp_tool_key
-from app.services.integrations.user_integrations import (
-    UserIntegrationRecord,
-    get_user_integration_records,
-)
+from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
 from app.services.mcp.tool_naming import master_rename
 from app.utils.request_coalescing import coalesce_request
@@ -84,14 +82,11 @@ async def _workspace_integration_ids(user_id: str | None) -> tuple[set[str], set
     connected: set[str] = set()
     if not user_id:
         return added, connected
-    records: list[UserIntegrationRecord] = await get_user_integration_records(user_id)
-    for record in records:
-        iid = record.get("integration_id")
-        if not iid:
-            continue
-        added.add(str(iid).lower())
-        if record.get("status") == "connected":
-            connected.add(str(iid).lower())
+    for record in await get_user_integration_records(user_id):
+        iid = record.integration_id.lower()
+        added.add(iid)
+        if record.status == IntegrationStatus.CONNECTED:
+            connected.add(iid)
     return added, connected
 
 

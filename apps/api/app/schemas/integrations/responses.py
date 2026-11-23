@@ -6,8 +6,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.models.integration_models import UserIntegrationStatus
-from app.models.oauth_models import IntegrationContent
+from app.constants.integrations import IntegrationStatus, ToolsSetup
+from app.models.oauth_models import IntegrationContent, ManagedBy
 from app.schemas.common import ResponseModel, SuccessResponse
 
 
@@ -40,7 +40,7 @@ class IntegrationConfigItem(CamelModel):
     display_priority: int
     included_integrations: list[str]
     is_featured: bool
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
@@ -60,11 +60,13 @@ class IntegrationSuccessResponse(SuccessResponse, CamelModel):
 
 class AddUserIntegrationResponse(SuccessResponse, CamelModel):
     integration_id: str
-    connection_status: UserIntegrationStatus
+    connection_status: IntegrationStatus
 
 
 class CustomIntegrationConnectionResult(CamelModel):
-    status: Literal["created", "connected", "requires_oauth", "failed"]
+    status: Literal[
+        IntegrationStatus.CREATED, IntegrationStatus.CONNECTED, "requires_oauth", "failed"
+    ]
     tools_count: int | None = None
     oauth_url: str | None = None
     error: str | None = None
@@ -98,7 +100,7 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     source: Literal["platform", "custom"]
     is_featured: bool
     display_priority: int
@@ -123,6 +125,10 @@ class MarketplaceResponse(BaseModel):
     total: int = 0
 
 
+# A catalog integration the user never added has no record, so no IntegrationStatus.
+MyIntegrationStatus = IntegrationStatus | Literal["not_connected"]
+
+
 class MyIntegrationItem(CamelModel, CloneCountMixin):
     """One integration as it pertains to the current user: catalog metadata plus
     their connection `status`, without the heavy per-tool schemas (only `tool_count`).
@@ -134,8 +140,8 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     description: str
     category: str
     source: Literal["platform", "custom"]
-    managed_by: Literal["self", "composio", "mcp", "internal"]
-    status: Literal["connected", "created", "expired", "not_connected"]
+    managed_by: ManagedBy
+    status: MyIntegrationStatus
     # When the upstream grant died, so the UI can say how long it has been broken.
     expired_at: datetime | None = None
     requires_auth: bool = False
@@ -149,6 +155,8 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     slug: str | None = None
     origin: Literal["code", "instance"] = "code"
     tool_count: int = 0
+    # Where the post-connect tool discovery stands; the UI waits only while it is running.
+    tools_setup: ToolsSetup | None = None
     # Custom-integration fields (None/0 for platform entries).
     is_public: bool | None = None
     created_by: str | None = None
@@ -158,18 +166,10 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
 
 
 class MyIntegrationsResponse(ResponseModel):
-    """The full integration catalog personalized for one user (platform + their
-    own custom integrations), each carrying connection status. Replaces the
-    client-side merge of /config + /status + /users/me/integrations."""
+    """The full integration catalog personalized for one user (platform + their own custom), each with its connection status."""
 
     integrations: list[MyIntegrationItem] = Field(default_factory=list)
     total: int = 0
-
-
-class IntegrationStatusesResponse(ResponseModel):
-    """Current connection status map, fetched independently of the catalog."""
-
-    statuses: dict[str, bool] = Field(description="Connection state keyed by integration id")
 
 
 class IntegrationToolsResponse(CamelModel, ResponseModel):

@@ -152,6 +152,21 @@ class UserScopedRepositoryContract:
         await repo.create(make_doc(user_id=user))
         assert len(await self.list_via_cache(repo, user)) == 4
 
+    async def test_one_users_write_orphans_only_that_users_query_caches(
+        self, repo, make_doc, raw_collection
+    ):
+        await repo.create(make_doc(user_id="writer"))
+        await repo.create(make_doc(user_id="bystander"))
+        assert len(await self.list_via_cache(repo, "writer")) == 1
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
+        for user in ("writer", "bystander"):
+            await raw_collection.insert_one(make_doc(user_id=user).model_dump(exclude={"id"}))
+
+        await repo.create(make_doc(user_id="writer"))
+
+        assert len(await self.list_via_cache(repo, "writer")) == 3
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
+
     async def test_redis_down_degrades_to_mongo_not_error(self, repo, make_doc, monkeypatch):
         from app.db.redis import redis_cache
 

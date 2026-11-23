@@ -1,0 +1,112 @@
+/* The reading system every edition sets its items in (ours, not vendored; ported from the
+   founder-reviewed gallery's reading.css). A family sets only the --rs-* inputs on its article
+   (its faces, inks and base size), never these rules: each is scoped under #root, so it outranks a
+   template's own resets.
+
+   Type rules, every family:
+     - rows are one family (--rs-font): the verb or outcome differs by weight, case, tracking or
+       ink, and the detail and "+N more" take the row's family in the muted ink, upright;
+     - a section has one label, its plain heading, in the family's heading face and idiom;
+     - the heading outranks its titles: one step larger and never lighter;
+     - the heading clears its first row by the item gap, on the 4px rhythm.
+
+   Type scale, 4 levels at a 1.25 ratio from the family's base:
+     s1 lead title (base x 1.953), s2 section heading (x 1.563), s3 item title (x 1.25),
+     s4 kicker, detail (base). Every line height is a multiple of 4px; items sit 16px apart,
+     sections 40px. */
+#root .rs-sec, #root .rs-lead {
+  --rs-u: 4px;
+  --rs-s4: var(--rs-base, 15px);
+  --rs-s3: calc(var(--rs-base, 15px) * 1.25);
+  --rs-s2: calc(var(--rs-base, 15px) * 1.5625);
+  --rs-s1: calc(var(--rs-base, 15px) * 1.953125);
+  --rs-lh4: round(up, calc(var(--rs-s4) * 1.3), var(--rs-u));
+  --rs-lh3: round(up, calc(var(--rs-s3) * 1.22), var(--rs-u));
+  --rs-lh2: round(up, calc(var(--rs-s2) * 1.15), var(--rs-u));
+  --rs-lh1: round(up, calc(var(--rs-s1) * 1.12), var(--rs-u));
+  --rs-gap-item: calc(var(--rs-u) * 4);
+  --rs-gap-sec: calc(var(--rs-u) * 10);
+  font-family: var(--rs-font);
+  color: var(--rs-ink);
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  font-style: normal;
+  font-weight: 400;
+}
+#root .rs-sec { display: block; padding-block: calc(var(--rs-gap-sec) / 2); margin: 0; }
+
+#root .rs-kick {
+  margin: 0;
+  font: var(--rs-kick-style, normal) var(--rs-kick-variant, normal) 400 var(--rs-s4) / var(--rs-lh4) var(--rs-font);
+  color: var(--rs-kick, var(--rs-acc));
+  text-transform: var(--rs-kick-case, uppercase);
+  letter-spacing: var(--rs-kick-track, 0.08em);
+}
+#root .rs-h {
+  margin: 0 0 var(--rs-gap-item);
+  font: var(--rs-h-style, normal) var(--rs-h-variant, normal) var(--rs-title-weight, 700) var(--rs-s2) / var(--rs-lh2) var(--rs-font-h, var(--rs-font));
+  color: var(--rs-h-ink, var(--rs-ink));
+  text-transform: var(--rs-h-case, none);
+  letter-spacing: var(--rs-h-track, -0.01em);
+  border: 0;
+  padding: 0;
+}
+
+#root .rs-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--rs-gap-item); }
+#root .rs-item { margin: 0; padding: 0; }
+#root .rs-title {
+  margin: 0;
+  font: var(--rs-title-weight, 700) var(--rs-s3) / var(--rs-lh3) var(--rs-font);
+  color: var(--rs-ink);
+  text-wrap: pretty;
+  text-transform: var(--rs-title-case, none);
+  letter-spacing: var(--rs-title-track, -0.005em);
+}
+#root .rs-verb {
+  color: var(--rs-acc);
+  margin-right: 0.15em;
+  font-weight: var(--rs-verb-weight, inherit);
+  font-variant-caps: var(--rs-verb-variant, normal);
+  text-transform: var(--rs-verb-case, none);
+}
+/* A done item's outcome is a state, not a call to act: the verb's slot, in the muted ink. */
+#root .rs-outcome { color: var(--rs-muted); }
+
+/* A label column, only where every row has a label: labels share one column the width of the
+   widest, titles start together on the next. */
+#root .rs-list.rs-labelled { grid-template-columns: max-content minmax(0, 1fr); column-gap: calc(var(--rs-u) * 4); }
+#root .rs-labelled > .rs-item { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; }
+#root .rs-label {
+  margin: 0;
+  font-size: var(--rs-s3);
+  line-height: var(--rs-lh3);
+  font-weight: var(--rs-verb-weight, var(--rs-title-weight, 700));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#root .rs-detail, #root .rs-more, #root .rs-offer {
+  margin: var(--rs-u) 0 0;
+  font: 400 var(--rs-s4) / var(--rs-lh4) var(--rs-font);
+  color: var(--rs-muted);
+  text-transform: var(--rs-detail-case, none);
+  letter-spacing: var(--rs-detail-track, normal);
+}
+#root .rs-more { margin-top: calc(var(--rs-u) * 3); }
+
+#root .rs-lead { display: block; padding-block: var(--rs-gap-sec) calc(var(--rs-gap-sec) / 2); }
+#root .rs-lead-title { margin-top: var(--rs-u); text-wrap: balance; font-size: var(--rs-s1); line-height: var(--rs-lh1); letter-spacing: -0.015em; }
+#root .rs-offer { color: var(--rs-ink); margin-top: calc(var(--rs-u) * 2); }
+
+/* An app's mark sits after the verb like a capital: 1.2 cap heights, centred on the cap band.
+   "ink" paints the mark's alpha in the row's ink; "color" shows it as shipped. */
+#root .xb-logo { display: inline-block; flex: none; font-style: normal; width: 1em; height: 1em; background: none; }
+#root .xb-logo.xb-ink { background-color: currentColor; -webkit-mask: var(--xb-mask) center / contain no-repeat; mask: var(--xb-mask) center / contain no-repeat; }
+#root .xb-logo.xb-color { background: var(--xb-img) center / contain no-repeat; }
+#root .rs-logo { width: 1.2cap; height: 1.2cap; vertical-align: -0.1cap; margin-right: 0.3em; color: var(--rs-logo-ink, var(--rs-ink)); }
+#root .xb-plot { display: block; overflow: visible; }
+
+/* A sources line, a note or a quote never strands one word on its last line. */
+#root [data-block="sources"] { text-wrap: balance; }
+#root [data-block="note"], #root [data-block="quote"] { text-wrap: pretty; }

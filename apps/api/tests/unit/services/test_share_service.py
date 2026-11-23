@@ -20,6 +20,7 @@ from app.models.share_models import ShareGrantPayload
 from app.services.share_service import _serializer, mint_share_url, redeem_share_grant
 from app.services.storage.juicefs import JuiceFSUnavailable
 from app.utils.errors import AppError
+from tests.helpers import tamper_signature
 
 MODULE = "app.services.share_service"
 
@@ -242,7 +243,7 @@ class TestRedeemShareGrant:
 
     async def test_tampered_token_is_none(self, _secret: None, tmp_path: Path) -> None:
         token = _token_of(_mint_url(tmp_path))
-        assert await redeem_share_grant(token[:-2] + "AA") is None
+        assert await redeem_share_grant(tamper_signature(token)) is None
 
     async def test_a_token_signed_for_another_purpose_is_rejected(
         self, _secret: None, tmp_path: Path

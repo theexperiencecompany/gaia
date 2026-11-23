@@ -1,5 +1,6 @@
 "use client";
 
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import { useMemo } from "react";
 import { getBrowserTimezone } from "@/lib/timezone";
 import {
@@ -23,26 +24,6 @@ const priorityRingColors = {
   [Priority.NONE]: "border-zinc-500",
 } as const;
 
-// Intl.DateTimeFormat is expensive to build; cache one per timezone instead
-// of rebuilding on every call.
-const scheduledLabelFormatters = new Map<string, Intl.DateTimeFormat>();
-
-const getScheduledLabelFormatter = (timeZone: string): Intl.DateTimeFormat => {
-  const cached = scheduledLabelFormatters.get(timeZone);
-  if (cached) return cached;
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone,
-  });
-  scheduledLabelFormatters.set(timeZone, formatter);
-  return formatter;
-};
-
 const formatScheduledLabel = (
   scheduledAt: string | null | undefined,
   timezone: string | undefined,
@@ -50,9 +31,10 @@ const formatScheduledLabel = (
   if (!scheduledAt) return undefined;
   const resolvedTimezone =
     timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
-  return getScheduledLabelFormatter(resolvedTimezone).format(
-    new Date(scheduledAt),
-  );
+  return formatDate(scheduledAt, "dayTime", {
+    locale: FIXED_LOCALE,
+    timeZone: resolvedTimezone,
+  });
 };
 
 interface UseTodoItemParams {

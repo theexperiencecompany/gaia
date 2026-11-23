@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  FIXED_LOCALE,
+  formatHour,
+  formatTime,
+  formatWeekday,
+} from "@shared/utils";
 import { useEffect, useMemo, useRef } from "react";
 import {
   DAY_START_HOUR,
@@ -11,21 +17,11 @@ import {
   PX_PER_MINUTE,
 } from "./calendarDemoConstants";
 
-function formatHour(hour: number): string {
-  if (hour === 0) return "12 AM";
-  if (hour < 12) return `${hour} AM`;
-  if (hour === 12) return "12 PM";
-  return `${hour - 12} PM`;
-}
-
+/** "3 PM" on the hour, "3:30 PM" otherwise. */
 function formatTime12(date: Date): string {
-  const h = date.getHours();
-  const m = date.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return m === 0
-    ? `${h12} ${ampm}`
-    : `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
+  return date.getMinutes() === 0
+    ? formatHour(date.getHours(), FIXED_LOCALE)
+    : formatTime(date, { locale: FIXED_LOCALE });
 }
 
 export default function DemoCalendarView() {
@@ -69,9 +65,11 @@ export default function DemoCalendarView() {
         <div className="flex flex-1">
           {dates.map((date) => {
             const isToday = date.toDateString() === todayStr;
-            const dayLabel = date
-              .toLocaleDateString("en-US", { weekday: "short" })
-              .toUpperCase();
+            const dayLabel = formatWeekday(
+              date,
+              "short",
+              FIXED_LOCALE,
+            ).toUpperCase();
             const dayNum = date.getDate();
 
             return (
@@ -83,12 +81,12 @@ export default function DemoCalendarView() {
                 }}
               >
                 <span
-                  className={`text-[10px] font-medium ${isToday ? "text-primary" : "text-zinc-500"}`}
+                  className={`text-[10px] font-medium ${isToday ? "text-accent" : "text-zinc-500"}`}
                 >
                   {dayLabel}
                 </span>
                 <span
-                  className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium ${isToday ? "bg-primary text-black" : "text-zinc-400"}`}
+                  className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium ${isToday ? "bg-accent text-black" : "text-zinc-400"}`}
                 >
                   {dayNum}
                 </span>
@@ -115,7 +113,7 @@ export default function DemoCalendarView() {
               style={{ height: PX_PER_HOUR }}
             >
               <span className="relative -top-2 text-[10px] text-zinc-500">
-                {formatHour(hour)}
+                {formatHour(hour, FIXED_LOCALE)}
               </span>
             </div>
           ))}
@@ -138,8 +136,8 @@ export default function DemoCalendarView() {
             style={{ top: currentTimeTop }}
           >
             <div className="flex items-center">
-              <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-              <div className="h-[2px] flex-1 bg-primary/50" />
+              <div className="h-2.5 w-2.5 rounded-full bg-accent" />
+              <div className="h-[2px] flex-1 bg-accent/50" />
             </div>
           </div>
 

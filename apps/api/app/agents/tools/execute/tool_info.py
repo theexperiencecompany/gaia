@@ -11,12 +11,12 @@ from typing import Any, cast
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, JsonValue
-from pymongo.errors import PyMongoError
 
 from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
 from app.agents.tools.execute.schema_notation import render_compact_type
 from app.constants.execute import RESPONSE_SCHEMA_METADATA_KEYS
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.tool_shapes import tool_shapes_repository
 from app.models.json_schema_models import JsonSchemaNode
 from app.models.tool_shape_models import ToolOutputShapeDocument
@@ -83,7 +83,7 @@ async def _observed_shape(resolved: ResolvedTool) -> ToolOutputShapeDocument | N
     """The shape learned from real calls, or None when the store is unreachable: it only enriches the doc."""
     try:
         return await tool_shapes_repository.get_shape(resolved.shape_scope, resolved.name)
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.TOOL} tool contract: observed shape unavailable",
             tool_name=resolved.name,
@@ -93,13 +93,15 @@ async def _observed_shape(resolved: ResolvedTool) -> ToolOutputShapeDocument | N
 
 
 def _args_schema_of(tool: BaseTool) -> dict[str, JsonValue]:
-    schema = tool.args_schema
+    """Return the args the model supplies: tool_call_schema hides injected ones, and the contract carries the description."""
+    schema = tool.tool_call_schema
     if isinstance(schema, type) and issubclass(schema, BaseModel):
         raw = schema.model_json_schema()
     elif isinstance(schema, dict):
         raw = dict(schema)
     else:
         raw = {"type": "object", "properties": {}}
+    raw.pop("description", None)
     return _compact_schema(raw)
 
 

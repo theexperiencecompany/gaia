@@ -16,14 +16,30 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from langchain_core.language_models import LanguageModelInput
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolCall,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
+from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.agents.middleware.interrupted_lookups import LOOKUPS_CLOSED
 from app.config.settings import settings
+from app.constants.conversation import (
+    ABSORBED_NOTE,
+    ABSORBED_NOTE_SUFFIX,
+    LOG_SEQ,
+    TURN_CONTEXT_ID_SUFFIX,
+)
 from app.models.integration_models import UserIntegrationCapabilities
+from app.utils.search import WebSearchResult
 from tests.helpers import (
     BindableToolsFakeModel,
     create_fake_llm,
@@ -101,8 +117,9 @@ def _follow_up_node_io_patches(
 ) -> list:
     """Return patches mocking only follow_up_actions_node's I/O boundaries.
 
-    The structured LLM call, the integrations lookup, and the stream writer
-    are mocked; the node's internal slicing/prompt/guard logic runs for real.
+    The structured LLM call, the integrations lookup, the previous-suggestions
+    Mongo read, and the stream writer are mocked; the node's internal
+    slicing/prompt/guard logic runs for real.
     """
     if writer_fn is None:
         writer_fn = lambda _: None  # noqa: E731  # default no-op writer for an optional hook parameter
@@ -123,7 +140,13 @@ def _follow_up_node_io_patches(
             new_callable=AsyncMock,
             return_value=capabilities,
         ),
-        # I/O boundary 3: LangGraph stream context
+        # I/O boundary 3: MongoDB read of suggestions already shown in this thread
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.conversation_repository.get_recent_follow_up_actions",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        # I/O boundary 4: LangGraph stream context
         patch(
             "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=writer_fn,
@@ -710,3 +733,130 @@ class TestRealCommsAgent:
             f"Expected TimeoutError to propagate, got {exc_info.type}. "
             "The graph must not swallow or re-type timeout errors."
         )
+
+
+def _search_call(call_id: str, query: str) -> ToolCall:
+    return ToolCall(name="web_search_tool", args={"query_text": query}, id=call_id)
+
+
+def _search_patches(search: AsyncMock) -> list:
+    return [
+        # The approval gate resolves a per-user policy from Mongo; every call clears it here.
+        patch(
+            "app.agents.middleware.hil_approval.decide_tool_call",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("app.agents.tools.webpage_tool.perform_search", search),
+        patch(
+            "app.agents.tools.webpage_tool.current_stream_writer",
+            return_value=lambda _: None,
+        ),
+    ]
+
+
+def _search_result() -> WebSearchResult:
+    return WebSearchResult(web=[], images=[], answer="an answer", query="q")
+
+
+async def _run_comms(
+    responses: list[BaseMessage], search: AsyncMock, configurable: dict[str, Any]
+) -> dict[str, ToolMessage]:
+    """Run the real comms graph on one turn after an earlier interrupted one; return its tool results by call id."""
+    earlier_turn = [
+        HumanMessage(content="Current time: 09:00", id=f"e0{TURN_CONTEXT_ID_SUFFIX}:0"),
+        HumanMessage(content="[#1] what's new today?", id="e1"),
+        HumanMessage(content=ABSORBED_NOTE, id=f"e1{ABSORBED_NOTE_SUFFIX}"),
+        AIMessage(content="Here's the news.", id="a1"),
+    ]
+    this_turn = [
+        HumanMessage(content="Current time: 10:00", id=f"e2{TURN_CONTEXT_ID_SUFFIX}:0"),
+        HumanMessage(content="[#2] compare three laptops", id="e2"),
+    ]
+    fake_llm = BindableToolsFakeModel(responses=responses)
+    with _apply_all_patches(
+        _make_chroma_store_mock(), _follow_up_node_io_patches(), _search_patches(search)
+    ):
+        async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
+            result = await graph.ainvoke(
+                {"messages": [*earlier_turn, *this_turn]},
+                config={"configurable": {"thread_id": str(uuid4()), **configurable}},
+            )
+    return {
+        message.tool_call_id: message
+        for message in result["messages"]
+        if isinstance(message, ToolMessage)
+    }
+
+
+@pytest.mark.integration
+class TestCommsLookupsCloseOnInterruption:
+    """Comms looks up freely until the user sends a new message mid-run; then lookups close."""
+
+    async def test_an_uninterrupted_run_does_three_lookup_rounds(self) -> None:
+        search = AsyncMock(return_value=_search_result())
+        results = await _run_comms(
+            [
+                AIMessage(
+                    content="", tool_calls=[_search_call("s1", "a"), _search_call("s2", "b")]
+                ),
+                AIMessage(content="", tool_calls=[_search_call("s3", "c")]),
+                AIMessage(content="", tool_calls=[_search_call("s4", "d")]),
+                AIMessage(content="Here is the comparison."),
+            ],
+            search,
+            {},
+        )
+
+        assert [results[call].status for call in ("s1", "s2", "s3", "s4")] == ["success"] * 4
+        assert [call.kwargs["query"] for call in search.await_args_list] == ["a", "b", "c", "d"]
+
+    async def test_a_message_absorbed_mid_run_closes_lookups_and_the_model_answers_and_hands_off(
+        self,
+    ) -> None:
+        run_id = str(uuid4())
+        side_question = [
+            HumanMessage(
+                content="[#3] what's 15% of 240?", id="e3", additional_kwargs={LOG_SEQ: 3}
+            ),
+            HumanMessage(content=ABSORBED_NOTE, id=f"e3{ABSORBED_NOTE_SUFFIX}"),
+        ]
+
+        async def search_while_the_user_writes(query: str, count: int) -> WebSearchResult:
+            del count
+            if query == "a":
+                feed(run_id, side_question)
+            return _search_result()
+
+        search = AsyncMock(side_effect=search_while_the_user_writes)
+        hand_off = ToolCall(
+            name="call_executor",
+            args={"task": "Compare three laptops", "for_messages": [2]},
+            id="x1",
+        )
+        open_feed(run_id)
+        try:
+            results = await _run_comms(
+                [
+                    AIMessage(content="", tool_calls=[_search_call("s1", "a")]),
+                    AIMessage(content="", tool_calls=[_search_call("s2", "b")]),
+                    AIMessage(
+                        content="36.",
+                        tool_calls=[
+                            ToolCall(name="answered", args={"message_ids": [3]}, id="n1"),
+                            hand_off,
+                        ],
+                    ),
+                    AIMessage(content="On it."),
+                ],
+                search,
+                {"comms_run": run_id},
+            )
+        finally:
+            close_feed(run_id)
+
+        assert results["s1"].status == "success"
+        assert (results["s2"].status, results["s2"].content) == ("error", LOOKUPS_CLOSED)
+        assert [call.kwargs["query"] for call in search.await_args_list] == ["a"]
+        assert results["n1"].status == "success"
+        assert results["x1"].content != LOOKUPS_CLOSED

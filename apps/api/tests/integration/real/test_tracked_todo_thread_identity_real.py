@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, WaitingOn
+from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, TodoCompleter, WaitingOn
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
@@ -109,7 +109,9 @@ async def test_a_create_for_a_thread_whose_todo_is_completed_reopens_that_todo(
 ) -> None:
     await _create(user_id)
     (first,) = await _stored(mongo_db, user_id)
-    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    await TrackedTodoService.complete_tracked_todo(
+        first.id, user_id, summary="Sam replied", by=TodoCompleter.GAIA
+    )
 
     again = await TrackedTodoService.create_tracked_todo(
         user_id,
@@ -142,7 +144,9 @@ async def test_a_reopened_todo_starts_with_its_retry_and_re_ask_budgets_back(
     mongo_db: AsyncIOMotorDatabase, user_id: str
 ) -> None:
     first = await _create(user_id)
-    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    await TrackedTodoService.complete_tracked_todo(
+        first.id, user_id, summary="Sam replied", by=TodoCompleter.GAIA
+    )
     await todo_repository.update(
         first.id,
         user_id=user_id,
@@ -171,7 +175,9 @@ async def test_concurrent_creates_for_a_completed_thread_todo_reopen_it_once(
     mongo_db: AsyncIOMotorDatabase, user_id: str
 ) -> None:
     first = await _create(user_id)
-    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    await TrackedTodoService.complete_tracked_todo(
+        first.id, user_id, summary="Sam replied", by=TodoCompleter.GAIA
+    )
 
     async def create_again(done_when: str) -> TrackedTodoCreation:
         return await TrackedTodoService.create_tracked_todo(
@@ -211,7 +217,9 @@ async def test_a_reopen_write_lands_only_on_a_todo_still_completed(
 
     assert await todo_repository.update_if_completed(first.id, user_id, update=reopen) is None
 
-    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    await TrackedTodoService.complete_tracked_todo(
+        first.id, user_id, summary="Sam replied", by=TodoCompleter.GAIA
+    )
     written = await todo_repository.update_if_completed(first.id, user_id, update=reopen)
 
     assert written is not None and written.id == first.id and not written.completed
@@ -235,7 +243,9 @@ async def test_a_reopen_whose_watch_fails_leaves_the_todo_completed_and_unwatche
     mongo_db: AsyncIOMotorDatabase, user_id: str
 ) -> None:
     first = await _create(user_id)
-    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    await TrackedTodoService.complete_tracked_todo(
+        first.id, user_id, summary="Sam replied", by=TodoCompleter.GAIA
+    )
     register = TriggerService.register_triggers
 
     async def sent_mail_unavailable(
@@ -294,7 +304,9 @@ async def _completed_and_newer_thread_todos(user_id: str) -> tuple[str, str]:
     before reopening existed, which left threads with several todos.
     """
     done = await _create(user_id)
-    await TrackedTodoService.complete_tracked_todo(done.id, user_id, summary="Sam replied")
+    await TrackedTodoService.complete_tracked_todo(
+        done.id, user_id, summary="Sam replied", by=TodoCompleter.GAIA
+    )
     current = await TodoService.create_todo(
         TodoModel(title="Reply to Sam about the lease", labels=[GAIA_TRACKED_LABEL]),
         user_id,
@@ -342,7 +354,9 @@ async def test_reopening_a_thread_todo_on_a_free_thread_watches_it_both_ways_aga
     mongo_db: AsyncIOMotorDatabase, user_id: str, canvas_reopened: AsyncMock
 ) -> None:
     first = await _create(user_id)
-    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+    await TrackedTodoService.complete_tracked_todo(
+        first.id, user_id, summary="Sam replied", by=TodoCompleter.GAIA
+    )
 
     await TodoService.update_todo(first.id, TodoUpdateRequest(completed=False), user_id)
 
@@ -362,7 +376,9 @@ async def test_a_bulk_reopen_of_two_todos_for_one_thread_reopens_neither(
     mongo_db: AsyncIOMotorDatabase, user_id: str
 ) -> None:
     done_id, current_id = await _completed_and_newer_thread_todos(user_id)
-    await TrackedTodoService.complete_tracked_todo(current_id, user_id, summary="Sam replied again")
+    await TrackedTodoService.complete_tracked_todo(
+        current_id, user_id, summary="Sam replied again", by=TodoCompleter.GAIA
+    )
 
     with pytest.raises(ExternalRefReopenedTwiceError) as refused:
         await TodoService.bulk_update_todos(

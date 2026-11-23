@@ -9,6 +9,7 @@ import {
   Mail01Icon,
   Target02Icon,
 } from "@icons";
+import { FIXED_LOCALE, formatDay, formatTimeRange } from "@shared/utils";
 import type React from "react";
 import { useMemo } from "react";
 import { GoogleCalendarIcon } from "@/components/shared/icons";
@@ -18,7 +19,6 @@ import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-import { formatDate } from "@/utils/date/dateUtils";
 
 interface UpcomingEventsViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
@@ -32,40 +32,6 @@ interface UpcomingEventsViewProps {
 
 const EMPTY_EVENTS: GoogleCalendarEvent[] = [];
 const EMPTY_CALENDARS: CalendarItem[] = [];
-
-// Format time for display
-const formatTime = (startTime: string, endTime: string) => {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-
-  const formatTimeString = (date: Date) => {
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const hour12 = hours % 12 || 12;
-    const minuteStr = minutes.toString().padStart(2, "0");
-
-    if (minutes === 0) {
-      return `${hour12} ${ampm}`;
-    }
-    return `${hour12}:${minuteStr} ${ampm}`;
-  };
-
-  const startStr = formatTimeString(start);
-  const endStr = formatTimeString(end);
-
-  // Smart formatting - show AM/PM only when needed
-  if (start.getHours() < 12 && end.getHours() >= 12)
-    // Crossing from AM to PM
-    return `${startStr} to ${endStr}`;
-  else if (start.getHours() >= 12 && end.getHours() >= 12)
-    // Both PM
-    return `${startStr.replace(" PM", "")} to ${endStr}`;
-  else if (start.getHours() < 12 && end.getHours() < 12)
-    return `${startStr.replace(" AM", "")} to ${endStr}`;
-
-  return `${startStr} to ${endStr}`;
-};
 
 // Check if an event has passed
 const isEventPassed = (event: GoogleCalendarEvent) => {
@@ -219,9 +185,9 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
               <div className="w-1/5 flex-shrink-0">
                 <div className="sticky top-0 z-10 px-2 pt-1">
                   <span
-                    className={`text-sm ${index === 0 ? "text-primary" : "text-foreground-300"}`}
+                    className={`text-sm ${index === 0 ? "text-accent" : "text-zinc-600"}`}
                   >
-                    {formatDate(dateString)}
+                    {formatDay(dateString, "fullDay", FIXED_LOCALE)}
                   </span>
                 </div>
               </div>
@@ -267,7 +233,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                           className={`mt-0.5 text-xs ${isPassed ? "text-zinc-600" : "text-zinc-400"}`}
                         >
                           {event.start.dateTime && event.end.dateTime
-                            ? formatTime(
+                            ? formatTimeRange(
                                 event.start.dateTime,
                                 event.end.dateTime,
                               )

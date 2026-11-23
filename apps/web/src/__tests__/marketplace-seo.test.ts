@@ -11,7 +11,10 @@ import {
   type IntegrationMetaInput,
 } from "@/app/[locale]/(landing)/marketplace/[slug]/integrationMeta";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
+import {
+  getMarketplacePath,
+  marketplaceApiIdentifier,
+} from "@/features/integrations/lib/serverMarketplaceApi";
 import { generatePageMetadata } from "@/lib/seo";
 
 const BANNED_TOKENS = [
@@ -292,12 +295,10 @@ function stubBackend(status: number): void {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"] });
   vi.stubEnv("API_BASE_URL_INTERNAL", "http://api.test/api/v1");
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -320,22 +321,54 @@ describe("marketplace cross-links", () => {
   });
 
   it("links a tool to its marketplace page across slug spellings", async () => {
-    vi.setSystemTime(new Date("2030-01-01T00:00:00Z"));
     stubBackend(200);
 
     await expect(getMarketplacePath("google-calendar")).resolves.toBe(
       "/marketplace/googlecalendar",
     );
     await expect(getMarketplacePath("microsoft-teams")).resolves.toBe(
-      "/marketplace/microsoft_teams",
+      "/marketplace/microsoft-teams",
     );
     await expect(getMarketplacePath("figma")).resolves.toBeNull();
   });
 
   it("fails loud when the backend errors instead of silently dropping links", async () => {
-    vi.setSystemTime(new Date("2031-01-01T00:00:00Z"));
     stubBackend(500);
 
     await expect(getMarketplacePath("gmail")).rejects.toThrow(/500/);
+  });
+
+  it("serves an underscored API slug at a hyphenated URL and resolves it back", async () => {
+    vi.setSystemTime(new Date("2032-01-01T00:00:00Z"));
+    stubBackend(200);
+
+    await expect(marketplaceApiIdentifier("microsoft-teams")).resolves.toBe(
+      "microsoft_teams",
+    );
+    await expect(marketplaceApiIdentifier("googlecalendar")).resolves.toBe(
+      "googlecalendar",
+    );
+    await expect(marketplaceApiIdentifier("microsoftteams")).resolves.toBe(
+      "microsoftteams",
+    );
+    await expect(
+      marketplaceApiIdentifier("resend-mcp-communication"),
+    ).resolves.toBe("resend-mcp-communication");
+  });
+
+  it("resolves a native slug while the community catalog is down", async () => {
+    vi.setSystemTime(new Date("2033-01-01T00:00:00Z"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request) =>
+        input.url.includes("/integrations/config")
+          ? Response.json(NATIVE_CONFIG)
+          : new Response("boom", { status: 500 }),
+      ),
+    );
+
+    await expect(marketplaceApiIdentifier("microsoft-teams")).resolves.toBe(
+      "microsoft_teams",
+    );
   });
 });

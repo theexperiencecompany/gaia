@@ -1,0 +1,14 @@
+{
+  "name": "@gaia/artifact-validate",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bundles @gaia/artifacts' validator CLI (libs/artifacts/src/cli.ts) into one Node script the API runs on every generated artifact.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@gaia/artifacts": "workspace:*",
+    "esbuild": "^0.25.12"
+  }
+}

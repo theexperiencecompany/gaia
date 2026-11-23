@@ -1,8 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Accordion, Skeleton } from "@heroui/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -12,6 +10,8 @@ import {
 import type { MemoryEpisode } from "@shared/api/generated";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { type ReactNode, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { JOURNAL_RANGE_DAYS } from "@/features/memory/constants";
@@ -76,55 +76,59 @@ export function MemoryTimeline() {
     timelineContent = (
       <Accordion
         defaultExpandedKeys={defaultExpandedKeys}
-        selectionMode="multiple"
-        variant="splitted"
-        itemClasses={{
-          title: "text-sm font-medium text-white",
-          content: "pb-4 pt-0",
-          indicator: "text-zinc-500",
-        }}
+        allowsMultipleExpanded
+        variant="surface"
       >
         {episodes.map((episode) => {
           const date = parseISO(episode.date);
           const hasContent = episode.summary || episode.entries.length > 0;
 
           return (
-            <AccordionItem
+            <Accordion.Item
               key={episode.date}
-              aria-label={format(date, "EEEE, MMM d")}
+              id={episode.date}
               isDisabled={!hasContent}
-              title={
-                <div className="flex items-center gap-2">
-                  <Calendar01Icon className="size-4 shrink-0 text-zinc-500" />
-                  <span className="text-sm font-medium text-white">
-                    {format(date, "EEEE, MMM d")}
-                  </span>
-                  {isToday(date) && (
-                    <span className="text-xs text-primary">Today</span>
+            >
+              <Accordion.Heading>
+                <Accordion.Trigger>
+                  <div className="flex items-center gap-2">
+                    <Calendar01Icon className="size-4 shrink-0 text-zinc-500" />
+                    <span className="text-sm font-medium text-white">
+                      {format(date, "EEEE, MMM d")}
+                    </span>
+                    {isToday(date) && (
+                      <span className="text-xs text-accent">Today</span>
+                    )}
+                  </div>
+                  <Accordion.Indicator
+                    className={toneVariants({ tone: "faint" })}
+                  />
+                </Accordion.Trigger>
+              </Accordion.Heading>
+              <Accordion.Panel>
+                <div className="pb-4">
+                  {episode.summary && (
+                    <p className="text-sm text-zinc-400">{episode.summary}</p>
+                  )}
+
+                  {episode.entries.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {episode.entries.map((entry) => (
+                        <div
+                          key={`${entry.time}-${entry.text}`}
+                          className="flex items-baseline gap-3"
+                        >
+                          <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                            {entry.time}
+                          </span>
+                          <p className="text-sm text-zinc-300">{entry.text}</p>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              }
-            >
-              {episode.summary && (
-                <p className="text-sm text-zinc-400">{episode.summary}</p>
-              )}
-
-              {episode.entries.length > 0 && (
-                <div className="mt-2 space-y-1.5">
-                  {episode.entries.map((entry) => (
-                    <div
-                      key={`${entry.time}-${entry.text}`}
-                      className="flex items-baseline gap-3"
-                    >
-                      <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                        {entry.time}
-                      </span>
-                      <p className="text-sm text-zinc-300">{entry.text}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </AccordionItem>
+              </Accordion.Panel>
+            </Accordion.Item>
           );
         })}
       </Accordion>
@@ -138,21 +142,21 @@ export function MemoryTimeline() {
           {format(rangeStart, "MMM d")} to {format(rangeEnd, "MMM d, yyyy")}
         </p>
         <div className="flex gap-1">
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="flat"
-            className="rounded-xl"
+            shape="md"
+            variant="default-soft"
             aria-label="Previous two weeks"
             onPress={() => setRangeEnd(subDays(rangeEnd, JOURNAL_RANGE_DAYS))}
           >
             <ArrowLeft01Icon className="size-4" />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="flat"
-            className="rounded-xl"
+            shape="md"
+            variant="default-soft"
             aria-label="Next two weeks"
             isDisabled={atToday}
             onPress={() => {
@@ -161,7 +165,7 @@ export function MemoryTimeline() {
             }}
           >
             <ArrowRight01Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         </div>
       </div>
 

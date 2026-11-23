@@ -61,6 +61,23 @@ def _api_key_spec(preset: ProviderPreset, read_key: EnvReader) -> ProviderSpec:
 
 
 _DECLARED_SPECS: dict[CredentialProviderName, ProviderSpec] = {
+    CredentialProviderName.CLOUDFLARE: ProviderSpec(
+        preset=ProviderPreset(
+            label="Cloudflare Workers AI",
+            description="DeepSeek and other open models on Cloudflare's network. Takes over every AI role while it is set.",
+            key_url="https://dash.cloudflare.com/profile/api-tokens",
+            default_model=LLM_MODEL_PROFILES[LLMProviderName.CLOUDFLARE].chat,
+            favicon_url=favicon_url("cloudflare.com"),
+            api_key_label="API token",
+            account_id_label="Account ID",
+        ),
+        env={
+            "account_id": lambda: settings.CLOUDFLARE_AI_ACCOUNT_ID,
+            "api_key": lambda: settings.CLOUDFLARE_AI_API_TOKEN,
+        },
+        requires=frozenset({"account_id", "api_key"}),
+        registry_key=LLMProviderKey.CLOUDFLARE,
+    ),
     CredentialProviderName.OPENROUTER: ProviderSpec(
         preset=ProviderPreset(
             label="OpenRouter",
@@ -217,22 +234,6 @@ _DECLARED_SPECS: dict[CredentialProviderName, ProviderSpec] = {
         },
         requires=frozenset({"account_id", "api_key", "api_secret"}),
         registry_key=CLOUDINARY_PROVIDER,
-    ),
-    # The secret travels as api_key, the client id as account_id; only the pair works.
-    CredentialProviderName.GOOGLE_OAUTH: ProviderSpec(
-        preset=ProviderPreset(
-            label="Google OAuth",
-            description="Google account integration (Gmail, Calendar). Paste the OAuth client ID and client secret from Google Cloud Console.",
-            key_url="https://console.cloud.google.com/apis/credentials",
-            favicon_url=favicon_url("accounts.google.com"),
-            api_key_label="Client secret",
-            account_id_label="Client ID",
-        ),
-        env={
-            "account_id": lambda: settings.GOOGLE_CLIENT_ID,
-            "api_key": lambda: settings.GOOGLE_CLIENT_SECRET,
-        },
-        requires=frozenset({"account_id", "api_key"}),
     ),
     CredentialProviderName.FIRECRAWL: _api_key_spec(
         ProviderPreset(

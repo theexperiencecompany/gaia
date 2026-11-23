@@ -9,14 +9,15 @@ The expected JSON block format lives in the subagent prompt
 (app/agents/prompts/subagent_prompts.py); this module validates it.
 """
 
-import re
 from typing import Literal, Self, TypedDict
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_gate_models import GateCondition
 from app.models.workflow_models import TriggerType
+from app.utils.markdown_utils import json_blocks
 from shared.py.wide_events import log
 
 # The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
@@ -58,6 +59,9 @@ class WorkflowDraftPayload(TypedDict):
     cron_expression: str | None
     runs_only_when: str | None
     direct_create: bool
+    delivery: str
+    #: Sent back on create, so whatever waited on the user setting it up is picked back up.
+    draft_id: str
 
 
 class FinalizedOutput(BaseModel):
@@ -112,8 +116,14 @@ class FinalizedOutput(BaseModel):
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
-        """Convert to the format expected by frontend stream handler."""
+    def to_stream_payload(
+        self, delivery: WorkflowDelivery, draft_id: str
+    ) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
+        """Convert to the format expected by frontend stream handler.
+
+        delivery is not the assistant's to choose: the calling agent sets it from
+        the user's intent, and the draft carries it to the confirming modal.
+        """
         return {
             "workflow_draft": {
                 "suggested_title": self.title,
@@ -125,6 +135,8 @@ class FinalizedOutput(BaseModel):
                 "cron_expression": self.cron_expression,
                 "runs_only_when": self.runs_only_when,
                 "direct_create": self.direct_create,
+                "delivery": delivery.value,
+                "draft_id": draft_id,
             }
         }
 
@@ -211,24 +223,13 @@ def _result_from_payload(candidate: str, response: str) -> ParseResult | None:
     return None
 
 
-def _json_candidates(response: str) -> list[str]:
-    """Every substring of the reply that might be the structured output.
-
-    Fenced blocks first (what the prompt asks for), then the whole reply: the
-    model sometimes emits a bare JSON object with no fence, and without this
-    fallback that raw JSON is handed to the user verbatim as the "question".
-    """
-    fenced = re.findall(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL)
-    return [*fenced, response]
-
-
 def parse_subagent_response(response: str) -> ParseResult:
     """Extract the workflow assistant's structured output from its reply.
 
     Falls back to treating the whole reply as a clarifying message when it
     carries no recognizable JSON payload.
     """
-    for candidate in _json_candidates(response):
+    for candidate in json_blocks(response):
         result = _result_from_payload(candidate, response)
         if result is not None:
             return result

@@ -1,16 +1,22 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { Settings01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 
 interface IntegrationToolsHeadingProps {
   toolCount: number;
   isConnected: boolean;
   showToolsSkeleton: boolean;
   isSettling: boolean;
+  /** The server's tool discovery failed, so no tools are coming. */
+  setupFailed: boolean;
   onOpenPermissions: () => void;
 }
+
+const TOOLS_SETUP_FAILED =
+  "Couldn't load this integration's tools. Try reconnecting it.";
 
 /** The "Available tools" heading: the tool count and Permissions button, or a placeholder title while tools load. */
 export function IntegrationToolsHeading({
@@ -18,6 +24,7 @@ export function IntegrationToolsHeading({
   isConnected,
   showToolsSkeleton,
   isSettling,
+  setupFailed,
   onOpenPermissions,
 }: IntegrationToolsHeadingProps) {
   if (showToolsSkeleton) {
@@ -27,7 +34,14 @@ export function IntegrationToolsHeading({
       </h2>
     );
   }
-  if (toolCount === 0) return null;
+  if (toolCount === 0) {
+    if (!setupFailed) return null;
+    return (
+      <p className="mt-3 text-xs text-red-400 relative right-1">
+        {TOOLS_SETUP_FAILED}
+      </p>
+    );
+  }
 
   return (
     <div className="relative right-1 mt-3">
@@ -38,26 +52,27 @@ export function IntegrationToolsHeading({
               rather than the default pill, and longer counts grow. */}
           <Chip
             size="sm"
-            variant="flat"
-            radius="full"
-            classNames={{
-              base: "h-5 min-w-5 px-0",
-              content: "px-1.5 text-xs",
-            }}
+            variant="secondary"
+            className={shapeVariants({
+              shape: "pill",
+              className: "h-5 min-w-5",
+            })}
           >
-            {toolCount}
+            <Chip.Label className="text-xs">{toolCount}</Chip.Label>
           </Chip>
         </div>
         {isConnected && (
-          <Button
+          <GaiaButton
             size="sm"
-            variant="light"
-            className="h-7 shrink-0 px-2 text-xs text-zinc-400"
-            startContent={<Settings01Icon className="size-3.5" />}
+            variant="ghost"
+            tone="muted"
+            inset="tight"
+            className="h-7 shrink-0 text-xs"
             onPress={onOpenPermissions}
           >
+            <Settings01Icon className="size-3.5" />
             Permissions
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>

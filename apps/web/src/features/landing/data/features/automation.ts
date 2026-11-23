@@ -368,7 +368,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
           "After a meeting summary conversation, a consultant asks GAIA to generate an HTML version of the notes and email it to all attendees as a follow-up.",
       },
     ],
-    relatedSlugs: ["workflows", "rich-responses", "email"],
+    relatedSlugs: ["workflows", "rich-responses", "image-generation"],
     demoComponent: "document-generation",
   },
   {

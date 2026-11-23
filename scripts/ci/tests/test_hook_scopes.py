@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 import json
-import os
 from pathlib import Path
 import re
 import shlex
 import subprocess
 
+from lib import nx_affected
 import pytest
 import yaml
 
@@ -24,6 +24,7 @@ PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 HOOK_TASKS = {
     "api-types": "ci:api-schema",
     "analytics-types": "ci:analytics-catalog",
+    "openui-prompts": "ci:openui-prompts",
     "plr-complexity": "ci:plr-complexity",
 }
 # Every check reads the CI harness (nx.json's ciHarness); a hook has no reason to.
@@ -55,25 +56,7 @@ def tracked() -> list[str]:
 @pytest.fixture(scope="module")
 def nx_reasons(tracked: list[str]) -> dict[str, list[dict[str, str]]]:
     targets = sorted({task.split(":", 1)[1] for task in HOOK_TASKS.values()})
-    out = subprocess.run(
-        [
-            "pnpm",
-            "exec",
-            "nx",
-            "affected",
-            "-t",
-            *targets,
-            "--files",
-            *tracked,
-            "--explain=stdout",
-        ],
-        cwd=REPO_ROOT,
-        env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    affected: dict[str, list[dict[str, str]]] = json.loads(out[out.index("{") :])["affected"]
+    affected = nx_affected.explain(targets, ["--files", *tracked])
     return affected
 
 
@@ -133,6 +116,9 @@ def test_the_plr_complexity_hook_runs_ci_script_on_the_pinned_interpreter() -> N
     interpreter, *ci_args = shlex.split(target["options"]["command"])
     assert interpreter == "python3"
     assert shlex.split(hook["entry"]) == [
+        "mise",
+        "exec",
+        "--",
         "uv",
         "run",
         "--no-project",
@@ -141,3 +127,28 @@ def test_the_plr_complexity_hook_runs_ci_script_on_the_pinned_interpreter() -> N
         *ci_args,
     ], "the hook runs CI's script and args on the pinned interpreter, not PATH's python3"
     assert hook["pass_filenames"] is False
+
+
+# Directories an install creates; a fresh worktree has none of them yet.
+INSTALL_DIRS = (".venv", "node_modules")
+
+
+def _all_hooks() -> list[tuple[str, dict[str, object]]]:
+    configs = [PRE_COMMIT, *sorted(REPO_ROOT.glob("apps/*/.pre-commit-config.yaml"))]
+    return [
+        (f"{config.relative_to(REPO_ROOT)}:{hook['id']}", hook)
+        for config in configs
+        for repo in yaml.safe_load(config.read_text(encoding="utf-8"))["repos"]
+        for hook in repo.get("hooks", [])
+    ]
+
+
+@pytest.mark.parametrize(("name", "hook"), [pytest.param(*h, id=h[0]) for h in _all_hooks()])
+def test_no_hook_runs_a_program_out_of_an_install_directory(
+    name: str, hook: dict[str, object]
+) -> None:
+    """Regression: `../../.venv/bin/python` hooks died with a bare ENOENT in a fresh worktree."""
+    program = shlex.split(str(hook.get("entry", "")))[:1]
+    assert not [part for part in Path(*program).parts if part in INSTALL_DIRS], (
+        f"{name} runs {program[0]}: use `uv run` (Python) or `pnpm exec` (Node) instead"
+    )

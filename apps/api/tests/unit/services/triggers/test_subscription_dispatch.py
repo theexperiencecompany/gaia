@@ -8,6 +8,7 @@ flow, failing silently.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+import hashlib
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,11 +19,14 @@ from redis.exceptions import RedisError
 import respx
 import time_machine
 
-from app.constants.todos import TodoActivityEvent
+from app.constants.notifications import NotificationKind
+from app.constants.todos import TodoActivityEvent, TodoCompleter
 from app.constants.trigger_gates import GateAuthor
+from app.models.notification.details_models import TodoTriggerFiredNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.trigger_gate_models import AuthoredGate
@@ -63,6 +67,22 @@ GMAIL = "gmail_new_message"
 SLACK = "slack_new_message"
 
 
+#: A Composio event whose datetime only serializes through str, and its canonical (key-sorted) JSON.
+EVENT: dict[str, object] = {
+    "id": "msg-1",
+    "at": datetime(2026, 11, 14, 9, 0, tzinfo=UTC),
+    "from": "a@x.io",
+}
+EVENT_NOTIFICATION_ID = notification_id(
+    USER_ID,
+    "todo_trigger",
+    "sub-1",
+    hashlib.sha256(
+        b'{"at": "2026-11-14 09:00:00+00:00", "from": "a@x.io", "id": "msg-1"}'
+    ).hexdigest(),
+)
+
+
 def _subscription(**overrides: object) -> TriggerSubscription:
     return TriggerSubscription.model_validate(
         {
@@ -94,10 +114,10 @@ def deps():
         patch(f"{_MOD}.redis_cache") as redis,
         patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as get_pool,
-        patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
+        patch(f"{_MOD}.notification_service.notify", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture") as capture,
-        patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
+        patch(f"{_MOD}.record_todo_activity", new_callable=AsyncMock) as activity,
         patch(f"{_MOD}.buffer_todo_trigger_event", new_callable=AsyncMock) as hold,
         patch(f"{_MOD}.buffer_todo_trigger_event_until", new_callable=AsyncMock) as hold_until,
     ):
@@ -576,6 +596,9 @@ class TestActions:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         request = deps.notify.await_args.args[0]
+        assert request.id == notification_id(
+            USER_ID, "todo_trigger", sub.id, hashlib.sha256(b"{}").hexdigest()
+        )
         assert request.user_id == USER_ID
         assert request.source == NotificationSourceEnum.TODO_TRIGGER
         assert request.type == NotificationType.INFO
@@ -583,7 +606,9 @@ class TestActions:
         assert request.content.body == f"An event you were watching ({GMAIL}) just fired."
         assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == f"/todos?todoId={TODO_ID}"
-        assert request.metadata == {"todo_id": TODO_ID, "subscription_id": sub.id}
+        assert request.details == TodoTriggerFiredNotification(
+            kind=NotificationKind.TODO_TRIGGER_FIRED, todo_id=TODO_ID, subscription_id=sub.id
+        )
         deps.enqueue.assert_not_awaited()
         deps.repo.update.assert_not_awaited()
 
@@ -601,6 +626,7 @@ class TestActions:
         assert (
             deps.complete.await_args.kwargs["summary"] == f"Completed automatically: {GMAIL} fired."
         )
+        assert deps.complete.await_args.kwargs["by"] is TodoCompleter.TRIGGER
 
     async def test_unblock_removes_only_the_blocking_labels(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [
@@ -624,14 +650,33 @@ class TestActions:
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(
                 labels=["gaia-tracked"],
-                trigger_subscriptions=[_subscription(action=SubscriptionAction.UNBLOCK)],
+                trigger_subscriptions=[
+                    _subscription(id="sub-1", action=SubscriptionAction.UNBLOCK)
+                ],
             )
         ]
 
-        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, EVENT)
 
         deps.notify.assert_awaited_once()
+        assert deps.notify.await_args.args[0].id == EVENT_NOTIFICATION_ID
         deps.repo.update.assert_not_awaited()
+
+    async def test_a_redelivered_event_notifies_under_its_one_id_whatever_its_key_order(
+        self, deps
+    ) -> None:
+        sub = _subscription(id="sub-1", action=SubscriptionAction.NOTIFY)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, EVENT)
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(reversed(EVENT.items())))
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {**EVENT, "id": "msg-2"})
+
+        ids = [awaited.args[0].id for awaited in deps.notify.await_args_list]
+        assert ids[:2] == [EVENT_NOTIFICATION_ID, EVENT_NOTIFICATION_ID]
+        assert ids[2] not in (EVENT_NOTIFICATION_ID, None)
 
 
 class TestAnalytics:

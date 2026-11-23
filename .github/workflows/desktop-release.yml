@@ -34,11 +34,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-26
             target: mac
-          - os: windows-latest
+          - os: windows-2025-vs2026
             target: win
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: linux
 
     runs-on: ${{ matrix.os }}
@@ -98,6 +98,8 @@ jobs:
           CI: true
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
           NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          # Prerender fetches count against the web server's ceiling, not one runner address's.
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No paid Apple Developer ID / notarization. Disabling auto-discovery
           # makes electron-builder skip real signing and lets the afterSign hook
@@ -141,7 +143,7 @@ jobs:
     # Release events always publish. Manual dispatches publish only when a tag
     # was given (empty tag = build-only verification run).
     if: github.event_name == 'release' || inputs.tag != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: write # read the quality gate's runs, and re-run one a newer push cancelled

@@ -1,30 +1,16 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Input, Modal } from "@heroui/react";
 import { ShieldIcon } from "@icons";
-import type {
-  ApprovalDecision,
-  ApprovalRequestData,
-  ApprovalStatus,
-  BatchDecisionOutcome,
-} from "@shared/chat";
-import { formatApprovalAge } from "@shared/chat";
+import type { ApprovalDecision, ApprovalRequestData } from "@shared/chat";
+import { approvalAgeSeconds, formatApprovalAge } from "@shared/chat";
 import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
-import {
-  BATCH_OUTCOME_REASON,
-  resolveBatchOutcomeStatus,
-} from "@/features/chat/utils/batchOutcome";
+import { isSettledOutcome } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
 
 interface SheetDecision {
@@ -36,47 +22,6 @@ interface ApprovalReviewSheetProps {
   items: ApprovalRequestData[];
   open: boolean;
   onClose: () => void;
-  /** The conversation owning these cards — clears that stream's gate instead
-   * of the active one. */
-  conversationId?: string;
-  onSettled: (
-    approvalId: string,
-    status: ApprovalStatus,
-    feedback: string | null,
-  ) => void;
-}
-
-/**
- * Settle one batch outcome: server truth wins over the tapped button, so a
- * lost race never paints the wrong verdict. Any other uncommitted item keeps
- * its decision in the sheet for review or retry.
- */
-function settleBatchOutcome(
-  outcome: BatchDecisionOutcome,
-  made: SheetDecision,
-  onSettled: ApprovalReviewSheetProps["onSettled"],
-  removeDecision: (approvalId: string) => void,
-): void {
-  if (outcome.resolved) {
-    onSettled(
-      outcome.approval_id,
-      made.decision === "approve" ? "approved" : "denied",
-      made.feedback.trim() || null,
-    );
-    removeDecision(outcome.approval_id);
-    return;
-  }
-  if (outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND) {
-    onSettled(
-      outcome.approval_id,
-      resolveBatchOutcomeStatus(
-        outcome.status,
-        made.decision === "approve" ? "approved" : "denied",
-      ),
-      made.feedback.trim() || null,
-    );
-    removeDecision(outcome.approval_id);
-  }
 }
 
 /**
@@ -88,12 +33,10 @@ export default function ApprovalReviewSheet({
   items,
   open,
   onClose,
-  conversationId,
-  onSettled,
 }: ApprovalReviewSheetProps) {
   const [decisions, setDecisions] = useState<Record<string, SheetDecision>>({});
   const [submitting, setSubmitting] = useState(false);
-  const markApprovalDecided = useMarkApprovalDecided();
+  const [openedAt] = useState(() => Date.now());
 
   const toggle = (approvalId: string, decision: ApprovalDecision) => {
     setDecisions((prev) => {
@@ -131,7 +74,6 @@ export default function ApprovalReviewSheet({
           feedback: decisions[approval_id].feedback.trim() || undefined,
         })),
       });
-      markApprovalDecided(conversationId);
       const removeDecision = (approvalId: string) => {
         setDecisions((prev) => {
           const next = { ...prev };
@@ -140,16 +82,10 @@ export default function ApprovalReviewSheet({
         });
       };
       for (const outcome of response.outcomes) {
-        const made = decisions[outcome.approval_id];
-        if (made) settleBatchOutcome(outcome, made, onSettled, removeDecision);
+        if (isSettledOutcome(outcome)) removeDecision(outcome.approval_id);
       }
-      const kept = response.outcomes.filter(
-        (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
-      );
-      if (kept.some((o) => o.reason === BATCH_OUTCOME_REASON.STALE)) {
-        toast.error("Some approvals already moved — kept for review");
-      }
-      if (kept.some((o) => o.reason !== BATCH_OUTCOME_REASON.STALE)) {
+      const kept = response.outcomes.filter((o) => !isSettledOutcome(o));
+      if (kept.length > 0) {
         toast.error("Some approvals couldn't be submitted — please try again");
       }
     } catch {
@@ -171,113 +107,141 @@ export default function ApprovalReviewSheet({
     .join(", ");
 
   return (
-    <Modal isOpen={open} onClose={onClose} placement="bottom-center" size="lg">
-      <ModalContent>
-        <ModalHeader className="flex items-center gap-2">
-          <ShieldIcon width={18} className="shrink-0 text-amber-400" />
-          <span className="text-sm text-zinc-100">
-            {items.length} actions need your approval ({totals})
-          </span>
-        </ModalHeader>
-        <ModalBody className="max-h-[50vh] overflow-y-auto">
-          {[...groups.entries()].map(([name, list]) => (
-            <div key={name}>
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                {name}
-              </div>
-              <div className="mb-3 space-y-2">
-                {list.map((item) => {
-                  const picked = decisions[item.approval_id]?.decision ?? null;
-                  const preview = flattenArgsPreview(item.args_preview ?? {});
-                  const shown = preview.rows.slice(0, 6);
-                  const hidden =
-                    preview.rows.length - shown.length + preview.omitted;
-                  return (
-                    <div
-                      key={item.approval_id}
-                      data-testid="sheet-row"
-                      className="rounded-2xl bg-zinc-900 p-3"
-                    >
-                      <div className="text-sm leading-snug text-zinc-100">
-                        {item.summary}
-                      </div>
-                      {item.age_seconds != null && (
-                        <div className="mt-0.5 text-[11px] text-zinc-500">
-                          {formatApprovalAge(item.age_seconds)}
-                        </div>
-                      )}
-                      {shown.length > 0 && (
-                        <div className="mt-1.5 space-y-0.5">
-                          {shown.map((row) => (
-                            <div
-                              key={`${row.group ?? "top"}:${row.key}`}
-                              className="text-xs text-zinc-400"
-                            >
-                              <span className="text-zinc-500">
-                                {row.group != null ? `${row.group} ` : ""}
-                                {row.key.replaceAll("_", " ")}:{" "}
-                              </span>
-                              {row.value}
-                            </div>
-                          ))}
-                          {hidden > 0 && (
-                            <div className="text-[11px] text-zinc-500">
-                              +{hidden} more
+    <Modal
+      isOpen={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) onClose();
+      }}
+    >
+      <Modal.Backdrop>
+        <Modal.Container placement="bottom" size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex items-center gap-2">
+              <ShieldIcon width={18} className="shrink-0 text-amber-400" />
+              <Modal.Heading
+                className={toneVariants({
+                  tone: "strong",
+                  className: "text-sm",
+                })}
+              >
+                {items.length} actions need your approval ({totals})
+              </Modal.Heading>
+            </Modal.Header>
+            <Modal.Body className="max-h-[50vh] overflow-y-auto">
+              {[...groups.entries()].map(([name, list]) => (
+                <div key={name}>
+                  <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                    {name}
+                  </div>
+                  <div className="mb-3 space-y-2">
+                    {list.map((item) => {
+                      const picked =
+                        decisions[item.approval_id]?.decision ?? null;
+                      const preview = flattenArgsPreview(
+                        item.args_preview ?? {},
+                      );
+                      const shown = preview.rows.slice(0, 6);
+                      const hidden =
+                        preview.rows.length - shown.length + preview.omitted;
+                      return (
+                        <div
+                          key={item.approval_id}
+                          data-testid="sheet-row"
+                          className="rounded-2xl bg-zinc-900 p-3"
+                        >
+                          <div className="text-sm leading-snug text-zinc-100">
+                            {item.description.headline}
+                          </div>
+                          {item.asked_at && (
+                            <div className="mt-0.5 text-[11px] text-zinc-500">
+                              {formatApprovalAge(
+                                approvalAgeSeconds(item.asked_at, openedAt),
+                              )}
                             </div>
                           )}
+                          {shown.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {shown.map((row) => (
+                                <div
+                                  key={`${row.group ?? "top"}:${row.key}`}
+                                  className="text-xs text-zinc-400"
+                                >
+                                  <span className="text-zinc-500">
+                                    {row.group != null ? `${row.group} ` : ""}
+                                    {row.key.replaceAll("_", " ")}:{" "}
+                                  </span>
+                                  {row.value}
+                                </div>
+                              ))}
+                              {hidden > 0 && (
+                                <div className="text-[11px] text-zinc-500">
+                                  +{hidden} more
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="mt-2 flex items-center gap-2">
+                            <GaiaButton
+                              size="sm"
+                              variant={
+                                picked === "approve" ? "primary" : "tertiary"
+                              }
+                              onPress={() =>
+                                toggle(item.approval_id, "approve")
+                              }
+                            >
+                              Approve
+                            </GaiaButton>
+                            <GaiaButton
+                              size="sm"
+                              variant={
+                                picked === "deny" ? "danger" : "tertiary"
+                              }
+                              onPress={() => toggle(item.approval_id, "deny")}
+                            >
+                              Deny
+                            </GaiaButton>
+                            {picked === "deny" && (
+                              <Input
+                                className={inputVariants({
+                                  size: "sm",
+                                  className: "flex-1",
+                                })}
+                                variant="secondary"
+                                placeholder="Why? (optional)"
+                                value={
+                                  decisions[item.approval_id]?.feedback ?? ""
+                                }
+                                onChange={(e) =>
+                                  setFeedback(item.approval_id, e.target.value)
+                                }
+                              />
+                            )}
+                          </div>
                         </div>
-                      )}
-                      <div className="mt-2 flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          color={picked === "approve" ? "primary" : "default"}
-                          variant={picked === "approve" ? "solid" : "flat"}
-                          onPress={() => toggle(item.approval_id, "approve")}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={picked === "deny" ? "solid" : "flat"}
-                          color={picked === "deny" ? "danger" : "default"}
-                          onPress={() => toggle(item.approval_id, "deny")}
-                        >
-                          Deny
-                        </Button>
-                        {picked === "deny" && (
-                          <Input
-                            className="flex-1"
-                            size="sm"
-                            variant="flat"
-                            placeholder="Why? (optional)"
-                            value={decisions[item.approval_id]?.feedback ?? ""}
-                            onValueChange={(value) =>
-                              setFeedback(item.approval_id, value)
-                            }
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </ModalBody>
-        <ModalFooter className="flex items-center justify-between">
-          <span className="text-xs text-zinc-500">
-            Each decision acts immediately; Submit closes up and tells your
-            agent.
-          </span>
-          <Button
-            color="primary"
-            isDisabled={decidedIds.length === 0 || submitting}
-            onPress={submit}
-          >
-            {`Submit (${decidedIds.length})`}
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </Modal.Body>
+            <Modal.Footer className="flex items-center justify-between">
+              <span className="text-xs text-zinc-500">
+                Each decision acts immediately; Submit closes up and tells your
+                agent.
+              </span>
+              <GaiaButton
+                isDisabled={decidedIds.length === 0 || submitting}
+                onPress={submit}
+                variant="primary"
+              >
+                {`Submit (${decidedIds.length})`}
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

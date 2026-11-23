@@ -85,7 +85,7 @@ function injectClasses(html: string): string {
       // matches remaining links outside h2.
       .replace(
         /<a href=/g,
-        '<a class="text-primary underline decoration-primary/30 underline-offset-[3px] hover:decoration-primary transition-colors" href=',
+        '<a class="text-accent underline decoration-accent/30 underline-offset-[3px] hover:decoration-accent transition-colors" href=',
       )
   );
 }

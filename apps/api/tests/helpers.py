@@ -15,6 +15,7 @@ from contextlib import ExitStack, asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
+from http.cookies import Morsel, SimpleCookie
 import importlib.util
 import json
 import math
@@ -25,7 +26,7 @@ import socket
 import sys
 import time
 from types import ModuleType, SimpleNamespace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 import zoneinfo
 
@@ -43,9 +44,11 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import Field
-import pytest
+from redis.asyncio.client import PubSub
 import respx
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp
@@ -54,17 +57,34 @@ import uvicorn
 from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
+from app.config.settings import settings
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
+from app.constants.auth import SESSION_HINT_COOKIE
+from app.constants.chat import ConversationSource
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
-from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.conversation_log import conversation_log_repository
+from app.db.repositories.conversations import conversation_repository
+from app.models.conversation_log_models import LoggedEntry, Reply, ReplySettled, UserMessage
+from app.models.conversation_models import LogPage
+from app.models.conversation_screen_models import NoticeItem, ScreenItem, UserItem, WorkItem
 from app.models.email_verdict_models import EmailVerdictDocument
-from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.conversation.mongo_log import MongoConversationLog
+from app.services.conversation.screen import project_screen
+from app.services.hil.jev_client import decisions_url
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
+from app.utils.artifact_utils import FILE_LINKS
+from app.utils.auth_utils import session_hint_cookie_domain
+from app.utils.file_links import FileLinks
 from app.utils.timezone import Timezone
+from shared.py.approvals import ActionResult, ApprovalOutcome
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyItem, ReplyOutcome, ToolDataEntry
 from shared.py.wide_events import log, log_context
+
+#: Where a test deployment serves and opens files: a screen resolves every sandbox path against it.
+TEST_FILE_LINKS = FileLinks(api_host="https://api.gaia.test", web_app="https://gaia.test")
 
 #: A well-formed user id with no users row behind it.
 UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
@@ -85,6 +105,28 @@ def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> 
     return f"{header}; Secure" if secure else header
 
 
+def session_set_cookies(name: str, value: str, max_age: int, *, secure: bool) -> list[str]:
+    """Spell the Set-Cookie pair a sign-in writes: the session, then its hint on the configured site."""
+    domain = session_hint_cookie_domain(settings.HOST, settings.FRONTEND_URL)
+    return [
+        session_set_cookie(name, value, max_age, secure=secure),
+        session_hint_set_cookie(max_age, secure=secure, domain=domain),
+    ]
+
+
+def session_cookie_morsel(set_cookie_headers: list[str], name: str) -> Morsel[str]:
+    """Parse the one Set-Cookie header that writes name out of a response's several."""
+    (header,) = (h for h in set_cookie_headers if h.startswith(f"{name}="))
+    return SimpleCookie(header)[name]
+
+
+def session_hint_set_cookie(max_age: int, *, secure: bool, domain: str | None = None) -> str:
+    """Spell the Set-Cookie header of the signed-in hint that rides with every session cookie."""
+    scope = f"; Domain={domain}" if domain else ""
+    header = f"{SESSION_HINT_COOKIE}=1{scope}; Max-Age={max_age}; Path=/; SameSite=lax"
+    return f"{header}; Secure" if secure else header
+
+
 def effective_limit(config: RateLimitConfig, period: str) -> float:
     """Compute a comparable allowance for a period under RateLimitConfig's 0-semantics.
 
@@ -99,6 +141,12 @@ def effective_limit(config: RateLimitConfig, period: str) -> float:
     return math.inf if value <= 0 else float(value)
 
 
+def rate_limit_detail(exc: HTTPException) -> dict[str, str]:
+    """Return a 429's detail, which the rate-limit exceptions always build as a dict."""
+    assert isinstance(exc.detail, dict)
+    return exc.detail
+
+
 def pick_free_port() -> int:
     """Bind to port 0, read the OS-assigned port, then release it.
 
@@ -111,11 +159,8 @@ def pick_free_port() -> int:
 
 
 # The mutation lane runs a copy of apps/api outside the repo and says where the repo is.
-LLM_STUB_DIR = (
-    Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
-    / "tools"
-    / "llm-stub"
-)
+REPO_ROOT = Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
+LLM_STUB_DIR = REPO_ROOT / "tools" / "llm-stub"
 
 
 def load_llm_stub_module(name: str) -> ModuleType:
@@ -143,6 +188,36 @@ _TEST_REDIS_STRIPE_BASE = _TEST_REDIS_DB_BLOCK_START - (
     _TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE
 )
 _TEST_REDIS_DB_BLOCK_SIZE = _TEST_REDIS_STRIPE - (_TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE)
+
+
+class LedgerFacts(TypedDict):
+    """A ledger row's outcome and action, as ledger_facts sets them."""
+
+    outcome: ApprovalOutcome | None
+    action: ActionResult | None
+
+
+def ledger_facts(ended: ApprovalOutcome | ActionResult | None) -> LedgerFacts:
+    """Return a ledger row's outcome and action for one fact: an action result implies approved."""
+    if isinstance(ended, ActionResult):
+        return {"outcome": ApprovalOutcome.APPROVED, "action": ended}
+    return {"outcome": ended, "action": None}
+
+
+async def published_broadcasts(pubsub: PubSub, user_id: str) -> list[dict[str, object]]:
+    """Every WebSocket broadcast to user_id that reached the subscribed channel within a second.
+
+    Pub/Sub ignores the Redis db, so the channel also carries every other process's broadcasts.
+    """
+    published: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 1
+    while loop.time() < deadline:
+        # The subscribe ack also reads as None, so None never means the channel is done.
+        message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+        if message is not None and (broadcast := json.loads(message["data"]))["user_id"] == user_id:
+            published.append(broadcast)
+    return published
 
 
 def worker_redis_url(base_url: str) -> str:
@@ -192,10 +267,8 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
         patch("app.models.trigger_gate_models.ENFORCED_GATE_KINDS", frozenset(GateKind)),
         patch(f"{gate}.capture", MagicMock()) as capture,
-        patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
-        patch(
-            f"{gate}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
-        ) as quiet_hours,
+        # The owner quiet hours read once: their clock and hours (the default until set on owner).
+        patch("app.services.quiet_hours.user_repository") as users,
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
         patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,
         patch(
@@ -212,12 +285,14 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
+        owner = UserDocument(id="gate-owner", timezone=tz.value)
+        users.get = AsyncMock(return_value=owner)
         yield SimpleNamespace(
-            jev=router.post(HIL_JEV_URL),
+            jev=router.post(decisions_url(None)),
             enforced=enforced,
             capture=capture,
-            tz=profile_tz,
-            quiet_hours=quiet_hours,
+            owner=owner,
+            owner_read=users.get,
             wrote=wrote,
             workflow_skips=workflow_skips,
             watch_skips=watch_skips,
@@ -304,6 +379,29 @@ def email_verdict_answers(
     return {"answers": answers}
 
 
+def reaction_answers(
+    *, upset: float = 0.0, task: float = 1.0, sign_off: float = 0.0, emoji: str = "🔎"
+) -> dict[str, object]:
+    """Return a Decisions body for the instant reaction's three questions; needs_words takes the rest."""
+    kinds: dict[str, float] = {
+        "task": task,
+        "sign_off": sign_off,
+        "needs_words": round(1.0 - task - sign_off, 6),
+    }
+    top_kind = max(kinds, key=kinds.__getitem__)
+    return {
+        "answers": {
+            "upset": {"type": "noul", "noul": upset},
+            "kind": {
+                "type": "choice",
+                "choice": top_kind,
+                "probabilities": kinds,
+            },
+            "emoji": {"type": "choice", "choice": emoji, "probabilities": {emoji: 1.0}},
+        }
+    }
+
+
 @contextmanager
 def local_timezone(tz_name: str) -> Iterator[None]:
     """Run the body with the process local timezone set, restoring it afterwards.
@@ -326,6 +424,47 @@ def local_timezone(tz_name: str) -> Iterator[None]:
             os.environ["TZ"] = original
         if hasattr(time, "tzset"):
             time.tzset()
+
+
+async def stored_conversation(
+    conversations: AsyncIOMotorCollection, conversation_id: str
+) -> dict[str, Any] | None:
+    """Read a stored conversation's head with its screen items, as a load projects them from its entries."""
+    head = await conversations.find_one({"conversation_id": conversation_id})
+    if head is None:
+        return None
+    doc = await conversation_repository.get(conversation_id, user_id=head["user_id"])
+    items = (
+        []
+        if doc is None
+        else [item.model_dump(mode="json") for item in shown_items(conversation_id, doc)]
+    )
+    return {**head, "items": items}
+
+
+def shown_items(conversation_id: str, page: LogPage) -> list[ScreenItem]:
+    """Project a read page of entries into the screen items a load serves."""
+    return project_screen(conversation_id, page.entries, FILE_LINKS)
+
+
+def item_text(item: ScreenItem) -> str:
+    """Return the words an item shows: the user's message, a reply's or a notice's bubbles, else none."""
+    match item:
+        case UserItem(message=message):
+            return message.text
+        case ReplyItem(bubbles=bubbles) | NoticeItem(bubbles=bubbles):
+            return NEW_MESSAGE_BREAKER.join(bubbles)
+        case _:
+            return ""
+
+
+def item_cards(item: ScreenItem) -> tuple[ToolDataEntry, ...]:
+    """Return the cards an item shows."""
+    match item:
+        case ReplyItem(tool_data=cards) | WorkItem(tool_data=cards) | NoticeItem(tool_data=cards):
+            return cards
+        case _:
+            return ()
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:
@@ -370,7 +509,7 @@ GraphStreamEvent = tuple[tuple[str, ...], str, Any]
 class ScriptedGraph:
     """A graph whose astream replays exactly the events handed to it.
 
-    Drives the real graph drivers (execute_graph_streaming / _silent) over shapes a
+    Drives the real stream translator (payloads_for_stream_event) over shapes a
     real model wire never produces: an id-less message, a tool call announced
     before its text, arguments that never parse, a retraction mid-node.
     """
@@ -506,32 +645,6 @@ class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
             request.state.authenticated = False
             request.state.user = None
         return await call_next(request)
-
-
-def real_services_available() -> bool:
-    """Return True when the run is allowed to dial real service containers.
-
-    CI (the test-python service containers) sets USE_REAL_SERVICES=1 explicitly; a
-    bare local run must stay offline.
-    """
-    return os.environ.get("USE_REAL_SERVICES", "0") == "1"
-
-
-def skip_items_without_real_services(
-    items: list[pytest.Item],
-    reason: str = "requires USE_REAL_SERVICES=1 (Docker + real Postgres/Redis/MongoDB/ChromaDB)",
-) -> None:
-    """Skip collected items in place unless real services are available.
-
-    Collection-time skip: fast (no connections, no imports of the real-infra
-    stack) so a bare run reports an instant, visible skip instead of hanging
-    on dead ports or failing with connection errors minutes later.
-    """
-    if real_services_available():
-        return
-    marker = pytest.mark.skip(reason=reason)
-    for item in items:
-        item.add_marker(marker)
 
 
 class AssertNumDbCalls:
@@ -702,6 +815,27 @@ async def drain_at_most_once_sends() -> None:
     await asyncio.gather(
         *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
     )
+
+
+def quiet_hours_excluding_now() -> dict[str, int | bool]:
+    """Return a UTC quiet-hours window starting two hours from now, so a send is never held.
+
+    A plain mapping rather than a QuietHours: UserDocument coerces it, and the
+    regression lane can still build it against a base revision without the model.
+    """
+    hour = datetime.now(UTC).hour
+    return {"enabled": True, "start_hour": (hour + 2) % 24, "end_hour": (hour + 3) % 24}
+
+
+def tamper_signature(token: str) -> str:
+    """Corrupt the signature segment of a dot-separated signed token.
+
+    Edits the first character: the last base64url one carries padding bits a
+    decoder discards, so changing it can leave the signature bytes unchanged.
+    """
+    head, _, signature = token.rpartition(".")
+    replacement = "B" if signature[0] == "A" else "A"
+    return f"{head}.{replacement}{signature[1:]}"
 
 
 CREDENTIAL_STORE_SECRET = "unit-test-instance-secret"
@@ -932,3 +1066,39 @@ def hostile_jwts(claims: Mapping[str, object], secret: str) -> dict[str, str]:
         "tampered_payload": f"{header}.{_b64url_json({**claims, 'sub': 'intruder'})}.{signature}",
         "garbage": "not-a-jwt",
     }
+
+
+async def log_history(
+    conversation_id: str, user_id: str, messages: Sequence[Mapping[str, str]]
+) -> None:
+    """Log a finished exchange: each user message, then each bot reply settled as answering them.
+
+    messages are what a client reads back: type ("user" or "bot"), response, and message_id.
+    """
+    log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
+    asked: list[LoggedEntry] = []
+    for message in messages:
+        message_id = message.get("message_id") or f"m-{ObjectId()}"
+        if message["type"] == "user":
+            said = UserMessage(
+                id=message_id, text=message["response"], surface=ConversationSource.WEB
+            )
+            asked.append((await log.append(conversation_id, user_id, said)).logged)
+            continue
+        reply = Reply(
+            id=f"reply:{message_id}",
+            reply_id=message_id,
+            attempt_id=f"attempt:{message_id}",
+            text=message["response"],
+        )
+        opened = (await log.append(conversation_id, user_id, reply)).logged
+        settle = ReplySettled(
+            id=f"settle:{message_id}",
+            reply_id=message_id,
+            outcome=ReplyOutcome.ANSWERED,
+            answers=tuple(logged.entry.id for logged in asked),
+            through=asked[-1].seq if asked else opened.seq,
+            quote_target=None,
+        )
+        await log.append(conversation_id, user_id, settle)
+        asked = []

@@ -59,6 +59,7 @@ import asyncio
 from collections.abc import AsyncIterator, Coroutine, Mapping
 import contextlib
 import contextvars
+from enum import StrEnum
 import sys
 import time
 from typing import Any, NotRequired, TypedDict
@@ -193,11 +194,34 @@ class ModelContext(TypedDict, total=False):
     call_failed: bool
 
 
+class ConversationOperation(StrEnum):
+    """The conversation endpoint a wide event records."""
+
+    BARGE_IN = "barge_in"
+    BATCH_SYNC = "batch_sync"
+    CREATE = "create"
+    DELETE = "delete"
+    DELETE_ALL = "delete_all"
+    ENTRIES_BEFORE = "entries_before"
+    EVENTS = "events"
+    GET = "get"
+    GET_PINNED = "get_pinned"
+    LIST = "list"
+    MARK_READ = "mark_read"
+    MARK_UNREAD = "mark_unread"
+    PIN_MESSAGE = "pin_message"
+    RETRY = "retry"
+    SEND = "send"
+    STAR = "star"
+    STOP = "stop"
+    UPDATE_DESCRIPTION = "update_description"
+
+
 class ConversationContext(TypedDict, total=False):
     """Conversation CRUD/operation context (create, list, delete, star, …)."""
 
     id: str
-    operation: str  # "create"|"list"|"get"|"delete"|"delete_all"|"star"|"pin_message"|"update_messages"|"batch_sync"|"mark_read"|"mark_unread"|"update_description"
+    operation: ConversationOperation
     page: int
     limit: int
     total_returned: int
@@ -513,13 +537,16 @@ class VoiceContext(TypedDict, total=False):
     """Voice-agent (LiveKit) session/turn operation context."""
 
     operation: (
-        str  # "session_start"|"turn"|"drain"|"credentials"|"tts"|"stt"|"tool_call"|"session_end"
+        str  # "session_start"|"turn"|"follow"|"barge_in"|"credentials"|"tts"|"stt"|"session_end"
     )
     room: str
     participant: str
     model: str
     provider: str
     turn_index: int
+    # A barge-in: the reply the user spoke over, and the characters of it they heard.
+    reply_id: str
+    heard_through: int
     # Session-end aggregate. The LiveKit session lifecycle callbacks fire after
     # the entrypoint's setup event has emitted, so the worker accumulates them
     # and reports the whole session once from its shutdown callback (see
@@ -566,6 +593,38 @@ class DevContext(TypedDict, total=False):
     subagent_id: str
 
 
+class ShortLinkContext(TypedDict, total=False):
+    """heygaia.link share, open and content-origin context; the slug only ever hashed."""
+
+    operation: str  # "create"|"share_state"|"stop_sharing"|"resolve"|"meta"|"serve"|"thumbnail"|…
+    slug_hash: str
+    target_type: str
+    access: str
+    viewer_kind: str
+    shared: bool
+    revoked: bool
+    fetch_dest: str | None
+    signed_url: str  # "stale" when a content URL's token no longer holds
+    render: str
+
+
+class BriefingContext(TypedDict, total=False):
+    """Daily/weekly brief run, delivery and read context."""
+
+    operation: str  # "list"|"postmarks"|"get"|"edition_image"
+    id: str
+    kind: str  # "daily"|"weekly"
+    limit: int
+    variant: str
+    outcome: str
+    form: str
+    channels: list[str]
+    pushed: bool
+    resumed: bool
+    pool_capped: int
+    postmarks_collected: int
+
+
 OUTCOME_FAILED = "failed"
 
 
@@ -609,6 +668,8 @@ class WideEventFields(TypedDict, total=False):
     device: DeviceContext
     desktop: DesktopContext
     dev: DevContext
+    short_link: ShortLinkContext
+    briefing: BriefingContext
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str
@@ -1084,6 +1145,7 @@ __all__ = [
     "ChatContext",
     "ModelContext",
     "ConversationContext",
+    "ConversationOperation",
     "TodoContext",
     "MemoryContext",
     "CalendarContext",

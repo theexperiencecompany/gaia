@@ -1,11 +1,16 @@
 import {
-  Autocomplete,
-  AutocompleteItem,
-  AutocompleteSection,
-} from "@heroui/autocomplete";
-import { Skeleton } from "@heroui/skeleton";
+  ComboBox,
+  EmptyState,
+  Header,
+  Label,
+  ListBox,
+  Skeleton,
+} from "@heroui/react";
 import type React from "react";
-
+import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTriggerFilter } from "@/features/workflows/hooks/useTriggerFilter";
 import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
@@ -39,34 +44,31 @@ function renderTriggerSections(
       return 0;
     })
     .map(([integrationId, schemas]) => (
-      <AutocompleteSection
-        key={integrationId}
-        classNames={{
-          base: "mb-1",
-          heading: "px-2 py-1 text-tiny font-medium text-zinc-500",
-        }}
-        title={formatIntegrationName(integrationId)}
-      >
+      <ListBox.Section key={integrationId} id={integrationId}>
+        <Header className={toneVariants({ tone: "faint", className: "py-1" })}>
+          {formatIntegrationName(integrationId)}
+        </Header>
         {(schemas || []).map((schema) => (
-          <AutocompleteItem
+          <GaiaListBoxItem
             key={schema.slug}
+            id={schema.slug}
             textValue={schema.name}
-            startContent={getToolCategoryIcon(schema.integration_id, {
+            className="group"
+          >
+            {getToolCategoryIcon(schema.integration_id, {
               width: 20,
               height: 20,
               showBackground: false,
             })}
-            className="group"
-          >
             <div className="flex flex-col">
-              <span className="text-small">{schema.name}</span>
-              <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
+              <span className="text-sm">{schema.name}</span>
+              <span className="text-xs text-zinc-500 group-data-[hover=true]:text-zinc-300">
                 {schema.description}
               </span>
             </div>
-          </AutocompleteItem>
+          </GaiaListBoxItem>
         ))}
-      </AutocompleteSection>
+      </ListBox.Section>
     ));
 }
 
@@ -77,13 +79,8 @@ export function TriggerAutocomplete({
   isLoading,
   integrationStatusMap,
 }: TriggerAutocompleteProps) {
-  const {
-    filterValue,
-    setFilterValue,
-    selectedSchema,
-    filteredSchemas,
-    groupedTriggers,
-  } = useTriggerFilter(selectedTrigger, triggerSchemas);
+  const { filterValue, setFilterValue, selectedSchema, groupedTriggers } =
+    useTriggerFilter(selectedTrigger, triggerSchemas);
   const normalizedSelectedKey = selectedSchema?.slug ?? selectedTrigger;
 
   const handleSelectionChange = (key: React.Key | null) => {
@@ -122,39 +119,52 @@ export function TriggerAutocomplete({
 
   return (
     <div className="w-full space-y-2">
-      <Autocomplete
+      <ComboBox
         aria-label="Choose an event"
-        label="Event"
-        placeholder="Search apps and events..."
-        className="w-full"
+        className={fieldVariants({
+          labelPlacement: "inside",
+          className: "w-full",
+        })}
+        allowsEmptyCollection
+        defaultFilter={() => true}
+        inputValue={filterValue}
+        onInputChange={handleInputChange}
         selectedKey={normalizedSelectedKey}
         onSelectionChange={handleSelectionChange}
-        onInputChange={handleInputChange}
-        inputValue={filterValue}
-        items={filteredSchemas}
-        defaultFilter={() => true}
-        classNames={{
-          listboxWrapper: `${Object.keys(groupedTriggers).length > 2 ? "min-h-[300px]" : "h-fit"} p-1`,
-        }}
-        startContent={
-          selectedSchema &&
-          getToolCategoryIcon(selectedSchema.integration_id, {
-            width: 20,
-            height: 20,
-            showBackground: false,
-          })
-        }
-        isClearable
-        onClear={() => {
-          setFilterValue("");
-          onTriggerChange(null);
-        }}
-        listboxProps={{
-          emptyContent: "No matching triggers found.",
-        }}
       >
-        {renderTriggerSections(groupedTriggers, integrationStatusMap)}
-      </Autocomplete>
+        <Label>Event</Label>
+        <ComboBoxInput
+          placeholder="Search apps and events..."
+          startContent={
+            selectedSchema &&
+            getToolCategoryIcon(selectedSchema.integration_id, {
+              width: 20,
+              height: 20,
+              showBackground: false,
+            })
+          }
+          isClearable
+          onClear={() => {
+            setFilterValue("");
+            onTriggerChange(null);
+          }}
+        />
+        <ComboBox.Popover>
+          <ListBox
+            aria-label="Triggers"
+            className={
+              Object.keys(groupedTriggers).length > 2
+                ? "min-h-[300px]"
+                : "h-fit"
+            }
+            renderEmptyState={() => (
+              <EmptyState>No matching triggers found.</EmptyState>
+            )}
+          >
+            {renderTriggerSections(groupedTriggers, integrationStatusMap)}
+          </ListBox>
+        </ComboBox.Popover>
+      </ComboBox>
 
       {selectedSchema && (
         <p className="px-1 text-xs text-zinc-500">

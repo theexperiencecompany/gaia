@@ -28,12 +28,6 @@ def mock_user_integration_repo():
 
 
 @pytest.fixture
-def mock_token_repository():
-    with patch("app.services.oauth.oauth_service.token_repository") as mock_repo:
-        yield mock_repo
-
-
-@pytest.fixture
 def mock_composio_service():
     mock_service = AsyncMock()
     mock_service.check_connection_status = AsyncMock(return_value={})
@@ -62,13 +56,6 @@ def mock_record_account():
         patch("app.services.oauth.oauth_service.publish_connected", AsyncMock()),
     ):
         yield record
-
-
-@pytest.fixture
-def mock_websocket_manager():
-    with patch("app.services.oauth.oauth_service.websocket_manager") as mock_ws:
-        mock_ws.broadcast_to_user = AsyncMock()
-        yield mock_ws
 
 
 @pytest.fixture

@@ -1,0 +1,38 @@
+# gaia-link-mint-failures — fires when more than two share links failed to mint in an hour.
+#
+# gaia_link_mint_total{outcome} is the short-link mint counter; its failed series exists
+# at 0 from process start.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-link-mint-failures fires on the third failed mint in an hour
+    interval: 1m
+    input_series:
+      - series: 'gaia_link_mint_total{outcome="failed"}'
+        values: '0x20 1x10 3x30'
+      - series: 'gaia_link_mint_total{outcome="minted"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-link-mint-failures
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                Briefs, artifacts and files went out without the link that opens them. The mint failures in the API and worker wide events carry error_type: a storage error is the blob store, a duplicate key is the short_links unique index.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-link-mint-failures
+
+  - name: gaia-link-mint-failures stays quiet on a single failure
+    interval: 1m
+    input_series:
+      - series: 'gaia_link_mint_total{outcome="failed"}'
+        values: '0x20 1x40'
+      - series: 'gaia_link_mint_total{outcome="minted"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-link-mint-failures
+        exp_alerts: []

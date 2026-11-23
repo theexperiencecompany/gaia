@@ -19,10 +19,8 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
-from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
-    _ConnectedIntegration,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -31,6 +29,7 @@ from app.agents.context.fetchers import (
     build_background_banner,
     build_connected_integrations_manifest,
     build_core_memory_block,
+    build_fast_recall_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
     build_new_user_guidance_block,
@@ -58,6 +57,7 @@ from app.agents.prompts.new_user_prompts import (
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
@@ -72,7 +72,9 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingSubdocument,
 )
-from app.utils.artifact_utils import artifact_url_base
+from app.services.hil.pending import PendingApproval
+from app.services.integrations.user_integrations import ConnectedIntegration
+from app.utils.artifact_utils import FILE_LINKS
 
 
 def ctx(
@@ -94,6 +96,65 @@ def ctx(
         user_preferences=user_preferences,
         source=source,
     )
+
+
+_FAST_RECALL = "app.memory.fast_recall.fast_recall"
+
+
+@pytest.mark.unit
+class TestFastRecallBlock:
+    async def test_renders_the_turns_memories_recalled_for_this_user_and_conversation(
+        self,
+    ) -> None:
+        recall = AsyncMock(
+            return_value=[
+                memory("User likes coffee", mentioned="2026-01-05"),
+                memory("User prefers dark mode", mentioned="2026-02-11"),
+            ]
+        )
+        turn = replace(ctx(user_id="user-7", query="coffee?"), conversation_id="conv-1")
+        with patch(_FAST_RECALL, recall):
+            async with captured_wide_event() as event:
+                block = await build_fast_recall_block(turn)
+
+        assert block == (
+            f"{MEMORY_RECALL_HEADER}\n"
+            "- User likes coffee [mentioned 2026-01-05]\n"
+            "- User prefers dark mode [mentioned 2026-02-11]"
+        )
+        recall.assert_awaited_once_with("user-7", "coffee?", conversation_id="conv-1")
+        assert event["memory_fast_recall"] == {"count": 2}
+
+    @pytest.mark.parametrize("turn", [ctx(query=None), ctx(user_id=None)])
+    async def test_renders_nothing_without_both_a_user_and_a_query(
+        self, turn: SectionContext
+    ) -> None:
+        recall = AsyncMock(return_value=[memory("never shown")])
+        with patch(_FAST_RECALL, recall):
+            assert await build_fast_recall_block(turn) == ""
+
+        recall.assert_not_awaited()
+
+    async def test_renders_nothing_when_nothing_matched(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(return_value=[])):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx()) == ""
+
+        assert event["memory_fast_recall"] == {"count": 0}
+
+    async def test_a_failed_lane_costs_only_its_section_and_is_logged(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(side_effect=RuntimeError("pg down"))):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx(user_id="user-7")) == ""
+
+        assert event["errors"] == [
+            {
+                "msg": "Memory fast lane failed",
+                "user_id": "user-7",
+                "error_type": "RuntimeError",
+                "error": "pg down",
+            }
+        ]
 
 
 @pytest.mark.unit
@@ -364,7 +425,7 @@ class TestConnectedIntegrationsManifest:
                         id="ca_2",
                         connected_account_id="ca_2",
                         label="me@gmail.com",
-                        status="expired",
+                        status=IntegrationStatus.EXPIRED,
                     ),
                 ],
                 primary_account_id="ca_1",
@@ -590,7 +651,7 @@ class TestDedupeByProvider:
         self,
     ) -> None:
         """A later id-only entry for the same provider must not clobber an earlier resolved display name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "Slack Workspace"},
             {"id": "sl_ack", "name": "sl_ack"},
         ]
@@ -598,7 +659,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
 
     def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "slack"},
             {"id": "sl_ack", "name": "Slack Workspace"},
         ]
@@ -607,7 +668,7 @@ class TestDedupeByProvider:
 
     def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
         """Once a provider has resolved to ANY display name, a second row for it must not overwrite it, even with another real name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "calendar", "name": "Calendar One"},
             {"id": "cal_endar", "name": "Calendar Two"},
         ]
@@ -615,7 +676,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
 
     def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "gmail", "name": "Gmail"},
             {"id": "slack", "name": "Slack"},
             {"id": "notion", "name": "Notion"},
@@ -650,7 +711,9 @@ class TestProviderMetadataBlock:
         record = self._record(
             make_integration_account("ca_1", label="work@acme.com"),
             make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
-            make_integration_account("ca_3", label="old@acme.com", status="expired"),
+            make_integration_account(
+                "ca_3", label="old@acme.com", status=IntegrationStatus.EXPIRED
+            ),
             primary="ca_2",
         )
         with patch(
@@ -776,10 +839,10 @@ def repo_reads() -> Iterator[AsyncMock]:
         patch.object(todo_repository, "_find", find),
         # The open sub-todo counts are an aggregation: no sub-todos here.
         patch.object(todo_repository, "_aggregate", AsyncMock(return_value=[])),
-        patch("app.db.repositories.base.read_generation", _read_generation),
-        patch("app.db.repositories.base.get_cache", _get),
-        patch("app.db.repositories.base.set_cache", _set),
-        patch("app.db.repositories.base.bump_generation", _bump),
+        patch("app.db.repositories.cached_base.read_generation", _read_generation),
+        patch("app.db.repositories.cached_base.get_cache", _get),
+        patch("app.db.repositories.cached_base.set_cache", _set),
+        patch("app.db.repositories.cached_base.bump_generation", _bump),
     ):
         yield find
 
@@ -824,17 +887,12 @@ class TestTrackedTodosListIsTheCachedRead:
         assert repo_reads.await_count == 2
 
 
-async def _never_finishes() -> str:
-    await asyncio.sleep(3600)
-    return ""
-
-
 @pytest.mark.unit
 class TestCoreContextSingleFlight:
     """Pin that the two core-memory sections share one in-flight core fetch.
 
-    They run in the same asyncio.gather, so they share rather than race; a task
-    bound to a dead loop is never awaited cross-loop.
+    They run in the same asyncio.gather, so they share rather than race; the
+    registry's own eviction and loop-binding are pinned in test_request_coalescing.
     """
 
     async def test_both_core_sections_share_one_fetch(self) -> None:
@@ -908,39 +966,6 @@ class TestCoreContextSingleFlight:
             with pytest.raises(asyncio.CancelledError):
                 await first
             assert await second == f"{CORE_MEMORY_HEADER}\nDocs."
-
-    async def test_the_inflight_entry_is_evicted_on_completion(self) -> None:
-        """Eviction bounds the registry; a leak would keep every user's core context forever."""
-
-        async def _core(user_id: str) -> str:
-            return "Docs."
-
-        with patch("app.memory.engine.memory_engine.get_core_context", _core):
-            await build_core_memory_block(ctx())
-
-        assert fetchers._inflight_core == {}
-
-    def test_a_task_from_a_previous_loop_is_never_awaited(self) -> None:
-        """A pending task left by a dead loop is ignored, never awaited cross-loop."""
-        other_loop = asyncio.new_event_loop()
-        stale = other_loop.create_task(_never_finishes())
-        fetchers._inflight_core[(other_loop, "user1")] = stale
-        fetched: list[str] = []
-
-        async def _core(user_id: str) -> str:
-            fetched.append(user_id)
-            return "Docs."
-
-        try:
-            with patch("app.memory.engine.memory_engine.get_core_context", _core):
-                block = asyncio.run(build_core_memory_block(ctx()))
-            assert fetched == ["user1"]
-            assert block == f"{CORE_MEMORY_HEADER}\nDocs."
-        finally:
-            fetchers._inflight_core.pop((other_loop, "user1"), None)
-            stale.cancel()
-            other_loop.run_until_complete(asyncio.sleep(0))
-            other_loop.close()
 
 
 @pytest.mark.unit
@@ -1318,7 +1343,7 @@ class TestWorkspaceSessionBanner:
         assert banner == (
             f"Session directory: {session_dir('sess-1')}\n"
             "Public artifact URL: a file at `artifacts/<name>` is served at "
-            f"{artifact_url_base('sess-1')}/<name>"
+            f"{FILE_LINKS.artifact_base('sess-1')}/<name>"
         )
 
     async def test_no_vfs_session_id_never_guesses_a_directory(self) -> None:
@@ -1652,12 +1677,12 @@ class TestOpenPendingsBlock:
         )
 
     async def _render(self, docs: list[MagicMock]) -> str:
+        numbered = [PendingApproval(number=number, row=doc) for number, doc in enumerate(docs, 1)]
         with patch(
-            "app.agents.context.fetchers.approval_ledger_repository",
-        ) as ledger:
-            ledger.list_open = AsyncMock(return_value=docs)
+            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=numbered)
+        ) as pending:
             text = await build_open_pendings_block(self._ctx())
-        ledger.list_open.assert_awaited_once_with("c1")
+        pending.assert_awaited_once_with("c1", "u1")
         return text
 
     async def test_renders_each_pending_with_age_and_revoke_rule(self) -> None:
@@ -1706,40 +1731,21 @@ class TestOpenPendingsBlock:
 
     async def test_empty_and_missing_conversation_render_empty(self) -> None:
         with patch(
-            "app.agents.context.fetchers.approval_ledger_repository",
-        ) as ledger:
-            ledger.list_open = AsyncMock(return_value=[])
+            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=[])
+        ) as pending:
             assert await build_open_pendings_block(self._ctx()) == ""
             assert await build_open_pendings_block(self._ctx(None)) == ""
-            ledger.list_open.assert_awaited_once()
+            pending.assert_awaited_once()
 
     async def test_ledger_failure_degrades_to_empty_and_is_logged(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.agents.context.fetchers.approval_ledger_repository",
-            ) as ledger:
-                ledger.list_open = AsyncMock(side_effect=ConnectionError("mongo down"))
+                "app.agents.context.fetchers.pending_approvals",
+                new=AsyncMock(side_effect=ConnectionError("mongo down")),
+            ):
                 text = await build_open_pendings_block(self._ctx())
 
         assert text == ""
         assert event["warnings"] == [
             {"msg": "open_pendings_fetch_failed", "error_type": "ConnectionError"}
         ]
-
-    async def test_foreign_rows_never_render_into_this_users_context(self) -> None:
-        text = await self._render(
-            [
-                self._doc("ap_mine", "Mine"),
-                self._doc("ap_theirs", "Theirs", user_id="u2"),
-                self._doc("ap_legacy", "Legacy", user_id=""),
-            ]
-        )
-
-        assert "ap_mine" in text
-        assert "ap_theirs" not in text
-        assert "ap_legacy" in text
-
-    async def test_only_foreign_rows_render_nothing(self) -> None:
-        text = await self._render([self._doc("ap_theirs", "Theirs", user_id="u2")])
-
-        assert text == ""

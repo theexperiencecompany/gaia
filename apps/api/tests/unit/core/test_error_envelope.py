@@ -23,7 +23,7 @@ import pytest
 from app.core.app_factory import create_app
 from app.schemas.errors import (
     ERROR_RESPONSES,
-    HTML_ROUTE_ERROR_RESPONSES,
+    NON_JSON_ROUTE_ERROR_RESPONSES,
     ErrorEnvelope,
     ValidationIssue,
     error_responses,
@@ -371,7 +371,7 @@ class TestRouteErrorDeclarations:
             422: json_envelope,
             "4XX": json_envelope,
             "5XX": json_envelope,
-        } == HTML_ROUTE_ERROR_RESPONSES
+        } == NON_JSON_ROUTE_ERROR_RESPONSES
 
 
 class TestTheNotConnectedEnvelope:

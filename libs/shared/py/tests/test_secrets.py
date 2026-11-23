@@ -57,11 +57,25 @@ class TestInjectInfisicalSecretsDev:
         mock_log.warning.assert_called_once()
         assert missing_key in mock_log.warning.call_args.args[0]
 
-    @patch("shared.py.secrets.log")
-    def test_default_env_is_production(self, mock_log: MagicMock):
-        """When ENV is not set at all, it defaults to 'production'."""
+
+class TestInjectInfisicalSecretsUnsetEnv:
+    """An unset ENV is refused before any vault is chosen."""
+
+    def test_unset_env_with_full_identity_never_builds_a_client(self):
+        mock_sdk_class = MagicMock()
+        identity = {k: v for k, v in _FULL_ENV.items() if k != "ENV"}
+        with patch.dict(os.environ, identity, clear=True):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
+                with pytest.raises(InfisicalConfigError, match="ENV is not set"):
+                    inject_infisical_secrets()
+
+        mock_sdk_class.assert_not_called()
+
+    def test_unset_env_names_the_local_fix(self):
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(InfisicalConfigError):
+            with pytest.raises(InfisicalConfigError, match="mise run wt:env"):
                 inject_infisical_secrets()
 
 

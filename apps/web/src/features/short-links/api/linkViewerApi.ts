@@ -1,0 +1,53 @@
+import { apiBaseUrl } from "@/lib/api/client";
+import { api } from "@/lib/api/typed";
+import type {
+  ContentTokenResponse,
+  LinkEnvelope,
+  ReportReason,
+} from "@/types/features/shortLinkTypes";
+
+import { REPORT_COPY } from "../constants";
+
+/**
+ * Open a link from the viewer's browser, which carries the session cookie (it
+ * is host-only on the API host, so server rendering never sees it), and count
+ * the open: one call tells the owner apart and records the view. Throws the
+ * ApiError whose code is the denial the page shows.
+ */
+export async function openLinkInBrowser(slug: string): Promise<LinkEnvelope> {
+  return api.post("/api/v1/l/{slug}/opened", { path: { slug }, silent: true });
+}
+
+/** A short-lived URL that loads the link's file from the content origin. */
+export async function issueLinkContentUrl(
+  slug: string,
+): Promise<ContentTokenResponse> {
+  return api.post("/api/v1/l/{slug}/content-token", {
+    path: { slug },
+    silent: true,
+  });
+}
+
+/** Report a link that breaks GAIA's terms; toasts the outcome. */
+export async function reportLink(
+  slug: string,
+  reason: ReportReason,
+  turnstileToken: string | null,
+): Promise<void> {
+  await api.post("/api/v1/l/{slug}/report", {
+    path: { slug },
+    body: { reason, turnstile_token: turnstileToken },
+    successMessage: REPORT_COPY.sent,
+    errorMessage: REPORT_COPY.failed,
+  });
+}
+
+/** Browser URL that saves the file behind a link as an attachment. */
+export function linkDownloadUrl(slug: string): string {
+  return `${apiBaseUrl}/l/${encodeURIComponent(slug)}/download`;
+}
+
+/** Browser URL of the PDF export of an artifact slug. */
+export function shortLinkPdfDownloadUrl(slug: string): string {
+  return `${apiBaseUrl}/l/${encodeURIComponent(slug)}/pdf`;
+}

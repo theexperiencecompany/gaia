@@ -12,7 +12,6 @@ import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 import time_machine
 
@@ -29,9 +28,12 @@ from app.constants.todos import (
     SUB_TODO_PARENT_WAKE_DELAY,
     NoReplyPlan,
     TodoActivityEvent,
+    TodoCompleter,
     WaitingOn,
 )
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
@@ -134,7 +136,7 @@ def mock_deps():
         patch(f"{_MOD}.append_activity", new_callable=AsyncMock, create=True) as m_append_activity,
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
         patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
-        patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as m_record,
+        patch(f"{_MOD}.record_todo_activity", new_callable=AsyncMock) as m_record,
         # Most tests pin what a create writes, not the next-step rule; the class that
         # pins the rule points this at the real check.
         patch(f"{_MOD}.require_open_state") as m_open_state,
@@ -329,7 +331,7 @@ class TestACreateForACompletedRefReopensIt:
             USER_ID,
             "Sam wrote back",
             labels=["needs-reply"],
-            notify_on_run=False,
+            delivery=WorkflowDelivery.SILENT,
             source_conversation_id="abcdef1234567890",
             external_ref=_THREAD,
             schedule=TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK),
@@ -354,12 +356,12 @@ class TestACreateForACompletedRefReopensIt:
             *schedule.model_fields_set,
             "title",
             "labels",
-            "notify_on_run",
+            "delivery",
             "parent_todo_id",
         }
         assert update.title == "Sam wrote back"
         assert update.labels == ["needs-reply", GAIA_TRACKED_LABEL]
-        assert update.notify_on_run is False
+        assert update.delivery is WorkflowDelivery.SILENT
         assert update.parent_todo_id is None
         assert update.scheduled_at == _NEXT_CHECK and update.waiting_on is WaitingOn.EVENT
         assert update.recurrence is None and update.due_date is None
@@ -578,7 +580,7 @@ class TestReopenForItsRef:
 
     async def test_a_ref_another_create_took_meanwhile_is_a_named_conflict(self, mock_repo, seams):
         holder = _todo_doc(id="66f838cc8829054e5f10e40a", title="Reply to Sam")
-        mock_repo.update_if_completed.side_effect = DuplicateKeyError("E11000")
+        mock_repo.update_if_completed.side_effect = AlreadyExistsError("E11000")
         mock_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
 
         with (
@@ -591,7 +593,7 @@ class TestReopenForItsRef:
             await self._reopen()
 
         assert taken.value.existing is holder
-        assert isinstance(taken.value.__cause__, DuplicateKeyError)
+        assert isinstance(taken.value.__cause__, AlreadyExistsError)
         mock_repo.find_open_by_external_ref.assert_awaited_once_with(USER_ID, _THREAD)
         seams.fields.assert_not_awaited()
 
@@ -916,16 +918,16 @@ class TestCreateTrackedTodo:
 
         await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare Q3 report")
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is True
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.NOW
 
     async def test_a_caller_can_create_a_silent_todo(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
 
         await TrackedTodoService.create_tracked_todo(
-            USER_ID, "Prepare Q3 report", notify_on_run=False
+            USER_ID, "Prepare Q3 report", delivery=WorkflowDelivery.SILENT
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is False
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.SILENT
 
     async def test_preserves_caller_labels(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
@@ -1082,6 +1084,7 @@ class TestReconcileParentCompletion:
             complete.await_args.kwargs["summary"]
             == "Parent completed while this sub-todo was being created."
         )
+        assert complete.await_args.kwargs["by"] is TodoCompleter.SYSTEM
 
     async def test_a_parent_deleted_mid_create_completes_the_newborn(self, mock_repo):
         mock_repo.get.return_value = None
@@ -1138,7 +1141,7 @@ class TestCreateSubTodo:
             USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is False
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.SILENT
 
     @pytest.mark.regression
     async def test_a_thread_sub_todo_tells_the_user_itself_by_default(
@@ -1152,17 +1155,17 @@ class TestCreateSubTodo:
             USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, external_ref=_THREAD
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is True
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.NOW
 
     async def test_a_sub_todo_can_still_ask_to_message_the_user(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _parent()
         mock_deps.create.return_value = _todo_response()
 
         await TrackedTodoService.create_tracked_todo(
-            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, notify_on_run=True
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, delivery=WorkflowDelivery.NOW
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is True
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.NOW
 
     async def test_an_unusable_parent_creates_nothing(self, mock_repo, mock_deps):
         with pytest.raises(SubTodoParentError):
@@ -1188,10 +1191,16 @@ class TestCompletingAParentCompletesItsSubTodos:
 
         mock_repo.update.side_effect = _write
 
-        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+        await TrackedTodoService.complete_tracked_todo(
+            _PARENT_ID, USER_ID, "Desk retired", by=TodoCompleter.GAIA
+        )
 
         completed = [c.args[0] for c in mock_repo.update.await_args_list]
         assert completed == [_CHILD_ID, _PARENT_ID]
+        assert [c.kwargs["update"].completed_by for c in mock_repo.update.await_args_list] == [
+            TodoCompleter.GAIA,
+            TodoCompleter.GAIA,
+        ]
         assert [c.args[0] for c in mock_deps.teardown.await_args_list] == [_CHILD_ID, _PARENT_ID]
         child_entry = mock_deps.record.await_args_list[0].args
         assert child_entry == (
@@ -1207,7 +1216,9 @@ class TestCompletingAParentCompletesItsSubTodos:
         mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
         mock_repo.find_sub_todos.return_value = [docs[_CHILD_ID]]
 
-        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+        await TrackedTodoService.complete_tracked_todo(
+            _PARENT_ID, USER_ID, "Desk retired", by=TodoCompleter.GAIA
+        )
 
         assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID]
 
@@ -1218,9 +1229,14 @@ class TestCompletingAParentCompletesItsSubTodos:
         mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
         mock_repo.find_sub_todos.side_effect = [[], [docs[_CHILD_ID]], [], []]
 
-        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+        await TrackedTodoService.complete_tracked_todo(
+            _PARENT_ID, USER_ID, "Desk retired", by=TodoCompleter.GAIA
+        )
 
         assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID, _CHILD_ID]
+        assert mock_repo.update.await_args_list[1].kwargs["update"].completed_by is (
+            TodoCompleter.GAIA
+        )
         assert mock_deps.record.await_args_list[1] == call(
             _CHILD_ID,
             USER_ID,
@@ -1233,7 +1249,9 @@ class TestACompletedSubTodoReportsToItsParent:
     async def test_the_parents_timeline_gets_the_sub_todos_outcome(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _child()
 
-        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed Friday")
+        await TrackedTodoService.complete_tracked_todo(
+            _CHILD_ID, USER_ID, "Sam confirmed Friday", by=TodoCompleter.GAIA
+        )
 
         assert mock_deps.record.await_args_list == [
             call(_CHILD_ID, USER_ID, TodoActivityEvent.COMPLETED, "Sam confirmed Friday"),
@@ -1248,7 +1266,9 @@ class TestACompletedSubTodoReportsToItsParent:
     async def test_a_top_level_todo_reports_nowhere(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _parent()
 
-        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+        await TrackedTodoService.complete_tracked_todo(
+            _PARENT_ID, USER_ID, "Desk retired", by=TodoCompleter.GAIA
+        )
 
         assert mock_deps.record.await_args_list == [
             call(_PARENT_ID, USER_ID, TodoActivityEvent.COMPLETED, "Desk retired")
@@ -1278,7 +1298,9 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
         )
 
         with time_machine.travel(frozen, tick=False):
-            await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+            await TrackedTodoService.complete_tracked_todo(
+                _CHILD_ID, USER_ID, "Sam confirmed", by=TodoCompleter.GAIA
+            )
 
         wake_at = frozen + SUB_TODO_PARENT_WAKE_DELAY
         assert call(_PARENT_ID, user_id=USER_ID) in mock_repo.get.await_args_list
@@ -1294,7 +1316,9 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
             waiting_on=WaitingOn.TIME, scheduled_at=datetime.now(UTC) + timedelta(days=5)
         )
 
-        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+        await TrackedTodoService.complete_tracked_todo(
+            _CHILD_ID, USER_ID, "Sam confirmed", by=TodoCompleter.GAIA
+        )
 
         armed.assert_not_awaited()
         assert _PARENT_ID not in [c.args[0] for c in mock_repo.update.await_args_list]
@@ -1306,7 +1330,9 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
             waiting_on=WaitingOn.SUB_TODOS, scheduled_at=datetime.now(UTC) + timedelta(seconds=5)
         )
 
-        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+        await TrackedTodoService.complete_tracked_todo(
+            _CHILD_ID, USER_ID, "Sam confirmed", by=TodoCompleter.GAIA
+        )
 
         armed.assert_not_awaited()
 
@@ -1319,7 +1345,9 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
         )
 
         with time_machine.travel(frozen, tick=False):
-            await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+            await TrackedTodoService.complete_tracked_todo(
+                _CHILD_ID, USER_ID, "Sam confirmed", by=TodoCompleter.GAIA
+            )
 
         armed.assert_not_awaited()
         assert _PARENT_ID not in [c.args[0] for c in mock_repo.update.await_args_list]
@@ -1329,7 +1357,9 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
     ):
         parents[_PARENT_ID] = _parent(waiting_on=WaitingOn.SUB_TODOS, completed=True)
 
-        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed")
+        await TrackedTodoService.complete_tracked_todo(
+            _CHILD_ID, USER_ID, "Sam confirmed", by=TodoCompleter.GAIA
+        )
 
         armed.assert_not_awaited()
 
@@ -1447,13 +1477,23 @@ class TestStartingCanvas:
 
 class TestCompleteTrackedTodo:
     async def test_false_for_missing_todo(self, mock_repo, mock_deps):
-        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is False
+        assert (
+            await TrackedTodoService.complete_tracked_todo(
+                TODO_ID, USER_ID, "done", by=TodoCompleter.GAIA
+            )
+            is False
+        )
         mock_deps.record.assert_not_awaited()
 
     async def test_idempotent_for_already_completed(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc(completed=True)
 
-        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is True
+        assert (
+            await TrackedTodoService.complete_tracked_todo(
+                TODO_ID, USER_ID, "done", by=TodoCompleter.GAIA
+            )
+            is True
+        )
         mock_deps.record.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
@@ -1462,7 +1502,9 @@ class TestCompleteTrackedTodo:
     ):
         mock_repo.get.return_value = _todo_doc()
 
-        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
+        ok = await TrackedTodoService.complete_tracked_todo(
+            TODO_ID, USER_ID, "Wrapped it up", by=TodoCompleter.GAIA
+        )
 
         assert ok is True
         assert mock_repo.get.await_args_list[0] == call(TODO_ID, user_id=USER_ID)
@@ -1477,19 +1519,31 @@ class TestCompleteTrackedTodo:
         mock_deps.mark.assert_awaited_once_with(TODO_ID, completed=True)
         mock_deps.sync.assert_called_once_with(USER_ID)
 
+    @pytest.mark.parametrize("by", list(TodoCompleter))
+    async def test_the_completion_records_who_finished_it(self, mock_repo, mock_deps, by):
+        mock_repo.get.return_value = _todo_doc()
+
+        await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done", by=by)
+
+        assert mock_repo.update.await_args.kwargs["update"].completed_by is by
+
     async def test_completion_stops_the_todo_watching(self, mock_repo, mock_deps):
         # Teardown lives inside completion rather than at its callers (tool, sweep,
         # worker) so no completion path can forget it and strand a live trigger.
         mock_repo.get.return_value = _todo_doc()
 
-        await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        await TrackedTodoService.complete_tracked_todo(
+            TODO_ID, USER_ID, "done", by=TodoCompleter.GAIA
+        )
 
         mock_deps.teardown.assert_awaited_once_with(TODO_ID, USER_ID, reason="completed")
 
     async def test_an_already_completed_todo_does_not_tear_down_again(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc(completed=True)
 
-        await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        await TrackedTodoService.complete_tracked_todo(
+            TODO_ID, USER_ID, "done", by=TodoCompleter.GAIA
+        )
 
         mock_deps.teardown.assert_not_awaited()
 
@@ -1499,7 +1553,9 @@ class TestCompleteTrackedTodo:
         """A doc with no stored label must get the derived /workspace-scoped one — never None, never derived from the wrong id."""
         mock_repo.get.return_value = _todo_doc(vfs_path=None)
 
-        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        ok = await TrackedTodoService.complete_tracked_todo(
+            TODO_ID, USER_ID, "done", by=TodoCompleter.GAIA
+        )
 
         assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
@@ -1511,7 +1567,9 @@ class TestCompleteTrackedTodo:
         """A doc still storing the host-side /users/<uid> label must not have it persisted back on completion."""
         mock_repo.get.return_value = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
 
-        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        ok = await TrackedTodoService.complete_tracked_todo(
+            TODO_ID, USER_ID, "done", by=TodoCompleter.GAIA
+        )
 
         assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
@@ -1669,6 +1727,7 @@ class TestArchiveTrackedTodo:
         mock_deps.record.assert_awaited_once_with(
             TODO_ID, USER_ID, TodoActivityEvent.COMPLETED, "Auto-archived: expired"
         )
+        assert mock_repo.update.await_args.kwargs["update"].completed_by is TodoCompleter.SYSTEM
 
     async def test_false_when_completion_fails(self, mock_repo, mock_deps):
         mock_repo.get.return_value = None

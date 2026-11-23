@@ -37,7 +37,7 @@ from app.constants.todos import (
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoUpdate
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.tracked_todo_service import tracked_todo_service
 
 #: How long the backlog's first checks are spread over, and how soon the first one runs.
@@ -102,7 +102,7 @@ async def apply_plan(plan: list[Migration]) -> None:
             continue
         if not row.kept_schedule:
             await tracked_todo_service.schedule_execution(row.todo_id, row.scheduled_at)
-        await record_activity(
+        await record_todo_activity(
             row.todo_id,
             row.user_id,
             TodoActivityEvent.WAITING_CHANGED,

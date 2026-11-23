@@ -26,13 +26,14 @@ from app.agents.middleware import (
     create_comms_middleware,
     create_executor_middleware,
 )
-from app.agents.middleware.subagent import SubagentMiddleware, bind_spawner
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
 from app.agents.tools.browser_chat_tools import (
     browser_step_done,
     stop_browser_task,
     tell_browser_task,
 )
+from app.agents.tools.comms_turn_tools import answered, react, stay_silent, turn_ending
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -48,10 +49,12 @@ from app.agents.tools.subagent_control_tool import (
     message_subagent,
 )
 from app.agents.tools.todo_tools import create_todo_tools
+from app.agents.tools.weather_tool import get_weather
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import COMMS_AGENT_NAME, FINISH_TASK_NAME
+from app.constants.graphs import GraphName
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -93,6 +96,9 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     # Bound, not retrieved: fetching it cost two retrieve_tools rounds
     # and two model calls (about 8s) before the browser even started.
     "browser_task",
+    # Bound, not retrieved: a report or dashboard request must reach create_artifact,
+    # never fall back to writing HTML through write.
+    "create_artifact",
     # Bound statically, not left to retrieve_tools: prompts name these
     # directly, so a run whose semantic retrieval misses them could read
     # the instruction and silently never act on it.
@@ -191,8 +197,6 @@ async def build_executor_graph(
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
-        if subagent_mw is not None:
-            bind_spawner(graph, subagent_mw)
         # Surface fallback at WARNING — users silently lose conversation memory
         # when Postgres checkpointer is unavailable.
         if not in_memory_checkpointer:
@@ -209,15 +213,13 @@ async def build_executor_graph(
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        if subagent_mw is not None:
-            bind_spawner(graph, subagent_mw)
         log.info("graph_compiled_postgres", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph
 
 
 @lazy_provider(
-    name="executor_agent",
+    name=GraphName.EXECUTOR,
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
@@ -229,6 +231,10 @@ async def build_executor_agent() -> CompiledAgentGraph:
     async with build_executor_graph() as graph:
         log.info(f"{LogTag.AGENT} Executor agent built successfully")
     return graph
+
+
+#: The outside-world lookups comms runs itself; they close once the user interrupts the run.
+COMMS_LOOKUPS: tuple[BaseTool, ...] = (web_search_tool, fetch_webpages, get_weather)
 
 
 @asynccontextmanager
@@ -243,7 +249,9 @@ async def build_comms_graph(
     tool_registry = comms_tools()
     store = await get_tools_store()
 
-    middleware = create_comms_middleware(chat_llm=chat_llm)
+    middleware = create_comms_middleware(
+        lookup_tools=frozenset(lookup.name for lookup in COMMS_LOOKUPS), chat_llm=chat_llm
+    )
 
     pre_model_hooks = comms_pre_model_hooks()
 
@@ -256,6 +264,7 @@ async def build_comms_graph(
         ),
         hooks_config=HookConfig(
             pre_model_hooks=pre_model_hooks,
+            turn_ending=turn_ending,
             end_graph_hooks=[
                 follow_up_actions_node,
                 # Learn durable user memories from every comms turn (passive
@@ -264,7 +273,7 @@ async def build_comms_graph(
                 memory_node,
             ],
         ),
-        agent_config=AgentConfig(agent_name="comms_agent", middleware=middleware),
+        agent_config=AgentConfig(agent_name=COMMS_AGENT_NAME, middleware=middleware),
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -300,14 +309,16 @@ def comms_tools() -> dict[str, BaseTool]:
         tell_browser_task.name: tell_browser_task,
         "find_integration": find_integration,
         "search_public_workflows": search_public_workflows,
-        web_search_tool.name: web_search_tool,
-        fetch_webpages.name: fetch_webpages,
+        **{lookup.name: lookup for lookup in COMMS_LOOKUPS},
+        answered.name: answered,
+        react.name: react,
+        stay_silent.name: stay_silent,
         **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
     }
 
 
 @lazy_provider(
-    name="comms_agent",
+    name=GraphName.COMMS,
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,

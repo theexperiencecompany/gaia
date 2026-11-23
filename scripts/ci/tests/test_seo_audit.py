@@ -6,11 +6,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import importlib.util
 import json
 from pathlib import Path
+import socket
+import struct
 import subprocess
 import sys
 import threading
+from types import ModuleType
 
 from http_stub import Routes, serve
 import pytest
@@ -27,7 +31,10 @@ class Head:
     canonical: str | None = None
     robots: str = ""
     og_image: str = "/og.png"
-    description: str = "A description long enough to sit inside the snippet window of a result."
+    description: str = (
+        "A description long enough to sit inside the snippet window of a search result, "
+        "saying what the page does in one or two short sentences."
+    )
 
 
 CLEAN_HEAD = Head()
@@ -191,6 +198,17 @@ def test_description_bounds_are_the_web_apps_snippet_config() -> None:
     assert f"{high + 1} {NAMED}/over" in result.stdout
 
 
+def test_a_cjk_description_counts_each_character_twice_toward_the_minimum() -> None:
+    low, _ = _description_range()
+    half = (low + 1) // 2
+    pages = {"/ja-fits": "あ" * half, "/ja-thin": "あ" * (half - 1)}
+    with serve(_snippet_site(pages)) as base:
+        result = _audit(base, f"--site-url={NAMED}")
+
+    assert "WARN meta description length: 1" in result.stdout, result.stdout
+    assert f"{half - 1} {NAMED}/ja-thin" in result.stdout
+
+
 @contextmanager
 def _truncating_site(truncated_replies: int) -> Iterator[str]:
     """Serve one clean page whose first truncated_replies answers close mid chunked body."""
@@ -245,3 +263,127 @@ def test_a_response_truncated_on_every_attempt_is_a_finding_not_a_crash() -> Non
     assert "Traceback" not in result.stderr, result.stderr
     assert "ERROR sitemap URL not 200: 1" in result.stdout, result.stdout
     assert f"{base}/page -> 0" in result.stdout, result.stdout
+
+
+@contextmanager
+def _flaky_connection_site(dropped_connections: int) -> Iterator[tuple[str, list[int]]]:
+    """Serve 200 after dropped_connections connections closed unanswered; /gone is a 404."""
+    requests = [0]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requests[0] += 1
+            if self.path == "/gone":
+                self.send_error(404)
+            elif requests[0] <= dropped_connections:
+                self.close_connection = True
+            else:
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+        def log_message(self, *_args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}", requests
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@contextmanager
+def _resetting_site(resets: int) -> Iterator[tuple[str, list[int]]]:
+    """Send a body's headers and a fragment, then RST the socket; answer normally after `resets`."""
+    requests = [0]
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self) -> None:
+            requests[0] += 1
+            if requests[0] <= resets:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", "4096")
+                self.end_headers()
+                self.wfile.write(b"<html><title>partial</title>")
+                self.wfile.flush()
+                # Linger 0 turns the close into an RST, so the reader raises
+                # ConnectionResetError rather than IncompleteRead on a clean EOF.
+                self.connection.setsockopt(
+                    socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                )
+                self.close_connection = True
+                return
+            body = b"<html><head><title>ok</title></head><body>ok</body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}", requests
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_reset_during_the_body_read_is_retried(audit_module: ModuleType) -> None:
+    """ConnectionResetError is not an HTTPException, so it used to escape the retry handler."""
+    with _resetting_site(resets=1) as (base, requests):
+        assert audit_module.fetch(base + "/page").status == 200
+
+    assert requests[0] == 2
+
+
+def test_a_site_that_keeps_resetting_is_a_transport_finding_after_a_bounded_number_of_tries(
+    audit_module: ModuleType,
+) -> None:
+    with _resetting_site(resets=10**6) as (base, requests):
+        assert audit_module.fetch(base + "/page").status == 0
+
+    assert requests[0] == audit_module.TRANSPORT_RETRIES + 1
+
+
+@pytest.fixture
+def audit_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    spec = importlib.util.spec_from_file_location("seo_audit_under_test", AUDIT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+    return module
+
+
+def test_a_connection_dropped_for_several_attempts_is_retried_until_it_answers(
+    audit_module: ModuleType,
+) -> None:
+    with _flaky_connection_site(dropped_connections=4) as (base, _requests):
+        assert audit_module.fetch(base + "/page").status == 200
+
+
+def test_a_connection_that_never_answers_is_a_transport_finding_after_a_bounded_number_of_tries(
+    audit_module: ModuleType,
+) -> None:
+    with _flaky_connection_site(dropped_connections=10**6) as (base, requests):
+        assert audit_module.fetch(base + "/page").status == 0
+
+    assert requests[0] == audit_module.TRANSPORT_RETRIES + 1
+
+
+def test_a_real_non_200_status_is_read_once(audit_module: ModuleType) -> None:
+    with _flaky_connection_site(dropped_connections=0) as (base, requests):
+        assert audit_module.fetch(base + "/gone").status == 404
+
+    assert requests[0] == 1

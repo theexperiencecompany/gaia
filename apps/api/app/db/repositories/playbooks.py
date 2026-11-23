@@ -7,13 +7,12 @@ stale sequence can never be replayed by accident. The unique
 (workflow_id, user_id) index (app.db.mongodb.indexes) is what makes "one
 per workflow" a property of the data rather than of the callers' timing.
 
-Uncached (cache_policy = None): a playbook is read once per run, and the
+Uncached: a playbook is read once per run, and the
 overwrite-on-revise shape is exactly what an entity cache would misrepresent.
 """
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.playbook_models import (
     PlaybookDocument,
@@ -30,7 +29,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
     update_model = PlaybookUpdate
     uses_object_id = True
     identity_field = "playbook_id"
-    cache_policy = None
 
     async def get_for_workflow(self, workflow_id: str, user_id: str) -> PlaybookDocument | None:
         """Return the workflow's active playbook, or None when it has never been written."""
@@ -60,7 +58,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         healed = await self._apply_raw_update(
             {**key, "last_run_status": {"$in": sorted(status.value for status in HEAL_STATUSES)}},
             {"$set": body, "$inc": {"revision": 1, "heal_attempts": 1}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         if healed is not None:
             return healed
@@ -70,7 +67,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         unreplayed = await self._apply_raw_update(
             {**key, "last_run_status": PlaybookRunStatus.NOT_RUN.value},
             {"$set": body, "$inc": {"revision": 1}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         if unreplayed is not None:
             return unreplayed
@@ -87,9 +83,9 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
             },
         }
         try:
-            stored = await self._apply_raw_update(key, update, scope=REPO_GLOBAL_SCOPE, upsert=True)
+            stored = await self._apply_raw_update(key, update, upsert=True)
         except DuplicateKeyError:
-            stored = await self._apply_raw_update(key, update, scope=REPO_GLOBAL_SCOPE, upsert=True)
+            stored = await self._apply_raw_update(key, update, upsert=True)
         if stored is None:
             raise RuntimeError(f"playbook for workflow {playbook.workflow_id} vanished mid-upsert")
         return stored
@@ -116,22 +112,17 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         if revision is not None:
             key["revision"] = revision
         if not grows_from_untrusted(outcome):
-            return await self._apply_raw_update(
-                key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
-            )
+            return await self._apply_raw_update(key, _outcome_update(outcome, grow_streak=False))
         # A plain $inc can't be conditional on stored status, so the growing
         # write is tried first against a not-yet-suspect document, falling back
         # to the plain write when that matches nothing.
         grown = await self._apply_raw_update(
             {**key, "last_run_status": {"$ne": PlaybookRunStatus.SUSPECT.value}},
             _outcome_update(outcome, grow_streak=True),
-            scope=REPO_GLOBAL_SCOPE,
         )
         if grown is not None:
             return grown
-        return await self._apply_raw_update(
-            key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._apply_raw_update(key, _outcome_update(outcome, grow_streak=False))
 
     async def increment_heal_attempts(
         self, workflow_id: str, user_id: str, *, playbook_id: str, revision: int | None = None
@@ -149,9 +140,7 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         }
         if revision is not None:
             key["revision"] = revision
-        return await self._apply_raw_update(
-            key, {"$inc": {"heal_attempts": 1}}, scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._apply_raw_update(key, {"$inc": {"heal_attempts": 1}})
 
     async def delete_for_workflow(self, workflow_id: str, user_id: str) -> bool:
         """Drop the workflow's playbook. False when there was none."""
@@ -172,7 +161,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         """
         return await self._remove(
             playbook_id,
-            REPO_GLOBAL_SCOPE,
             {"workflow_id": workflow_id, "user_id": user_id, "revision": revision},
         )
 

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 
 
 class NoteModel(BaseModel):

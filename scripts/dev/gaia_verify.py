@@ -118,7 +118,12 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run GAIA's CI checks locally, through nx.")
     parser.add_argument("--json", action="store_true", help="emit only the JSON report on stdout")
     parser.add_argument("--all", action="store_true", help="every check, changed or not")
-    parser.add_argument("--only", default="", help="comma-separated checks (overrides scoping)")
+    parser.add_argument(
+        "--only",
+        default="",
+        help="comma-separated checks to run, changed or not; a check that scans only "
+        "the changed files still skips when none are its own",
+    )
     parser.add_argument("--skip", default="", help="comma-separated checks to leave out")
     parser.add_argument(
         "--with-heavy", action="store_true", help=f"include {', '.join(sorted(HEAVY_JOBS))}"
@@ -160,6 +165,14 @@ def plan(
         else:
             run[name] = tasks
     return run, left_out
+
+
+def select_changes(files: list[str], args: argparse.Namespace) -> nx_affected.Selection:
+    """Ask nx which tasks the changed files reach; --all reaches every check without asking."""
+    if args.all or not files:
+        return nx_affected.Selection(tasks={})
+    # One path per line on stdin: `--files` splits a name at its commas and spaces.
+    return nx_affected.select(["--stdin"], stdin="\n".join(files))
 
 
 def _nx_parallel(root: Path) -> int:
@@ -232,9 +245,9 @@ def main() -> int:
 
     base = pick_base(root, args.base)
     files = changed_files(root, base)
-    scoped = not (args.all or args.only)
-    selection = nx_affected.select(["--files", *files]) if scoped and files else None
-    affected = (set(selection.tasks) if selection else set()) if scoped else None
+    # --only plans without nx, so a dry run never asks it; a real run still hands each check its files.
+    selection = None if args.only else select_changes(files, args)
+    affected = None if args.all or selection is None else set(selection.tasks)
     to_run, left_out = plan(known, affected, args)
     say(f"ci:local: base={base} changed_files={len(files)} checks={len(to_run)} of {len(known)}")
     for name, why in left_out.items():
@@ -244,17 +257,25 @@ def main() -> int:
             say(f"  would run {name}: {', '.join(tasks)}")
         return 0
 
+    if selection is None:
+        selection = select_changes(files, args)
     started_at = datetime.now(UTC)
     t0 = time.monotonic()
     log_dir = root / LOG_ROOT / (started_at.strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}")
     log_dir.mkdir(parents=True, exist_ok=True)
     # What detect hands a CI job (JOB_TASKS, …, and the task-files file), from the same nx answer.
-    answer = selection or nx_affected.Selection(tasks={})
-    detected = nx_affected.outputs(answer, LOCAL_EVENTS[0], None)
+    detected = nx_affected.outputs(selection, LOCAL_EVENTS[0], None)
     os.environ.update({key.upper(): value for key, value in detected.items()})
+    scoped = (
+        dict.fromkeys(nx_affected.checks(), nx_affected.FULL_SCAN)
+        if args.all
+        else nx_affected.task_files(selection)
+    )
     task_files = log_dir / "task-files.json"
-    task_files.write_text(json.dumps(nx_affected.task_files(answer)))
+    task_files.write_text(json.dumps(scoped))
     os.environ[nx_affected.TASK_FILES_ENV] = str(task_files)
+    # changes.sh resolves its base before it reads the map, and defaults to master.
+    os.environ["GAIA_PR_BASE"] = base
     tasks = [task for check_tasks in to_run.values() for task in check_tasks]
     results: dict[str, nx_affected.TaskResult] = {}
 
@@ -289,4 +310,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except nx_affected.NxFailedError as exc:
+        _die(f"ci:local: {exc}")

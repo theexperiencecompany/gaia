@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Download01Icon } from "@icons";
-import Image from "next/image";
+import Image, { type ImageProps } from "next/image";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface DownloadOption {
   format: string;
@@ -17,6 +17,8 @@ interface DownloadAssetProps {
   downloadOptions: DownloadOption[];
   imageAlt: string;
   backgroundColor?: "light" | "dark";
+  /** Eager for the asset that starts in the first viewport. */
+  loading?: ImageProps["loading"];
 }
 
 function downloadAsset(path: string, format: string) {
@@ -34,6 +36,7 @@ export function DownloadAsset({
   downloadOptions,
   imageAlt,
   backgroundColor = "light",
+  loading = "lazy",
 }: DownloadAssetProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -58,7 +61,7 @@ export function DownloadAsset({
             width={800}
             height={600}
             className="h-auto w-full object-contain p-10"
-            loading="lazy"
+            loading={loading}
           />
         </div>
 
@@ -67,16 +70,17 @@ export function DownloadAsset({
           className={`absolute bottom-4 right-4 flex gap-2 transition-opacity duration-300 ${isHovered ? "opacity-100" : "opacity-0"}`}
         >
           {downloadOptions.map((option) => (
-            <Button
+            <GaiaButton
+              variant="default-solid"
               key={`${option.format}-${option.variant || "default"}`}
               size="sm"
               onPress={() => downloadAsset(option.path, option.format)}
-              startContent={<Download01Icon width={15} height={15} />}
             >
+              <Download01Icon width={15} height={15} />
               {option.variant
                 ? `${option.format} (${option.variant})`
                 : option.format}
-            </Button>
+            </GaiaButton>
           ))}
         </div>
       </div>

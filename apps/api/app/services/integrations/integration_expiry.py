@@ -19,11 +19,11 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP
-from app.core.websocket_manager import websocket_manager
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.models.integration_models import IntegrationAccount
+from app.models.notification.details_models import IntegrationExpiredNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -35,14 +35,17 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.services.integrations.integration_accounts import (
     get_account_record,
     primary_account,
     save_accounts,
 )
+from app.services.integrations.user_integration_status import announce_integration_changed
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.notification_service import notification_service
+from app.utils.integration_links import integration_connect_path
 from shared.py.wide_events import log
 
 # Which detection path drove this transition — carried into the wide event so a
@@ -98,12 +101,16 @@ async def expire_account(
     if account is None:
         log.set_ns("integration_expiry", outcome="untracked_account")
         return None
-    if account.status == "expired":
+    if account.status == IntegrationStatus.EXPIRED:
         log.set_ns("integration_expiry", outcome="already_expired")
         return None
 
     dead = account.model_copy(
-        update={"status": "expired", "expired_at": datetime.now(UTC), "expired_reason": reason}
+        update={
+            "status": IntegrationStatus.EXPIRED,
+            "expired_at": datetime.now(UTC),
+            "expired_reason": reason,
+        }
     )
     accounts = [dead if a is account else a for a in record.accounts]
     saved = await save_accounts(
@@ -115,7 +122,7 @@ async def expire_account(
         account=dead,
         account_count=len(accounts),
         was_primary=record.primary_account_id == account.id,
-        integration_expired=saved.status == "expired",
+        integration_expired=saved.status == IntegrationStatus.EXPIRED,
     )
     log.set_ns(
         "integration_expiry",
@@ -185,28 +192,21 @@ async def announce_account_expiry(
     """Flip an open integrations page live, then leave a persistent Reconnect nudge."""
     integration = get_integration_by_id(integration_id)
     integration_name = integration.name if integration else integration_id
-    await websocket_manager.broadcast_to_user(
-        user_id=user_id,
-        message={
-            "type": INTEGRATION_STATUS_UPDATE_EVENT,
-            "data": {
-                "integration_id": integration_id,
-                "status": "expired" if expired.integration_expired else "connected",
-            },
-        },
-    )
+    await announce_integration_changed(user_id, integration_id)
 
     named = (
         f"{integration_name} ({expired.account.display_name})"
         if expired.account_count > 1
         else integration_name
     )
-    await notification_service.create_notification(
+    await notification_service.notify(
         NotificationRequest(
+            # One per account lost: reconnecting gives the account a new id, so a later loss is new.
+            id=notification_id(user_id, "integration_expired", integration_id, expired.account.id),
             user_id=user_id,
             source=NotificationSourceEnum.INTEGRATION_EXPIRED,
             type=NotificationType.WARNING,
-            channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
+            channels=[ChannelConfig(channel_type=NotificationChannel.INAPP)],
             content=NotificationContent(
                 title=f"{named} disconnected",
                 body=_expiry_body(named, paused_workflows, reason),
@@ -217,8 +217,7 @@ async def announce_account_expiry(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url=f"/integrations?connect={integration_id}"
-                                f"&account={expired.account.id}",
+                                url=integration_connect_path(integration_id, expired.account.id),
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )
@@ -226,9 +225,10 @@ async def announce_account_expiry(
                     )
                 ],
             ),
-            metadata={
-                "integration_id": integration_id,
-                "paused_workflows": len(paused_workflows),
-            },
+            details=IntegrationExpiredNotification(
+                kind=NotificationKind.INTEGRATION_EXPIRED,
+                integration_id=integration_id,
+                paused_workflows=len(paused_workflows),
+            ),
         )
     )
