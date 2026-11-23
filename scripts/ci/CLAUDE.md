@@ -26,7 +26,7 @@ lane without grepping the workflow first.
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-scope`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan`, `queue-verified` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
-| Shipping to production | `deploy.sh` | `plan`, `stack`, `migrate`, `verify`, `smoke`, `rollback`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
+| Shipping to production | `deploy.sh` | `plan`, `stack`, `migrate`, `verify`, `smoke`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 | What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
 | The ratchet baselines, which only shrink | `baselines.py` | `growth` |
 
@@ -48,12 +48,10 @@ A backend deploy runs in this order, and each step must succeed before the next:
 as a one-off Swarm job of the image about to roll, with the backend's environment,
 secrets, networks and working directory copied from its live task template, then the
 conversation check (and, only when it finds work, the catch-up with the old writers
-stopped); then `deploy.sh stack` records each service's image (`images_before`) and rolls the
-services; then convergence, `verify-commit`, and `deploy.sh smoke`, which reads prod as an
-anonymous visitor (`lib/prod_smoke.py` over `lib/prod-smoke-targets.toml`). Its `verdict=fail`
-— never its exit status, which a crash shares — fires the workflow's one `rollback` job, which
-`deploy.sh rollback`s only the services whose image differs from `images_before`, except after
-a conversation catch-up, whose writers' previous spec has 0 replicas. No API or
+stopped); then `deploy.sh stack` rolls the services; then convergence, `verify-commit`, the
+`:latest` retag, and `deploy.sh smoke`, which reads prod as an anonymous visitor
+(`lib/prod_smoke.py` over `lib/prod-smoke-targets.toml`) and alerts on a failure without
+changing production: rolling back stays a person's call. No API or
 worker of a release ever serves before its migrations finished. The previous release
 keeps serving while the job runs, so a migration that moves a field leaves it reading
 that field's default for those minutes, so a migration that moves a field is
@@ -120,7 +118,8 @@ Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `prod_smoke.py` (the anonymous
 post-deploy read of production behind `deploy.sh smoke`: retries, the hard/soft
 classification, the rate-limit burst sized from the API's `ANONYMOUS_VIEWER_PER_MINUTE`;
-its targets are `prod-smoke-targets.toml`, one line each), `seo_audit.py` (the sitemap
+its targets are `prod-smoke-targets.toml`, one line each, held to `apps/api/openapi.json`
+by `tests/test_prod_smoke_contract.py`), `seo_audit.py` (the sitemap
 crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run
 audits, the one ignore list of squirrel's own bugs, `drop` for applying a run's fixes, and the per-page, per-check,
 per-item baseline in `baselines/squirrel-build.txt` and `squirrel-live.txt`, read

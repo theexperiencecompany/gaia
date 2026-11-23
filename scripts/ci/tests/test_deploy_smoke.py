@@ -15,16 +15,25 @@ from pathlib import Path
 import subprocess
 
 from http_stub import Response, Routes, serve
+from lib import prod_smoke
+import yaml
 
 CI = Path(__file__).parent.parent
 SCRIPT = CI / "deploy.sh"
+WORKFLOW = CI.parent.parent / ".github/workflows/deploy-swarm-prod.yml"
 
-COMMUNITY = "/api/v1/integrations/community?sort=popular&limit=100&offset=0"
-CONFIG = "/api/v1/integrations/config"
-PLANS = "/api/v1/payments/plans?active_only=true"
-EXPLORE = "/api/v1/workflows/explore?limit=25&offset=0"
-BURST_PATHS = (COMMUNITY, CONFIG, PLANS, EXPLORE)
+# The paths come from the real targets file, so a renamed target cannot leave a stub behind.
+TARGETS = {target.name: target for target in prod_smoke.load_targets(prod_smoke.TARGETS_FILE)}
+COMMUNITY = TARGETS["integrations-community"].path
+CONFIG = TARGETS["integrations-config"].path
+PLANS = TARGETS["plans"].path
+EXPLORE = TARGETS["workflows-explore"].path
+BURST_PATHS = tuple(target.path for target in TARGETS.values() if target.burst)
 LIMIT = "120 per 1 minute"
+
+
+def detail(slug: str) -> str:
+    return TARGETS["integration-detail"].path.replace("{slug}", slug)
 
 
 def ok_json(document: object) -> Response:
@@ -48,12 +57,8 @@ def healthy_api() -> Routes:
         "/health": ok_json({"status": "online", "commit": "76ec6cc4", "version": "0.25.0"}),
         COMMUNITY: ok_json({"integrations": [{"slug": "postman_full"}], "total": 1}),
         CONFIG: ok_json({"integrations": [{"slug": "googlecalendar"}]}),
-        "/api/v1/integrations/public/postman_full": ok_json(
-            {"slug": "postman_full", "name": "Postman"}
-        ),
-        "/api/v1/integrations/public/googlecalendar": ok_json(
-            {"slug": "googlecalendar", "name": "Calendar"}
-        ),
+        detail("postman_full"): ok_json({"slug": "postman_full", "name": "Postman"}),
+        detail("googlecalendar"): ok_json({"slug": "googlecalendar", "name": "Calendar"}),
         PLANS: ok_json([{"id": "pro"}]),
         EXPLORE: ok_json({"workflows": []}),
     }
@@ -139,7 +144,7 @@ def test_a_public_read_failing_on_every_attempt_fails_with_url_status_and_body(
     assert url.startswith("http://127.0.0.1:") and url.endswith(CONFIG)
     assert run.outputs["summary"].startswith("integrations-config: 503 on 3/3 attempts")
     assert "first bytes: upstream connect error" in run.proc.stderr
-    assert "a rollback cause" in run.proc.stdout
+    assert "it was not rolled back" in run.proc.stdout
 
 
 def test_a_read_that_recovers_on_retry_only_warns(tmp_path: Path) -> None:
@@ -280,13 +285,13 @@ def test_prod_unreachable_from_the_runner_is_undecided_not_a_failure(tmp_path: P
 
     assert run.proc.returncode != 0
     assert run.verdict == "error"
-    assert "not a rollback cause" in run.proc.stdout
+    assert "prod is unjudged" in run.proc.stdout
 
 
 def test_a_smoke_that_crashes_writes_no_verdict(tmp_path: Path) -> None:
     targets = tmp_path / "targets.toml"
     targets.write_text(
-        'targets = [{ name = "x", base = "api", path = "/", gate = "rollback", typo = 1 }]\n'
+        'targets = [{ name = "x", base = "api", path = "/", gate = "fail", typo = 1 }]\n'
     )
 
     run = smoke(tmp_path, None, None, "--targets", str(targets))
@@ -294,3 +299,50 @@ def test_a_smoke_that_crashes_writes_no_verdict(tmp_path: Path) -> None:
     assert run.proc.returncode != 0
     assert "verdict" not in run.outputs
     assert "unknown keys ['typo']" in run.proc.stderr
+
+
+def _deploy_steps() -> list[dict[str, object]]:
+    document = yaml.safe_load(WORKFLOW.read_text())
+    steps: list[dict[str, object]] = document["jobs"]["deploy"]["steps"]
+    return steps
+
+
+def _index(steps: list[dict[str, object]], predicate: str) -> int:
+    return next(
+        i
+        for i, step in enumerate(steps)
+        if step.get("id") == predicate or step.get("run") == predicate
+    )
+
+
+def test_latest_moves_once_prod_serves_the_release_whatever_the_smoke_says() -> None:
+    """Regression: :latest moved only after a passing smoke, so a failed one left it behind prod.
+
+    Nothing rolls a failed smoke back, so the release serves either way, and the next deploy
+    whose tag is empty resolves :latest: an old :latest rolls the old image onto new data.
+    """
+    steps = _deploy_steps()
+    retag = _index(steps, "bash scripts/ci/deploy.sh retag from-env")
+    smoke = _index(steps, "smoke")
+
+    assert _index(steps, "verify") < retag < smoke
+    assert "smoke" not in str(steps[retag]["if"])
+    assert steps[smoke]["run"] == "bash scripts/ci/deploy.sh smoke"
+    assert "continue-on-error" not in steps[smoke]
+
+
+def test_a_failed_smoke_alerts_once_and_changes_nothing_in_production() -> None:
+    document = yaml.safe_load(WORKFLOW.read_text())
+    steps = document["jobs"]["deploy"]["steps"]
+    alerts = [s for s in steps if "steps.smoke.outputs.verdict == 'fail'" in str(s.get("if", ""))]
+
+    assert len(alerts) == 1
+    assert "NOT rolled back" in alerts[0]["env"]["IMPACT"]
+    assert "action=rollback" in alerts[0]["env"]["ACTION"]
+    # The rollback job stays the operator's: dispatch only, never fed by the deploy job.
+    rollback = document["jobs"]["rollback"]
+    assert "needs" not in rollback
+    assert (
+        rollback["if"] == "github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'"
+    )
+    assert "outputs" not in document["jobs"]["deploy"]

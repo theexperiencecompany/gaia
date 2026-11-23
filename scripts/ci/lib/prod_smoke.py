@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Read production as an anonymous visitor after a backend deploy and decide whether it holds.
 
-The targets are prod-smoke-targets.toml. Each is retried; a rollback-gated target wrong on
-every attempt fails the deploy (verdict fail), anything that recovers or only an
-alert-gated target breaks warns (verdict warn). A burst of the reads a web build starts with
-checks the anonymous rate limit. No target reachable at all is the runner's problem, not the
-release's: verdict error. The verdict and a one-line summary go to GITHUB_OUTPUT; a crash
-writes none, so only verdict=fail is ever a rollback cause.
+The targets are prod-smoke-targets.toml. Each is retried; a fail-gated target wrong on every
+attempt fails the deploy job (verdict fail), anything that recovers or only a warn-gated
+target breaks warns (verdict warn). A burst of the reads a web build starts with checks the
+anonymous rate limit. No target reachable at all is the runner's problem, not the release's:
+verdict error. The verdict and a one-line summary go to GITHUB_OUTPUT. Nothing here changes
+production.
 """
 
 from __future__ import annotations
@@ -52,8 +52,8 @@ OK = 200
 class Gate(StrEnum):
     """What a target failing on every attempt does to the deploy."""
 
-    ROLLBACK = "rollback"
-    ALERT = "alert"
+    FAIL = "fail"
+    WARN = "warn"
 
 
 class Base(StrEnum):
@@ -80,8 +80,8 @@ class Verdict(StrEnum):
 VERDICT_MEANING = {
     Verdict.PASS: "production answers an anonymous visitor as expected",
     Verdict.WARN: "production holds; the warnings above go to the deploy alert",
-    Verdict.FAIL: "production fails an anonymous visitor: a rollback cause",
-    Verdict.ERROR: "the smoke could not reach production: not a rollback cause",
+    Verdict.FAIL: "production fails an anonymous visitor; it was not rolled back",
+    Verdict.ERROR: "the smoke could not reach production from this runner; prod is unjudged",
 }
 
 
@@ -390,7 +390,7 @@ def judge_target(report: Report, outcome: Outcome) -> None:
         f"{target.name}: {outcome.problems[-1]} on {tries}/{tries} attempts ({url}); "
         f"first bytes: {last.head() or '<empty>'}"
     )
-    (report.failures if target.gate is Gate.ROLLBACK else report.warnings).append(message)
+    (report.failures if target.gate is Gate.FAIL else report.warnings).append(message)
 
 
 def _cache_note(reply: Reply) -> str:
@@ -426,7 +426,7 @@ def run(
     for target in targets:
         if "{" in target.path and slug is None:
             message = f"{target.name}: no slug to read (every slugs_from list failed or was empty)"
-            (report.failures if target.gate is Gate.ROLLBACK else report.warnings).append(message)
+            (report.failures if target.gate is Gate.FAIL else report.warnings).append(message)
             continue
         outcome = check_target(target, origins.url(target, slug or ""), pacing)
         outcomes.append(outcome)

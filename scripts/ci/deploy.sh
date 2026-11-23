@@ -8,9 +8,7 @@
 #                               backend_deploy / backend_orphaned to
 #                               $GITHUB_OUTPUT.
 #   stack                       `docker stack deploy` the production Swarm stack
-#                               from the private gaia-infra checkout at .infra/,
-#                               first recording the image each of our services
-#                               runs (images_before=, what a rollback restores).
+#                               from the private gaia-infra checkout at .infra/.
 #   migrate                     Before the rollout, run the release's data
 #                               migrations (apps/api/scripts/post_deploy.py) as
 #                               a one-shot Swarm job on the NEW apps image; a
@@ -29,14 +27,11 @@
 #   smoke                       Read production as an anonymous visitor (the
 #                               public pages and API reads in
 #                               lib/prod-smoke-targets.toml, then a polite burst
-#                               against the anonymous rate limit) and decide:
-#                               verdict=pass|warn|fail|error. Only fail (exit 1
-#                               with verdict=fail) is a rollback cause.
-#   rollback                    `docker service rollback` the services: in last
-#                               mode with ROLLBACK_SCOPED=true, exactly those whose
-#                               image differs from ROLLBACK_FROM (so a re-run rolls
-#                               back nothing twice); otherwise every app and bot
-#                               service. digest mode pins the gaia image instead.
+#                               against the anonymous rate limit) and write
+#                               verdict=pass|warn|fail|error and summary=. Fails
+#                               on fail or error. It never changes production:
+#                               a failure alerts, and rolling back is a person's
+#                               call (action=rollback).
 #   retag from-env|rolled-back  Re-point the :latest tags in GHCR at what
 #                               production actually runs, so ":latest ==
 #                               deployed" holds as an invariant.
@@ -63,15 +58,10 @@
 #           BOTS_AFFECTED, GITHUB_OUTPUT.
 #   stack   GAIA_IMAGE_TAG / GAIA_BOTS_IMAGE_TAG / GAIA_GRAFANA_IMAGE_TAG pin
 #           the images; empty falls through to the compose file's
-#           ${VAR:-latest} defaults. GITHUB_OUTPUT (required). Needs the `prod`
-#           docker context.
-#   verify  as `stack`, minus the write and GITHUB_OUTPUT.
+#           ${VAR:-latest} defaults. Needs the `prod` docker context.
+#   verify  as `stack`, minus the write.
 #   smoke   PROD_ORIGIN, PROD_WEB_ORIGIN; GITHUB_OUTPUT, GITHUB_STEP_SUMMARY.
 #           No secrets: every read is anonymous.
-#   rollback ROLLBACK_MODE (last|digest), GITHUB_OUTPUT (required);
-#           ROLLBACK_SCOPED (true|false) with ROLLBACK_FROM (`svc=image` words, a
-#           deploy's images_before); IMAGE_DIGEST for digest. Writes services=.
-#           Needs the `prod` docker context.
 #   migrate GITHUB_OUTPUT (required); GAIA_IMAGE_TAG as `stack`;
 #           MIGRATE_RELEASE_TIMEOUT_SECS, MIGRATE_CHECK_TIMEOUT_SECS,
 #           MIGRATE_CATCH_UP_TIMEOUT_SECS, MIGRATE_WRITERS_TIMEOUT_SECS,
@@ -208,42 +198,6 @@ cmd_plan() {
   echo "  docker-release result: $DOCKER_RELEASE_RESULT (images_published=$BACKEND_IMAGES_PUBLISHED)"
 }
 
-# repo_of ghcr.io/org/name:tag[@digest] -> ghcr.io/org/name
-repo_of() {
-  local ref="${1%%@*}"
-  local base="${ref##*/}"
-  if [[ "$base" == *:* ]]; then
-    echo "${ref%:*}"
-  else
-    echo "$ref"
-  fi
-}
-
-is_deployed_repo() {
-  local name
-  for name in "${APPS_IMAGE_REPOS[@]}" "${BOTS_IMAGE_REPOS[@]}" "$GRAFANA_IMAGE_REPO"; do
-    [[ "$1" == "$GHCR_NAMESPACE/$name" ]] && return 0
-  done
-  return 1
-}
-
-# _stack_images — `service=image` per line for every gaia-prod service on one of our
-# repos, the image exactly as its spec pins it (tag@digest). Empty before a first deploy.
-_stack_images() {
-  local services specs svc image
-  services=$(docker --context prod stack services gaia-prod --format '{{.Name}}') \
-    || ci_die "deploy stack: cannot list the services of gaia-prod"
-  [[ -n "$services" ]] || return 0
-  # shellcheck disable=SC2086 # one service name per word
-  specs=$(docker --context prod service inspect $services \
-    --format '{{.Spec.Name}} {{.Spec.TaskTemplate.ContainerSpec.Image}}') \
-    || ci_die "deploy stack: cannot read the images gaia-prod runs"
-  while IFS=' ' read -r svc image; do
-    is_deployed_repo "$(repo_of "$image")" && echo "$svc=$image"
-  done <<< "$specs"
-  return 0
-}
-
 _cmd_swarm_stack() {
 
   local MODE="$1"
@@ -261,10 +215,6 @@ _cmd_swarm_stack() {
 
   case "$MODE" in
     deploy)
-      : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
-      local before
-      before=$(_stack_images)
-      echo "images_before=${before//$'\n'/ }" >> "$GITHUB_OUTPUT"
       docker --context prod stack deploy \
         --with-registry-auth \
         -c "$STACK_FILE" \
@@ -481,6 +431,26 @@ cmd_retag() {
 
   MODE="${1:?usage: deploy.sh retag from-env|rolled-back}"
 
+
+  # repo_of ghcr.io/org/name:tag[@digest] -> ghcr.io/org/name
+  repo_of() {
+    local ref="${1%%@*}"
+    local base="${ref##*/}"
+    if [[ "$base" == *:* ]]; then
+      echo "${ref%:*}"
+    else
+      echo "$ref"
+    fi
+  }
+
+  is_deployed_repo() {
+    local name
+    for name in "${APPS_IMAGE_REPOS[@]}" "${BOTS_IMAGE_REPOS[@]}" "$GRAFANA_IMAGE_REPO"; do
+      [[ "$1" == "$GHCR_NAMESPACE/$name" ]] && return 0
+    done
+    return 1
+  }
+
   retag() {
     local ref="$1" repo
     repo=$(repo_of "$ref")
@@ -572,72 +542,13 @@ cmd_retag() {
   esac
 }
 
-# The rollback cause is the verdict= the smoke writes, never this exit status: a crash
-# exits non-zero too, and must not read as production failing.
 cmd_smoke() {
   : "${PROD_ORIGIN:?PROD_ORIGIN is required}"
   : "${PROD_WEB_ORIGIN:?PROD_WEB_ORIGIN is required}"
   # Extra arguments pass through (prod_smoke.py --help); the workflow passes none.
   python3 -I "$(dirname "$0")/lib/prod_smoke.py" --api "$PROD_ORIGIN" --web "$PROD_WEB_ORIGIN" "$@" \
-    || ci_die "deploy smoke: production failed the anonymous smoke, or the smoke could not decide (verdict above)"
+    || ci_die "deploy smoke: production fails an anonymous visitor, or the smoke could not decide (verdict above)"
   ci_ok "deploy smoke: OK ($PROD_ORIGIN and $PROD_WEB_ORIGIN answer an anonymous visitor as expected; warnings above, if any)"
-}
-
-# _rollback_scoped_services — of ROLLBACK_FROM's `svc=image` words, the services whose
-# image is no longer that one: what the deploy rolled and nothing has rolled back yet.
-_rollback_scoped_services() {
-  local pair svc before now
-  for pair in $ROLLBACK_FROM; do
-    svc="${pair%%=*}"
-    before="${pair#*=}"
-    now=$(docker --context prod service inspect "$svc" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}') \
-      || ci_die "deploy rollback: cannot read the image $svc runs"
-    if [[ "$now" == "$before" ]]; then
-      echo "deploy rollback: $svc already runs its pre-deploy image — leaving it" >&2
-    else
-      echo "$svc"
-    fi
-  done
-}
-
-cmd_rollback() {
-  : "${ROLLBACK_MODE:?ROLLBACK_MODE is required}"
-  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
-  local services svc
-  case "$ROLLBACK_MODE" in
-    last)
-      if [[ "${ROLLBACK_SCOPED:-false}" == true ]]; then
-        # Never widen a scoped rollback: with no record of the images before the
-        # deploy, rolling back every service would revert ones it never touched.
-        [[ -n "${ROLLBACK_FROM:-}" ]] \
-          || ci_die "deploy rollback: no record of the images before the deploy (ROLLBACK_FROM is empty) — not guessing which services to roll back"
-        services=$(_rollback_scoped_services)
-        [[ -n "$services" ]] \
-          || ci_die "deploy rollback: no service runs an image the deploy rolled — nothing to roll back"
-      else
-        # An assignment, not `for svc in $(…)`: a failed docker call (or no matching
-        # service) then fails the step instead of rolling back nothing.
-        services=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-          | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')
-      fi
-      for svc in $services; do
-        echo "Rolling back $svc..."
-        docker --context prod service rollback "$svc"
-      done
-      ;;
-    digest)
-      : "${IMAGE_DIGEST:?IMAGE_DIGEST is required for digest mode}"
-      # Every service running the gaia image — a partial pin would leave the
-      # remainder on a different build than the :latest alias claims.
-      services="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
-      for svc in $services; do
-        docker --context prod service update --image "$IMAGE_DIGEST" "$svc"
-      done
-      ;;
-    *) ci_die "deploy rollback: unknown ROLLBACK_MODE '$ROLLBACK_MODE' (last|digest)" ;;
-  esac
-  echo "services=${services//$'\n'/ }" >> "$GITHUB_OUTPUT"
-  ci_ok "deploy rollback: OK (${ROLLBACK_MODE}: ${services//$'\n'/ })"
 }
 
 # A message is a state, its impact, the cause, the action and what clears it —
@@ -1017,7 +928,6 @@ main() {
     migrate) cmd_migrate "$@" ;;
     verify) _cmd_swarm_stack verify "$@" ;;
     smoke)  cmd_smoke "$@" ;;
-    rollback) cmd_rollback "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;
     failing-checks) cmd_failing_checks "$@" ;;
