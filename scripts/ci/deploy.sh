@@ -828,14 +828,14 @@ cmd_verify_alert_rules() {
   expected=$(yq '.groups[].rules[].uid' "$file")
   [[ -n "$expected" ]] || ci_die "deploy verify-alert-rules: $file declares no rule uids"
   local deadline=$(( $(date +%s) + ${GRAFANA_VERIFY_TIMEOUT_SECS:-120} ))
-  until served=$(served_alert_rule_uids); do
-    (( $(date +%s) < deadline )) || ci_die "deploy verify-alert-rules: cannot read Grafana's rules from the $_GRAFANA_SERVICE container"
+  # the old task still answers while Swarm rolls the new one, so a difference is retried too
+  until served=$(served_alert_rule_uids) && diff=$(alert_rule_uid_diff "$expected" "$served") && [[ -z "$diff" ]]; do
+    if (( $(date +%s) >= deadline )); then
+      [[ -n "$served" ]] || ci_die "deploy verify-alert-rules: cannot read Grafana's rules from the $_GRAFANA_SERVICE container"
+      ci_die "deploy verify-alert-rules: Grafana serves different rules than $file (provisioning never deletes a rule whose entry vanished): ${diff//$'\n'/, }"
+    fi
     sleep "${GRAFANA_VERIFY_POLL_SECS:-5}"
   done
-  diff=$(alert_rule_uid_diff "$expected" "$served")
-  if [[ -n "$diff" ]]; then
-    ci_die "deploy verify-alert-rules: Grafana serves different rules than $file (provisioning never deletes a rule whose entry vanished): ${diff//$'\n'/, }"
-  fi
   ci_ok "deploy verify-alert-rules: Grafana serves exactly the $(wc -l <<< "$expected" | tr -d ' ') rules in $file"
 }
 
