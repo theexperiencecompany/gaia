@@ -28,7 +28,9 @@ work behind a runner's setup.
   every push, `pytest.sh regression-proof --services false|true` either way,
   with the same outcomes, including "cannot run on base" for a test tree that
   does not collect there),
-  `python-audit`, `scan`, `docker-image` and `coverage`. A PR reaches master
+  `python-audit`, `scan`, `docker-image`, `coverage` and `selfhost-e2e` (the
+  `gaia up` + Playwright journey, `selfhost-e2e.yml`; merge queue and dispatch
+  only, when nx's `cli:selfhost-e2e` is affected). A PR reaches master
   only through the queue, so the slow checks run once per merge, not once per
   push. `detect` decides the tier (`tier` output) and `pytest.sh slices` cuts
   the slice matrix to it.
