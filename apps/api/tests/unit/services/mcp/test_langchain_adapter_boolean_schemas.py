@@ -67,3 +67,35 @@ class TestAToolSchemaWithBooleanSubschemas:
 
         assert isinstance(fixed, dict)
         assert fixed["additionalProperties"] is False
+
+    def test_a_false_subschema_becomes_the_schema_that_accepts_nothing(self) -> None:
+        schema: JsonValue = {
+            "type": "object",
+            "properties": {
+                "never": False,
+                "tags": {"type": "array", "items": False},
+                "value": {"anyOf": [False, {"type": "string"}]},
+            },
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert fixed == {
+            "type": "object",
+            "properties": {
+                "never": {"not": {}},
+                "tags": {"type": "array", "items": {"not": {}}},
+                "value": {"anyOf": [{"not": {}}, {"type": "string"}]},
+            },
+        }
+
+    def test_a_false_property_schema_still_yields_a_usable_model(self) -> None:
+        model = _args_schema(
+            {
+                "type": "object",
+                "properties": {"never": False, "name": {"type": "string"}},
+                "required": ["name"],
+            }
+        )
+
+        assert model(name="n").model_dump(exclude_none=True) == {"name": "n"}
