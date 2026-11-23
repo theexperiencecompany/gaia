@@ -2,7 +2,7 @@ name: Setup Python test environment
 description: >
   Prepare the runner to execute the API pytest suite against live services:
   install Node + pnpm deps (the device-bridge e2e tests drive the real
-  `gaia bridge` CLI via tsx) when requested, sync Python deps with uv, install
+  `gaia bridge` CLI via tsx; the artifact-validator tests build its bundle) when requested, sync Python deps with uv, install
   headless Chromium when requested, and start
   PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
   daemon.
@@ -18,9 +18,11 @@ inputs:
     default: "true"
   node:
     description: >
-      Install Node + pnpm deps. Only tests/integration/real/test_device_bridge_e2e.py
-      needs them (it drives the real `gaia bridge` CLI via tsx); a lane that
-      does not run that file should pass "false" and skip ~45s warm / minutes cold.
+      Install Node + pnpm deps. tests/integration/real/test_device_bridge_e2e.py
+      drives the real `gaia bridge` CLI via tsx, and
+      tests/integration/services/test_openui_artifact_validate.py builds the
+      validator bundle with esbuild; a lane that runs neither should pass "false"
+      and skip ~45s warm / minutes cold.
     required: false
     default: "true"
   restore-models:
