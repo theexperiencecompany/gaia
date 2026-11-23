@@ -68,26 +68,22 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     (WWW-Authenticate on 401, Retry-After on 429) and drops the body for
     statuses that may not carry one (204/304).
     """
+    failure: dict[str, Any] = {
+        "status_code": exc.status_code,
+        "detail": exc.detail,
+        "path": loggable_request_path(request),
+        "method": request.method,
+    }
     # Only an explicit `raise ... from e` counts: __context__ is set by any
     # exception raised inside an except block and is usually unrelated.
-    cause_fields: dict[str, Any] = {}
     cause = exc.__cause__
     if cause is not None:
-        cause_fields = {"error_type": type(cause).__name__, "error": str(cause)}
+        failure["error_type"] = type(cause).__name__
+        failure["error"] = str(cause)
 
-    # A 4xx is normal traffic and the http_request event already carries its status, path and
-    # method, so only the detail is added; a 5xx is a failure and is logged as one.
-    if exc.status_code >= 500:
-        wide_log.error(
-            "http_exception",
-            status_code=exc.status_code,
-            detail=exc.detail,
-            path=loggable_request_path(request),
-            method=request.method,
-            **cause_fields,
-        )
-    else:
-        wide_log.set_ns("http_exception", detail=exc.detail, **cause_fields)
+    # Mirrors the status -> level mapping the logging middleware applies.
+    record = wide_log.error if exc.status_code >= 500 else wide_log.warning
+    record("http_exception", **failure)
 
     if not is_body_allowed_for_status_code(exc.status_code):
         return Response(status_code=exc.status_code, headers=exc.headers)
