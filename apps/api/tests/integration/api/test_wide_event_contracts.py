@@ -88,8 +88,21 @@ def test_handler_fields_reach_the_emitted_event(emitted):
     (event,) = emitted
     assert event["todo"] == {"operation": "create", "id": "t_1"}
     assert event["errors"][0]["error_type"] == "Boom"
-    assert event["final_level"] == "ERROR"
+    assert event["final_level"] == "WARNING"
     assert event["status_code"] == 200
+
+
+def test_a_client_error_that_recorded_nothing_stays_at_info(emitted):
+    app = _app_with_logging()
+
+    @app.get("/missing")
+    async def missing():
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    TestClient(app).get("/missing")
+    (event,) = emitted
+    assert event["status_code"] == 404
+    assert event["final_level"] == "INFO"
 
 
 @pytest.mark.regression

@@ -360,9 +360,9 @@ def _check_worker_event(i: int, event: dict[str, Any]) -> list[Violation]:
     # entry was lost between accumulation and emit.
     if outcome == "failed" and not (event.get("errors") or "errors" in shed):
         out.append(Violation(i, "failure-recorded", "outcome=failed with empty errors[]"))
-    # log.error() bumps max_level, which becomes final_level — a disagreement
-    # means one of the two paths did not run.
-    if event.get("errors") and event.get("final_level") not in ("ERROR", "CRITICAL"):
+    # A failed boundary emits at ERROR; a successful one caps at WARNING even
+    # when nested work recorded errors[] (resolve_final_level).
+    if outcome == "failed" and event.get("final_level") not in ("ERROR", "CRITICAL"):
         out.append(
             Violation(
                 i,
