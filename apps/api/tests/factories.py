@@ -16,6 +16,7 @@ from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import DisplayState, Entry
 from app.models.conversation_models import StoredConversation
+from app.models.oauth_models import OAuthIntegration
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from shared.py.conversation_wire import ReplyItem, ReplyOutcome, ToolTimeline
@@ -226,6 +227,27 @@ def make_composio_not_found(body: object, message: str) -> composio_client.NotFo
     return composio_client.NotFoundError(
         message, response=httpx.Response(404, request=request, json=body), body=body
     )
+
+
+def make_oauth_integration(**overrides: object) -> OAuthIntegration:
+    """Build an OAuthIntegration with test defaults; override any field by name."""
+    overrides.setdefault("id", overrides.pop("integration_id", "platform-int"))
+    params: dict[str, object] = {
+        "name": "Platform Integration",
+        "description": "A platform integration",
+        "category": "productivity",
+        "provider": "google",
+        "scopes": [],
+        "available": True,
+        "managed_by": "internal",
+        "mcp_config": None,
+        "composio_config": None,
+        "subagent_config": None,
+        "is_featured": False,
+        "display_priority": 0,
+        **overrides,
+    }
+    return OAuthIntegration.model_validate(params)
 
 
 def make_reply_item(text: str, *, reply_id: str = "r1", seq: int = 1) -> ReplyItem:

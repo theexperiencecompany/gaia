@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -354,6 +355,51 @@ def test_pip_clean_report_passes(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
 
 
+def _requirement_names(export: str) -> set[str]:
+    return {line.split("==")[0] for line in export.splitlines() if "==" in line}
+
+
+@pytest.mark.parametrize("dockerfile", ["apps/api/Dockerfile", "apps/voice-agent/Dockerfile"])
+def test_pip_audits_every_package_an_image_installs(tmp_path: Path, dockerfile: str) -> None:
+    """Regression: the export skipped apps/api's backend group, so oauthlib 4.0.0 went unaudited."""
+    repo_root = SCRIPT.parents[2]
+    audited = tmp_path / "audited.txt"
+    stub = tmp_path / "pipbin"
+    stub.mkdir()
+    (stub / "uv").write_text(
+        textwrap.dedent(f"""\
+        #!/usr/bin/env bash
+        [ "$1" = export ] && exec "{shutil.which("uv")}" "$@"
+        while [ "$#" -gt 0 ]; do
+          [ "$1" = -r ] && cp "$2" "{audited}"
+          [ "$1" = -o ] && echo '{{"dependencies": []}}' > "$2"
+          shift
+        done
+        """)
+    )
+    (stub / "uv").chmod(0o755)
+    subprocess.run(
+        ["bash", str(SCRIPT), "pip"],
+        env={**os.environ, "PATH": f"{stub}{os.pathsep}{os.environ['PATH']}"},
+        cwd=repo_root,
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+
+    sync = re.search(r"^\s*uv sync (--.+)$", (repo_root / dockerfile).read_text(), re.M)
+    assert sync, f"{dockerfile} has no uv sync step"
+    installed = subprocess.run(
+        ["uv", "export", *sync.group(1).split(), "--no-emit-workspace"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    missing = _requirement_names(installed) - _requirement_names(audited.read_text())
+    assert sorted(missing) == []
+
+
 def write_project(directory: Path, name: str, dependencies: list[str]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "pyproject.toml").write_text(
@@ -655,3 +701,47 @@ def test_secrets_needs_the_lane_its_verdict_is_written_under(
 
     assert proc.returncode == 1
     assert "--lane <job>/<check> is required" in proc.stderr
+
+
+# --- evlog ------------------------------------------------------------------
+
+
+@pytest.fixture
+def evlog_repo(tmp_path: Path) -> Path:
+    """Return a repo on a branch off a pushed master, with no Python change to ratchet."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "-q", "origin", "master")
+    _git(repo, "checkout", "-q", "-b", "feature")
+    return repo
+
+
+@pytest.mark.parametrize("base", ["master", "origin/master", "sha"])
+def test_evlog_takes_its_base_as_a_branch_a_remote_ref_or_a_commit(
+    tmp_path: Path, evlog_repo: Path, base: str
+) -> None:
+    """Regression: ci:local hands over origin/master, which the ratchet read as origin/origin/master."""
+    pr_base = _git(evlog_repo, "rev-parse", "master") if base == "sha" else base
+
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "evlog"],
+        cwd=evlog_repo,
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": os.environ.get("HOME", "/tmp"),
+            "RUNNER_TEMP": str(tmp_path),
+            "GAIA_PR_BASE": pr_base,
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "no changed Python files to ratchet" in proc.stdout

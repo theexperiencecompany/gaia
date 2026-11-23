@@ -22,11 +22,8 @@ from app.constants.integrations import (
 )
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.document_models import MongoDocument, UserScopedDocument
-from app.models.mcp_config import MCPConfig
-from app.models.oauth_models import IntegrationContent, OAuthIntegration
-
-# Type alias for auth_type
-AuthType = Literal["none", "oauth", "bearer"]
+from app.models.mcp_config import AuthType, MCPConfig
+from app.models.oauth_models import IntegrationContent, ManagedBy, OAuthIntegration
 
 # One account is live or signed out; only a whole integration can be never signed in.
 IntegrationAccountStatus = Literal[IntegrationStatus.CONNECTED, IntegrationStatus.EXPIRED]
@@ -162,9 +159,7 @@ class Integration(MongoDocument):
     category: str = Field(..., description="e.g., productivity, communication, developer")
 
     # Management and source
-    managed_by: Literal["self", "composio", "mcp", "internal"] = Field(
-        ..., description="Which system manages the integration"
-    )
+    managed_by: ManagedBy = Field(..., description="Which system manages the integration")
     source: Literal["platform", "custom"] = Field(
         "custom", description="Platform (from code) or custom (user-created)"
     )
@@ -361,7 +356,7 @@ class IntegrationResponse(BaseModel):
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     source: Literal["platform", "custom"]
     is_featured: bool
     display_priority: int

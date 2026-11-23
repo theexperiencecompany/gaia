@@ -5,7 +5,7 @@
 #   pnpm               Fail-loud `pnpm audit` gate for the JS workspace, with
 #                      an allowlist that requires an owner, a reason and an
 #                      expiry (an expired entry fails).
-#   pip                Fail-loud `pip-audit` gate over the uv.lock export.
+#   pip                Fail-loud `pip-audit` gate over every package in uv.lock.
 #   playwright-pin     apps/api/Dockerfile's PLAYWRIGHT_VERSION must equal the
 #                      playwright version in uv.lock.
 #   model-pin          apps/api/Dockerfile's baked EMBEDDING_MODEL/RERANKER_MODEL
@@ -185,7 +185,8 @@ cmd_pip() {
   tmp="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/pip-audit.XXXXXX")"
   trap 'rm -rf "$tmp"' EXIT
 
-  (cd "$ROOT" && uv export --frozen --no-emit-workspace -o "$tmp/requirements.txt" > /dev/null)
+  # Every package uv.lock resolves, so no image's group (the api's backend) goes unaudited.
+  (cd "$ROOT" && uv export --frozen --all-packages --all-groups --no-emit-workspace -o "$tmp/requirements.txt" > /dev/null)
   for id in "${PIP_AUDIT_IGNORED[@]}"; do ignore+=(--ignore-vuln "$id"); done
   # pip-audit exits 1 whenever it found anything; the verdict is decided below.
   set +e
@@ -307,16 +308,8 @@ cmd_alert_rule_tools() {
 
 cmd_evlog() {
 
-  # GAIA_PR_BASE first: on a stacked PR the event payload names the stack's
-  # trunk, so this ratchet would compare against the bottom of the stack and
-  # demand a score for every file the PRs below it touched. See the note at the
-  # top of changes.sh. CI sets GITHUB_BASE_REF; local runs (`mise ci:local`) do
-  # not, so mirror changes.sh's fallback (NX_BASE, then master) to keep the lane
-  # runnable locally instead of dying on an unbound variable under `set -u`.
-  NX_BASE_REF="${NX_BASE:-}"
-  BASE_REF="${GAIA_PR_BASE:-${GITHUB_BASE_REF:-${NX_BASE_REF#origin/}}}"
-  BASE_REF="${BASE_REF:-master}"
-  BASE_SHA=$(git merge-base "origin/$BASE_REF" HEAD)
+  # changes.sh owns the base: a branch, a remote ref or a merge group's sha.
+  BASE_SHA=$(git merge-base "$(bash "$REPO_ROOT/scripts/ci/changes.sh" base-rev)" HEAD)
   # Scratch lives under the job's own temp dir, never a fixed /tmp name: /tmp
   # is sticky and shared by every user on a self-hosted box, so a file left
   # behind by another runner user is unwritable (EACCES) for this one.

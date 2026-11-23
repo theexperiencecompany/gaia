@@ -138,7 +138,7 @@ async def connect_integration_endpoint(
     auth_type: str | None = None
     if resolved.mcp_config:
         auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
-    elif resolved.managed_by in ("composio", "self"):
+    elif resolved.managed_by == "composio":
         auth_type = "oauth2"
     provider = resolved.platform_integration.provider if resolved.platform_integration else None
     log.set(
@@ -153,7 +153,6 @@ async def connect_integration_endpoint(
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user.email or "",
         redirect_path=request.redirect_path,
         bearer_token=request.bearer_token,
         reconnect_account_id=request.account_id,
@@ -251,12 +250,6 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
             reason="malformed_user_id",
         )
         return _connect_link_error("invalid_or_expired_link")
-    # Self-managed (Google) connectors use email as an OAuth login hint; others
-    # ignore it. user_id is trusted (it came from a server-bound, single-use code).
-    user_email = ""
-    user_doc = await user_repository.get(user_id)
-    if user_doc:
-        user_email = user_doc.email or ""
 
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
@@ -265,7 +258,6 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
     result = await initiate_integration_connection(
         user_id,
         resolved,
-        user_email=user_email,
         redirect_path="/integrations",
         reconnect_account_id=verified.account_id,
     )
