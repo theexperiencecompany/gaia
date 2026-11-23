@@ -1058,3 +1058,63 @@ class TestCaseInsensitiveHeading:
 
         assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
         assert result.returncode == 1
+
+
+class TestWideEventLogArguments:
+    """A mutant inside a wide-event log call only changes what is recorded, so it is LOGGING."""
+
+    def _classify_call(self, workdir: Path, call: str, *, alias: str = "") -> str:
+        name = alias or "log"
+        import_line = f"from shared.py.wide_events import log{f' as {alias}' if alias else ''}\n"
+        body = f"    {name}.{call}\n    return count > 3"
+        (workdir / MODULE_REL).write_text(f"{import_line}def probe(count):\n{body}\n")
+        _write_mutants(workdir, body, body.replace("count=count", "count=None"))
+        return _classify(workdir).stdout.strip()
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "set(briefing={'count': count}, count=count)",
+            "set_ns('briefing', count=count)",
+            "audit('brief sent', count=count)",
+            "error('brief failed', count=count)",
+            "info('brief built', count=count)",
+        ],
+    )
+    def test_a_field_argument_of_a_log_call_is_logging(self, workdir: Path, call: str) -> None:
+        assert self._classify_call(workdir, call) == "LOGGING:3"
+
+    def test_an_aliased_wide_event_logger_is_logging(self, workdir: Path) -> None:
+        verdict = self._classify_call(workdir, "set(count=count)", alias="wide_log")
+
+        assert verdict == "LOGGING:3"
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "set(trace_id=trace, count=count)",
+            "set(conversation_source=source, count=count)",
+            "set(**fields, count=count)",
+        ],
+        ids=["trace-id", "ledger-field", "splat"],
+    )
+    def test_a_set_writing_a_field_the_app_reads_back_stays_gated(
+        self, workdir: Path, call: str
+    ) -> None:
+        assert self._classify_call(workdir, call) == "CHANGED:3"
+
+    def test_a_set_on_another_receiver_stays_gated(self, workdir: Path) -> None:
+        body = "    cache.set(count=count)\n    return count > 3"
+        (workdir / MODULE_REL).write_text(f"def probe(count):\n{body}\n")
+        _write_mutants(workdir, body, body.replace("count=count", "count=None"))
+
+        assert _classify(workdir).stdout.strip() == "CHANGED:2"
+
+    def test_the_decision_beside_a_log_call_stays_gated(self, workdir: Path) -> None:
+        body = "    log.set(count=count)\n    return count > 3"
+        (workdir / MODULE_REL).write_text(
+            f"from shared.py.wide_events import log\ndef probe(count):\n{body}\n"
+        )
+        _write_mutants(workdir, body, body.replace("> 3", ">= 3"))
+
+        assert _classify(workdir).stdout.strip() == "CHANGED:4"

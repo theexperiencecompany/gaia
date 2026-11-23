@@ -1550,7 +1550,7 @@ def _notes(classified: list[tuple[str, str]], uncovered_changed: list[str], no_t
         ("EQUIV", "provably equivalent mutant(s) (see scripts/test/mutation_classify.py):"),
         (
             "LOGGING",
-            "mutant(s) excluded as logging-only (log.debug/log.info never reach the wide event):",
+            "mutant(s) excluded as logging-only (inside a wide-event log call):",
         ),
         ("LINTED", "mutant(s) excluded as lint-caught (the tool-dump-boundary lint, #917):"),
     ):
