@@ -14,6 +14,7 @@
   "devDependencies": {
     "@grammyjs/runner": "^2.0.3",
     "@grammyjs/types": "^3.28.0",
+    "@types/ws": "^8.18.1",
     "amqplib": "^0.10.9",
     "discord.js": "^14.26.5",
     "grammy": "^1.44.0",
@@ -21,6 +22,7 @@
     "spectrum-ts": "^12.7.0",
     "typescript": "^7.0.2",
     "vite": "^7.3.7",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "ws": "^8.21.0"
   }
 }
