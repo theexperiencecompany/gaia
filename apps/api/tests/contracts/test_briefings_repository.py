@@ -605,9 +605,9 @@ class TestBriefingsReads:
 
     async def test_list_stamped_orders_its_cities_by_the_day_each_arrived_not_by_city(self, repo):
         user_id = "u-stamped-order"
-        # Stored newest first and against the cities' alphabetical order.
-        cities = ["zurich", "oslo", "lima", "kyiv", "dakar", "accra"]
-        for day, city in zip(range(9, 3, -1), cities, strict=True):
+        # Arrival order is neither the cities' alphabetical order (a $group may emit by key) nor storage order.
+        arrived = ["oslo", "accra", "zurich", "dakar", "lima", "kyiv"]
+        for day, city in reversed(list(zip(range(4, 10), arrived, strict=True))):
             date = f"2026-08-{day:02d}"
             await _upsert(
                 repo,
@@ -621,7 +621,7 @@ class TestBriefingsReads:
 
         stamped = await repo.list_stamped(user_id)
 
-        assert [s.payload.stamp_city for s in stamped] == list(reversed(cities))
+        assert [s.payload.stamp_city for s in stamped] == arrived
 
     async def test_list_stamped_reads_each_citys_first_delivered_brief_of_the_users_oldest_first(
         self, repo
