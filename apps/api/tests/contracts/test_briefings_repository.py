@@ -605,9 +605,30 @@ class TestBriefingsReads:
 
     async def test_list_stamped_orders_its_cities_by_the_day_each_arrived_not_by_city(self, repo):
         user_id = "u-stamped-order"
-        # Arrival order is neither the cities' alphabetical order (a $group may emit by key) nor storage order.
-        arrived = ["oslo", "accra", "zurich", "dakar", "lima", "kyiv"]
-        for day, city in reversed(list(zip(range(4, 10), arrived, strict=True))):
+        # $group emits in no fixed order; with 20 cities a match with arrival order by chance is ~1/20!.
+        arrived = [
+            "oslo",
+            "accra",
+            "zurich",
+            "dakar",
+            "lima",
+            "kyiv",
+            "hanoi",
+            "bern",
+            "quito",
+            "riga",
+            "cairo",
+            "tunis",
+            "minsk",
+            "doha",
+            "baku",
+            "sofia",
+            "lagos",
+            "perth",
+            "vigo",
+            "nice",
+        ]
+        for day, city in reversed(list(zip(range(1, 21), arrived, strict=True))):
             date = f"2026-08-{day:02d}"
             await _upsert(
                 repo,
