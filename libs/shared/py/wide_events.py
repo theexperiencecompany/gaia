@@ -75,18 +75,6 @@ _LEVEL_ORDER: dict[str, int] = {
     "CRITICAL": 4,
 }
 
-_WARNING = "WARNING"
-_ERROR = "ERROR"
-
-
-def resolve_final_level(max_level: str, *, failed: bool) -> str:
-    """Return the level an event emits at: a failed one is at least ERROR, any other caps at WARNING."""
-    rank = _LEVEL_ORDER.get(max_level, 0)
-    if failed:
-        return max_level if rank >= _LEVEL_ORDER[_ERROR] else _ERROR
-    return _WARNING if rank > _LEVEL_ORDER[_WARNING] else max_level
-
-
 # Canonical message a boundary emits inside its `finally` when the wrapped work
 # raised, recorded as an errors[] entry carrying error/error_type. Constant by
 # design so every failing task's real cause lives in the entry and in Loki, not
@@ -995,9 +983,7 @@ async def _wide_event_boundary(
             )
         duration_ms = round((time.monotonic() - start) * 1000, 2)
         log.set(duration_ms=duration_ms)
-        level = resolve_final_level(
-            log.get_max_level(), failed=log.get().get("outcome") == OUTCOME_FAILED
-        )
+        level = log.get_max_level()
         log.set(final_level=level)
         # env/service/commit are NOT added here: the sink stamps them on every
         # line (shared.py.logging._build_json_entry) and re-emits a colliding

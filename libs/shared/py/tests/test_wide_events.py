@@ -453,26 +453,6 @@ class TestWideTask:
         assert event["reason"] == "engine_crash"
         assert event["engine"] == "obscura"
 
-    @pytest.mark.asyncio
-    @patch("shared.py.wide_events._loguru")
-    async def test_a_successful_task_never_emits_above_warning(self, mock_loguru: MagicMock):
-        async with wide_task("nested_errors_task"):
-            log.error("mcp server returned 530", error_type="HTTPError")
-        event = _emitted_event(mock_loguru)
-        assert event["outcome"] == "success"
-        assert event["final_level"] == "WARNING"
-        assert mock_loguru.bind.return_value.log.call_args.args[0] == "WARNING"
-        assert event["errors"][0]["msg"] == "mcp server returned 530"
-
-    @pytest.mark.asyncio
-    @patch("shared.py.wide_events._loguru")
-    async def test_a_failed_task_emits_at_error(self, mock_loguru: MagicMock):
-        async with wide_task("handled_failure_task"):
-            log.fail("engine_crash")
-        event = _emitted_event(mock_loguru)
-        assert event["outcome"] == "failed"
-        assert event["final_level"] == "ERROR"
-
 
 # ---------------------------------------------------------------------------
 # ContextVar isolation
