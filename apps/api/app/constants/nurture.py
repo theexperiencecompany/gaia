@@ -6,6 +6,8 @@ declarative data; send/skip mechanics live in app/services/nurture.
 
 from dataclasses import dataclass
 
+from app.constants.platform_links import LINKED_ACCOUNTS_SETTINGS_PATH
+
 
 @dataclass(frozen=True)
 class NurtureStep:
@@ -91,7 +93,7 @@ NURTURE_STEPS: tuple[NurtureStep, ...] = (
         template="nurture_channels.html",
         subject="You don't actually have to open the app",
         skip_predicate="linked_platform",
-        cta_path="/settings/linked-accounts",
+        cta_path=LINKED_ACCOUNTS_SETTINGS_PATH,
         cta_label="Link a channel",
     ),
     NurtureStep(

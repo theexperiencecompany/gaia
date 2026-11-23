@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetchHours = vi.fn();
 const updateHours = vi.fn();
 
-vi.mock("@/features/settings/api/quietHoursApi", () => ({
-  quietHoursApi: {
-    fetch: () => fetchHours(),
-    update: (...args: unknown[]) => updateHours(...args),
+vi.mock("@/lib/api/typed", () => ({
+  api: {
+    get: () => fetchHours(),
+    patch: (_path: string, init: { body: unknown }) => updateHours(init.body),
   },
 }));
 
@@ -18,12 +18,9 @@ vi.mock("@/lib/timezone", () => ({
   getUserHomeTimezone: () => "Asia/Kolkata",
 }));
 
+import { formatHour } from "@shared/utils";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
-import {
-  formatHour,
-  fromAxis,
-  toAxis,
-} from "@/features/settings/utils/quietHoursAxis";
+import { fromAxis, toAxis } from "@/features/settings/utils/quietHoursAxis";
 
 const NIGHT = { enabled: true, start_hour: 22, end_hour: 8 };
 

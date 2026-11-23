@@ -46,6 +46,12 @@ export default defineConfig({
       ),
       "@shared-assets": path.resolve(__dirname, "../../libs/shared/assets"),
       "@shared": path.resolve(__dirname, "../../libs/shared/ts/src"),
+      // Tests render server modules outside Next's react-server build, where the
+      // marker resolves to its no-op entry; Next's own build still enforces it.
+      "server-only": path.resolve(
+        __dirname,
+        "node_modules/server-only/empty.js",
+      ),
     },
     // Support extensionless imports inside ESM packages
     extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json"],

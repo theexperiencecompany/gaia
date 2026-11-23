@@ -1,12 +1,12 @@
 """Unit tests for the integration connect prompt (card + agent copy)."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode, IntegrationStatus
 from app.constants.waits import WaitCondition
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
@@ -73,6 +73,9 @@ def _resolved_mcp(auth_type: str | None, integration_id: str = "posthog") -> Res
     )
 
 
+CHAT_RUN = {"conversation_id": "conv-1", "stream_id": "stream-1"}
+
+
 @contextmanager
 def _graph_run(
     category: str | None,
@@ -81,24 +84,24 @@ def _graph_run(
     expired: bool = False,
     execution_mode: str | None = None,
     frontend: str = _FAKE_FRONTEND,
-    conversation_id: str | None = None,
+    run_ids: Mapping[str, object] | None = None,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
     category=None simulates no runnable context; expired is the stored status
     distinguishing a dead grant from one never set up. The status stub checks
-    its actual arguments so a wrong user/integration id fails loudly.
+    its actual arguments so a wrong user/integration id fails loudly. run_ids
+    are the run's own keys: its conversation, stream, step and thread.
     """
 
     async def _is_expired(user_id: str, integration_id: str) -> bool:
         return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
 
     writer = MagicMock()
-    configurable = {"source_category": category}
+    configurable: dict[str, object] = {"source_category": category}
     if execution_mode is not None:
         configurable["execution_mode"] = execution_mode
-    if conversation_id is not None:
-        configurable.update(conversation_id=conversation_id, stream_id="stream-1")
+    configurable.update(run_ids or {})
     config_patch = (
         patch(
             "app.utils.integration_checker.get_config",
@@ -178,7 +181,7 @@ class TestConnectAskIsRemembered:
 
     async def test_showing_the_card_keeps_the_chat_waiting_on_the_integration(self) -> None:
         with (
-            _graph_run("ui", conversation_id="conv-1"),
+            _graph_run("ui", run_ids=CHAT_RUN),
             patch("app.utils.integration_checker.block_integration", AsyncMock(return_value=True)),
             patch("app.utils.integration_checker.wait_for_user", AsyncMock()) as remember,
         ):
@@ -202,6 +205,62 @@ class TestConnectAskIsRemembered:
             await request_integration_connection("gmail", "Gmail", _USER)
 
         remember.assert_not_awaited()
+
+
+STEP = {"epoch": 2, "batch_start": 4, "cause_through": 5, "answers": ["u4"], "asked": True}
+
+
+class TestTheNeedIsLoggedOnTheStepsConversation:
+    """A first ask on a step run logs the need, so connecting continues the conversation."""
+
+    async def test_a_first_ask_logs_the_need_with_its_step(self) -> None:
+        with (
+            _graph_run(
+                "ui",
+                run_ids={**CHAT_RUN, "conversation_step": STEP, "thread_id": "conv-1"},
+            ),
+            patch("app.utils.integration_checker.block_integration", AsyncMock(return_value=True)),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_awaited_once_with(STEP, "conv-1", _USER, "gmail", "Gmail")
+
+    @pytest.mark.parametrize(
+        ("run_ids", "first_ask"),
+        [
+            ({"thread_id": "conv-1"}, True),
+            ({"conversation_step": STEP, "thread_id": ""}, True),
+            ({"conversation_step": STEP}, True),
+            ({"conversation_step": STEP, "thread_id": "conv-1"}, False),
+        ],
+        ids=["no-step", "empty-thread", "no-thread", "asked-before"],
+    )
+    async def test_nothing_is_logged_without_a_step_a_thread_or_a_first_ask(
+        self, run_ids: Mapping[str, object], first_ask: bool
+    ) -> None:
+        with (
+            _graph_run("ui", run_ids={**CHAT_RUN, **run_ids}),
+            patch(
+                "app.utils.integration_checker.block_integration",
+                AsyncMock(return_value=first_ask),
+            ),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_not_awaited()
+
+    async def test_nothing_is_logged_outside_a_run(self) -> None:
+        with (
+            _graph_run(None),
+            patch("app.utils.integration_checker.record_integration_needed", AsyncMock()) as logged,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        logged.assert_not_awaited()
 
 
 class TestExpiredConnectionPrompt:
@@ -723,7 +782,7 @@ class TestAddAccountPrompt:
 class TestAccountReconnectPrompt:
     """One expired account is signed back in place, named on the card and in the link."""
 
-    _DEAD = make_integration_account("ca_work", "expired", label="work@acme.com")
+    _DEAD = make_integration_account("ca_work", IntegrationStatus.EXPIRED, label="work@acme.com")
 
     async def test_the_card_names_the_account_and_carries_its_id(self) -> None:
         # The integration itself stays connected while another account works.

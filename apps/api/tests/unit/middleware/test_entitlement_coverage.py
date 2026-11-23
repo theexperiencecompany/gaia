@@ -42,7 +42,7 @@ GATED_METHODS = ("get", "post", "put", "patch", "delete")
 # handler logic runs, so a PRO caller can be checked against a real paid route
 # without the test needing Mongo, Redis or an LLM.
 PRO_SAMPLE: tuple[tuple[str, str], ...] = (
-    ("POST", "/api/v1/chat-stream"),
+    ("POST", "/api/v1/conversations/c1/messages"),
     ("POST", "/api/v1/image/generate"),
     ("POST", "/api/v1/mcp/proxy/tool-call"),
     ("POST", "/api/v1/reminders"),
@@ -136,7 +136,7 @@ async def test_block_body_matches_the_documented_wire_contract(
     gated_client: AsyncClient,
 ) -> None:
     """The web's 402 interceptor matches on these four keys — all must be present."""
-    response = await gated_client.post("/api/v1/chat-stream")
+    response = await gated_client.post("/api/v1/conversations/c1/messages")
 
     assert response.status_code == 402
     body = response.json()
@@ -157,14 +157,17 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/blogs/count",
         "/api/v1/blogs/slug",
         "/api/v1/bot/auth-status/platform/platform_user_id",
-        "/api/v1/bot/chat-stream",
+        "/api/v1/bot/conversations/active",
+        "/api/v1/bot/conversations/conversation_id/delivered",
         "/api/v1/bot/create-link-token",
         "/api/v1/bot/delivery-failures",
         "/api/v1/bot/link-token-info/token",
         "/api/v1/bot/linked-users/platform",
+        "/api/v1/bot/messages",
         "/api/v1/bot/redeem-link-code",
         "/api/v1/bot/reset-session",
         "/api/v1/bot/settings/platform/platform_user_id",
+        "/api/v1/bot/stop",
         "/api/v1/bot/transcribe",
         "/api/v1/bot/unlink",
         "/api/v1/browser/live/code/decision",
@@ -177,6 +180,16 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/device/servers/server_key",
         "/api/v1/device/token",
         "/api/v1/integrations/connect-link",
+        "/api/v1/l/slug",
+        "/api/v1/l/slug/content-token",
+        "/api/v1/l/slug/download",
+        "/api/v1/l/slug/meta",
+        "/api/v1/l/slug/opened",
+        "/api/v1/l/slug/pdf",
+        "/api/v1/l/slug/report",
+        "/api/v1/l/slug/rotate",
+        "/api/v1/l/state",
+        "/api/v1/l/unshare",
         "/api/v1/mcp/oauth/callback",
         "/api/v1/notifications/unregister-device",
         "/api/v1/notifications/unsubscribe",
@@ -242,6 +255,25 @@ async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: As
             json={"edited_summary": "short and warm", "profession": "founder"},
         )
     assert response.status_code == 402
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("free_caller")
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/l/abcdefghijk"),
+        ("GET", "/api/v1/l/abcdefghijk/download"),
+        ("POST", "/api/v1/l/abcdefghijk/opened"),
+    ],
+)
+async def test_a_shared_link_opens_by_its_capability_not_the_viewers_plan(
+    gated_client: AsyncClient, method: str, path: str
+) -> None:
+    """A signed-in viewer without a plan got the paywall for a link someone shared with them."""
+    response = await gated_client.request(method, path)
+
+    assert response.status_code != 402
 
 
 @pytest.mark.regression

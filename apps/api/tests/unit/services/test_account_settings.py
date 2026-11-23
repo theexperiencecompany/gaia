@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services import account_settings
+from app.constants.notifications import USER_CONFIGURABLE_CHANNELS
+from app.services import account_settings, user_timezone
 from app.utils.errors import AppError
 
 MODULE = "app.services.account_settings"
@@ -27,15 +28,18 @@ def repo():
             account_settings.user_repository, "update_onboarding_preferences", new=AsyncMock()
         ) as update_prefs,
         patch.object(account_settings.user_repository, "update", new=AsyncMock()) as update,
+        patch.object(user_timezone, "resync_briefing_schedules", new=AsyncMock()) as resync,
     ):
-        yield SimpleNamespace(set_channels=set_channels, update_prefs=update_prefs, update=update)
+        yield SimpleNamespace(
+            set_channels=set_channels, update_prefs=update_prefs, update=update, resync=resync
+        )
 
 
 async def test_notification_channels_write_only_the_given_flags(repo) -> None:
     result = await account_settings.set_notification_channels(USER_ID, email=False, telegram=True)
 
-    assert result == "Notification settings updated (telegram=on, email=off)."
-    repo.set_channels.assert_awaited_once_with(USER_ID, email=False, telegram=True)
+    assert result == "Notification settings updated (email=off, telegram=on)."
+    repo.set_channels.assert_awaited_once_with(USER_ID, {"email": False, "telegram": True})
 
 
 async def test_notification_channels_with_no_flags_is_an_error(repo) -> None:
@@ -86,6 +90,8 @@ async def test_timezone_writes_the_root_level_field(repo) -> None:
     update = repo.update.await_args
     assert update.args[0] == USER_ID
     assert update.args[1].timezone == "Asia/Kolkata"
+    # The briefs move onto the new clock with it.
+    repo.resync.assert_awaited_once_with(repo.update.return_value)
 
 
 async def test_voice_resolves_by_name_case_insensitively(repo) -> None:
@@ -207,18 +213,18 @@ class TestSetPreferencesEdges:
 
 
 class TestChannelFlagSemantics:
-    async def test_all_five_flags_write_in_one_call(self, repo) -> None:
-        flags = dict.fromkeys(account_settings.CHANNEL_FLAGS, True)
+    async def test_every_flag_writes_in_one_call(self, repo) -> None:
+        flags = {channel.value: True for channel in USER_CONFIGURABLE_CHANNELS}
         await account_settings.set_notification_channels(USER_ID, **flags)
-        repo.set_channels.assert_awaited_once_with(USER_ID, **flags)
+        repo.set_channels.assert_awaited_once_with(USER_ID, flags)
 
     async def test_unset_channels_are_absent_from_the_write_so_they_survive(self, repo) -> None:
         # email=False must be written; telegram=None must NOT be — the whole
         # PATCH contract is "unspecified means untouched".
         await account_settings.set_notification_channels(USER_ID, email=False)
-        kwargs = repo.set_channels.await_args.kwargs
-        assert kwargs == {"email": False}
-        assert set(kwargs) != set(account_settings.CHANNEL_FLAGS)
+        written = repo.set_channels.await_args.args[1]
+        assert written == {"email": False}
+        assert set(written) != {channel.value for channel in USER_CONFIGURABLE_CHANNELS}
 
 
 class TestVoiceSelectionAttacks:

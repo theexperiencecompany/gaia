@@ -16,7 +16,11 @@ from fastapi.responses import HTMLResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
-from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
+from app.constants.notifications import (
+    EXPO_TOKEN_PATTERN,
+    MAX_DEVICES_PER_USER,
+    NotificationChannel,
+)
 from app.db.repositories.users import user_repository
 from app.models.device_token_models import (
     PushTokenRequest,
@@ -39,10 +43,10 @@ from app.models.notification.request_models import (
     PaginatedNotificationsResponse,
 )
 from app.models.user_models import AuthenticatedUser
-from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
+from app.schemas.errors import NON_JSON_ROUTE_ERROR_RESPONSES
+from app.services import device_token_service
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
-from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.unsubscribe import verify_unsubscribe_token
@@ -69,7 +73,7 @@ _UNSUBSCRIBE_INVALID_HTML = (
     "/notifications/unsubscribe",
     response_class=HTMLResponse,
     responses={
-        **HTML_ROUTE_ERROR_RESPONSES,
+        **NON_JSON_ROUTE_ERROR_RESPONSES,
         400: {
             "description": "Invalid unsubscribe token",
             "content": {"text/html": {"schema": {"type": "string"}}},
@@ -100,7 +104,7 @@ async def unsubscribe_confirmation(token: Annotated[str, Query()]) -> HTMLRespon
 @router.post(
     "/notifications/unsubscribe",
     response_class=HTMLResponse,
-    responses={**HTML_ROUTE_ERROR_RESPONSES, 400: {"description": "Invalid unsubscribe token"}},
+    responses={**NON_JSON_ROUTE_ERROR_RESPONSES, 400: {"description": "Invalid unsubscribe token"}},
 )
 async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
     """RFC 8058 one-click unsubscribe target (List-Unsubscribe-Post). Mail
@@ -119,7 +123,7 @@ async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
 
 
 async def _disable_email_channel(user_id: str) -> None:
-    await user_repository.set_channel_preferences(user_id, email=False)
+    await user_repository.set_channel_preferences(user_id, {NotificationChannel.EMAIL.value: False})
 
 
 @router.get("/notifications", response_model=PaginatedNotificationsResponse)
@@ -214,11 +218,7 @@ async def update_channel_preferences(
 
     try:
         await user_repository.set_channel_preferences(
-            user_id,
-            telegram=preferences.telegram,
-            discord=preferences.discord,
-            whatsapp=preferences.whatsapp,
-            slack=preferences.slack,
+            user_id, preferences.model_dump(exclude_none=True)
         )
         schedule_account_sync(user_id)
 
@@ -468,8 +468,6 @@ async def register_device_token(
         )
 
     try:
-        device_token_service = get_device_token_service()
-
         # Check device limit
         device_count = await device_token_service.get_user_device_count(user_id)
         if device_count >= MAX_DEVICES_PER_USER:
@@ -518,8 +516,6 @@ async def unregister_device_token(
     log.set(user={"id": user_id})
 
     try:
-        device_token_service = get_device_token_service()
-
         # Unregister token (service verifies ownership via user_id filter)
         success = await device_token_service.unregister_device_token(token, user_id)
 

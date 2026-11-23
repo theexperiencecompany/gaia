@@ -9,17 +9,24 @@ is mounted by ``create_app`` only when ``ENV == development`` and
 from fastapi import APIRouter, File, Form, Header, UploadFile, status
 from langgraph.errors import GraphRecursionError
 
+from app.constants.briefing import (
+    BriefingKind,
+)
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
+from app.db.repositories.users import user_repository
 from app.models.files_models import FileDocument
 from app.models.user_models import UserDocument
 from app.schemas.dev_schemas import (
     CreateDevUserRequest,
     DeleteDevUserResponse,
     DevAgentRunResponse,
+    DevBriefingRunResponse,
     RunDevAgentRequest,
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
+from app.services.briefing.errors import BriefingGenerationError
+from app.services.briefing.pipeline import run_brief
 from app.services.dev_agent_service import run_executor_direct
 from app.services.dev_service import (
     attach_dev_file,
@@ -27,6 +34,7 @@ from app.services.dev_service import (
     mint_dev_user,
     seed_dev_data,
 )
+from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/dev", tags=["Dev"])
@@ -43,22 +51,18 @@ async def create_dev_user(payload: CreateDevUserRequest) -> UserDocument:
 
 @router.post("/seed")
 async def seed_dev_user_data(payload: SeedDevDataRequest) -> SeedDevDataResponse:
-    """Seed deterministic todos/conversations/platform links for an existing dev user."""
+    """Seed deterministic todos/conversations/briefs/platform links for an existing dev user."""
     log.set(
         dev={
             "operation": "seed",
             "email": payload.email,
             "todos": payload.todos,
             "conversations": payload.conversations,
+            "postmarks": payload.postmarks,
+            "editions": payload.editions,
         }
     )
-    result = await seed_dev_data(
-        payload.email,
-        payload.todos,
-        payload.conversations,
-        payload.platform_links,
-        pro=payload.pro,
-    )
+    result = await seed_dev_data(payload)
     log.set(dev={"user_id": result.user_id})
     return result
 
@@ -114,3 +118,35 @@ async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
         )
     log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
     return result
+
+
+@router.post("/briefing/{kind}/{email}")
+async def run_briefing_now(kind: BriefingKind, email: str) -> DevBriefingRunResponse:
+    """Run the full daily/weekly briefing pipeline for a dev user, synchronously.
+
+    The founder-day harness's trigger: same code path as the cron (curation →
+    context → silent agent run → persist → deliver), without waiting for 8am.
+    """
+    log.set(dev={"operation": "run_briefing", "kind": kind, "email": email})
+    user = await user_repository.get_by_email(email)
+    if user is None:
+        raise create_error(
+            message=f"No GAIA user exists for '{email}'",
+            fix="Mint it via POST /api/v1/dev/users",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="dev_user_not_found",
+        )
+    try:
+        outcome = await run_brief(user.id, kind)
+    except BriefingGenerationError as e:
+        # The model's output failed validation: an upstream failure the harness must see.
+        raise create_error(
+            message=f"The {kind} briefing could not be generated",
+            why=str(e),
+            fix="Read the reason and rerun; a recurring one is a prompt or voice-check bug",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="briefing_generation_failed",
+            user_id=user.id,
+        ) from e
+    log.set(dev={"user_id": user.id, "outcome": outcome.value})
+    return DevBriefingRunResponse(user_id=user.id, kind=kind, outcome=outcome)

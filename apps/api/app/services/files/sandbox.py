@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
 from app.models.files_models import PageWiseSummary
-from app.services.artifact_events import publish_artifact_event, remove_event, upload_event
 from app.services.files.summaries import render_summary_markdown
 from app.services.storage import (
     FsOps,
@@ -125,17 +124,6 @@ async def mirror_upload(
             ),
         )
 
-    # Cross-mount host writes may not reach the sandbox watcher; publish the
-    # artifact event directly so the chat UI sees the upload immediately.
-    await publish_artifact_event(
-        user_id,
-        upload_event(
-            conversation_id,
-            safe_filename,
-            size_bytes=len(upload.content),
-            content_type=upload.content_type,
-        ),
-    )
     log.info("[files] mirrored upload to", sandbox_path=sandbox_path)
     return sandbox_path
 
@@ -215,6 +203,4 @@ async def delete_upload(
         )
         return False
 
-    if removed:
-        await publish_artifact_event(user_id, remove_event(conversation_id, name))
     return removed

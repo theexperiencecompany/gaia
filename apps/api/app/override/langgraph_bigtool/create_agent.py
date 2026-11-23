@@ -7,7 +7,7 @@ Type/lint errors here are expected: adapted from an external library.
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
-import functools
+import hashlib
 import math
 from typing import Any, cast
 
@@ -17,6 +17,7 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
+    AnyMessage,
     HumanMessage,
     MessageLikeRepresentation,
     ToolCall,
@@ -67,6 +68,7 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
+    OPENAI_PROMPT_CACHE_KEY_MAX_CHARS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
 )
@@ -86,6 +88,7 @@ from app.override.langgraph_bigtool.hooks import (
     sync_execute_hooks,
 )
 from app.override.langgraph_bigtool.utils import (
+    NUDGE_CONTINUE_NODE,
     REMAINING_STEPS_KEY,
     State,
     dedupe_str_list,
@@ -95,8 +98,8 @@ from app.override.langgraph_bigtool.utils import (
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
-from app.utils.message_breaks import normalize_message_breaks
-from app.utils.multimodal import extract_text_content
+from app.utils.message_breaks import normalize_message_breaks, split_message_bubbles
+from app.utils.multimodal import MessageContent, extract_text_content
 from shared.py.wide_events import log
 
 #: Graph node that answers a tool call the model made without binding the
@@ -124,6 +127,7 @@ class _AgentDeps:
     pre_model_hooks: list[HookType] | None
     end_graph_hooks: list[HookType] | None
     require_finish_to_end: bool
+    turn_ending: Callable[[AIMessage, RunnableConfig], object | None] | None
 
 
 def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
@@ -134,9 +138,14 @@ def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfi
     )
 
 
+def _with_tools(model: Runnable, tools: Sequence[BaseTool | dict[str, Any]]) -> Runnable:
+    """Bind tools onto model; with none, the bare model, since providers reject an empty tools array."""
+    return model.bind_tools(tools) if tools else model  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
+
+
 def _prepare_fallback(
     llm: LanguageModelLike,
-    tools_to_bind: list[BaseTool],
+    tools_to_bind: Sequence[BaseTool | dict[str, Any]],
     model_configurations: AgentConfigurable,
 ) -> tuple[Callable[[], Runnable], "ModelLane"] | None:
     """Rebind this run onto the next configured provider; None if none exists.
@@ -156,7 +165,7 @@ def _prepare_fallback(
     bindable = cast(
         BaseChatModel, llm.with_config(configurable=fallback_lane.rebind(model_configurations))
     )
-    return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
+    return (lambda: _with_tools(bindable, tools_to_bind), fallback_lane)
 
 
 def _bind_session_id(
@@ -178,8 +187,18 @@ def _bind_session_id(
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
     if key and _is_openai_wire(llm_with_tools):
-        return llm_with_tools.bind(prompt_cache_key=key)
+        return llm_with_tools.bind(prompt_cache_key=_fit_openai_cache_key(key))
     return llm_with_tools
+
+
+def _fit_openai_cache_key(key: str) -> str:
+    """Return key, or its sha256 hex digest (64 characters) when OpenAI's limit would reject it.
+
+    A digest of the same key is the same digest, so the chain still lands on one cache.
+    """
+    if len(key) <= OPENAI_PROMPT_CACHE_KEY_MAX_CHARS:
+        return key
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 def _agent_sticky_key(
@@ -292,9 +311,18 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
     return dedupe_tool_bindings(tools_to_bind)
 
 
+def _stored_comms_content(content: MessageContent) -> MessageContent:
+    """Return comms content as the thread keeps it: canonical breaks, and no text when it is breaks alone."""
+    if isinstance(content, str):
+        return normalize_message_breaks(content)
+    if split_message_bubbles(extract_text_content(content)):
+        return content
+    return [block for block in content if isinstance(block, dict) and block.get("type") != "text"]
+
+
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
-    if agent_name == COMMS_AGENT_NAME and isinstance(response.content, str):
-        response.content = normalize_message_breaks(response.content)
+    if agent_name == COMMS_AGENT_NAME:
+        response.content = _stored_comms_content(response.content)
 
     if not response.tool_calls and not response.content:
         response.content = "Empty response from model."
@@ -355,8 +383,9 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
         tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
+        llm_with_tools = _bind_session_id(
+            _with_tools(_llm, tools_to_bind), model_configurations, deps.agent_name
+        )
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state, config)
         response = invoke_llm(
@@ -401,42 +430,47 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
 
-        tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
-        prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
-        # LLMAccountingMiddleware already charges this call; auxiliary metering
-        # here would book it a second time.
-        invoke_fn = functools.partial(
-            ainvoke_llm,
-            llm_with_tools,
-            fallback=prepared[0] if prepared else None,
-            config=config,
-            label=deps.agent_name,
-            options=LLMInvokeOptions(
-                meter_auxiliary=False,
-                fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
-                fallback_model=prepared[1].model if prepared else None,
-                sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
-            ),
-        )
+        tools_to_bind: list[BaseTool | dict[str, Any]] = [*_tools_to_bind(deps, state)]
+
+        async def invoke_fn(
+            messages: list[AnyMessage], tools: list[BaseTool | dict[str, Any]]
+        ) -> AIMessage:
+            llm_with_tools = _bind_session_id(
+                _with_tools(_llm, tools), model_configurations, deps.agent_name
+            )
+            prepared = _prepare_fallback(llm, tools, model_configurations)
+            # LLMAccountingMiddleware already charges this call; auxiliary metering
+            # here would book it a second time.
+            return cast(
+                AIMessage,
+                await ainvoke_llm(
+                    llm_with_tools,
+                    messages,
+                    fallback=prepared[0] if prepared else None,
+                    config=config,
+                    label=deps.agent_name,
+                    options=LLMInvokeOptions(
+                        meter_auxiliary=False,
+                        fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                        fallback_model=prepared[1].model if prepared else None,
+                        sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
+                    ),
+                ),
+            )
 
         _log_message_preview(state)
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
-            middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
-                tool for tool in tools_to_bind
-            ]
             response = await middleware_executor.wrap_model_invocation(
                 model=_llm,  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
                 state=state,
                 config=config,
                 store=store,
-                tools=middleware_tools_for_request,
+                tools=tools_to_bind,
                 invoke_fn=invoke_fn,
             )
         else:
-            response = await invoke_fn(state["messages"])
+            response = await invoke_fn(state["messages"], tools_to_bind)
 
         response = _finalize_model_response(response, deps.agent_name)
 
@@ -709,10 +743,10 @@ def _after_finish_task(exit_node: str) -> Callable[[State], str]:
     def route(state: State) -> str:
         if _owes_playbook_decision(state):
             log.info(f"{LogTag.AGENT} finish_task without a playbook decision; nudging once")
-            return "nudge_continue"
+            return NUDGE_CONTINUE_NODE
         if _owes_backed_outcome(state):
             log.info(f"{LogTag.AGENT} finish_task outcome not backed by this run; nudging once")
-            return "nudge_continue"
+            return NUDGE_CONTINUE_NODE
         return exit_node
 
     return route
@@ -732,13 +766,7 @@ def nudge_continue_node(state: State) -> State:
 
 
 def _last_tool_calling_message(state: State) -> AIMessage | None:
-    """Find the AI message whose calls this turn is executing.
-
-    Not messages[-1]: a resume prepends a current-time HumanMessage
-    (_with_current_time), so the tool-calling message is no longer last once
-    approvals wakes. Must match hil/utils.current_tool_calls, or the two gate
-    different call sets.
-    """
+    """Find the AI message whose calls this turn is executing: the last one that made calls."""
     for message in reversed(state["messages"]):
         if isinstance(message, AIMessage) and message.tool_calls:
             return message
@@ -825,7 +853,7 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
                     and (work_looks_unfinished(state) or leaves_a_todo_asleep(state))
                 )
             ):
-                return "nudge_continue"
+                return NUDGE_CONTINUE_NODE
             return "end_graph_hooks" if deps.end_graph_hooks else END
         bound_names = _get_bound_tool_names(deps, state)
         canonical_to_bound = canonical_tool_name_map(bound_names)
@@ -860,6 +888,30 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
     return should_continue
 
 
+def _after_tools(
+    turn_ending: Callable[[AIMessage, RunnableConfig], object | None], exit_node: str
+) -> Callable[[State, RunnableConfig], str]:
+    """Route out of the tools node: end the turn after calls that end it, else back to the model.
+
+    A turn-ending call that failed goes back to the model like any failed call, to correct it.
+    """
+
+    def route(state: State, config: RunnableConfig) -> str:
+        message = _last_tool_calling_message(state)
+        if message is None or turn_ending(message, config) is None:
+            return "agent"
+        call_ids = {call["id"] for call in message.tool_calls}
+        failed = any(
+            isinstance(result, ToolMessage)
+            and result.tool_call_id in call_ids
+            and result.status == "error"
+            for result in state["messages"]
+        )
+        return "agent" if failed else exit_node
+
+    return route
+
+
 def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
     return DynamicToolNode(
         deps.tool_registry,
@@ -876,14 +928,14 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         path_map.insert(0, "select_tools")
     if deps.require_finish_to_end:
         builder.add_node(
-            "nudge_continue",
+            NUDGE_CONTINUE_NODE,
             # Sync-only: the node ignores state and just emits the nudge, and
             # RunnableCallable runs a sync func on ainvoke when no async twin
             # is given — the twin was a pass-through with nothing to add.
             RunnableCallable(nudge_continue_node),
         )
-        builder.add_edge("nudge_continue", "agent")
-        path_map.append("nudge_continue")
+        builder.add_edge(NUDGE_CONTINUE_NODE, "agent")
+        path_map.append(NUDGE_CONTINUE_NODE)
     if deps.end_graph_hooks:
         builder.add_node("end_graph_hooks", _end_graph_hooks_node(deps.end_graph_hooks))
         builder.add_edge("end_graph_hooks", END)
@@ -895,13 +947,18 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         path_map=path_map,
     )
 
-    builder.add_edge("tools", "agent")
     exit_node = "end_graph_hooks" if deps.end_graph_hooks else END
+    if deps.turn_ending is not None:
+        builder.add_conditional_edges(
+            "tools", _after_tools(deps.turn_ending, exit_node), path_map=["agent", exit_node]
+        )
+    else:
+        builder.add_edge("tools", "agent")
     if deps.require_finish_to_end:
         builder.add_conditional_edges(
             FINISH_TASK_NAME,
             _after_finish_task(exit_node),
-            path_map=["nudge_continue", exit_node],
+            path_map=[NUDGE_CONTINUE_NODE, exit_node],
         )
     else:
         builder.add_edge(FINISH_TASK_NAME, exit_node)
@@ -945,6 +1002,7 @@ def create_agent(
         pre_model_hooks=hooks.pre_model_hooks,
         end_graph_hooks=hooks.end_graph_hooks,
         require_finish_to_end=hooks.require_finish_to_end,
+        turn_ending=hooks.turn_ending,
     )
 
     builder = StateGraph(State, context_schema=agent_cfg.context_schema)

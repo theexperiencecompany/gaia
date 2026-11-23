@@ -1,11 +1,12 @@
 from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 
 from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
+from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES, NotificationChannel
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_config import AgentConfigurableView, read_agent_configurable
@@ -20,6 +21,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
     NotificationView,
+    notification_id,
 )
 from app.services.analytics_service import capture
 from app.services.delivery.chat_channel import (
@@ -87,7 +89,7 @@ class SentNotificationResult(TypedDict):
 
 
 #: Where a run's own reply lands: a chat app's conversation, or the GAIA app.
-ReplyChannel: TypeAlias = ConversationSource | Literal["inapp"]
+ReplyChannel: TypeAlias = ConversationSource | Literal[NotificationChannel.INAPP]
 
 
 class NotificationFoldedIntoReply(TypedDict):
@@ -277,7 +279,7 @@ def reply_channel_of_run(configurable: AgentConfigurableView) -> ReplyChannel | 
         return None
     match SourceCategory.from_source(source):
         case SourceCategory.UI:
-            return CHANNEL_TYPE_INAPP
+            return NotificationChannel.INAPP
         case SourceCategory.BOT:
             return source
     return None
@@ -290,10 +292,10 @@ async def result_is_delivered_automatically(
     if configurable.execution_mode != "background":
         return False
     if configurable.workflow_id:
-        return configurable.workflow_notify_on_completion
+        return configurable.workflow_delivery is WorkflowDelivery.NOW
     if configurable.active_todo_id:
         todo = await todo_repository.get(configurable.active_todo_id, user_id=user_id)
-        return todo is not None and todo.notify_on_run
+        return todo is not None and todo.delivery is not WorkflowDelivery.SILENT
     return False
 
 
@@ -302,6 +304,7 @@ async def result_is_delivered_automatically(
 @with_doc(SEND_NOTIFICATION)
 async def send_notification(
     config: RunnableConfig,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     message: Annotated[str, "Notification body text: keep it concise and actionable"],
     title: Annotated[
         str,
@@ -344,12 +347,16 @@ async def send_notification(
         target: ProactiveTarget | None = None
         if not channels:
             target = await resolve_proactive_target(user_id)
-            channels = [CHANNEL_TYPE_INAPP] if isinstance(target, InApp) else [target.source.value]
+            channels = (
+                [NotificationChannel.INAPP] if isinstance(target, InApp) else [target.source.value]
+            )
             # A workflow or tracked-todo run's result goes to this same place on its own.
             if reply_channel is None and await result_is_delivered_automatically(
                 configurable, user_id
             ):
-                reply_channel = CHANNEL_TYPE_INAPP if isinstance(target, InApp) else target.source
+                reply_channel = (
+                    NotificationChannel.INAPP if isinstance(target, InApp) else target.source
+                )
 
         # Unknown channel names would otherwise be accepted and silently skipped
         # at delivery, so reject them here where the LLM can read the error and
@@ -393,26 +400,24 @@ async def send_notification(
         channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
 
         request = NotificationRequest(
+            # The tool call is the fact: a replayed call sends nothing twice.
+            id=notification_id(user_id, "agent_notification", tool_call_id),
             user_id=user_id,
             source=NotificationSourceEnum.AI_AGENT,
             type=resolved_type,
             channels=channel_configs,
             content=NotificationContent(title=resolved_title, body=resolved_message),
+            # A workflow run the gate let through quiet hours sends its pings now too.
+            message_class=configurable.workflow_message_class,
         )
 
-        record = await notification_service.create_notification(request)
-        if not record:
-            return {"error": "Failed to create notification", "success": False}
+        record = (await notification_service.notify(request)).record
         capture(
             UserId(user_id),
             NotificationAgentSent(outcome="sent", **proactive_destination(target)),
         )
 
-        delivered_channels = [
-            ch.channel_type
-            for ch in record.channels
-            if ch.status == NotificationStatus.DELIVERED and not ch.skipped
-        ]
+        delivered_channels = [ch.channel_type for ch in record.channels if ch.reached_user]
 
         log.set(
             tool={
@@ -460,7 +465,7 @@ async def get_notification_preferences(
 
         # inapp is always available regardless of per-channel preferences;
         # force it last so it can never be overridden by a stored preference.
-        all_preferences = {**preferences, CHANNEL_TYPE_INAPP: True}
+        all_preferences = {**preferences, NotificationChannel.INAPP: True}
 
         return {
             "preferences": all_preferences,

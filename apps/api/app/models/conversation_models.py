@@ -2,10 +2,9 @@
 conversation endpoints' response shapes.
 
 The persistence models describe the document as it is actually stored and read
-back — distinct from the API *request* models, which live in ``chat_models``. The
-embedded ``messages`` array reuses ``MessageModel``; a before-validator runs the
-legacy tool-data normalization at the read boundary so the rest of the app never
-sees an un-normalized message.
+back — distinct from the API *request* models, which live in ``chat_models``.
+A conversation's messages are its log's entries (conversation_log_models); the
+old embedded message shape is known only to the entries migration.
 
 The response models at the bottom of this file live here rather than alongside
 the requests in ``chat_models`` because they are built from the persistence
@@ -25,78 +24,42 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from app.db.repositories.base import UserScopedDocument
+from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.models.artifact_models import ArtifactRegistryEntry
-from app.models.chat_models import (
-    ConversationSource,
-    MessageModel,
-    SystemPurpose,
-    ToolDataEntry,
-)
+from app.models.chat_models import ConversationModel, ConversationSource, SystemPurpose
+from app.models.conversation_frame_models import EntryFrame, StateFrame
+from app.models.conversation_log_models import ConversationState
+from app.models.conversation_screen_models import ScreenItem, TextItem
+from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
-from app.utils.tool_data_utils import convert_legacy_tool_data
+from app.utils.artifact_utils import FILE_LINKS
 
 
-def _normalize_messages(value: object) -> object:
-    """Run legacy per-tool-field → unified ``tool_data`` conversion on each message."""
-    if isinstance(value, list):
-        return [convert_legacy_tool_data(m) if isinstance(m, dict) else m for m in value]
-    return value
+class ConversationDocument(UserScopedDocument, ConversationModel):
+    """A conversation head as the repository returns it: the create request's fields and what the server keeps.
 
-
-def _coerce_source(value: object) -> object:
-    """Map a stored source string to the enum, tolerating unknown legacy values."""
-    if isinstance(value, (ConversationSource, str)):
-        return ConversationSource.coerce(value)
-    return value
-
-
-class FoldedCards(BaseModel):
-    """Cards a detached run closed before the message they fold into was saved; its save takes them."""
+    Undeclared stored fields (the old embedded messages, the migration's marks) never reach a client.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
-    since: datetime
-    cards: list[ToolDataEntry] = Field(default_factory=list)
-
-
-class ConversationDocument(UserScopedDocument):
-    """A conversation and its embedded message history as stored in MongoDB.
-
-    ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
-    ``metadata``) so a full-document read returns them verbatim, matching the
-    pre-repository behaviour.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    conversation_id: str
-    description: str = "New Chat"
-    is_system_generated: bool | None = False
-    system_purpose: SystemPurpose | None = None
-    is_unread: bool | None = False
-    source: ConversationSource | None = None
-    is_onboarding_demo: bool = False
     starred: bool | None = None
-    # Set while a background run has a live approval parked here; the sidebar
-    # hides background conversations unless this is set (see _active_filter).
-    has_live_approval: bool = False
+    # Derived on read from the log's state (never stored): live work awaits the user's approval.
+    awaiting_approval: bool = Field(default=False, exclude=True)
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
-    messages: list[MessageModel] = Field(default_factory=list)
-    # Conversation-level artifact registry: one entry per agent-written file,
-    # deduped by path; services/chat/artifacts_registry.py owns every write.
+    # Conversation-level artifact registry: one entry per agent-written file, deduped by path.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
-    # Write-side state only (see FOLDED_CARDS_FIELD): never serialized to a reader.
-    folded_cards: dict[str, FoldedCards] = Field(default_factory=dict, exclude=True)
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
-    _normalize_messages = field_validator("messages", mode="before")(_normalize_messages)
-    _coerce_source = field_validator("source", mode="before")(_coerce_source)
+    @property
+    def listed(self) -> bool:
+        """Whether the conversation list shows it: a bot chat lives on its platform, a todo's chat on its todo."""
+        return self.todo_id is None and self.source not in BOT_CONVERSATION_SOURCES
 
 
 class ConversationUpdate(BaseModel):
@@ -124,24 +87,22 @@ class ConversationSummary(ResponseModel):
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = None
     source: ConversationSource | None = None
-    has_live_approval: bool | None = None
+    # Live work in the conversation awaits the user's approval: the sidebar's dot.
+    awaiting_approval: bool = False
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
-    _coerce_source = field_validator("source", mode="before")(_coerce_source)
+    @computed_field
+    def url(self) -> str:
+        """Return the conversation's web app page, built here so no client spells the route itself."""
+        return FILE_LINKS.conversation_page(self.conversation_id)
 
 
 class ConversationMessageHit(BaseModel):
-    """A single conversation message tagged with its conversation id — the shape of
-    the pinned-messages and message-search results."""
+    """A message's screen item, as the conversation's screen shows it, tagged with its conversation id."""
 
     conversation_id: str
-    message: MessageModel
-
-    @field_validator("message", mode="before")
-    @classmethod
-    def _normalize_message(cls, value: object) -> object:
-        return convert_legacy_tool_data(value) if isinstance(value, dict) else value
+    item: TextItem
 
 
 class ConversationDescriptionHit(BaseModel):
@@ -159,11 +120,11 @@ class ConversationSearchResults(BaseModel):
 
 
 class _SourceRow(BaseModel):
-    """Projection of just a conversation's stored source string."""
+    """Projection of just a conversation's source."""
 
     model_config = ConfigDict(extra="ignore")
 
-    source: str | None = None
+    source: ConversationSource
 
 
 class _TodoBindingRow(BaseModel):
@@ -191,6 +152,16 @@ class _ConversationIdRow(BaseModel):
     conversation_id: str
 
 
+class BotReplyRow(BaseModel):
+    """One unwound bot-platform user message — the briefing engine's reply-sync
+    read (``ConversationRepository.list_bot_replies_since``)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    source: str | None = None
+    text: str | None = None
+
+
 class _ConversationOwnerRow(_ConversationIdRow):
     """Projection of a conversation id and the user who owns it; anything else is a projection bug."""
 
@@ -199,12 +170,108 @@ class _ConversationOwnerRow(_ConversationIdRow):
     user_id: str
 
 
-class _MessageProjectionRow(BaseModel):
-    """A projected slice of messages: one positional match, or the newest few."""
+class MessageShape(BaseModel):
+    """The fields that say what a stored entry is and what it points at, read once from its raw fields."""
 
     model_config = ConfigDict(extra="ignore")
 
-    messages: list[MessageModel] = Field(default_factory=list)
+    kind: str | None = None
+    reply_id: str | None = None
+    task_id: str | None = None
+    approval_id: str | None = None
+    pinned: bool = False
+
+
+class StoredEntry(BaseModel):
+    """One conversation_entries document, or one value of a head's outbox: its keys, then the message as stored."""
+
+    model_config = ConfigDict(extra="allow")
+
+    conversation_id: str
+    user_id: str
+    seq: int
+    id: str
+    at: datetime | None = None
+    migration_fields: dict[str, str] | None = None
+    # Set only on an amendable log entry (a reply, a user message): each amend bumps it.
+    revision: int | None = None
+
+    def message_fields(self) -> dict[str, object]:
+        """Return the stored message's own fields: everything but the entry's keys and Mongo's _id."""
+        return {key: value for key, value in (self.model_extra or {}).items() if key != "_id"}
+
+    def shape(self) -> MessageShape:
+        """Return the stored message's identifying fields."""
+        return MessageShape.model_validate(self.message_fields())
+
+    def document(self) -> dict[str, object]:
+        """Return the entry exactly as it was read, to write it elsewhere unchanged."""
+        return {
+            key: value for key, value in self.model_dump(exclude_unset=True).items() if key != "_id"
+        }
+
+
+class BulkWriteFault(BaseModel):
+    """One failed operation of a Mongo bulk write: its position in the batch and the server's error code."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    index: int
+    code: int | None = None
+    errmsg: str | None = None
+
+
+class BulkWriteDetails(BaseModel):
+    """The per-operation failures a BulkWriteError carries."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    write_errors: list[BulkWriteFault] = Field(default_factory=list, alias="writeErrors")
+
+
+class EntryAddress(BaseModel):
+    """Where a stored entry sits: its conversation and seq, projected."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    conversation_id: str
+    seq: int
+
+    @property
+    def key(self) -> tuple[str, int]:
+        return (self.conversation_id, self.seq)
+
+
+class EntryKey(BaseModel):
+    """Which entry holds a seq: the id and seq of a stored entry, projected."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    seq: int
+
+
+class StepHolder(BaseModel):
+    """Who holds a conversation's step: its epoch, and the Redis key that proves it alive."""
+
+    epoch: int
+    alive_key: str
+
+
+class ConversationHead(BaseModel):
+    """A conversations document as the entry log reads it: identity, log_head, outbox and log state."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    conversation_id: str
+    user_id: str
+    log_head: int | None = None
+    outbox: dict[int, StoredEntry] = Field(default_factory=dict)
+    existing: list[EntryKey] = Field(default_factory=list)
+    # The conversation log's fold, absent until its first entry; the step holder; the last epoch handed out.
+    state: ConversationState | None = None
+    runner: StepHolder | None = None
+    runner_epoch: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -249,11 +316,43 @@ class ConversationListResponse(ResponseModel):
     total_pages: int
 
 
-class ConversationSyncRow(ResponseModel):
-    """One batch-sync row — the conversation's client-visible fields plus its full
-    message history and artifact registry.
+class LogPage(BaseModel):
+    """A run of the log's entries, oldest first, as the repository reads it.
 
+    A page never starts inside an open span: it reaches back to the Reply, WorkStarted or
+    ApprovalRequested of every settle, finish, join or decision it holds. state is the head's;
+    cursor is the seq an older page is read before, set exactly when has_older.
     """
+
+    entries: list[EntryFrame] = Field(default_factory=list)
+    state: StateFrame
+    has_older: bool = False
+    cursor: int | None = None
+
+
+class StoredConversation(ConversationDocument, LogPage):
+    """A conversation as the repository reads it: its head's fields and the newest page of its log."""
+
+
+class ConversationEntriesPage(ResponseModel):
+    """A page of the conversation's screen, oldest first: the items its log page projects to.
+
+    state is the head's, so a page alone shows the loading row, live work and approvals;
+    cursor is the seq an older page is read before, set exactly when has_older.
+    """
+
+    items: list[ScreenItem] = Field(default_factory=list)
+    state: StateFrame
+    has_older: bool = False
+    cursor: int | None = None
+
+
+class LoadedConversation(ConversationDocument, ConversationEntriesPage):
+    """A conversation as a load returns it: its head's fields and the newest page of its screen."""
+
+
+class ConversationSyncRow(ConversationEntriesPage):
+    """One batch-sync row: the conversation's client-visible fields, its newest page of items and its artifacts."""
 
     conversation_id: str
     description: str
@@ -263,16 +362,14 @@ class ConversationSyncRow(ResponseModel):
     is_unread: bool | None = None
     createdAt: str | None = None
     updatedAt: datetime | None = None
-    messages: list[MessageModel] = Field(default_factory=list)
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
-    # Whether a background run holds a live approval here — drives the
-    # sidebar dot. Missing on older rows reads as unset (no dot).
-    has_live_approval: bool | None = None
-    # The tracked todo this chat belongs to; clients keep such a chat out of their lists.
+    # Live work in the conversation awaits the user's approval: the sidebar's dot.
+    awaiting_approval: bool = False
     todo_id: str | None = None
-    # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.
     source: ConversationSource | None = None
+    # False for a chat the conversation list never shows (a todo's, a bot's): absent there is not deleted.
+    listed: bool
 
 
 class BatchSyncResponse(ResponseModel):
@@ -282,9 +379,6 @@ class BatchSyncResponse(ResponseModel):
     # Requested ids the user has no conversation for: a client drops them, as it
     # cannot learn of a deleted chat that is never listed (a tracked todo's).
     missing: list[str] = Field(default_factory=list)
-    # Stream id of each requested conversation's in-flight turn, stale or not, so a
-    # reloading client re-attaches without refetching a history it already holds.
-    active_streams: dict[str, str] = Field(default_factory=dict)
 
 
 class ConversationActionResponse(BaseModel):
@@ -312,16 +406,6 @@ class UpdateDescriptionResponse(ConversationActionResponse):
     """Rename acknowledgement, echoing the description that was stored."""
 
     description: str
-
-
-class UpdateMessagesResponse(BaseModel):
-    """Append acknowledgement carrying the ids the appended messages were stored
-    under — the client reconciles its optimistic records against these."""
-
-    conversation_id: str
-    message: str
-    modified_count: int
-    message_ids: list[str]
 
 
 class PinMessageResponse(BaseModel):

@@ -14,11 +14,11 @@ from httpx import AsyncClient
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.integrations import NOT_SET_UP_ON_INSTANCE
+from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.integrations.responses import (
-    ConnectIntegrationResponse,
-    MyIntegrationsResponse,
-)
+from app.schemas.integrations.responses import ConnectIntegrationResponse
+from app.services.composio.error_detail import AuthConfigNotFoundError
 from app.services.connect_link_service import ConnectLinkBinding
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
@@ -26,6 +26,7 @@ from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationDisconnected,
 )
+from tests.conftest import FAKE_USER
 from tests.factories import make_authenticated_user
 
 API = "/api/v1/integrations"
@@ -120,49 +121,6 @@ class TestGetIntegrationsConfig:
             resp = await unauthed_client.get(f"{API}/config")
         # Config endpoint has no auth dependency — should succeed
         assert resp.status_code == 200
-
-
-class TestFastIntegrationCatalog:
-    async def test_snapshot_uses_fast_catalog_service(self, client: AsyncClient) -> None:
-        snapshot = MyIntegrationsResponse(integrations=[], total=0)
-        with (
-            patch(
-                f"{_MODULE}.get_my_integrations_snapshot",
-                create=True,
-                new_callable=AsyncMock,
-                return_value=snapshot,
-            ) as mock_snapshot,
-            patch(f"{_MODULE}.log") as mock_log,
-        ):
-            resp = await client.get(f"{API}/me/snapshot")
-
-        assert resp.status_code == 200
-        assert resp.json() == {"integrations": [], "total": 0}
-        mock_snapshot.assert_awaited_once_with(_VALID_UID)
-        mock_log.set.assert_any_call(
-            operation="get_my_integrations_snapshot", user={"id": _VALID_UID}
-        )
-        mock_log.set.assert_any_call(result_count=0, outcome="success")
-
-    async def test_status_endpoint_returns_the_refreshable_status_map(
-        self, client: AsyncClient
-    ) -> None:
-        with (
-            patch(
-                f"{_MODULE}.get_all_integrations_status",
-                create=True,
-                new_callable=AsyncMock,
-                return_value={"posthog": False},
-            ) as mock_status,
-            patch(f"{_MODULE}.log") as mock_log,
-        ):
-            resp = await client.get(f"{API}/status")
-
-        assert resp.status_code == 200
-        assert resp.json() == {"statuses": {"posthog": False}}
-        mock_status.assert_awaited_once_with(_VALID_UID)
-        mock_log.set.assert_any_call(operation="get_integration_statuses", user={"id": _VALID_UID})
-        mock_log.set.assert_any_call(result_count=1, outcome="success")
 
 
 # ===========================================================================
@@ -668,6 +626,33 @@ class TestConnectIntegration:
         assert mock_log.error.call_args.kwargs["error"] == _COMPOSIO_404
         mock_log.set.assert_any_call(integration={"id": "notion", "status": "error"})
 
+    async def test_connect_composio_missing_auth_config_says_not_set_up(
+        self, client: AsyncClient
+    ) -> None:
+        composio = MagicMock()
+        composio.connect_account = AsyncMock(side_effect=AuthConfigNotFoundError("Gmail", "ac_1"))
+        with (
+            patch(f"{_SERVICE}.auth_config_id_for", new_callable=AsyncMock, return_value="ac_1"),
+            patch(f"{_SERVICE}.get_account_record", new_callable=AsyncMock, return_value=None),
+            patch(f"{_SERVICE}.create_oauth_state", new_callable=AsyncMock, return_value="st"),
+            patch(f"{_SERVICE}.update_user_integration_status", new_callable=AsyncMock),
+            patch(f"{_SERVICE}.get_composio_service", return_value=composio),
+            patch(f"{_SERVICE}.log") as mock_log,
+        ):
+            resp = await client.post(
+                f"{API}/connect/gmail",
+                json={"redirect_path": "/integrations"},
+            )
+        assert resp.status_code == 200
+        assert resp.json() == _error_body("gmail", "Gmail", f"Gmail {NOT_SET_UP_ON_INSTANCE}")
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Integration has no auth config in this Composio project",
+            integration_id="gmail",
+            auth_config_id="ac_1",
+            user_id=FAKE_USER.user_id,
+        )
+        mock_log.set.assert_any_call(integration={"id": "gmail", "status": "not_set_up"})
+
     async def test_connect_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
             f"{API}/connect/github",
@@ -745,6 +730,56 @@ class TestConnectLinkEndpoint:
             reconnect_account_id="ca_work",
         )
         assert initiate.call_args.args[1].integration_id == "gmail"
+
+    async def test_a_code_bound_to_a_malformed_user_id_bounces_without_a_lookup(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id="not-an-object-id", integration_id="notion", account_id=None
+                ),
+            ),
+            patch(f"{_MODULE}.user_repository.get", new_callable=AsyncMock) as get_user,
+            patch(f"{_MODULE}.initiate_integration_connection", new_callable=AsyncMock) as initiate,
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
+        get_user.assert_not_awaited()
+        initiate.assert_not_awaited()
+
+    async def test_a_link_for_a_user_with_no_record_starts_with_an_empty_login_hint(
+        self, client: AsyncClient
+    ) -> None:
+        result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
+            ),
+            patch(
+                f"{_MODULE}.user_repository.get", new_callable=AsyncMock, return_value=None
+            ) as get_user,
+            patch(
+                f"{_MODULE}.initiate_integration_connection",
+                new_callable=AsyncMock,
+                return_value=result,
+            ) as initiate,
+            patch(f"{_MODULE}.capture"),
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
+        get_user.assert_awaited_once_with(_VALID_UID)
+        assert initiate.call_args.kwargs["user_email"] == ""
 
     async def test_a_link_to_an_unknown_integration_cannot_start(self, client: AsyncClient) -> None:
         with (

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-
+import { SITE_URL } from "@/config/site";
 import { BRAND_IMAGE_ASSETS, BRAND_PAGE_PATH } from "@/lib/brandAssets";
-import { getSiteUrl } from "@/lib/seo";
 import { escapeXml } from "@/lib/sitemapXml";
 
 /**
@@ -11,7 +10,7 @@ import { escapeXml } from "@/lib/sitemapXml";
  * the dotted-path matcher rule.
  */
 export async function GET() {
-  const baseUrl = getSiteUrl();
+  const baseUrl = SITE_URL;
 
   const images = BRAND_IMAGE_ASSETS.map((asset) =>
     [

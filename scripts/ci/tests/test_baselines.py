@@ -1,6 +1,6 @@
 """baselines.py growth: a ratchet baseline only grows on a founder's written approval.
 
-Driven as a subprocess against a throwaway git repo, the way the repo-policy
+Driven as a subprocess against a throwaway git repo, the way the lint-node
 lane runs it: the base is a real commit and the head is the working tree.
 """
 

@@ -51,7 +51,7 @@ same PR that deliberately deletes entry points.
 | `api` | `@router.<verb>` / `@app.<verb>` decorated functions, plus imperative `router.add_api_route(path, handler, methods=[...])` registration (FastAPI serves both identically, so both must be discoverable) |
 | `websocket` | `@router.websocket` handlers |
 | `worker` | ARQ tasks **registered in `app/worker.py`** (helpers in `workers/tasks/` are not entry points) |
-| `voice` | LiveKit callbacks wired in `apps/voice-agent/src/agent.py`'s `WorkerOptions` (`entrypoint_fnc`/`prewarm_fnc`), plus `_run` on the `LLMStream` subclass the `LLM` subclass's `chat()` returns in `llm.py` (`voice.collect_voice_registry` parses both wirings) |
+| `voice` | LiveKit callbacks wired in `apps/voice-agent/src/agent.py`'s `WorkerOptions` (`entrypoint_fnc`/`prewarm_fnc`), plus `on_user_turn_completed` on the `Agent` subclass in `conversation.py` (`voice.collect_voice_registry` parses both wirings) |
 
 Infra routes (`/health`, `/metrics`, `/favicon.ico`) are exempt — nothing to
 instrument, excluded from the score.
@@ -206,7 +206,7 @@ open PR; re-run `python3 tools/evlog_map --all` to see what moved.
 
 **Adding a surface.** Discovery is deliberately parsed, never hardcoded — the
 worker registry from `app/worker.py`, the voice registry from `agent.py`'s
-`WorkerOptions` and `llm.py`, the router mounts from `app_factory.py`'s
+`WorkerOptions` and `conversation.py`, the router mounts from `app_factory.py`'s
 `include_router` chain, the field schema from `wide_events.py`. Follow
 that: write a `collect_*_registry` that reads the real wiring and raises when
 it finds nothing (a moved registry must fail loudly, not silently score zero
@@ -286,6 +286,6 @@ suppression) in the handler itself, exactly like the `route-contract` lint.
 The PR gate scans only changed files, so a change to
 `libs/shared/py/wide_events.py` (the schema), `app/worker.py` (the task
 registry), the router wiring (`app_factory.py`/`routes.py`) or the voice wiring
-(`agent.py`/`llm.py`) can move *unchanged* files' scores — the full-repo scan
+(`agent.py`/`conversation.py`) can move *unchanged* files' scores — the full-repo scan
 in the same lane is where that shows up. Schema and registries are always read
 from HEAD, for the base scan too.

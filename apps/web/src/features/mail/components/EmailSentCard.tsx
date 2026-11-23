@@ -1,5 +1,10 @@
 import { Chip } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
+import {
+  FIXED_LOCALE,
+  formatRelativeDate,
+  formatTime as formatTimeOfDay,
+} from "@shared/utils";
 import { Gmail } from "@/components/shared/icons";
 import type { EmailSentData } from "@/types/features/mailTypes";
 
@@ -7,20 +12,17 @@ interface EmailSentCardProps {
   emailSentData: EmailSentData;
 }
 
+const SECONDS_PER_HOUR = 3600;
+
+const formatClockOf = (timestamp: string) =>
+  formatTimeOfDay(timestamp, { locale: FIXED_LOCALE });
+
 const formatTime = (timestamp?: string) => {
   if (!timestamp) return "Just now";
-
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
-
-  if (diffInSeconds < 60) return "Just now";
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const secondsAgo = (Date.now() - new Date(timestamp).getTime()) / 1000;
+  return secondsAgo < SECONDS_PER_HOUR
+    ? formatRelativeDate(timestamp, { locale: FIXED_LOCALE })
+    : formatClockOf(timestamp);
 };
 
 export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {

@@ -24,6 +24,7 @@ import re
 from types import SimpleNamespace
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from arq.connections import ArqRedis
@@ -36,7 +37,6 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 import respx
 import time_machine
 
-from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
     TodoRunCancelledError,
@@ -61,13 +61,12 @@ from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededExceptio
 from app.config.rate_limits import RateLimitPeriod
 from app.constants import todos as todo_constants
 from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG
-from app.constants.hil import HIL_JEV_URL
 from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
-    INBOX_DESK_RECURRENCE,
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
     MAX_HOLD_CHECK_AHEAD,
@@ -89,13 +88,19 @@ from app.constants.todos import (
     WakeReason,
 )
 from app.constants.trigger_gates import GateAuthor, SystemGatePreset
+from app.constants.user_activity import ActivityStatus
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WAIT_MET_TRIGGER
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.todos import todo_repository
-from app.models.message_models import TodoRunWake
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.conversation_log_models import ApprovalDecided, TodoReportForm
+from app.models.hil_models import ApprovalLedgerDocument
+from app.models.notification.details_models import TodoFailedNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.scheduler_models import DeactivationReason
@@ -106,6 +111,7 @@ from app.models.todo_models import (
     TodoRunContext,
     TodoUpdate,
 )
+from app.models.todo_wake_models import TodoRunWake
 from app.models.trigger_gate_models import AuthoredGate, QuietHoursBypass, SystemGate, TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -115,8 +121,10 @@ from app.models.trigger_subscription_models import (
     TriggerOrigin,
     TriggerSubscription,
 )
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_models import TriggerType
+from app.services.briefing.run_times import inbox_desk_recurrence
+from app.services.hil.jev_client import decisions_url
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
@@ -147,6 +155,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 from tests.helpers import (
     UNKNOWN_USER_ID,
@@ -163,6 +172,9 @@ from tests.integration_account_factories import make_integration_account, make_i
 OWNER_ID = "6812f0b3c9a14e2b7d5a91cf"
 _GMAIL_ORIGIN = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
 _MEETING = "someone is waiting on you for a meeting happening soon"
+
+
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
 
 def _user_context(*, timezone: str | None = None) -> Callable[[str], AuthenticatedUser]:
@@ -258,7 +270,7 @@ def quiet_hours() -> Iterator[AsyncMock]:
 @pytest.fixture(autouse=True)
 def activity() -> Iterator[AsyncMock]:
     """Capture every activity.md entry the worker records, as (todo_id, user_id, event, detail)."""
-    with patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)) as recorded:
+    with patch(f"{MODULE}.record_todo_activity", AsyncMock(return_value=True)) as recorded:
         yield recorded
 
 
@@ -489,7 +501,7 @@ class TestTriggeredExecutionLock:
             patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=False)),
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}.record_activity", recorded),
+            patch(f"{MODULE}.record_todo_activity", recorded),
             patch(f"{MODULE}.log") as log_mock,
         ):
             await execute_tracked_todo({}, "todo-1", self._origin())
@@ -860,7 +872,7 @@ class TestDeliveryContractInThePrompt:
 
     def test_a_delivering_run_is_told_its_message_reaches_the_user(self):
         prompt = _prompt(
-            _doc(title="Chase Acme", notify_on_run=True),
+            _doc(title="Chase Acme", delivery=WorkflowDelivery.NOW),
         )
 
         assert DELIVERED_RESULT_GUIDANCE in prompt
@@ -868,7 +880,7 @@ class TestDeliveryContractInThePrompt:
 
     def test_a_silent_run_is_told_its_message_reaches_nobody(self):
         prompt = _prompt(
-            _doc(title="Chase Acme", notify_on_run=False),
+            _doc(title="Chase Acme", delivery=WorkflowDelivery.SILENT),
         )
 
         assert SILENT_RUN_GUIDANCE in prompt
@@ -878,7 +890,7 @@ class TestDeliveryContractInThePrompt:
         """The default "what you checked" report comes last; the desk writes its briefing, not a run log."""
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 
-        prompt = _prompt(_doc(notify_on_run=True, external_ref=desk))
+        prompt = _prompt(_doc(delivery=WorkflowDelivery.BRIEF, external_ref=desk))
 
         assert prompt.endswith(f"\n\n{DELIVERED_RESULT_RULES}")
         assert DELIVERED_REPORT_FORM not in prompt
@@ -987,7 +999,7 @@ class TestDeliveryContractInThePrompt:
     def test_a_thread_todo_reports_in_its_own_alert_form_not_the_default(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
 
-        prompt = _prompt(_doc(notify_on_run=True, external_ref=thread))
+        prompt = _prompt(_doc(delivery=WorkflowDelivery.NOW, external_ref=thread))
 
         assert prompt.endswith(f"\n\n{DELIVERED_RESULT_RULES}")
         assert DELIVERED_REPORT_FORM not in prompt
@@ -1765,7 +1777,7 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
                 LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=timezone)),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
             patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
@@ -1819,7 +1831,9 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
             f"This run of 'Inbox desk' failed after {MAX_RETRY_ATTEMPTS} attempts. "
             "It runs again at its next scheduled time."
         )
-        assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+        assert request.details == TodoFailedNotification(
+            kind=NotificationKind.TODO_FAILED, todo_id="todo-1", retry_count=MAX_RETRY_ATTEMPTS
+        )
 
     async def test_a_watch_run_that_gives_up_leaves_the_schedule_and_clears_the_count(self) -> None:
         pending = datetime.now(UTC) + timedelta(hours=5)
@@ -2303,7 +2317,7 @@ async def _run_task(
         patch.object(todo_repository, "get", AsyncMock(side_effect=lambda i, user_id: docs.get(i))),
         patch.object(todo_repository, "list_active_tracked", AsyncMock(side_effect=sub_todos)),
         patch(f"{MODULE}.run_todo_on_executor", run),
-        patch(f"{MODULE}.record_activity", AsyncMock()),
+        patch(f"{MODULE}.record_todo_activity", AsyncMock()),
     ):
         await _execute_on_executor(
             doc, user_tz=user_tz, user_data=AuthenticatedUser(user_id=OWNER_ID)
@@ -2364,7 +2378,7 @@ class TestStandingRulesReachTheRun:
             patch.object(todo_repository, "get", get),
             patch.object(todo_repository, "list_active_tracked", AsyncMock(return_value=[])),
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
         ):
             await _execute_on_executor(
                 _doc(parent_todo_id=_DESK_ID),
@@ -2428,7 +2442,7 @@ class TestTheDeskRunReadsItsObservations:
             patch.object(todo_repository, "list_active_tracked", AsyncMock(return_value=[])),
             patch("app.services.todo_canvas_storage.schedule_gaia_tasks_sync", MagicMock()),
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
         ):
             await _execute_on_executor(
                 stored[_DESK_ID],
@@ -2780,7 +2794,7 @@ class TestOneRunPerOccurrence:
                 external_ref=ExternalRef(
                     source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
                 ),
-                recurrence=INBOX_DESK_RECURRENCE,
+                recurrence=_DEFAULT_DESK_RECURRENCE,
                 scheduled_at=morning.astimezone(UTC),
                 trigger_subscriptions=[watch],
             )
@@ -2796,15 +2810,19 @@ class TestOneRunPerOccurrence:
                 ),  # pragma: allowlist secret
             ),
             patch(f"{_GATE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
-            patch(f"{_GATE}.get_profile_timezone", AsyncMock(return_value=kolkata)),
-            patch(f"{_GATE}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)),
+            patch(
+                "app.services.quiet_hours.user_repository",
+                MagicMock(
+                    get=AsyncMock(return_value=UserDocument(id=OWNER_ID, timezone=kolkata.value))
+                ),
+            ),
             patch(f"{_GATE}.capture"),
             patch(f"{_DISPATCH}.todo_repository", row),
-            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
+            patch(f"{_DISPATCH}.record_todo_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
             time_machine.travel(datetime(2026, 10, 2, 2, 30, tzinfo=kolkata.tzinfo), tick=False),
         ):
-            jev.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=can_wait))
+            jev.post(decisions_url(None)).mock(return_value=httpx.Response(200, json=can_wait))
             await tracked_todo_service.schedule_execution("todo-1", morning.astimezone(UTC))
             first_of_thread: dict[str, object] = {
                 "thread_id": "m-1",
@@ -2843,7 +2861,7 @@ class TestOneRunPerOccurrence:
                 external_ref=ExternalRef(
                     source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
                 ),
-                recurrence=INBOX_DESK_RECURRENCE,
+                recurrence=_DEFAULT_DESK_RECURRENCE,
             )
         )
         await tracked_todo_service.schedule_execution("todo-1", row.doc.scheduled_at)
@@ -3159,9 +3177,10 @@ class TestTriggerEventsCoalesce:
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{MODULE}.run_todo_on_executor", run),
+            _approved_ledger_row(),
             patch(f"{MODULE}.enforce_cost_budget", self.budget),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
-            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
+            patch(f"{_DISPATCH}.record_todo_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
         ):
             yield run
@@ -3443,12 +3462,12 @@ class TestQuietHoursHoldAGatedTodosWindow:
             patch(f"{MODULE}.run_todo_on_executor", AsyncMock(side_effect=run)),
             patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))),
-            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
+            patch(f"{_DISPATCH}.record_todo_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
         ):
             # Kolkata is the owner's clock alone: a hold read for anyone else would read UTC.
-            gate.tz.side_effect = lambda user_id: Timezone.parse(
-                "Asia/Kolkata" if user_id == OWNER_ID else "UTC"
+            gate.owner_read.side_effect = lambda user_id: UserDocument(
+                id=user_id, timezone="Asia/Kolkata" if user_id == OWNER_ID else "UTC"
             )
             gate.jev.mock(return_value=httpx.Response(200, json=_REPLY_CAN_WAIT))
             yield
@@ -3535,7 +3554,7 @@ class TestExecuteOnExecutor:
         self.context = AsyncMock(return_value=TodoRunContext())
         return (
             patch(f"{MODULE}.run_todo_on_executor", self.run),
-            patch(f"{MODULE}.record_activity", self.timeline),
+            patch(f"{MODULE}.record_todo_activity", self.timeline),
             patch(f"{MODULE}.collect_run_context", self.context),
         )
 
@@ -3566,14 +3585,46 @@ class TestExecuteOnExecutor:
 
         request = self._request()
         assert request.user is user
-        assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        run = request.todo_run
+        assert (run.todo_id, run.trigger_type, run.runs_once, run.title, run.message_class) == (
+            "todo-1",
+            TriggerType.SCHEDULED_TODO,
+            True,
+            "Check the deploy",
+            ProactiveMessageClass.ROUTINE,
         )
-        assert request.todo_title == "Check the deploy"
+        assert run.report_form is TodoReportForm.WRITE_UP
         assert "Execute the following scheduled task: Check the deploy" in request.task
         assert "Details: verify staging" in request.task
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
+
+    async def test_a_run_an_urgent_event_woke_is_delivered_through_quiet_hours(self):
+        """The gate let the event through as urgent, so delivery must not hold the run's report."""
+        await self._execute(
+            origin=TriggerOrigin(
+                subscription_id="sub-1",
+                trigger_name="gmail_new_message",
+                quiet_hours_bypass=QuietHoursBypass(reason=_MEETING),
+            )
+        )
+
+        assert self._request().todo_run.message_class is ProactiveMessageClass.URGENT
+
+    async def test_a_run_a_routine_event_woke_waits_out_quiet_hours(self):
+        await self._execute(origin=_GMAIL_ORIGIN)
+
+        assert self._request().todo_run.message_class is ProactiveMessageClass.ROUTINE
+
+    async def test_each_run_of_a_todo_gets_its_own_run_id(self):
+        await self._execute()
+        first = self._request().todo_run.run_id
+        await self._execute()
+        second = self._request().todo_run.run_id
+
+        assert first != second
+        assert str(UUID(first)) == first
+        assert str(UUID(second)) == second
 
     @pytest.mark.parametrize(
         ("fields", "runs_once"),
@@ -3613,7 +3664,7 @@ class TestExecuteOnExecutor:
     async def test_a_scheduled_run_says_its_schedule_woke_it(self):
         await self._execute()
 
-        assert self._request().wake == TodoRunWake(
+        assert self._request().todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.SCHEDULE,
             trigger_names=[],
             approval_summary=None,
@@ -3635,7 +3686,7 @@ class TestExecuteOnExecutor:
                 coalesced=also,
             )
 
-        assert self._request().wake == TodoRunWake(
+        assert self._request().todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.TRIGGER,
             trigger_names=["gmail_email_sent", "gmail_new_message"],
             approval_summary=None,
@@ -3672,7 +3723,7 @@ class TestExecuteOnExecutor:
         run = AsyncMock()
         with (
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock(return_value=True)),
             patch(f"{MODULE}.collect_run_context", AsyncMock(return_value=TodoRunContext())),
             patch(f"{MODULE}.with_desk_notes", AsyncMock(side_effect=lambda doc: doc)),
             time_machine.travel(frozen, tick=False),
@@ -3823,22 +3874,29 @@ class TestMarkTodoFailed:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
-            await _mark_todo_failed("todo-1", OWNER_ID, _doc(title="Nightly backup"))
+            doc = _doc(title="Nightly backup", scheduled_at=datetime(2026, 11, 14, 8, tzinfo=UTC))
+            await _mark_todo_failed("todo-1", OWNER_ID, doc)
 
         repo.add_labels.assert_awaited_once_with("todo-1", user_id=OWNER_ID, labels=[FAILED_LABEL])
         # A failed todo is skipped by the execution path until a manual reset, so
         # leaving its subscriptions armed would burn events on a todo that cannot run.
         teardown.assert_awaited_once_with("todo-1", OWNER_ID, reason="failed")
         request = notify.await_args.args[0]
+        # One id per failed occurrence: a retried job tells the user once.
+        assert request.id == notification_id(
+            OWNER_ID, "todo_run_failed", "todo-1", "2026-11-14 08:00:00+00:00"
+        )
         assert request.user_id == OWNER_ID
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.ERROR
         assert request.content.title == "Scheduled Task Failed: Nightly backup"
         assert f"after {MAX_RETRY_ATTEMPTS} attempts" in request.content.body
-        assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+        assert request.details == TodoFailedNotification(
+            kind=NotificationKind.TODO_FAILED, todo_id="todo-1", retry_count=MAX_RETRY_ATTEMPTS
+        )
 
     async def test_stopping_is_on_the_todos_timeline(self, activity):
         with (
@@ -3847,7 +3905,7 @@ class TestMarkTodoFailed:
                 "app.workers.tasks.todo_run_context.todo_repository",
                 MagicMock(add_labels=AsyncMock()),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.notification_service.notify", AsyncMock()),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
             await _mark_todo_failed("todo-1", OWNER_ID, _doc())
@@ -3866,7 +3924,7 @@ class TestMarkTodoFailed:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(
-                f"{MODULE}.notification_service.create_notification",
+                f"{MODULE}.notification_service.notify",
                 AsyncMock(side_effect=RuntimeError("notification bus down")),
             ),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
@@ -4066,11 +4124,47 @@ class _ResumeRun:
         return [f"[{c.args[2].value}] {c.args[3]}" for c in self.timeline.call_args_list]
 
 
+@contextmanager
+def _approved_ledger_row() -> Iterator[None]:
+    """Serve the ledger row ap_1 a resume redeems, and the log's approval of it."""
+    row = ApprovalLedgerDocument(
+        approval_id="ap_1",
+        conversation_id="conv-parked",
+        user_id="user-7",
+        fingerprint="fp-ap_1",
+        tool_name="GMAIL_SEND_EMAIL",
+        args={},
+        summary="Send briefing",
+    )
+    approved = ApprovalDecided(
+        id="approval:ap_1:decided",
+        approval_id="ap_1",
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
+    )
+    with (
+        patch(
+            f"{MODULE}.approval_ledger_repository.get_by_approval_id",
+            AsyncMock(side_effect=lambda approval_id: row if approval_id == "ap_1" else None),
+        ),
+        patch(
+            f"{MODULE}.logged_decision",
+            # The log is read under the approval's own conversation and user, or holds nothing.
+            AsyncMock(
+                side_effect=lambda conversation_id, user_id, approval_id: approved
+                if (conversation_id, user_id, approval_id) == ("conv-parked", "user-7", "ap_1")
+                else None
+            ),
+        ),
+    ):
+        yield
+
+
 class TestResumeTrackedTodo:
     RESUME_MESSAGE = (
-        "Approval ap_1 was granted: Send briefing "
-        "The action has run — verify with a read if you need certainty, "
-        "never re-run the granted call blind. Continue the run from here."
+        "APPROVAL_READY ap_1: the user approved Send briefing (unknown age). "
+        'Run it now with execute(tool_name="approve", data={"id": "ap_1"}) and continue '
+        "with its result. If it is no longer needed, say so instead of running it."
     )
 
     @staticmethod
@@ -4109,7 +4203,8 @@ class TestResumeTrackedTodo:
             patch(f"{MODULE}._load_user_with_tz", run.load_user),
             patch(f"{MODULE}.enforce_cost_budget", run.budget),
             patch(f"{MODULE}.run_todo_on_executor", run.agent),
-            patch(f"{MODULE}.record_activity", run.timeline),
+            _approved_ledger_row(),
+            patch(f"{MODULE}.record_todo_activity", run.timeline),
             patch(f"{MODULE}.enqueue_worker_job", run.enqueue),
             patch(f"{MODULE}.log", run.log),
         ):
@@ -4142,22 +4237,27 @@ class TestResumeTrackedTodo:
         # Its own thread too: a reset would drop the very thread it continues.
         assert request.fresh_thread is False
         assert request.user is run.user
-        assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        run = request.todo_run
+        assert (run.todo_id, run.trigger_type, run.runs_once, run.title, run.message_class) == (
+            "todo-1",
+            TriggerType.SCHEDULED_TODO,
+            True,
+            "Check the deploy",
+            ProactiveMessageClass.ROUTINE,
         )
-        assert request.todo_title == "Check the deploy"
+        assert run.report_form is TodoReportForm.WRITE_UP
 
     async def test_a_resume_says_the_approval_woke_it(self) -> None:
         run = await self._resume(_ResumeJob("conv-parked", "Send briefing"))
 
-        assert run.agent.await_args.args[0].wake == TodoRunWake(
+        assert run.agent.await_args.args[0].todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.APPROVAL,
             trigger_names=[],
             approval_summary="Send briefing",
         )
 
-    async def test_the_agent_is_told_the_granted_call_already_ran(self) -> None:
-        """Without it the resumed run re-issues the approved action, a second send the user never approved."""
+    async def test_the_resumed_run_is_the_one_that_redeems_the_ticket(self) -> None:
+        """No other run carries the ticket, so the resume itself must run the approved call."""
         run = await self._resume(_ResumeJob("conv-parked", "Send briefing"))
 
         assert run.agent.await_args.args[0].task == self.RESUME_MESSAGE
@@ -4417,7 +4517,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         record = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}.record_activity", record),
+            patch(f"{MODULE}.record_todo_activity", record),
             patch(f"{MODULE}.capture_paywall_block") as capture,
             patch(f"{MODULE}.log") as log,
             _serving(_pool()),
@@ -4530,6 +4630,83 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
             trigger_name="gmail_new_message",
             subscription_id="sub-1",
         )
+
+
+class TestADormantOwnersTodoPausesUntilTheyReturn:
+    @pytest.fixture(autouse=True)
+    def status(self) -> Iterator[AsyncMock]:
+        status = AsyncMock(return_value=ActivityStatus.DORMANT)
+        with (
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context())),
+            patch(f"{MODULE}.activity_status_of", status),
+        ):
+            yield status
+
+    async def test_a_fire_for_a_dormant_owner_pauses_instead_of_running(
+        self, account: SimpleNamespace, status: AsyncMock
+    ) -> None:
+        """Nobody reads what GAIA does for an absent user, so the agent must not run (or bill) for them."""
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(recurrence="every_1h"))
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock()
+        execute = AsyncMock()
+        record = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", execute),
+            patch(f"{MODULE}.record_todo_activity", record),
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+
+        assert result == "paused:todo-1 (owner dormant)"
+        status.assert_awaited_once_with(OWNER_ID)
+        execute.assert_not_awaited()
+        assert _updates(repo) == [{"pause_reason": DeactivationReason.USER_DORMANT.value}]
+        repo.update_if_scheduled_at.assert_not_awaited()
+        record.assert_awaited_once_with(
+            "todo-1",
+            OWNER_ID,
+            TodoActivityEvent.RUN_SKIPPED,
+            "paused: you have been away a while; runs resume when you are back",
+        )
+
+    async def test_a_dormant_owners_trigger_events_are_held_for_the_return(
+        self, account: SimpleNamespace
+    ) -> None:
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(
+                f"{MODULE}.hold_trigger_event_while_paused", AsyncMock(return_value=True)
+            ) as hold,
+            _serving(_pool()),
+        ):
+            await _execute_todo_with_retry("todo-1", first)
+
+        assert [c.args for c in hold.await_args_list] == [("todo-1", first)]
+
+    async def test_an_unpaid_dormant_owner_is_paused_for_the_plan_first(
+        self, account: SimpleNamespace
+    ) -> None:
+        """Paying resumes SUBSCRIPTION_LAPSED; a todo paused only for dormancy would then stay stuck."""
+        account.paid.return_value = False
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}.capture_paywall_block"),
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+
+        assert result == "paused:todo-1 (subscription required)"
 
 
 class TestCollectRunContext:

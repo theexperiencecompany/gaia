@@ -6,7 +6,8 @@ DeepSeek's automatic prefix cache). Two complementary measurements:
 1. **Harness**: real message shapes through the real `manage_system_prompts_node`
    against the real provider, back-to-back per-turn calls (what the layout alone
    is worth).
-2. **End-to-end**: the real `/api/v1/chat-stream` endpoint — full comms →
+2. **End-to-end**: the chat endpoint of the time (`/api/v1/chat-stream`, since replaced by
+   `POST /conversations/{id}/messages`) — full comms →
    executor graph, real history growth, 45-turn conversations, ~2.7M input
    tokens per run (what production gets).
 
@@ -199,7 +200,7 @@ provider (`apps/api/app/agents/context/slots.py`,
 ## How it was measured
 
 A live harness drove graph-shaped conversations (real `manage_system_prompts_node`,
-real provider, per-run isolated bytes) for the layout A/B, and the real
+real provider, per-run isolated bytes) for the layout A/B, and the then-current
 `/api/v1/chat-stream` endpoint was driven for the end-to-end runs. Requests
 were captured byte-level through a logging proxy to verify determinism and
 the exact divergence points.

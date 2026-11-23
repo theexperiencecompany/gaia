@@ -14,11 +14,11 @@ Needs OPENROUTER_API_KEY in the environment.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 from collections.abc import Mapping, Sequence
 import json
 import os
-import sys
 from typing import Final
 
 import httpx
@@ -232,15 +232,18 @@ def report() -> None:
 
 
 def main() -> None:
-    command, *only = sys.argv[1:]
-    if command == "author":
-        asyncio.run(author(only))
-    elif command == "gate":
-        asyncio.run(gate(only))
-    elif command == "report":
-        report()
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("command", choices=("author", "gate", "report"))
+    parser.add_argument("only", nargs="*", metavar="request-id")
+    args = parser.parse_args()
+    if args.command == "author":
+        asyncio.run(author(args.only))
+    elif args.command == "gate":
+        asyncio.run(gate(args.only))
     else:
-        raise SystemExit(f"unknown command {command!r}: author, gate or report")
+        report()
 
 
 if __name__ == "__main__":

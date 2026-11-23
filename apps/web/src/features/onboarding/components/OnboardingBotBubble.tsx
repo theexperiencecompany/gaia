@@ -9,13 +9,14 @@ import { useIsMobile } from "@/hooks/ui/useMobile";
 import { BOT_BUBBLE_DEFAULTS } from "../constants/bubbleDefaults";
 
 interface OnboardingBotBubbleProps {
-  text: string;
+  /** One bubble each. */
+  lines: readonly string[];
   /** How the lines land; chat's quick ripple if unset. */
   partChoreography?: PartChoreography;
 }
 
 export function OnboardingBotBubble({
-  text,
+  lines,
   partChoreography,
 }: OnboardingBotBubbleProps) {
   // On a phone the chat bubble's 80% cap wastes the little width there is;
@@ -26,7 +27,8 @@ export function OnboardingBotBubble({
     <div className="max-sm:[&_.imessage-bubble]:max-w-full max-sm:[&_.imessage-bubble]:pr-3">
       <ChatBubbleBot
         {...BOT_BUBBLE_DEFAULTS}
-        text={text}
+        text={lines.join("\n\n")}
+        bubbles={lines}
         partChoreography={partChoreography}
         hideAvatar={isMobile}
       />

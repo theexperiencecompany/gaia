@@ -150,10 +150,7 @@ function VoiceSessionInner({
   const discoveredConversationId = storeDiscoveredId ?? convoIdParam ?? null;
   const conversationId = discoveredConversationId;
 
-  // useVoiceMessages owns the thinking-indicator lifecycle — it's the only
-  // place that knows a turn's first token and new-turn start. Driving it
-  // off agentState alone showed the indicator AFTER the reply (backend re-enters "thinking" for follow-up actions).
-  const { sendUserTurn } = useVoiceMessages(conversationId, agentState);
+  const { sendUserTurn } = useVoiceMessages(conversationId);
 
   useRoomConversationStreams({
     onConversationId: setDiscoveredConversationId,
@@ -262,6 +259,7 @@ function VoiceSessionInner({
             title: conversationDescription,
             description: conversationDescription,
             starred: false,
+            awaitingApproval: false,
             isSystemGenerated: false,
             systemPurpose: null,
             isUnread: false,

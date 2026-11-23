@@ -22,14 +22,14 @@ from app.agents.core.background import (
 )
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
+    PreparedQueuedTask,
     build_lock_value,
     get_lock_holder,
     release_lock_if_owned,
 )
-from app.agents.core.background.session import ExecutorRun, RunKind
+from app.agents.core.background.session import ExecutorRun, RunKind, get_session
 from app.constants.agents import AgentTag
 from app.constants.cache import (
-    EXECUTOR_ALIVE_PREFIX,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
@@ -46,6 +46,13 @@ CONVERSATION = "conv-1"
 TASK = "summarize the thread"
 
 
+@pytest.fixture(autouse=True)
+def _carried_work_is_logged() -> Iterator[AsyncMock]:
+    """Accept every carry run's WorkStarted on the conversation log; the refusal has its own test."""
+    with patch.object(er, "record_work_carried", AsyncMock(return_value=True)) as logged:
+        yield logged
+
+
 def _seams(*, busy: list[bool], started: bool):
     """Patch deliver_to_executor's seams: the free-or-freed lock check, run start, inbox.
 
@@ -59,7 +66,7 @@ def _seams(*, busy: list[bool], started: bool):
 
     stack = patch.object(er, "reclaim_dead_lock", _free_after_reclaim)
     start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=started)
-    append = patch.object(er.ExecutorInbox, "append", new_callable=AsyncMock)
+    append = patch.object(ExecutorInbox, "append", new_callable=AsyncMock)
     return stack, start, append
 
 
@@ -121,7 +128,9 @@ class TestTheRealLockAndInbox:
         self, fake_redis
     ) -> None:
         await fake_redis.set(
-            f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", build_lock_value("stream-a", "task-a")
+            f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}",
+            build_lock_value("stream-a", "task-a"),
+            ex=EXECUTOR_BUSY_TTL,
         )
         old_run = ExecutorRun(
             stream_id="stream-a",
@@ -141,9 +150,7 @@ class TestTheRealLockAndInbox:
             return await real_append(inbox, entry_id, text, tag)
 
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(eq, "websocket_manager", AsyncMock()),
-            patch.object(er, "_spawn_detached_run") as spawn,
+            _real_lifecycle() as h,
             patch.object(ExecutorInbox, "append", finalize_the_old_run_then_append),
         ):
             await er.deliver_to_executor(
@@ -151,9 +158,9 @@ class TestTheRealLockAndInbox:
             )
             pending = await ExecutorInbox(CONVERSATION).read()
 
-        spawn.assert_called_once()
-        assert spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
-        assert spawn.call_args.args[0].run.workflow_execution_id == "exec-1"
+        h.spawn.assert_called_once()
+        assert h.spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
+        assert h.spawn.call_args.args[0].run.workflow_execution_id == "exec-1"
         # Left in the inbox on purpose: the new run's drain hook injects it and
         # retires it only once the thread holds it.
         assert [entry.text for entry in pending] == [TASK]
@@ -169,8 +176,6 @@ _OLD_LOCK_SECONDS = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
 def _real_lifecycle() -> Iterator[SimpleNamespace]:
     """Run the real busy lock and inbox over fakeredis, capturing only the spawned run."""
     with (
-        patch.object(eq, "StreamManager", AsyncMock()),
-        patch.object(eq, "websocket_manager", AsyncMock()),
         patch.object(er, "_spawn_detached_run") as spawn,
     ):
         yield SimpleNamespace(spawn=spawn)
@@ -273,7 +278,7 @@ class TestTheRunAnIdleConversationGets:
         await fake_redis.set(
             f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", OTHER_RUN_LOCK, ex=_OLD_LOCK_SECONDS
         )
-        await fake_redis.set(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:{OTHER_RUN_LOCK}", "1")
+        await eq.hold_run_alive(CONVERSATION, OTHER_RUN_LOCK)
 
         with _real_lifecycle() as h:
             await er.deliver_to_executor(CONVERSATION, USER, TASK)
@@ -323,3 +328,31 @@ class TestCarryingPendingWork:
         (error,) = event["errors"]
         assert error["msg"] == f"{LogTag.AGENT} Could not carry pending work into a new run"
         assert (error["conversation_id"], error["error_type"]) == (CONVERSATION, "ConnectionError")
+
+
+class TestARunTheLogRefuses:
+    async def test_a_stopped_conversation_starts_no_carry_run_and_frees_what_it_claimed(
+        self, fake_redis, _carried_work_is_logged: AsyncMock
+    ) -> None:
+        _carried_work_is_logged.return_value = False
+        prepared: list[PreparedQueuedTask] = []
+        prepare = er._prepare_executor_run
+
+        async def remembered(*args: Any, **kwargs: Any) -> PreparedQueuedTask | None:
+            run = await prepare(*args, **kwargs)
+            if run is not None:
+                prepared.append(run)
+            return run
+
+        with (
+            patch.object(er, "_prepare_executor_run", remembered),
+            patch.object(er, "_spawn_detached_run") as spawn,
+        ):
+            started = await er._start_executor_run(
+                CONVERSATION, AuthenticatedUser(user_id="u1"), TASK
+            )
+        assert started is False
+        spawn.assert_not_called()
+        (run,) = prepared
+        assert get_session(run.run.stream_id) is None
+        assert await get_lock_holder(CONVERSATION) is None

@@ -11,6 +11,7 @@ guard order, wiring, the context threaded through it — is what is under test.
 """
 
 import asyncio
+from collections.abc import Iterator
 import contextvars
 from dataclasses import replace
 from typing import Any
@@ -19,8 +20,9 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.constants.onboarding import GMAIL_PERSONALIZATION_MARKER
+from app.models.notification.details_models import GmailPersonalizedNotification
 from app.models.notification.notification_models import (
     ActionStyle,
     ActionType,
@@ -83,9 +85,9 @@ REMOVED_FROM_THE_PIPELINE = (
 
 
 @pytest.fixture(autouse=True)
-def quiet_logs() -> Any:
-    with patch(f"{MODULE}.log", MagicMock()):
-        yield
+def quiet_logs() -> Iterator[MagicMock]:
+    with patch(f"{MODULE}.log", MagicMock()) as logged:
+        yield logged
 
 
 def _triage() -> InboxTriage:
@@ -109,7 +111,6 @@ def _user(**overrides: Any) -> UserDocument:
         "email": "ann@x.com",
         "onboarding": {
             "preferences": {"profession": "lawyer"},
-            "focus": "close Q3",
             "clarify_answers": [{"kind": "goal", "value": "grow"}],
         },
     }
@@ -123,7 +124,6 @@ def _expected_ctx() -> OnboardingContext:
         user_id=USER,
         name="Ann",
         profession="lawyer",
-        focus="close Q3",
         user_email="ann@x.com",
         clarify_answers=[{"kind": "goal", "value": "grow"}],
     )
@@ -306,7 +306,7 @@ class TestProcessOnboardingIntelligenceGuards:
         assert pipeline_stack["scan"].await_count == 0
 
     async def test_an_already_personalized_user_is_logged_as_skipped_not_failed(
-        self, pipeline_stack: Any
+        self, quiet_logs: MagicMock, pipeline_stack: Any
     ) -> None:
         """Outcome and reason are the only things that tell a skipped reconnect apart from a user whose Gmail fell off, which needs chasing."""
         user = _user(onboarding={GMAIL_PERSONALIZATION_MARKER: "2026-08-01T00:00:00Z"})
@@ -314,7 +314,7 @@ class TestProcessOnboardingIntelligenceGuards:
 
         await process_onboarding_intelligence(USER)
 
-        intelligence_service.log.info.assert_any_call(
+        quiet_logs.info.assert_any_call(
             f"{LogTag.ONBOARDING} pipeline skipped",
             user_id=USER,
             outcome="skipped",
@@ -322,7 +322,7 @@ class TestProcessOnboardingIntelligenceGuards:
         )
 
     async def test_a_disconnected_gmail_is_logged_as_aborted_with_its_reason(
-        self, pipeline_stack: Any
+        self, quiet_logs: MagicMock, pipeline_stack: Any
     ) -> None:
         pipeline_stack["composio"].check_connection_status = AsyncMock(
             return_value={"gmail": False}
@@ -330,7 +330,7 @@ class TestProcessOnboardingIntelligenceGuards:
 
         await process_onboarding_intelligence(USER)
 
-        intelligence_service.log.warning.assert_called_once_with(
+        quiet_logs.warning.assert_called_once_with(
             f"{LogTag.ONBOARDING} pipeline aborted — gmail not connected",
             user_id=USER,
             outcome="aborted",
@@ -370,7 +370,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert pipeline_stack["triage"].await_args.args[1] is scanned_ctx
 
     async def test_the_pipeline_brackets_itself_with_a_start_and_a_done_line(
-        self, pipeline_stack: Any
+        self, quiet_logs: MagicMock, pipeline_stack: Any
     ) -> None:
         """Phase pairs the two log lines into a duration; the counts are the only record of what the user got out of the run."""
         triage = _triage()
@@ -380,13 +380,11 @@ class TestProcessOnboardingIntelligenceHappyPath:
 
         await process_onboarding_intelligence(USER)
 
-        intelligence_service.log.info.assert_any_call(
+        quiet_logs.info.assert_any_call(
             f"{LogTag.ONBOARDING} pipeline start", user_id=USER, phase="start"
         )
         done = next(
-            call
-            for call in intelligence_service.log.info.call_args_list
-            if call.kwargs.get("phase") == "done"
+            call for call in quiet_logs.info.call_args_list if call.kwargs.get("phase") == "done"
         )
         assert done.args == (f"{LogTag.ONBOARDING} pipeline done",)
         assert done.kwargs["user_id"] == USER
@@ -396,14 +394,14 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert done.kwargs["conversation_seeded"] is True
         assert done.kwargs["outcome"] == "ok"
 
-    async def test_a_run_that_found_nothing_reports_zero_not_one(self, pipeline_stack: Any) -> None:
+    async def test_a_run_that_found_nothing_reports_zero_not_one(
+        self, quiet_logs: MagicMock, pipeline_stack: Any
+    ) -> None:
         """A floor of 1 on empty runs would invent inbox findings that never existed."""
         await process_onboarding_intelligence(USER)
 
         done = next(
-            call
-            for call in intelligence_service.log.info.call_args_list
-            if call.kwargs.get("phase") == "done"
+            call for call in quiet_logs.info.call_args_list if call.kwargs.get("phase") == "done"
         )
         assert done.kwargs["triage_important_count"] == 0
         assert done.kwargs["writing_style_learned"] is False
@@ -414,7 +412,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
         await process_onboarding_intelligence(USER)
 
         assert pipeline_stack["triage"].await_args.args[0] == USER
-        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
+        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer",)
         assert pipeline_stack["style"].await_args.args == (USER, "lawyer")
         assert pipeline_stack["social"].await_args.args == (USER, "Ann", "ann@x.com")
         assert pipeline_stack["holo"].await_args.args[0] == replace(
@@ -518,13 +516,14 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert mark.await_count == 1
         assert mark.await_args.kwargs == {"conversation_id": None}
 
-    async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
+    async def test_a_nameless_user_is_searched_for_by_no_name(self, pipeline_stack: Any) -> None:
+        """The name identifies the user to the social-profile filter; "there" made it match nobody."""
         pipeline_stack["repo"].get = AsyncMock(return_value=_user(name=None))
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["social"].await_args.args[1] == "there"
-        assert pipeline_stack["holo"].await_args.args[0].name == "there"
+        assert pipeline_stack["social"].await_args.args[1] is None
+        assert pipeline_stack["holo"].await_args.args[0].name is None
 
     async def test_a_missing_onboarding_subdoc_does_not_crash_the_pipeline(
         self, pipeline_stack: Any
@@ -576,7 +575,7 @@ def announce_stack() -> Any:
         patch(f"{MODULE}.notification_service") as notifications,
         patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value="conv-1")) as seed,
     ):
-        notifications.create_notification = AsyncMock()
+        notifications.notify = AsyncMock()
         yield notifications, seed
 
 
@@ -623,8 +622,8 @@ class TestAnnouncePersonalization:
 
         await _announce_personalization(USER, card_ready=card_ready)
 
-        assert notifications.create_notification.await_count == 1
-        request = notifications.create_notification.await_args.args[0]
+        assert notifications.notify.await_count == 1
+        request = notifications.notify.await_args.args[0]
         assert request.user_id == USER
         assert request.source is NotificationSourceEnum.BACKGROUND_JOB
         assert request.content.title == "Check your memories — I just added a lot"
@@ -636,7 +635,7 @@ class TestAnnouncePersonalization:
 
         await _announce_personalization(USER, card_ready=True)
 
-        content = notifications.create_notification.await_args.args[0].content
+        content = notifications.notify.await_args.args[0].content
         assert [a.type for a in content.actions] == [ActionType.REDIRECT, ActionType.REDIRECT]
         assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL, CARD_URL]
         assert content.body.endswith("Your holo card is ready too.")
@@ -647,7 +646,7 @@ class TestAnnouncePersonalization:
 
         assert await _announce_personalization(USER, card_ready=False) is None
 
-        content = notifications.create_notification.await_args.args[0].content
+        content = notifications.notify.await_args.args[0].content
         assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL]
         assert CARD_URL not in content.body
         assert "holo card" not in content.body
@@ -668,7 +667,7 @@ class TestAnnouncePersonalization:
         # Delivery is fail-soft: the user must not lose the card link because a
         # notification channel was down.
         notifications, seed = announce_stack
-        notifications.create_notification = AsyncMock(side_effect=RuntimeError("channel down"))
+        notifications.notify = AsyncMock(side_effect=RuntimeError("channel down"))
 
         assert await _announce_personalization(USER, card_ready=True) == "conv-1"
 
@@ -678,16 +677,30 @@ class TestAnnouncePersonalization:
         with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=None)):
             assert await _announce_personalization(USER, card_ready=True) is None
 
+    async def test_a_retried_announcement_reuses_the_one_id_this_fact_has(
+        self, announce_stack: Any
+    ) -> None:
+        """The id is the dedupe key, so a retry must reproduce it exactly or the user is notified twice."""
+        notifications, _ = announce_stack
+
+        await _announce_personalization(USER, card_ready=True)
+        await _announce_personalization(USER, card_ready=False)
+
+        first, retry = (call.args[0].id for call in notifications.notify.await_args_list)
+        assert first == retry == "6328267a-09ab-5046-aa8c-975e94fed809"
+
     async def test_the_notification_is_built_field_for_field(self, announce_stack: Any) -> None:
         """Every field here is rendered or acted on by the client — nothing is filler."""
         notifications, _ = announce_stack
 
         await _announce_personalization(USER, card_ready=True)
 
-        request = notifications.create_notification.await_args.args[0]
+        request = notifications.notify.await_args.args[0]
         assert request.type is NotificationType.SUCCESS
         assert request.priority == 2
-        assert request.metadata == {"source": "gmail_personalization"}
+        assert request.details == GmailPersonalizedNotification(
+            kind=NotificationKind.GMAIL_PERSONALIZED
+        )
         memories, card = request.content.actions
         assert memories.label == "View memories"
         assert memories.style is ActionStyle.PRIMARY
@@ -700,18 +713,18 @@ class TestAnnouncePersonalization:
         assert card.config.redirect.open_in_new_tab is True
 
     async def test_an_undeliverable_notification_is_visible_in_the_wide_event(
-        self, announce_stack: Any
+        self, quiet_logs: MagicMock, announce_stack: Any
     ) -> None:
         """Delivery is swallowed on purpose, so the warning is the ONLY evidence a user was never told."""
         notifications, _ = announce_stack
         # Long on purpose: a provider stack trace is what actually lands here,
         # and the 200-char cap is what keeps one failure from flooding the event.
         blurb = "channel down: " + "x" * 500
-        notifications.create_notification = AsyncMock(side_effect=RuntimeError(blurb))
+        notifications.notify = AsyncMock(side_effect=RuntimeError(blurb))
 
         await _announce_personalization(USER, card_ready=True)
 
-        intelligence_service.log.warning.assert_called_once_with(
+        quiet_logs.warning.assert_called_once_with(
             f"{LogTag.ONBOARDING} personalization notification failed",
             user_id=USER,
             step="announce",
@@ -721,13 +734,13 @@ class TestAnnouncePersonalization:
 
     @pytest.mark.parametrize(("seeded", "outcome"), [("conv-1", "ok"), (None, "partial")])
     async def test_the_announce_line_reports_which_half_landed(
-        self, announce_stack: Any, seeded: str | None, outcome: str
+        self, quiet_logs: MagicMock, announce_stack: Any, seeded: str | None, outcome: str
     ) -> None:
         """Outcome is the only line that records whether the user got their card handed over or just a notification."""
         with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=seeded)):
             await _announce_personalization(USER, card_ready=True)
 
-        intelligence_service.log.info.assert_called_once_with(
+        quiet_logs.info.assert_called_once_with(
             f"{LogTag.ONBOARDING} announce done",
             user_id=USER,
             step="announce",

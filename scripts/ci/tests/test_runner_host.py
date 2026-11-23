@@ -245,7 +245,16 @@ def test_a_superseded_master_run_is_force_cancelled_so_its_always_jobs_never_run
     github.on(
         "GET",
         r"/runs/90/jobs$",
-        Reply(200, {"jobs": [{"name": "lint-node", "status": "in_progress"}]}),
+        Reply(
+            200,
+            {
+                "jobs": [
+                    {"name": "lint-node", "status": "in_progress"},
+                    # A deploy job that already finished (skipped or done) is not a deploy in flight.
+                    {"name": "deploy-web / deploy-production", "status": "completed"},
+                ]
+            },
+        ),
     )
     github.on("POST", r"/runs/\d+/force-cancel$", Reply(202, {}))
     proc = run_runner(
@@ -262,18 +271,29 @@ def test_a_superseded_master_run_is_force_cancelled_so_its_always_jobs_never_run
     assert posts == ["/repos/theexperiencecompany/gaia/actions/runs/90/force-cancel"]
 
 
-def test_a_superseded_master_run_mid_deploy_is_left_to_finish(github: FakeGitHub) -> None:
-    """A cancelled wrangler deploy leaves production's R2 cache half-filled; the newer run deploys after it."""
+@pytest.mark.parametrize(
+    "job",
+    [
+        pytest.param({"name": "deploy-web / deploy-production", "status": "in_progress"}, id="web"),
+        pytest.param(
+            {"name": "trigger-build / trigger-deploy / deploy", "status": "in_progress"}, id="swarm"
+        ),
+        # Between deployment-plan finishing and the Swarm deploy starting.
+        pytest.param(
+            {"name": "trigger-build / trigger-deploy / deploy", "status": "queued"}, id="next"
+        ),
+    ],
+)
+def test_a_superseded_master_run_mid_deploy_is_left_to_finish(
+    github: FakeGitHub, job: dict[str, str]
+) -> None:
+    """A cancelled wrangler deploy leaves production's R2 cache half-filled; a cancelled stack deploy, a half-rolled Swarm."""
     github.on(
         "GET",
         r"/actions/workflows/ci.yml/runs$",
         Reply(200, {"workflow_runs": [{"id": 90, "status": "in_progress"}]}),
     )
-    github.on(
-        "GET",
-        r"/runs/90/jobs$",
-        Reply(200, {"jobs": [{"name": "deploy-web / deploy-production", "status": "in_progress"}]}),
-    )
+    github.on("GET", r"/runs/90/jobs$", Reply(200, {"jobs": [job]}))
     github.on("POST", r"/runs/\d+/force-cancel$", Reply(202, {}))
     proc = run_runner(
         "cancel-superseded",

@@ -23,7 +23,8 @@ from starlette.responses import Response
 
 from app.api.v1.middleware.auth import get_current_user
 from app.config.loggers import request_logger
-from app.services.turn_clock import stamp_received
+from app.services.turn_timings import begin_turn_timings
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 _WARNING = "WARNING"
@@ -78,8 +79,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         if request.url.path in self._SKIP_PATHS:
             return await call_next(request)
 
-        # First thing on arrival: a chat turn's ingress stretch is measured from here.
-        stamp_received(request)
+        # First thing on arrival: a chat turn's ingress is measured from here.
+        begin_turn_timings(started=time.perf_counter())
 
         # Fresh wide event for this request — ContextVar isolated per async task
         wide_log.reset()
@@ -126,7 +127,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             context = {
                 **wide_event_context,
                 "method": request.method,
-                "path": request.url.path,
+                "path": loggable_request_path(request),
                 "status_code": 500,
                 "status_phrase": "Internal Server Error",
                 "duration_ms": duration_ms,
@@ -168,7 +169,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             **wide_event_context,
             # HTTP request characteristics (always authoritative)
             "method": request.method,
-            "path": request.url.path,
+            "path": loggable_request_path(request),
             "status_code": status_code,
             "status_phrase": status_phrase,
             "duration_ms": duration_ms,

@@ -31,7 +31,6 @@ from app.services.latency_metrics import (
     observe_context_section_budget_exceeded,
     span,
 )
-from app.services.turn_timings import TurnStep, turn_step
 from shared.py.wide_events import log
 
 
@@ -109,7 +108,7 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
     stable_sections = sections_for(ctx.tier, PromptSlot.DYNAMIC_STABLE)
     volatile_sections = sections_for(ctx.tier, PromptSlot.MEMORY_RECALL)
 
-    with span() as elapsed_total, turn_step(TurnStep.CONTEXT):
+    with span() as elapsed_total:
         try:
             rendered = dict(
                 await asyncio.gather(
@@ -134,7 +133,7 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
     log.set(
         dynamic_context={
             "tier": ctx.tier.value,
-            "source": ctx.source or "web",
+            "source": ctx.source,
             "has_core_memory": bool(rendered.get(SectionId.CORE_MEMORY)),
             "has_memories": bool(
                 rendered.get(SectionId.MEMORY_RECALL) or rendered.get(SectionId.FAST_MEMORY_RECALL)

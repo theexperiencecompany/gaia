@@ -4,6 +4,7 @@ export type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 import type {
   EventCreateRequest,
   GoogleCalendarEventResource,
+  GoogleCalendarPerson,
   RecurrenceData,
 } from "@shared/api/generated";
 
@@ -33,11 +34,6 @@ export interface CalendarSelectorProps {
   calendars: CalendarItem[];
   selectedCalendars: string[];
   onCalendarSelect: (calendarId: string) => void;
-}
-
-export interface GoogleCalendarPerson {
-  email: string;
-  self?: boolean;
 }
 
 export interface BirthdayProperties {
@@ -143,19 +139,9 @@ export type EventCreatePayload = EventCreateRequest;
 // Calendar types for conversation messages
 // Read-only: the create-event flow now runs through HIL approvals, but ~8 months
 // of stored conversations still restore this key, so old cards must still render.
-export type CalendarOptions = {
-  summary: string;
-  description?: string;
-  start?: string;
-  end?: string;
-  calendar_id?: string;
+export type CalendarOptions = EventCreateRequest & {
   calendar_name?: string;
   background_color?: string;
-  is_all_day?: boolean;
-  recurrence?: RecurrenceData;
-  attendees?: string[];
-  create_meeting_room?: boolean;
-  same_day_events?: SameDayEvent[]; // Context: existing events on the same day
 };
 
 // Calendar event date/time structure from Google Calendar API
@@ -212,32 +198,4 @@ export type CalendarListFetchData = {
   id: string;
   description: string;
   backgroundColor?: string;
-};
-
-// Same-day events type for showing existing events when adding calendar events
-export type SameDayEvent = {
-  id: string;
-  summary: string;
-  start?: {
-    date?: string;
-    dateTime?: string;
-    timeZone?: string;
-  };
-  end?: {
-    date?: string;
-    dateTime?: string;
-    timeZone?: string;
-  };
-  description?: string;
-  location?: string;
-  attendees?: Array<{
-    email: string;
-    responseStatus?: string;
-    organizer?: boolean;
-  }>;
-  recurrence?: string[];
-  status?: string;
-  calendarId?: string;
-  calendarTitle?: string;
-  background_color?: string;
 };

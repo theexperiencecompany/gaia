@@ -15,6 +15,7 @@ from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.platform_link_service import linked_platforms_of
+from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import FirstStepsCollapsed
@@ -54,7 +55,10 @@ async def _build_checklist(user: UserDocument) -> FirstStepsResponse:
         # Auto-provisioned system workflows and todo-backed ones are not the
         # user authoring a workflow.
         workflow_repository.count_for_user(
-            user.id, exclude_todo_workflows=True, exclude_system_workflows=True
+            user.id,
+            unlisted_keys=UNLISTED_KEYS,
+            exclude_todo_workflows=True,
+            exclude_system_workflows=True,
         ),
     )
     return FirstStepsResponse(

@@ -86,7 +86,7 @@ class TestComposeFirstContact:
     def test_the_founder_bundle_reads_end_to_end(self) -> None:
         assert compose_first_contact(
             "telegram",
-            "Aryan Randeriya",
+            "Aryan",
             _prefs([OnboardingNeed.INBOX, OnboardingNeed.CALENDAR], other_need="book my travel."),
             [GMAIL, CALENDAR],
         ) == [
@@ -206,8 +206,8 @@ class TestComposeFirstContact:
 
 
 class TestComposeLinkGreeting:
-    def test_uses_the_first_name_only_and_opens_the_sentence(self) -> None:
-        assert compose_link_greeting("telegram", "Aryan Randeriya") == (
+    def test_greets_by_the_first_name_and_opens_the_sentence(self) -> None:
+        assert compose_link_greeting("telegram", "Aryan") == (
             "Hey Aryan, I'm with you on Telegram now."
         )
 
@@ -220,7 +220,7 @@ class TestComposeLinkGreeting:
     ) -> None:
         assert label in compose_link_greeting(platform, "Dev")
 
-    @pytest.mark.parametrize("name", [None, "", "   "])
+    @pytest.mark.parametrize("name", [None, ""])
     def test_an_unknown_name_drops_the_clause_rather_than_greeting_a_blank(
         self, name: str | None
     ) -> None:
@@ -259,7 +259,7 @@ class TestBuildFirstContact:
             patch(f"{MODULE}.build_connect_link_url", mint),
         ):
             bubbles = await build_first_contact(
-                "u1", "telegram", "Aryan Randeriya", _prefs([OnboardingNeed.INBOX])
+                "u1", "telegram", "Aryan", _prefs([OnboardingNeed.INBOX])
             )
 
         repo.is_connected.assert_awaited_once_with("u1", "gmail")

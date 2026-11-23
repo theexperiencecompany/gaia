@@ -120,6 +120,7 @@ ignore_decorators = [
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
   "@app.websocket", # Starlette websocket handlers — registered via decorator (browser host)
   "@app.middleware", # Starlette HTTP middleware — registered via decorator (browser host)
+  "@override",      # typing.override: a base-class hook the framework dispatches to
 ]
 ignore_names = [
   "model_config",   # Pydantic v2 config attribute (set on every model)
@@ -457,7 +458,6 @@ unfixable = [
 "apps/api/app/agents/tools/executor_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity: call_executor's brief (task, acceptance criteria, desired outcome, time horizon, defaults, approval, bound todo) is what the model fills in, and nesting it would hide each field from the schema (same as todo_tool.py and tracked_todo_tools.py)
 "apps/api/app/agents/middleware/subagent.py" = ["PLR0913"]  # spawn_subagent's @tool args are the model-facing tool schema (task, context, background, integration_ids) plus the injected call id, state and config, not reducible complexity (same as executor_tool.py)
 "apps/api/app/agents/tools/tracked_todo_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity; PLR0911/0912 stay enforced (update_tracked_todo was refactored to satisfy them)
-"apps/api/app/db/repositories/base.py" = ["PLR0913"]  # _apply_raw_update is the one raw-Mongo seam every repository routes through; its seven knobs (filter, update, scope, extra_filter, return_document, array_filters, upsert) are the operator surface, used at 76 call sites. The paid-only gate only adds a cache eviction on a write miss here.
 "apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
 "apps/api/app/agents/tools/integrations/calendar_tool.py" = ["PLR0912", "PLR0915"]  # register_calendar_custom_tools is a registration factory whose PLR0915 statement count is just its ~10 nested @custom_tool bodies (inherent to the pattern). The individual tool bodies (CUSTOM_GET_DAY_SUMMARY / CUSTOM_CREATE_EVENT) are branch-heavy Google-payload builders; extracting their loops adds indirection the mutation gate can't test (debug-log calls, tz-sensitive ids). The loop-dispatch fix only touches _run_sync, so this predates it.
 "apps/api/app/services/outbound_delivery.py" = ["PLR0913"]  # publish_outbound_file predates this change; the reminder/proactive-delivery feature only adds channel-targeted delivery to publish_outbound_message here
@@ -486,16 +486,6 @@ unfixable = [
 # against an AsyncSandbox-typed receiver, so both implementations must bind the
 # same name or the self-host path raises TypeError on calls that work hosted.
 "apps/api/app/services/sandbox/local_sandbox.py" = ["A002"]
-# PLR0913: these are LangChain @tool functions, so each argument is a field the
-# model fills when it calls the tool -- the arg list IS the tool's schema.
-# Collapsing them into a grouped object would change the model-facing contract
-# (LangChain renders a Pydantic-typed param as a nested $ref object, not flat
-# fields), so the arg count is the interface here, not avoidable complexity. An
-# inline `# noqa: PLR0913` can't express this: PLR0913 sits in the global ignore
-# so the main ruff lane treats such a noqa as unused (RUF100). PLR0911/0912 are
-# reducible and stay enforced (update_tracked_todo was refactored to satisfy them).
-"apps/api/app/agents/tools/reminder_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity
-"apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/patches/composio_langchain_patch.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
@@ -503,7 +493,6 @@ unfixable = [
 "apps/api/app/services/composio/proxy_client.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/trigger_search.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
-"apps/api/app/utils/agent_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/utils/workflow_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 # ARG001: Composio's Modifier.apply() always calls before/after/schema hooks
@@ -577,6 +566,8 @@ unfixable = [
 # regardless of body usage (verified against starlette/_exception_handler.py).
 # ARG001: ARQ's mandated first positional param on every registered task
 # (app/worker.py's WorkerSettings.functions/cron_jobs).
+"apps/api/app/workers/tasks/day_zero_hello_tasks.py" = ["ARG001"]  # ARQ injects the job ctx into every registered cron task; this one never reads it
+"apps/api/app/utils/notification/channels/email.py" = ["ARG002"]  # ChannelAdapter protocol requires `notification`; this adapter always claims delivery
 # ARG001: ARQ injects the job context (`ctx`) into every task function; the
 # nurture task doesn't use it.
 # ANN401: ARQ's job API is dynamically typed — enqueue_worker_job forwards an
@@ -672,13 +663,16 @@ docstring-code-format = true
 # `shared.*` (small, library code) where it is achievable.
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_redundant_casts = false  # cast() is sometimes intentional for clarity
 warn_unused_configs = true
 warn_no_return = true
 no_implicit_optional = true
 ignore_missing_imports = true  # third-party stubs absent; per-module strictness grows via overrides
 follow_imports = "silent"  # silent: follow imports without surfacing their errors — staged-strict tradeoff
+# gaia-shared is an import-hook editable install mypy cannot follow; without its source on
+# the path every shared.* type reads as Any.
+mypy_path = "$MYPY_CONFIG_FILE_DIR/libs"
 show_error_codes = true
 enable_error_code = ["ignore-without-code"]
 show_column_numbers = true
@@ -755,7 +749,15 @@ module = [
   "app.models.sandbox_models",
   "app.models.support_models",
   "app.models.notification.notification_models",
+  "app.models.brief_document_models",
+  "app.models.brief_item_models",
+  "app.models.brief_payload_models",
+  "app.models.brief_settings_models",
+  "app.models.briefing_state_models",
+  "app.models.brief_view_models",
   "app.models.platform_models",
+  "app.models.device_token_models",
+  "app.models.short_link_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

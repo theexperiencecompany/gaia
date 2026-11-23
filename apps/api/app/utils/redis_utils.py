@@ -34,18 +34,14 @@ class RedisPoolManager:
             if cls._pool is None:
                 # arq loads only when the lazy pool is first created.
                 from arq import create_pool  # noqa: PLC0415 -- arq loads only when the
-                from arq.connections import (  # noqa: PLC0415 -- arq loads only when the lazy pool is first created
-                    RedisSettings,
-                )
 
                 # Settings load deferred until a pool is actually created.
-                from app.config.settings import (  # noqa: PLC0415 -- settings on demand
-                    settings,
+                from app.config.arq_redis import (  # noqa: PLC0415 -- settings on demand
+                    arq_redis_settings,
                 )
 
                 try:
-                    redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
-                    cls._pool = await create_pool(redis_settings)
+                    cls._pool = await create_pool(arq_redis_settings())
                     log.info(f"{LogTag.STORAGE} Redis pool created successfully")
                 except Exception as e:
                     log.error(

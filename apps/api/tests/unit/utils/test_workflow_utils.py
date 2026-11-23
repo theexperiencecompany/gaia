@@ -12,6 +12,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor
 from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_config import AgentConfigurableView
 from app.models.trigger_gate_models import AuthoredGate, GateEdit
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
@@ -50,6 +51,7 @@ def _workflow(trigger_config: TriggerConfig, **overrides: object) -> Workflow:
         "prompt": "Summarize my inbox",
         "steps": [],
         "trigger_config": trigger_config,
+        "delivery": WorkflowDelivery.NOW,
     }
     fields.update(overrides)
     return Workflow(**fields)  # type: ignore[arg-type]  # overrides bag is dict[str, object] by design; pydantic validates
@@ -512,7 +514,9 @@ class TestCreateWorkflowDirectly:
             mock_create.return_value = _workflow(
                 TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
             )
-            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=writer, delivery=WorkflowDelivery.NOW
+            )
 
         request = mock_create.await_args.kwargs["request"]
         assert request.description == "Priority-ordered digest of my unread Gmail"
@@ -525,7 +529,9 @@ class TestCreateWorkflowDirectly:
 
         with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = _workflow(TriggerConfig(type=TriggerType.MANUAL))
-            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=writer, delivery=WorkflowDelivery.NOW
+            )
 
         request = mock_create.await_args.kwargs["request"]
         assert request.description == "Morning digest"
@@ -538,8 +544,26 @@ class TestCreateWorkflowDirectly:
 
         with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = _workflow(TriggerConfig(type=TriggerType.MANUAL))
-            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=writer, delivery=WorkflowDelivery.NOW
+            )
 
         request = mock_create.await_args.kwargs["request"]
         assert request.prompt == "Summarize my unread Gmail"
         assert request.description == "Summarize my unread Gmail"
+
+    async def test_the_agents_delivery_choice_is_saved(self) -> None:
+        draft = _draft()
+        workflow = _workflow(
+            TriggerConfig(type=TriggerType.MANUAL),
+            id="wf_1",
+            delivery=WorkflowDelivery.BRIEF,
+        )
+
+        with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = workflow
+            await create_workflow_directly(
+                draft=draft, user_id=USER_ID, writer=MagicMock(), delivery=WorkflowDelivery.BRIEF
+            )
+
+        assert mock_create.await_args.kwargs["request"].delivery is WorkflowDelivery.BRIEF

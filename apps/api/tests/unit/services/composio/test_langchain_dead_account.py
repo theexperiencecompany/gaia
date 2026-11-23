@@ -23,7 +23,7 @@ import composio_client
 import httpx
 import pytest
 
-from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
+from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, IntegrationStatus
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.agent_config import ComposioAccountSelection
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
@@ -303,7 +303,7 @@ class TestDeadAccountReconciles:
                     id="ca_work",
                     connected_account_id="ca_work",
                     label="work@acme.com",
-                    status="expired",
+                    status=IntegrationStatus.EXPIRED,
                 ),
             ],
             primary_account_id="ca_work",
@@ -351,7 +351,7 @@ class TestDeadAccountReconciles:
                     id="ca_work",
                     connected_account_id="ca_work",
                     label="work@acme.com",
-                    status="expired",
+                    status=IntegrationStatus.EXPIRED,
                 ),
             ],
             primary_account_id="ca_home",

@@ -14,7 +14,7 @@ rendered prompt.
 from collections import Counter
 
 from app.config.oauth_config import all_integrations, get_integration_by_id
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.todos import INBOX_DESK_LEAD_HOURS, INBOX_DESK_TITLE
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
@@ -147,12 +147,12 @@ def _channels_line() -> str:
 def _inbox_desk_line() -> str:
     return (
         f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the {INBOX_DESK_TITLE}, "
-        f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It goes through every connected "
-        "inbox, opens a tracked todo for every thread where the user owes a reply or is waiting "
-        "on one, saves reply drafts without sending them, puts personal events from mail on the "
-        "calendar, and ends with one briefing. It organizes their Gmail or adds mail's tasks to "
-        "their todos only after they say yes. The user changes when it runs or what it does by "
-        "telling GAIA, like any tracked todo."
+        f"that runs every day {INBOX_DESK_LEAD_HOURS}h before the daily brief. It goes through "
+        "every connected inbox, opens a tracked todo for every thread where the user owes a "
+        "reply or is waiting on one, saves reply drafts without sending them, puts personal events from mail on the "
+        "calendar, and what it finds goes into the daily brief. It organizes their Gmail or adds "
+        "mail's tasks to their todos only after they say yes. The user changes when it runs or "
+        "what it does by telling GAIA, like any tracked todo."
     )
 
 

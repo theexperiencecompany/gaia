@@ -1,0 +1,42 @@
+# Approvals answered in words on Telegram, where there are no buttons. GAIA asks
+# before creating a todo; "yes" runs it and reports once, "no" is final: one
+# acknowledgement and nothing after it, never an invitation to say yes. A new
+# question while one is pending is answered without re-asking, and a yes that
+# lands before the asking run ends is never followed by "please approve".
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/approval-yes-no.yaml
+name: approval yes and no
+emulate: telegram
+user: bot-approval-scenario@gaia.local
+askBefore: [create_todo]
+settleMs: 5000
+turns:
+  - send: 'add it [[tool:create_todo {"title":"bot-ap-yes"}]] [[say:Added bot-ap-yes.]]'
+    expect:
+      - eventTypes: [awaiting-approval]
+      - bubbles: ["<b>Want me to add “bot-ap-yes” to your todos?</b>\n\nReply <b>yes</b> or <b>no</b>."]
+  - send: "unrelated: what's 6*7? [[say:42.]]"
+    expect:
+      - bubbles: ["42."]
+  - send: "yes"
+    expect:
+      - bubbles: ["Got it", "Added bot-ap-yes."]
+      - noTakeBacks: true
+  - send: 'add another [[tool:create_todo {"title":"bot-ap-no"}]] [[say:Added bot-ap-no.]]'
+    expect:
+      - eventTypes: [awaiting-approval]
+  - send: "no"
+    expect:
+      - bubbles: ["Understood"]
+      - excludes: ["Added bot-ap-no.", "yes"]
+  # The run holds its last step, so the yes lands before it finishes asking.
+  - send: 'one more [[tool:create_todo {"title":"fast-yes"}]] [[wait:12000]] [[tool:finish_task {"result":"Approve fast-yes first.","outcome":"ask"}]] [[say:Added fast-yes.]]'
+    settleMs: 0
+    expect:
+      - bubbles: ["Want me to add “fast-yes”"]
+  - send: "yes"
+    settleMs: 20000
+    expect:
+      - excludes: ["Approve fast-yes first."]
+      - bubbles: ["Got it", "Added fast-yes."]

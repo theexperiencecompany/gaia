@@ -17,7 +17,7 @@ import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { tabsVariants } from "@/components/shared/tabsVariants";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { MarkdownRenderer } from "@/features/chat";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
 import type {

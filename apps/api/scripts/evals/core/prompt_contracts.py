@@ -229,7 +229,7 @@ CLAUSES: tuple[Clause, ...] = (
     Clause(
         name="never_reproduce_internal_tags",
         source="comms",
-        starts_at="- Never write the internal tags",
+        starts_at="- Never write the internal tag",
         governs="the internal channel tags never appear in a user-facing reply",
         depends_on=("gate:internal_machinery",),
     ),

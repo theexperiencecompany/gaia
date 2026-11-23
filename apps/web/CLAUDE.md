@@ -190,6 +190,7 @@ v3 has no `color` on Button (colour folds into `variant`), no `radius`, no `clas
 
 - Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
 - Clickable rows/cards converted from `div onClick` for Sonar S1082 (click without keyboard support): landing demo rows (DemoSidebar integrations, DemoIntegrationsView, DemoTodosView, DummySlashCommandDropdown tools), the CLI install page's click-to-copy code block, and the WorkflowDraftCard body — same full-row layout constraint as above. Where the row also holds a HeroUI control, only the non-interactive part is the `<button>` and the control stays its sibling (never a button inside a button).
+- Folded briefs and files that open on press: the brief letter card (`BriefCard`), the folded letter paper (`BriefLetter`), the editions settings cards (`BriefingEditionsSettings`) and the open area of `FileCard` — each is a whole card or a 3D paper stack whose hover and press move its parts, which `<GaiaButton>`'s fixed height, padding and fill cannot hold. `FileCard` keeps focus in the composer by preventing the mousedown default.
 
 **Do not override HeroUI's look at the call site.** Colour, background, border colour, radius and padding come from the variants in `components/shared/` (DESIGN.md, "How to write frontend code"); a className or style on a HeroUI component carries layout only. A look with no variant gets one, added once, never a per-site class or a constant holding classes.
 
@@ -253,12 +254,6 @@ Use `loadFeatureTranslations` to lazy-load per-feature message files rather than
 - Strict TypeScript (`strict: true`). Path alias `@/` maps to `src/`.
 - `@shared/*` maps to `libs/shared/ts/src/` for shared TypeScript utilities.
 
-<!-- BEGIN:nextjs-agent-rules -->
-
 ## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->

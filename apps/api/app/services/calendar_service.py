@@ -2,7 +2,12 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 
-from app.constants.calendar import DEFAULT_CALENDAR_COLOR, PRIMARY_CALENDAR_ALIAS
+from app.constants.calendar import (
+    CALENDAR_CHANGED_EVENT,
+    DEFAULT_CALENDAR_COLOR,
+    PRIMARY_CALENDAR_ALIAS,
+)
+from app.core.websocket_manager import websocket_manager
 from app.db.repositories.calendar import calendar_repository
 from app.models.calendar_models import (
     CalendarEventDisplay,
@@ -43,6 +48,11 @@ _EVENT_NOT_FOUND_DETAIL = "Event not found or access denied"
 QueryParams = dict[str, str | int]
 
 
+async def announce_calendar_changed(user_id: str) -> None:
+    """Tell the user's open clients to re-read their calendar events, after a write to Google succeeded."""
+    await websocket_manager.announce(user_id, {"type": CALENDAR_CHANGED_EVENT})
+
+
 async def _proxy(
     user_id: str,
     *,
@@ -57,7 +67,7 @@ async def _proxy(
     and callers model_validate it directly.
     """
     try:
-        return await proxy_request(
+        response = await proxy_request(
             ProxyRequest(
                 user_id=user_id,
                 toolkit=CALENDAR_TOOLKIT,
@@ -79,6 +89,9 @@ async def _proxy(
             if isinstance(google_error, GoogleApiErrorDetail) and google_error.message:
                 detail = google_error.message
         raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+    if method != "GET":
+        await announce_calendar_changed(user_id)
+    return response
 
 
 async def list_calendars(user_id: str) -> CalendarListResponse:
@@ -335,6 +348,7 @@ async def get_calendar_events(
     all_events: list[GoogleCalendarEventResource] = []
     seen_event_ids: set[str] = set()
     calendars_truncated: list[str] = []
+    calendars_failed: list[str] = []
     fetch_every_page = fetch_all or not max_results
 
     if fetch_every_page:
@@ -360,6 +374,7 @@ async def get_calendar_events(
 
             all_events.extend(_tag_with_source_calendar(events, cal, seen_event_ids))
         except Exception as e:
+            calendars_failed.append(cal.id)
             log.error(
                 "Error fetching events for calendar",
                 cal_id=cal.id,
@@ -389,6 +404,7 @@ async def get_calendar_events(
         selected_calendars=[cal.id for cal in selected_cal_objs],
         has_more=len(calendars_truncated) > 0,
         calendars_truncated=calendars_truncated,
+        calendars_failed=calendars_failed,
     )
 
 

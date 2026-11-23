@@ -41,6 +41,7 @@ def _repo(tmp_path: Path) -> Path:
     tests = root / "apps" / "api" / "tests"
     tests.mkdir(parents=True)
     (tests / "test_x.py").write_text("def test_x():\n    assert True\n")
+    (tests.parent / "pytest.ini").write_text("[pytest]\n")
     _git(root, "init", "-q")
     _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
     _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
@@ -342,6 +343,61 @@ def test_regression_proof_proves_a_module_marked_through_pytestmark(tmp_path: Pa
     assert verdict.get("status") != "skip", verdict
 
 
+PINNED_TEST = (
+    "import pytest\n\npytestmark = pytest.mark.regression\n\n\ndef test_bug():\n    assert True\n"
+)
+
+
+def _regression_proof_in_scope(tmp_path: Path, test_path: str, *flags: str) -> dict[str, object]:
+    """Commit one pinned test at ``test_path``, run regression-proof with ``flags``; return its verdicts."""
+    root = _repo(tmp_path)
+    pinned = root / "apps" / "api" / test_path
+    pinned.parent.mkdir(parents=True, exist_ok=True)
+    pinned.write_text(PINNED_TEST)
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "pin")
+    subprocess.run(
+        ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "regression-proof", *flags, "HEAD~1"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    return {lane: doc["status"] for lane, doc in _verdicts(tmp_path).items()}
+
+
+def test_regression_proof_on_the_pr_tier_proves_a_unit_test_under_its_own_lane(
+    tmp_path: Path,
+) -> None:
+    lanes = _regression_proof_in_scope(
+        tmp_path,
+        "tests/unit/workers/test_pinned.py",
+        "--services",
+        "false",
+        "--lane",
+        "lint-python/regression-proof",
+    )
+    # The fixture has no API venv, so the run stops after the scope; what matters is that it got there.
+    assert lanes == {"lint-python/regression-proof": "error"}, lanes
+
+
+def test_regression_proof_on_the_pr_tier_leaves_a_service_tier_test_to_the_queue(
+    tmp_path: Path,
+) -> None:
+    lanes = _regression_proof_in_scope(
+        tmp_path, "tests/e2e/test_pinned.py", "--services", "false", "--lane", "lint-python/rp"
+    )
+    assert lanes == {"lint-python/rp": "skip"}
+
+
+def test_regression_proof_in_the_queue_leaves_a_unit_test_to_the_pr_tier(tmp_path: Path) -> None:
+    lanes = _regression_proof_in_scope(
+        tmp_path, "tests/unit/workers/test_pinned.py", "--services", "true"
+    )
+    assert lanes == {"regression-proof": "skip"}
+
+
 def _flake_gate_on_exit(tmp_path: Path, code: int, **env: str) -> int:
     fake = tmp_path / "fake-pytest"
     fake.write_text(f"#!/usr/bin/env bash\nexit {code}\n")
@@ -372,3 +428,128 @@ def test_the_slice_takes_its_markers_and_timeout_from_pytest_ini(tmp_path: Path)
     """It overrode addopts and restated -m and --timeout, a second copy pytest.ini could drift from."""
     argv = _suite_argv(tmp_path, "c" * 40)
     assert not [a for a in argv if a.startswith(("--override-ini", "--timeout")) or a == "-m"], argv
+
+
+# --- regression-proof: a test tree that cannot be collected on base ----------
+
+# Logs every pytest start, then runs the real interpreter: the count is what the
+# normal path's single run is measured by, and nothing about pytest is faked.
+COUNTING_PYTHON = f"""\
+#!/usr/bin/env bash
+if [ "$1" = "-m" ] && [ "$2" = "pytest" ]; then echo run >> "$PYTEST_STARTS"; fi
+exec {sys.executable} "$@"
+"""
+
+# Fails on base, where app.y has no X, by its assertion: the proof a regression test owes.
+PROVEN_ON_BASE = (
+    "import pytest\n\nfrom app import y\n\n\n@pytest.mark.regression\n"
+    "def test_pins_x():\n    assert hasattr(y, 'X')\n"
+)
+
+
+def _base_and_head(tmp_path: Path, head_files: dict[str, str]) -> Path:
+    """Commit a base whose app.y lacks X, then a head that adds X and ``head_files``."""
+    root = _repo(tmp_path)
+    api = root / "apps" / "api"
+    (api / "app").mkdir()
+    (api / "app" / "__init__.py").write_text("")
+    (api / "app" / "y.py").write_text("Y = 1\n")
+    (api / "pytest.ini").write_text("[pytest]\nmarkers =\n    regression: pins a bug\n")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "base")
+    (api / "app" / "y.py").write_text("Y = 1\nX = 2\n")
+    for rel, body in head_files.items():
+        (api / rel).parent.mkdir(parents=True, exist_ok=True)
+        (api / rel).write_text(body)
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "head")
+    return root
+
+
+def _prove_on_base(tmp_path: Path, root: Path) -> tuple[subprocess.CompletedProcess[str], int]:
+    """Run regression-proof against HEAD~1 with a real pytest; return the run and its pytest starts."""
+    venv_bin = root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").write_text(COUNTING_PYTHON)
+    (venv_bin / "python").chmod(0o755)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "uv").write_text(UV_STUB)
+    (bin_dir / "uv").chmod(0o755)
+    starts = tmp_path / "pytest-starts"
+    result = subprocess.run(
+        ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "regression-proof", "HEAD~1"],
+        cwd=root,
+        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "PYTEST_STARTS": str(starts)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    return result, len(starts.read_text().splitlines()) if starts.exists() else 0
+
+
+def _locations(verdict: dict[str, object]) -> list[tuple[object, object]]:
+    findings = verdict["findings"]
+    assert isinstance(findings, list)
+    return [(f["file"], f["line"]) for f in findings]
+
+
+def test_regression_proof_names_a_conftest_that_imports_a_head_only_name(tmp_path: Path) -> None:
+    """Run 44942765526: a head-only conftest import aborted the base run with exit 4, reported causeless."""
+    root = _base_and_head(
+        tmp_path,
+        {
+            "tests/contracts/conftest.py": "from app.y import X\n",
+            "tests/contracts/test_c.py": PROVEN_ON_BASE,
+        },
+    )
+    result, _ = _prove_on_base(tmp_path, root)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    verdict = _verdicts(tmp_path)["regression-proof"]
+    assert verdict["status"] == "fail"
+    assert verdict["summary"] == (
+        "cannot run on base — apps/api/tests/contracts/conftest.py: "
+        "ImportError: cannot import name 'X' from 'app.y' (app/y.py)"
+    ), verdict
+    assert _locations(verdict) == [("apps/api/tests/contracts/conftest.py", 1)]
+    assert "::error file=apps/api/tests/contracts/conftest.py,line=1::" in result.stdout
+
+
+def test_regression_proof_still_proves_the_sibling_of_an_unimportable_module(
+    tmp_path: Path,
+) -> None:
+    root = _base_and_head(
+        tmp_path,
+        {
+            "tests/unit/test_a.py": "from app.y import X\n\n" + PROVEN_ON_BASE,
+            "tests/unit/test_b.py": PROVEN_ON_BASE,
+        },
+    )
+    result, starts = _prove_on_base(tmp_path, root)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    verdict = _verdicts(tmp_path)["regression-proof"]
+    assert verdict["status"] == "fail"
+    assert _locations(verdict) == [("apps/api/tests/unit/test_a.py", 1)], verdict
+    assert str(verdict["summary"]).startswith(
+        "cannot run on base — apps/api/tests/unit/test_a.py: "
+    )
+    assert "FAILED tests.unit.test_b::test_pins_x" in result.stdout
+    # the one run that hit the collection error, then one run per test file
+    assert starts == 1 + 2
+
+
+def test_regression_proof_runs_pytest_once_when_every_file_imports_on_base(
+    tmp_path: Path,
+) -> None:
+    root = _base_and_head(
+        tmp_path,
+        {"tests/unit/test_a.py": PROVEN_ON_BASE, "tests/unit/test_b.py": PROVEN_ON_BASE},
+    )
+    result, starts = _prove_on_base(tmp_path, root)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _verdicts(tmp_path)["regression-proof"]["status"] == "pass"
+    assert starts == 1

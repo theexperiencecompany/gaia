@@ -1,4 +1,5 @@
 import { Chip } from "@heroui/react";
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -89,11 +90,7 @@ export function BlogCard({
               {blog.category}
             </span>
             <span className="text-xs text-zinc-600 group-hover:text-zinc-400">
-              {new Date(blog.date).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+              {formatDate(blog.date, "medium", { locale: FIXED_LOCALE })}
             </span>
           </div>
           <Title

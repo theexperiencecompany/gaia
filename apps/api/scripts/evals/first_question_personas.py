@@ -68,7 +68,7 @@ DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:8000")
 #: One minted dev user per persona. Sharing a user leaked context between them
 #: (a "the writing" turn answered with the previous persona's unconnected-Gmail
 #: thread), which made the replies unreadable as a signal about the chip.
-FOLLOW_USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "fq-{slug}@gaia.local")
+FOLLOW_USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "delivered+fq-{slug}@resend.dev")
 FOLLOW_PERSONA_COUNT = 5
 REPLY_PREVIEW_WORDS = 40
 FOLLOW_TIMEOUT_SECONDS = 180.0
@@ -87,8 +87,7 @@ DEFAULT_TURNS = 2
 TURN_OPTIONS = TurnOptions(
     timeout=FOLLOW_TIMEOUT_SECONDS,
     include_nested_tool_names=False,
-    drop_discarded_boundary=False,
-    poll_for_delivery=False,
+    wait_for_work=False,
 )
 
 PERSONAS: list[tuple[str, OnboardingPreferences, str | None]] = [
@@ -359,15 +358,10 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
                     print("\n  --- chip: <empty> — skipped (degenerate composer output)")
                     continue
                 conversation_id = await open_conversation(client, api_url, chip)
-                history: list[dict[str, str]] = []
                 print(f"\n  --- chip: {chip}")
                 for turn_number in range(1, turns + 1):
                     message = chip if turn_number == 1 else ACCEPT_MESSAGE
-                    turn = await send_turn(
-                        client, api_url, message, conversation_id, history, TURN_OPTIONS
-                    )
-                    history.append({"role": "user", "content": message})
-                    history.append({"role": "assistant", "content": turn.reply})
+                    turn = await send_turn(client, api_url, message, conversation_id, TURN_OPTIONS)
                     collected.append(
                         Graded(
                             persona=label,

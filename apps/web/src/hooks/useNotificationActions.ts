@@ -4,18 +4,18 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  type ActionResult,
   type ActionResultData,
   ActionStyle,
   ActionType,
   type ApiCallConfig,
   type ModalConfig,
   type NotificationAction,
+  type NotificationActionResult,
   type RedirectConfig,
 } from "@/types/features/notificationTypes";
 
 interface UseNotificationActionsOptions {
-  onSuccess?: (result: ActionResult) => void;
+  onSuccess?: (result: NotificationActionResult) => void;
   onError?: (error: Error) => void;
   onModalOpen?: (config: ModalConfig) => void;
 }
@@ -130,7 +130,7 @@ export function useNotificationActions(
       if (result.success) {
         toast.success(result.message);
         // The API types `data` as an open record; an executed action's payload is ActionResultData.
-        const actionResult: ActionResult = {
+        const actionResult: NotificationActionResult = {
           success: result.success,
           message: result.message,
           data: result.data as ActionResultData | null,
@@ -205,47 +205,9 @@ export function useNotificationActions(
     options.onModalOpen?.(enhancedConfig);
   };
 
-  const getActionButtonProps = (action: NotificationAction) => {
-    const isExecuted = action.executed || false;
-    const isLoading = loading === action.id;
-
-    const baseProps = {
-      disabled: action.disabled || isLoading || isExecuted,
-      loading: isLoading,
-      executed: isExecuted,
-    };
-
-    switch (action.style) {
-      case "primary":
-        return {
-          ...baseProps,
-          variant: "default" as const,
-          className: "bg-blue-600 hover:bg-blue-700 text-white",
-        };
-      case "secondary":
-        return {
-          ...baseProps,
-          variant: "secondary" as const,
-          className: "bg-zinc-700 hover:bg-zinc-600 text-white",
-        };
-      case "danger":
-        return {
-          ...baseProps,
-          variant: "destructive" as const,
-          className: "bg-red-600 hover:bg-red-700 text-white",
-        };
-      default:
-        return {
-          ...baseProps,
-          variant: "outline" as const,
-        };
-    }
-  };
-
   return {
     executeAction,
     loading,
-    getActionButtonProps,
     confirmationProps,
   };
 }

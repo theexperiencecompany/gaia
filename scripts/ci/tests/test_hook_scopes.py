@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 import json
-import os
 from pathlib import Path
 import re
 import shlex
 import subprocess
 
+from lib import nx_affected
 import pytest
 import yaml
 
@@ -24,6 +24,7 @@ PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 HOOK_TASKS = {
     "api-types": "ci:api-schema",
     "analytics-types": "ci:analytics-catalog",
+    "openui-prompts": "ci:openui-prompts",
     "plr-complexity": "ci:plr-complexity",
 }
 # Every check reads the CI harness (nx.json's ciHarness); a hook has no reason to.
@@ -55,25 +56,7 @@ def tracked() -> list[str]:
 @pytest.fixture(scope="module")
 def nx_reasons(tracked: list[str]) -> dict[str, list[dict[str, str]]]:
     targets = sorted({task.split(":", 1)[1] for task in HOOK_TASKS.values()})
-    out = subprocess.run(
-        [
-            "pnpm",
-            "exec",
-            "nx",
-            "affected",
-            "-t",
-            *targets,
-            "--files",
-            *tracked,
-            "--explain=stdout",
-        ],
-        cwd=REPO_ROOT,
-        env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    affected: dict[str, list[dict[str, str]]] = json.loads(out[out.index("{") :])["affected"]
+    affected = nx_affected.explain(targets, ["--files", *tracked])
     return affected
 
 
