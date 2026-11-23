@@ -1,0 +1,35 @@
+# gaia-integration-connect-failing: fires when every integration connect fails; quiet when a quarter of integration connects fail.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-integration-connect-failing fires when every integration connect fails
+    interval: 1m
+    input_series:
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="ok"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-integration-connect-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                Users who try to connect an app (Gmail, Calendar, Slack and the rest) finish the consent screen and land back in GAIA with an error, so onboarding stalls at its first step. The redirect carries oauth_error, and the API logs the callback's failure. Check Composio's status and whether one toolkit's auth config is the common factor.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-integration-connect-failing
+
+  - name: gaia-integration-connect-failing stays quiet when a quarter of integration connects fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="ok"}'
+        values: '0+3x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-integration-connect-failing
+        exp_alerts: []

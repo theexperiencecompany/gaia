@@ -1,0 +1,36 @@
+# gaia-bot-inbound-failing: fires when half of one platform's messages get no reply; quiet when two messages get no reply, under the three-failure floor.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-bot-inbound-failing fires when half of one platform's messages get no reply
+    interval: 1m
+    input_series:
+      - series: 'gaia_bot_inbound_total{job="bots",instance="discord-bot:3200",platform="discord",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_bot_inbound_total{job="bots",instance="discord-bot:3200",platform="discord",outcome="ok"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-bot-inbound-failing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: bots
+              platform: discord
+            exp_annotations:
+              description: >-
+                Users on this platform are messaging GAIA and hearing nothing back. The bot received the message and could not hand it to the API: the API is down or slow (its own alerts will be firing), or this bot's API key or URL is wrong, which nothing else can see. The bot logs chat_post_refused or command_dispatch_failed with the reason.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-bot-inbound-failing
+
+  - name: gaia-bot-inbound-failing stays quiet when two messages get no reply, under the three-failure floor
+    interval: 1m
+    input_series:
+      - series: 'gaia_bot_inbound_total{job="bots",instance="discord-bot:3200",platform="discord",outcome="failed"}'
+        values: '0x30 2x30'
+      - series: 'gaia_bot_inbound_total{job="bots",instance="discord-bot:3200",platform="discord",outcome="ok"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-bot-inbound-failing
+        exp_alerts: []

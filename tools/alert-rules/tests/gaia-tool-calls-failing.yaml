@@ -1,0 +1,38 @@
+# gaia-tool-calls-failing: fires when every call to one tool fails, for that tool only; quiet when a quarter of a tool's calls fail.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-tool-calls-failing fires when every call to one tool fails, for that tool only
+    interval: 1m
+    input_series:
+      - series: 'tool_call_total{job="gaia-api",tool_name="web_search_tool",status="error"}'
+        values: '0+1x60'
+      - series: 'tool_call_total{job="gaia-api",tool_name="web_search_tool",status="success"}'
+        values: '0x60'
+      - series: 'tool_call_total{job="gaia-api",tool_name="bash",status="success"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: gaia-tool-calls-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+              tool_name: web_search_tool
+            exp_annotations:
+              description: >-
+                The agent keeps calling this tool and getting an error back, so whatever users ask that needs it fails or is answered without it. The API and worker log each failed call with the tool name and error type. A tool backed by an outside service usually means that service or its key; mcp is every MCP-backed tool together.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-tool-calls-failing
+
+  - name: gaia-tool-calls-failing stays quiet when a quarter of a tool's calls fail
+    interval: 1m
+    input_series:
+      - series: 'tool_call_total{job="gaia-api",tool_name="web_search_tool",status="error"}'
+        values: '0+1x60'
+      - series: 'tool_call_total{job="gaia-api",tool_name="web_search_tool",status="success"}'
+        values: '0+3x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: gaia-tool-calls-failing
+        exp_alerts: []

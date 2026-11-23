@@ -1,0 +1,37 @@
+# gaia-payment-webhook-failing: fires when one delivery is abandoned; quiet when every delivery is processed or ignored.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-payment-webhook-failing fires when one delivery is abandoned
+    interval: 1m
+    input_series:
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="abandoned"}'
+        values: '0x30 1x60'
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="processed"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-payment-webhook-failing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: api
+            exp_annotations:
+              description: >-
+                Someone paid, cancelled or changed plan and GAIA did not record it: at worst a paying user is still on the free plan. failed deliveries are retried by Dodo and may land on their own; abandoned ones never will and need the subscription fixed by hand. The API logs 'Webhook abandoned' and 'Webhook not acknowledged' with the event type and failure_reason.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-payment-webhook-failing
+
+  - name: gaia-payment-webhook-failing stays quiet when every delivery is processed or ignored
+    interval: 1m
+    input_series:
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="abandoned"}'
+        values: '0x90'
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="processed"}'
+        values: '0+1x90'
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="ignored"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-payment-webhook-failing
+        exp_alerts: []
