@@ -358,11 +358,9 @@ def test_latest_moves_once_prod_serves_the_release_whatever_the_smoke_says() -> 
 def test_the_advertised_smoke_command_runs_in_a_plain_shell() -> None:
     document = yaml.safe_load(WORKFLOW.read_text())
     origins = {key: document["env"][key] for key in ("PROD_ORIGIN", "PROD_WEB_ORIGIN")}
-    advertised = [
-        str(step["env"]["ACTION"])
-        for step in _deploy_steps()
-        if "deploy.sh smoke" in str(step.get("env", {}).get("ACTION", ""))
-    ]
+    step_envs = [step.get("env") for step in _deploy_steps()]
+    actions = [str(env.get("ACTION", "")) for env in step_envs if isinstance(env, dict)]
+    advertised = [action for action in actions if "deploy.sh smoke" in action]
 
     assert advertised
     for action in advertised:
