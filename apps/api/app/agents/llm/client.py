@@ -1046,7 +1046,8 @@ def _resolve_fallback(
 
 def _call_provider(runnable: Runnable, config: RunnableConfig | None) -> LLMProviderName | None:
     """Return the provider a call runs on: the lane's when its config names one, else the client's own; None when neither says."""
-    named = agent_configurable(config).get("provider")
+    configurable: AgentConfigurable = agent_configurable(config)
+    named = configurable.get("provider")
     if named in LLMProviderName:
         return LLMProviderName(named)
     client = _wire_client(runnable)
