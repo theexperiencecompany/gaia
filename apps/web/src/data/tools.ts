@@ -544,8 +544,8 @@ export const tools: Tool[] = [
  * Favicon URL for a tool's site.
  *
  * The thanks page prefers the richer metadata returned by the API's
- * `fetch-url-metadata` endpoint, but that endpoint requires a session and the
- * page renders server-side for anonymous visitors. This gives every tool a
+ * `fetch-url-metadata` endpoint, which admits the web server's internal token.
+ * This is the fallback for a tool whose metadata call failed, so every tool has a
  * logo that always resolves, using the same favicon service as the rest of the
  * marketing site.
  */

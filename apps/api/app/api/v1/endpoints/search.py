@@ -5,11 +5,17 @@ This module contains routes related to search functionality and URL metadata fet
 """
 
 import asyncio
+from collections.abc import Awaitable
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.api.v1.dependencies.oauth_dependencies import (
+    Caller,
+    UserCaller,
+    get_user_id,
+    get_user_or_internal_caller,
+)
 from app.api.v1.middleware.rate_limiter import limiter
 from app.decorators import tiered_rate_limit
 from app.models.search_models import (
@@ -129,7 +135,7 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
 async def fetch_url_metadata_endpoint(
     request: Request,  # noqa: ARG001 -- slowapi requires request in the handler signature
     data: URLRequest,
-    user_id: str = Depends(get_user_id),
+    caller: Caller = Depends(get_user_or_internal_caller),
 ) -> MultiURLResponse:
     """
     Fetch metadata for multiple URLs in parallel.
@@ -140,24 +146,31 @@ async def fetch_url_metadata_endpoint(
     Args:
         request (Request): The FastAPI request object (required for rate limiting).
         data (URLRequest): The URL request containing an array of URLs.
-        user_id (str): The authenticated user's id (contact lookups are per-user).
+        caller (Caller): A signed-in user, or GAIA's web server (which gets web URLs only).
 
     Returns:
         MultiURLResponse: The metadata for all URLs.
     """
-    log.set(user={"id": user_id}, search={"mode": "url_metadata"})
+    log.set(search={"mode": "url_metadata"})
     email_targets = [url for url in data.urls if is_email_target(url)]
     web_urls = [url for url in data.urls if url not in email_targets]
 
-    email_task = fetch_email_profiles(user_id, email_targets)
+    # Contacts are the signed-in user's own, so GAIA's web server never looks them up.
+    email_tasks: list[Awaitable[dict[str, URLResponse]]] = []
+    if isinstance(caller, UserCaller):
+        log.set(user={"id": caller.user_id})
+        email_tasks.append(fetch_email_profiles(caller.user_id, email_targets))
+    else:
+        log.set(caller="internal_web_server")
+
     web_tasks = [fetch_url_metadata(url) for url in web_urls]
-    email_results, *web_results = await asyncio.gather(
-        email_task, *web_tasks, return_exceptions=True
-    )
+    results = await asyncio.gather(*email_tasks, *web_tasks, return_exceptions=True)
+    email_results, web_results = results[: len(email_tasks)], results[len(email_tasks) :]
 
     response_data: dict[str, URLResponse] = {}
-    if isinstance(email_results, dict):
-        response_data.update(email_results)
+    for email_result in email_results:
+        if isinstance(email_result, dict):
+            response_data.update(email_result)
     for url, result in zip(web_urls, web_results):
         if isinstance(result, Exception):
             # Skip failed URLs - they won't be in the response
