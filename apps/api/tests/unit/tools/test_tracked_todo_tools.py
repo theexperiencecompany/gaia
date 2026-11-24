@@ -14,7 +14,6 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
-from bson.errors import InvalidId
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
@@ -75,6 +74,7 @@ from app.services.triggers.subscription_service import SubscriptionError
 from app.utils import auth_utils
 from app.utils.timezone import Timezone
 from shared.py.wide_events import spawn_logged_task
+from tests.helpers import users_get
 from tests.integration_account_factories import make_integration_account, make_integration_record
 from tests.tool_helpers import tool_coroutine
 
@@ -675,10 +675,7 @@ class TestCreateTrackedTodoValidation:
         with (
             patch("app.services.todos.todo_service.todo_repository", repo),
             patch.object(TodoService, "_get_inbox_id", AsyncMock(return_value="inbox-1")),
-            patch(
-                "app.utils.auth_utils.user_repository.get",
-                AsyncMock(side_effect=InvalidId("'system' is not a valid ObjectId")),
-            ),
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
             pytest.raises(auth_utils.OwnerNotFoundError),
         ):
             await create_tracked_todo.coroutine(

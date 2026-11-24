@@ -174,8 +174,7 @@ async def _references_refusal(
 
     A run reads its references' Learnings, so a foreign, untracked or mistyped id must not link.
     """
-    valid = [ref for ref in references if todo_repository.is_valid_id(ref)]
-    docs = await todo_repository.find_by_ids(user_id, valid)
+    docs = await todo_repository.find_by_ids(user_id, references)
     tracked = {doc.id for doc in docs if GAIA_TRACKED_LABEL in doc.labels and doc.id != todo_id}
     unknown = [ref for ref in references if ref not in tracked]
     if not unknown:
