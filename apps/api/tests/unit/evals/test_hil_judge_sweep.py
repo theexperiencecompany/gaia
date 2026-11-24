@@ -289,6 +289,26 @@ async def test_a_failed_focused_request_is_reported_before_the_case_goes_on(
     assert "decisions answer was malformed" in capsys.readouterr().out
 
 
+async def test_an_optional_focused_request_that_fails_over_http_is_reported(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """JEV already forbids the call, so prod would not ask; the failure still shows."""
+
+    async def _ask_jev(**kwargs: object) -> tuple[JevVerdict, int, int]:
+        return JevVerdict(choice=JevChoice.FORBIDDEN, confidence=0.9, contained=0.1), 10, 2
+
+    async def _ask_jev_forbid(**kwargs: object) -> tuple[str, float, int, int]:
+        raise httpx.ConnectTimeout("slow")
+
+    monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
+    monkeypatch.setattr(hil_judge, "ask_jev_forbid", _ask_jev_forbid)
+
+    run = await _judge(monkeypatch, replace(_CASE, setup=_FORBID_SETUP))
+
+    assert (run.end_state or {})["forbid_choice"] is None
+    assert "focused forbid check failed: ConnectTimeout" in capsys.readouterr().out
+
+
 def test_a_blank_transport_setting_means_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIL_JUDGE_EVAL_TRANSPORT", "")
 

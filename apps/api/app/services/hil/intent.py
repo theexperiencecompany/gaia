@@ -332,6 +332,8 @@ def ungrounded_targets(
 
 
 _ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+#: Quoted text in a plain-text list line: content, never the entry's own fields.
+_QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”")
 
 
 def _listed_entry_pointed_at(target: str, prior_calls: list[PriorCall], context: list[str]) -> bool:
@@ -347,12 +349,16 @@ def _listed_entry_pointed_at(target: str, prior_calls: list[PriorCall], context:
 
 
 def _entries_holding(output: str, target: str) -> list[str]:
-    """Return the entries of a listed result that carry target: JSON objects, else lines."""
+    """Return the entries of a listed result that carry target: JSON objects, else lines.
+
+    A plain-text line's quoted text is content (a forwarded mail, a subject), never the
+    entry's own fields, so it is dropped before an address can ground the entry.
+    """
     try:
         parsed: object = json.loads(output)
     except (json.JSONDecodeError, ValueError):
         holds = re.compile(rf"(?<![\w-]){re.escape(target)}(?![\w-])")
-        return [line for line in output.splitlines() if holds.search(line)]
+        return [_QUOTED.sub(" ", line) for line in output.splitlines() if holds.search(line)]
     return [_own_fields(node) for node in _objects(parsed) if target in node.values()]
 
 

@@ -350,11 +350,17 @@ class JudgeTransport:
         except httpx.HTTPError as e:
             if prod_asks_it:
                 raise ProviderError(provider.name, f"forbid check failed: {e}") from e
+            _report_focused_failure(e)
             return None, 0.0, (0, 0)
         except Exception as e:  # optional here: report it, never lose the primary verdict
-            print(f"[hil-judge] focused forbid check failed: {type(e).__name__}: {e}")
+            _report_focused_failure(e)
             return (JEV_FORBID_CHECK_FAILED if prod_asks_it else None), 0.0, (0, 0)
         return choice, confidence, (tokens_in, tokens_out)
+
+
+def _report_focused_failure(error: Exception) -> None:
+    """Print a failed focused forbid request, so a fallback never hides it."""
+    print(f"[hil-judge] focused forbid check failed: {type(error).__name__}: {error}")
 
 
 def sweep_journal(run_dir: Path) -> str:

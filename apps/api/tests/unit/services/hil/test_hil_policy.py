@@ -181,6 +181,19 @@ class TestOverrides:
             assert await is_gated(prefs(list_files=False), "send_email", make_tool()) is True
 
 
+@pytest.mark.parametrize("mode", ["always_allow", "auto"])
+async def test_an_explicit_ask_rule_on_a_destructive_tool_asks_in_every_mode(mode: HILMode) -> None:
+    """What set_approval_rule(ASK) stores: the rule outranks always_allow and auto alike."""
+    with (
+        patch(
+            f"{MODULE}.get_hil_preferences",
+            new=AsyncMock(return_value=prefs(mode, GMAIL_SEND_EMAIL=True)),
+        ),
+        patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+    ):
+        assert await resolve_policy(make_request(), USER_ID, "GMAIL_SEND_EMAIL") == "ask"
+
+
 def _mcp_tool(name: str, *, integration_id: str, server_name: str | None = None) -> BaseTool:
     return make_tool(
         name=name,

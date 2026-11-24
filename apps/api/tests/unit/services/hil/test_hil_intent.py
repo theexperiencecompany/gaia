@@ -157,6 +157,20 @@ class TestAPickFromAList:
 
         assert missing == []
 
+    def test_a_quoted_address_in_a_plain_text_line_never_grounds_its_entry(self) -> None:
+        """Bob's draft quoting a mail from Simonne is Bob's draft, in plain text as in JSON."""
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output='d-1 | bob@x.com | "Forwarded from simonne@x.com"\nd-2 | carol@x.com',
+            )
+        ]
+
+        missing = ungrounded_targets({"draft_id": "d-1"}, ["send the one to simonne@x.com"], listed)
+
+        assert missing == ["d-1"]
+
     def test_an_id_is_matched_whole_never_as_part_of_a_longer_one(self) -> None:
         listed = [
             PriorCall(name="LIST", args={}, output="1. d-10 | simonne@x.com\n2. d-2 | bob@x.com")
