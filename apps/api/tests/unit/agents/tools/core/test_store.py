@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from google.genai.errors import APIError, ClientError, ServerError
 from google.genai.types import EmbedContentConfig
+from pydantic import SecretStr
 import pytest
 
 from app.agents.tools.core import store as store_module
@@ -58,7 +59,7 @@ def _gemini(
     )
     embeddings = RetryingGeminiEmbeddings(
         model=GEMINI_EMBEDDING_MODEL,
-        google_api_key="google-test-key",  # pragma: allowlist secret
+        api_key=SecretStr("google-test-key"),  # pragma: allowlist secret
     )
     embed_content = AsyncMock(
         side_effect=[

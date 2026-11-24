@@ -18,11 +18,13 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.tools import BaseTool, tool
 from langgraph.store.base import GetOp, PutOp, SearchOp
 import numpy as np
+from pydantic import SecretStr
 import pytest
 
 from app.agents.tools.core.registry import CategoryOptions, ToolCategory, ToolRegistry
 from app.agents.tools.core.retrieval import (
     _build_search_tasks,
+    _chroma_hit_lists,
     _raise_if_every_search_failed,
     _RetrievalScope,
 )
@@ -1131,7 +1133,7 @@ class TestDiscoveryThroughARateLimit:
 
         gemini = RetryingGeminiEmbeddings(
             model=GEMINI_EMBEDDING_MODEL,
-            google_api_key="google-test-key",  # pragma: allowlist secret
+            api_key=SecretStr("google-test-key"),  # pragma: allowlist secret
         )
         gemini.client = MagicMock()
         gemini.client.aio.models.embed_content = embed_content
@@ -1146,7 +1148,7 @@ class TestDiscoveryThroughARateLimit:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         _raise_if_every_search_failed(results)
 
-        gmail_hits, general_hits = results
+        gmail_hits, general_hits = _chroma_hit_lists(results)
         assert [item.key for item in gmail_hits] == ["gmail_send"]
         assert general_hits
         assert calls == 4
