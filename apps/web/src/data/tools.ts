@@ -541,13 +541,10 @@ export const tools: Tool[] = [
 ];
 
 /**
- * Favicon URL for a tool's site.
+ * Favicon URL for a tool's site, from the favicon service the rest of the marketing site uses.
  *
- * The thanks page prefers the richer metadata returned by the API's
- * `fetch-url-metadata` endpoint, which admits the web server's internal token.
- * This is the fallback for a tool whose metadata call failed, so every tool has a
- * logo that always resolves, using the same favicon service as the rest of the
- * marketing site.
+ * The thanks page never hotlinks the favicon the metadata API reports: that URL
+ * is on the tool's own site, so every visitor's browser would call it.
  */
 export function toolFaviconUrl(url: string): string {
   let host = url;

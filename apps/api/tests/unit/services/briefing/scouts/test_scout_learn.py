@@ -56,6 +56,7 @@ from app.services.briefing.scouts.watch import (
     read_only_space,
     watch,
 )
+from app.services.hil import prompts as hil_prompts
 from app.services.hil.prompts import READ_ONLY_REFUSAL_TEMPLATE
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
@@ -887,3 +888,34 @@ class TestReadOnlyAtCallTime:
                 "tool_name": "delete_issue",
             }
         ]
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("policy", ["ask", "auto"])
+    async def test_a_read_only_tool_the_policy_gates_is_refused_before_the_ledger(
+        self, policy: str
+    ) -> None:
+        """A scout owns no logged work, so asking the ledger failed as a gate error each morning."""
+        app = _App([_ISSUE])
+        model = _Learner(script=[ScriptedCall("list_issues", {"assignee": "me"})], report=_report())
+        histories: list[list[AnyMessage]] = []
+
+        async def keep_history(*args: Any, **kwargs: Any) -> list[AnyMessage]:
+            history = await run_tool_graph(*args, **kwargs)
+            histories.append(history)
+            return history
+
+        with (
+            _seams(app, _report(), model=model),
+            patch("app.services.hil.gate.resolve_policy", AsyncMock(return_value=policy)),
+            patch.object(learn, "run_tool_graph", keep_history),
+        ):
+            async with captured_wide_event() as event:
+                await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+
+        assert app.calls == []
+        [answer] = [m for m in histories[0] if isinstance(m, ToolMessage)]
+        assert answer.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+        assert answer.content == hil_prompts.READ_ONLY_GATED_REFUSAL_TEMPLATE.format(
+            tool="list_issues"
+        )
+        assert [e for e in event["errors"] if e["msg"].startswith(LogTag.HIL)] == []

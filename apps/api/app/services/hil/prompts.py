@@ -279,3 +279,10 @@ READ_ONLY_REFUSAL_TEMPLATE = (
     "`{tool}` was refused: this run may only read, and the tool is not classified "
     "read-only. Nothing was performed. Do not retry it; use a tool that only reads."
 )
+
+# A read-only run is unattended and owns no logged work, so an approval it asked for has no one to answer it.
+READ_ONLY_GATED_REFUSAL_TEMPLATE = (
+    "`{tool}` was refused: it needs the user's approval, and this run is unattended, "
+    "so nobody can give it. Nothing was performed and the user was NOT asked. Do not "
+    "retry it; use another tool that only reads."
+)

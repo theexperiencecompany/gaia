@@ -1,7 +1,8 @@
 """A scout's learn run: a cheap read-only agent finds what needs the user, then its calls freeze.
 
 The run is bounded by steps and wall clock, books its spend to its reserved slice of the
-scout tally, and runs read-only: the HIL gate refuses any tool not classified read-only. Its
+scout tally, and runs read-only: the HIL gate refuses any tool not classified read-only, and
+any call that needs the user's approval, since nobody watches the run to give it. Its
 report names the calls that answered, where their results hold items, and the criteria
 replayed items are judged by; the calls are checked by the playbook validator against
 the run's own record, then replayed once with no model so a freeze is known to work.

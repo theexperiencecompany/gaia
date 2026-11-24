@@ -15,7 +15,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import NAMESPACE_URL, uuid5
 
+import httpx
 from langchain_core.messages import AIMessage
+import openai
 from openrouter.errors import (
     BadRequestResponseError,
     RequestTimeoutResponseError,
@@ -27,7 +29,7 @@ import pytest
 
 from app.constants.llm import PROVIDER_NAME_METADATA_KEY
 from app.constants.log_tags import LogTag
-from app.db.repositories.llm_calls import LLMCallDocument
+from app.db.repositories.llm_calls import LLMCallDocument, llm_calls_repository
 from app.services import llm_metering
 from app.services.llm_metering import (
     LLMCallContext,
@@ -97,7 +99,7 @@ async def _record(**overrides: Any) -> LLMCallDocument:
     kwargs.update(overrides)
     with (
         patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock) as create,
     ):
         await record_llm_call(**kwargs)
         await _drain()
@@ -191,12 +193,12 @@ async def test_a_ledger_failure_never_fails_the_metered_call() -> None:
     with (
         patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
         patch.object(
-            llm_metering.llm_calls_repository,
+            llm_calls_repository,
             "create",
             new_callable=AsyncMock,
             side_effect=RuntimeError("mongo is down"),
         ),
-        patch.object(llm_metering.log, "warning") as warned,
+        patch.object(log, "warning") as warned,
     ):
         cost = await record_llm_call(
             user_id="u1",
@@ -469,7 +471,7 @@ async def test_a_failed_call_books_no_money_and_no_tokens() -> None:
     """The attempts did burn tokens upstream, but nothing reported them. A guessed number would sit in the same column real spend is summed from."""
     with (
         patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock) as paid,
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock) as create,
     ):
         await llm_metering.record_failed_llm_call(
             user_id="u1",
@@ -507,6 +509,34 @@ def test_a_provider_throttling_us_is_its_own_family() -> None:
     assert classify_error_family(_RATE_LIMITED) == "rate_limit"
 
 
+_OPENAI_WIRE = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+
+
+def _openai_status_error(error: type[openai.APIStatusError], status: int) -> openai.APIStatusError:
+    return error("x", response=httpx.Response(status, request=_OPENAI_WIRE), body=None)
+
+
+@pytest.mark.parametrize(
+    ("error", "family"),
+    [
+        (_openai_status_error(openai.RateLimitError, 429), "rate_limit"),
+        (openai.APITimeoutError(request=_OPENAI_WIRE), "timeout"),
+        (openai.APIConnectionError(request=_OPENAI_WIRE), "provider_unavailable"),
+        (_openai_status_error(openai.InternalServerError, 500), "provider_unavailable"),
+        (_openai_status_error(openai.BadRequestError, 400), "invalid_request"),
+        (_openai_status_error(openai.AuthenticationError, 401), "invalid_request"),
+        (_openai_status_error(openai.PermissionDeniedError, 403), "invalid_request"),
+        (_openai_status_error(openai.NotFoundError, 404), "invalid_request"),
+        (_openai_status_error(openai.UnprocessableEntityError, 422), "invalid_request"),
+    ],
+)
+def test_an_openai_wire_failure_is_bucketed_like_its_openrouter_twin(
+    error: BaseException, family: str
+) -> None:
+    """Regression: 260 Workers AI 429s in an hour all counted as failed, none as rate limited."""
+    assert classify_error_family(error) == family
+
+
 def test_a_rejected_request_is_not_an_outage() -> None:
     """A 400 means we sent something wrong; nothing upstream is down. Counting it as unavailability sends an incident response after a bug."""
     assert classify_error_family(_BAD_REQUEST) == "invalid_request"
@@ -525,7 +555,7 @@ async def test_the_error_row_carries_the_calls_identity_like_any_other() -> None
     """An error row that could not be filtered by conversation, lane or surface would be a count with nothing to drill into."""
     with (
         patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock) as create,
     ):
         await llm_metering.record_failed_llm_call(
             user_id="u1",
@@ -549,7 +579,7 @@ async def test_a_failed_call_is_never_charged_to_the_user() -> None:
     """Whatever the context said, a call that produced nothing cannot count against an allowance."""
     with (
         patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock) as create,
     ):
         await llm_metering.record_failed_llm_call(
             user_id="u1",
@@ -566,12 +596,12 @@ async def test_a_ledger_failure_on_an_error_row_still_does_not_raise() -> None:
     """The degrade rule applies to error rows too — an outage must not be made worse by the code that records it."""
     with (
         patch.object(
-            llm_metering.llm_calls_repository,
+            llm_calls_repository,
             "create",
             new_callable=AsyncMock,
             side_effect=RuntimeError("mongo is down"),
         ),
-        patch.object(llm_metering.log, "warning") as warned,
+        patch.object(log, "warning") as warned,
     ):
         await llm_metering.record_failed_llm_call(
             user_id="u1", model_name="m", error=TimeoutError("x"), context=CONTEXT
@@ -595,7 +625,7 @@ async def test_the_error_rows_insert_is_named_for_what_it_is() -> None:
 async def test_the_error_row_is_booked_against_the_user_whose_call_failed() -> None:
     """A failure with no user attached cannot answer "who is this failing for"."""
     with (
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock) as create,
     ):
         await llm_metering.record_failed_llm_call(
             user_id="u-42", model_name="m", error=TimeoutError("x"), context=CONTEXT
@@ -612,8 +642,8 @@ async def test_the_error_row_is_booked_against_the_user_whose_call_failed() -> N
 
 async def test_a_failed_call_emits_a_wide_event_like_any_other_call() -> None:
     with (
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock),
-        patch.object(llm_metering.log, "info") as emitted,
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock),
+        patch.object(log, "info") as emitted,
     ):
         await llm_metering.record_failed_llm_call(
             user_id="u1",
@@ -638,8 +668,8 @@ async def test_a_failed_call_emits_a_wide_event_like_any_other_call() -> None:
 async def test_the_failure_event_books_no_spend() -> None:
     """It has to be summable alongside the success events without inflating anything — a failed call cost us nothing we can account for."""
     with (
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock),
-        patch.object(llm_metering.log, "info") as emitted,
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock),
+        patch.object(log, "info") as emitted,
     ):
         await llm_metering.record_failed_llm_call(
             user_id="u1", model_name="m", error=TimeoutError("x"), context=CONTEXT
@@ -675,7 +705,7 @@ def test_the_ledger_refuses_a_success_row_that_carries_no_usage_and_no_cost() ->
 @pytest.mark.regression
 async def test_a_call_that_reports_no_usage_is_recorded_as_a_loud_error() -> None:
     """Its cost is lost, so it must count as a failure on the ledger and in the error log, never as a free success."""
-    with patch.object(llm_metering.log, "error") as errored:
+    with patch.object(log, "error") as errored:
         doc = await _record(usage=_NO_USAGE, provider_cost=None)
 
     assert doc.status == "error"
@@ -710,7 +740,7 @@ async def test_a_call_with_no_usage_is_never_charged_to_the_user() -> None:
         patch(
             "app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock
         ) as charged,
-        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock),
+        patch.object(llm_calls_repository, "create", new_callable=AsyncMock),
     ):
         cost = await record_llm_call(
             user_id="u1",
@@ -748,7 +778,7 @@ async def _mirror(
     with (
         patch("app.services.analytics_service._get_posthog_client", return_value=posthog),
         patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
-        patch.object(llm_metering.llm_calls_repository, "create", ledger),
+        patch.object(llm_calls_repository, "create", ledger),
     ):
         await record_llm_call(
             user_id=user_id,
