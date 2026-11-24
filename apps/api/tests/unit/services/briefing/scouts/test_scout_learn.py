@@ -56,7 +56,8 @@ from app.services.briefing.scouts.watch import (
     read_only_space,
     watch,
 )
-from app.services.hil.prompts import READ_ONLY_GATED_REFUSAL_TEMPLATE, READ_ONLY_REFUSAL_TEMPLATE
+from app.services.hil import prompts as hil_prompts
+from app.services.hil.prompts import READ_ONLY_REFUSAL_TEMPLATE
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
@@ -914,5 +915,7 @@ class TestReadOnlyAtCallTime:
         assert app.calls == []
         [answer] = [m for m in histories[0] if isinstance(m, ToolMessage)]
         assert answer.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-        assert answer.content == READ_ONLY_GATED_REFUSAL_TEMPLATE.format(tool="list_issues")
+        assert answer.content == hil_prompts.READ_ONLY_GATED_REFUSAL_TEMPLATE.format(
+            tool="list_issues"
+        )
         assert [e for e in event["errors"] if e["msg"].startswith(LogTag.HIL)] == []
