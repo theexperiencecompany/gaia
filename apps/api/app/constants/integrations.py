@@ -37,7 +37,7 @@ INTEGRATION_STATUS_UPDATE_EVENT: Final = "integration_status_update"
 
 # How long a Composio connection-webhook background task may run before it is
 # cancelled. Arbitrary budget — every test patches it, so mutating the literal proves nothing.
-WEBHOOK_TASK_TIMEOUT: Final = 120.0  # pragma: no mutate
+WEBHOOK_TASK_TIMEOUT: Final = 120.0
 
 # Statuses where the user's grant is genuinely dead and only they can fix it —
 # the SDK's own terminal set. INACTIVE is deliberately NOT here: it means
@@ -114,7 +114,6 @@ class AccountConnectOutcome(StrEnum):
 # Integration managed_by provider identifiers
 MANAGED_BY_MCP = "mcp"
 MANAGED_BY_COMPOSIO = "composio"
-MANAGED_BY_SELF = "self"
 # Internal integrations (todos, reminders, skills) are always available and
 # never require the user to connect anything.
 MANAGED_BY_INTERNAL = "internal"

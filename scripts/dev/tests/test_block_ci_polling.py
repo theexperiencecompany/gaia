@@ -56,7 +56,9 @@ def run_hook(command: str, *, background: bool = False, tool: str = "Bash") -> t
 def test_hand_polling_and_long_sleeps_are_blocked_with_the_watch_advice(command: str) -> None:
     code, stderr = run_hook(command)
     assert code == 2
-    assert "mise ci:watch <PR>" in stderr
+    assert "mise ci:watch <PR|branch>" in stderr
+    # An agent watching a master deploy read `<PR>` as "not master" and polled by hand.
+    assert "`mise ci:watch master` also watches the deploy" in stderr
 
 
 @pytest.mark.parametrize(

@@ -104,8 +104,11 @@ on:
       docker_release_result:
         value: ${{ jobs.docker-release.result }}
 
+# Deploys queue one behind another and never cancel. A build phase takes a group
+# of its own: a group keeps one pending entry, so an older run's deploy phase
+# joining it cancelled the newer run's waiting build (run 45297800153).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ inputs.phase == 'build' && format('-build-{0}', github.run_id) || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -449,6 +452,19 @@ jobs:
           docker buildx imagetools create -t "$IMAGE:$APPS_TAG" -t "$IMAGE:$COMMIT_SHA" "$IMAGE:$APPS_TAG" "$IMAGE@$ARM64_DIGEST"
           docker buildx imagetools inspect "$IMAGE:$APPS_TAG"
 
+  # gaia-fortress on a dispatch (fortress-image.yml). ci.yml's build phase skips
+  # it and calls fortress-image.yml itself as a leaf, because trigger-build
+  # awaits this whole workflow and a slow Fortress build would hold the deploy.
+  docker-api-fortress:
+    needs: [docker-release]
+    if: ${{ !cancelled() && inputs.phase != 'build' && needs.docker-release.outputs.apps_tag != '' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/fortress-image.yml
+    with:
+      apps_tag: ${{ needs.docker-release.outputs.apps_tag }}
+
   # Self-hosters run the bots on arm64 too; production's bot images stay
   # amd64-only. Only a CLI release commit builds the arm64 half (native arm
   # runner, pushed by digest, untagged), and nothing on the production deploy
@@ -657,7 +673,8 @@ jobs:
           docker buildx imagetools inspect "$IMAGE:$GIT_SHA"
 
   # Grafana provisioning (dashboards/datasources/alerting) is baked into a custom
-  # image so production needs no host bind mount. Built unconditionally — it's a
+  # image so production needs no host bind mount; alert-rules.yaml is copied in
+  # from this repo, the rest comes from gaia-infra. Built unconditionally — it's a
   # tiny COPY layer over the upstream image, and the prod stack always references
   # gaia-grafana:latest.
   docker-grafana:
@@ -682,6 +699,16 @@ jobs:
           ssh-key: ${{ secrets.GAIA_INFRA_DEPLOY_KEY }}
           path: .infra
           persist-credentials: false
+
+      # gaia-infra has no alert-rules.yaml; this repo owns the file.
+      - name: Add the alert rules to the build context
+        env:
+          RULES_SRC: infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml
+          RULES_DST: .infra/docker/observability/grafana/provisioning/alerting
+        run: |
+          set -euo pipefail
+          cp "$RULES_SRC" "$RULES_DST/"
+          test -s "$RULES_DST/alert-rules.yaml"
 
       - name: Log in to GHCR
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0

@@ -57,8 +57,6 @@ function unreadBadge(page: Page): Promise<number> {
   });
 }
 
-test.describe.configure({ mode: "default" });
-
 test.describe("screen surfaces", () => {
   test.skip(
     !SIM_ENABLED,

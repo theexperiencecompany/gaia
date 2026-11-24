@@ -11,6 +11,9 @@ import os
 from pathlib import Path
 import subprocess
 
+import mutation
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Run in the API environment, the one the lane runs it in: it has mutmut and libcst.
@@ -23,11 +26,13 @@ print(mutation_gap._mutants_on("m.py", {source!r}, {{2}}))
 """
 
 
-def _probe(source: str, patch: str = "") -> subprocess.CompletedProcess[str]:
+def _probe(workdir: Path, source: str, patch: str = "") -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             "uv",
             "run",
+            "--project",
+            str(REPO_ROOT / "apps" / "api"),
             "--frozen",
             "--group",
             "dev",
@@ -35,8 +40,8 @@ def _probe(source: str, patch: str = "") -> subprocess.CompletedProcess[str]:
             "-c",
             PROBE.format(lib=str(REPO_ROOT / "scripts/ci/lib"), patch=patch, source=source),
         ],
-        # mutmut resolves [tool.mutmut] from the cwd, as the lane's workdir copy does.
-        cwd=REPO_ROOT / "apps" / "api",
+        # mutmut resolves [tool.mutmut] from the cwd: the workdir configure_mutmut wrote.
+        cwd=workdir,
         env={k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"},
         capture_output=True,
         text=True,
@@ -44,14 +49,23 @@ def _probe(source: str, patch: str = "") -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_an_unparseable_module_has_nothing_to_mutate() -> None:
-    result = _probe("def f(:\n    return 1\n")
+@pytest.fixture
+def workdir(tmp_path: Path) -> Path:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "probe"\n')
+    request = mutation.ModuleRequest(module="m.py", testfiles=("test_m.py",), ranges="[[2,2]]")
+    mutation.configure_mutmut(request, tmp_path)
+    return tmp_path
+
+
+def test_an_unparseable_module_has_nothing_to_mutate(workdir: Path) -> None:
+    result = _probe(workdir, "def f(:\n    return 1\n")
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "0"
 
 
-def test_a_broken_mutmut_fails_instead_of_skipping() -> None:
+def test_a_broken_mutmut_fails_instead_of_skipping(workdir: Path) -> None:
     result = _probe(
+        workdir,
         "def f():\n    return 1\n",
         patch="def boom(*a, **k):\n    raise RuntimeError('mutmut changed shape')\n"
         "mutation_gap.create_mutations = boom",

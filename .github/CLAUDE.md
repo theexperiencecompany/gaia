@@ -16,9 +16,11 @@ work behind a runner's setup.
 - **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
   `lint-node` (with the repo-wide policy checks), `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
   `unit-b` slices, `test-mutation` on the changed modules (a survivor found
-  only in the queue is an ejection plus a fix round), `web-e2e-screen` (the
-  screen-over-time Playwright flows on the sim stack, when `web:e2e-screen`'s
-  inputs changed), `quality-gate`. The merge
+  only in the queue is an ejection plus a fix round), `web-e2e-screen` and
+  `bot-harness-e2e` (the screen-over-time Playwright flows and the bot harness
+  scenarios on the sim stack, when their target's inputs changed; two shards
+  each, every shard on its own stack, so neither waits on the other),
+  `quality-gate`. The merge
   queue (`merge_group`), master and dispatch run the full tier on top: the
   integration, bridge and browser slices (the regression-proof of a test that
   needs services rides integration, so it stays queue-only; a test only the
@@ -26,7 +28,9 @@ work behind a runner's setup.
   every push, `pytest.sh regression-proof --services false|true` either way,
   with the same outcomes, including "cannot run on base" for a test tree that
   does not collect there),
-  `python-audit`, `scan`, `docker-image` and `coverage`. A PR reaches master
+  `python-audit`, `scan`, `docker-image`, `coverage` and `selfhost-e2e` (the
+  `gaia up` + Playwright journey, `selfhost-e2e.yml`; merge queue and dispatch
+  only, when nx's `cli:selfhost-e2e` is affected). A PR reaches master
   only through the queue, so the slow checks run once per merge, not once per
   push. `detect` decides the tier (`tier` output) and `pytest.sh slices` cuts
   the slice matrix to it.
@@ -56,7 +60,7 @@ work behind a runner's setup.
   secret (the PostHog ones) is a step, `runner: action`/`step` in its metadata.
 - **Never add a check twice.** One check, one nx target, one job.
 
-## Where jobs run: GitHub-hosted first, the home box as overflow
+## Where jobs run: GitHub-hosted first, the home box as light overflow
 
 ci.yml opens with a `select-runner` job (the control-plane runner, no
 Tailscale needed) that reads GitHub's hosted queue and the Actions runners API
@@ -65,17 +69,21 @@ composite, once. It publishes three pools — `light` (detect, the lint jobs,
 the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
 (the slices and mutation shards that need the test-services namespace) — and
 every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`.
-Every pool is routed the same way:
+Every pool starts on GitHub-hosted; only `light` ever overflows to the box:
 
 1. `ubuntu-24.04` (`HOSTED_LINUX_IMAGE` in `runner.py`) by default (public
    repo: 4 vCPU / 16 GB, 20 concurrent jobs on the org's Free plan).
 2. Once GitHub's hosted queue holds `HOSTED_SATURATED_QUEUE_DEPTH` (5) queued
    jobs or more — the 20-job cap is hit; override with the
-   `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
-   has an idle listener for every job of the pool (`class_demand` in
-   `runner.py`: light 6, heavy 5, services 9, handed out services first). A
-   busy box is never queued on; a new lane in a pool raises its count.
-3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
+   `CI_HOSTED_QUEUE_THRESHOLD` repo variable — the `light` pool goes to
+   `gaia-home`, and only when it has an idle listener for every light job
+   (`BOX_OVERFLOW_DEMAND` in `runner.py`: light 6). A busy box is never queued on; a
+   new light lane raises the count. `heavy` and `services` never overflow to
+   the box (the same table): a cold TS build takes 22 min there against
+   8 min hosted, and unit tests that need real DNS fail on it. Moving the light
+   jobs frees hosted slots for them.
+3. `heavy` and `services` on a saturated GitHub, and `light` when the box has
+   no room, go to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
 
 Measured: an all-GitHub run (dispatch `force_github`, run 40178782875) went
 green in 10.3 min with every job started within 6 s; the box needs 9.6 min
@@ -238,7 +246,7 @@ is the one local gate; locally, run test files with `mise test:one`, the
 real-infra tier with `mise test:python:real` and the browser stack with
 `mise test:python:browser`. The browser slice (`engines: true` in
 `test-slices.json`) needs Chromium and an Obscura build, and on Linux the
-Fortress release the gaia image pins (`FORTRESS_BIN`), which only Fortress's own
+Fortress release the gaia-fortress image pins (`FORTRESS_BIN`), which only Fortress's own
 identity test launches. In CI the engine
 slices run as their own job, `test-python-engines` (test-python's steps by YAML
 alias), which needs `obscura-bin`: that job builds Obscura through

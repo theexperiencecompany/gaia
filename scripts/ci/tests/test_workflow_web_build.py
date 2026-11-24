@@ -70,3 +70,12 @@ def test_the_post_deploy_audit_never_queues_behind_a_crawl() -> None:
         "group": "seo-crawl",
         "cancel-in-progress": False,
     }
+
+
+def test_a_build_phase_never_waits_in_the_deploy_group() -> None:
+    """Regression for run 45297800153: an older run's deploy phase joined the group and cancelled the build waiting in it."""
+    build = yaml.safe_load((WORKFLOWS / "build.yml").read_text())
+    group = build["concurrency"]["group"]
+    assert build["concurrency"]["cancel-in-progress"] is False
+    assert group.startswith("${{ github.workflow }}-${{ github.ref }}")
+    assert "inputs.phase == 'build' && format('-build-{0}', github.run_id)" in group

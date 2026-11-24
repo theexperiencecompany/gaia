@@ -261,8 +261,14 @@ test.describe("self-host journey", () => {
     await expect(
       visible(adminPage.getByText("Code ran.", { exact: true })).first(),
     ).toBeVisible();
+    // The output is where a user reads it: the reply's tool thread, then the command's row.
+    await visible(
+      adminPage.getByRole("button", { name: /^Used \d+ tools?$/ }),
+    ).click();
+    const thread = adminPage.getByRole("group", { name: /^Used \d+ tools?$/ });
+    await thread.getByRole("button", { name: "Running a command" }).click();
     await expect(
-      visible(adminPage.getByText("42000126")).first(),
+      visible(thread.getByText("stdout: 42000126", { exact: true })),
     ).toBeVisible();
   });
 });

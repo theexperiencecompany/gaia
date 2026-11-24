@@ -1,0 +1,38 @@
+# gaia-web-server-refused: fires when a page keeps being refused; quiet on a few stray requests.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-web-server-refused fires when a page is refused on every render
+    interval: 1m
+    input_series:
+      - series: 'gaia_internal_caller_refused_total{job="gaia-api",reason="unauthorized"}'
+        values: '0x10 0+1x50'
+      - series: 'gaia_internal_caller_refused_total{job="gaia-api",reason="forbidden"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: gaia-web-server-refused
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: gaia-web-server-refused
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                A page of the web app calls an API route while it renders, and the route answers 401 or 403 because it does not admit the web server. Visitors see that page degraded or with a piece missing, and nothing errors. Find the route in the API's http_request logs (status 401 or 403, user agent node), then admit the internal caller on it or stop the page calling it.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-web-server-refused
+
+  - name: gaia-web-server-refused stays quiet on three stray refusals
+    interval: 1m
+    input_series:
+      - series: 'gaia_internal_caller_refused_total{job="gaia-api",reason="unauthorized"}'
+        values: '0x10 3x50'
+      - series: 'gaia_internal_caller_refused_total{job="gaia-api",reason="forbidden"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-web-server-refused
+        exp_alerts: []

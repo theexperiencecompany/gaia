@@ -15,7 +15,7 @@ from uuid import uuid4
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
-from app.agents.llm.client import resolve_model
+from app.agents.llm.client import init_llm
 from app.agents.llm.lane import one_shot_lane
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
@@ -62,18 +62,24 @@ async def _run_agent(
     prompt: str,
     spend: ScoutSpend,
 ) -> tuple[str, list[LearnCall]]:
-    """Run the read-only agent; return its final text and the calls it made."""
+    """Run the read-only agent; return its final text and the calls it made.
+
+    It runs on the provider-switchable model under the helper lane's keys, as every agent
+    graph does, so a failing provider falls back to the lane's next one.
+    """
+    lane = one_shot_lane(ModelUse.HELPER)
     configurable: AgentConfigurable = {
         "stream_id": f"scout_{uuid4().hex}",
         "user_id": user_id,
         "conversation_id": f"scout-{integration.integration_id}-{user_id}-{uuid4().hex[:6]}",
         "execution_mode": "background",
-        "lane": one_shot_lane(ModelUse.HELPER).to_configurable(),
+        "lane": lane.to_configurable(),
         "read_only": True,
+        **lane.binding_keys(),
     }
     async with asyncio.timeout(SCOUT_LEARN_TIMEOUT.total_seconds()):
         messages = await run_tool_graph(
-            resolve_model(ModelUse.HELPER),
+            init_llm(),
             tools,
             [HumanMessage(content=prompt)],
             agent_name=SCOUT_AGENT_NAME,

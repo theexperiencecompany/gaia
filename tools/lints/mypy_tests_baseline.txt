@@ -120,7 +120,6 @@ apps/api/tests/unit/config/test_sentry_sink.py	attr-defined
 apps/api/tests/unit/config/test_settings_guards.py	arg-type
 apps/api/tests/unit/config/test_settings_guards.py	call-arg
 apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
-apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
@@ -146,10 +145,7 @@ apps/api/tests/unit/evals/test_token_attribution.py	arg-type
 apps/api/tests/unit/evals/test_tool_call_any_of_gate.py	arg-type
 apps/api/tests/unit/evals/test_tool_call_args_gate.py	arg-type
 apps/api/tests/unit/helpers/test_email_helpers.py	call-arg
-apps/api/tests/unit/helpers/test_lifespan_helpers.py	arg-type
 apps/api/tests/unit/memory/test_chroma_store.py	abstract
-apps/api/tests/unit/memory/test_consolidation.py	attr-defined
-apps/api/tests/unit/memory/test_consolidation.py	misc
 apps/api/tests/unit/memory/test_reconciliation.py	attr-defined
 apps/api/tests/unit/memory/test_user_time.py	attr-defined
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
@@ -223,7 +219,6 @@ apps/api/tests/unit/services/delivery_alerts/test_dead_letter_tap.py	arg-type
 apps/api/tests/unit/services/delivery_alerts/test_dead_letter_tap.py	attr-defined
 apps/api/tests/unit/services/delivery_alerts/test_incidents.py	arg-type
 apps/api/tests/unit/services/embedding_sidecar/test_server.py	attr-defined
-apps/api/tests/unit/services/integrations/test_integration_status.py	arg-type
 apps/api/tests/unit/services/mcp/test_device_connector.py	union-attr
 apps/api/tests/unit/services/photon/test_photon_client.py	arg-type
 apps/api/tests/unit/services/photon/test_photon_client.py	attr-defined
@@ -248,9 +243,6 @@ apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
-apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
-apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
-apps/api/tests/unit/services/test_provider_credentials_service.py	index
 apps/api/tests/unit/services/test_publish_service.py	arg-type
 apps/api/tests/unit/services/test_s3_blob_store.py	union-attr
 apps/api/tests/unit/services/test_share_fetcher_compat.py	attr-defined
@@ -324,7 +316,6 @@ apps/api/tests/unit/utils/test_crawl_obscura.py	return-value
 apps/api/tests/unit/utils/test_file_utils.py	attr-defined
 apps/api/tests/unit/utils/test_image_utils.py	attr-defined
 apps/api/tests/unit/utils/test_notion_md.py	arg-type
-apps/api/tests/unit/utils/test_oauth_utils.py	attr-defined
 apps/api/tests/unit/utils/test_profile_card.py	attr-defined
 apps/api/tests/unit/utils/test_property_never_raises.py	func-returns-value
 apps/api/tests/unit/utils/test_research_utils.py	arg-type

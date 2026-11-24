@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from prometheus_client import REGISTRY
 from pydantic import ConfigDict
 import pytest
 
@@ -19,6 +20,7 @@ from app.models.scheduler_models import (
     TaskOutcome,
     TaskRearm,
 )
+from app.services.scheduler_metrics import ScheduledTaskKind
 from app.services.scheduler_service import STALE_EXECUTING_THRESHOLD, BaseSchedulerService
 from app.utils.timezone import Timezone
 
@@ -29,6 +31,8 @@ from app.utils.timezone import Timezone
 
 class ConcreteSchedulerService(BaseSchedulerService):
     """Concrete implementation for testing the abstract base class."""
+
+    kind = ScheduledTaskKind.REMINDER
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -163,6 +167,7 @@ class TestInitializeClose:
         await service.close()
 
         mock_pool.aclose.assert_awaited_once()
+        assert service.arq_pool is None
 
     async def test_close_no_pool(self, service):
         service.arq_pool = None
@@ -769,9 +774,9 @@ class TestReapStaleExecutingExact:
             None,
         )
         service.reschedule_task.assert_awaited_once_with("t-rec", next_run)
-        fake_log.warning.assert_called_once()
-        msg = fake_log.warning.call_args.args[0]
-        kw = fake_log.warning.call_args.kwargs
+        fake_log.error.assert_called_once()
+        msg = fake_log.error.call_args.args[0]
+        kw = fake_log.error.call_args.kwargs
         assert msg == _REAP_MSG
         assert kw["task_id"] == "t-rec"
         assert kw["scheduler_class"] == "ConcreteSchedulerService"
@@ -802,7 +807,7 @@ class TestReapStaleExecutingExact:
         fake_log = MagicMock()
         with patch("app.services.scheduler_service.log", fake_log):
             await service.reap_stale_executing()
-        assert fake_log.warning.call_args.kwargs["stuck_seconds"] == -1
+        assert fake_log.error.call_args.kwargs["stuck_seconds"] == -1
 
     async def test_naive_updated_at_is_normalized_not_crashed(self, service):
         # A naive updated_at must be treated as UTC; otherwise now(aware) - naive
@@ -814,7 +819,7 @@ class TestReapStaleExecutingExact:
         fake_log = MagicMock()
         with patch("app.services.scheduler_service.log", fake_log):
             assert await service.reap_stale_executing() == 1
-        assert 100 <= fake_log.warning.call_args.kwargs["stuck_seconds"] <= 200
+        assert 100 <= fake_log.error.call_args.kwargs["stuck_seconds"] <= 200
 
     async def test_a_task_without_an_id_is_skipped_but_the_scan_continues(self, service):
         no_id = _stale(id=None)
@@ -836,9 +841,13 @@ class TestReapStaleExecutingExact:
             assert await service.reap_stale_executing() == 1
 
         service.reschedule_task.assert_awaited_once_with("t-good", good.scheduled_at)
-        fake_log.error.assert_called_once()
-        assert fake_log.error.call_args.args == ("Could not reap task stuck in EXECUTING",)
-        logged = fake_log.error.call_args.kwargs
+        could_not_reap = [
+            call
+            for call in fake_log.error.call_args_list
+            if call.args == ("Could not reap task stuck in EXECUTING",)
+        ]
+        assert len(could_not_reap) == 1
+        logged = could_not_reap[0].kwargs
         assert {key: logged[key] for key in ("task_id", "scheduler_class", "error_type")} == {
             "task_id": "t-bad",
             "scheduler_class": "ConcreteSchedulerService",
@@ -889,3 +898,101 @@ class TestProcessTaskClaim:
             "Task already claimed by another run", task_id="task123"
         )
         assert result.success is False
+
+
+def _count(outcome: str) -> float:
+    return (
+        REGISTRY.get_sample_value(
+            "gaia_scheduled_task_total", {"kind": "reminder", "outcome": outcome}
+        )
+        or 0.0
+    )
+
+
+class TestSchedulerMetrics:
+    async def test_a_task_that_runs_counts_ok(self, service, sample_task):
+        service.mock_get_task.return_value = sample_task
+        before = _count("ok")
+
+        await service.process_task_execution("task123")
+
+        assert _count("ok") == before + 1
+
+    async def test_a_one_time_task_that_fails_counts_failed_and_logs_an_error(
+        self, service, sample_task
+    ):
+        service.mock_get_task.return_value = sample_task
+        service.mock_execute_task.side_effect = Exception("boom")
+        before = _count("failed")
+        fake_log = MagicMock()
+
+        with patch("app.services.scheduler_service.log", fake_log):
+            await service.process_task_execution("task123")
+
+        assert _count("failed") == before + 1
+        assert "One-time task failed" in [call.args[0] for call in fake_log.error.call_args_list]
+
+    async def test_a_task_claimed_by_another_run_counts_nothing(self, service, sample_task):
+        service.mock_get_task.return_value = sample_task
+        service.mock_claim_task.return_value = False
+        before = (_count("ok"), _count("failed"))
+
+        await service.process_task_execution("task123")
+
+        assert (_count("ok"), _count("failed")) == before
+
+    async def test_a_reaped_task_counts_reaped(self, service):
+        service.mock_find_stale_executing.return_value = [_stale(repeat=None, trigger_config=None)]
+        service.reschedule_task = AsyncMock()
+        before = _count("reaped")
+
+        await service.reap_stale_executing()
+
+        assert _count("reaped") == before + 1
+
+    async def test_the_claim_observes_how_late_the_task_was(self, service):
+        late = BaseScheduledTask(
+            _id="late",
+            user_id="user1",
+            scheduled_at=datetime.now(UTC) - timedelta(seconds=90),
+        )
+        service.mock_get_task.return_value = late
+        labels = {"kind": "reminder"}
+        before = (
+            REGISTRY.get_sample_value("gaia_scheduled_task_lateness_seconds_sum", labels) or 0.0
+        )
+
+        await service.process_task_execution("late")
+
+        after = REGISTRY.get_sample_value("gaia_scheduled_task_lateness_seconds_sum", labels)
+        assert 90 <= after - before < 120
+
+    async def test_a_task_claimed_before_its_time_observes_no_lateness(self, service):
+        early = BaseScheduledTask(
+            _id="early",
+            user_id="user1",
+            scheduled_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        service.mock_get_task.return_value = early
+        labels = {"kind": "reminder"}
+        name = "gaia_scheduled_task_lateness_seconds"
+        before_sum = REGISTRY.get_sample_value(f"{name}_sum", labels) or 0.0
+        before_count = REGISTRY.get_sample_value(f"{name}_count", labels) or 0.0
+
+        await service.process_task_execution("early")
+
+        assert REGISTRY.get_sample_value(f"{name}_count", labels) == before_count + 1
+        assert REGISTRY.get_sample_value(f"{name}_sum", labels) == before_sum
+
+    async def test_a_naive_scheduled_time_is_read_as_utc(self, service):
+        """A cron workflow takes its scheduled_at from the trigger's stored next_run, which Mongo returns naive."""
+        task = BaseScheduledTask(_id="naive", user_id="user1")
+        task.scheduled_at = (datetime.now(UTC) - timedelta(seconds=90)).replace(tzinfo=None)
+        service.mock_get_task.return_value = task
+        labels = {"kind": "reminder"}
+        name = "gaia_scheduled_task_lateness_seconds_sum"
+        before = REGISTRY.get_sample_value(name, labels) or 0.0
+
+        await service.process_task_execution("naive")
+
+        assert 90 <= REGISTRY.get_sample_value(name, labels) - before < 120

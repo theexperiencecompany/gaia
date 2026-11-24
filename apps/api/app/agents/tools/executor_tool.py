@@ -106,7 +106,8 @@ async def call_executor(
     ],
     for_messages: Annotated[
         list[int],
-        "The [#n] handles of the user's messages this task handles, as numbers (#7 is 7).",
+        "The [#n] handles of the user's messages this task handles, as numbers (#7 is 7). "
+        "Empty when the request carries no handle (a workflow run, a connected integration).",
     ],
     acceptance_criteria: Annotated[
         list[str],

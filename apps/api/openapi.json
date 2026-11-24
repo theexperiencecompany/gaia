@@ -6999,7 +6999,6 @@
           "openai",
           "resend",
           "cloudinary",
-          "google_oauth",
           "firecrawl",
           "openweather",
           "llamaparse",
@@ -10822,7 +10821,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"
@@ -11127,7 +11125,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"
@@ -13975,7 +13972,6 @@
           },
           "managedBy": {
             "enum": [
-              "self",
               "composio",
               "mcp",
               "internal"
@@ -33311,7 +33307,7 @@
     },
     "/api/v1/fetch-url-metadata": {
       "post": {
-        "description": "Fetch metadata for multiple URLs in parallel.\n\nEmail and ``mailto:`` entries resolve to person previews (Google\nContacts, then Gravatar) instead of being scraped as web pages.\n\nArgs:\n    request (Request): The FastAPI request object (required for rate limiting).\n    data (URLRequest): The URL request containing an array of URLs.\n    user_id (str): The authenticated user's id (contact lookups are per-user).\n\nReturns:\n    MultiURLResponse: The metadata for all URLs.",
+        "description": "Fetch metadata for multiple URLs in parallel.\n\nEmail and ``mailto:`` entries resolve to person previews (Google\nContacts, then Gravatar) instead of being scraped as web pages.\n\nArgs:\n    request (Request): The FastAPI request object (required for rate limiting).\n    data (URLRequest): The URL request containing an array of URLs.\n    caller (Caller): A signed-in user, or GAIA's web server (which gets web URLs only).\n\nReturns:\n    MultiURLResponse: The metadata for all URLs.",
         "operationId": "search_fetch_url_metadata_endpoint",
         "requestBody": {
           "content": {

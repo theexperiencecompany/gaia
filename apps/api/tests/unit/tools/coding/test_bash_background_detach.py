@@ -27,7 +27,7 @@ async def test_background_launch_returns_while_a_long_command_keeps_running() ->
         scoped_tools=None,
     )
 
-    out = await bash_tool._run_background(fake, run)
+    out = await bash_tool._run_background(fake.as_sandbox(), run)
 
     assert out.startswith("Started in background. pid=")
     pid = int(out.split("pid=", 1)[1].split(",", 1)[0])

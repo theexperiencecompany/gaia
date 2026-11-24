@@ -13,7 +13,8 @@ from app.constants.integrations import (
     USE_CASES_COUNT,
 )
 from app.models.db_oauth import MCPAuthType
-from app.models.integration_models import AuthType, StoredIntegrationTool
+from app.models.integration_models import StoredIntegrationTool
+from app.models.mcp_config import AuthType
 from app.models.oauth_models import IntegrationContent, IntegrationFAQ, IntegrationHowItWorksStep
 
 # Leading verbs cycle so integrations with fewer than USE_CASES_COUNT tools still

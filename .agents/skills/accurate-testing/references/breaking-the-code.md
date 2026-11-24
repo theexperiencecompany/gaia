@@ -85,7 +85,7 @@ Where a mutation-testing tool exists, use it instead of doing this by hand:
 
 ```bash
 # Python
-uv run mutmut run --paths-to-mutate app/services/quota.py
+mise mutation:one apps/api/app/services/quota.py   # the lane's own runner and settings
 
 # TypeScript
 pnpm exec stryker run

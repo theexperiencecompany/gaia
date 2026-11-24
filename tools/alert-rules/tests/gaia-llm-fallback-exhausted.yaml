@@ -1,0 +1,35 @@
+# gaia-llm-fallback-exhausted: fires when five calls exhaust the fallback; quiet when two calls exhaust it and the rest recover.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-llm-fallback-exhausted fires when five calls exhaust the fallback
+    interval: 1m
+    input_series:
+      - series: 'gaia_llm_fallback_total{job="gaia-api",outcome="exhausted"}'
+        values: '0x30 5x30'
+      - series: 'gaia_llm_fallback_total{job="gaia-api",outcome="recovered"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-llm-fallback-exhausted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                Model calls are failing with nothing left to fall back to, so chat turns, workflows and briefs are ending in an error. Either the default model's provider is down, or two providers are at once. Check gaia_llm_call_total by provider for which, then that provider's status page and the credits and limits on its key.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-llm-fallback-exhausted
+
+  - name: gaia-llm-fallback-exhausted stays quiet when two calls exhaust it and the rest recover
+    interval: 1m
+    input_series:
+      - series: 'gaia_llm_fallback_total{job="gaia-api",outcome="exhausted"}'
+        values: '0x30 2x30'
+      - series: 'gaia_llm_fallback_total{job="gaia-api",outcome="recovered"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-llm-fallback-exhausted
+        exp_alerts: []

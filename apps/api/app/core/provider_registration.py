@@ -44,6 +44,7 @@ from app.helpers.lifespan_helpers import (
     StartupService,
     _process_results,
     close_checkpointer_manager,
+    close_langfuse,
     close_mcp_client_pool,
     close_postgresql_async,
     close_publisher_async,
@@ -344,6 +345,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         (close_workflow_scheduler, "workflow_scheduler"),
         (close_checkpointer_manager, "checkpointer_manager"),
         (close_mcp_client_pool, "mcp_client_pool"),
+        (close_langfuse, "langfuse"),
         # Both contexts open a RabbitMQ connection at startup (outbound topology
         # declaration + publishing), so close the publisher unconditionally.
         (close_publisher_async, "publisher"),

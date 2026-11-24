@@ -1,0 +1,39 @@
+# gaia-payment-webhook-bad-signature: fires when five deliveries fail verification and none verifies; quiet when deliveries fail verification while real ones still verify.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-payment-webhook-bad-signature fires when five deliveries fail verification and none verifies
+    interval: 1m
+    input_series:
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="invalid_signature"}'
+        values: '0x10 5x80'
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="processed"}'
+        values: '0x90'
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="ignored"}'
+        values: '0x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-payment-webhook-bad-signature
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: api
+            exp_annotations:
+              description: >-
+                Every payment webhook is being rejected with 401, so no purchase, renewal or cancellation is reaching GAIA and new subscribers are not activated. Dodo keeps retrying, so the events land once verification works again. Compare the webhook signing secret in the Dodo dashboard with the one the API runs with.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-payment-webhook-bad-signature
+
+  - name: gaia-payment-webhook-bad-signature stays quiet when deliveries fail verification while real ones still verify
+    interval: 1m
+    input_series:
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="invalid_signature"}'
+        values: '0x10 5x80'
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="processed"}'
+        values: '0+1x90'
+      - series: 'gaia_payment_webhook_total{job="gaia-api",outcome="ignored"}'
+        values: '0x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-payment-webhook-bad-signature
+        exp_alerts: []

@@ -22,6 +22,7 @@ from app.constants.briefing import (
     BRIEF_HEADING_CHECK_LABEL,
     BRIEF_VOICE_LABEL,
 )
+from app.constants.scouts import SCOUT_AGENT_NAME
 from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.utils.background_tasks import spawn_background_task
@@ -106,7 +107,7 @@ class AIFeature(StrEnum):
     TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
     BRIEFING = (
         "briefing",
-        (BRIEF_COMPOSITION_LABEL, BRIEF_HEADING_CHECK_LABEL, BRIEF_VOICE_LABEL),
+        (BRIEF_COMPOSITION_LABEL, BRIEF_HEADING_CHECK_LABEL, BRIEF_VOICE_LABEL, SCOUT_AGENT_NAME),
     )
     MODERATION = "moderation", ("profanity",)
     BROWSER = "browser", ("browser_task",)

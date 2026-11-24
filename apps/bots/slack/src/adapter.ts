@@ -43,9 +43,15 @@ import {
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
+  setPlatformConnected,
   withWideEvent,
 } from "@gaia/shared/bots";
-import { App, type CodedError, type Context } from "@slack/bolt";
+import {
+  App,
+  type CodedError,
+  type Context,
+  SocketModeReceiver,
+} from "@slack/bolt";
 import { which } from "node-emoji";
 import {
   downloadSlackFile,
@@ -96,6 +102,8 @@ export class SlackAdapter extends BaseBotAdapter {
   private signingSecret!: string;
   private appToken!: string;
   private readonly adapterLogger = createBotLogger("slack", "adapter");
+  /** Slack's Web API base URL; unset means Slack itself. A test points it at a local fake. */
+  protected readonly slackApiUrl: string | undefined = undefined;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -117,11 +125,24 @@ export class SlackAdapter extends BaseBotAdapter {
     this.signingSecret = signingSecret;
     this.appToken = appToken;
 
+    // Built here, not by Bolt's `socketMode` option, to reach the socket's connect and disconnect events.
+    // Two option objects: the Socket Mode client writes its own retry policy into the one it is given.
+    const receiver = new SocketModeReceiver({
+      appToken: this.appToken,
+      installerOptions: { clientOptions: { slackApiUrl: this.slackApiUrl } },
+    });
+    receiver.client.on("connected", () =>
+      setPlatformConnected(this.platform, true),
+    );
+    // "close", not "disconnected": a dropped socket that will reconnect only emits "close".
+    receiver.client.on("close", () =>
+      setPlatformConnected(this.platform, false),
+    );
     this.app = new App({
       token: this.token,
       signingSecret: this.signingSecret,
-      socketMode: true,
-      appToken: this.appToken,
+      receiver,
+      clientOptions: { slackApiUrl: this.slackApiUrl },
       // Hands the handler the event's context, so the error says who hit it.
       extendedErrorHandler: true,
     });

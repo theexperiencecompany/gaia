@@ -2,6 +2,7 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { serverFetch } from "@/lib/api/server";
+import { BUILD_RATE_LIMIT_WAITS } from "../../../build-rate-limit.mjs";
 
 const CONFIG_URL = "https://api.example.test/api/v1/integrations/config";
 
@@ -10,6 +11,13 @@ function timeout(): DOMException {
     "The operation was aborted due to timeout",
     "TimeoutError",
   );
+}
+
+function rateLimited(retryAfter: string): Response {
+  return new Response('{"message":"120 per 1 minute"}', {
+    status: 429,
+    headers: { "Retry-After": retryAfter },
+  });
 }
 
 describe("serverFetch", () => {
@@ -69,6 +77,99 @@ describe("serverFetch", () => {
 
     await outcome;
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([502, 503, 504])(
+    "retries a build-time %i from the gateway and returns the answer that follows",
+    async (status) => {
+      vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+      fetchMock
+        .mockResolvedValueOnce(new Response("<html></html>", { status }))
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+      const pending = serverFetch(new Request(CONFIG_URL));
+      await vi.runAllTimersAsync();
+
+      expect((await pending).status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("hands the build the 504 when the gateway stays down past every retry", async () => {
+    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+    fetchMock.mockImplementation(
+      async () => new Response("<html></html>", { status: 504 }),
+    );
+
+    const pending = serverFetch(new Request(CONFIG_URL));
+    await vi.runAllTimersAsync();
+
+    expect((await pending).status).toBe(504);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns a build-time 500 at once, since the API itself answered", async () => {
+    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+    fetchMock.mockResolvedValue(new Response("{}", { status: 500 }));
+
+    expect((await serverFetch(new Request(CONFIG_URL))).status).toBe(500);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a visitor's 504 at once", async () => {
+    fetchMock.mockResolvedValue(new Response("<html></html>", { status: 504 }));
+
+    expect((await serverFetch(new Request(CONFIG_URL))).status).toBe(504);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits out a build-time 429 for its Retry-After, then returns the answer", async () => {
+    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+    fetchMock
+      .mockResolvedValueOnce(rateLimited("7"))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    const pending = serverFetch(new Request(CONFIG_URL));
+    await vi.advanceTimersByTimeAsync(6_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect((await pending).status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands the build the 429 once the refusals outlast the bound", async () => {
+    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+    fetchMock.mockImplementation(async () => rateLimited("1"));
+
+    const pending = serverFetch(new Request(CONFIG_URL));
+    await vi.runAllTimersAsync();
+
+    expect((await pending).status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(BUILD_RATE_LIMIT_WAITS + 1);
+  });
+
+  it("does not wait out a build-time 429 whose Retry-After is past the window", async () => {
+    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+    fetchMock.mockResolvedValue(rateLimited("3600"));
+
+    expect((await serverFetch(new Request(CONFIG_URL))).status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands back a build-time 429 that names no Retry-After", async () => {
+    vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+    fetchMock.mockResolvedValue(new Response("{}", { status: 429 }));
+
+    expect((await serverFetch(new Request(CONFIG_URL))).status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a visitor's 429 at once", async () => {
+    fetchMock.mockResolvedValue(rateLimited("7"));
+
+    expect((await serverFetch(new Request(CONFIG_URL))).status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("gives a visitor's request one attempt", async () => {

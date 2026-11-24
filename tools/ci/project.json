@@ -517,7 +517,7 @@
     "mypy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci\""
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests:tools/alert-rules uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci\""
       },
       "cache": false,
       "inputs": [
@@ -527,6 +527,7 @@
         "ciHarness",
         "{workspaceRoot}/tools/lints/**/*.py",
         "{workspaceRoot}/scripts/ci/**/*.py",
+        "{workspaceRoot}/tools/alert-rules/**/*.py",
         {
           "externalDependencies": []
         }
@@ -1214,35 +1215,6 @@
           "check": "seo",
           "area": "build",
           "events": ["pull_request", "merge_group"]
-        }
-      }
-    },
-    "selfhost-e2e": {
-      "executor": "nx:noop",
-      "inputs": [
-        "{workspaceRoot}/packages/cli/**/*",
-        "{workspaceRoot}/apps/web/src/features/setup-wizard/**/*",
-        "{workspaceRoot}/apps/web/src/features/auth/**/*",
-        "{workspaceRoot}/apps/web/e2e/selfhost/**/*",
-        "{workspaceRoot}/tools/llm-stub/**/*",
-        "{workspaceRoot}/apps/api/Dockerfile",
-        "{workspaceRoot}/apps/web/Dockerfile",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/setup.py",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/auth_local.py",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/members.py",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/readiness.py",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/blob.py",
-        "{workspaceRoot}/apps/web/playwright.selfhost.config.ts",
-        "{workspaceRoot}/scripts/ci/selfhost.sh",
-        "{workspaceRoot}/.github/workflows/selfhost-smoke.yml",
-        "ciHarness",
-        {
-          "externalDependencies": []
-        }
-      ],
-      "metadata": {
-        "ci": {
-          "job": "selfhost-smoke"
         }
       }
     },

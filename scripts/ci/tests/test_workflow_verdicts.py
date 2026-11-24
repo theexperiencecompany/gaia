@@ -272,6 +272,26 @@ def test_the_mutation_family_declares_how_many_shards_were_planned(
     )
 
 
+def test_a_fixed_matrix_declares_every_member_to_the_gate(workflow: dict[str, Any]) -> None:
+    # A family is satisfied by ANY member, so a shard cancelled before its
+    # upload is silently spoken for by its sibling unless the gate is told how
+    # many members to expect. A fixed matrix knows that count when it is written.
+    entries = {_job_name(e): e for e in _expect_arg(workflow).split(",") if e.strip()}
+    fixed = 0
+    for name in _gated_jobs(workflow):
+        matrix = workflow["jobs"][name].get("strategy", {}).get("matrix", {})
+        for values in matrix.values():
+            if not isinstance(values, list):
+                continue
+            fixed += 1
+            planned = entries[name].partition("=")[0].partition("*")[2].strip()
+            assert planned == str(len(values)), (
+                f"job '{name}' runs {len(values)} matrix members but the gate's --expect "
+                f"entry {entries[name]!r} declares {planned or 'no'} planned members"
+            )
+    assert fixed, "no gated job runs a fixed matrix; drop this test with the last one"
+
+
 def test_the_mutation_shard_declares_the_namespace_it_owns(workflow: dict[str, Any]) -> None:
     # mutation.py writes one verdict per MODULE under `mutation/`, not under the
     # shard's own lane, so without this the ownership check would reject every
@@ -329,7 +349,7 @@ def _steps_running(job: dict[str, Any], command: str) -> list[dict[str, Any]]:
 
 def test_every_check_names_a_job_ci_yml_has(workflow: dict[str, Any]) -> None:
     for check in nx_affected.checks().values():
-        assert check.job in workflow["jobs"] or check.job == "selfhost-smoke", check.task
+        assert check.job in workflow["jobs"], check.task
 
 
 def test_every_grouped_job_runs_its_nx_checks_then_posts_every_check(
@@ -409,12 +429,14 @@ def test_a_partial_upload_overwrites_the_jobs_own_artifact(workflow: dict[str, A
     # overwrites, so a partial upload must name the artifact the job ends with.
     for name in _reporting_jobs(workflow):
         job = workflow["jobs"][name]
-        uploads = [s for s in job["steps"] if s.get("uses") == UPLOAD_VERDICT]
-        finals = {str(s["with"]["name"]) for s in uploads if not _is_partial(s)}
-        for step in uploads:
-            if not _is_partial(step):
-                continue
-            given = str(step["with"]["name"]).replace("${{ github.job }}", name)
+        # Either side may spell the job as `${{ github.job }}`; compare resolved names.
+        names = [
+            (_is_partial(s), str(s["with"]["name"]).replace("${{ github.job }}", name))
+            for s in job["steps"]
+            if s.get("uses") == UPLOAD_VERDICT
+        ]
+        finals = {artifact for partial, artifact in names if not partial}
+        for given in (artifact for partial, artifact in names if partial):
             assert given in finals, f"{name}: partial upload {given!r} is not one of {finals}"
 
 

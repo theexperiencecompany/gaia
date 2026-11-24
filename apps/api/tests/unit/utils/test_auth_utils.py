@@ -16,12 +16,14 @@ from app.constants.auth import (
     SESSION_HINT_COOKIE,
     WOS_SESSION_COOKIE,
 )
+from app.constants.http import INTERNAL_CALLER_HEADER
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
 from app.utils import auth_utils
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
+    carries_internal_token,
     load_user_context,
     resolve_bot_user,
     resolve_dev_bypass_user,
@@ -1152,3 +1154,41 @@ class TestClearSessionCookie:
 
         _, hint = (SimpleCookie(h) for h in response.headers.getlist("set-cookie"))
         assert hint[SESSION_HINT_COOKIE]["secure"] == (True if secure else "")
+
+
+def _presenting(token: str | None) -> Request:
+    headers = [] if token is None else [(INTERNAL_CALLER_HEADER.lower().encode(), token.encode())]
+    return Request({"type": "http", "path": "/", "headers": headers})
+
+
+class TestCarriesInternalToken:
+    @pytest.fixture(autouse=True)
+    def _tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", "current-token")
+        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN_PREVIOUS", "previous-token")
+
+    @pytest.mark.parametrize(
+        ("presented", "admitted"),
+        [
+            ("current-token", True),
+            ("previous-token", True),
+            ("current-token-and-more", False),
+            ("another-token", False),
+            ("", False),
+            (None, False),
+        ],
+    )
+    def test_only_the_current_or_the_rotating_out_token_is_admitted(
+        self, presented: str | None, admitted: bool
+    ) -> None:
+        assert carries_internal_token(_presenting(presented)) is admitted
+
+    @pytest.mark.parametrize("unset", [None, ""])
+    def test_an_unset_token_admits_nothing_not_even_an_empty_header(
+        self, monkeypatch: pytest.MonkeyPatch, unset: str | None
+    ) -> None:
+        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", unset)
+        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN_PREVIOUS", unset)
+
+        assert carries_internal_token(_presenting("")) is False
+        assert carries_internal_token(_presenting("current-token")) is False

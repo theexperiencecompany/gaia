@@ -1747,7 +1747,7 @@ export interface paths {
          *     Args:
          *         request (Request): The FastAPI request object (required for rate limiting).
          *         data (URLRequest): The URL request containing an array of URLs.
-         *         user_id (str): The authenticated user's id (contact lookups are per-user).
+         *         caller (Caller): A signed-in user, or GAIA's web server (which gets web URLs only).
          *
          *     Returns:
          *         MultiURLResponse: The metadata for all URLs.
@@ -9325,7 +9325,7 @@ export interface components {
          * @description A provider the credential store can hold, in display order.
          * @enum {string}
          */
-        CredentialProviderName: "cloudflare" | "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl" | "openweather" | "llamaparse" | "github";
+        CredentialProviderName: "cloudflare" | "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "firecrawl" | "openweather" | "llamaparse" | "github";
         /**
          * CredentialSource
          * @description Where a provider's active credential comes from: a saved one wins over env.
@@ -11217,7 +11217,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /**
@@ -11367,7 +11367,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /** Publishedat */
@@ -12762,7 +12762,7 @@ export interface components {
              * Managedby
              * @enum {string}
              */
-            managedBy: "self" | "composio" | "mcp" | "internal";
+            managedBy: "composio" | "mcp" | "internal";
             /** Name */
             name: string;
             /**

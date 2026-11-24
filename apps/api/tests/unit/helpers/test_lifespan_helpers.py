@@ -4,10 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.langfuse import LANGFUSE_PROVIDER_NAME
+from app.config.settings import settings
 from app.helpers.lifespan_helpers import (
     StartupService,
     _process_results,
     close_checkpointer_manager,
+    close_langfuse,
     close_mcp_client_pool,
     close_postgresql_async,
     close_publisher_async,
@@ -269,6 +272,51 @@ class TestCloseCheckpointerManager:
             await close_checkpointer_manager()
 
 
+class TestCloseLangfuse:
+    @pytest.mark.asyncio
+    async def test_not_initialized_never_builds_a_client(self) -> None:
+        with (
+            patch("app.helpers.lifespan_helpers.providers") as mock_providers,
+            patch("app.helpers.lifespan_helpers.get_client") as mock_get_client,
+        ):
+            mock_providers.is_initialized.return_value = False
+            await close_langfuse()
+            mock_get_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_initialized_flushes_and_shuts_the_configured_client_down(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
+        with (
+            patch("app.helpers.lifespan_helpers.providers") as mock_providers,
+            patch("app.helpers.lifespan_helpers.get_client") as mock_get_client,
+        ):
+            mock_providers.is_initialized.side_effect = lambda name: name == LANGFUSE_PROVIDER_NAME
+            await close_langfuse()
+            mock_get_client.assert_called_once_with(public_key="pk-lf-test")
+            mock_get_client.return_value.shutdown.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_a_failing_shutdown_is_logged_and_does_not_stop_the_teardown(self) -> None:
+        with (
+            patch("app.helpers.lifespan_helpers.providers") as mock_providers,
+            patch("app.helpers.lifespan_helpers.get_client") as mock_get_client,
+        ):
+            mock_providers.is_initialized.return_value = True
+            mock_get_client.return_value.shutdown.side_effect = RuntimeError("export failed")
+            async with captured_wide_event() as event:
+                await close_langfuse()
+
+        assert event["errors"] == [
+            {
+                "msg": "Error closing Langfuse",
+                "error": "export failed",
+                "error_type": "RuntimeError",
+            }
+        ]
+
+
 class TestCloseMcpClientPool:
     @pytest.mark.asyncio
     async def test_not_initialized_skips(self) -> None:
@@ -323,7 +371,7 @@ class TestProcessResults:
 
     def test_failure_on_first_iteration(self) -> None:
         """A required service failure always raises RuntimeError."""
-        results = [RuntimeError("first")]
+        results: list[object] = [RuntimeError("first")]
         with pytest.raises(RuntimeError):
             _process_results(results, [_svc("svc_a")])
 

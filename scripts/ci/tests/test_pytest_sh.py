@@ -239,15 +239,6 @@ def test_the_gaia_shared_suite_runs_under_the_api_pytest_config(tmp_path: Path) 
     assert config.resolve() == (root / "apps" / "api" / "pytest.ini").resolve()
 
 
-GNU_TIME = (
-    subprocess.run(["/usr/bin/time", "-v", "true"], capture_output=True, check=False).returncode
-    == 0
-)
-
-
-@pytest.mark.skipif(
-    not GNU_TIME, reason="the slice runs pytest under GNU time -v, as CI's Linux runners have"
-)
 def test_the_test_order_and_examples_are_seeded_by_the_commit(tmp_path: Path) -> None:
     """Unseeded, the order and master's Hypothesis draw changed every run, so a failure came and went."""
     sha = "0a1b2c3d" + "0" * 32
@@ -421,9 +412,6 @@ def test_flake_gate_passes_a_selection_the_markers_deselected(tmp_path: Path) ->
     assert _flake_gate_on_exit(tmp_path, 5, FLAKE_GATE_SELECTION="1") == 0
 
 
-@pytest.mark.skipif(
-    not GNU_TIME, reason="the slice runs pytest under GNU time -v, as CI's Linux runners have"
-)
 def test_the_slice_takes_its_markers_and_timeout_from_pytest_ini(tmp_path: Path) -> None:
     """It overrode addopts and restated -m and --timeout, a second copy pytest.ini could drift from."""
     argv = _suite_argv(tmp_path, "c" * 40)

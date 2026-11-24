@@ -17,20 +17,20 @@ count separately as tool_bash_exit_code_total in app/agents/tools/coding/bash_to
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 import contextlib
 import contextvars
 from dataclasses import dataclass, field
 import time
-from typing import Any, Final, NotRequired, TypedDict, TypeVar, cast
+from typing import Any, Final, NotRequired, TypedDict, cast
 
 from prometheus_client import (  # Gauge used via lambda factories below
-    REGISTRY,
     Counter,
     Gauge,
     Histogram,
 )
 
+from app.utils.prometheus_registry import register_once
 from shared.py.wide_events import log
 
 # Prometheus collectors — allowed labels are exactly those listed in the
@@ -55,27 +55,7 @@ _FS_OP_BUCKETS: Final[tuple[float, ...]] = (
 )
 
 
-_CollectorT = TypeVar("_CollectorT")
-
-
-def _register_once(name: str, factory: Callable[[], _CollectorT]) -> _CollectorT:
-    """Register a Prometheus collector at module load, tolerating re-imports.
-
-    uvicorn --reload and some test fixtures import this module twice in the
-    same process. The second registration raises ValueError("Duplicated
-    timeseries..."). We catch that and return the previously-registered
-    collector, so the same instance is used across imports.
-    """
-    try:
-        return factory()
-    except ValueError:
-        existing = REGISTRY._names_to_collectors.get(name)
-        if existing is None:
-            raise
-        return cast(_CollectorT, existing)
-
-
-_FS_OP_DURATION_SECONDS = _register_once(
+_FS_OP_DURATION_SECONDS = register_once(
     "fs_op_duration_seconds",
     lambda: Histogram(
         name="fs_op_duration_seconds",
@@ -85,7 +65,7 @@ _FS_OP_DURATION_SECONDS = _register_once(
     ),
 )
 
-_FS_OP_BYTES_TOTAL = _register_once(
+_FS_OP_BYTES_TOTAL = register_once(
     "fs_op_bytes_total",
     lambda: Counter(
         name="fs_op_bytes_total",
@@ -94,7 +74,7 @@ _FS_OP_BYTES_TOTAL = _register_once(
     ),
 )
 
-_FS_OP_TOTAL = _register_once(
+_FS_OP_TOTAL = register_once(
     "fs_op_total",
     lambda: Counter(
         name="fs_op_total",
@@ -103,7 +83,7 @@ _FS_OP_TOTAL = _register_once(
     ),
 )
 
-_FS_OP_LAST_SEEN = _register_once(
+_FS_OP_LAST_SEEN = register_once(
     "fs_op_last_seen_unix_seconds",
     lambda: Gauge(
         name="fs_op_last_seen_unix_seconds",
@@ -112,7 +92,7 @@ _FS_OP_LAST_SEEN = _register_once(
     ),
 )
 
-_FS_OP_IN_FLIGHT = _register_once(
+_FS_OP_IN_FLIGHT = register_once(
     "fs_op_in_flight",
     lambda: Gauge(
         name="fs_op_in_flight",
@@ -121,7 +101,7 @@ _FS_OP_IN_FLIGHT = _register_once(
     ),
 )
 
-_SANDBOX_POOL_SIZE = _register_once(
+_SANDBOX_POOL_SIZE = register_once(
     "sandbox_pool_size",
     lambda: Gauge(
         name="sandbox_pool_size",
@@ -277,6 +257,7 @@ def record_fs_op(
     duration_ms: float,
     error: BaseException | None = None,
     byte_count: int = 0,
+    mode: str | None = None,
     **labels: str,
 ) -> None:
     """Record one completed FS op.
@@ -299,9 +280,11 @@ def record_fs_op(
         stats.last_error_type = type(error).__name__
     if labels:
         stats.labels.update(labels)
+    if mode is not None:
+        stats.labels["mode"] = mode
 
     try:
-        mode = labels.get("mode") or "none"
+        mode = mode or "none"
         status = "error" if error is not None else "ok"
         _FS_OP_DURATION_SECONDS.labels(operation=op, mode=mode, status=status).observe(
             duration_ms / 1000.0

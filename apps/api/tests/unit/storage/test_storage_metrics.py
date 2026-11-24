@@ -27,7 +27,6 @@ import pytest
 from app.services.storage import metrics as m
 from app.services.storage.metrics import (
     FsOps,
-    _register_once,
     add_fs_bytes,
     flush_fs_metrics,
     fs_timer,
@@ -35,6 +34,7 @@ from app.services.storage.metrics import (
     record_fs_op,
     set_sandbox_pool_size,
 )
+from app.utils.prometheus_registry import register_once
 
 
 @pytest.fixture(autouse=True)
@@ -616,13 +616,13 @@ def test_a_registry_failure_never_breaks_the_pool_mutation_that_published_it(
     set_sandbox_pool_size("user", "0", 1)
 
 
-# ── _register_once ───────────────────────────────────────────────────
+# ── register_once ───────────────────────────────────────────────────
 
 
 def test_re_importing_the_module_reuses_the_already_registered_collector() -> None:
     # `uvicorn --reload` and the worker's registry re-import this module. If the
     # duplicate registration were not tolerated the process would die at import.
-    again = _register_once(
+    again = register_once(
         "fs_op_in_flight",
         lambda: Gauge(
             name="fs_op_in_flight",
@@ -642,7 +642,7 @@ def test_a_registration_failure_for_an_unknown_collector_is_not_swallowed() -> N
         raise ValueError("bad bucket definition")
 
     with pytest.raises(ValueError, match="bad bucket definition"):
-        _register_once(f"never_registered_{uuid4().hex}", boom)
+        register_once(f"never_registered_{uuid4().hex}", boom)
 
 
 def test_a_single_byte_is_recorded_on_both_surfaces(op: str) -> None:

@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from functools import cache
 import math
 import time
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, Literal, TypedDict, TypeVar, cast
 from urllib.parse import urlparse
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -28,7 +28,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openrouter.utils import BackoffStrategy, RetryConfig
-from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, SecretStr, ValidationError
 
 from app.agents.llm.dev_lane import (
     build_custom_chat_model,
@@ -40,6 +40,14 @@ from app.agents.llm.exceptions import (
     LLM_RETRYABLE_EXCEPTIONS,
     LLMNotConfiguredError,
     MalformedStructuredOutputError,
+)
+from app.agents.llm.metrics import (
+    LLMFallbackOutcome,
+    fallback_leg,
+    observe_llm_call_failed,
+    observe_llm_call_ok,
+    observe_llm_call_timed_out,
+    observe_llm_fallback,
 )
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
 from app.agents.llm.workers_ai import ChatWorkersAI
@@ -1024,6 +1032,7 @@ def _resolve_fallback(
     # Google's client rejects unknown kwargs and would raise on the outage path itself.
     resolved = _materialize_fallback(fallback)
     if resolved is None:
+        observe_llm_fallback(LLMFallbackOutcome.EXHAUSTED)
         raise primary_error
     log.warning(
         f"{LogTag.AGENT} llm call failed; falling back to the default model",
@@ -1034,6 +1043,24 @@ def _resolve_fallback(
     if session_id and _is_openrouter_wire(resolved):
         resolved = resolved.bind(session_id=session_id)
     return with_llm_retry(resolved), requested
+
+
+def _call_provider(runnable: Runnable, config: RunnableConfig | None) -> LLMProviderName | None:
+    """Return the provider a call runs on: the lane's when its config names one, else the client's own; None when neither says."""
+    configurable: AgentConfigurable = agent_configurable(config)
+    named = configurable.get("provider")
+    if named in LLMProviderName:
+        return LLMProviderName(named)
+    client = _wire_client(runnable)
+    if isinstance(client, ChatOpenRouter):
+        return LLMProviderName.OPENROUTER
+    if isinstance(client, ChatGoogleGenerativeAI):
+        return LLMProviderName.GEMINI
+    if isinstance(client, ChatWorkersAI):
+        return LLMProviderName.CLOUDFLARE
+    if _is_openai_wire(runnable):
+        return LLMProviderName.OPENAI
+    return None
 
 
 def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool = False) -> str | None:
@@ -1131,7 +1158,7 @@ class StructuredCallOptions:
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
     #: Have the provider hold the reply to the schema (strict tools on an OpenAI wire, the
     #: response schema on Gemini), so a model cannot leave a field out. Every field of the
-    #: schema must then be required, with no defaults.
+    #: schema must then be required, with no defaults. Size caps are checked after, not held.
     schema_held: bool = False
 
 
@@ -1166,6 +1193,8 @@ async def ainvoke_llm(
     generation_handler = _GenerationIdCallback() if opts.meter_auxiliary else None
     call_configurable: AgentConfigurable = agent_configurable(config)
     user_id = call_configurable.get("user_id")
+    provider = _call_provider(primary, config)
+    primary_counted = False
     # Wall time of the whole provider interaction, including retries and the
     # fallback attempt. Started before the timeout scope so a killed call still
     # reports how long it burned.
@@ -1174,13 +1203,17 @@ async def ainvoke_llm(
         try:
             async with asyncio.timeout(opts.timeout):
                 try:
-                    return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
+                    reply = await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
                         messages,
                         config=_with_usage_handler(
                             _with_usage_handler(config, usage_handler), generation_handler
                         ),
                     )
+                    observe_llm_call_ok(provider)
+                    return reply
                 except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                    observe_llm_call_failed(provider, primary_error)
+                    primary_counted = True
                     # Runs under ``fallback_config``: reusing ``config`` made failover
                     # a no-op, since LangChain merges a passed config OVER a
                     # ``with_config`` one, putting the just-failed provider back.
@@ -1191,15 +1224,16 @@ async def ainvoke_llm(
                         session_id=opts.sticky_session_id
                         or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     )
-                    return _stamp_fallback(
-                        await fallback_runnable.ainvoke(
+                    with fallback_leg():
+                        fallback_reply = await fallback_runnable.ainvoke(
                             messages,
                             config=_with_usage_handler(
                                 _with_usage_handler(fallback_config or config, usage_handler),
                                 generation_handler,
                             ),
-                        ),
-                        opts.fallback_model or fallback_requested,
+                        )
+                    return _stamp_fallback(
+                        fallback_reply, opts.fallback_model or fallback_requested
                     )
         except Exception as call_error:
             # One row per failed CALL, not per attempt. ``except Exception``
@@ -1216,6 +1250,9 @@ async def ainvoke_llm(
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
             )
+            # The deadline fires outside the provider call, so a hung provider is counted here.
+            if isinstance(call_error, TimeoutError) and not primary_counted:
+                observe_llm_call_timed_out(provider)
             raise
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
@@ -1253,11 +1290,15 @@ def invoke_llm(
     opts = options or LLMInvokeOptions()
     fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
+    provider = _call_provider(primary, config)
     try:
-        return with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
+        reply = with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
             messages, config=config
         )
+        observe_llm_call_ok(provider)
+        return reply
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
+        observe_llm_call_failed(provider, primary_error)
         fallback_runnable, fallback_requested = _resolve_fallback(
             fallback,
             label,
@@ -1267,15 +1308,14 @@ def invoke_llm(
             # on whatever provider the router picked.
             session_id=opts.sticky_session_id or _sticky_session_id(config),
         )
-        return _stamp_fallback(
-            fallback_runnable.invoke(
+        with fallback_leg():
+            fallback_reply = fallback_runnable.invoke(
                 messages,
                 config=_with_call_label(opts.fallback_config, label)
                 if opts.fallback_config
                 else config,
-            ),
-            opts.fallback_model or fallback_requested,
-        )
+            )
+        return _stamp_fallback(fallback_reply, opts.fallback_model or fallback_requested)
 
 
 # Marks an internal one-shot LLM call so the chat stream drops its output instead of rendering
@@ -1593,11 +1633,15 @@ async def _record_auxiliary_usage(
 
 
 class _OpenAIFunctionSpec(BaseModel):
-    """The function block of an OpenAI tool spec, read for the name the model calls."""
+    """The function block of an OpenAI tool spec: the name the model calls and its arguments' schema.
 
-    model_config = ConfigDict(extra="ignore")
+    Its description and strict flag ride along as extras, so a spec dumps back whole.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str
+    parameters: JsonValue = None
 
 
 class _OpenAIToolSpec(BaseModel):
@@ -1605,6 +1649,7 @@ class _OpenAIToolSpec(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    type: Literal["function"] = "function"
     function: _OpenAIFunctionSpec
 
 
@@ -1688,6 +1733,22 @@ def _structured_tool_choice(llm: BaseChatModel) -> str:
     return "required" if forced else "auto"
 
 
+#: The bounds a provider holding a reply to its schema enforces by cutting it short: a
+#: string ends mid-sentence at maxLength, a list at maxItems. Code checks them after.
+_SIZE_CAPS = frozenset({"maxLength", "maxItems"})
+
+
+def _without_size_caps(schema: JsonValue) -> JsonValue:
+    """Return the JSON schema without its size caps, so a held reply arrives whole and is checked."""
+    if isinstance(schema, list):
+        return [_without_size_caps(node) for node in schema]
+    if isinstance(schema, dict):
+        return {
+            key: _without_size_caps(node) for key, node in schema.items() if key not in _SIZE_CAPS
+        }
+    return schema
+
+
 def _structured_tool_runnable(
     llm: BaseChatModel, schema: type[_StructuredT], *, strict: bool = False
 ) -> Runnable:
@@ -1696,12 +1757,15 @@ def _structured_tool_runnable(
     Not with_structured_output: it forces the tool by name, and it parses streamed
     arguments leniently. The call is unstreamed (streaming=False also holds under
     astream_events), so :func:_parse_structured_reply sees the arguments exactly as sent.
-    strict has the OpenAI wire hold the arguments to the schema.
+    strict has the OpenAI wire hold the arguments to the schema, less its size caps.
     """
-    tool = convert_to_openai_tool(schema, strict=strict or None)
+    spec = _OpenAIToolSpec.model_validate(convert_to_openai_tool(schema, strict=strict or None))
+    if strict:
+        spec.function.parameters = _without_size_caps(spec.function.parameters)
+    tool = spec.model_dump()
     tool_choice = _structured_tool_choice(llm)
     bound = llm.model_copy(update={"streaming": False}).bind_tools(
-        [schema],
+        [tool],
         tool_choice=tool_choice,
         ls_structured_output_format={
             "kwargs": {"method": "function_calling", "tool_choice": tool_choice},
@@ -1736,7 +1800,7 @@ def _gemini_schema_runnable(llm: ChatGoogleGenerativeAI, schema: type[_Structure
     """Build a Gemini one-shot whose reply the response schema holds: JSON that fits, field for field."""
     bound = llm.bind(
         response_mime_type="application/json",
-        response_json_schema=schema.model_json_schema(),
+        response_json_schema=_without_size_caps(schema.model_json_schema()),
     )
     return bound | RunnableLambda(
         lambda message: _parse_json_reply(message, schema), name=_structured_tool_name(schema)
