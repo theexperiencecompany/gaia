@@ -255,6 +255,18 @@ async def test_a_follow_after_a_head_the_stream_does_not_hold_opens_on_the_whole
     assert await _opening(runtime, 9) == ["u1", "u2", "u3"]
 
 
+async def test_a_stream_holding_only_an_older_entry_s_frame_vouches_for_nothing(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1")
+    for message_id in ("u2", "u3"):
+        await runtime.log.append(CONVERSATION, USER, user(message_id))
+
+    assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+    assert await _opening(runtime, 1) == ["u2", "u3"]
+
+
 async def test_another_conversation_s_stream_vouches_for_nothing(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:

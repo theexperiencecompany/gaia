@@ -341,6 +341,17 @@ class _Positioned(BaseModel):
     seq: int | None = None
 
 
+async def _vouched(conversation_id: str, after: int) -> bool:
+    """Return whether the stream still holds entry after's frame with no amendment since to an entry at or below it."""
+    # Newest first: everything read before the entry's own frame came after it.
+    for _stream_id, fields in await redis_cache.client.xrevrange(_key(conversation_id)):
+        frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
+        if frame.seq is not None and frame.seq <= after:
+            # The newest frame of an entry the client held: its own, or an amendment it may have missed.
+            return frame.kind == FrameKind.ENTRY and frame.seq == after
+    return False
+
+
 async def _held_at(
     conversation_id: str, entries: Sequence[LoggedEntry], after: int
 ) -> dict[str, ScreenItem]:
@@ -349,25 +360,7 @@ async def _held_at(
     Empty unless the stream vouches for it: it must still hold that entry's frame, with no
     amendment to an entry at or below it since, which the log read after it cannot show.
     """
-    if after <= 0:
-        return {}
-    frames = await redis_cache.client.xrange(_key(conversation_id))
-    placed = [
-        _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
-        for _stream_id, fields in frames
-    ]
-    reached = next(
-        (
-            at
-            for at, frame in enumerate(placed)
-            if frame.kind == FrameKind.ENTRY and frame.seq == after
-        ),
-        None,
-    )
-    if reached is None or any(
-        frame.kind == FrameKind.ENTRY_UPDATED and frame.seq is not None and frame.seq <= after
-        for frame in placed[reached + 1 :]
-    ):
+    if after <= 0 or not await _vouched(conversation_id, after):
         return {}
     seen = [logged for logged in entries if logged.seq <= after]
     return {item.id: item for item in project_screen(conversation_id, seen, FILE_LINKS)}
