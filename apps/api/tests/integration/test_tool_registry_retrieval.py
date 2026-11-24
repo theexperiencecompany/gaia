@@ -16,6 +16,7 @@ import chromadb
 from google.genai.errors import ClientError
 from langchain_core.embeddings import Embeddings
 from langchain_core.tools import BaseTool, tool
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import GetOp, PutOp, SearchOp
 import numpy as np
 import pytest
@@ -1134,6 +1135,7 @@ class TestDiscoveryThroughARateLimit:
             settings, "GOOGLE_API_KEY", "google-test-key"
         )  # pragma: allowlist secret
         gemini = init_embeddings().loader_func()
+        assert isinstance(gemini, GoogleGenerativeAIEmbeddings)
         gemini.client = MagicMock()
         gemini.client.aio.models.embed_content = embed_content
         store = ChromaStore(
