@@ -468,12 +468,12 @@ class TestProviderCatalog:
     async def test_llm_keys_mirror_the_needs_setup_rule(self, anon_client: AsyncClient) -> None:
         body = (await anon_client.get(f"{API}/catalog")).json()
         assert body["llm_provider_keys"] == [
-            "cloudflare",
             "openrouter",
             "gemini",
             "openai",
             "ollama",
             "custom",
+            "cloudflare",
         ]
 
     async def test_catalog_groups_every_provider_under_a_feature(

@@ -1545,12 +1545,12 @@ class TestConstants:
 
     def test_provider_priority_is_ordered(self) -> None:
         assert LLM_PROVIDER_PRIORITY == (
-            "cloudflare",
             "openrouter",
             "gemini",
             "openai",
             "ollama",
             "custom",
+            "cloudflare",
         )
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:

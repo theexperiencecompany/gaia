@@ -98,7 +98,7 @@ from app.constants.providers import (
     HOSTED_ONE_SHOT_PROVIDERS,
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
-    OVERRIDE_PROVIDER,
+    OVERRIDE_PROVIDERS,
     PINNED_FALLBACKS,
     CredentialProviderName,
 )
@@ -601,7 +601,7 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
 
 def provider_configured(provider_name: LLMProviderName) -> bool:
     """Report whether provider_name can serve a request under the active runtime config."""
-    if settings.GAIA_SIM_MODE and provider_name is not OVERRIDE_PROVIDER:
+    if settings.GAIA_SIM_MODE and provider_name not in OVERRIDE_PROVIDERS:
         # Every loader returns _sim_llm, so every lane is usable; the override
         # reroutes every role, so it stays the operator's choice even here.
         return True
@@ -759,15 +759,15 @@ def _one_shot_model(provider: LLMProviderName, use: ModelUse) -> str | None:
 def one_shot_route(use: ModelUse) -> tuple[LLMProviderName, str] | None:
     """Return the provider and model a one-shot use runs on, or None when nothing configured can serve it.
 
-    A configured OVERRIDE_PROVIDER comes first everywhere. Then production runs the
+    A configured OVERRIDE_PROVIDERS entry comes first everywhere. Then production runs the
     hosted table and nothing else; elsewhere the hosted provider, then every
     configured provider in priority order.
     """
     hosted = HOSTED_ONE_SHOT_PROVIDERS[use]
     candidates = (
-        (OVERRIDE_PROVIDER, hosted)
+        (*OVERRIDE_PROVIDERS, hosted)
         if settings.deployment.hosted_models
-        else (OVERRIDE_PROVIDER, hosted, *LLM_PROVIDER_PRIORITY)
+        else (*OVERRIDE_PROVIDERS, hosted, *LLM_PROVIDER_PRIORITY)
     )
     for provider in candidates:
         if provider_configured(provider) and (model := _one_shot_model(provider, use)):
