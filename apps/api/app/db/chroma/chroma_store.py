@@ -196,7 +196,7 @@ class ChromaStore(BaseStore):
         /,
         *,
         query: str | None = None,
-        filter: dict[str, Any] | None = None,  # noqa: A002 -- BaseStore's own parameter name
+        filter: dict[str, object] | None = None,  # noqa: A002 -- BaseStore's own parameter name
         limit: int = 10,
         offset: int = 0,
         refresh_ttl: bool | None = None,  # noqa: ARG002 -- BaseStore's signature; this store keeps no TTLs

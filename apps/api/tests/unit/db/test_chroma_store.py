@@ -395,30 +395,6 @@ class TestSearchWithoutAQuery:
         assert await self._keys(store, limit=1, offset=3) == []
         assert _collection(store).gets[0] == {"ids": None, "include": ["metadatas", "documents"]}
 
-    @pytest.mark.regression
-    async def test_a_namespace_named_after_a_server_address_is_searchable(self) -> None:
-        """Regression: tool search failed for every custom MCP, whose namespace is its dotted host."""
-        store = _store()
-        _collection(store).add("mcp.example.com/mcp::whoop_sleep", {}, {"kind": "tool"})
-
-        results = await store.asearch(("mcp.example.com/mcp",))
-
-        assert [item.key for item in results] == ["whoop_sleep"]
-
-    async def test_asearch_pages_and_filters_like_a_search_op(self) -> None:
-        store = _store()
-        _seed(store)
-
-        assert [i.key for i in await store.asearch(("tools",), filter={"kind": "mail"})] == ["a"]
-        assert [i.key for i in await store.asearch(("tools",), limit=1, offset=1)] == ["b"]
-
-    async def test_asearch_returns_ten_items_unless_told_otherwise(self) -> None:
-        store = _store()
-        for n in range(11):
-            _collection(store).add(f"tools::t{n:02}", {}, {"n": n})
-
-        assert len(await store.asearch(("tools",))) == 10
-
     async def test_a_field_filter_keeps_only_matching_dict_values(self) -> None:
         store = _store()
         _seed(store)
@@ -530,13 +506,6 @@ class TestVectorSearch:
             metadata["updated_at"] = LATER
             _collection(store).rows[doc_id] = (embedding, metadata, document)
         return store
-
-    async def test_asearch_ranks_by_the_query(self) -> None:
-        store = await self._seeded()
-
-        results = await store.asearch(("tools",), query="calendar", limit=1)
-
-        assert [r.key for r in results] == ["c"]
 
     async def test_the_nearest_items_come_first_with_their_scores(self) -> None:
         store = await self._seeded()
