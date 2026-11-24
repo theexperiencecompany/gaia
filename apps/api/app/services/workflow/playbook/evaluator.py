@@ -21,6 +21,8 @@ from datetime import UTC, datetime, timedelta
 import json
 import re
 
+from pydantic import ValidationError
+
 from app.models.playbook_models import (
     ASK_KEY,
     TIME_KEY,
@@ -290,7 +292,7 @@ def resolve_value(value: object, context: RunContext) -> object:
             fix="fill the step's ask slots before resolving its arguments",
         )
     if is_time_slot(value):
-        return _render_time_slot(TimeSlot.model_validate(value), context.now)
+        return _render_time_slot(_stored_time_slot(value), context.now)
     if isinstance(value, Mapping):
         return {str(key): resolve_value(item, context) for key, item in value.items()}
     if isinstance(value, list):
@@ -304,6 +306,22 @@ def resolve_value(value: object, context: RunContext) -> object:
     return PLACEHOLDER_TOKEN.sub(lambda match: _render(_resolve_token(match, context)), value)
 
 
+def _not_a_time(placeholder: object) -> PlaceholderError:
+    return PlaceholderError(
+        message=f"{placeholder} is not a time placeholder",
+        why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
+        fix="write the time as $today + 1d 09:00 or similar",
+    )
+
+
+def _stored_time_slot(value: Mapping[str, object]) -> TimeSlot:
+    # A playbook stored before the grammar tightened still reaches a replay.
+    try:
+        return TimeSlot.model_validate(value)
+    except ValidationError as unreadable:
+        raise _not_a_time(repr(value.get(TIME_KEY))) from unreadable
+
+
 def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
     """Return the slot's instant in its layout.
 
@@ -312,11 +330,7 @@ def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
     """
     match = PLACEHOLDER_TOKEN.fullmatch(slot.placeholder)
     if match is None:
-        raise PlaceholderError(
-            message=f"{slot.placeholder} is not a time placeholder",
-            why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
-            fix="write the time as $today + 1d 09:00 or similar",
-        )
+        raise _not_a_time(slot.placeholder)
     moment = _resolve_moment(match, now)
     if renders_in_utc(slot.format):
         moment = moment.astimezone(UTC)

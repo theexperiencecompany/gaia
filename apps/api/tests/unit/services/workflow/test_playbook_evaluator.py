@@ -183,6 +183,15 @@ def test_item_outside_a_for_each_is_refused_with_the_fix() -> None:
     )
 
 
+@pytest.mark.regression
+def test_a_stored_time_slot_the_grammar_no_longer_reads_is_a_placeholder_failure() -> None:
+    """A raw ValidationError here failed the whole workflow run instead of handing it to the agent."""
+    slot = {"$time": "$today + 1d 23:59:59", "format": "%Y-%m-%d %H:%M:%S"}
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value(slot, _context())
+    assert caught.value.message == "'$today + 1d 23:59:59' is not a time placeholder"
+
+
 def test_a_time_slot_that_is_not_a_time_is_refused_with_the_grammar() -> None:
     slot = TimeSlot.model_construct(placeholder="tomorrow", format="%Y-%m-%d")
     with pytest.raises(PlaceholderError) as caught:
