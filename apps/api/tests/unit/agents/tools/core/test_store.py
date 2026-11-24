@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from google.genai.errors import APIError, ClientError, ServerError
+from google.genai.types import EmbedContentConfig
 import pytest
 
 from app.agents.tools.core import store as store_module
@@ -108,3 +109,20 @@ async def test_a_quota_that_stays_exhausted_fails_after_the_last_retry(
         await embeddings.aembed_query("email my boss")
 
     assert embed_content.await_count == attempts
+
+
+async def test_a_retried_query_embed_sends_the_text_and_options_it_was_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    embeddings, embed_content = _gemini(monkeypatch, _rate_limited(), _VECTOR)
+
+    await embeddings.aembed_query(
+        "email my boss", task_type="retrieval_document", title="Inbox", output_dimensionality=2
+    )
+
+    sent = EmbedContentConfig(
+        task_type="RETRIEVAL_DOCUMENT", title="Inbox", output_dimensionality=2
+    )
+    assert [call.kwargs for call in embed_content.await_args_list] == [
+        {"model": GEMINI_EMBEDDING_MODEL, "contents": "email my boss", "config": sent}
+    ] * 2
