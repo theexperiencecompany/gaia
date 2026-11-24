@@ -52,6 +52,7 @@ class RetryingGeminiEmbeddings(GoogleGenerativeAIEmbeddings):
         title: str | None = None,
         output_dimensionality: int | None = None,
     ) -> list[float]:
+        """Embed text, resending a transient failure under the embed-query retry policy."""
         embed = super().aembed_query
         return await retrying(_EMBED_QUERY_RETRY, _is_transient_embed_error, _log_embed_retry)(
             embed,
@@ -91,6 +92,7 @@ def embedding_dims(embeddings: Embeddings) -> int:
 
 
 async def get_tools_store() -> BaseStore:
+    """Return the tool-discovery store; raises when the provider failed to start."""
     tools_store = await providers.aget("chroma_tools_store")
     if tools_store is None:
         raise RuntimeError("Tools store not available")
