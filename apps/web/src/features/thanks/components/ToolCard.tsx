@@ -3,7 +3,7 @@
 import { Tooltip } from "@heroui/react";
 import { GlobalIcon } from "@icons";
 import Image from "next/image";
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import tinycolor from "tinycolor2";
 import { toneVariants } from "@/components/shared/tone";
 import { type Tool, toolFaviconUrl } from "@/data/tools";
@@ -26,7 +26,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
   const elementRef = useRef<HTMLAnchorElement>(null);
   const [imageError, setImageError] = useState(false);
   const [isDarkFavicon, setIsDarkFavicon] = useState(false);
-  const [faviconIndex, setFaviconIndex] = useState(0);
+  const [faviconError, setFaviconError] = useState(false);
 
   const checkImageBrightness = (imgElement: HTMLImageElement) => {
     try {
@@ -68,17 +68,10 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
     }
   };
 
-  // Prefer the API's favicon, then fall back to the favicon service so a tool
-  // always renders a logo even when metadata is unavailable.
-  const faviconSources = useMemo(
-    () =>
-      [metadata?.favicon, toolFaviconUrl(tool.url)].filter(
-        (src): src is string => Boolean(src),
-      ),
-    [metadata?.favicon, tool.url],
-  );
-  const favicon = faviconSources[faviconIndex] ?? null;
-  const handleFaviconError = () => setFaviconIndex((index) => index + 1);
+  // Never the tool's own favicon URL: the visitor's browser would call that site
+  // (sentry.io is a tracking domain) on every page view.
+  const favicon = faviconError ? null : toolFaviconUrl(tool.url);
+  const handleFaviconError = () => setFaviconError(true);
 
   const websiteImage =
     metadata?.website_image && !imageError ? metadata.website_image : null;
