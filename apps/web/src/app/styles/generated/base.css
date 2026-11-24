@@ -8,6 +8,10 @@
 @source "../../../lib/chunkErrorRecovery.ts";
 @source "../../../lib/utils.ts";
 @source "../../../utils/colorUtils.ts";
+@source "../../fonts/aeonik.ts";
+@source "../../fonts/geist-mono.ts";
+@source "../../fonts/index.ts";
+@source "../../fonts/inter.ts";
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/ui/raised-button.tsx";
 @source "../../../lib/observability/reportToSentry.ts";
