@@ -128,6 +128,7 @@ ignore_names = [
   "Config",         # Pydantic v1-style inner config class (framework-reserved name)
   "dispatch",       # Starlette BaseHTTPMiddleware.dispatch override
   "__getattr__",    # module-level dunder called by Python's import machinery
+  "__instancecheck__",  # metaclass dunder called by isinstance()
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
 "embed_documents",  # LangChain Embeddings interface override — Chroma invokes it

@@ -8,16 +8,28 @@ ephemeral in-memory ChromaDB client with a deterministic embedding function
 to avoid external dependencies.
 """
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import chromadb
+from google.genai.errors import ClientError
 from langchain_core.embeddings import Embeddings
 from langchain_core.tools import BaseTool, tool
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import GetOp, PutOp, SearchOp
 import numpy as np
 import pytest
 
 from app.agents.tools.core.registry import CategoryOptions, ToolCategory, ToolRegistry
+from app.agents.tools.core.retrieval import (
+    _build_search_tasks,
+    _chroma_hit_lists,
+    _raise_if_every_search_failed,
+    _RetrievalScope,
+)
+from app.agents.tools.core.store import init_embeddings
+from app.config.settings import settings
 from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
@@ -1089,3 +1101,55 @@ class TestToolRegistryCategories:
         non_delegated = registry.get_all_tools_for_search(include_delegated=False)
         assert len(non_delegated) == 1
         assert non_delegated[0].name == "regular"
+
+
+@pytest.mark.integration
+class TestDiscoveryThroughARateLimit:
+    @pytest.mark.regression
+    async def test_a_rate_limit_on_every_search_still_discovers_the_tool(
+        self, indexed_store: ChromaStore, ephemeral_client, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Regression for #1171: a 429 hit each namespace's embed at once and discovery raised."""
+        await indexed_store.abatch(
+            [
+                PutOp(
+                    namespace=("gmail",),
+                    key="gmail_send",
+                    value={"description": "Send an email via Gmail", "tool_hash": "h_gmail"},
+                    index=["description"],
+                )
+            ]
+        )
+        calls = 0
+
+        async def embed_content(*, model: str, contents: str, config: object) -> SimpleNamespace:
+            nonlocal calls
+            calls += 1
+            if calls <= 2:
+                raise ClientError(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED"}})
+            return SimpleNamespace(
+                embeddings=[SimpleNamespace(values=_text_to_embedding(contents))]
+            )
+
+        monkeypatch.setattr(
+            settings, "GOOGLE_API_KEY", "google-test-key"
+        )  # pragma: allowlist secret
+        gemini = init_embeddings().loader_func()
+        assert isinstance(gemini, GoogleGenerativeAIEmbeddings)
+        gemini.client = MagicMock()
+        gemini.client.aio.models.embed_content = embed_content
+        store = ChromaStore(
+            client=ephemeral_client,
+            collection_name="test_tools_semantic",
+            index={"embed": gemini, "dims": EMBEDDING_DIMS, "fields": ["description"]},
+        )
+        scope = _RetrievalScope(user_id="u1", tool_space="gmail", include_subagents=False)
+
+        tasks = _build_search_tasks(store, "send an email", scope, {"gmail"}, limit=5)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        _raise_if_every_search_failed(results)
+
+        gmail_hits, general_hits = _chroma_hit_lists(results)
+        assert [item.key for item in gmail_hits] == ["gmail_send"]
+        assert general_hits
+        assert calls == 4

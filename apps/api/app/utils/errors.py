@@ -110,6 +110,11 @@ class EmptyUpdateError(AppError):
 
 
 @dataclass
+class MalformedIdError(AppError):
+    """A write would store a document under an id its collection's identity can never hold."""
+
+
+@dataclass
 class RepositoryMisconfiguredError(AppError):
     """A repository subclass is missing required ClassVars (raised at import)."""
 
@@ -171,6 +176,7 @@ __all__ = [
     "ConversationStoreError",
     "EmptyUpdateError",
     "IntegrationNotConnectedError",
+    "MalformedIdError",
     "RepositoryMisconfiguredError",
     "ShownReplyRetriedError",
     "ShownTextTakenBackError",

@@ -307,6 +307,41 @@ class TestCloudflareOverridesProduction:
     def test_every_one_shot_role_runs_on_cloudflare(self, use: ModelUse) -> None:
         assert one_shot_route(use) == ("cloudflare", _CLOUDFLARE_MODEL)
 
+    @pytest.mark.parametrize("use", list(ModelUse))
+    def test_a_one_shot_that_failed_on_cloudflare_goes_to_openai(self, use: ModelUse) -> None:
+        assert one_shot_route(use, LLMProviderName.CLOUDFLARE) == ("openai", "gpt-5.6-luna")
+
+    def test_without_openai_a_failed_one_shot_goes_to_its_hosted_provider(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", None)
+
+        assert one_shot_route(ModelUse.HELPER, LLMProviderName.CLOUDFLARE) == (
+            "openrouter",
+            "openai/gpt-6-luna",
+        )
+        assert one_shot_route(ModelUse.MEMORY, LLMProviderName.CLOUDFLARE) == (
+            "gemini",
+            "gemini-3.1-flash-lite",
+        )
+
+    def test_with_cloudflare_alone_a_failed_one_shot_has_nowhere_to_go(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for unset in ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_API_KEY"):
+            monkeypatch.setattr(settings, unset, None)
+
+        assert one_shot_route(ModelUse.HELPER, LLMProviderName.CLOUDFLARE) is None
+        assert not memory_lane_available(LLMProviderName.CLOUDFLARE)
+        assert memory_lane_available()
+
+    def test_the_fallback_one_shot_is_built_on_the_other_provider(self) -> None:
+        model = resolve_model(ModelUse.HELPER, exclude=LLMProviderName.CLOUDFLARE)
+
+        assert not isinstance(model, ChatWorkersAI)
+        assert isinstance(model, ChatOpenAI)
+        assert model.model_name == "gpt-5.6-luna"
+
     def test_a_one_shot_talks_to_the_account_endpoint_with_reasoning_off(self) -> None:
         model = resolve_model(ModelUse.HELPER)
 

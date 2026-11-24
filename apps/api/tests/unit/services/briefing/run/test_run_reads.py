@@ -227,6 +227,8 @@ class TestWhatARunRecords:
                 pool_item_count=3,
                 series_count=1,
                 source_count=1,
+                composition_salvaged=False,
+                voice_salvaged=False,
             ),
         )
 

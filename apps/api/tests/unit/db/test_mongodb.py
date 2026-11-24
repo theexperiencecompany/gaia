@@ -448,6 +448,7 @@ def _collections_by_name(mock_get_collection: MagicMock) -> dict[str, MagicMock]
         if name not in collections:
             collection = MagicMock()
             collection.create_index = AsyncMock()
+            collection.drop_index = AsyncMock()
             collections[name] = collection
         return collections[name]
 
@@ -500,7 +501,6 @@ class TestCreateConversationIndexes:
                     "partialFilterExpression": {"reply_id": {"$type": "string"}},
                 },
             ),
-            (([("user_id", 1), ("kind", 1)],), {"name": "user_entry_kind"}),
             (([("user_id", 1), ("kind", 1), ("at", 1)],), {"name": "user_entry_kind_at"}),
             (
                 ([("user_id", 1), ("at", 1)],),

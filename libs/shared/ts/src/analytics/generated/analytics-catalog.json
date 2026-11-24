@@ -1703,6 +1703,14 @@
           "source_count": {
             "title": "Source Count",
             "type": "integer"
+          },
+          "composition_salvaged": {
+            "title": "Composition Salvaged",
+            "type": "boolean"
+          },
+          "voice_salvaged": {
+            "title": "Voice Salvaged",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1718,7 +1726,9 @@
           "chart_count",
           "pool_item_count",
           "series_count",
-          "source_count"
+          "source_count",
+          "composition_salvaged",
+          "voice_salvaged"
         ],
         "title": "BriefingSent",
         "type": "object"

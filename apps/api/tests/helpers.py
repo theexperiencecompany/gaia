@@ -33,7 +33,6 @@ import zoneinfo
 from arq.connections import ArqRedis
 from arq.jobs import JobDef
 from bson import ObjectId
-from bson.errors import InvalidId
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -92,10 +91,8 @@ UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
 
 
 async def users_get(user_id: str) -> UserDocument | None:
-    """Stand in for user_repository.get: bson refuses a non-ObjectId, UNKNOWN_USER_ID has no row."""
-    if not ObjectId.is_valid(user_id):
-        raise InvalidId(f"{user_id!r} is not a valid ObjectId")
-    if user_id == UNKNOWN_USER_ID:
+    """Stand in for user_repository.get: a non-ObjectId and UNKNOWN_USER_ID name no row."""
+    if not ObjectId.is_valid(user_id) or user_id == UNKNOWN_USER_ID:
         return None
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 

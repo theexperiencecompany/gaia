@@ -110,7 +110,7 @@ from app.services.briefing.fact_pool.pool import FactPool, build_fact_pool
 from app.services.briefing.facts import FactSources, build_facts
 from app.services.briefing.goals import StatedGoal
 from app.services.briefing.kinds import KIND_SPECS
-from app.services.briefing.prose import Writing
+from app.services.briefing.prose import Voiced, Writing
 from app.services.briefing.quiet_note import QuietFacts, quiet_note
 from app.services.briefing.scouts import service as scout_service
 from app.services.briefing.slots import BriefFact
@@ -883,7 +883,7 @@ def _records_what_the_run_built(monkeypatch: pytest.MonkeyPatch, w: World) -> No
         w.signals = [(i, c) for picked in chosen.picked for i, c in picked if c.signal is not None]
         return build_facts(chosen, sources, values, clock)
 
-    async def written(user_id: str, prompt: str, writing: Writing) -> tuple[BriefVoice, BriefVoice]:
+    async def written(user_id: str, prompt: str, writing: Writing) -> Voiced:
         w.writing = writing
         return await prose.written_brief(user_id, prompt, writing)
 

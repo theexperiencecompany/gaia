@@ -248,8 +248,6 @@ async def load_user_context(user_id: str) -> AuthenticatedUser | None:
     agent sees the same timezone and onboarding. None when no such user, including
     an id that is not an ObjectId (SYSTEM_USER_ID among them).
     """
-    if not user_repository.is_valid_id(user_id):
-        return None
     user_doc = await user_repository.get(user_id)
     if user_doc is None:
         return None

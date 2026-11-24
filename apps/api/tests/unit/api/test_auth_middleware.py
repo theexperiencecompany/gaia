@@ -50,7 +50,12 @@ from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, SESSION_TTL_SECONDS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import EntrySurface
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
-from tests.helpers import captured_wide_event, session_hint_set_cookie, session_set_cookie
+from tests.helpers import (
+    captured_wide_event,
+    session_hint_set_cookie,
+    session_set_cookie,
+    users_get,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -1325,20 +1330,18 @@ class TestLocalSessionDispatch:
         assert resp.headers.get_list("set-cookie") == []
         assert event["errors"] == [error]
 
-    def test_a_token_naming_a_malformed_id_is_an_unknown_user_without_a_lookup(self) -> None:
-        lookup = AsyncMock(return_value=LOCAL_USER)
+    def test_a_token_naming_a_malformed_id_is_an_unknown_user(self) -> None:
         with (
             patch(
                 "app.utils.local_auth_utils.resolve_session_token",
                 AsyncMock(return_value="not-an-object-id"),
             ),
-            patch("app.api.v1.middleware.auth.user_repository.get", lookup),
+            patch("app.api.v1.middleware.auth.user_repository.get", new=users_get),
         ):
             client = TestClient(_build_local_probe_app())
             client.cookies.set(LOCAL_SESSION_COOKIE, "session.jwt")
             resp = client.get("/api/v1/protected")
 
-        lookup.assert_not_awaited()
         assert resp.json()["auth_failure"] == "unknown_local_session_user"
 
     @pytest.mark.usefixtures("_hosted_urls")

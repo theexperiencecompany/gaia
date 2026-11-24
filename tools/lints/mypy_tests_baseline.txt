@@ -237,7 +237,6 @@ apps/api/tests/unit/services/test_device_server_lifecycle.py	valid-type
 apps/api/tests/unit/services/test_email_delivery.py	arg-type
 apps/api/tests/unit/services/test_lab_hooks.py	attr-defined
 apps/api/tests/unit/services/test_lab_hooks.py	list-item
-apps/api/tests/unit/services/test_llm_metering_ledger.py	attr-defined
 apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
