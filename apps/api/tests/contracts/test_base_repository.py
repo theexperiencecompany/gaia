@@ -442,8 +442,12 @@ class TestGlobalRepository:
 
         assert await global_repo.get("not-an-id") is None
         assert await global_repo.delete("not-an-id") is False
-        with pytest.raises(MalformedIdError):
+        with pytest.raises(MalformedIdError) as refused:
             await global_repo.upsert("not-an-id", _GlobalUpdate(name="stray"))
+        assert (
+            str(refused.value)
+            == "cannot upsert _GlobalRepository under the malformed id 'not-an-id'"
+        )
         assert await global_repo.count() == 1
 
 

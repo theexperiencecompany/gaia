@@ -534,9 +534,7 @@ class MongoRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
         """Set update's fields on doc_id, inserting the document when it does not exist yet."""
         if not self.is_valid_id(doc_id):
             raise MalformedIdError(
-                message=f"cannot upsert {type(self).__name__} under the malformed id {doc_id!r}",
-                why="the insert would store a document under an id its identity can never hold",
-                fix="pass an id from a document this collection stored",
+                message=f"cannot upsert {type(self).__name__} under the malformed id {doc_id!r}"
             )
         await self._apply_raw_update_unfetched(
             self._identity_filter(doc_id),
