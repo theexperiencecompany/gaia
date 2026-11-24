@@ -38,7 +38,13 @@ from langchain_core.runnables.configurable import RunnableConfigurableFields
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
-from openai import APIConnectionError, AuthenticationError, BadRequestError, RateLimitError
+from openai import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    RateLimitError,
+)
 from openrouter.errors import TooManyRequestsResponseError
 from prometheus_client import REGISTRY
 from pydantic import BaseModel, Field, SecretStr
@@ -96,6 +102,7 @@ from app.constants.llm import (
     HELPER_MAX_OUTPUT_TOKENS,
     HIL_JUDGE_FALLBACK_MODEL_NAMES,
     HIL_JUDGE_MODEL_NAME,
+    LLM_RETRY_MAX_ATTEMPTS,
     MEMORY_MODEL_NAME,
     OPENAI_MAX_OUTPUT_TOKENS,
     OPENROUTER_APP_CATEGORIES,
@@ -3280,6 +3287,95 @@ class TestTheSyncFallback:
             invoke_llm(RunnableLambda(_down), "hi", options=LLMInvokeOptions(max_attempts=1))
 
         assert calls == ["hi"]
+
+
+class TestAWorkersAiRateLimitSkipsTheRetries:
+    """Workers AI limits per minute, so a retry seconds later fails again and only delays the fallback."""
+
+    _REQUEST = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+    _ON_WORKERS_AI = RunnableConfig(configurable={"provider": "cloudflare"})
+
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+
+    @classmethod
+    def _rate_limited(cls) -> RateLimitError:
+        return RateLimitError(
+            "rate limiting",
+            response=httpx.Response(429, request=cls._REQUEST),
+            body={"errors": [{"message": "AiError: rate limiting", "code": 3040}]},
+        )
+
+    @classmethod
+    def _server_error(cls) -> InternalServerError:
+        return InternalServerError(
+            "upstream error", response=httpx.Response(500, request=cls._REQUEST), body=None
+        )
+
+    @staticmethod
+    def _failing(error: Exception) -> tuple[RunnableLambda[Any, AIMessage], list[int]]:
+        attempts: list[int] = []
+
+        def _call(_: Any) -> AIMessage:
+            attempts.append(1)
+            raise error
+
+        return RunnableLambda(_call), attempts
+
+    @staticmethod
+    def _answering() -> RunnableLambda[Any, AIMessage]:
+        return RunnableLambda(lambda _: AIMessage(content="fallback-ok"))
+
+    @pytest.mark.regression
+    async def test_a_rate_limit_is_tried_once_and_then_the_fallback_answers(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        reply = await ainvoke_llm(
+            primary, "hi", fallback=self._answering(), config=self._ON_WORKERS_AI
+        )
+
+        assert len(attempts) == 1
+        assert reply.content == "fallback-ok"
+
+    @pytest.mark.regression
+    def test_the_sync_call_tries_a_rate_limit_once_too(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        reply = invoke_llm(primary, "hi", fallback=self._answering(), config=self._ON_WORKERS_AI)
+
+        assert len(attempts) == 1
+        assert reply.content == "fallback-ok"
+
+    async def test_a_server_error_is_still_retried_before_the_fallback(self) -> None:
+        primary, attempts = self._failing(self._server_error())
+
+        reply = await ainvoke_llm(
+            primary, "hi", fallback=self._answering(), config=self._ON_WORKERS_AI
+        )
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+        assert reply.content == "fallback-ok"
+
+    async def test_a_rate_limit_with_no_fallback_is_still_retried(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        with pytest.raises(RateLimitError):
+            await ainvoke_llm(primary, "hi", config=self._ON_WORKERS_AI)
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+
+    async def test_another_providers_rate_limit_is_still_retried(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        await ainvoke_llm(
+            primary,
+            "hi",
+            fallback=self._answering(),
+            config=RunnableConfig(configurable={"provider": "openai"}),
+        )
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
 
 
 class TestTheInvokeTimeoutIsEnforced:

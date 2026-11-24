@@ -110,6 +110,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    RATE_LIMIT_ERRORS,
     LLMCallContext,
     TokenUsage,
     extract_finish_reason,
@@ -164,15 +165,28 @@ def without_sdk_retry(llm: _LLMT) -> _LLMT:  # NOSONAR python:S3516
     return llm
 
 
-def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
+#: The retry set without the rate limits the call classifier names.
+_RETRYABLE_EXCEPT_RATE_LIMITS: tuple[type[BaseException], ...] = tuple(
+    error for error in LLM_RETRYABLE_EXCEPTIONS if not issubclass(error, RATE_LIMIT_ERRORS)
+)
+
+
+def with_llm_retry(
+    runnable: Runnable,
+    *,
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    retry_rate_limits: bool = True,
+) -> Runnable:
     """Wrap runnable with the single, canonical LLM retry policy.
 
     Applied AFTER bind_tools so the RunnableRetry wrapper never has to expose
     bind_tools. max_attempts=1 disables retry for callers on a hard latency
-    budget.
+    budget; retry_rate_limits=False sends a rate limit straight to the fallback.
     """
     return runnable.with_retry(
-        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
+        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS
+        if retry_rate_limits
+        else _RETRYABLE_EXCEPT_RATE_LIMITS,
         stop_after_attempt=max_attempts,
         wait_exponential_jitter=True,
     )
@@ -1076,6 +1090,15 @@ def _resolve_fallback(
     return with_llm_retry(resolved), requested
 
 
+def _retries_rate_limits(provider: LLMProviderName | None, fallback: LLMFallback) -> bool:
+    """Whether a rate limited call is retried on its own provider before the fallback.
+
+    Workers AI limits per minute, so a retry seconds later fails again and only
+    delays the fallback. With no fallback the retries are all the call has.
+    """
+    return provider is not LLMProviderName.CLOUDFLARE or fallback is None
+
+
 def _call_provider(runnable: Runnable, config: RunnableConfig | None) -> LLMProviderName | None:
     """Return the provider a call runs on: the lane's when its config names one, else the client's own; None when neither says."""
     configurable: AgentConfigurable = agent_configurable(config)
@@ -1235,7 +1258,11 @@ async def ainvoke_llm(
         try:
             async with asyncio.timeout(opts.timeout):
                 try:
-                    reply = await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
+                    reply = await with_llm_retry(
+                        primary,
+                        max_attempts=opts.max_attempts,
+                        retry_rate_limits=_retries_rate_limits(provider, fallback),
+                    ).ainvoke(
                         messages,
                         config=_with_usage_handler(
                             _with_usage_handler(config, usage_handler), generation_handler
@@ -1328,9 +1355,11 @@ def invoke_llm(
     config = _with_call_label(config, label)
     provider = _call_provider(primary, config)
     try:
-        reply = with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
-            messages, config=config
-        )
+        reply = with_llm_retry(
+            primary,
+            max_attempts=opts.max_attempts,
+            retry_rate_limits=_retries_rate_limits(provider, fallback),
+        ).invoke(messages, config=config)
         observe_llm_call_ok(provider)
         return reply
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
