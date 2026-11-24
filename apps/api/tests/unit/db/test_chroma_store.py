@@ -395,6 +395,16 @@ class TestSearchWithoutAQuery:
         assert await self._keys(store, limit=1, offset=3) == []
         assert _collection(store).gets[0] == {"ids": None, "include": ["metadatas", "documents"]}
 
+    @pytest.mark.regression
+    async def test_a_namespace_named_after_a_server_address_is_searchable(self) -> None:
+        """Regression: tool search failed for every custom MCP, whose namespace is its dotted host."""
+        store = _store()
+        _collection(store).add("mcp.example.com/mcp::whoop_sleep", {}, {"kind": "tool"})
+
+        results = await store.asearch(("mcp.example.com/mcp",))
+
+        assert [item.key for item in results] == ["whoop_sleep"]
+
     async def test_a_field_filter_keeps_only_matching_dict_values(self) -> None:
         store = _store()
         _seed(store)
