@@ -14,7 +14,7 @@ import path from "node:path";
 import tailwind from "@tailwindcss/postcss";
 import postcss from "postcss";
 import { describe, expect, it } from "vitest";
-import { AREAS } from "../../scripts/generate-area-css.mjs";
+import { AREAS, BASE } from "../../scripts/generate-area-css.mjs";
 
 /**
  * Tailwind v4 resolves `@source` globs relative to the CSS file and silently
@@ -22,14 +22,11 @@ import { AREAS } from "../../scripts/generate-area-css.mjs";
  * `../../../../../node_modules/...` glob did when pnpm's hoisted linker was
  * dropped (#1132) — costs hundreds of HeroUI utilities with no build error.
  */
-const generated = (area: string) => `src/app/styles/generated/${area}.css`;
+const generated = (bundle: string) => `src/app/styles/generated/${bundle}.css`;
 
 // base.css plus each area bundle are the stylesheets that ship.
-const STYLESHEETS = [
-  "src/app/styles/base.css",
-  ...AREAS.map(generated),
-  "../mobile/global.css",
-];
+const BUNDLES = [BASE, ...AREAS];
+const STYLESHEETS = [...BUNDLES.map(generated), "../mobile/global.css"];
 
 const SOURCE_PATH = /@source\s+(?:not\s+)?"([^"]+)"/g;
 
@@ -42,10 +39,8 @@ function declaredSources(stylesheet: string): string[] {
     .map((glob) => path.resolve(path.dirname(file), glob));
 }
 
-// base.css is the always-shipped floor and intentionally declares no file
-// globs (it only pins @source inline utilities). The area bundles must declare
-// real sources or they emit nothing for the routes that import them.
-const MUST_DECLARE_SOURCES = new Set<string>(AREAS.map(generated));
+// A bundle with no source emits nothing for the routes it styles.
+const MUST_DECLARE_SOURCES = new Set<string>(BUNDLES.map(generated));
 
 describe("Tailwind @source globs", () => {
   for (const stylesheet of STYLESHEETS) {
@@ -67,8 +62,8 @@ describe("Tailwind @source globs", () => {
 
 const WEB_DIR = path.resolve(__dirname, "../..");
 
-describe("area bundles come from the import graph", () => {
-  it("the committed generated/<area>.css files match the routes that import each area", () => {
+describe("bundles come from the import graph", () => {
+  it("the committed generated/<bundle>.css files match the routes each bundle styles", () => {
     // Throws with the generator's stderr when a route's reach changed without `pnpm area-css`.
     execFileSync(
       process.execPath,
@@ -80,20 +75,20 @@ describe("area bundles come from the import graph", () => {
     );
   });
 
-  for (const area of AREAS) {
-    it(`${area}.css styles its routes through generated/${area}.css only`, () => {
+  for (const bundle of BUNDLES) {
+    it(`${bundle}.css styles its routes through generated/${bundle}.css only`, () => {
       const css = readFileSync(
-        path.join(WEB_DIR, `src/app/styles/${area}.css`),
+        path.join(WEB_DIR, `src/app/styles/${bundle}.css`),
         "utf8",
       );
-      expect(css).toContain(`@import "./generated/${area}.css";`);
+      expect(css).toContain(`@import "./generated/${bundle}.css";`);
       expect(css).not.toMatch(SOURCE_PATH);
       expect(css).not.toContain("@heroui/styles/components/");
     });
 
     // Tailwind 4.3 drops a file @source when a later one sits in an ancestor directory (canary below).
-    it(`generated/${area}.css lists no file after one in a deeper directory`, () => {
-      const dirs = declaredSources(generated(area)).map((file) =>
+    it(`generated/${bundle}.css lists no file after one in a deeper directory`, () => {
+      const dirs = declaredSources(generated(bundle)).map((file) =>
         path.dirname(file),
       );
       dirs.forEach((dir, i) => {
