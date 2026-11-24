@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 
 from doc_shape import sequence
 from lib import nx_affected
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+DETECT_TASK_GATE = re.compile(r"contains\(fromJSON\(needs\.detect\.outputs\.tasks\), '([\w:-]+)'\)")
 
 PYTHON = {"api", "shared-python", "voice-agent"}
 JS = {
@@ -233,3 +236,29 @@ def test_the_full_tier_keeps_every_affected_check() -> None:
         "bot-harness-e2e",
         "desktop-build",
     } <= set(jobs)
+
+
+def _production_deploy_gates() -> dict[str, list[str]]:
+    """Map each ci.yml production job to the affected tasks its `if:` waits on."""
+    jobs = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())["jobs"]
+    return {
+        name: DETECT_TASK_GATE.findall(str(job.get("if", "")))
+        for name, job in jobs.items()
+        if job.get("environment") == "production"
+    }
+
+
+@pytest.mark.usefixtures("verified_checks")
+def test_a_verified_push_keeps_every_task_a_production_deploy_waits_on() -> None:
+    """Regression: a verified push dropped usercontent-worker:build, so the Worker never deployed."""
+    gates = _production_deploy_gates()
+    assert gates.get("deploy-usercontent-worker"), (
+        "the Worker deploy no longer gates on detect's tasks"
+    )
+    for job, tasks in gates.items():
+        for task in tasks:
+            selection = nx_affected.Selection(tasks={task: []})
+            published = json.loads(
+                nx_affected.outputs(selection, "push", "master", "verified")["tasks"]
+            )
+            assert published == [task], f"{job} waits on {task}, which a verified push drops"
