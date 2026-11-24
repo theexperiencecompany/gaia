@@ -28,9 +28,13 @@ function unescapeIdent(ident: string): string {
   );
 }
 
-/** The class names a selector mentions, unescaped. */
+const QUOTED = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gu;
+
+/** The class names a selector mentions, unescaped; a dot inside a quoted attribute value is not one. */
 export function classesIn(selector: string): string[] {
-  return [...selector.matchAll(CLASS)].map(([, ident]) => unescapeIdent(ident));
+  return [...selector.replace(QUOTED, '""').matchAll(CLASS)].map(([, ident]) =>
+    unescapeIdent(ident),
+  );
 }
 
 /** The candidates Tailwind emits a rule for under base.css's theme, variants and plugins. */

@@ -17,6 +17,11 @@ describe("classesIn", () => {
     expect(classesIn(".\\32 xl\\:grid")).toEqual(["2xl:grid"]);
   });
 
+  it("does not read a class out of a quoted attribute value", () => {
+    expect(classesIn('[data-file=".flex"] .grid')).toEqual(["grid"]);
+    expect(classesIn("a[href$='.pdf']")).toEqual([]);
+  });
+
   it("returns every class of a compound or nested selector", () => {
     expect(
       classesIn(".group-hover\\:flex:is(:where(.group):hover *), a.btn > b"),
