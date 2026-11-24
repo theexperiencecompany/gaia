@@ -39,7 +39,7 @@ def _integration(**overrides: object) -> Integration:
         "mcp_config": None,
     }
     data.update(overrides)
-    return Integration(**data)
+    return Integration.model_validate(data)
 
 
 @pytest.fixture
@@ -92,6 +92,17 @@ class TestPublishCustomIntegration:
         await publish_custom_integration(INTEGRATION_ID, USER_ID)
 
         mock_deps.pages.assert_awaited_once_with(PublicPageDomain.INTEGRATIONS)
+
+    async def test_a_failed_search_index_update_still_clears_the_caches(self, mock_deps):
+        mock_deps.repo.get.return_value = _integration()
+        mock_deps.index.side_effect = RuntimeError("chroma down")
+
+        with pytest.raises(RuntimeError, match="chroma down"):
+            await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        mock_deps.clear.assert_awaited_once_with("marketplace:community:*")
+        mock_deps.pages.assert_awaited_once_with(PublicPageDomain.INTEGRATIONS)
+        mock_deps.invalidate.assert_awaited_once_with(USER_ID)
 
     async def test_a_refused_publish_leaves_the_cached_pages_alone(self, mock_deps):
         mock_deps.repo.get.return_value = _integration()

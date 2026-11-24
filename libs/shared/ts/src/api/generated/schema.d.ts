@@ -6319,28 +6319,7 @@ export interface paths {
         trace?: never;
     };
 }
-export interface webhooks {
-    "public-pages-changed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Public Pages Changed
-         * @description Sent to the web server by app.services.public_pages when public data changes.
-         */
-        post: operations["webhooks_public_pages_changed"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-}
+export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
@@ -14383,20 +14362,6 @@ export interface components {
             title: string;
         };
         /**
-         * PublicPageDomain
-         * @description Data a cached public page shows; the web app owns which pages each value clears.
-         * @enum {string}
-         */
-        PublicPageDomain: "integrations" | "workflows";
-        /**
-         * PublicPagesChanged
-         * @description Data shown on cached public pages changed.
-         */
-        PublicPagesChanged: {
-            /** @description The data that changed */
-            domain: components["schemas"]["PublicPageDomain"];
-        };
-        /**
          * PublicSupportRequestCreate
          * @description A contact-form request that may come from a visitor with no GAIA session.
          */
@@ -19471,8 +19436,6 @@ export type PublicBriefing = components['schemas']['PublicBriefing'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
 export type PublicOpenUIArtifact = components['schemas']['PublicOpenUIArtifact'];
-export type PublicPageDomain = components['schemas']['PublicPageDomain'];
-export type PublicPagesChanged = components['schemas']['PublicPagesChanged'];
 export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
 export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
@@ -37111,55 +37074,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessResponse"];
-                };
-            };
-        };
-    };
-    webhooks_public_pages_changed: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PublicPagesChanged"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

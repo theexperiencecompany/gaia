@@ -17,7 +17,6 @@ from app.constants.public_pages import (
     PUBLIC_PAGES_REVALIDATE_TIMEOUT_SECONDS,
     PublicPageDomain,
 )
-from app.schemas.public_pages import PublicPagesChanged
 from shared.py.wide_events import log
 
 _FIRST_SERVER_ERROR_STATUS = 500
@@ -30,7 +29,7 @@ def _is_transient(error: BaseException) -> bool:
     return isinstance(error, httpx.TransportError)
 
 
-async def _post_change(token: str, change: PublicPagesChanged) -> None:
+async def _post_change(token: str, domain: PublicPageDomain) -> None:
     retrying = AsyncRetrying(
         stop=stop_after_attempt(PUBLIC_PAGES_REVALIDATE_ATTEMPTS),
         wait=wait_fixed(PUBLIC_PAGES_REVALIDATE_RETRY_WAIT_SECONDS),
@@ -42,7 +41,7 @@ async def _post_change(token: str, change: PublicPagesChanged) -> None:
             with attempt:
                 response = await client.post(
                     f"{settings.WEB_INTERNAL_URL}{PUBLIC_PAGES_REVALIDATE_PATH}",
-                    json=change.model_dump(mode="json"),
+                    json={"domain": domain.value},
                     headers={INTERNAL_CALLER_HEADER: token},
                 )
                 response.raise_for_status()
@@ -62,7 +61,7 @@ async def invalidate_public_pages(domain: PublicPageDomain) -> None:
         )
         return
     try:
-        await _post_change(token, PublicPagesChanged(domain=domain))
+        await _post_change(token, domain)
     except httpx.HTTPError as e:
         log.error(
             "Public page invalidation failed",

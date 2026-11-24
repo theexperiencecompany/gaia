@@ -17523,29 +17523,6 @@
         "title": "PublicOpenUIArtifact",
         "type": "object"
       },
-      "PublicPageDomain": {
-        "description": "Data a cached public page shows; the web app owns which pages each value clears.",
-        "enum": [
-          "integrations",
-          "workflows"
-        ],
-        "title": "PublicPageDomain",
-        "type": "string"
-      },
-      "PublicPagesChanged": {
-        "description": "Data shown on cached public pages changed.",
-        "properties": {
-          "domain": {
-            "$ref": "#/components/schemas/PublicPageDomain",
-            "description": "The data that changed"
-          }
-        },
-        "required": [
-          "domain"
-        ],
-        "title": "PublicPagesChanged",
-        "type": "object"
-      },
       "PublicSupportRequestCreate": {
         "description": "A contact-form request that may come from a visitor with no GAIA session.",
         "properties": {
@@ -50380,63 +50357,6 @@
         "summary": "Readiness Check",
         "tags": [
           "Health"
-        ]
-      }
-    }
-  },
-  "webhooks": {
-    "public-pages-changed": {
-      "post": {
-        "description": "Sent to the web server by app.services.public_pages when public data changes.",
-        "operationId": "webhooks_public_pages_changed",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PublicPagesChanged"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Public Pages Changed",
-        "tags": [
-          "webhooks"
         ]
       }
     }

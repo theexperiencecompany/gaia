@@ -245,6 +245,20 @@ def _prod_settings(**overrides):
     return Settings(**dummies)
 
 
+def test_the_web_server_is_reached_at_the_frontend_url_by_default():
+    settings_obj = _prod_settings(FRONTEND_URL="https://gaia.example.com/")
+
+    assert settings_obj.WEB_INTERNAL_URL == "https://gaia.example.com"
+
+
+def test_an_explicit_web_internal_url_is_kept_without_its_trailing_slash():
+    settings_obj = _prod_settings(
+        FRONTEND_URL="https://gaia.example.com", WEB_INTERNAL_URL="http://gaia-web:3000/"
+    )
+
+    assert settings_obj.WEB_INTERNAL_URL == "http://gaia-web:3000"
+
+
 def test_production_rejects_http_dodo_base_url():
     """A plain-http DODO_PAYMENTS_BASE_URL would send the API key in cleartext; production must reject it."""
     with pytest.raises(ValidationError) as refused:

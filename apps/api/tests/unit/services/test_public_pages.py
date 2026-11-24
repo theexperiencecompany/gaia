@@ -1,7 +1,8 @@
 """invalidate_public_pages against a mocked web server (the only seam faked)."""
 
+from collections.abc import Iterator
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, call, patch
 
 import httpx
 import pytest
@@ -11,6 +12,7 @@ from app.config.settings import settings
 from app.constants.http import INTERNAL_CALLER_HEADER
 from app.constants.public_pages import (
     PUBLIC_PAGES_REVALIDATE_ATTEMPTS,
+    PUBLIC_PAGES_REVALIDATE_RETRY_WAIT_SECONDS,
     PUBLIC_PAGES_REVALIDATE_TIMEOUT_SECONDS,
     PublicPageDomain,
 )
@@ -26,7 +28,13 @@ TOKEN = "internal-token"
 def web_server(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "WEB_INTERNAL_URL", WEB_URL)
     monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", TOKEN)
-    monkeypatch.setattr(f"{_MOD}.PUBLIC_PAGES_REVALIDATE_RETRY_WAIT_SECONDS", 0)
+
+
+@pytest.fixture(autouse=True)
+def retry_waits() -> Iterator[AsyncMock]:
+    """Record the waits between attempts instead of sleeping through them."""
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        yield sleep
 
 
 @respx.mock
@@ -65,13 +73,18 @@ async def test_a_refused_call_is_logged_as_an_error_and_not_retried_or_raised() 
 
 
 @respx.mock
-async def test_an_unreachable_web_server_is_retried_then_logged_as_an_error() -> None:
+async def test_an_unreachable_web_server_is_retried_then_logged_as_an_error(
+    retry_waits: AsyncMock,
+) -> None:
     route = respx.post(REVALIDATE_URL).mock(side_effect=httpx.ConnectError("refused"))
 
     with patch(f"{_MOD}.log") as mock_log:
         await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
 
     assert route.call_count == PUBLIC_PAGES_REVALIDATE_ATTEMPTS
+    assert retry_waits.await_args_list == [call(PUBLIC_PAGES_REVALIDATE_RETRY_WAIT_SECONDS)] * (
+        PUBLIC_PAGES_REVALIDATE_ATTEMPTS - 1
+    )
     mock_log.error.assert_called_once_with(
         "Public page invalidation failed",
         public_pages_domain="integrations",
@@ -83,7 +96,7 @@ async def test_an_unreachable_web_server_is_retried_then_logged_as_an_error() ->
 @respx.mock
 async def test_a_server_error_is_retried_until_the_web_server_answers() -> None:
     route = respx.post(REVALIDATE_URL).mock(
-        side_effect=[httpx.Response(503), httpx.Response(200, json={})]
+        side_effect=[httpx.Response(500), httpx.Response(200, json={})]
     )
 
     with patch(f"{_MOD}.log") as mock_log:
