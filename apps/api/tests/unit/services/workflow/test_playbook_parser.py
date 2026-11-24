@@ -2363,6 +2363,57 @@ result_brief: x
         assert [issue.kind for issue in result.issues] == [PlaybookRefusal.TIME_EXPRESSION]
         assert result.issues[0].where.endswith(".args.subject.window[0]")
 
+    async def _validate_nested(self, slot: str, recorded: object) -> PlaybookValidation:
+        body = _body(
+            f"""
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject:
+        window:
+          - first
+          - {slot}
+result_brief: x
+"""
+        )
+        results = [_source({"to": "a@b.com", "subject": recorded}, "sent")]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            return await validate_playbook(body, results)
+
+    async def test_a_nested_time_slot_is_held_to_the_layout_its_own_place_took(self) -> None:
+        slot = '{"$time": "$today + 1d", "format": "%Y-%m-%d"}'
+        took = {"window": ["first", "2026-09-06 09:00:00"]}
+
+        result = await self._validate_nested(slot, took)
+
+        assert [issue.problem for issue in result.issues] == [
+            "'subject.window[1]' was '2026-09-06 09:00:00' in this run, whose layout is "
+            "'%Y-%m-%d %H:%M:%S', not '%Y-%m-%d'; write "
+            '{"$time": "$today + 1d", "format": "%Y-%m-%d %H:%M:%S"}'
+        ]
+
+    @pytest.mark.parametrize(
+        "took",
+        [
+            {"window": ["first", "2026-09-06"]},
+            {"window": ["2026-09-06 09:00:00"]},
+            {"window": "2026-09-06 09:00:00"},
+            "2026-09-06 09:00:00",
+        ],
+        ids=["same layout", "shorter list", "not a list", "not a mapping"],
+    )
+    async def test_a_nested_time_slot_with_no_differing_example_at_its_place_is_accepted(
+        self, took: object
+    ) -> None:
+        slot = '{"$time": "$today + 1d", "format": "%Y-%m-%d"}'
+
+        result = await self._validate_nested(slot, took)
+
+        assert result.issues == []
+
     async def test_every_argument_is_checked_even_after_one_is_refused(self) -> None:
         """One refusal per argument, in argument order, so several wrong arguments are told all at once, not one per round trip."""
         body = _body(
