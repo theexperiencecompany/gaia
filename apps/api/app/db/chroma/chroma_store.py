@@ -199,10 +199,10 @@ class ChromaStore(BaseStore):
         filter: dict[str, Any] | None = None,  # noqa: A002 -- BaseStore's own parameter name
         limit: int = 10,
         offset: int = 0,
-        refresh_ttl: bool | None = None,
+        refresh_ttl: bool | None = None,  # noqa: ARG002 -- BaseStore's signature; this store keeps no TTLs
     ) -> list[SearchItem]:
         """Search a namespace, dots allowed: labels join on "::" here, and an MCP's is its host."""
-        op = SearchOp(namespace_prefix, filter, limit, offset, query, refresh_ttl is not False)
+        op = SearchOp(namespace_prefix, filter, limit, offset, query)
         (results,) = await self.abatch([op])
         return cast(list[SearchItem], results)
 
