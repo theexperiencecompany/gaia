@@ -63,7 +63,6 @@ from app.models.user_models import (
 )
 from app.utils.email_utils import canonical_email
 from shared.py.analytics.catalog.onboarding import OnboardingStep
-from shared.py.wide_events import log
 
 _SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
 # $unset reads only the field names; the value is ignored.
@@ -95,11 +94,8 @@ class UserRepository(CachedMongoRepository[UserDocument, UserUpdate]):
         return await self._find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
 
     async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
-        """Return users whose _id is in user_ids (invalid ids skipped) — the marketplace creator-join."""
-        oids = [ObjectId(uid) for uid in user_ids if ObjectId.is_valid(uid)]
-        if not oids:
-            return []
-        return await self._find({"_id": {"$in": oids}})
+        """Return users whose _id is in user_ids (malformed ids match no one) — the marketplace creator-join."""
+        return await self._find({"_id": {"$in": [self._id_value(uid) for uid in user_ids]}})
 
     async def get_by_platform_id(self, platform: str, platform_user_id: str) -> UserDocument | None:
         """Return a user linked to platform_user_id on platform."""
@@ -174,9 +170,7 @@ class UserRepository(CachedMongoRepository[UserDocument, UserUpdate]):
             "is_active": {"$ne": False},
         }
         if among is not None:
-            query["_id"] = {
-                "$in": [self._id_value(user_id) for user_id in among if self.is_valid_id(user_id)]
-            }
+            query["_id"] = {"$in": [self._id_value(user_id) for user_id in among]}
         return query
 
     async def find_by_activity_status(
@@ -627,15 +621,8 @@ class UserRepository(CachedMongoRepository[UserDocument, UserUpdate]):
 
         The guard is monotonic, so downgrades are silent and a re-crossed
         boundary can't re-fire; the filtered update also makes a retried job
-        idempotent. A non-ObjectId user_id (synthetic/dev identities) is
-        skipped with a warning rather than failing the sweep.
+        idempotent. A non-ObjectId user_id (synthetic/dev identities) matches no user.
         """
-        if not ObjectId.is_valid(user_id):
-            log.warning(
-                "[repository] tier promotion skipped non-ObjectId user_id",
-                user={"id": user_id},
-            )
-            return None
         return await self._apply_raw_update(
             {
                 "_id": self._id_value(user_id),

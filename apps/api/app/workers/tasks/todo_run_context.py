@@ -141,9 +141,7 @@ def sub_todo_block(child: TodoDocument) -> str:
 
 async def collect_reference_learnings(ref_ids: list[str], user_id: str) -> str:
     """Gather Learnings from the first referenced todos the user owns."""
-    wanted = [
-        ref for ref in ref_ids[:REFERENCED_TODOS_PROMPT_LIMIT] if todo_repository.is_valid_id(ref)
-    ]
+    wanted = ref_ids[:REFERENCED_TODOS_PROMPT_LIMIT]
     if not wanted:
         return ""
     owned = {doc.id: doc for doc in await todo_repository.find_by_ids(user_id, wanted)}

@@ -48,8 +48,6 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
 
     async def revoke(self, invite_id: str, now: datetime) -> bool:
         """Revoke an unused invite; False when it does not exist or was already used or revoked."""
-        if not self.is_valid_id(invite_id):
-            return False
         revoked = await self._apply_raw_update(
             {**self._identity_filter(invite_id), "used_at": None, "revoked_at": None},
             {"$set": {"revoked_at": now}},

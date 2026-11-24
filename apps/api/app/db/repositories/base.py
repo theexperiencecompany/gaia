@@ -27,7 +27,12 @@ from pymongo.results import UpdateResult
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.models.document_models import MongoDocument, UserScopedDocument
-from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
+from app.utils.errors import (
+    AppError,
+    EmptyUpdateError,
+    MalformedIdError,
+    RepositoryMisconfiguredError,
+)
 from shared.py.wide_events import log
 
 
@@ -194,7 +199,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     def _id_value(self, doc_id: str) -> object:
         # Only the Mongo ``_id`` identity is wrapped as an ObjectId; a business-key
         # identity (conversation_id, a UUID id) is matched as the plain string.
-        if self.identity_field == "_id" and self.uses_object_id:
+        # A malformed id stays a string, which no ObjectId _id equals: it names no document.
+        if self.identity_field == "_id" and self.uses_object_id and ObjectId.is_valid(doc_id):
             return ObjectId(doc_id)
         return doc_id
 
@@ -526,6 +532,12 @@ class MongoRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
 
     async def upsert(self, doc_id: str, update: TUpdate) -> None:
         """Set update's fields on doc_id, inserting the document when it does not exist yet."""
+        if not self.is_valid_id(doc_id):
+            raise MalformedIdError(
+                message=f"cannot upsert {type(self).__name__} under the malformed id {doc_id!r}",
+                why="the insert would store a document under an id its identity can never hold",
+                fix="pass an id from a document this collection stored",
+            )
         await self._apply_raw_update_unfetched(
             self._identity_filter(doc_id),
             {"$set": update.model_dump(exclude_unset=True)},
