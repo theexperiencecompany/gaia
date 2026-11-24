@@ -773,7 +773,8 @@ class WorkflowService:
 
             if updated is None:
                 return None
-            if current_workflow.is_public:
+            # A publish can land between the read above and this write, so both ends count.
+            if current_workflow.is_public or updated.is_public:
                 await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
             await release_on_tell_me_now(user_id, [workflow_id], request.delivery)
             if trigger_config_changed:

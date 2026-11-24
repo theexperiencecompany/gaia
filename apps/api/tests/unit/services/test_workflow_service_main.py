@@ -3144,21 +3144,26 @@ def _listed(is_public: bool) -> Workflow:
 class TestPublicWorkflowWritesClearThePublicPages:
     """A write to a published workflow changes what /use-cases shows."""
 
-    @pytest.mark.parametrize("is_public", [True, False])
-    async def test_editing_a_workflow_clears_the_pages_only_when_it_is_published(
-        self, is_public: bool
+    @pytest.mark.parametrize(
+        ("public_before", "public_after", "clears"),
+        [(True, True, True), (False, False, False), (False, True, True), (True, False, True)],
+    )
+    async def test_editing_a_workflow_clears_the_pages_when_it_is_published_at_either_end(
+        self, public_before: bool, public_after: bool, clears: bool
     ) -> None:
-        workflow = _listed(is_public)
         with (
-            patch(_GET_WORKFLOW, AsyncMock(return_value=workflow)),
-            patch(f"{_REPO}.update_for_user", AsyncMock(return_value=_make_workflow_doc(workflow))),
+            patch(_GET_WORKFLOW, AsyncMock(return_value=_listed(public_before))),
+            patch(
+                f"{_REPO}.update_for_user",
+                AsyncMock(return_value=_make_workflow_doc(_listed(public_after))),
+            ),
             patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
         ):
             await WorkflowService.update_workflow(
                 WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
             )
 
-        expected = [call(PublicPageDomain.WORKFLOWS)] if is_public else []
+        expected = [call(PublicPageDomain.WORKFLOWS)] if clears else []
         assert invalidate_pages.await_args_list == expected
 
     async def test_an_edit_that_matched_no_workflow_leaves_the_pages_alone(self) -> None:
