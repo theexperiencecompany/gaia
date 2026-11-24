@@ -17,17 +17,22 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 import json
+import re
 from unittest.mock import AsyncMock
 
+from mcp.shared.exceptions import McpError
 import pytest
 
+from app.constants.log_tags import LogTag
 import app.services.device.bridge as bridge_module
 from app.services.device.connection_manager import device_connection_manager
 from app.services.device.revoke_listener import start_revoke_listener, stop_revoke_listener
 import app.services.device.up_listener as up_listener_module
 from app.services.mcp.device_connector import DeviceConnector
+from tests.helpers import captured_wide_event
 
 FAKE_SERVER_KEY = "fake-server"
+LOCAL_EXIT = f"Local server '{FAKE_SERVER_KEY}' exited"
 
 
 async def _wait_until(predicate, timeout: float = 3.0, interval: float = 0.05) -> None:
@@ -40,7 +45,7 @@ async def _wait_until(predicate, timeout: float = 3.0, interval: float = 0.05) -
         await asyncio.sleep(interval)
 
 
-async def _fake_daemon(device_id: str, real_redis) -> None:
+async def _fake_daemon(device_id: str, real_redis, *, exit_on_call: bool = False) -> None:
     """Stand in for the gaia bridge daemon, relaying down-channel frames to a canned MCP initialize response on the up-channel.
 
     The pod id only rides the mcp.open frame; every later down-frame omits
@@ -66,6 +71,13 @@ async def _fake_daemon(device_id: str, real_redis) -> None:
             elif frame["t"] == "mcp.msg":
                 pod = session_pods[sid]
                 rpc = json.loads(frame["data"])
+                if exit_on_call and rpc.get("method") == "tools/call":
+                    # What the real daemon sends when the local server dies mid-call.
+                    await bridge_module.publish_up_to_pod(
+                        pod,
+                        json.dumps({"t": "mcp.error", "sid": sid, "pod": pod, "error": LOCAL_EXIT}),
+                    )
+                    continue
                 if rpc.get("method") != "initialize":
                     continue
                 response = {
@@ -258,3 +270,36 @@ class TestDeviceConnectorRoundTrip:
         connector = DeviceConnector("dev-never-online", FAKE_SERVER_KEY)
         with pytest.raises(Exception, match="offline"):
             await connector.connect()
+
+    @pytest.mark.regression
+    async def test_a_local_server_exiting_mid_call_fails_the_call_with_its_reason(self, real_redis):
+        """The daemon's mcp.error reached the session but the in-flight call still waited 120s."""
+        device_id = "dev-connector-exit"
+        await bridge_module.mark_online(device_id)
+        up_listener_module.start_up_listener()
+        daemon_task = asyncio.create_task(_fake_daemon(device_id, real_redis, exit_on_call=True))
+        await asyncio.sleep(0.2)
+        connector = DeviceConnector(device_id, FAKE_SERVER_KEY)
+        try:
+            async with captured_wide_event() as event:
+                await connector.connect()
+                session = connector.client_session
+                assert session is not None
+                await session.initialize()
+
+                with pytest.raises(McpError, match=re.escape(LOCAL_EXIT)):
+                    await asyncio.wait_for(session.call_tool("anything", {}), timeout=5.0)
+
+            assert event["warnings"] == [
+                {
+                    "msg": f"{LogTag.MCP} Device session lost",
+                    "reason": LOCAL_EXIT,
+                    "unanswered_calls": 1,
+                }
+            ]
+        finally:
+            await connector.disconnect()
+            daemon_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await daemon_task
+            await up_listener_module.stop_up_listener()

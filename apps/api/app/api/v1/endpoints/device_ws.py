@@ -24,14 +24,18 @@ from app.constants.device_bridge import (
     DEVICE_HEARTBEAT_TIMEOUT_SECONDS,
     DEVICE_RELAY_READY_TIMEOUT_SECONDS,
     FRAME_EXEC_EXIT,
+    FRAME_EXEC_OPEN,
     FRAME_EXEC_STDERR,
     FRAME_EXEC_STDOUT,
     FRAME_HELLO,
+    FRAME_MCP_CLOSE,
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
+    FRAME_MCP_OPEN,
     FRAME_MCP_OPENED,
     FRAME_PING,
     FRAME_PONG,
+    FRAME_TUNNEL_CLOSED,
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
@@ -52,6 +56,12 @@ from app.services.device.device_service import (
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/ws", tags=["Device Bridge"])
+
+# session id -> the consumer pod waiting on it, for every session open on one socket
+OpenSessions = dict[str, str]
+_SESSION_OPENS = (FRAME_MCP_OPEN, FRAME_EXEC_OPEN)
+# Frames after which the session is over, from either end of the socket.
+_SESSION_ENDS = (FRAME_MCP_CLOSE, FRAME_MCP_ERROR, FRAME_EXEC_EXIT)
 
 
 def _extract_token(websocket: WebSocket) -> str | None:
@@ -113,8 +123,9 @@ async def device_ws(websocket: WebSocket) -> None:
     # open-timeout that leaves tools undiscoverable until reconnect (bounded above).
     subscribed = asyncio.Event()
     state = {"last_recv": time.monotonic()}
+    sessions: OpenSessions = {}
     tasks = [
-        asyncio.create_task(_down_relay(websocket, device_id, subscribed)),
+        asyncio.create_task(_down_relay(websocket, device_id, sessions, subscribed)),
         asyncio.create_task(_heartbeat(websocket, device_id, state)),
     ]
     try:
@@ -139,7 +150,7 @@ async def device_ws(websocket: WebSocket) -> None:
         )
 
     try:
-        await _receive_loop(websocket, device_id, user_id, state)
+        await _receive_loop(websocket, device_id, user_id, state, sessions)
     # evlog-map-disable-next-line error-handling -- normal websocket disconnect; info-level is correct
     except WebSocketDisconnect:
         log.set(disconnect_reason="client_close")
@@ -153,22 +164,56 @@ async def device_ws(websocket: WebSocket) -> None:
             error=str(e),
         )
     finally:
-        for task in tasks:
-            task.cancel()
-        with contextlib.suppress(Exception):
-            await asyncio.gather(*tasks, return_exceptions=True)
-        device_connection_manager.remove(device_id, websocket)
-        # Only clear presence if this pod holds no more sockets for the device:
-        # mark_offline's compare-and-delete keys only on POD_ID, so an old
-        # socket's teardown could wipe a newer same-pod socket's re-claimed key.
-        if not device_connection_manager.owns(device_id):
-            await mark_offline(device_id)
-        with contextlib.suppress(Exception):
-            await websocket.close()
+        await _close_socket(websocket, device_id, tasks, sessions)
+
+
+async def _close_socket(
+    websocket: WebSocket, device_id: str, tasks: list[asyncio.Task[None]], sessions: OpenSessions
+) -> None:
+    """Stop the socket's relays, release its presence, and fail the sessions it carried."""
+    for task in tasks:
+        task.cancel()
+    with contextlib.suppress(Exception):
+        await asyncio.gather(*tasks, return_exceptions=True)
+    device_connection_manager.remove(device_id, websocket)
+    # Only clear presence if this pod holds no more sockets for the device:
+    # mark_offline's compare-and-delete keys only on POD_ID, so an old
+    # socket's teardown could wipe a newer same-pod socket's re-claimed key.
+    if not device_connection_manager.owns(device_id):
+        await mark_offline(device_id)
+    await _fail_open_sessions(sessions)
+    with contextlib.suppress(Exception):
+        await websocket.close()
+
+
+def _track_session(sessions: OpenSessions, frame: dict[str, Any]) -> None:
+    """Record a session this socket opens and forget one it ends."""
+    frame_type = frame.get("t")
+    session_id = frame.get("sid")
+    if not isinstance(session_id, str):
+        return
+    pod = frame.get("pod")
+    if frame_type in _SESSION_OPENS and isinstance(pod, str):
+        sessions[session_id] = pod
+    elif frame_type in _SESSION_ENDS:
+        sessions.pop(session_id, None)
+
+
+async def _fail_open_sessions(sessions: OpenSessions) -> None:
+    """Tell each waiting pod its session died with this socket, so its call fails now, not on timeout."""
+    for session_id, pod in sessions.items():
+        await publish_up_to_pod(
+            pod, json.dumps({"t": FRAME_TUNNEL_CLOSED, "sid": session_id, "pod": pod})
+        )
+    log.set(device={"sessions_failed_on_close": len(sessions)})
 
 
 async def _receive_loop(
-    websocket: WebSocket, device_id: str, user_id: str, state: dict[str, float]
+    websocket: WebSocket,
+    device_id: str,
+    user_id: str,
+    state: dict[str, float],
+    sessions: OpenSessions,
 ) -> None:
     """Read frames off the socket and route upstream ones onto Redis."""
     while True:
@@ -199,6 +244,7 @@ async def _receive_loop(
             pod = frame.get("pod")
             if isinstance(pod, str):
                 await publish_up_to_pod(pod, raw)
+            _track_session(sessions, frame)
             continue
         if frame_type == FRAME_HELLO:
             # The daemon's local config is the source of truth: prune server rows it
@@ -221,7 +267,10 @@ async def _receive_loop(
 
 
 async def _down_relay(
-    websocket: WebSocket, device_id: str, subscribed: asyncio.Event | None = None
+    websocket: WebSocket,
+    device_id: str,
+    sessions: OpenSessions,
+    subscribed: asyncio.Event | None = None,
 ) -> None:
     """Subscribe to this device's down channel and write frames to the socket.
 
@@ -244,6 +293,7 @@ async def _down_relay(
             data = message["data"]
             if isinstance(data, bytes):
                 data = data.decode("utf-8")
+            _track_session(sessions, json.loads(data))
             await websocket.send_text(data)
     finally:
         with contextlib.suppress(Exception):

@@ -83,7 +83,7 @@ async def test_warmup_enqueued_only_after_relay_subscribes():
     seen: dict[str, object] = {}
     ws = _socket()
 
-    async def fake_relay(websocket, device_id, ready=None):
+    async def fake_relay(websocket, device_id, sessions, ready=None):
         order.append("relay-start")
         seen["relay"] = (websocket, device_id, ready)
         await asyncio.sleep(0)
@@ -115,7 +115,7 @@ async def test_stalled_relay_does_not_block_the_socket():
     """A subscribe that never lands still lets the socket connect: the wait is bounded and the enqueue proceeds."""
     enqueued = asyncio.Event()
 
-    async def stalled_relay(websocket, device_id, ready=None):
+    async def stalled_relay(websocket, device_id, sessions, ready=None):
         await asyncio.sleep(60)
 
     async def fake_enqueue(device_id, server_keys=None):
@@ -138,7 +138,7 @@ async def test_enqueue_failure_is_logged_with_its_cause_and_not_fatal():
     """A Redis outage on the enqueue must not fail the socket, but the failure and its cause must still reach the wide event."""
     enqueued = asyncio.Event()
 
-    async def fake_relay(websocket, device_id, ready=None):
+    async def fake_relay(websocket, device_id, sessions, ready=None):
         ready.set()
 
     async def failing_enqueue(device_id, *args, **kwargs):
@@ -183,7 +183,7 @@ async def test_relay_signals_only_after_subscribe_returns():
     ready = asyncio.Event()
 
     with patch.object(ws_module.redis_cache, "redis", redis):
-        task = asyncio.create_task(ws_module._down_relay(ws, "d1", ready))
+        task = asyncio.create_task(ws_module._down_relay(ws, "d1", {}, ready))
         await asyncio.wait_for(ready.wait(), 5)
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -198,7 +198,7 @@ async def test_relay_without_redis_still_signals_ready():
     """No Redis means no subscription is possible — signal anyway so the handler's bounded wait never stalls."""
     ready = asyncio.Event()
     with patch.object(ws_module.redis_cache, "redis", None):
-        await ws_module._down_relay(_socket(), "d1", ready)
+        await ws_module._down_relay(_socket(), "d1", {}, ready)
     assert ready.is_set()
 
 

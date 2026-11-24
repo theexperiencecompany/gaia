@@ -23,11 +23,13 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 from mcp_use.client.connectors.base import BaseConnector
 
 from app.constants.device_bridge import (
+    DEVICE_DISCONNECTED_MESSAGE,
     FRAME_MCP_CLOSE,
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
     FRAME_MCP_OPEN,
     FRAME_MCP_OPENED,
+    FRAME_TUNNEL_CLOSED,
     MCP_SESSION_CALL_TIMEOUT_SECONDS,
     MCP_SESSION_OPEN_TIMEOUT_SECONDS,
 )
@@ -37,7 +39,15 @@ from app.services.device.bridge import POD_ID, is_online, send_down
 from app.services.device.up_listener import register_up_session, unregister_up_session
 from mcp import ClientSession
 from mcp.shared.message import SessionMessage
-from mcp.types import JSONRPCMessage
+from mcp.types import (
+    CONNECTION_CLOSED,
+    ErrorData,
+    JSONRPCError,
+    JSONRPCMessage,
+    JSONRPCRequest,
+    JSONRPCResponse,
+    RequestId,
+)
 from shared.py.wide_events import log
 
 
@@ -64,6 +74,9 @@ class DeviceConnector(BaseConnector):
         self._opened: asyncio.Future[None] | None = None
         self._read_send: MemoryObjectSendStream[SessionMessage | Exception] | None = None
         self._write_recv: MemoryObjectReceiveStream[SessionMessage] | None = None
+        # Requests sent down and not yet answered: the ones a lost session must fail itself,
+        # since ClientSession ignores an exception on its read stream and waits out the timeout.
+        self._unanswered: set[RequestId] = set()
 
     @property
     def public_identifier(self) -> str:
@@ -150,12 +163,15 @@ class DeviceConnector(BaseConnector):
                 frame_type = frame.get("t")
                 if frame_type == FRAME_MCP_OPENED:
                     self._resolve_open(None)
-                elif frame_type == FRAME_MCP_ERROR:
-                    error = DeviceConnectionError(frame.get("error") or "device MCP error")
-                    if not self._resolve_open(error):
-                        # Mid-session error: fail the read stream to tear down.
-                        with contextlib.suppress(Exception):
-                            await read_send.send(error)
+                elif frame_type in (FRAME_MCP_ERROR, FRAME_TUNNEL_CLOSED):
+                    reason = (
+                        DEVICE_DISCONNECTED_MESSAGE
+                        if frame_type == FRAME_TUNNEL_CLOSED
+                        else frame.get("error") or "device MCP error"
+                    )
+                    if not self._resolve_open(DeviceConnectionError(reason)):
+                        await self._end_session(read_send, reason)
+                    return
                 elif frame_type == FRAME_MCP_MSG:
                     data = frame.get("data")
                     if not isinstance(data, str):
@@ -165,6 +181,8 @@ class DeviceConnector(BaseConnector):
                     except Exception as parse_err:  # forward as stream error
                         await read_send.send(parse_err)
                         continue
+                    if isinstance(jsonrpc.root, JSONRPCResponse | JSONRPCError):
+                        self._unanswered.discard(jsonrpc.root.id)
                     await read_send.send(SessionMessage(jsonrpc))
         except asyncio.CancelledError:
             raise
@@ -172,15 +190,34 @@ class DeviceConnector(BaseConnector):
             log.warning(
                 f"{LogTag.MCP} Device inbox drain ended", error=str(e), error_type=type(e).__name__
             )
-            # Fail the read stream so an in-flight call unblocks immediately and
-            # the session tears down, instead of hanging until the read timeout.
             with contextlib.suppress(Exception):
-                await read_send.send(DeviceConnectionError("device tunnel closed"))
+                await self._end_session(read_send, "device tunnel closed")
+
+    async def _end_session(
+        self, read_send: MemoryObjectSendStream[SessionMessage | Exception], reason: str
+    ) -> None:
+        """Answer every unanswered request with reason, then close the read stream to end the session."""
+        log.warning(
+            f"{LogTag.MCP} Device session lost",
+            reason=reason,
+            unanswered_calls=len(self._unanswered),
+        )
+        for request_id in self._unanswered:
+            error = ErrorData(code=CONNECTION_CLOSED, message=reason)
+            await read_send.send(
+                SessionMessage(
+                    JSONRPCMessage(JSONRPCError(jsonrpc="2.0", id=request_id, error=error))
+                )
+            )
+        self._unanswered.clear()
+        await read_send.aclose()
 
     async def _pump_downstream(self, write_recv: MemoryObjectReceiveStream[SessionMessage]) -> None:
         """Pump the ClientSession's write stream into the Redis down-channel to the device."""
         try:
             async for session_message in write_recv:
+                if isinstance(session_message.message.root, JSONRPCRequest):
+                    self._unanswered.add(session_message.message.root.id)
                 payload = session_message.message.model_dump_json(by_alias=True, exclude_none=True)
                 await send_down(
                     self.device_id,

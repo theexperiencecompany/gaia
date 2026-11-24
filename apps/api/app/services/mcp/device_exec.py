@@ -15,12 +15,14 @@ import uuid
 from pydantic import BaseModel
 
 from app.constants.device_bridge import (
+    DEVICE_DISCONNECTED_MESSAGE,
     DEVICE_EXEC_MAX_OUTPUT_BYTES,
     DEVICE_EXEC_TIMEOUT_SECONDS,
     FRAME_EXEC_EXIT,
     FRAME_EXEC_OPEN,
     FRAME_EXEC_STDERR,
     FRAME_EXEC_STDOUT,
+    FRAME_TUNNEL_CLOSED,
 )
 from app.db.redis import redis_cache
 from app.services.device.bridge import POD_ID, is_online, send_down
@@ -82,6 +84,8 @@ async def run_device_command(
             elif frame_type == FRAME_EXEC_EXIT:
                 code = frame.get("code")
                 return int(code) if isinstance(code, (int, float)) else -1
+            elif frame_type == FRAME_TUNNEL_CLOSED:
+                raise DeviceExecError(DEVICE_DISCONNECTED_MESSAGE)
 
     try:
         await send_down(
