@@ -66,7 +66,8 @@ class DeviceConnector(BaseConnector):
         self.server_key = server_key
         self.session_id = uuid.uuid4().hex
         # Set when the device side ended the session; the next call reconnects instead of reusing it.
-        self._session_lost = False
+        # No mutate: is_connected reads it only once a session exists, and connect() resets it.
+        self._session_lost = False  # pragma: no mutate
         # Fed by the shared per-pod up-listener (up_listener.py); drained by
         # _reader_task. Replaces a per-session Redis pub/sub subscription.
         # No mutate: connect() sets the inbox before anything reads it.
@@ -95,7 +96,7 @@ class DeviceConnector(BaseConnector):
             if not self._session_lost:
                 return
             await self.disconnect()
-        self._session_lost = False
+        self._session_lost = False  # pragma: no mutate — None reads as False too
         # A fresh id per session: the socket that carried the lost one may still fail its id later.
         self.session_id = uuid.uuid4().hex
         if not redis_cache.redis:
