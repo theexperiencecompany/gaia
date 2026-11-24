@@ -24,6 +24,7 @@ from mcp.types import (
     ErrorData,
     JSONRPCError,
     JSONRPCMessage,
+    JSONRPCNotification,
     JSONRPCRequest,
     JSONRPCResponse,
 )
@@ -87,7 +88,7 @@ async def test_malformed_frame_forwarded_as_error_without_killing_loop() -> None
     # Good frame #2 still arrives — proof the loop kept running after the bad
     # frame instead of tearing the session down.
     assert isinstance(second, SessionMessage)
-    assert second.message.root.method == "ping"
+    assert second.message.root == JSONRPCNotification(jsonrpc="2.0", method="ping", params={})
 
 
 async def test_valid_frames_after_malformed_frame_are_unaffected() -> None:
@@ -103,9 +104,11 @@ async def test_valid_frames_after_malformed_frame_are_unaffected() -> None:
 
     assert isinstance(results[0], Exception)
     assert isinstance(results[1], SessionMessage)
-    assert results[1].message.root.method == "tools/list"
+    assert results[1].message.root == JSONRPCNotification(
+        jsonrpc="2.0", method="tools/list", params={}
+    )
     assert isinstance(results[2], SessionMessage)
-    assert results[2].message.root.method == "ping"
+    assert results[2].message.root == JSONRPCNotification(jsonrpc="2.0", method="ping", params={})
 
 
 def _request(request_id: int) -> SessionMessage:
