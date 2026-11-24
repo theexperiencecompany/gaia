@@ -225,6 +225,42 @@ class TestRegistryAndCache:
         registry.mark_tool_destructive.assert_called_once_with("wipe_db", True)
 
 
+class TestAReviewedIntegrationDecidesWithoutTheRegistry:
+    """Composio toolkits register per process on first use; a call can reach the gate first."""
+
+    @pytest.mark.parametrize(
+        ("tool", "destructive"),
+        [
+            ("NOTION_UPDATE_PAGE", False),
+            ("GMAIL_CREATE_EMAIL_DRAFT", False),
+            ("GMAIL_DELETE_DRAFT", False),
+            # Taking a label off a message is undone by putting it back.
+            ("GMAIL_REMOVE_LABEL", False),
+            ("GMAIL_SEND_EMAIL", True),
+        ],
+    )
+    async def test_its_curated_list_decides_with_no_llm_call(
+        self, tool: str, destructive: bool, mongo: MagicMock
+    ) -> None:
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry_with(None))),
+            patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm,
+        ):
+            assert await is_tool_destructive(tool, "Does a thing.") is destructive
+        assert llm.await_count == 0
+
+    async def test_an_uncurated_tool_still_goes_to_the_classifier(self, mongo: MagicMock) -> None:
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry_with(None))),
+            patch(
+                f"{MODULE}.ainvoke_structured",
+                new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="x")),
+            ) as llm,
+        ):
+            assert await is_tool_destructive("custom_wipe", "Wipes.") is True
+        assert llm.await_count == 1
+
+
 class TestTheClassifierCallItself:
     """The verdict is cached per tool per user forever, so this call runs exactly once.
 

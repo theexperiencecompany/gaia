@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
@@ -65,6 +66,9 @@ async def is_tool_destructive(
             )
         registry = await get_tool_registry()
         flag = registry.is_tool_destructive(tool_name)
+        if flag is None:
+            # A toolkit registers in a process on first use; its reviewed list decides anyway.
+            flag = _curated_flag(tool_name)
         if flag is not None:
             return flag
         return await _classify_unknown_tool(registry, tool_name, tool_name, description)
@@ -78,6 +82,14 @@ async def is_tool_destructive(
             error_type=type(e).__name__,
         )
         return True
+
+
+def _curated_flag(tool_name: str) -> bool | None:
+    """Return the reviewed verdict for a Composio slug, or None when its integration is uncurated."""
+    integration = get_integration_by_tool_slug(tool_name)
+    if integration is None or integration.destructive_tools is None:
+        return None
+    return tool_name in integration.destructive_tools
 
 
 def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
