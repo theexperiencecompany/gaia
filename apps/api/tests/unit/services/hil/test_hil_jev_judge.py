@@ -534,8 +534,8 @@ class TestTheJudgeAroundTheWire:
         assert state["user_messages"] == ["draft it", "send it"]
         assert state["assistant_turns"] == ["Your draft is ready."]
 
-    async def test_forbid_language_asks_after_one_question(self) -> None:
-        client = _sequence_client(_answer("authorized", 0.9))
+    async def test_forbid_language_the_focused_check_upholds_asks(self) -> None:
+        client = _sequence_client(_answer("authorized", 0.9), _forbid_answer("forbidden", 0.9))
         with _jev(client):
             decision = await JevIntentJudge().decide(
                 user_id="u",
@@ -549,7 +549,36 @@ class TestTheJudgeAroundTheWire:
             "ask",
             "an earlier message argues against this send_email call and nothing since lifted it.",
         )
-        assert client.post.await_count == 1
+        assert client.post.await_count == 2
+
+    async def test_a_dont_that_forbids_nothing_lets_an_authorized_send_run(self) -> None:
+        """'Don't we have the draft ready?' is a question, not a rule against sending."""
+        turns = ["Don't we have the draft ready for bob@example.com?", "send it to bob@example.com"]
+        client = _sequence_client(_answer("authorized", 0.9), _forbid_answer("permitted", 0.9))
+        with _jev(client):
+            decision = await JevIntentJudge().decide(
+                user_id="u",
+                user_messages=turns,
+                call=_call(),
+                prior_calls=[],
+                history=AutoHistory(),
+            )
+
+        assert decision.outcome == "accept"
+        assert client.post.await_count == 2
+
+    async def test_a_failed_focused_check_on_an_authorized_call_asks(self) -> None:
+        client = _sequence_client(_answer("authorized", 0.9), httpx.ConnectError("down"))
+        with _jev(client):
+            decision = await JevIntentJudge().decide(
+                user_id="u",
+                user_messages=FORBID_TURNS,
+                call=_call(),
+                prior_calls=[],
+                history=AutoHistory(),
+            )
+
+        assert decision.outcome == "ask"
 
     async def test_no_forbid_language_accepts(self) -> None:
         client = _sequence_client(_answer("authorized", 0.9))
@@ -623,24 +652,27 @@ def _forbid_answer(choice: str, confidence: float | None) -> dict[str, Any]:
 
 
 class TestSettleForbid:
+    """Only a confident "permitted" clears an earlier forbid; doubt asks."""
+
     def test_forbidden_at_the_floor_forbids(self) -> None:
-        assert (
-            jev_judge.settle_forbid("forbidden", hil_constants.HIL_JEV_FORBID_FLOOR)
-            is JevChoice.FORBIDDEN
-        )
+        floor = hil_constants.HIL_JEV_FORBID_FLOOR
+        assert jev_judge.settle_forbid("forbidden", floor) is JevChoice.FORBIDDEN
 
-    def test_forbidden_below_the_floor_permits(self) -> None:
-        assert (
-            jev_judge.settle_forbid("forbidden", hil_constants.HIL_JEV_FORBID_FLOOR - 0.01)
-            is JevChoice.PERMITTED
-        )
+    def test_forbidden_below_the_floor_still_forbids(self) -> None:
+        floor = hil_constants.HIL_JEV_FORBID_FLOOR
+        assert jev_judge.settle_forbid("forbidden", floor - 0.01) is JevChoice.FORBIDDEN
 
-    def test_any_other_answer_permits_however_confident(self) -> None:
-        assert jev_judge.settle_forbid("unclear", 0.99) is JevChoice.PERMITTED
+    def test_permitted_at_the_floor_permits(self) -> None:
+        floor = hil_constants.HIL_JEV_FORBID_FLOOR
+        assert jev_judge.settle_forbid("permitted", floor) is JevChoice.PERMITTED
+
+    def test_an_unsure_permitted_forbids(self) -> None:
+        """'keep everything for now' then 'delete t5': JEV said permitted at 0.04."""
+        assert jev_judge.settle_forbid("permitted", 0.04) is JevChoice.FORBIDDEN
 
     def test_the_sweep_can_move_the_floor(self) -> None:
-        assert jev_judge.settle_forbid("forbidden", 0.6, floor=0.7) is JevChoice.PERMITTED
-        assert jev_judge.settle_forbid("forbidden", 0.6, floor=0.5) is JevChoice.FORBIDDEN
+        assert jev_judge.settle_forbid("permitted", 0.6, floor=0.7) is JevChoice.FORBIDDEN
+        assert jev_judge.settle_forbid("permitted", 0.6, floor=0.5) is JevChoice.PERMITTED
 
 
 class TestTheForbidWire:
@@ -868,21 +900,30 @@ class TestContainedActionsRunWithoutExplicitWords:
 
         assert _contained_case(_verdict(forbid=JevChoice.FORBIDDEN), turns=turns).outcome == "ask"
 
-    async def test_only_a_contained_call_with_forbid_words_earns_the_focused_check(self) -> None:
+    async def test_only_a_call_that_may_run_with_forbid_words_earns_the_focused_check(
+        self,
+    ) -> None:
         turns = ["we can't ship today", "check the flags"]
+        line = hil_constants.HIL_JEV_CONTAINED_LINE
+        accept = hil_constants.HIL_JEV_ACCEPT_LINE
 
+        assert jev_judge.needs_forbid_check(turns, _verdict(contained=line)) is True
+        assert jev_judge.needs_forbid_check(turns, _verdict(contained=line - 0.01)) is False
+        assert jev_judge.needs_forbid_check(turns, _verdict(contained=None)) is False
+        assert jev_judge.needs_forbid_check(["check the flags"], _verdict(contained=0.99)) is False
+        # Authorized by the user's words: forbid words earn the same focused question.
         assert (
-            jev_judge.needs_forbid_check(turns, contained=hil_constants.HIL_JEV_CONTAINED_LINE)
+            jev_judge.needs_forbid_check(
+                turns, _verdict(choice="authorized", confidence=accept, contained=0.0)
+            )
             is True
         )
         assert (
             jev_judge.needs_forbid_check(
-                turns, contained=hil_constants.HIL_JEV_CONTAINED_LINE - 0.01
+                turns, _verdict(choice="authorized", confidence=accept - 0.01, contained=0.0)
             )
             is False
         )
-        assert jev_judge.needs_forbid_check(turns, contained=None) is False
-        assert jev_judge.needs_forbid_check(["check the flags"], contained=0.99) is False
 
     @pytest.mark.parametrize(
         "hold",
@@ -994,10 +1035,15 @@ class TestTheUsersSavedInstructions:
 
     @pytest.mark.parametrize(
         ("choice", "offset", "holds"),
-        [("forbidden", 0.0, True), ("forbidden", -0.01, False), ("permitted", 0.0, False)],
-        ids=["forbidden-at-floor", "forbidden-below-floor", "permitted"],
+        [
+            ("forbidden", 0.0, True),
+            ("forbidden", -0.01, True),
+            ("permitted", -0.01, True),
+            ("permitted", 0.0, False),
+        ],
+        ids=["forbidden", "unsure-forbidden", "unsure-permitted", "permitted-at-floor"],
     )
-    async def test_a_rule_holds_only_when_forbidden_at_the_floor(
+    async def test_a_rule_lets_the_call_run_only_when_confidently_permitted(
         self, choice: str, offset: float, holds: bool
     ) -> None:
         confidence = hil_constants.HIL_JEV_FORBID_FLOOR + offset

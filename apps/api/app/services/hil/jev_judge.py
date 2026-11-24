@@ -242,29 +242,34 @@ async def ask_jev_forbid(
 
 def needs_forbid_check(
     user_messages: list[str],
+    verdict: "JevVerdict",
     *,
-    contained: float | None,
+    accept_line: float = HIL_JEV_ACCEPT_LINE,
     contained_line: float = HIL_JEV_CONTAINED_LINE,
 ) -> bool:
-    """Whether a call that may run on containment needs the focused forbid check.
+    """Whether a call that may run needs the focused forbid check before it does.
 
-    Pure, shared by prod and the eval: the call clears the containment line but an
-    earlier turn carries forbid language with no later lift. An authorized call with
-    forbid language asks whatever the check would say, so it never needs one.
+    Pure, shared by prod and the eval. A call may run when the user's words authorize
+    it or its containment clears the line; forbid words with no later lift then get a
+    focused question instead of a blanket veto, so a "don't" that forbids nothing
+    ("don't we have the draft ready?") no longer stops the call.
     """
-    return contained is not None and contained >= contained_line and forbid_tripwire(user_messages)
+    authorized = map_jev_choice(verdict.choice, verdict.confidence, accept_line=accept_line)
+    contained = verdict.contained is not None and verdict.contained >= contained_line
+    return (authorized == "accept" or contained) and forbid_tripwire(user_messages)
 
 
 def settle_forbid(
     choice: str, confidence: float, *, floor: float = HIL_JEV_FORBID_FLOOR
 ) -> JevChoice:
-    """Settle a focused forbid answer: forbidden only at or past the floor, else permitted.
+    """Settle a focused forbid answer: permitted only when JEV says so at the floor.
 
-    Pure, shared by prod and the eval so the sweep regrades the rule prod runs.
+    Anything less is doubt, and doubt asks the user. Pure, shared by prod and the eval
+    so the sweep regrades the rule prod runs.
     """
-    if choice == JevChoice.FORBIDDEN and confidence >= floor:
-        return JevChoice.FORBIDDEN
-    return JevChoice.PERMITTED
+    if choice == JevChoice.PERMITTED and confidence >= floor:
+        return JevChoice.PERMITTED
+    return JevChoice.FORBIDDEN
 
 
 class JevIntentJudge:
@@ -335,7 +340,7 @@ class JevIntentJudge:
 
         A failed check degrades to asking, never to a run.
         """
-        if not needs_forbid_check(user_messages, contained=asked.contained):
+        if not needs_forbid_check(user_messages, asked):
             return None
         try:
             choice, confidence, _in, _out = await ask_jev_forbid(
@@ -442,7 +447,7 @@ def _authorization_decision(
             "ask",
             f"this {call.tool_name} call may not match your request ({choice} {confidence:.2f}).",
         )
-    if forbid_tripwire(case.user_messages):
+    if forbid_tripwire(case.user_messages) and verdict.forbid != JevChoice.PERMITTED:
         return IntentDecision(
             "ask",
             f"an earlier message argues against this {call.tool_name} call "

@@ -91,7 +91,8 @@ HIL_JEV_CONTAINED_LINE = 0.80
 # ...and only while P(forbidden) stays under this: any real argument against the call
 # (quiet hours, "fetch it quietly") holds it, even when another choice wins.
 HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
-# The focused forbid check counts a forbid only at or past this confidence.
+# A focused forbid or standing-instruction check clears a call only when JEV says
+# "permitted" at or past this confidence; anything less is doubt, and doubt asks.
 HIL_JEV_FORBID_FLOOR = 0.50
 #: The name the focused forbid question goes by, asked when forbid words may block a run.
 JEV_FORBID_QUESTION_KEY = "forbid"

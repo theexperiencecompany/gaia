@@ -172,11 +172,19 @@ def _graded_outcome(
 ) -> str:
     """The outcome prod reaches at these lines, or UNRESOLVED when the journal can't say.
 
-    Prod asks the focused forbid question only where containment may run the call, so
-    its answer counts only there; a row without one can't grade a line that needs it.
+    Prod asks the focused forbid question only where the call may run (authorized or
+    contained), so its answer counts only there; a row without one can't grade a line
+    that needs it.
     """
     needs_forbid = needs_forbid_check(
-        case.user_messages, contained=fields["contained"], contained_line=contained_line
+        case.user_messages,
+        JevVerdict(
+            choice=fields["choice"],
+            confidence=fields["confidence"],
+            contained=fields["contained"],
+        ),
+        accept_line=accept_line,
+        contained_line=contained_line,
     )
     if needs_forbid and fields["forbid_choice"] is None:
         return UNRESOLVED
@@ -272,7 +280,7 @@ class JudgeTransport:
         except (httpx.HTTPError, JevUnconfiguredError, OpenAIDecisionsUnconfiguredError) as e:
             raise ProviderError(provider.name, f"decisions API failed: {e}") from e
         forbid, forbid_conf, forbid_usage = await self._forbid(
-            case, provider, prod_asks_it=needs_forbid_check(turns, contained=asked.contained)
+            case, provider, prod_asks_it=needs_forbid_check(turns, asked)
         )
         verdict = JevJournalFields(
             choice=asked.choice,
