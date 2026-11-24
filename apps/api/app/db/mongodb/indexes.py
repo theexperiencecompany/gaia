@@ -362,6 +362,8 @@ RENAMED_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
     )
     for name in RENAMED_ENTRY_FIELDS
 ]
+#: (user_id, kind) alone, a prefix of user_entry_kind_at, which serves every read it did.
+SUPERSEDED_ENTRY_KIND_INDEX = "user_entry_kind"
 CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
     (
         [("user_id", 1), ("conversation_id", 1), ("seq", 1)],
@@ -381,9 +383,7 @@ CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
             "partialFilterExpression": {"reply_id": {"$type": "string"}},
         },
     ),
-    # has_sent_message
-    ([("user_id", 1), ("kind", 1)], {"name": "user_entry_kind"}),
-    # list_bot_replies_since: the user's messages after a moment
+    # has_sent_message, and list_bot_replies_since: the user's messages after a moment
     ([("user_id", 1), ("kind", 1), ("at", 1)], {"name": "user_entry_kind_at"}),
     # list_pinned_messages
     (
@@ -437,6 +437,7 @@ async def create_conversation_indexes() -> None:
                 for keys, options in CONVERSATION_ENTRY_INDEXES
             ),
         )
+        await _drop_index_if_present(entries_collection, SUPERSEDED_ENTRY_KIND_INDEX)
 
     except Exception as e:
         log.error(
