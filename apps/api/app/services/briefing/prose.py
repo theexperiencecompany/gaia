@@ -242,7 +242,17 @@ def _joined(kept: list[tuple[str, str]]) -> str:
     return "".join(sentence + gap for sentence, gap in kept)
 
 
-def _salvaged(voice: BriefVoice | None, writing: Writing) -> tuple[BriefVoice, BriefVoice]:
+@dataclass(frozen=True)
+class Voiced:
+    """The checked voice as written, its rendered draft, and whether code salvaged it."""
+
+    written: BriefVoice
+    draft: BriefVoice
+    #: Code kept what held, or voiced it plainly, because the model's last answer failed its check.
+    salvaged: bool
+
+
+def _salvaged(voice: BriefVoice | None, writing: Writing) -> Voiced:
     """Keep what holds of the last voice; plainly only when no headline or lede is left.
 
     A dropped headline gets the plain one, a message missing the lead gets its plain line first,
@@ -251,7 +261,8 @@ def _salvaged(voice: BriefVoice | None, writing: Writing) -> tuple[BriefVoice, B
     plain = plain_voice(writing)
     salvage = None if voice is None else _held_salvage(voice, writing, plain)
     log.set_ns(f"brief_{_VOICE_CALL}", plain=salvage is None)
-    return salvage or (plain, _draft(plain, writing.values))
+    written, draft = salvage or (plain, _draft(plain, writing.values))
+    return Voiced(written, draft, salvaged=True)
 
 
 def _held_salvage(
@@ -317,19 +328,17 @@ def _kept_voice(voice: BriefVoice, writing: Writing, plain: BriefVoice) -> Brief
     )
 
 
-async def written_brief(
-    user_id: str, prompt: str, writing: Writing
-) -> tuple[BriefVoice, BriefVoice]:
+async def written_brief(user_id: str, prompt: str, writing: Writing) -> Voiced:
     """Voice the brief and hold it to its facts; return what the model wrote and its rendered draft.
 
     An unreadable reply, a bad slot, a missing lead or an overlong field is sent back to the
     model with the problems named; past the last attempt what holds of it is kept.
     """
 
-    async def held(voice: BriefVoice) -> tuple[BriefVoice, BriefVoice] | Rejected[BriefVoice]:
+    async def held(voice: BriefVoice) -> Voiced | Rejected[BriefVoice]:
         checked = _held_to_facts(voice, writing)
         if isinstance(checked, BriefVoice):
-            return voice, checked
+            return Voiced(voice, checked, salvaged=False)
         note = voice_correction_note(checked, voice.model_dump_json(indent=2))
         return Rejected(checked, note, voice)
 

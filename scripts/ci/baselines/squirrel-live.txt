@@ -12,10 +12,8 @@
 
 score:Content=85
 score:Core SEO=91
-score:Links=95
-score:Performance=82
+score:Performance=83
 score:Security=96
-*	links/broken-external-links/broken-external-links	https://zustand.docs.pmnd.rs/
 *	perf/total-byte-weight/total-byte-weight
 *	security/csp/csp-missing
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen

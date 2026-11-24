@@ -91,7 +91,7 @@ class TestAVoiceThatBreaksItsFacts:
         asked = AsyncMock(side_effect=[broke, mended])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        voice, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+        voiced = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
 
         problem = (
             "the message never refers to the lead, fact 1 (Reply to Dan); say it in your own "
@@ -101,7 +101,11 @@ class TestAVoiceThatBreaksItsFacts:
             f"PROMPT\n\n{voice_correction_note([problem], broke.model_dump_json(indent=2))}"
         )
         assert [call.kwargs["label"] for call in asked.await_args_list] == ["brief_voice"] * 2
-        assert (voice, draft.message) == (mended, "Reply to Dan first.")
+        assert (voiced.written, voiced.draft.message, voiced.salvaged) == (
+            mended,
+            "Reply to Dan first.",
+            False,
+        )
 
     async def test_a_message_claiming_a_state_its_fact_does_not_hold_is_sent_back(
         self, monkeypatch: pytest.MonkeyPatch
@@ -167,9 +171,9 @@ class TestAVoiceThatRepeatsOrOverclaims:
             openings=["Reply to Dan before lunch."],
         )
 
-        voice, _ = await written_brief(
-            _USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, recent=recent)
-        )
+        voice = (
+            await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, recent=recent))
+        ).written
 
         problems = [
             "the headline repeats a recent brief's line ('An open day, with room to reset'); "
@@ -210,11 +214,13 @@ class TestAVoiceThatRepeatsOrOverclaims:
         grounded = _voice(caption="Rarely this quiet.")
         asked = self._asked(monkeypatch, grounded)
 
-        voice, _ = await written_brief(
-            _USER_ID,
-            "PROMPT",
-            Writing(values=_VALUES, lead=1, grounds="Calendar: rarely this quiet in a month."),
-        )
+        voice = (
+            await written_brief(
+                _USER_ID,
+                "PROMPT",
+                Writing(values=_VALUES, lead=1, grounds="Calendar: rarely this quiet in a month."),
+            )
+        ).written
 
         assert voice == grounded
         asked.assert_awaited_once()
@@ -235,7 +241,9 @@ class TestAVoiceThatSaysATitleTwice:
         asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is past due.")])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        _, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        draft = (
+            await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        ).draft
 
         problems = [
             "the message names 'Northwind invoice' in words and again with [[fact:1]]; keep one"
@@ -252,7 +260,9 @@ class TestAVoiceThatSaysATitleTwice:
         asked = AsyncMock(side_effect=[again])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        voice = (
+            await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        ).written
 
         assert voice == again
         asked.assert_awaited_once()
@@ -288,7 +298,7 @@ class TestAVoiceThatSaysATitleTwice:
         asked = AsyncMock(side_effect=[both])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+        voice = (await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))).written
 
         assert voice == both
         asked.assert_awaited_once()
@@ -373,7 +383,9 @@ class TestAFigureTheFactsShow:
         asked = AsyncMock(side_effect=[drafted, _voice()])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=facts.values, lead=1))
+        voice = (
+            await written_brief(_USER_ID, "PROMPT", Writing(values=facts.values, lead=1))
+        ).written
 
         assert "stands: GAIA looks at it again [[fact:1.time]] (Tue Nov 17)" in facts.block
         assert render_slots(voice.message, facts.values, {}) == (
@@ -391,13 +403,13 @@ class TestTheBriefsWideEvent:
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
-            voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+            voiced = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
 
         missed = (
             "the message never refers to the lead, fact 1 (Reply to Dan); say it in your own "
             "words as [your phrase](fact:1)"
         )
-        assert voice.message == "- [[fact:1]]\n\nNothing new."
+        assert (voiced.written.message, voiced.salvaged) == ("- [[fact:1]]\n\nNothing new.", True)
         assert event["brief_voice"] == {
             "attempts": 2,
             "salvaged": True,
@@ -462,7 +474,9 @@ class TestALastVoiceThatStillBreaks:
 
     async def _salvaged(self, monkeypatch: pytest.MonkeyPatch, last: BriefVoice) -> BriefVoice:
         monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[last] * 2))
-        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        voice = (
+            await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+        ).written
         return voice
 
     async def test_only_the_rejected_sentence_and_the_one_pointing_back_at_it_are_dropped(
@@ -535,7 +549,7 @@ class TestAVoiceTooLongOnceFilled:
         )
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        _, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+        draft = (await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))).draft
 
         retry = asked.await_args_list[1].args[1]
         assert (
@@ -647,9 +661,11 @@ class TestASalvageCountsAndKeepsByField:
         last = self._last()
         monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[last] * 2))
         async with captured_wide_event() as event:
-            voice, _ = await written_brief(
-                _USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1, recent=recent)
-            )
+            voice = (
+                await written_brief(
+                    _USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1, recent=recent)
+                )
+            ).written
         return voice, event["brief_voice"]
 
     async def test_each_fields_drop_is_counted(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -680,9 +696,11 @@ class TestASalvageCountsAndKeepsByField:
         monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[last] * 2))
 
         async with captured_wide_event() as event:
-            voice, _ = await written_brief(
-                _USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1, recent=recent)
-            )
+            voice = (
+                await written_brief(
+                    _USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1, recent=recent)
+                )
+            ).written
 
         assert voice == last.model_copy(
             update={"message": f"{self._KEPT_MESSAGE} Your calendar is open."}

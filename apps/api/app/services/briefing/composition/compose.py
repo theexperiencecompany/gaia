@@ -45,6 +45,8 @@ class Composed:
     written: BriefComposition
     rendered: BriefComposition
     values: SlotValues
+    #: Code built it from what held, because the model's last answer failed its check.
+    salvaged: bool
 
 
 def pool_values(pool: FactPool) -> SlotValues:
@@ -119,10 +121,12 @@ async def compose_brief(user_id: str, pool: FactPool, spec: BriefKindSpec) -> Co
     values = pool_values(pool)
     if not pool.composable:
         empty = BriefComposition(blocks=[])
-        return Composed(written=empty, rendered=empty, values=values)
+        return Composed(written=empty, rendered=empty, values=values, salvaged=False)
 
-    def done(answer: BriefComposition) -> Composed:
-        return Composed(written=answer, rendered=rendered(answer, values), values=values)
+    def done(answer: BriefComposition, *, salvaged: bool) -> Composed:
+        return Composed(
+            written=answer, rendered=rendered(answer, values), values=values, salvaged=salvaged
+        )
 
     async def held(answer: BriefComposition) -> Composed | Rejected[BriefComposition]:
         """Check the contract, then every heading; what a salvage keeps shows only headings that passed."""
@@ -133,7 +137,7 @@ async def compose_brief(user_id: str, pool: FactPool, spec: BriefKindSpec) -> Co
         if not problems:
             untrue = await heading_problems(user_id, rendered(kept, values), pool)
             if not untrue:
-                return done(kept)
+                return done(kept, salvaged=False)
             problems, misfits = list(untrue.values()), untrue.keys()
         note = COMPOSITION_RETRY_NOTE.format(
             problems="; ".join(problems), last=kept.model_dump_json()
@@ -150,6 +154,8 @@ async def compose_brief(user_id: str, pool: FactPool, spec: BriefKindSpec) -> Co
             attempts=MAX_COMPOSITION_ATTEMPTS,
             check=held,
             unreadable=_unreadable_note,
-            salvage=lambda last: done(salvaged(last or BriefComposition(blocks=[]), pool, values)),
+            salvage=lambda last: done(
+                salvaged(last or BriefComposition(blocks=[]), pool, values), salvaged=True
+            ),
         ),
     )
