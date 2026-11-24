@@ -454,7 +454,9 @@ def _base_and_head(tmp_path: Path, head_files: dict[str, str]) -> Path:
     return root
 
 
-def _prove_on_base(tmp_path: Path, root: Path) -> tuple[subprocess.CompletedProcess[str], int]:
+def _prove_on_base(
+    tmp_path: Path, root: Path, path_prefix: str = "", **env: str
+) -> tuple[subprocess.CompletedProcess[str], int]:
     """Run regression-proof against HEAD~1 with a real pytest; return the run and its pytest starts."""
     venv_bin = root / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
@@ -468,7 +470,12 @@ def _prove_on_base(tmp_path: Path, root: Path) -> tuple[subprocess.CompletedProc
     result = subprocess.run(
         ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "regression-proof", "HEAD~1"],
         cwd=root,
-        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "PYTEST_STARTS": str(starts)},
+        env={
+            **os.environ,
+            **env,
+            "PATH": f"{path_prefix}{bin_dir}:{os.environ['PATH']}",
+            "PYTEST_STARTS": str(starts),
+        },
         capture_output=True,
         text=True,
         timeout=120,
@@ -527,6 +534,42 @@ def test_regression_proof_still_proves_the_sibling_of_an_unimportable_module(
     assert "FAILED tests.unit.test_b::test_pins_x" in result.stdout
     # the one run that hit the collection error, then one run per test file
     assert starts == 1 + 2
+
+
+PNPM_STUB = """#!/usr/bin/env bash
+echo "$PWD $*" >> "$PNPM_CALLS"
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--dir" ]; then mkdir -p "$2/node_modules/.bin" && touch "$2/node_modules/.bin/tsx"; fi
+  shift
+done
+"""
+
+# The bridge e2e's CLI fixture: on a base worktree with no node_modules it ERRORS at setup.
+NEEDS_NODE_ON_BASE = (
+    "from pathlib import Path\n\nimport pytest\n\nfrom app import y\n\n\n"
+    "@pytest.fixture\ndef cli():\n    return Path('../../node_modules/.bin/tsx').read_text()\n\n\n"
+    "@pytest.mark.regression\ndef test_pins_x(cli):\n    assert hasattr(y, 'X')\n"
+)
+
+
+def test_regression_proof_installs_the_base_node_modules_when_the_checkout_has_them(
+    tmp_path: Path,
+) -> None:
+    """Run 45456295720: the bridge e2e found no tsx in the bare base worktree and ERRORED."""
+    root = _base_and_head(tmp_path, {"tests/integration/test_cli.py": NEEDS_NODE_ON_BASE})
+    (root / "node_modules").mkdir()
+    (root / "node_modules" / ".modules.yaml").write_text("storeDir: /store/v10\n")
+    pnpm_bin = tmp_path / "pnpm-bin"
+    pnpm_bin.mkdir()
+    (pnpm_bin / "pnpm").write_text(PNPM_STUB)
+    (pnpm_bin / "pnpm").chmod(0o755)
+    calls = tmp_path / "pnpm-calls"
+    result, _ = _prove_on_base(tmp_path, root, f"{pnpm_bin}:", PNPM_CALLS=str(calls))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _verdicts(tmp_path)["regression-proof"]["status"] == "pass"
+    [call] = calls.read_text().splitlines()
+    assert "install --frozen-lockfile --prefer-offline --store-dir /store/v10" in call, call
 
 
 def test_regression_proof_runs_pytest_once_when_every_file_imports_on_base(
