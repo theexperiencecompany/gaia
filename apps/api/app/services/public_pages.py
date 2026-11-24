@@ -11,12 +11,14 @@ from tenacity import (
 from app.config.settings import settings
 from app.constants.http import INTERNAL_CALLER_HEADER
 from app.constants.public_pages import (
+    PUBLIC_LIST_CACHE_PREFIXES,
     PUBLIC_PAGES_REVALIDATE_ATTEMPTS,
     PUBLIC_PAGES_REVALIDATE_PATH,
     PUBLIC_PAGES_REVALIDATE_RETRY_WAIT_SECONDS,
     PUBLIC_PAGES_REVALIDATE_TIMEOUT_SECONDS,
     PublicPageDomain,
 )
+from app.decorators.caching import CacheInvalidator
 from shared.py.wide_events import log
 
 _FIRST_SERVER_ERROR_STATUS = 500
@@ -47,11 +49,17 @@ async def _post_change(token: str, domain: PublicPageDomain) -> None:
                 response.raise_for_status()
 
 
-async def invalidate_public_pages(domain: PublicPageDomain) -> None:
-    """Clear the web server's cached pages for domain, after the change is stored.
+def _cached_list_keys(_func_name: str, domain: PublicPageDomain) -> str:
+    return f"{PUBLIC_LIST_CACHE_PREFIXES[domain]}:*"
 
-    Never raises: the change is already saved, so a lost call is logged and the
-    pages stay as they were until their daily rebuild or the domain's next change.
+
+@CacheInvalidator(key_generator=_cached_list_keys, clear_first=True)
+async def invalidate_public_pages(domain: PublicPageDomain) -> None:
+    """Drop every cached copy of domain's public data, after the change is stored.
+
+    The API's own cached list goes first, since the web server's rebuilt pages read
+    it. Never raises for the web server: the change is already saved, so a lost call
+    is logged and the pages stay until their daily rebuild or the domain's next change.
     """
     token = settings.INTERNAL_API_TOKEN
     if not token:

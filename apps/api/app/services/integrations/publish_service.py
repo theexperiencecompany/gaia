@@ -6,7 +6,6 @@ from app.db.chroma.public_integrations_store import (
     index_public_integration,
     remove_public_integration,
 )
-from app.db.redis import delete_cache_by_pattern
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.services.integrations.integration_content_fallback import build_fallback_content
@@ -116,7 +115,6 @@ async def publish_custom_integration(
         raise PublishError("Integration not found", 404)
 
     # Straight after the write: the integration is public even if indexing below fails.
-    await delete_cache_by_pattern("marketplace:community:*")
     await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
     # is_public / published_at feed the creator's MyIntegrationItem (tools:user:*:my).
     await invalidate_user_integration_caches(user_id)
@@ -155,7 +153,6 @@ async def unpublish_custom_integration(
         raise PublishError("Failed to update integration", 500)
 
     await remove_public_integration(integration_id)
-    await delete_cache_by_pattern("marketplace:community:*")
     await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
     await invalidate_user_integration_caches(user_id)
     log.info(f"{LogTag.INTEGRATION} Unpublished integration", integration_id=integration_id)

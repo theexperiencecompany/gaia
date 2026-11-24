@@ -140,9 +140,7 @@ CACHE_CALL_ALLOWLIST: frozenset[str] = frozenset(
         "services/onboarding/inbox_scan_cache.py",
         # marketplace / MCP-tools aggregate rollups + their cache-busts (Decision 2)
         "services/integrations/community_service.py",
-        "services/integrations/custom_crud.py",
         "services/integrations/integration_connection_service.py",
-        "services/integrations/publish_service.py",
         "services/integrations/user_integrations.py",
         "services/mcp/mcp_client.py",
         "services/mcp/mcp_tools_service.py",

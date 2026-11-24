@@ -474,3 +474,48 @@ class TestCacheInvalidatorOrdering:
             await rename()
 
         mock_delete.assert_not_called()
+
+
+class TestCacheInvalidatorClearFirst:
+    """clear_first is for a function that tells readers to re-read, not one that writes."""
+
+    @staticmethod
+    async def _order(*, clear_first: bool | None) -> list[str]:
+        events: list[str] = []
+        invalidator = (
+            CacheInvalidator(key="list:*")
+            if clear_first is None
+            else CacheInvalidator(key="list:*", clear_first=clear_first)
+        )
+
+        @invalidator
+        async def notify() -> str:
+            events.append("func")
+            return "done"
+
+        async def record(key: str) -> None:
+            events.append(f"clear {key}")
+
+        with patch("app.decorators.caching.delete_cache", side_effect=record):
+            assert await notify() == "done"
+        return events
+
+    async def test_the_keys_are_cleared_before_the_function_runs(self):
+        assert await self._order(clear_first=True) == ["clear list:*", "func"]
+
+    async def test_without_it_the_keys_are_cleared_once_the_function_succeeds(self):
+        assert await self._order(clear_first=None) == ["func", "clear list:*"]
+        assert await self._order(clear_first=False) == ["func", "clear list:*"]
+
+    async def test_the_keys_stay_cleared_when_the_function_then_fails(self):
+        @CacheInvalidator(key="list:*", clear_first=True)
+        async def notify() -> None:
+            raise RuntimeError("unreachable")
+
+        with (
+            patch("app.decorators.caching.delete_cache", new_callable=AsyncMock) as mock_delete,
+            pytest.raises(RuntimeError, match="unreachable"),
+        ):
+            await notify()
+
+        mock_delete.assert_awaited_once_with("list:*")

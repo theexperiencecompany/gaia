@@ -31,6 +31,13 @@ def web_server(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def cleared_lists() -> Iterator[AsyncMock]:
+    """Record the API's own cached public lists being dropped."""
+    with patch("app.decorators.caching.delete_cache", new_callable=AsyncMock) as clear:
+        yield clear
+
+
+@pytest.fixture(autouse=True)
 def retry_waits() -> Iterator[AsyncMock]:
     """Record the waits between attempts instead of sleeping through them."""
     with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
@@ -121,3 +128,40 @@ async def test_without_the_internal_token_nothing_is_sent_and_a_warning_says_so(
         "Public pages not invalidated: INTERNAL_API_TOKEN is not set",
         public_pages_domain="integrations",
     )
+
+
+@pytest.mark.parametrize(
+    ("domain", "pattern"),
+    [
+        (PublicPageDomain.INTEGRATIONS, "marketplace:community:*"),
+        (PublicPageDomain.WORKFLOWS, "workflows:community:*"),
+    ],
+)
+@respx.mock
+async def test_the_apis_own_cached_list_is_dropped_before_the_web_server_is_told(
+    cleared_lists: AsyncMock, domain: PublicPageDomain, pattern: str
+) -> None:
+    cleared_before_the_call: list[int] = []
+
+    def answer(_request: httpx.Request) -> httpx.Response:
+        cleared_before_the_call.append(cleared_lists.await_count)
+        return httpx.Response(200)
+
+    respx.post(REVALIDATE_URL).mock(side_effect=answer)
+
+    await invalidate_public_pages(domain)
+
+    cleared_lists.assert_awaited_once_with(pattern)
+    assert cleared_before_the_call == [1]
+
+
+@respx.mock
+async def test_the_cached_list_is_dropped_even_when_no_token_lets_the_call_be_sent(
+    cleared_lists: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", None)
+
+    with patch(f"{_MOD}.log"):
+        await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
+
+    cleared_lists.assert_awaited_once_with("workflows:community:*")

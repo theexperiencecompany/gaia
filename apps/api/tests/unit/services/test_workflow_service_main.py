@@ -1,7 +1,7 @@
 """Unit tests for WorkflowService and its collaborators: generation, scheduling, queueing, triggers, and validation."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.exceptions import OutputParserException
 from pydantic import ValidationError
@@ -9,6 +9,7 @@ import pytest
 
 from app.constants.briefing import BriefingFrequency
 from app.constants.error_codes import BRIEFS_OFF
+from app.constants.public_pages import PUBLIC_LIST_CACHE_PREFIXES, PublicPageDomain
 from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WaitCondition
@@ -3127,3 +3128,125 @@ class TestTriggerIntegrationIsRequired:
             await WorkflowService._generate_workflow_steps(WORKFLOW_ID, USER_ID)
 
         assert set_steps.await_args.kwargs["deactivate"] is True
+
+
+_INVALIDATE_PAGES = "app.services.workflow.service.invalidate_public_pages"
+_GET_WORKFLOW = "app.services.workflow.service.WorkflowService.get_workflow"
+_GENERATE_STEPS = "app.services.workflow.service.WorkflowGenerationService.generate_steps_with_llm"
+
+
+def _listed(is_public: bool) -> Workflow:
+    workflow = _make_workflow()
+    workflow.is_public = is_public
+    return workflow
+
+
+class TestPublicWorkflowWritesClearThePublicPages:
+    """A write to a published workflow changes what /use-cases shows."""
+
+    @pytest.mark.parametrize(
+        ("public_before", "public_after", "clears"),
+        [(True, True, True), (False, False, False), (False, True, True), (True, False, True)],
+    )
+    async def test_editing_a_workflow_clears_the_pages_when_it_is_published_at_either_end(
+        self, public_before: bool, public_after: bool, clears: bool
+    ) -> None:
+        with (
+            patch(_GET_WORKFLOW, AsyncMock(return_value=_listed(public_before))),
+            patch(
+                f"{_REPO}.update_for_user",
+                AsyncMock(return_value=_make_workflow_doc(_listed(public_after))),
+            ),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+        ):
+            await WorkflowService.update_workflow(
+                WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+            )
+
+        expected = [call(PublicPageDomain.WORKFLOWS)] if clears else []
+        assert invalidate_pages.await_args_list == expected
+
+    async def test_an_edit_that_matched_no_workflow_leaves_the_pages_alone(self) -> None:
+        with (
+            patch(_GET_WORKFLOW, AsyncMock(return_value=_listed(True))),
+            patch(f"{_REPO}.update_for_user", AsyncMock(return_value=None)),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+        ):
+            await WorkflowService.update_workflow(
+                WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+            )
+
+        invalidate_pages.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("is_public", "deleted", "expected"),
+        [
+            (True, True, [call(PublicPageDomain.WORKFLOWS)]),
+            (False, True, []),
+            (True, False, []),
+        ],
+    )
+    async def test_deleting_a_workflow_clears_the_pages_only_when_a_published_one_went(
+        self, is_public: bool, deleted: bool, expected: list[object]
+    ) -> None:
+        with (
+            patch(_GET_WORKFLOW, AsyncMock(return_value=_listed(is_public))),
+            patch(f"{_REPO}.delete_for_user", AsyncMock(return_value=deleted)),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+        ):
+            await WorkflowService.delete_workflow(WORKFLOW_ID, USER_ID)
+
+        assert invalidate_pages.await_args_list == expected
+
+    @pytest.mark.parametrize("is_public", [True, False])
+    async def test_regenerated_steps_clear_the_pages_only_for_a_published_workflow(
+        self, is_public: bool
+    ) -> None:
+        workflow = _listed(is_public)
+        steps = [WorkflowStep(id="step_0", title="New", category="gaia", description="New")]
+        stored = _make_workflow_doc(workflow, steps=steps)
+        with (
+            patch(_GET_WORKFLOW, AsyncMock(return_value=workflow)),
+            patch(_GENERATE_STEPS, AsyncMock(return_value=steps)),
+            patch(f"{_REPO}.set_steps", AsyncMock(return_value=stored)),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+        ):
+            await WorkflowService.regenerate_workflow_steps(WORKFLOW_ID, USER_ID)
+
+        expected = [call(PublicPageDomain.WORKFLOWS)] if is_public else []
+        assert invalidate_pages.await_args_list == expected
+
+    @pytest.mark.parametrize("is_public", [True, False])
+    async def test_generated_steps_clear_the_pages_only_for_a_published_workflow(
+        self, is_public: bool
+    ) -> None:
+        workflow = _listed(is_public)
+        steps = [WorkflowStep(id="step_0", title="S", category="gaia", description="D")]
+        stored = _make_workflow_doc(workflow, steps=steps)
+        with (
+            patch(_GET_WORKFLOW, AsyncMock(return_value=workflow)),
+            patch(_GENERATE_STEPS, AsyncMock(return_value=steps)),
+            patch(f"{_REPO}.touch", AsyncMock(return_value=_make_workflow_doc(workflow))),
+            patch(f"{_REPO}.set_steps", AsyncMock(return_value=stored)),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+        ):
+            await WorkflowService._generate_workflow_steps(WORKFLOW_ID, USER_ID)
+
+        expected = [call(PublicPageDomain.WORKFLOWS)] if is_public else []
+        assert invalidate_pages.await_args_list == expected
+
+
+class TestCommunityWorkflowsCacheKey:
+    async def test_the_list_is_cached_under_the_prefix_a_workflow_change_clears(self) -> None:
+        with (
+            patch("app.decorators.caching.get_cache", AsyncMock(return_value=None)) as get_cache,
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock) as set_cache,
+            patch(f"{_REPO}.find_community", AsyncMock(return_value=[])),
+            patch(f"{_REPO}.count_community", AsyncMock(return_value=0)),
+        ):
+            await WorkflowService.get_community_workflows(limit=100, offset=200)
+
+        key = "workflows:community:100:200:None"
+        assert get_cache.await_args.args[0] == key
+        assert set_cache.await_args.kwargs["key"] == key
+        assert key.startswith(f"{PUBLIC_LIST_CACHE_PREFIXES[PublicPageDomain.WORKFLOWS]}:")
