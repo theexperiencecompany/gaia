@@ -22,6 +22,7 @@ from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.playbook_models import (
     ForEachStep,
     PlaybookBody,
+    PlaybookRefusal,
     PlaybookStep,
     ToolStep,
 )
@@ -2339,6 +2340,28 @@ result_brief: x
 
         assert len(result.issues) == 1
         assert result.issues[0].problem.startswith("$time takes one time placeholder")
+
+    @pytest.mark.regression
+    async def test_a_malformed_time_slot_nested_in_an_argument_is_refused_too(self) -> None:
+        """Unchecked on write, a nested slot reached the replay and failed every run of its workflow."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject:
+        window:
+          - {"$time": "$today + 1d 23:59:59", "format": "%Y-%m-%d %H:%M:%S"}
+result_brief: x
+"""
+        )
+        result = await self._validate(body, "2026-09-06 09:00:00")
+
+        assert [issue.kind for issue in result.issues] == [PlaybookRefusal.TIME_EXPRESSION]
+        assert result.issues[0].where.endswith(".args.subject.window[0]")
 
     async def test_every_argument_is_checked_even_after_one_is_refused(self) -> None:
         """One refusal per argument, in argument order, so several wrong arguments are told all at once, not one per round trip."""

@@ -10,11 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from prometheus_client import REGISTRY
 import pytest
+import time_machine
 
 from app.models.user_models import UserDocument
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
+NOW = datetime(2026, 11, 24, 9, tzinfo=UTC)
 
 
 def _fires(outcome: str) -> float:
@@ -38,7 +40,7 @@ async def _fire(trigger_type: str, run: AsyncMock) -> None:
     workflow.steps = []
     workflow.repeat = None
     workflow.activated = True
-    workflow.scheduled_at = datetime.now(UTC) - timedelta(seconds=90)
+    workflow.scheduled_at = NOW - timedelta(seconds=90)
     user = UserDocument.model_validate({"onboarding": {"completed": True}})
     with (
         patch(f"{MODULE}.workflow_scheduler") as scheduler,
@@ -56,7 +58,8 @@ async def _fire(trigger_type: str, run: AsyncMock) -> None:
         scheduler.claim_task_for_execution = AsyncMock(return_value=True)
         scheduler.handle_recurring_task = AsyncMock()
         create.return_value = MagicMock(execution_id="exec-1")
-        await execute_workflow_by_id({}, "wf-1", {"trigger_type": trigger_type})
+        with time_machine.travel(NOW, tick=False):
+            await execute_workflow_by_id({}, "wf-1", {"trigger_type": trigger_type})
 
 
 @pytest.mark.unit
@@ -69,7 +72,7 @@ class TestScheduledFireMetrics:
 
         assert _fires("ok") == ok + 1
         assert _claims() == claims + 1
-        assert 90 <= _late_seconds() - late < 120
+        assert _late_seconds() - late == 90
 
     @pytest.mark.regression
     async def test_a_scheduled_fire_that_raised_counts_failed(self) -> None:
