@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import anyio
@@ -37,12 +38,16 @@ from app.constants.device_bridge import (
 )
 from app.services.mcp.device_connector import DeviceConnectionError, DeviceConnector
 
+if TYPE_CHECKING:
+    # Head-only name; regression-proof imports this module against the base tree.
+    from app.services.device.bridge import BridgeFrame
+
 pytestmark = pytest.mark.unit
 
 
-def _connector_with_inbox(frames: list[dict[str, object]]) -> DeviceConnector:
+def _connector_with_inbox(frames: list[BridgeFrame]) -> DeviceConnector:
     connector = DeviceConnector(device_id="dev-1", server_key="server-1")
-    inbox: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+    inbox: asyncio.Queue[BridgeFrame] = asyncio.Queue()
     for frame in frames:
         inbox.put_nowait(frame)
     connector._inbox = inbox
@@ -116,12 +121,12 @@ def _request(request_id: int) -> SessionMessage:
     )
 
 
-def _response_frame(request_id: int) -> dict[str, object]:
+def _response_frame(request_id: int) -> BridgeFrame:
     response = JSONRPCResponse(jsonrpc="2.0", id=request_id, result={})
     return {"t": FRAME_MCP_MSG, "data": JSONRPCMessage(response).model_dump_json()}
 
 
-async def _lose_session_mid_call(loss: dict[str, object]) -> list[SessionMessage]:
+async def _lose_session_mid_call(loss: BridgeFrame) -> list[SessionMessage]:
     """Send requests 1 and 2 down, answer 1, then lose the session; return what the session reads."""
     connector = DeviceConnector(device_id="dev-1", server_key="server-1")
     connector._inbox = asyncio.Queue()
@@ -153,7 +158,7 @@ async def _lose_session_mid_call(loss: dict[str, object]) -> list[SessionMessage
     ids=["local-server-exited", "unexplained"],
 )
 async def test_a_lost_session_answers_only_its_unanswered_request_then_ends(
-    loss: dict[str, object], reason: str
+    loss: BridgeFrame, reason: str
 ) -> None:
     """The daemon's mcp.error reached the session as an exception and its call waited 120s."""
     answered, failed = await _lose_session_mid_call(loss)
