@@ -1,4 +1,4 @@
-import type { UserItem, WorkItem } from "../api/generated";
+import type { UserItem } from "../api/generated";
 import founderFrames from "./fixtures/c41f18c5.frames.json";
 import { parseConversationEvent } from "./frames";
 import type {
@@ -56,6 +56,9 @@ export function userItem(
   if (frame.kind !== "screen_insert") throw new Error(frame.kind);
   return frame.item;
 }
+
+/** A work item as the stream delivers it. */
+type Work = Extract<ScreenItem, { kind: "work" }>;
 
 const NO_TIMELINE = { steps: [], cards: [], progress: null };
 
@@ -222,8 +225,8 @@ export const approvalAsked = (
   approvalId: string,
   headline: string,
   expiresAt: string | null = null,
-  described: Partial<WorkItem["asking"][number]["description"]> = {},
-): WorkItem["asking"][number] => ({
+  described: Partial<Work["asking"][number]["description"]> = {},
+): Work["asking"][number] => ({
   kind: "approval_requested",
   id: `${approvalId}:asked`,
   task_id: taskId,
@@ -251,10 +254,10 @@ export const approvalAsked = (
 export const workItem = (
   taskId: string,
   seq: number,
-  status: WorkItem["status"],
-  asking: WorkItem["asking"] = [],
+  status: Work["status"],
+  asking: Work["asking"] = [],
   askedSeq = asking.length > 0 ? seq : 0,
-): WorkItem & Pick<Extract<ScreenItem, { kind: "work" }>, "tool_data"> => ({
+): Work => ({
   kind: "work",
   id: `work:${taskId}`,
   seq,

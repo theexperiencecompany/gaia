@@ -34,8 +34,7 @@ describe("whether a GAIA row draws anything, read from its timeline", () => {
   });
 
   it("draws running work once its timeline has a row", () => {
-    // The fixture types what work asks by the generated model; none is asked here.
-    const work = { ...workItem("t1", 2, "running"), asking: [] };
+    const work = workItem("t1", 2, "running");
     expect(rowShows(row(work), false)).toBe(false);
     expect(rowShows(row({ ...work, timeline: THREAD }), false)).toBe(true);
   });
