@@ -70,6 +70,7 @@ from app.services.hil.policy import (
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.prompts import (
     GATE_ERROR_TEMPLATE,
+    READ_ONLY_GATED_REFUSAL_TEMPLATE,
     READ_ONLY_REFUSAL_TEMPLATE,
 )
 from app.services.hil.read_only import is_read_only
@@ -156,6 +157,15 @@ async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
 
     if policy == "allow":
         return None
+    if configurable.get("read_only"):
+        log.info(
+            f"{LogTag.HIL} Read-only run refused a call that needs approval",
+            tool_name=call.name,
+            policy=policy,
+        )
+        return _tool_message(
+            call, READ_ONLY_GATED_REFUSAL_TEMPLATE.format(tool=call.name), "denied"
+        )
     return await _decide_ledger(request, context, call, policy)
 
 
