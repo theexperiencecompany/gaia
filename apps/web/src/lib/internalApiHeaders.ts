@@ -1,10 +1,9 @@
 import "server-only";
 
-import { createHash, timingSafeEqual } from "node:crypto";
 import { isSelfhostWeb } from "@/lib/selfhost";
 
 /** Header names the API's rate limiter reads (apps/api/app/constants/http.py). */
-const INTERNAL_CALLER_HEADER = "X-Gaia-Internal";
+export const INTERNAL_CALLER_HEADER = "X-Gaia-Internal";
 const VIEWER_IP_HEADER = "X-Gaia-Viewer-IP";
 
 /**
@@ -24,15 +23,6 @@ export function internalApiHeaders(viewer?: Headers): Record<string, string> {
     : (viewer?.get("cf-connecting-ip") ?? forwardedFor);
   if (viewerIp) headers[VIEWER_IP_HEADER] = viewerIp;
   return headers;
-}
-
-/** Whether a request from the API presents INTERNAL_API_TOKEN (constant-time); never without one configured. */
-export function carriesInternalToken(headers: Headers): boolean {
-  const token = process.env.INTERNAL_API_TOKEN;
-  const presented = headers.get(INTERNAL_CALLER_HEADER);
-  if (!token || presented === null) return false;
-  const digest = (value: string) => createHash("sha256").update(value).digest();
-  return timingSafeEqual(digest(presented), digest(token));
 }
 
 /**

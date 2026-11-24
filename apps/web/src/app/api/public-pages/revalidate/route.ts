@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 
-import { carriesInternalToken } from "@/lib/internalApiHeaders";
+import { carriesInternalToken } from "@/lib/internalCaller";
 import { isPublicPageDomain, PUBLIC_PAGE_ROUTES } from "@/lib/publicPages";
 
 async function readDomain(request: Request): Promise<unknown> {
