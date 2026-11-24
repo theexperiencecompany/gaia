@@ -10,6 +10,7 @@ import pytest
 from app.constants.briefing import BriefingFrequency
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
+from app.constants.public_pages import PublicPageDomain
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.errors import AlreadyExistsError
@@ -57,6 +58,7 @@ def _wide_event_users(mock_log: MagicMock) -> list[object]:
 _WF_SERVICE = "app.api.v1.endpoints.workflows.WorkflowService"
 _WF_GEN_SERVICE = "app.api.v1.endpoints.workflows.WorkflowGenerationService"
 _WF_REPO = "app.api.v1.endpoints.workflows.workflow_repository"
+_INVALIDATE_PAGES = "app.api.v1.endpoints.workflows.invalidate_public_pages"
 _GET_EXECUTIONS = "app.api.v1.endpoints.workflows.get_executions"
 _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
@@ -1023,6 +1025,33 @@ class TestPublishWorkflow:
         assert data["message"] == "Workflow published successfully"
         assert data["slug"] == "my-public-workflow-abc123"
 
+    async def test_publish_clears_the_cached_workflow_pages(self, client: AsyncClient):
+        doc = _make_workflow_doc(title="My Public Workflow", slug="already-set-abcdef")
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.publish", new_callable=AsyncMock, return_value=doc),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+            patch("app.api.v1.endpoints.workflows.capture"),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/publish")
+
+        assert response.status_code == 200
+        invalidate_pages.assert_awaited_once_with(PublicPageDomain.WORKFLOWS)
+
+    async def test_a_failed_publish_leaves_the_cached_workflow_pages_alone(
+        self, client: AsyncClient
+    ):
+        doc = _make_workflow_doc(title="My Public Workflow", slug="already-set-abcdef")
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.publish", AsyncMock(side_effect=RuntimeError("db down"))),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/publish")
+
+        assert response.status_code == 500
+        invalidate_pages.assert_not_awaited()
+
     async def test_publish_keeps_existing_slug(self, client: AsyncClient):
         """A workflow that already has a slug re-publishes with it — no regen."""
         doc = _make_workflow_doc(slug="already-set-abcdef")
@@ -1094,6 +1123,19 @@ class TestUnpublishWorkflow:
         assert response.json()["message"] == "Workflow unpublished successfully"
         mock_get_for_user.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
         assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
+
+    async def test_unpublish_clears_the_cached_workflow_pages(self, client: AsyncClient):
+        doc = _make_workflow_doc(is_public=True)
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.unpublish", new_callable=AsyncMock, return_value=doc),
+            patch(_INVALIDATE_PAGES, new_callable=AsyncMock) as invalidate_pages,
+            patch("app.api.v1.endpoints.workflows.capture"),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/unpublish")
+
+        assert response.status_code == 200
+        invalidate_pages.assert_awaited_once_with(PublicPageDomain.WORKFLOWS)
 
     async def test_unpublish_not_found_returns_404(self, client: AsyncClient):
         with patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=None):

@@ -16,6 +16,7 @@ from app.api.v1.endpoints.dev import router as dev_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.readiness import router as readiness_router
 from app.api.v1.routes import router as api_router
+from app.api.webhooks import webhooks_router
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.exception_handlers import register_exception_handlers
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api/v1", responses=ERROR_RESPONSES)
     app.include_router(health_router, responses=ERROR_RESPONSES)
+    app.webhooks.include_router(webhooks_router, responses=ERROR_RESPONSES)
     # Readiness pings every datastore and names them: public to an instance's
     # operator, behind the metrics token on GAIA Cloud.
     if settings.deployment.public_readiness:

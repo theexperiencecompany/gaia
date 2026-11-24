@@ -14,6 +14,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
+from app.constants.public_pages import PublicPageDomain
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import workflow_repository
@@ -43,6 +44,7 @@ from app.models.workflow_models import (
 )
 from app.services.analytics_service import capture
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.public_pages import invalidate_public_pages
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
@@ -610,6 +612,8 @@ async def publish_workflow(
                 detail="Could not allocate a unique slug, please retry",
             )
 
+        await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
+
         log.set(outcome="success")
         log.info(
             f"{LogTag.WORKFLOW} Published workflow",
@@ -662,6 +666,7 @@ async def unpublish_workflow(
             )
 
         await workflow_repository.unpublish(workflow_id)
+        await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
 
         log.set(outcome="success")
         log.info(
