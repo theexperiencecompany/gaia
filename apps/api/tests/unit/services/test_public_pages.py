@@ -142,11 +142,12 @@ async def test_the_apis_own_cached_list_is_dropped_before_the_web_server_is_told
     cleared_lists: AsyncMock, domain: PublicPageDomain, pattern: str
 ) -> None:
     cleared_before_the_call: list[int] = []
-    respx.post(REVALIDATE_URL).mock(
-        side_effect=lambda _request: (
-            cleared_before_the_call.append(cleared_lists.await_count) or httpx.Response(200)
-        )
-    )
+
+    def answer(_request: httpx.Request) -> httpx.Response:
+        cleared_before_the_call.append(cleared_lists.await_count)
+        return httpx.Response(200)
+
+    respx.post(REVALIDATE_URL).mock(side_effect=answer)
 
     await invalidate_public_pages(domain)
 

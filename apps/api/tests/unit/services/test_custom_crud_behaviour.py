@@ -142,7 +142,9 @@ class TestUpdateCustomIntegrationClearsThePublicPages:
             )
             repo.update = AsyncMock(return_value=MagicMock(is_public=is_public))
             await update_custom_integration(
-                "user-1", "int-1", UpdateCustomIntegrationRequest(name="Renamed")
+                "user-1",
+                "int-1",
+                UpdateCustomIntegrationRequest.model_validate({"name": "Renamed"}),
             )
 
         assert [c.args[0] for c in invalidate_pages.await_args_list] == expected
@@ -161,7 +163,9 @@ class TestUpdateCustomIntegrationClearsThePublicPages:
             )
             repo.update = AsyncMock(return_value=None)
             await update_custom_integration(
-                "user-1", "int-1", UpdateCustomIntegrationRequest(name="Renamed")
+                "user-1",
+                "int-1",
+                UpdateCustomIntegrationRequest.model_validate({"name": "Renamed"}),
             )
 
         invalidate_pages.assert_not_awaited()

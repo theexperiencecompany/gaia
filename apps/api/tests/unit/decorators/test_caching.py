@@ -482,9 +482,13 @@ class TestCacheInvalidatorClearFirst:
     @staticmethod
     async def _order(*, clear_first: bool | None) -> list[str]:
         events: list[str] = []
-        options = {} if clear_first is None else {"clear_first": clear_first}
+        invalidator = (
+            CacheInvalidator(key="list:*")
+            if clear_first is None
+            else CacheInvalidator(key="list:*", clear_first=clear_first)
+        )
 
-        @CacheInvalidator(key="list:*", **options)
+        @invalidator
         async def notify() -> str:
             events.append("func")
             return "done"
