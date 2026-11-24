@@ -60,14 +60,11 @@ describe("applying the changes a wire 2 stream sends", () => {
     expect(next?.timeline.steps).toEqual([{ key: "tc-a", data: { id: "a" } }]);
   });
 
-  it("leaves the held value alone when a change is under a key this build does not keep", () => {
-    const next = applyChanges(held, [
-      set(["added_later", "inner"], 1),
-      append(["added_later"], "text"),
-      set(["status"], "done"),
-    ]);
-
-    expect(next).toEqual({ ...held, status: "done" });
+  it("sets a key the held value lacks", () => {
+    expect(applyChanges(held, [set(["added_later"], { inner: 1 })])).toEqual({
+      ...held,
+      added_later: { inner: 1 },
+    });
   });
 
   it.each([
@@ -80,6 +77,8 @@ describe("applying the changes a wire 2 stream sends", () => {
     ],
     ["a key into a list", set(["timeline", "steps", "key", "x"], 1)],
     ["an index into a record", set(["timeline", 0, "x"], 1)],
+    ["a change under a key it lacks", set(["added_later", "inner"], 1)],
+    ["an append to a key it lacks", append(["added_later"], "text")],
   ])(
     "refuses %s: the copy is not the one it was written against",
     (_name, change) => {

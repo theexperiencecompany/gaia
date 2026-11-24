@@ -95,6 +95,7 @@ const ScreenUpdateFrameSchema = z.object({
 const ScreenPatchFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.SCREEN_PATCH),
   id: z.string().min(1),
+  base: z.number().int().min(0),
   changes: z.array(ItemChangeSchema),
   head,
 }) satisfies z.ZodType<ScreenPatchFrame>;

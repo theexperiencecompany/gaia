@@ -1308,7 +1308,12 @@ describe("a browser run on a work item", () => {
         [{ op: "set", path: [...steps, 1], value: step.data }],
         2,
       ),
-      patchFrame("work:t1", [{ op: "set", path: ["image"], value: null }], 2),
+      patchFrame(
+        "work:t1",
+        [{ op: "set", path: ["image"], value: null }],
+        2,
+        1,
+      ),
     ]);
 
     expect(calls.filter((call) => call.op === "photo")).toEqual([

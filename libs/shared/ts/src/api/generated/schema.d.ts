@@ -15298,6 +15298,8 @@ export interface components {
          * @description What changed in an item this connection already sent; the item keeps its position.
          */
         ScreenPatchFrame: {
+            /** Base */
+            base: number;
             /** Changes */
             changes: components["schemas"]["ItemChange"][];
             /** Head */

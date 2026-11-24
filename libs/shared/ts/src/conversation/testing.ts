@@ -141,12 +141,13 @@ export const updateFrame = (
 
 type Changes = Extract<ConversationFrame, { kind: "screen_patch" }>["changes"];
 
-/** What changed in an item the connection already sent, at the log head given. */
+/** What changed in an item the connection already sent, at the log head given; base counts the patches it was sent before. */
 export const patchFrame = (
   id: string,
   changes: Changes,
   head: number,
-): ConversationFrame => ({ kind: "screen_patch", id, changes, head });
+  base = 0,
+): ConversationFrame => ({ kind: "screen_patch", id, base, changes, head });
 
 /** What changed in a reply's timeline since the attempt's last cards, as wire 2 sends its cards. */
 export const timelineDelta = (

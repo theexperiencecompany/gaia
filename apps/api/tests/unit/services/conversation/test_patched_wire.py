@@ -155,3 +155,34 @@ def test_frames_that_carry_no_item_or_cards_pass_through_as_they_are() -> None:
         attempt_id="a1", reply_id="r1", index=0, payload=BubbleTextDelta(bubble=0, text="hi")
     )
     assert _sent(PatchedWire(), delta) == delta.model_dump(mode="json")
+
+
+def test_a_patch_names_the_copy_it_was_written_against_and_never_resends_the_item() -> None:
+    wire = PatchedWire()
+    _sent(wire, ScreenInsertFrame(item=_work(_call("a")), head=1))
+    first = _sent(wire, ScreenUpdateFrame(item=_work(_call("a", "one")), head=1))
+    second = _sent(wire, ScreenUpdateFrame(item=_work(_call("a", "one"), _call("b")), head=1))
+    assert (first["base"], second["base"]) == (0, 1)
+    paths = [change.path for change in _CHANGES.validate_python(first["changes"])]
+    assert paths and all(paths)
+
+
+def test_an_item_sent_whole_again_starts_its_patches_over() -> None:
+    wire = PatchedWire()
+    _sent(wire, ScreenInsertFrame(item=_work(_call("a")), head=1))
+    _sent(wire, ScreenUpdateFrame(item=_work(_call("a", "one")), head=1))
+    _sent(wire, ScreenFrame(items=(_work(_call("a", "one")),), head=1))
+    again = _sent(wire, ScreenUpdateFrame(item=_work(_call("a", "two")), head=1))
+    assert again["base"] == 0
+
+
+def test_cards_that_did_not_change_since_the_attempt_s_last_delta_carry_no_changes() -> None:
+    wire = PatchedWire()
+    _sent(wire, _cards("a1", 0, _call("a")))
+    same = _sent(wire, _cards("a1", 1, _call("a")))
+    assert cast(_Json, same["payload"]) == {"type": "timeline", "changes": []}
+
+
+def test_retracting_an_attempt_that_showed_no_cards_passes_through() -> None:
+    retract = RetractFrame(attempt_id="a9")
+    assert _sent(PatchedWire(), retract) == retract.model_dump(mode="json")

@@ -19565,6 +19565,11 @@
         "additionalProperties": false,
         "description": "What changed in an item this connection already sent; the item keeps its position.",
         "properties": {
+          "base": {
+            "minimum": 0.0,
+            "title": "Base",
+            "type": "integer"
+          },
           "changes": {
             "items": {
               "$ref": "#/components/schemas/ItemChange"
@@ -19592,6 +19597,7 @@
         "required": [
           "kind",
           "id",
+          "base",
           "changes",
           "head"
         ],

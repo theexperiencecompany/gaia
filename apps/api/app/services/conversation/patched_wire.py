@@ -42,6 +42,8 @@ class PatchedWire:
 
     def __init__(self) -> None:
         self._sent: dict[str, ScreenItem] = {}
+        # How many patches each item was sent since it last went whole.
+        self._patches: dict[str, int] = {}
         # Each open attempt's reply and the timeline its last cards delta folded to.
         self._timelines: dict[str, tuple[str | None, JsonValue]] = {}
 
@@ -49,7 +51,8 @@ class PatchedWire:
         """Return frame's JSON for this connection, and hold what it now has."""
         match frame:
             case ScreenFrame(items=items):
-                self._sent.update((item.id, item) for item in items)
+                for item in items:
+                    self._take(item)
                 exclude = {"frame": {"items": {"__all__": _UNFOLDED}}}
                 return ConversationEvent(frame=frame).model_dump_json(exclude=exclude)
             case ScreenInsertFrame(item=item):
@@ -57,11 +60,13 @@ class PatchedWire:
                 return _whole(frame)
             case ScreenUpdateFrame(item=item, head=head):
                 held = self._sent.get(item.id)
-                self._take(item)
                 if held is None:
+                    self._take(item)
                     return _whole(frame)
+                base = self._patches[item.id]
+                self._take(item, patches=base + 1)
                 changes = changes_between(_json(held), _json(item))
-                patch = ScreenPatchFrame(id=item.id, changes=tuple(changes), head=head)
+                patch = ScreenPatchFrame(id=item.id, base=base, changes=tuple(changes), head=head)
                 return ConversationEvent(frame=patch).model_dump_json()
             case ReplyDeltaFrame(payload=CardsDelta(timeline=timeline)):
                 return ConversationEvent(
@@ -71,8 +76,9 @@ class PatchedWire:
                 self._timelines.pop(attempt_id, None)
         return ConversationEvent(frame=frame).model_dump_json()
 
-    def _take(self, item: ScreenItem) -> None:
+    def _take(self, item: ScreenItem, patches: int = 0) -> None:
         self._sent[item.id] = item
+        self._patches[item.id] = patches
         if isinstance(item, ReplyItem) and item.outcome is not None:
             # Settled: no attempt streams into it again.
             self._timelines = {

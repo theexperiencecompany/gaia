@@ -41,7 +41,7 @@ export function rateLimitNotices(
   timeline: ToolTimeline,
   links: FollowLinks,
 ): string[] {
-  return cardData(timeline, RATE_LIMIT_TOOL)
-    .filter(isRateLimitData)
-    .map((card) => noticeLine(card, links.pricing));
+  return cardData(timeline, RATE_LIMIT_TOOL).flatMap((card) =>
+    isRateLimitData(card) ? [noticeLine(card, links.pricing)] : [],
+  );
 }

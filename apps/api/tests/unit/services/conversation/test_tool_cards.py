@@ -395,3 +395,17 @@ def test_thinking_inside_a_subagent_group_and_its_nested_groups_is_merged() -> N
         ],
     }
     assert tool_timeline([merged]) == tool_timeline([group])
+
+
+def test_only_a_tool_call_card_holding_one_thinking_step_is_merged() -> None:
+    other = [card("search_results", {"reasoning": "a"}), card("search_results", {"reasoning": "b"})]
+    listed = [card(TOOL_CALLS_CARD, [_thinks("a")]), card(TOOL_CALLS_CARD, [_thinks("b")])]
+    assert coalesced_thinking(other) == tuple(other)
+    assert coalesced_thinking(listed) == tuple(listed)
+
+
+def test_thinking_after_a_subagent_group_is_kept_and_merged() -> None:
+    group = card(SUBAGENT_GROUP_TOOL_NAME, {"subagent_id": "s1", "tool_calls": []})
+    (kept, merged) = coalesced_thinking([group, thought("a"), thought("b")])
+    assert kept["tool_name"] == SUBAGENT_GROUP_TOOL_NAME
+    assert merged == thought("ab")

@@ -358,5 +358,8 @@ class ScreenPatchFrame(BaseModel):
 
     kind: Literal[FrameKind.SCREEN_PATCH] = FrameKind.SCREEN_PATCH
     id: str = Field(min_length=1)
+    # How many patches this connection sent the item since it last sent it whole: the copy the
+    # changes were written against. A client holding any other copy must not apply them.
+    base: int = Field(ge=0)
     changes: tuple[ItemChange, ...]
     head: int = Field(ge=0)

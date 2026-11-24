@@ -40,6 +40,11 @@ export interface PendingSend {
 export interface ConversationView {
   /** Ascending by seq; the server's items, never reordered here. */
   items: readonly ScreenItem[];
+  /**
+   * By item id, how many patches the stream has applied to the copy held since it sent
+   * that item whole. An item a page read put here has none, so no patch applies to it.
+   */
+  patched: Readonly<Record<string, number>>;
   /** In the order their first delta arrived. */
   drafts: readonly StreamDraft[];
   /** Attempts, replies and work whose streams ended: a late reply delta is dropped. */
@@ -57,7 +62,7 @@ export interface ConversationView {
 export type FrameOutcome =
   | { status: "applied"; view: ConversationView }
   | { status: "index_gap"; expected: number; view: ConversationView }
-  /** A change had no place in what the view holds: its copy is not the one the server wrote against. */
+  /** A patch was written against another copy of its item than the view holds, or had no place in it. */
   | { status: "stale_copy"; view: ConversationView };
 
 /** A frame the view could not apply, after which the stream must be reopened for a fresh screen. */

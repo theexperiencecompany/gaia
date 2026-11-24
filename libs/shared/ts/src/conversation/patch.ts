@@ -3,7 +3,8 @@ import type { ItemChange } from "../api/generated";
 /**
  * Applies the changes a wire 2 stream sends for an item or a reply's timeline the
  * client already holds. Only the containers on a changed path are copied, so every
- * step a change did not touch keeps its identity and its rendered row.
+ * step a change did not touch keeps its identity and its rendered row. A change with
+ * no place in the held value is never skipped: the caller reopens on the whole screen.
  */
 
 type Path = ItemChange["path"];
@@ -38,8 +39,7 @@ function inRecord(
   }
   if (deeper.length === 0 && change.op === "set")
     return { ...node, [key]: change.value };
-  // A key this build's schema does not keep: the change is to something it never reads.
-  if (!(key in node)) return node;
+  if (!(key in node)) return NOT_APPLICABLE;
   const inner = changed(node[key], change, deeper);
   return inner === NOT_APPLICABLE ? inner : { ...node, [key]: inner };
 }

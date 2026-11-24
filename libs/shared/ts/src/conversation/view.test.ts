@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ScreenItemSchema, ToolTimelineSchema } from "./entries";
+import wire2Run from "./fixtures/wire2-run.frames.json";
+import { parseConversationEvent } from "./frames";
 import { screenRows } from "./selectors";
 import {
   founderConversationFrames,
@@ -216,6 +219,121 @@ describe("a client's copy of the server's screen", () => {
     ]);
     expect(view.screenHead).toBe(4);
     expect(view.items[0]).toBe(opened.items[0]);
+  });
+
+  it("applies each patch only to the copy it was written against, counting them from the whole item", () => {
+    const step = (key: string) => ({ kind: "tool" as const, key, data: {} });
+    const grow = (index: number) => [
+      {
+        op: "set" as const,
+        path: ["timeline", "steps", index],
+        value: step(`tc-${index}`),
+      },
+    ];
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      insertFrame(workItem("t1", 1, "running")),
+    );
+    view = apply(view, patchFrame("work:t1", grow(0), 1, 0));
+    view = apply(view, patchFrame("work:t1", grow(1), 1, 1));
+
+    expect(applyFrame(view, patchFrame("work:t1", grow(2), 1, 1)).status).toBe(
+      "stale_copy",
+    );
+    const whole = apply(view, updateFrame(workItem("t1", 1, "running")));
+    expect(applyFrame(whole, patchFrame("work:t1", grow(0), 1, 0)).status).toBe(
+      "applied",
+    );
+  });
+
+  it("refuses a patch once a page read replaced the item, instead of doubling its text or leaving a card out", () => {
+    const thinking = (text: string) => ({
+      ...workItem("t1", 2, "running"),
+      timeline: {
+        steps: [
+          { kind: "tool" as const, key: "head#0", data: { reasoning: text } },
+        ],
+        cards: [],
+        progress: null,
+      },
+    });
+    const streamed = apply(
+      apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u1", 1))),
+      insertFrame(thinking("I should")),
+    );
+    const grown = patchFrame(
+      "work:t1",
+      [
+        {
+          op: "append",
+          path: ["timeline", "steps", 0, "data", "reasoning"],
+          value: " look.",
+        },
+      ],
+      2,
+    );
+    const working = {
+      kind: "state" as const,
+      head: 3,
+      display: "working" as const,
+      work: [],
+    };
+
+    // The page read already holds the text the patch adds.
+    const ahead = applyPage(streamed, [thinking("I should look.")], working);
+    expect(applyFrame(ahead, grown)).toEqual({
+      status: "stale_copy",
+      view: ahead,
+    });
+
+    // The page read is the log's projection, which has none of the running work's cards.
+    const behind = applyPage(streamed, [workItem("t1", 2, "running")], working);
+    expect(applyFrame(behind, grown)).toEqual({
+      status: "stale_copy",
+      view: behind,
+    });
+
+    // The whole screen the reopened stream sends makes the item patchable again.
+    const healed = apply(behind, screenFrame([thinking("I should look.")], 3));
+    const next = apply(
+      healed,
+      patchFrame(
+        "work:t1",
+        [
+          {
+            op: "append",
+            path: ["timeline", "steps", 0, "data", "reasoning"],
+            value: " Now.",
+          },
+        ],
+        3,
+      ),
+    );
+    expect(next.items[1]).toMatchObject({
+      timeline: { steps: [{ data: { reasoning: "I should look. Now." } }] },
+    });
+  });
+
+  it("reaches the server's own screen from the frames its wire 2 encoder wrote for a whole run", () => {
+    let view = EMPTY_CONVERSATION_VIEW;
+    let replyTimeline: unknown = null;
+    for (const sent of wire2Run.frames) {
+      const parsed = parseConversationEvent(JSON.stringify(sent));
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.error));
+      view = apply(view, parsed.frame);
+      replyTimeline = view.drafts[0]?.content.timeline ?? replyTimeline;
+    }
+
+    expect(view.items).toEqual(
+      wire2Run.items.map((item) => ScreenItemSchema.parse(item)),
+    );
+    expect(replyTimeline).toEqual(
+      ToolTimelineSchema.parse(wire2Run.reply_timeline),
+    );
+    expect(
+      wire2Run.frames.filter(({ frame }) => frame.kind === "screen_patch")
+        .length,
+    ).toBeGreaterThan(8);
   });
 
   it("closes finished work's stream when a patch ends it", () => {

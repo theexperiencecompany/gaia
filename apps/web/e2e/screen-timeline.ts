@@ -102,7 +102,7 @@ const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^\[PostHog\.js\]/,
   /^\[WebSocketManager\] Connection error/,
   /^WebSocket connection error: Error: WebSocket connection failed/,
-  /^Failed to load resource: the server responded with a status of 404 .*\/conversations\/[0-9a-f-]{36}\/events\)$/,
+  /^Failed to load resource: the server responded with a status of 404 .*\/conversations\/[0-9a-f-]{36}\/events\?wire=2\)$/,
   /^\[stream:sse\] connection-error \{message: Conversation [0-9a-f-]{36} does not exist yet\}/,
   /^\[streamRecording\] sink unreachable: TypeError: Failed to fetch/,
   /^Failed to load resource: the server responded with a status of 502 .*\/api\/v1\/desktop\/releases\/latest\)$/,

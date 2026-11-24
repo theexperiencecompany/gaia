@@ -15,6 +15,7 @@ type DeltaFrame = Extract<ConversationFrame, { kind: "reply_delta" }>;
 
 export const EMPTY_CONVERSATION_VIEW: ConversationView = {
   items: [],
+  patched: {},
   drafts: [],
   closed: {},
   pending: [],
@@ -40,11 +41,15 @@ function endedStream(item: ScreenItem): string | null {
   return null;
 }
 
-/** Take the server's items as of the log at head: each replaces the one it updates, and every item sits at its seq. */
+/**
+ * Take the server's items as of the log at head: each replaces the one it updates, and every item sits at its seq.
+ * patches is how many the stream has applied to each since it sent it whole; null for items a page read brought.
+ */
 function withItems(
   view: ConversationView,
   incoming: readonly ScreenItem[],
   head: number,
+  patches: number | null,
 ): ConversationView {
   const byId = new Map(view.items.map((item) => [item.id, item]));
   for (const item of incoming) {
@@ -59,9 +64,15 @@ function withItems(
   const closed = { ...view.closed };
   for (const id of ended) closed[id] = true;
   const shown = new Set(items.map((item) => item.id));
+  const patched = { ...view.patched };
+  for (const { id } of incoming) {
+    if (patches === null) delete patched[id];
+    else patched[id] = patches;
+  }
   return {
     ...view,
     items,
+    patched,
     screenHead: Math.max(view.screenHead, head),
     closed,
     drafts: view.drafts.filter(
@@ -78,7 +89,9 @@ function update(
   head: number,
 ): ConversationView {
   const oldest = view.items[0];
-  return oldest && item.seq < oldest.seq ? view : withItems(view, [item], head);
+  return oldest && item.seq < oldest.seq
+    ? view
+    : withItems(view, [item], head, 0);
 }
 
 const sameStream = (frame: DeltaFrame) => (draft: StreamDraft) =>
@@ -124,13 +137,19 @@ function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
 
 type PatchFrame = Extract<ConversationFrame, { kind: "screen_patch" }>;
 
-/** A patch for an item the view does not hold belongs to history not loaded here. */
+/**
+ * A patch for an item the view does not hold belongs to history not loaded here. One written
+ * against another copy than the view holds (a page read replaced it, or a patch went missing)
+ * is never applied: the stream is reopened on the whole screen.
+ */
 function patch(view: ConversationView, frame: PatchFrame): FrameOutcome {
   const held = view.items.find((item) => item.id === frame.id);
   if (!held) return applied(view);
+  if (view.patched[frame.id] !== frame.base)
+    return { status: "stale_copy", view };
   const item = applyChanges(held, frame.changes);
   if (!item) return { status: "stale_copy", view };
-  return applied(withItems(view, [item], frame.head));
+  return applied(withItems(view, [item], frame.head, frame.base + 1));
 }
 
 function retract(view: ConversationView, attemptId: string): ConversationView {
@@ -149,9 +168,9 @@ export function applyFrame(
 ): FrameOutcome {
   switch (frame.kind) {
     case FRAME_KIND.SCREEN:
-      return applied(withItems(view, frame.items, frame.head));
+      return applied(withItems(view, frame.items, frame.head, 0));
     case FRAME_KIND.SCREEN_INSERT:
-      return applied(withItems(view, [frame.item], frame.head));
+      return applied(withItems(view, [frame.item], frame.head, 0));
     case FRAME_KIND.SCREEN_UPDATE:
       return applied(update(view, frame.item, frame.head));
     case FRAME_KIND.SCREEN_PATCH:
@@ -192,7 +211,7 @@ export function applyPage(
     state.head <= view.screenHead
       ? items.filter((item) => !held.has(item.id))
       : items;
-  const outcome = applyFrame(withItems(view, fresh, state.head), state);
+  const outcome = applyFrame(withItems(view, fresh, state.head, null), state);
   return outcome.view;
 }
 

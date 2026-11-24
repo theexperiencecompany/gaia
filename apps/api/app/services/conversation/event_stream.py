@@ -351,7 +351,8 @@ async def _held_at(
     """
     if after <= 0:
         return {}
-    frames = await redis_cache.client.xrange(_key(conversation_id), "-", "+")
+    # Equivalent under mutation: "+" is xrange's own upper bound, which the type stub makes explicit.
+    frames = await redis_cache.client.xrange(_key(conversation_id), "-", "+")  # pragma: no mutate
     placed = [
         _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
         for _stream_id, fields in frames
