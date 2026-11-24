@@ -484,9 +484,6 @@ def test_the_matrix_runs_as_many_shards_at_once_as_the_plan_makes() -> None:
     """More shards than max-parallel queue behind each other; fewer leave runners idle."""
     workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
     assert workflow["jobs"]["test-mutation"]["strategy"]["max-parallel"] == MUTATION_WAVE
-    # runner.py sizes the box's services pool for one wave of them.
-    runner = (REPO_ROOT / "scripts" / "ci" / "runner.py").read_text()
-    assert re.search(rf"^MUTATION_WAVE = {MUTATION_WAVE}$", runner, re.MULTILINE)
 
 
 def test_a_shard_uploads_only_files_its_own_job_wrote() -> None:

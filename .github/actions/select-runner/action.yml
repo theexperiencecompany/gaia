@@ -46,22 +46,22 @@ inputs:
 
 outputs:
   light:
-    description: 'runs-on JSON array for lanes that gain nothing from cores (GitHub-hosted or Blacksmith)'
+    description: 'runs-on JSON array for lanes that gain nothing from cores; the only pool that overflows to the home box'
     value: ${{ steps.probe.outputs.light }}
   heavy:
-    description: 'runs-on JSON array for CPU-heavy lanes, e.g. ["self-hosted","gaia-home"] or ["ubuntu-24.04"]'
+    description: 'runs-on JSON array for CPU-heavy lanes, e.g. ["ubuntu-24.04"]; the home box only on force-home'
     value: ${{ steps.probe.outputs.heavy }}
   services:
     description: 'runs-on JSON array for lanes that need the test service containers'
     value: ${{ steps.probe.outputs.services }}
   runner_label:
-    description: 'Human label of the heavy class: ubuntu-24.04 | gaia-home | the Blacksmith label'
+    description: 'Human label of the pool on the home box, else of the heavy pool: ubuntu-24.04 | gaia-home | the Blacksmith label'
     value: ${{ steps.probe.outputs.runner_label }}
   is_self_hosted:
-    description: 'true when the heavy class got the home runner'
+    description: 'true when any pool got the home runner'
     value: ${{ steps.probe.outputs.is_self_hosted }}
   reason:
-    description: 'Why the heavy class got its runner (github-hosted | hosted-queue-unknown | home-overflow | blacksmith-overflow | github-queued | forced-home | no-token | fork | untrusted-author | bot-actor | forced-github)'
+    description: 'Why the pool on the home box, else the heavy pool, got its runner (github-hosted | hosted-queue-unknown | home-overflow | blacksmith-overflow | github-queued | forced-home | no-token | fork | untrusted-author | bot-actor | forced-github)'
     value: ${{ steps.probe.outputs.reason }}
 
 runs:
