@@ -8,6 +8,7 @@ most confident and asks whether the code around it still refuses.
 
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -751,8 +752,8 @@ class TestAContainedCallWithForbidWords:
 
         assert decision.outcome == "ask"
 
-    async def test_an_uncontained_call_never_spends_the_focused_check(self) -> None:
-        transport = _transport(_answer("unclear", 0.6, _FULL_PROBS, contained=0.1))
+    async def test_a_call_jev_forbids_never_spends_the_focused_check(self) -> None:
+        transport = _transport(_answer("forbidden", 0.9, contained=0.1))
 
         await JevIntentJudge(transport=transport).decide(
             user_id="u",
@@ -900,30 +901,14 @@ class TestContainedActionsRunWithoutExplicitWords:
 
         assert _contained_case(_verdict(forbid=JevChoice.FORBIDDEN), turns=turns).outcome == "ask"
 
-    async def test_only_a_call_that_may_run_with_forbid_words_earns_the_focused_check(
+    async def test_forbid_words_earn_the_focused_check_unless_jev_already_forbids(
         self,
     ) -> None:
         turns = ["we can't ship today", "check the flags"]
-        line = hil_constants.HIL_JEV_CONTAINED_LINE
-        accept = hil_constants.HIL_JEV_ACCEPT_LINE
 
-        assert jev_judge.needs_forbid_check(turns, _verdict(contained=line)) is True
-        assert jev_judge.needs_forbid_check(turns, _verdict(contained=line - 0.01)) is False
-        assert jev_judge.needs_forbid_check(turns, _verdict(contained=None)) is False
-        assert jev_judge.needs_forbid_check(["check the flags"], _verdict(contained=0.99)) is False
-        # Authorized by the user's words: forbid words earn the same focused question.
-        assert (
-            jev_judge.needs_forbid_check(
-                turns, _verdict(choice="authorized", confidence=accept, contained=0.0)
-            )
-            is True
-        )
-        assert (
-            jev_judge.needs_forbid_check(
-                turns, _verdict(choice="authorized", confidence=accept - 0.01, contained=0.0)
-            )
-            is False
-        )
+        assert jev_judge.needs_forbid_check(turns, _verdict(contained=0.0)) is True
+        assert jev_judge.needs_forbid_check(turns, _verdict(choice="forbidden")) is False
+        assert jev_judge.needs_forbid_check(["check the flags"], _verdict()) is False
 
     @pytest.mark.parametrize(
         "hold",
@@ -1054,3 +1039,153 @@ class TestTheUsersSavedInstructions:
             )
             is holds
         )
+
+
+def _go_ahead_answer(choice: str, confidence: float) -> dict[str, Any]:
+    return {
+        "answers": {
+            hil_constants.JEV_GO_AHEAD_QUESTION_KEY: {
+                "type": "choice",
+                "choice": choice,
+                "confidence": confidence,
+            }
+        }
+    }
+
+
+#: A draft made earlier in the conversation, as the executor's thread still holds it.
+_DRAFTED = PriorCall(
+    name="GMAIL_CREATE_EMAIL_DRAFT",
+    args={"recipient_email": "uzair@x.com", "subject": "Thursday confirmation"},
+    output='{"id": "r-778"}',
+)
+_SEND_DRAFT = {"tool_name": "GMAIL_SEND_DRAFT", "args": {"draft_id": "r-778"}}
+_SHOWN = ("The confirmation draft to Uzair is ready. Reply YES to send it.",)
+
+
+def _go_ahead_case(
+    verdict: JevVerdict, *, turns: list[str] | None = None, prior: list[PriorCall] | None = None
+) -> IntentDecision:
+    return decide_from_verdict(
+        verdict,
+        JevCase(
+            call=_call(**_SEND_DRAFT),
+            user_messages=turns or ["send"],
+            prior_calls=[_DRAFTED] if prior is None else prior,
+            history=AutoHistory(),
+            shown_turns=_SHOWN,
+        ),
+    )
+
+
+def _unsure(go_ahead: float | None) -> JevVerdict:
+    """Build a verdict the broad question left under the line, so the focused answer decides."""
+    return replace(_verdict(choice="authorized", confidence=0.7, contained=0.02), go_ahead=go_ahead)
+
+
+class TestAGoAheadForWhatTheRunIsDoing:
+    """'Send' after a shown draft runs when JEV, seeing the recent calls, says it is that draft."""
+
+    def test_a_confident_go_ahead_on_a_grounded_call_runs(self) -> None:
+        decision = _go_ahead_case(_unsure(0.95))
+        assert decision.outcome == "accept"
+        assert decision.reason.startswith(intent.GO_AHEAD_RUN_REASON)
+
+    def test_an_unsure_go_ahead_asks(self) -> None:
+        line = hil_constants.HIL_JEV_GO_AHEAD_LINE
+        assert _go_ahead_case(_unsure(line - 0.01)).outcome == "ask"
+
+    def test_no_focused_answer_asks(self) -> None:
+        assert _go_ahead_case(_unsure(None)).outcome == "ask"
+
+    def test_nothing_shown_to_the_user_means_no_go_ahead(self) -> None:
+        """'share that doc with dan' scored 0.98: with no proposal shown, it is not a reply."""
+        verdict = _unsure(0.98)
+        case = JevCase(
+            call=_call(**_SEND_DRAFT),
+            user_messages=["send"],
+            prior_calls=[_DRAFTED],
+            history=AutoHistory(),
+        )
+        assert jev_judge.needs_go_ahead_check(verdict, case) is False
+        assert decide_from_verdict(verdict, case).outcome == "ask"
+
+    def test_a_draft_nothing_this_conversation_made_asks(self) -> None:
+        assert _go_ahead_case(_unsure(0.95), prior=[]).outcome == "ask"
+
+    def test_a_hold_still_asks(self) -> None:
+        turns = ["don't send it yet", "send"]
+        assert _go_ahead_case(_unsure(0.95), turns=turns).outcome == "ask"
+
+    async def test_the_question_sees_recent_calls_shown_words_and_latest_turns(self) -> None:
+        transport = _transport(
+            _answer("authorized", 0.7, {"authorized": 0.7, "unclear": 0.3, "forbidden": 0.0}),
+            _go_ahead_answer("authorized", 0.95),
+        )
+        decision = await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["draft the confirmation to uzair", "send"],
+            call=_call(**_SEND_DRAFT),
+            prior_calls=[_DRAFTED],
+            history=AutoHistory(),
+            assistant=intent.AssistantTurns(shown=_SHOWN),
+        )
+
+        assert decision.outcome == "accept"
+        state, questions = transport.await_args.args
+        assert questions == {hil_constants.JEV_GO_AHEAD_QUESTION_KEY: prompts.JEV_GO_AHEAD_QUESTION}
+        assert state == {
+            "assistant_turns": list(_SHOWN),
+            "latest_turns": ["draft the confirmation to uzair", "send"],
+            "recent_actions": [
+                {
+                    "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+                    "args": _DRAFTED.args,
+                    "output": _DRAFTED.output,
+                }
+            ],
+            "pending_action": {"tool": "GMAIL_SEND_DRAFT", "args": {"draft_id": "r-778"}},
+        }
+
+    async def test_a_call_the_broad_question_already_runs_spends_no_second_call(self) -> None:
+        transport = _transport(_answer("authorized", 0.95))
+        await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["email bob@example.com the deck"],
+            call=_call(),
+            prior_calls=[],
+            history=AutoHistory(),
+        )
+        assert transport.await_count == 1
+
+    async def test_a_forbidden_call_spends_no_second_call(self) -> None:
+        transport = _transport(_answer("forbidden", 0.9))
+        await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["send it"],
+            call=_call(**_SEND_DRAFT),
+            prior_calls=[_DRAFTED],
+            history=AutoHistory(),
+        )
+        assert transport.await_count == 1
+
+    async def test_a_failed_go_ahead_check_asks(self) -> None:
+        transport = AsyncMock(
+            side_effect=[
+                JevDecisionsResponse.model_validate(
+                    _answer(
+                        "authorized", 0.7, {"authorized": 0.7, "unclear": 0.3, "forbidden": 0.0}
+                    )
+                ),
+                httpx.ConnectError("down"),
+            ]
+        )
+        decision = await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["send"],
+            call=_call(**_SEND_DRAFT),
+            prior_calls=[_DRAFTED],
+            history=AutoHistory(),
+            assistant=intent.AssistantTurns(shown=_SHOWN),
+        )
+        assert decision.outcome == "ask"

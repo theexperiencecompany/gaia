@@ -21,11 +21,13 @@ from app.constants.hil import (
     HIL_JEV_CONTAINED_LINE,
     HIL_JEV_CONTAINED_MAX_FORBIDDEN,
     HIL_JEV_FORBID_FLOOR,
+    HIL_JEV_GO_AHEAD_LINE,
     HIL_JEV_JUDGE_MODEL_NAME,
     JEV_CONTAINED_QUESTION_KEY,
     JEV_DECISION_QUESTION_KEY,
     JEV_FORBID_CHECK_FAILED,
     JEV_FORBID_QUESTION_KEY,
+    JEV_GO_AHEAD_QUESTION_KEY,
     JEV_STANDING_QUESTION_KEY,
     JevChoice,
 )
@@ -33,6 +35,7 @@ from app.constants.log_tags import LogTag
 from app.models.jev_models import JevDecisionsResponse
 from app.services.hil.intent import (
     CONTAINED_RUN_REASON,
+    GO_AHEAD_RUN_REASON,
     AssistantTurns,
     AutoHistory,
     AutoOutcome,
@@ -46,6 +49,7 @@ from app.services.hil.jev_client import post_decisions
 from app.services.hil.prompts import (
     JEV_CONTAINED_QUESTION,
     JEV_FORBID_QUESTION,
+    JEV_GO_AHEAD_QUESTION,
     JEV_QUESTION,
     JEV_QUESTIONS_VERSION,
     JEV_STANDING_QUESTION,
@@ -183,16 +187,10 @@ async def ask_jev(
     # state byte for byte.
     if call.tool_schema:
         pending_action["tool_schema"] = call.tool_schema
-    prior_actions = []
-    for prior in prior_calls:
-        item: dict[str, object] = {"tool": prior.name, "args": prior.args}
-        if prior.output.strip():
-            item["output"] = prior.output
-        prior_actions.append(item)
     state = {
         "user_messages": user_messages,
         "pending_action": pending_action,
-        "prior_actions": prior_actions,
+        "prior_actions": _prior_actions(prior_calls),
         "recent_history": history_line(history, call.tool_name),
         "now": datetime.now(UTC).isoformat(),
     }
@@ -240,23 +238,74 @@ async def ask_jev_forbid(
     return (answer.choice, float(answer.confidence or 0.0), *body.tokens())
 
 
-def needs_forbid_check(
+def needs_forbid_check(user_messages: list[str], verdict: "JevVerdict") -> bool:
+    """Whether forbid words need the focused check before the call may run.
+
+    Pure, shared by prod and the eval. Any call JEV does not already forbid may still
+    run (authorized, contained, or on a go-ahead), so forbid words with no later lift
+    get a focused question instead of a blanket veto: a "don't" that forbids nothing
+    ("don't we have the draft ready?") no longer stops the call.
+    """
+    return verdict.choice != JevChoice.FORBIDDEN and forbid_tripwire(user_messages)
+
+
+async def ask_jev_go_ahead(
+    *,
     user_messages: list[str],
+    call: JudgedCall,
+    prior_calls: list[PriorCall],
+    assistant_turns: list[str],
+    transport: DecisionsTransport = JUDGE_TRANSPORT,
+) -> tuple[float, int, int]:
+    """Focused check: is the user's reply the go-ahead for exactly this call? (P, in, out).
+
+    Sees the run's recent calls with their outputs, so an opaque id is matched to the
+    thing it names. Raises on transport failure or a malformed answer.
+    """
+    state: dict[str, object] = {}
+    if assistant_turns:
+        state["assistant_turns"] = list(assistant_turns)
+    state |= {
+        "latest_turns": user_messages[-2:],
+        "recent_actions": _prior_actions(prior_calls),
+        "pending_action": {"tool": call.tool_name, "args": call.args},
+    }
+    body = await transport(state, {JEV_GO_AHEAD_QUESTION_KEY: JEV_GO_AHEAD_QUESTION})
+    answer = body.choice(
+        JEV_GO_AHEAD_QUESTION_KEY, (JevChoice.AUTHORIZED, JevChoice.UNCLEAR), label="go-ahead "
+    )
+    confidence = float(answer.confidence or 0.0)
+    go_ahead = confidence if answer.choice == JevChoice.AUTHORIZED else 1.0 - confidence
+    return (go_ahead, *body.tokens())
+
+
+def _prior_actions(prior_calls: list[PriorCall]) -> list[dict[str, object]]:
+    """Render the run's calls for JEV: tool, args, and the output when there is one."""
+    actions: list[dict[str, object]] = []
+    for prior in prior_calls:
+        item: dict[str, object] = {"tool": prior.name, "args": prior.args}
+        if prior.output.strip():
+            item["output"] = prior.output
+        actions.append(item)
+    return actions
+
+
+def needs_go_ahead_check(
     verdict: "JevVerdict",
+    case: "JevCase",
     *,
     accept_line: float = HIL_JEV_ACCEPT_LINE,
     contained_line: float = HIL_JEV_CONTAINED_LINE,
 ) -> bool:
-    """Whether a call that may run needs the focused forbid check before it does.
+    """Whether a call that would ask gets the go-ahead question: a reply to what the user was shown.
 
-    Pure, shared by prod and the eval. A call may run when the user's words authorize
-    it or its containment clears the line; forbid words with no later lift then get a
-    focused question instead of a blanket veto, so a "don't" that forbids nothing
-    ("don't we have the draft ready?") no longer stops the call.
+    Pure, shared by prod and the eval. With nothing shown there is no proposal to reply
+    to, and the question turns into a looser second authorization check.
     """
-    authorized = map_jev_choice(verdict.choice, verdict.confidence, accept_line=accept_line)
-    contained = verdict.contained is not None and verdict.contained >= contained_line
-    return (authorized == "accept" or contained) and forbid_tripwire(user_messages)
+    would_ask = _authorization_decision(
+        verdict, case, accept_line=accept_line
+    ).outcome == "ask" and not _runs_contained(verdict, case, contained_line=contained_line)
+    return would_ask and bool(case.shown_turns) and _nothing_objects(verdict, case)
 
 
 def settle_forbid(
@@ -299,17 +348,17 @@ class JevIntentJudge:
             assistant_turns=assistant.context(),
             transport=self._transport,
         )
-        forbid = await self._forbid_verdict(asked, user_messages, call)
-        return decide_from_verdict(
-            replace(asked, forbid=forbid),
-            JevCase(
-                call=call,
-                user_messages=user_messages,
-                prior_calls=prior_calls,
-                history=history,
-                shown_turns=assistant.shown,
-            ),
+        case = JevCase(
+            call=call,
+            user_messages=user_messages,
+            prior_calls=prior_calls,
+            history=history,
+            shown_turns=assistant.shown,
         )
+        verdict = replace(asked, forbid=await self._forbid_verdict(asked, user_messages, call))
+        if needs_go_ahead_check(verdict, case):
+            verdict = replace(verdict, go_ahead=await self._go_ahead(case, assistant.context()))
+        return decide_from_verdict(verdict, case)
 
     async def standing_rules_hold(
         self, *, standing_rules: tuple[str, ...], call: JudgedCall
@@ -332,6 +381,29 @@ class JevIntentJudge:
             hil={"choice": answer.choice, "holds": verdict is JevChoice.FORBIDDEN},
         )
         return verdict is JevChoice.FORBIDDEN
+
+    async def _go_ahead(self, case: "JevCase", assistant_turns: list[str]) -> float | None:
+        """Return P(the reply is the go-ahead for this call), or None when the check failed.
+
+        A failed check leaves the call to the user, never runs it.
+        """
+        try:
+            go_ahead, _in, _out = await ask_jev_go_ahead(
+                user_messages=case.user_messages,
+                call=case.call,
+                prior_calls=case.prior_calls,
+                assistant_turns=assistant_turns,
+                transport=self._transport,
+            )
+        except Exception as e:
+            log.warning(
+                f"{LogTag.HIL} go-ahead check failed; asking",
+                tool_name=case.call.tool_name,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return None
+        return go_ahead
 
     async def _forbid_verdict(
         self, asked: "JevVerdict", user_messages: list[str], call: JudgedCall
@@ -375,6 +447,8 @@ class JevVerdict:
     probabilities: Mapping[str, float] | None = None
     forbid: str | None = None
     contained: float | None = None
+    # P(the user's reply is the go-ahead for exactly this call); None when not asked.
+    go_ahead: float | None = None
 
 
 @dataclass(frozen=True)
@@ -398,11 +472,13 @@ def decide_from_verdict(
     *,
     accept_line: float = HIL_JEV_ACCEPT_LINE,
     contained_line: float = HIL_JEV_CONTAINED_LINE,
+    go_ahead_line: float = HIL_JEV_GO_AHEAD_LINE,
 ) -> IntentDecision:
     """Map one JEV verdict through the code vetoes. Pure, shared by prod and eval.
 
     A call the user's words don't clearly authorize still runs when its effect is
-    contained and nothing they said or did objects; only risky calls need the words.
+    contained, or when their reply is the go-ahead for exactly it, and nothing they
+    said or did objects.
     """
     log.info(
         f"{LogTag.HIL} JEV judge",
@@ -412,14 +488,19 @@ def decide_from_verdict(
             "confidence": round(verdict.confidence, 3),
             "contained": None if verdict.contained is None else round(verdict.contained, 3),
             "forbid": verdict.forbid,
+            "go_ahead": None if verdict.go_ahead is None else round(verdict.go_ahead, 3),
             "version": JEV_QUESTIONS_VERSION,
         },
     )
     decision = _authorization_decision(verdict, case, accept_line=accept_line)
-    if decision.outcome == "ask" and _runs_contained(verdict, case, contained_line=contained_line):
+    if decision.outcome != "ask":
+        return decision
+    if _runs_contained(verdict, case, contained_line=contained_line):
         return IntentDecision(
             "accept", f"{CONTAINED_RUN_REASON} (contained {verdict.contained:.2f})."
         )
+    if _runs_on_go_ahead(verdict, case, go_ahead_line=go_ahead_line):
+        return IntentDecision("accept", f"{GO_AHEAD_RUN_REASON} (go-ahead {verdict.go_ahead:.2f}).")
     return decision
 
 
@@ -428,7 +509,31 @@ def _runs_contained(verdict: JevVerdict, case: JevCase, *, contained_line: float
     return (
         verdict.contained is not None
         and verdict.contained >= contained_line
-        and verdict.choice != JevChoice.FORBIDDEN
+        and _nothing_objects(verdict, case)
+    )
+
+
+def _runs_on_go_ahead(verdict: JevVerdict, case: JevCase, *, go_ahead_line: float) -> bool:
+    """Whether the user's reply is surely the go-ahead for this call, and it acts on a known thing."""
+    return (
+        verdict.go_ahead is not None
+        and verdict.go_ahead >= go_ahead_line
+        and bool(case.shown_turns)
+        and _nothing_objects(verdict, case)
+        and not ungrounded_targets(
+            case.call.args,
+            case.user_messages,
+            case.prior_calls,
+            frozenset(case.history.known_targets),
+            shown_turns=list(case.shown_turns),
+        )
+    )
+
+
+def _nothing_objects(verdict: JevVerdict, case: JevCase) -> bool:
+    """Whether nothing JEV or the user said or did argues against running the call unasked."""
+    return (
+        verdict.choice != JevChoice.FORBIDDEN
         # An answer without P(forbidden) can't show the call is safe to run unasked.
         and (verdict.probabilities or {}).get(JevChoice.FORBIDDEN, 1.0)
         < HIL_JEV_CONTAINED_MAX_FORBIDDEN

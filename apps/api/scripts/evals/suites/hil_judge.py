@@ -17,12 +17,13 @@ case), stable across runs (see flaky).
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from enum import StrEnum
 import json
 import os
 from pathlib import Path
 import time
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 import httpx
 
@@ -31,6 +32,7 @@ from app.constants.hil import (
     HIL_JEV_CONTAINED_LINE,
     HIL_JEV_JUDGE_MODEL_NAME,
     JEV_FORBID_CHECK_FAILED,
+    JevChoice,
 )
 
 # Canonical question + mapping live in app (prompts.py, jev_judge.py) — the
@@ -45,9 +47,11 @@ from app.services.hil.jev_judge import (
     JevVerdict,
     ask_jev,
     ask_jev_forbid,
+    ask_jev_go_ahead,
     decide_from_verdict,
     forbid_tripwire,
     needs_forbid_check,
+    needs_go_ahead_check,
     settle_forbid,
 )
 from app.services.hil.prompts import JEV_QUESTIONS_VERSION
@@ -96,6 +100,8 @@ class JevJournalFields(TypedDict):
     forbid_choice: str | None
     forbid_conf: float
     contained: float | None
+    # P(the reply is the go-ahead for this call); absent on rows journaled before it.
+    go_ahead: NotRequired[float | None]
 
 
 # Canonical question text + mapping live in app (prompts.py, jev_judge.py) —
@@ -172,37 +178,28 @@ def _graded_outcome(
 ) -> str:
     """The outcome prod reaches at these lines, or UNRESOLVED when the journal can't say.
 
-    Prod asks the focused forbid question only where the call may run (authorized or
-    contained), so its answer counts only there; a row without one can't grade a line
+    Prod asks the focused forbid and go-ahead questions only where they can change the
+    outcome, so their answers count only there; a row without one can't grade a line
     that needs it.
     """
-    needs_forbid = needs_forbid_check(
-        case.user_messages,
-        JevVerdict(
-            choice=fields["choice"],
-            confidence=fields["confidence"],
-            contained=fields["contained"],
-        ),
-        accept_line=accept_line,
-        contained_line=contained_line,
+    verdict = JevVerdict(
+        choice=fields["choice"],
+        confidence=fields["confidence"],
+        probabilities=fields["probabilities"],
+        contained=fields["contained"],
     )
-    if needs_forbid and fields["forbid_choice"] is None:
-        return UNRESOLVED
-    forbid = (
-        _settled_forbid(fields["forbid_choice"], fields["forbid_conf"]) if needs_forbid else None
-    )
-    return decide_from_verdict(
-        JevVerdict(
-            choice=fields["choice"],
-            confidence=fields["confidence"],
-            probabilities=fields["probabilities"],
-            forbid=forbid,
-            contained=fields["contained"],
-        ),
-        case,
-        accept_line=accept_line,
-        contained_line=contained_line,
-    ).outcome
+    if needs_forbid_check(case.user_messages, verdict):
+        if fields["forbid_choice"] is None:
+            return UNRESOLVED
+        verdict = replace(
+            verdict, forbid=_settled_forbid(fields["forbid_choice"], fields["forbid_conf"])
+        )
+    lines = {"accept_line": accept_line, "contained_line": contained_line}
+    if needs_go_ahead_check(verdict, case, **lines):
+        if fields.get("go_ahead") is None:
+            return UNRESOLVED
+        verdict = replace(verdict, go_ahead=fields.get("go_ahead"))
+    return decide_from_verdict(verdict, case, **lines).outcome
 
 
 def _settled_forbid(forbid: str | None, forbid_conf: float) -> str | None:
@@ -282,6 +279,7 @@ class JudgeTransport:
         forbid, forbid_conf, forbid_usage = await self._forbid(
             case, provider, prod_asks_it=needs_forbid_check(turns, asked)
         )
+        go_ahead, go_ahead_usage = await self._go_ahead(case, setup, asked, provider)
         verdict = JevJournalFields(
             choice=asked.choice,
             confidence=asked.confidence,
@@ -289,6 +287,7 @@ class JudgeTransport:
             forbid_choice=forbid,
             forbid_conf=forbid_conf,
             contained=asked.contained,
+            go_ahead=go_ahead,
         )
         # Grade the PROD path (mapping + grounding vetoes), not just the choice.
         outcome = _graded_outcome(verdict, case)
@@ -296,15 +295,40 @@ class JudgeTransport:
         detail = (
             f"{asked.choice} conf={asked.confidence:.2f} "
             f"probs={json.dumps(verdict['probabilities'])} forbid={forbid}:{forbid_conf:.2f} "
-            f"contained={asked.contained} "
+            f"contained={asked.contained} go_ahead={go_ahead} "
             f"-> {outcome} [{history_text[:80]}]"
         )
         return (
             outcome,
             detail,
-            (tokens_in + forbid_usage[0], tokens_out + forbid_usage[1]),
+            (
+                tokens_in + forbid_usage[0] + go_ahead_usage[0],
+                tokens_out + forbid_usage[1] + go_ahead_usage[1],
+            ),
             verdict,
         )
+
+    async def _go_ahead(
+        self, case: JevCase, setup: Mapping[str, Any], asked: JevVerdict, provider: ProviderConfig
+    ) -> tuple[float | None, tuple[int, int]]:
+        """Ask the focused go-ahead question for any call JEV does not forbid: (P, usage).
+
+        Asked whatever the broad score, so the sweep can regrade every candidate line;
+        _graded_outcome drops the answer where prod would not have asked.
+        """
+        if asked.choice == JevChoice.FORBIDDEN:
+            return None, (0, 0)
+        try:
+            go_ahead, tokens_in, tokens_out = await ask_jev_go_ahead(
+                user_messages=case.user_messages,
+                call=case.call,
+                prior_calls=case.prior_calls,
+                assistant_turns=_eval_assistant_turns(setup),
+                transport=self._decisions,
+            )
+        except httpx.HTTPError as e:
+            raise ProviderError(provider.name, f"go-ahead check failed: {e}") from e
+        return go_ahead, (tokens_in, tokens_out)
 
     async def _forbid(
         self, case: JevCase, provider: ProviderConfig, *, prod_asks_it: bool
@@ -364,6 +388,7 @@ def sweep_journal(run_dir: Path) -> str:
                 forbid_choice=es.get("forbid_choice"),
                 forbid_conf=float(es.get("forbid_conf") or 0.0),
                 contained=es.get("contained"),
+                go_ahead=es.get("go_ahead"),
             ),
             _eval_case(es.get("setup") or {}),
             accept_line=accept,

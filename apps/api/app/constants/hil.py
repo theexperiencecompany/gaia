@@ -94,9 +94,14 @@ HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
 # A focused forbid or standing-instruction check clears a call only when JEV says
 # "permitted" at or past this confidence; anything less is doubt, and doubt asks.
 HIL_JEV_FORBID_FLOOR = 0.50
+# A call the broad question leaves under the line runs when the focused go-ahead
+# question, which sees the run's recent calls, is at least this sure the user's
+# reply approves exactly this call.
+HIL_JEV_GO_AHEAD_LINE = 0.85
 #: The name the focused forbid question goes by, asked when forbid words may block a run.
 JEV_FORBID_QUESTION_KEY = "forbid"
 JEV_STANDING_QUESTION_KEY: Final = "standing"
+JEV_GO_AHEAD_QUESTION_KEY: Final = "go_ahead"
 #: The forbid verdict recorded when the focused check itself failed (the call asks).
 JEV_FORBID_CHECK_FAILED = "unclear-forbid"
 

@@ -36,6 +36,7 @@ _NO_REQUEST_REASON = "Could not check this against anything you asked for."
 _JUDGE_FAILED_REASON = "The approval check could not run."
 #: Shown when a call ran on containment rather than on the user's explicit words.
 CONTAINED_RUN_REASON = "Auto mode ran this: it stays in your account and can be undone"
+GO_AHEAD_RUN_REASON = "Auto mode ran this: your reply was the go-ahead for it"
 STANDING_RULE_REASON = (
     "One of your saved instructions asks for your go-ahead before this {tool} call."
 )

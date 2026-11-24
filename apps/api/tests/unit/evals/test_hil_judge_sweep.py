@@ -12,7 +12,7 @@ import httpx
 import pytest
 from scripts.evals import sweep_hil_judge
 from scripts.evals.core.cost import EvalCostTracker
-from scripts.evals.core.types import Case, CaseRun
+from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites import hil_judge
 from scripts.evals.suites.hil_judge import JudgeTransport, sweep_journal
 
@@ -32,6 +32,18 @@ _CASE = Case(
     },
     expected={"outcome": "accept"},
 )
+
+
+#: What the fake JEV answers the focused go-ahead question with, unless a test says otherwise.
+_GO_AHEAD = 0.1
+
+
+@pytest.fixture(autouse=True)
+def _go_ahead_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _ask_jev_go_ahead(**kwargs: object) -> tuple[float, int, int]:
+        return _GO_AHEAD, 3, 1
+
+    monkeypatch.setattr(hil_judge, "ask_jev_go_ahead", _ask_jev_go_ahead)
 
 
 async def _judge(monkeypatch: pytest.MonkeyPatch, case: Case = _CASE) -> CaseRun:
@@ -86,6 +98,7 @@ async def test_a_jev_run_journals_the_verdict_it_was_graded_on(
     assert end_state["probabilities"] == {JevChoice.AUTHORIZED: 0.95, JevChoice.FORBIDDEN: 0.0}
     assert end_state["forbid_choice"] is None
     assert end_state["contained"] == 0.2
+    assert end_state["go_ahead"] == _GO_AHEAD
 
 
 async def test_the_sweep_refuses_a_journal_of_another_judges_rows(
@@ -147,6 +160,7 @@ def _fields(
     contained: float | None = 0.75,
     forbid_choice: str | None = None,
     forbid_conf: float = 0.0,
+    go_ahead: float | None = None,
 ) -> hil_judge.JevJournalFields:
     return hil_judge.JevJournalFields(
         choice=choice,
@@ -155,23 +169,28 @@ def _fields(
         forbid_choice=forbid_choice,
         forbid_conf=forbid_conf,
         contained=contained,
+        go_ahead=go_ahead,
     )
 
 
-def test_a_line_needing_a_focused_answer_the_journal_lacks_is_unresolved() -> None:
+def test_forbid_words_without_a_journaled_focused_answer_are_unresolved_at_every_line() -> None:
+    """Prod asks the forbid question whenever forbid words appear and JEV did not forbid."""
     case = hil_judge._eval_case(_FORBID_SETUP)
 
     assert hil_judge._graded_outcome(_fields(), case, contained_line=0.70) == hil_judge.UNRESOLVED
-    assert hil_judge._graded_outcome(_fields(), case, contained_line=0.80) == "ask"
+    assert hil_judge._graded_outcome(_fields(), case, contained_line=0.80) == hil_judge.UNRESOLVED
 
 
-def test_a_focused_answer_counts_only_where_prod_would_have_asked_it() -> None:
-    """A stale PERMITTED below the line would let an uncontained call run."""
-    fields = _fields(contained=0.75, forbid_choice=JevChoice.PERMITTED, forbid_conf=0.9)
-    case = hil_judge._eval_case(_FORBID_SETUP)
+def test_a_line_where_a_go_ahead_could_run_the_call_needs_its_answer() -> None:
+    shown = ["Want me to append this status to your notes?"]
+    case = hil_judge._eval_case({**_FORBID_SETUP, "assistant_turns": shown})
 
-    assert hil_judge._graded_outcome(fields, case, contained_line=0.70) == "accept"
-    assert hil_judge._graded_outcome(fields, case, contained_line=0.80) == "ask"
+    def permitted(go_ahead: float | None = None) -> hil_judge.JevJournalFields:
+        return _fields(forbid_choice=JevChoice.PERMITTED, forbid_conf=0.9, go_ahead=go_ahead)
+
+    assert hil_judge._graded_outcome(permitted(), case, contained_line=0.70) == "accept"
+    assert hil_judge._graded_outcome(permitted(), case, contained_line=0.80) == hil_judge.UNRESOLVED
+    assert hil_judge._graded_outcome(permitted(0.2), case, contained_line=0.80) == "ask"
 
 
 async def test_a_row_from_before_containment_is_unresolved_where_it_would_ask(
@@ -204,11 +223,9 @@ async def test_the_eval_asks_the_focused_question_whenever_forbid_words_appear(
     assert (run.end_state or {})["forbid_choice"] == JevChoice.PERMITTED
 
 
-async def test_a_failed_extra_focused_request_keeps_the_verdict(
+async def test_a_failed_focused_request_prod_would_ask_fails_the_case(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Prod would not ask the focused question here, so its failure costs only that answer."""
-
     async def _ask_jev(**kwargs: object) -> tuple[JevVerdict, int, int]:
         return JevVerdict(choice=JevChoice.UNCLEAR, confidence=0.6, contained=0.1), 10, 2
 
@@ -218,11 +235,8 @@ async def test_a_failed_extra_focused_request_keeps_the_verdict(
     monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
     monkeypatch.setattr(hil_judge, "ask_jev_forbid", _ask_jev_forbid)
 
-    run = await _judge(monkeypatch, replace(_CASE, setup=_FORBID_SETUP))
-
-    end_state = run.end_state or {}
-    assert end_state["outcome"] == "ask"
-    assert end_state["forbid_choice"] is None
+    with pytest.raises(ProviderError, match="forbid check failed"):
+        await _judge(monkeypatch, replace(_CASE, setup=_FORBID_SETUP))
 
 
 def test_a_blank_transport_setting_means_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
