@@ -43,6 +43,7 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
+from loguru import logger as loguru_logger
 from motor.motor_asyncio import AsyncIOMotorCollection
 from prometheus_client import REGISTRY, CollectorRegistry
 from pydantic import Field
@@ -740,6 +741,19 @@ class WideEventRecorder:
                 f"emitted: {[event.get('task') for event in self.events]}"
             )
         return matches[0]
+
+
+@contextmanager
+def emitted_log_records() -> Iterator[list[dict[str, Any]]]:
+    """Collect every record the real loguru sink is handed, as the JSON sink serializes it."""
+    records: list[dict[str, Any]] = []
+    sink_id = loguru_logger.add(
+        lambda line: records.append(json.loads(line)["record"]), serialize=True, level="DEBUG"
+    )
+    try:
+        yield records
+    finally:
+        loguru_logger.remove(sink_id)
 
 
 @asynccontextmanager

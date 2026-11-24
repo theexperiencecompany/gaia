@@ -2,6 +2,7 @@ from langchain_core.messages import AnyMessage, BaseMessage
 
 from app.agents.llm.client import ainvoke_llm, resolve_model
 from app.agents.llm.exceptions import CHATBOT_OPERATIONAL_EXCEPTIONS
+from app.agents.llm.failure_fields import failed_call_fields
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -16,8 +17,6 @@ async def chatbot(messages: list[AnyMessage]) -> dict[str, list[BaseMessage]]:
     try:
         response = await ainvoke_llm(resolve_model(), messages, label="chatbot")
     except CHATBOT_OPERATIONAL_EXCEPTIONS as e:
-        log.error(
-            f"{LogTag.AGENT} chatbot LLM call failed", error_type=type(e).__name__, error=str(e)
-        )
+        log.error(f"{LogTag.AGENT} chatbot LLM call failed", **failed_call_fields(e))
         raise
     return {"messages": [response]}
