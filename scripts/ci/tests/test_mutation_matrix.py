@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import subprocess
 
+import mutation
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -600,7 +601,7 @@ def test_a_deletion_only_module_is_dropped_from_the_matrix(
     """
     app = tmp_path / "apps/api/app/services"
     app.mkdir(parents=True)
-    (app / "thing.py").write_text("a = 1\nb = 2\nc = 3\n")
+    (app / "thing.py").write_text("def f():\n    a = 1\n    b = 2\n    return a\n")
     tests = tmp_path / "apps/api/tests/unit/services"
     tests.mkdir(parents=True)
     (tests / "test_thing.py").write_text("import app.services.thing\n")
@@ -612,7 +613,7 @@ def test_a_deletion_only_module_is_dropped_from_the_matrix(
         check=True,
         capture_output=True,
     )
-    (app / "thing.py").write_text("a = 1\nc = 3\n")
+    (app / "thing.py").write_text("def f():\n    a = 1\n    return a\n")
     subprocess.run(
         ["git", "-c", "user.email=t@e.x", "-c", "user.name=t", "commit", "-aqm", "delete b"],
         cwd=tmp_path,
@@ -656,3 +657,138 @@ def test_the_mutant_estimate_counts_only_changed_lines_inside_functions() -> Non
 
 def test_a_diff_touching_no_function_estimates_no_mutants() -> None:
     assert mm.estimate_mutants(ESTIMATE_SOURCE, [[1, 1]]) == 0
+
+
+MIXED_SOURCE = """\
+PROMPT = "Answer briefly."
+LIMIT = 3
+
+
+def clamp(value):
+    return min(value, LIMIT)
+"""
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'SYSTEM = """You are GAIA."""\nRULES = f"{SYSTEM} Be brief."\n',
+        "from enum import StrEnum\n\n\nclass Tier(StrEnum):\n    FREE = 'free'\n    PRO = 'pro'\n",
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from x import Y\nTIMEOUT: int = 30\n",
+    ],
+    ids=["prompt-text", "enum", "type-checking-imports"],
+)
+def test_prompt_text_constants_and_enums_are_declarative(source: str) -> None:
+    assert mm.is_declarative(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        MIXED_SOURCE,
+        "from enum import Enum\n\n\nclass Tier(Enum):\n    FREE = 1\n\n    def label(self):\n        return 'x'\n",
+        "from enum import Enum\n\n\nclass Tier(Enum):\n    FREE = 1\n    enabled = lambda self: True\n",
+        "MODELS = {name: 1 for name in ('a', 'b')}\n",
+        "import os\nREGION = os.getenv('REGION') or 'eu'\n",
+        "from pydantic import BaseModel\n\n\nclass Row(BaseModel):\n    id: str\n",
+        "if FLAG:\n    LIMIT = 1\n",
+    ],
+    ids=[
+        "constants-plus-one-function",
+        "enum-with-method",
+        "enum-member-with-logic",
+        "comprehension",
+        "bool-op",
+        "model",
+        "branch",
+    ],
+)
+def test_a_module_with_any_logic_is_not_declarative(source: str) -> None:
+    assert not mm.is_declarative(source)
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "app/scripts/migrate_file_type_field.py",
+        "app/scripts/backfill_public_workflow_descriptions.py",
+        "app/agents/prompts/brief_check_prompts.py",
+        "app/constants/waits.py",
+    ],
+)
+def test_scripts_migrations_prompt_text_and_constants_leave_the_lane(
+    module: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    assert mm.exclusion(module)
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "app/services/llm_metering.py",
+        "app/agents/tools/executor_tool.py",
+        "app/agents/prompts/capability_prompts.py",
+        "app/db/repositories/briefings.py",
+        "app/api/v1/endpoints/dev.py",
+        "app/workers/tasks/day_zero_hello_tasks.py",
+        "app/config/sentry_scrub.py",
+        "app/services/briefing/composition/compose.py",
+        "app/services/conversation/step_run.py",
+        "app/scripts/delete_user_account.py",
+        "app/scripts/reset_admin_password.py",
+        "app/scripts/purge_retired_integrations.py",
+    ],
+)
+def test_logic_modules_stay_in_the_lane(module: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    assert (REPO_ROOT / "apps/api" / module).is_file()
+    assert mm.exclusion(module) is None
+
+
+def test_only_the_migrations_and_backfills_among_the_operator_scripts_leave_the_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    scripts = sorted((REPO_ROOT / "apps/api/app/scripts").glob("[!_]*.py"))
+    excluded = {p.name for p in scripts if mm.exclusion(f"app/scripts/{p.name}")}
+
+    assert excluded == {p.name for p in scripts if p.name.startswith(("migrate_", "backfill_"))}
+    assert excluded
+    assert len(excluded) < len(scripts)
+
+
+def test_an_excluded_module_is_skipped_before_the_test_file_requirement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    scripts = tmp_path / "apps/api/app/scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "migrate_thing.py").write_text("def run():\n    return 1\n")
+    (tmp_path / "apps/api/tests").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mm, "_merge_base", lambda: "")
+    monkeypatch.setattr("sys.stdin", io.StringIO("apps/api/app/scripts/migrate_thing.py\n"))
+
+    assert mm.main() == 0
+    out, err = capsys.readouterr()
+    assert json.loads(out) == []
+    assert "app/scripts/migrate_thing.py is outside the lane's scope" in err
+
+
+def test_a_single_module_run_skips_a_module_the_lane_excludes(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    def must_not_mutate(*_: object) -> None:
+        raise AssertionError("mutmut started on a module the lane excludes")
+
+    monkeypatch.setattr(mutation, "mutate", must_not_mutate)
+    monkeypatch.delenv("MUTATION_VERDICT_DIR", raising=False)
+
+    exit_code = mutation.cmd_module(["app/constants/waits.py"])
+
+    assert exit_code == 0
+    assert "app/constants/waits.py is outside the lane's scope" in capfd.readouterr().err
+
+
+def test_the_scope_answer_for_an_excluded_module_is_the_one_mutation_py_reads() -> None:
+    assert mm.EXCLUDED_SCOPE == mutation.EXCLUDED_SCOPE

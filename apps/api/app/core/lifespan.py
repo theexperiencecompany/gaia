@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from posthog import Posthog
 
+from app.agents.llm.metrics import create_llm_series
+from app.api.v1.middleware.internal_caller_metrics import create_internal_caller_series
 from app.config.settings import settings
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.log_tags import LogTag
@@ -17,6 +19,7 @@ from app.core.runtime_config_subscriber import (
     stop_runtime_config_subscriber,
 )
 from app.core.shutdown_signal import install_shutdown_signal, remove_shutdown_signal
+from app.services.composio.webhook_metrics import create_composio_webhook_series
 from app.services.conversation.composition import (
     build_runtime_ports,
     drain_conversation_steps,
@@ -27,8 +30,12 @@ from app.services.device.revoke_listener import (
     stop_revoke_listener,
 )
 from app.services.device.up_listener import start_up_listener, stop_up_listener
+from app.services.latency_metrics import create_chat_turn_series
 from app.services.links.metrics import create_link_mint_series
+from app.services.oauth.metrics import create_oauth_callback_series
+from app.services.payments.webhook_metrics import create_payment_webhook_series
 from app.services.render.chromium import close_chromium
+from app.services.scheduler_metrics import create_scheduled_task_series
 from app.utils.browser_reaper import start_browser_reaper, stop_browser_reaper
 from app.utils.context_utils import _CONTEXT_EXECUTOR
 from app.utils.crawl_obscura import shutdown_crawl_obscura
@@ -69,6 +76,13 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             start_up_listener()
             start_runtime_config_subscriber()
             create_link_mint_series()
+            create_internal_caller_series()
+            create_chat_turn_series()
+            create_llm_series()
+            create_scheduled_task_series()
+            create_payment_webhook_series()
+            create_oauth_callback_series()
+            create_composio_webhook_series()
         yield
 
     except Exception as e:

@@ -24,6 +24,14 @@
 #                               single service — the rehearsal to run after
 #                               changing the infra repo, the deploy key or
 #                               the tailnet path.
+#   smoke                       Read production as an anonymous visitor (the
+#                               public pages and API reads in
+#                               lib/prod-smoke-targets.toml, then a polite burst
+#                               against the anonymous rate limit) and write
+#                               verdict=pass|warn|fail|error and summary=. Fails
+#                               on fail or error. It never changes production:
+#                               a failure alerts, and rolling back is a person's
+#                               call (action=rollback).
 #   retag from-env|rolled-back  Re-point the :latest tags in GHCR at what
 #                               production actually runs, so ":latest ==
 #                               deployed" holds as an invariant.
@@ -37,6 +45,9 @@
 #   verify-commit               Fail unless prod's /health (and each bot's,
 #                               when bots were deployed) serves the commit
 #                               baked into the deployed image. Writes commit=.
+#   verify-alert-rules          Fail unless the rules file in the running
+#                               grafana task carries exactly the uids in the
+#                               repo's alert-rules.yaml.
 #   changelog                   Commit subjects PREVIOUS..COMMIT (changes=).
 #   unwedge                     Force-cancel master runs parked on a deployment
 #                               gate nobody can release (no reviewers, no wait
@@ -52,6 +63,8 @@
 #           the images; empty falls through to the compose file's
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
+#   smoke   PROD_ORIGIN, PROD_WEB_ORIGIN; GITHUB_OUTPUT, GITHUB_STEP_SUMMARY.
+#           No secrets: every read is anonymous.
 #   migrate GITHUB_OUTPUT (required); GAIA_IMAGE_TAG as `stack`;
 #           MIGRATE_RELEASE_TIMEOUT_SECS, MIGRATE_CHECK_TIMEOUT_SECS,
 #           MIGRATE_CATCH_UP_TIMEOUT_SECS, MIGRATE_WRITERS_TIMEOUT_SECS,
@@ -74,6 +87,8 @@
 #   verify-commit  PROD_ORIGIN, GITHUB_OUTPUT; APPS_IMAGE_TAG (empty = latest),
 #           BOTS_IMAGE_TAG, VERIFY_TIMEOUT_SECS, VERIFY_CONSECUTIVE,
 #           VERIFY_POLL_SECS. Needs a GHCR login.
+#   verify-alert-rules  ALERT_RULES_FILE, GRAFANA_VERIFY_TIMEOUT_SECS,
+#           GRAFANA_VERIFY_POLL_SECS. Needs the `prod` docker context.
 #   changelog  COMMIT, GITHUB_REPOSITORY, GITHUB_OUTPUT; PREVIOUS. Needs GH_TOKEN.
 #   unwedge GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_OUTPUT (required);
 #           STUCK_LIMIT_SECS. Needs actions:write. Writes reaped=<run ids>.
@@ -532,6 +547,15 @@ cmd_retag() {
   esac
 }
 
+cmd_smoke() {
+  : "${PROD_ORIGIN:?PROD_ORIGIN is required}"
+  : "${PROD_WEB_ORIGIN:?PROD_WEB_ORIGIN is required}"
+  # Extra arguments pass through (prod_smoke.py --help); the workflow passes none.
+  python3 -I "$(dirname "$0")/lib/prod_smoke.py" --api "$PROD_ORIGIN" --web "$PROD_WEB_ORIGIN" "$@" \
+    || ci_die "deploy smoke: production fails an anonymous visitor, or the smoke could not decide (verdict above)"
+  ci_ok "deploy smoke: OK ($PROD_ORIGIN and $PROD_WEB_ORIGIN answer an anonymous visitor as expected; warnings above, if any)"
+}
+
 # A message is a state, its impact, the cause, the action and what clears it —
 # eight content lines, no prose. Past that nobody reads it and the template has
 # drifted, so notify refuses to send (see the guard in cmd_notify).
@@ -794,6 +818,50 @@ cmd_verify_commit() {
   echo "commit=$apps_sha" >> "$GITHUB_OUTPUT"
 }
 
+# alert_rule_uid_diff <expected uids> <shipped uids> — newline lists in, one
+# `missing <uid>` / `extra <uid>` line per difference out; empty when equal.
+alert_rule_uid_diff() {
+  comm -23 <(sort -u <<< "$1") <(sort -u <<< "$2") | sed 's/^/missing /'
+  comm -13 <(sort -u <<< "$1") <(sort -u <<< "$2") | sed 's/^/extra /'
+}
+
+_GRAFANA_SERVICE="gaia-prod_grafana"
+_GRAFANA_RULES_FILE="/etc/grafana/provisioning/alerting/alert-rules.yaml"
+
+# alert_rule_uids — the rule uids in the rules file on stdin. Every rule opens its
+# list item with its uid; yq is not on every runner that runs this.
+alert_rule_uids() {
+  sed -nE 's/^[[:space:]]*-[[:space:]]+uid:[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*$/\1/p'
+}
+
+# shipped_alert_rule_uids — the uids in the rules file the running grafana task was
+# built with. Read off the image, so no Grafana login is involved.
+shipped_alert_rule_uids() {
+  local cid
+  cid=$(docker --context prod ps -q --filter "label=com.docker.swarm.service.name=$_GRAFANA_SERVICE")
+  # none is a task not up yet, two is Swarm mid-roll: neither is the release to judge
+  [[ "$(grep -c . <<< "$cid")" == 1 ]] || return 1
+  docker --context prod exec "$cid" cat "$_GRAFANA_RULES_FILE" | alert_rule_uids
+}
+
+cmd_verify_alert_rules() {
+  local file="${ALERT_RULES_FILE:-infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml}"
+  [[ -s "$file" ]] || ci_die "deploy verify-alert-rules: $file is missing or empty"
+  local expected shipped="" diff
+  expected=$(alert_rule_uids < "$file")
+  [[ -n "$expected" ]] || ci_die "deploy verify-alert-rules: $file declares no rule uids"
+  local deadline=$(( $(date +%s) + ${GRAFANA_VERIFY_TIMEOUT_SECS:-120} ))
+  # the old task still answers while Swarm rolls the new one, so a difference is retried too
+  until shipped=$(shipped_alert_rule_uids) && diff=$(alert_rule_uid_diff "$expected" "$shipped") && [[ -z "$diff" ]]; do
+    if (( $(date +%s) >= deadline )); then
+      [[ -n "$shipped" ]] || ci_die "deploy verify-alert-rules: the $_GRAFANA_SERVICE task has no rules at $_GRAFANA_RULES_FILE"
+      ci_die "deploy verify-alert-rules: the running Grafana image carries different rules than $file: ${diff//$'\n'/, }"
+    fi
+    sleep "${GRAFANA_VERIFY_POLL_SECS:-5}"
+  done
+  ci_ok "deploy verify-alert-rules: the running Grafana image carries exactly the $(wc -l <<< "$expected" | tr -d ' ') rules in $file"
+}
+
 cmd_served_commit() {
   : "${PROD_ORIGIN:?PROD_ORIGIN is required}"
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -896,7 +964,8 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,79p' "$0" >&2
+  # The header comment, up to the line before `set -euo pipefail`.
+  sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' >&2
 }
 
 main() {
@@ -907,11 +976,13 @@ main() {
     stack)  _cmd_swarm_stack deploy "$@" ;;
     migrate) cmd_migrate "$@" ;;
     verify) _cmd_swarm_stack verify "$@" ;;
+    smoke)  cmd_smoke "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;
     failing-checks) cmd_failing_checks "$@" ;;
     served-commit) cmd_served_commit "$@" ;;
     verify-commit) cmd_verify_commit "$@" ;;
+    verify-alert-rules) cmd_verify_alert_rules "$@" ;;
     changelog) cmd_changelog "$@" ;;
     unwedge) cmd_unwedge "$@" ;;
     *)

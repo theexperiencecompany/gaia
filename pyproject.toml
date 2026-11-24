@@ -37,6 +37,7 @@ constraint-dependencies = [
   "aiohttp>=3.14.4",
   "anyio>=4.14.2",
   "soupsieve>=4.0",
+  "wcmatch>=11.2",
   "pyjwt>=2.15.1",
   "urllib3>=2.8.0",
   "cryptography>=50.0.0",
@@ -889,6 +890,8 @@ harness = [
   "pytest-xdist>=3.8.0",
   "defusedxml>=0.7.1",
   "pyyaml>=6.0.3",
+  # Parses the alert rules' PromQL for tools/lints/check_alert_metric_contract.py.
+  "promql-parser>=0.12.0",
   # Pinned in apps/api's dev group; the one workspace lock gives both the same.
   "pytest-rerunfailures",
 ]

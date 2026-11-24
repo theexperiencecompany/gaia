@@ -730,3 +730,51 @@ files that overrode the root — nobody chose that.
 commit. That is the whole procedure. Adding `node = "x"` to any `mise.toml`, or
 `node-version:` to a workflow, fails the guard — the version belongs in one
 file.
+
+---
+
+## alert-metric-contract
+
+**Rule:** every metric an alert rule queries
+(`infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml`) is
+either registered by GAIA's own code **and** recorded by production code, or
+listed in `EXPORTER_METRIC_ALLOWLIST` as a series an exporter owns. Every
+collector our code registers must be recorded too, whether or not a rule queries
+it: an unrecorded collector is a dashboard panel or a future rule reading
+nothing.
+`check_alert_metric_contract.py` runs as the last stage of
+`tools/alert-rules/verify.sh`, so it is part of the `alert-rules` check.
+
+How each side is read:
+
+- **Rules:** `tools/alert-rules/extract_promql.py` yields each rule's
+  expression; `promql-parser` parses it and every vector selector's metric name
+  is collected.
+- **Python** (`apps/api/app`, `apps/voice-agent/src`): a collector is a
+  module-level `prometheus_client` `Counter`/`Gauge`/`Histogram`/`Summary`,
+  built directly or inside `register_once(...)`. It is recorded when a
+  function calls `inc`/`observe`/`set`/… on it (through any `.labels(...)`), or
+  hands it to a helper of its own module, and that function is either outside
+  the collector's module or reachable from another production module by name,
+  following imports and `__init__` re-exports. An import alone, a test, and a
+  `create_*_series` that only calls `.labels(...)` do not count.
+- **TypeScript** (`libs/shared/ts/src`, `apps/bots`): a collector is
+  `const x = new Counter({ name: "…" })` in a file that imports `prom-client`.
+  It is recorded when an exported function of that file calls a recording
+  method on it and another production file calls that function. The zeroing at
+  module load does not count.
+
+**Why:** on 2026-11-21 a refactor deleted every caller of the chat metric
+helpers. The collectors stayed registered and zero-created, so four chat rules
+kept evaluating a flat series with `noDataState: OK` and could never fire.
+`vulture` did not see it: the helpers were listed in `__all__`, which it treats
+as a use.
+
+**Fix:** record the metric where the action it counts ends, correct the name in
+the rule, or delete the rule together with the metric.
+
+**Allowlist:** `EXPORTER_METRIC_ALLOWLIST` holds exact series names, one per
+line with the exporter that owns it. It is a ratchet baseline
+(`scripts/ci/baselines.py growth`): adding a name needs the founder's approval,
+after the series is proven to exist on the exporter version prod pins. An entry
+no rule queries fails the check, so the list only holds what is in use.

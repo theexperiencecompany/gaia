@@ -154,6 +154,15 @@ def _model_names(properties: Iterable[str]) -> dict[str, str]:
     return model_names
 
 
+def _as_schema(subschema: JsonValue) -> JsonValue:
+    """Return a boolean subschema as its object form (true accepts anything, false nothing)."""
+    if subschema is True:
+        return {}
+    if subschema is False:
+        return {"not": {}}
+    return subschema
+
+
 def _alternatives(schema: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
     """Return the node and every anyOf/oneOf/allOf option under it: one value may match any."""
     found = [schema]
@@ -254,14 +263,16 @@ class SanitizingLangChainAdapter(LangChainAdapter):
         has_properties = "properties" in schema and isinstance(node["properties"], dict)
         for key, value in schema.items():
             if key in _SCHEMA_COMBINATORS and isinstance(value, list):
-                schema[key] = [self._sanitize(option, names) for option in value]
+                schema[key] = [self._sanitize(_as_schema(option), names) for option in value]
             elif not has_properties:
-                schema[key] = self._sanitize(value, None)
+                subschema = _as_schema(value) if key == _ITEMS else value
+                schema[key] = self._sanitize(subschema, None)
         if not has_properties:
             return schema
 
         node["properties"] = {
-            names[name]: self._sanitize(value, None) for name, value in node["properties"].items()
+            names[name]: self._sanitize(_as_schema(value), None)
+            for name, value in node["properties"].items()
         }
         required = node.get("required")
         if isinstance(required, list):

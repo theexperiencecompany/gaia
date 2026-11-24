@@ -11,13 +11,13 @@ from typing import Final
 from prometheus_client import Counter
 
 from app.constants.briefing import BriefingKind, BriefingRunOutcome
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 from shared.py.wide_events import log
 
 #: The outcome label of a run that raised before it could end.
 FAILED: Final = "failed"
 
-BRIEF_RUN_TOTAL = _register_once(
+BRIEF_RUN_TOTAL = register_once(
     "gaia_brief_run_total",
     lambda: Counter(
         name="gaia_brief_run_total",

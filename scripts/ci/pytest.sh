@@ -57,6 +57,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #     its share went to unit-b (~30 s fixed + ~270 CPU-s / n).
 #   * unit is two slices because xdist re-collects the whole slice per worker
 #     (20 s for 13.2k tests); services/agents/storage is ~5.2k of it.
+#   * render is integration's ~450 Chromium renders (tests/integration/render),
+#     split out because they are CPU-bound: 11 min serial on an M5, which
+#     doubled integration's wall. services "true" keeps their regression-proof
+#     in the services tier, whose integration slice installs Chromium.
 #   * bridge is serial (workers 0): the device-bridge e2e TRUNCATEs a shared
 #     Postgres table, which another xdist worker's fixture would wipe mid-test.
 #   * node: only bridge drives the real `gaia bridge` CLI via tsx.

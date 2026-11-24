@@ -59,7 +59,7 @@ async def test_claude_hook_push_wakes_the_todo_that_launched_the_run(
     todos = InMemoryTodos(todo)
 
     with lab_world(todos) as enqueue:
-        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
+        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake.as_sandbox())
         assert not isinstance(lab, str), lab
         token = await token_from_seeded_env(fake, lab.run_id)
         response = await client.post(
@@ -83,7 +83,7 @@ async def test_opencode_plugin_push_wakes_the_todo(client: AsyncClient) -> None:
     plugin_body = {"kind": "permission", "raw": {"type": "permission.asked", "tool": "bash"}}
 
     with lab_world(todos) as enqueue:
-        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
+        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake.as_sandbox())
         assert not isinstance(lab, str), lab
         token = await token_from_seeded_env(fake, lab.run_id)
         response = await client.post(
@@ -103,7 +103,7 @@ async def test_push_after_the_todo_ended_is_404_and_wakes_nothing(client: AsyncC
     todos = InMemoryTodos(todo)
 
     with lab_world(todos) as enqueue:
-        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
+        lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake.as_sandbox())
         assert not isinstance(lab, str), lab
         token = await token_from_seeded_env(fake, lab.run_id)
         todo.completed = True

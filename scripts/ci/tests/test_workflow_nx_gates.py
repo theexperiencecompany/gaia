@@ -89,9 +89,7 @@ def test_every_gated_job_is_one_a_check_names(jobs: dict[str, Any]) -> None:
     assert named <= CHECK_JOBS
 
 
-@pytest.mark.parametrize(
-    "name", sorted(CHECK_JOBS - {"selfhost-smoke", "test-python", "test-mutation"})
-)
+@pytest.mark.parametrize("name", sorted(CHECK_JOBS - {"test-python", "test-mutation"}))
 def test_a_job_starts_when_detect_names_it(name: str, jobs: dict[str, Any]) -> None:
     assert f"contains(fromJSON(needs.detect.outputs.jobs), '{name}')" in str(jobs[name]["if"])
 
@@ -137,6 +135,9 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("libs/shared/py/__init__.py", "api:test"),
         ("tools/gaia-connect/main.go", "gaia-connect:check"),
         ("config/pint.hcl", "alert-rules:check"),
+        # A refactor that drops a metric's callers must re-run the metric contract.
+        ("apps/api/app/services/latency_metrics.py", "alert-rules:check"),
+        ("libs/shared/ts/src/bots/metrics.ts", "alert-rules:check"),
         (".github/workflows/ci.yml", "ci:harness-tests"),
         # The per-Dockerfile ignore file decides what enters the build context.
         ("apps/api/Dockerfile.dockerignore", "ci:api-image"),
@@ -231,6 +232,7 @@ SELFHOST_E2E = "cli:selfhost-e2e"
         "tools/llm-stub/server.py",
         # The lane's own harness.
         ".github/workflows/selfhost-smoke.yml",
+        ".github/workflows/selfhost-e2e.yml",
         "scripts/ci/selfhost.sh",
         "scripts/ci/lib/log.sh",
         ".github/actions/setup-uv/action.yml",
@@ -260,17 +262,55 @@ def test_the_selfhost_e2e_skips_what_never_reaches_the_selfhost_stack(path: str)
     assert SELFHOST_E2E not in nx_affected.select([f"--files={path}"]).tasks
 
 
-def test_the_selfhost_e2e_runs_on_every_dispatch_and_on_a_merge_group_it_reaches() -> None:
-    workflow = mapping(yaml.safe_load((WORKFLOWS / "selfhost-smoke.yml").read_text()))
-    changes = workflow["jobs"]["changes"]
-    assert changes["outputs"]["selfhost_e2e"] == (
-        "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'merge_group'"
-        f" && contains(fromJSON(steps.affected.outputs.tasks), '{SELFHOST_E2E}')) }}}}"
-    )
-    assert workflow["jobs"]["selfhost-e2e"]["if"] == "needs.changes.outputs.selfhost_e2e == 'true'"
-    # A detection that errors fails the run; it never reads as "not affected".
-    assert "continue-on-error" not in changes
-    assert all("continue-on-error" not in step for step in changes["steps"])
+SELFHOST_E2E_WORKFLOW = "./.github/workflows/selfhost-e2e.yml"
+# The merge queue fails a group whose required check has not reported by then.
+QUEUE_TIMEOUT_MINUTES = 60
+
+
+def _workflow(name: str) -> dict[str, Any]:
+    return mapping(yaml.safe_load((WORKFLOWS / name).read_text()))
+
+
+def test_the_quality_gate_waits_on_the_selfhost_e2e() -> None:
+    jobs = _workflow("ci.yml")["jobs"]
+    assert "selfhost-e2e" in jobs["quality-gate"]["needs"]
+    assert jobs["selfhost-e2e"]["uses"] == SELFHOST_E2E_WORKFLOW
+    assert "continue-on-error" not in jobs["selfhost-e2e"]
+
+
+@pytest.mark.parametrize(
+    ("event", "runs"),
+    [
+        ("merge_group", True),
+        ("workflow_dispatch", True),
+        ("pull_request", False),
+        ("push", False),
+    ],
+)
+def test_the_selfhost_e2e_runs_only_in_the_full_tier(event: str, runs: bool) -> None:
+    selection = nx_affected.select(["--files=scripts/ci/selfhost.sh"])
+    tier = "fast" if event == "pull_request" else "full"
+    jobs = json.loads(nx_affected.outputs(selection, event, "master", tier)["jobs"])
+    assert ("selfhost-e2e" in jobs) is runs
+
+
+def test_a_verified_master_push_never_runs_the_selfhost_e2e() -> None:
+    selection = nx_affected.select(["--files=scripts/ci/selfhost.sh"])
+    outputs = nx_affected.outputs(selection, "push", "master", nx_affected.VERIFIED_TIER)
+    assert "selfhost-e2e" not in json.loads(outputs["jobs"])
+
+
+def test_the_merge_queue_runs_the_selfhost_e2e_once() -> None:
+    smoke = _workflow("selfhost-smoke.yml")["jobs"]["selfhost-e2e-dispatch"]
+    assert smoke["if"] == "github.event_name == 'workflow_dispatch'"
+    assert smoke["uses"] == SELFHOST_E2E_WORKFLOW
+
+
+def test_a_hung_selfhost_e2e_fails_on_its_own_cap_before_the_queue_gives_up() -> None:
+    ci = _workflow("ci.yml")["jobs"]
+    (e2e,) = _workflow("selfhost-e2e.yml")["jobs"].values()
+    waits = sum(ci[job]["timeout-minutes"] for job in ("select-runner", "detect"))
+    assert waits + e2e["timeout-minutes"] < QUEUE_TIMEOUT_MINUTES
 
 
 @pytest.mark.parametrize(

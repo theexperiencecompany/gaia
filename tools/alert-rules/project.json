@@ -13,6 +13,13 @@
         "default",
         "{workspaceRoot}/infra/docker/observability/grafana/provisioning/alerting/**/*",
         "{workspaceRoot}/config/pint.hcl",
+        "{workspaceRoot}/tools/lints/check_alert_metric_contract.py",
+        "{workspaceRoot}/tools/lints/_common.py",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/src/**/*.py",
+        "{workspaceRoot}/libs/shared/ts/src/**/*.ts",
+        "{workspaceRoot}/apps/bots/**/*.ts",
+        "{workspaceRoot}/uv.lock",
         {
           "externalDependencies": []
         }

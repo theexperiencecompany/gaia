@@ -1,0 +1,37 @@
+# gaia-executor-runs-failing: fires when half of the runs fail; quiet when two runs fail, under the three-failure floor.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-executor-runs-failing fires when half of the runs fail
+    interval: 1m
+    input_series:
+      - series: 'executor_run_total{job="arq_worker",status="error",queued="false"}'
+        values: '0+1x60'
+      - series: 'executor_run_total{job="arq_worker",status="success",queued="false"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-executor-runs-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                The work users hand to GAIA (send this, look that up, run this workflow or tracked todo) is ending in an error instead of a result. Read the worker's and the API's executor errors for what the failed runs share: a model provider, the sandbox, a tool, or the Postgres checkpointer.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-executor-runs-failing
+              __dashboardUid__: gaia-latency
+              __panelId__: '12'
+
+  - name: gaia-executor-runs-failing stays quiet when two runs fail, under the three-failure floor
+    interval: 1m
+    input_series:
+      - series: 'executor_run_total{job="arq_worker",status="error",queued="false"}'
+        values: '0x30 2x30'
+      - series: 'executor_run_total{job="arq_worker",status="success",queued="false"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-executor-runs-failing
+        exp_alerts: []

@@ -22,8 +22,10 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from app.api.v1.middleware.auth import get_current_user
+from app.api.v1.middleware.internal_caller_metrics import observe_internal_caller_response
 from app.config.loggers import request_logger
 from app.services.turn_timings import begin_turn_timings
+from app.utils.auth_utils import carries_internal_token
 from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
@@ -139,6 +141,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             request_logger.bind(**context).log("ERROR", "http_request")
             raise
         duration_ms = round((time.time() - start) * 1000, 2)
+        if carries_internal_token(request):
+            observe_internal_caller_response(status_code)
 
         client_ip = (
             request.client.host

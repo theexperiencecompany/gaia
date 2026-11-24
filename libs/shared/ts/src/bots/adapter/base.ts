@@ -64,6 +64,7 @@ import {
   type ReportDeliveryFailure,
 } from "../delivery-failures";
 import type { LinkState } from "../link-codes.types";
+import { BOT_OUTCOME, type BotOutcome, recordInbound } from "../metrics";
 import type {
   AuthStatus,
   BotCommand,
@@ -112,6 +113,11 @@ import { listActiveUntilAnswered } from "./resume-list";
  * code). Past it the message goes on as if the check failed, rather than waiting on the API.
  */
 const LINK_STATE_CHECK_TIMEOUT_MS = 2_000;
+
+/** A refusal the user gets a prompt for is the product working, so only a lost reply counts as failed. */
+function inboundOutcome(reason: BotFailureReason): BotOutcome {
+  return isLostReply(reason) ? BOT_OUTCOME.FAILED : BOT_OUTCOME.OK;
+}
 
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
 export interface OutboundFile {
@@ -576,6 +582,7 @@ export abstract class BaseBotAdapter {
         const command = this.commands.get(name);
         if (!command) {
           wideLog.warning("unknown_command", { command: name });
+          recordInbound(this.platform, BOT_OUTCOME.OK);
           await target.sendEphemeral(`Unknown command: /${name}`);
           return;
         }
@@ -601,6 +608,7 @@ export abstract class BaseBotAdapter {
             duration_ms: Date.now() - startMs,
             success: true,
           });
+          recordInbound(this.platform, BOT_OUTCOME.OK);
         } catch (error) {
           const durationMs = Date.now() - startMs;
           const errorType = error instanceof Error ? error.name : "Unknown";
@@ -608,6 +616,7 @@ export abstract class BaseBotAdapter {
             command: name,
             duration_ms: durationMs,
           });
+          recordInbound(this.platform, inboundOutcome(reason));
           if (isLostReply(reason)) {
             this.reportDeliveryFailure({
               kind: DELIVERY_FAILURE_KIND.REPLY_FAILED,
@@ -777,6 +786,7 @@ export abstract class BaseBotAdapter {
           const reason = recordBotFailure("chat_post_refused", error, {
             context: "chat:post",
           });
+          recordInbound(this.platform, inboundOutcome(reason));
           await this.reportPostRefused(
             reason,
             error,
@@ -790,6 +800,7 @@ export abstract class BaseBotAdapter {
           });
           return;
         }
+        recordInbound(this.platform, BOT_OUTCOME.OK);
         wideLog.set({
           conversation_id: accepted.conversation_id,
           seq: accepted.seq,

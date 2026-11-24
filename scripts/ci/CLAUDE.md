@@ -26,7 +26,7 @@ lane without grepping the workflow first.
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-scope`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan`, `queue-verified` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
-| Shipping to production | `deploy.sh` | `plan`, `stack`, `migrate`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
+| Shipping to production | `deploy.sh` | `plan`, `stack`, `migrate`, `verify`, `smoke`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 | What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
 | The ratchet baselines, which only shrink | `baselines.py` | `growth` |
 
@@ -48,7 +48,10 @@ A backend deploy runs in this order, and each step must succeed before the next:
 as a one-off Swarm job of the image about to roll, with the backend's environment,
 secrets, networks and working directory copied from its live task template, then the
 conversation check (and, only when it finds work, the catch-up with the old writers
-stopped); then `deploy.sh stack` rolls the services; then convergence and `verify-commit`. No API or
+stopped); then `deploy.sh stack` rolls the services; then convergence, `verify-commit`, the
+`:latest` retag, and `deploy.sh smoke`, which reads prod as an anonymous visitor
+(`lib/prod_smoke.py` over `lib/prod-smoke-targets.toml`) and alerts on a failure without
+changing production: rolling back stays a person's call. No API or
 worker of a release ever serves before its migrations finished. The previous release
 keeps serving while the job runs, so a migration that moves a field leaves it reading
 that field's default for those minutes, so a migration that moves a field is
@@ -112,7 +115,11 @@ behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema`, `deploy-templates`, `link-constants` and `openui-prompts`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
-PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
+PyYAML, run through the apps/api environment), `prod_smoke.py` (the anonymous
+post-deploy read of production behind `deploy.sh smoke`: retries, the hard/soft
+classification, the rate-limit burst sized from the API's `ANONYMOUS_VIEWER_PER_MINUTE`;
+its targets are `prod-smoke-targets.toml`, one line each, held to `apps/api/openapi.json`
+by `tests/test_prod_smoke_contract.py`), `seo_audit.py` (the sitemap
 crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run
 audits, the one ignore list of squirrel's own bugs, `drop` for applying a run's fixes, and the per-page, per-check,
 per-item baseline in `baselines/squirrel-build.txt` and `squirrel-live.txt`, read
@@ -147,6 +154,21 @@ record dir | shard.log> [--json]` (`mise mutation:survivors`), never by parsing
 path, writes its record to `verify-logs/mutation/<module>.verdict.json`, and
 prints that view on failure — the local proof step, with no lane and nothing
 to poll.
+
+What the lane mutates has two owners, both measured on #1853 (116
+mutation-driven commits: the 4 real bugs were all decision logic) and approved
+by the founder in that narrow form. Modules: `mutation_matrix.exclusion`, read
+by `plan`, `local` and a `module` run that derives its own scope, skips `app/scripts/migrate_*` and `backfill_*`
+(one-shot data migrations; every other operator script, such as deleting a
+user, stays mutated; `apps/api/scripts/` is outside `app/` and never reached the lane)
+and declarative modules — every top-level statement an import, docstring, enum
+or assignment with no branch, comprehension or lambda (prompt text, constants;
+an enum member is held to the same assignment rule).
+Mutants: `mutation_classify.py` grades a survivor inside a call on the logger
+imported from `shared.py.wide_events` (`log.set`/`set_ns`/`audit` or a level)
+LOGGING, except a `log.set` that writes a field code reads back through
+`log.get()` (`_READ_BACK_FIELDS`, checked against `apps/api/app` and
+`libs/shared/py` by a test) or a `**` splat. Everything else is mutated as before.
 
 Shards are sized by estimated cost, not by module count. The detector stamps
 each module with `mutants`, its count of mutable AST nodes inside functions on

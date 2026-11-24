@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
+import re
 from typing import Any, Literal, TypedDict
 
 from composio import Composio
@@ -28,6 +29,9 @@ from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 ProxyMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
+
+# A Google Calendar id is usually the owner's email, so the path segment is PII.
+_CALENDAR_ID_SEGMENT = re.compile(r"(/calendars/)[^/?#]+")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -47,6 +51,11 @@ class ProxyRequest:
     query: dict[str, Any] | None = None
     headers: dict[str, str] | None = None
     binary_body: dict[str, str] | None = None
+
+    @property
+    def loggable_endpoint(self) -> str:
+        """The endpoint with identifying path segments masked, for logs and diagnostics."""
+        return _CALENDAR_ID_SEGMENT.sub(r"\1{calendar_id}", self.endpoint)
 
 
 class ProxyResponse(TypedDict):
@@ -107,7 +116,7 @@ def _proxy_failure(request: ProxyRequest, error: Exception) -> AppError:
         user_id=request.user_id,
         toolkit=request.toolkit,
         method=request.method,
-        endpoint=request.endpoint,
+        endpoint=request.loggable_endpoint,
         error=str(error),
         error_type=type(error).__name__,
     )
@@ -117,7 +126,7 @@ def _proxy_failure(request: ProxyRequest, error: Exception) -> AppError:
         status_code=502,
         meta={
             "toolkit": request.toolkit,
-            "endpoint": request.endpoint,
+            "endpoint": request.loggable_endpoint,
             "method": request.method,
             "exception": str(error),
         },
@@ -129,7 +138,7 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
     log.set(
         composio_proxy={
             "toolkit": request.toolkit,
-            "endpoint": request.endpoint,
+            "endpoint": request.loggable_endpoint,
             "method": request.method,
             "user_id": request.user_id,
         }
@@ -172,7 +181,7 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
         # the integration needs reconnecting, not the GAIA session. Surface as 403
         # so the web client routes to reconnect instead of a false "sign in again".
         provider = {
-            "endpoint": request.endpoint,
+            "endpoint": request.loggable_endpoint,
             "method": request.method,
             "provider_status": status,
             "provider_response": response.data,

@@ -32,13 +32,19 @@ async def test_renders_share_one_browser_and_leave_no_context_behind() -> None:
     assert first.contexts == []
 
 
+async def _kill_chromium(browser: Browser) -> None:
+    """SIGKILL the Chromium process behind browser, as a crash or an OOM kill does."""
+    cdp = await browser.new_browser_cdp_session()
+    processes = (await cdp.send("SystemInfo.getProcessInfo"))["processInfo"]
+    os.kill(next(p["id"] for p in processes if p["type"] == "browser"), signal.SIGKILL)
+
+
 @pytest.mark.integration
 async def test_a_render_after_chromium_died_launches_a_new_browser() -> None:
     dead = await _render_browser()
     disconnected = asyncio.get_running_loop().create_future()
     dead.once("disconnected", lambda _: disconnected.set_result(None))
-    cdp = await dead.new_browser_cdp_session()
-    await cdp.send("Browser.close")
+    await _kill_chromium(dead)
     await asyncio.wait_for(disconnected, timeout=30)
 
     rendered = await render_html_to_image("<p>after the crash</p>")

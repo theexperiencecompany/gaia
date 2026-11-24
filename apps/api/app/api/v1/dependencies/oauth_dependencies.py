@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
@@ -12,6 +13,7 @@ from app.services.user_timezone import set_user_timezone
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
+    carries_internal_token,
     resolve_dev_bypass_user,
 )
 from app.utils.local_auth_utils import (
@@ -42,26 +44,27 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
         )
 
 
+def _not_authenticated() -> HTTPException:
+    """Build the 401 an anonymous request gets from any route that needs a caller."""
+    log.info(f"{LogTag.OAUTH} No authenticated user found in request state")
+    return HTTPException(
+        status_code=401,
+        detail={
+            "code": NOT_AUTHENTICATED,
+            "message": "Authentication required",
+        },
+    )
+
+
 # NOSONAR justification: FastAPI dispatches a `def` dependency to a threadpool and
 # an `async def` one on the event loop. This reads request.state and nothing else,
 # so `async def` is deliberately the cheaper of the two — and it runs on every
 # authenticated request. Dropping `async` would add a threadpool hop per request.
 async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR python:S7503
-    """Return the authenticated user from request state (set by WorkOSAuthMiddleware).
-
-    Raises:
-        HTTPException: On authentication failure.
-    """
+    """Return the authenticated user from request state (set by WorkOSAuthMiddleware), else 401."""
     user = await get_optional_user(request)
     if user is None:
-        log.info(f"{LogTag.OAUTH} No authenticated user found in request state")
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "code": NOT_AUTHENTICATED,
-                "message": "Authentication required",
-            },
-        )
+        raise _not_authenticated()
     return user
 
 
@@ -108,6 +111,36 @@ async def get_user_id(  # NOSONAR python:S7503
     if not user.user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     return user.user_id
+
+
+@dataclass(frozen=True, slots=True)
+class UserCaller:
+    """A request made by a signed-in user."""
+
+    user_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class InternalWebServerCaller:
+    """A request made by GAIA's own web server, presenting INTERNAL_API_TOKEN, for no user."""
+
+
+Caller = UserCaller | InternalWebServerCaller
+
+
+# NOSONAR justification: same as get_current_user above — reads request state only.
+async def get_user_or_internal_caller(  # NOSONAR python:S7503
+    request: Request,
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+) -> Caller:
+    """Identify the caller as a signed-in user or GAIA's web server; anything else is a 401."""
+    if user is not None:
+        if not user.user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+        return UserCaller(user.user_id)
+    if carries_internal_token(request):
+        return InternalWebServerCaller()
+    raise _not_authenticated()
 
 
 def _ws_unauthenticated(reason: str) -> WebSocketException:

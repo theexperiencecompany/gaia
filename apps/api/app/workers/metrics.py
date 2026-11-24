@@ -22,10 +22,12 @@ from typing import ParamSpec, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
+from app.agents.llm.metrics import LLM_CALL_TOTAL, LLM_FALLBACK_TOTAL, create_llm_series
 from app.services.briefing.metrics import BRIEF_RUN_TOTAL, create_brief_run_series
 from app.services.briefing.scouts.metrics import ALL_SCOUT_COLLECTORS, create_alerted_scout_series
-from app.services.latency_metrics import ALL_COLLECTORS
+from app.services.latency_metrics import ALL_COLLECTORS, create_chat_turn_series
 from app.services.links.metrics import LINK_MINT_TOTAL, create_link_mint_series
+from app.services.scheduler_metrics import ALL_SCHEDULER_COLLECTORS, create_scheduled_task_series
 from app.services.storage.metrics import (
     _FS_OP_BYTES_TOTAL,
     _FS_OP_DURATION_SECONDS,
@@ -66,7 +68,7 @@ for _collector in (
     _FS_OP_LAST_SEEN,
     _FS_OP_IN_FLIGHT,
     _SANDBOX_POOL_SIZE,
-    # Turn/executor/HIL latency: the sweep and re-dispatched runs emit here.
+    # Turn and executor latency: the sweep and re-dispatched runs emit here.
     *ALL_COLLECTORS,
     # Playbook decisions and replays: workflow runs execute on the worker.
     *ALL_PLAYBOOK_COLLECTORS,
@@ -76,6 +78,11 @@ for _collector in (
     *ALL_SCOUT_COLLECTORS,
     # Short-link mints: briefs and workflow results attach links on the worker.
     LINK_MINT_TOTAL,
+    # Model calls and fallbacks: briefs, workflows and the sweep call models on the worker.
+    LLM_CALL_TOTAL,
+    LLM_FALLBACK_TOTAL,
+    # Scheduled task fires, lateness and reaps: the worker claims and reaps them.
+    *ALL_SCHEDULER_COLLECTORS,
 ):
     # Already registered on this registry (re-import under reload).
     with contextlib.suppress(ValueError):
@@ -88,4 +95,7 @@ def start_metrics_server(port: int) -> None:
     create_brief_run_series()
     create_alerted_scout_series()
     create_link_mint_series()
+    create_chat_turn_series()
+    create_llm_series()
+    create_scheduled_task_series()
     start_http_server(port, registry=REGISTRY)

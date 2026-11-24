@@ -1,6 +1,8 @@
 """Run gaia-save from GAIA's side, telling the watching todos once when saves start failing."""
 
-from e2b import AsyncSandbox
+from typing import Protocol
+
+from e2b import CommandResult
 
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
@@ -13,12 +15,23 @@ from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandb
 from shared.py.wide_events import log
 
 
+class _CommandRunner(Protocol):
+    async def run(self, cmd: str, *, timeout: float | None = ...) -> CommandResult: ...
+
+
+class _SaveTarget(Protocol):
+    """The slice of an E2B or local Docker sandbox a save needs; app.services.sandbox imports back."""
+
+    @property
+    def commands(self) -> _CommandRunner: ...
+
+
 def _save_failed_key(user_id: str) -> str:
     """Redis flag: the last save failed and the todos were already told."""
     return f"lab:save_failed:{user_id}"
 
 
-async def save_agents_home(user_id: str, sbx: AsyncSandbox) -> bool:
+async def save_agents_home(user_id: str, sbx: _SaveTarget) -> bool:
     """Run gaia-save; a failure wakes the watching todos once until a save succeeds again.
 
     A home whose setup failed has nothing to save; that setup failure is

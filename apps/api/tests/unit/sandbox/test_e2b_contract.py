@@ -1,7 +1,7 @@
 """Layer 1 — E2B SDK contract guards.
 
 The whole sandbox layer rests on assumptions about the e2b SDK surface:
-the pause method is beta_pause (not pause), connect auto-resumes, files
+pause keeps memory so connect resumes in place, connect auto-resumes, files
 ops raise specific exception types, EntryInfo carries modified_time, etc.
 
 Mocked behavior tests CANNOT catch an SDK upgrade that renames these — they
@@ -22,21 +22,24 @@ import inspect
 from e2b import (
     AsyncSandbox,
     CommandExitException,
+    CommandResult,
     NotFoundException,
+    SandboxInfo,
+    SandboxNotFoundException,
+    SandboxState,
     TimeoutException,
 )
 from e2b.sandbox.filesystem.filesystem import EntryInfo, WriteInfo
+from e2b.sandbox_async.commands.command import Commands
 from e2b.sandbox_async.filesystem.filesystem import Filesystem
 
 
-def test_pause_method_is_beta_pause_not_plain_pause() -> None:
-    # The original prod outage: code called getattr(sbx, "pause") which was
-    # None, silently disabling idle-pause. The method is `beta_pause`.
-    assert hasattr(AsyncSandbox, "beta_pause"), "AsyncSandbox.beta_pause vanished"
-    assert not hasattr(AsyncSandbox, "pause"), (
-        "AsyncSandbox grew a plain `pause` — the lifecycle code uses `beta_pause`; "
-        "reconcile before this silently diverges"
-    )
+def test_pause_is_the_sdk_pause_and_keeps_memory_by_default() -> None:
+    # getattr(sbx, "pause") was None before e2b 2.37 and silently disabled idle-pause.
+    # The lifecycle calls pause() bare and needs the memory snapshot for in-place resume.
+    assert callable(getattr(AsyncSandbox, "pause", None)), "AsyncSandbox.pause vanished"
+    keep_memory = inspect.signature(AsyncSandbox.pause).parameters["keep_memory"]
+    assert keep_memory.default is True, "pause() stopped keeping memory by default"
 
 
 def test_resume_does_not_exist_connect_is_the_resume_path() -> None:
@@ -55,7 +58,7 @@ def test_connect_accepts_timeout_kwarg() -> None:
 
 
 def test_lifecycle_surface_present() -> None:
-    for method in ("is_running", "connect", "set_timeout", "kill", "beta_pause"):
+    for method in ("is_running", "connect", "set_timeout", "kill", "pause"):
         assert hasattr(AsyncSandbox, method), f"AsyncSandbox.{method} missing"
 
 
@@ -66,8 +69,8 @@ def test_is_running_accepts_request_timeout() -> None:
 
 
 def test_filesystem_surface_present() -> None:
-    # read/write/rename/make_dir/get_info back the native-files migration.
-    for method in ("read", "write", "rename", "make_dir", "get_info", "watch_dir"):
+    # read/write/rename/make_dir/get_info back the native-files migration; remove drops a temp.
+    for method in ("read", "write", "rename", "remove", "make_dir", "get_info"):
         assert hasattr(Filesystem, method), f"Filesystem.{method} missing"
 
 
@@ -103,3 +106,34 @@ def test_exception_types_importable() -> None:
     assert issubclass(NotFoundException, Exception)
     assert issubclass(TimeoutException, Exception)
     assert issubclass(CommandExitException, Exception)
+
+
+def test_create_accepts_the_kwargs_create_fresh_sandbox_passes() -> None:
+    params = inspect.signature(AsyncSandbox.create).parameters
+    assert {"template", "timeout", "metadata"} <= set(params), params
+    # api_key rides in **opts (ApiParams); losing it would fall back to the env var.
+    assert any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+def test_commands_run_accepts_every_kwarg_our_callers_pass() -> None:
+    # bash foreground streams through on_stdout/on_stderr; mount.sh runs as root with envs.
+    params = inspect.signature(Commands.run).parameters
+    wanted = {"background", "envs", "user", "cwd", "on_stdout", "on_stderr", "timeout"}
+    assert wanted <= set(params), wanted - set(params)
+
+
+def test_command_result_carries_exit_code_and_both_streams() -> None:
+    fields = {f.name for f in dataclasses.fields(CommandResult)}
+    assert {"exit_code", "stdout", "stderr"} <= fields, fields
+
+
+def test_a_missing_sandbox_is_a_not_found_exception() -> None:
+    # _liveness reads NotFoundException as gone; get_info raises the sandbox subclass on a 404.
+    assert issubclass(SandboxNotFoundException, NotFoundException)
+
+
+def test_sandbox_info_exposes_the_state_and_end_at_the_lifecycle_reads() -> None:
+    # _liveness compares state to PAUSED; keep-warm renews off end_at.
+    fields = {f.name for f in dataclasses.fields(SandboxInfo)}
+    assert {"state", "end_at", "sandbox_id"} <= fields, fields
+    assert SandboxState.PAUSED.value == "paused"

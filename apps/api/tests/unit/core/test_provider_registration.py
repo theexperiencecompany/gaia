@@ -22,14 +22,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core import provider_registration
 from app.core.lazy_loader import providers
-from app.core.provider_registration import unified_startup
+from app.core.provider_registration import unified_shutdown, unified_startup
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import StartupService
 from app.services.todos.desk_mail_buckets import desk_bucketed_views
 from app.utils.concurrency import reset_captured_loop
 from app.utils.errors import UnmigratedConversationError
+from tests.helpers import captured_wide_event
 
 _MOD = "app.core.provider_registration"
 
@@ -223,3 +225,58 @@ async def test_a_conversation_still_in_the_old_shape_stops_the_boot_before_anyth
         await unified_startup(context)
 
     auto_init_spy.assert_not_awaited()
+
+
+_BASE_CLOSERS = (
+    "close_postgresql_async",
+    "close_reminder_scheduler",
+    "close_workflow_scheduler",
+    "close_checkpointer_manager",
+    "close_mcp_client_pool",
+    "close_langfuse",
+    "close_publisher_async",
+)
+_WEBSOCKET_CLOSER = "close_websocket_async"
+
+
+@pytest.fixture
+def closers() -> Iterator[dict[str, AsyncMock]]:
+    with ExitStack() as stack:
+        # earlier startup tests leave their stubbed warmup tasks registered
+        stack.enter_context(patch(f"{_MOD}._background_tasks", []))
+        yield {
+            name: stack.enter_context(patch(f"{_MOD}.{name}", new_callable=AsyncMock))
+            for name in (*_BASE_CLOSERS, _WEBSOCKET_CLOSER)
+        }
+
+
+class TestShutdownClosesWhatItsContextOpened:
+    @pytest.mark.parametrize(("context", "websocket_closes"), [("arq_worker", 0), ("main_app", 1)])
+    async def test_every_service_of_the_context_is_closed_once(
+        self,
+        closers: dict[str, AsyncMock],
+        context: Literal["main_app", "arq_worker"],
+        websocket_closes: int,
+    ) -> None:
+        await unified_shutdown(context)
+
+        closed = {name: closer.await_count for name, closer in closers.items()}
+        assert closed == {**dict.fromkeys(_BASE_CLOSERS, 1), _WEBSOCKET_CLOSER: websocket_closes}
+
+    async def test_a_closer_that_fails_is_named_and_the_rest_still_close(
+        self, closers: dict[str, AsyncMock]
+    ) -> None:
+        closers["close_langfuse"].side_effect = RuntimeError("export failed")
+
+        async with captured_wide_event() as event:
+            await unified_shutdown("arq_worker")
+
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.STARTUP} Error during service shutdown",
+                "context": "arq_worker",
+                "service_name": "langfuse",
+                "error_type": "RuntimeError",
+            }
+        ]
+        assert closers["close_publisher_async"].await_count == 1

@@ -6,12 +6,21 @@ handling, and request/response size capture.
 
 from unittest.mock import MagicMock, patch
 
+from prometheus_client import REGISTRY
+import pytest
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware.internal_caller_metrics import (
+    INTERNAL_CALLER_REFUSED_TOTAL,
+    create_internal_caller_series,
+)
 from app.api.v1.middleware.logging import LoggingMiddleware
+from app.config.settings import settings
+from app.constants.http import INTERNAL_CALLER_HEADER
 from app.models.user_models import AuthenticatedUser
 from app.services.turn_timings import close_ingress
 from shared.py.wide_events import log as wide_log
+from tests.helpers import series_labels
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,6 +77,10 @@ def _build_test_app(skip_paths: frozenset | None = None):
     async def accept_route():
         ingress = close_ingress()
         return {"ingress": None if ingress is None else sorted(ingress)}
+
+    @app.get("/api/v1/refused")
+    async def refused_route():
+        return JSONResponse(content={"detail": "no"}, status_code=401)
 
     app.add_middleware(LoggingMiddleware)
     return app
@@ -255,3 +268,52 @@ class TestLoggingMiddlewareTurnTimings:
         with patch("app.api.v1.middleware.logging.request_logger"):
             resp = TestClient(_build_test_app()).post("/api/v1/accept")
         assert resp.json() == {"ingress": ["other"]}
+
+
+def _refused(reason: str) -> float:
+    return (
+        REGISTRY.get_sample_value("gaia_internal_caller_refused_total", {"reason": reason}) or 0.0
+    )
+
+
+class TestLoggingMiddlewareInternalCaller:
+    """A refusal of GAIA's own web server is counted; anyone else's 401 is not."""
+
+    @pytest.fixture(autouse=True)
+    def _internal_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", "token-for-tests")
+        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN_PREVIOUS", None)
+
+    def test_a_401_for_the_web_server_is_counted(self) -> None:
+        before = _refused("unauthorized")
+        with patch("app.api.v1.middleware.logging.request_logger"):
+            TestClient(_build_test_app()).get(
+                "/api/v1/refused", headers={INTERNAL_CALLER_HEADER: "token-for-tests"}
+            )
+        assert _refused("unauthorized") == before + 1
+
+    def test_a_401_for_anyone_else_is_not_counted(self) -> None:
+        before = _refused("unauthorized")
+        with patch("app.api.v1.middleware.logging.request_logger"):
+            client = TestClient(_build_test_app())
+            client.get("/api/v1/refused")
+            client.get("/api/v1/refused", headers={INTERNAL_CALLER_HEADER: "wrong"})
+        assert _refused("unauthorized") == before
+
+    def test_a_served_request_from_the_web_server_is_not_counted(self) -> None:
+        before = _refused("unauthorized")
+        with patch("app.api.v1.middleware.logging.request_logger"):
+            TestClient(_build_test_app()).get(
+                "/api/v1/test", headers={INTERNAL_CALLER_HEADER: "token-for-tests"}
+            )
+        assert _refused("unauthorized") == before
+
+    def test_every_refusal_series_exists_before_the_first_refusal(self) -> None:
+        INTERNAL_CALLER_REFUSED_TOTAL.clear()
+
+        create_internal_caller_series()
+
+        assert series_labels("gaia_internal_caller_refused_total") == {
+            ("unauthorized",),
+            ("forbidden",),
+        }

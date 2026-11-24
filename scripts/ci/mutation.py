@@ -87,6 +87,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 API_ROOT = REPO_ROOT / "apps" / "api"
 LIB = SCRIPT_DIR / "lib"
+# What lib/mutation_matrix.py --scope prints for a module exclusion() leaves out.
+EXCLUDED_SCOPE = "excluded"
 
 # Shards that run at once: the workflow's max-parallel and runner.py's
 # MUTATION_WAVE. More shards than that queue behind it.
@@ -324,6 +326,10 @@ class Outcome:
 
 class UsageError(Exception):
     """A `module` invocation that cannot run; exits 2."""
+
+
+class ExcludedModule(Exception):
+    """A `module` invocation on a module the lane leaves out; exits 0 without mutating."""
 
 
 def _compact(value: object) -> str:
@@ -1029,6 +1035,8 @@ class ModuleRequest:
                 # The detector has already said why on stderr.
                 raise SystemExit(1)
             ranges = scope.stdout.strip()
+            if ranges == EXCLUDED_SCOPE:
+                raise ExcludedModule(module)
         if ranges in ("", "[]"):
             raise UsageError(
                 f"mutation: empty line scope for {module} — refusing to run.\n"
@@ -1113,8 +1121,9 @@ def configure_mutmut(request: ModuleRequest, workdir: Path) -> None:
         f"'addopts={PLUGIN_FENCE} --timeout={MUTANT_TEST_TIMEOUT}']\n"
     )
     pyproject = workdir / "pyproject.toml"
-    text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, pyproject.read_text())
-    pyproject.write_text(text)
+    # The only [tool.mutmut] there is: written here, never read from the checkout.
+    text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", "", pyproject.read_text())
+    pyproject.write_text(f"{text.rstrip()}\n\n{replacement}")
 
 
 def mutmut_cap_seconds() -> int:
@@ -1550,7 +1559,7 @@ def _notes(classified: list[tuple[str, str]], uncovered_changed: list[str], no_t
         ("EQUIV", "provably equivalent mutant(s) (see scripts/test/mutation_classify.py):"),
         (
             "LOGGING",
-            "mutant(s) excluded as logging-only (log.debug/log.info never reach the wide event):",
+            "mutant(s) excluded as logging-only (inside a wide-event log call):",
         ),
         ("LINTED", "mutant(s) excluded as lint-caught (the tool-dump-boundary lint, #917):"),
     ):
@@ -1610,6 +1619,8 @@ def cmd_module(args: list[str]) -> int:
     record_dir = os.environ.get("MUTATION_VERDICT_DIR")
     try:
         request = ModuleRequest.from_args(args)
+    except ExcludedModule:
+        return 0
     except UsageError as exc:
         _say(str(exc))
         module = args[0].removeprefix("apps/api/") if args else ""

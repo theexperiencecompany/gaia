@@ -6,7 +6,7 @@ start line is outside the set, and ``mutmut._covered_lines`` is the global
 mutmut fills in for its own ``mutate_only_covered_lines`` feature. This module
 fills that global from the diff instead of from a coverage pass, which is the
 same filter without the extra full-suite run (that feature stays off — see
-``[tool.mutmut]`` in apps/api/pyproject.toml).
+configure_mutmut in scripts/ci/mutation.py).
 
 It replaces stamping ``# pragma: no mutate`` onto every unchanged source line,
 which only ever half-worked: mutmut resolves a trailing pragma to the START line

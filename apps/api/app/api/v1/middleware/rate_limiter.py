@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 import ipaddress
 import math
-import secrets
 import time
 
 from fastapi import FastAPI
@@ -33,7 +32,6 @@ from starlette.types import Scope
 
 from app.config.settings import settings
 from app.constants.http import (
-    INTERNAL_CALLER_HEADER,
     RATE_LIMIT_EXCEEDED_CODE,
     RETRY_AFTER_HEADER,
     VIEWER_IP_HEADER,
@@ -46,6 +44,7 @@ from app.constants.request_limits import (
 from app.db.redis import redis_cache
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import ErrorEnvelope, error_response
+from app.utils.auth_utils import carries_internal_token
 from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log
 
@@ -74,17 +73,6 @@ class BucketCharge:
 
     bucket: RequestBucket
     key: str
-
-
-def carries_internal_token(request: Request) -> bool:
-    """Whether the request presents INTERNAL_API_TOKEN, or the one being rotated out (constant-time)."""
-    presented = request.headers.get(INTERNAL_CALLER_HEADER)
-    if presented is None:
-        return False
-    accepted = (settings.INTERNAL_API_TOKEN, settings.INTERNAL_API_TOKEN_PREVIOUS)
-    # Every accepted value is compared, so the time taken says nothing about which matched.
-    matches = [secrets.compare_digest(presented.encode(), t.encode()) for t in accepted if t]
-    return any(matches)
 
 
 def _named_viewer(request: Request) -> str | None:

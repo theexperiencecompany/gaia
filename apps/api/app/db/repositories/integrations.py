@@ -170,8 +170,10 @@ class IntegrationsRepository(CachedMongoRepository[Integration, IntegrationUpdat
         """Integrations for the given ids, any source/visibility (workspace hydration).
 
         Lenient: a single corrupt legacy document is skipped and logged rather than
-        blanking a user's whole integration list."""
-        return await self._find_lenient({"integration_id": {"$in": integration_ids}})
+        blanking a user's whole integration list. A tools-only stub is not an integration."""
+        return await self._find_lenient(
+            {"integration_id": {"$in": integration_ids}, **_FULL_DOCUMENT_FILTER}
+        )
 
     async def heal_top_level_auth(
         self, integration_id: str, requires_auth: bool, auth_type: str

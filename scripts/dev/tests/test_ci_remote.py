@@ -533,6 +533,48 @@ def test_ci_watch_master_stops_at_a_red_lane_of_its_push_run(
     assert fake.check_polls == 2
 
 
+def test_ci_watch_master_waits_through_a_failed_deploy_to_its_rollback(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Once master's gate passed, a red deploy job is followed by its rollback in the same run.
+
+    Stopping at the red deploy hid whether the rollback brought prod back.
+    """
+    gate = REQUIRED_GREEN[0]
+    deploy = dict(
+        PASSED_CHECK,
+        name="trigger-build / trigger-deploy / deploy",
+        html_url="https://github.com/o/r/actions/runs/99/job/1400",
+    )
+    deploy_red = dict(deploy, conclusion="failure")
+    deploy_running = dict(deploy, status="in_progress", conclusion=None)
+    rollback = dict(
+        PASSED_CHECK,
+        name="trigger-build / trigger-deploy / rollback",
+        html_url="https://github.com/o/r/actions/runs/99/job/1401",
+    )
+    rollback_running = dict(rollback, status="in_progress", conclusion=None)
+    running = [ci_run(99, "in_progress")]
+    fake = SequencedGh(
+        [
+            [gate, deploy_running],
+            [gate, deploy_red, rollback_running],
+            [gate, deploy_red, rollback],
+        ],
+        run_polls=[running, running, [CI_RUN]],
+        job_log="",
+    )
+    fake.branch_prs = []
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack", "master"]) == 1
+
+    assert fake.check_polls == 3, "stopped at the red deploy before its rollback finished"
+    out = capsys.readouterr().out
+    assert "the gate passed, so this is the deploy" in out
+    assert "trigger-build / trigger-deploy / deploy" in out
+
+
 def test_a_branch_no_workflow_runs_on_needs_no_required_check(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1802,6 +1844,53 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
     assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 1
     assert fake.check_polls == 3
     assert "stopping at the first failure" not in capsys.readouterr().out
+
+
+class MasterMovesGh(SequencedGh):
+    """Master's head moves to a green commit once the watch has read the first one."""
+
+    NEXT_HEAD = "b0b"
+
+    def respond(self, req: Request) -> Reply:
+        if f"/commits/{self.NEXT_HEAD}/check-runs" in req.path:
+            return Reply(body={"check_runs": [*REQUIRED_GREEN, PASSED_CHECK]})
+        if req.path.endswith("/actions/runs") and self.NEXT_HEAD in str(req.query):
+            return Reply(body={"workflow_runs": [CI_RUN]})
+        reply = super().respond(req)
+        if req.path.endswith("/check-runs"):
+            self.branch_heads["master"] = self.NEXT_HEAD
+        return reply
+
+
+def test_ci_watch_master_returns_its_failed_deploy_after_master_moves_on(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A later green master commit must not replace the failed deploy the watch is waiting out."""
+    gate = REQUIRED_GREEN[0]
+    deploy_red = dict(
+        PASSED_CHECK,
+        name="trigger-build / trigger-deploy / deploy",
+        conclusion="failure",
+        html_url="https://github.com/o/r/actions/runs/99/job/1400",
+    )
+    rollback = dict(
+        PASSED_CHECK,
+        name="trigger-build / trigger-deploy / rollback",
+        html_url="https://github.com/o/r/actions/runs/99/job/1401",
+    )
+    rollback_running = dict(rollback, status="in_progress", conclusion=None)
+    fake = MasterMovesGh(
+        [[gate, deploy_red, rollback_running], [gate, deploy_red, rollback]],
+        run_polls=[[ci_run(99, "in_progress")], [CI_RUN]],
+        job_log="",
+    )
+    fake.branch_prs = []
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack", "master"]) == 1
+
+    assert "/repos/o/r/commits/b0b/check-runs" not in fake.calls
+    assert "trigger-build / trigger-deploy / deploy" in capsys.readouterr().out
 
 
 def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(

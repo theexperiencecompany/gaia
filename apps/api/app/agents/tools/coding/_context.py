@@ -15,8 +15,6 @@ from datetime import UTC
 import posixpath
 import time
 
-from e2b import AsyncSandbox
-
 from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
     MountRole,
@@ -31,6 +29,7 @@ from app.models.agent_models import (
     get_session_id,
     get_user_id,
 )
+from app.services.sandbox import CodingSandbox
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
@@ -80,7 +79,7 @@ def sh_quote(s: str) -> str:
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
+async def atomic_write(sbx: CodingSandbox, abs_path: str, data: bytes) -> float:
     """Write bytes into the sandbox atomically; return the file's mtime (epoch s).
 
     Writes to a temp path then `rename`s into place — atomic on the same FS, so a

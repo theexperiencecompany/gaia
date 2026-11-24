@@ -1,0 +1,40 @@
+# gaia-storage-ops-failing: fires when half of one operation's calls fail, for that operation only; quiet when one call in twenty fails.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-storage-ops-failing fires when half of one operation's calls fail, for that operation only
+    interval: 1m
+    input_series:
+      - series: 'fs_op_total{job="gaia-api",operation="sbx_acquire",mode="pool",status="error"}'
+        values: '0+1x60'
+      - series: 'fs_op_total{job="gaia-api",operation="sbx_acquire",mode="pool",status="ok"}'
+        values: '0+1x60'
+      - series: 'fs_op_total{job="gaia-api",operation="tool_bash",mode="none",status="ok"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-storage-ops-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+              operation: sbx_acquire
+            exp_annotations:
+              description: >-
+                The agent's sandbox and file storage are failing, so code execution, file reads and writes, uploads and artifacts break for every user. The operation says where: sbx_ operations are the sandbox provider, mount and sync operations are JuiceFS and its metadata Redis. The fs field of the API and worker wide events carries last_error_type per operation.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-storage-ops-failing
+              __dashboardUid__: fs-ops
+              __panelId__: '8'
+
+  - name: gaia-storage-ops-failing stays quiet when one call in twenty fails
+    interval: 1m
+    input_series:
+      - series: 'fs_op_total{job="gaia-api",operation="sbx_acquire",mode="pool",status="error"}'
+        values: '0+1x60'
+      - series: 'fs_op_total{job="gaia-api",operation="sbx_acquire",mode="pool",status="ok"}'
+        values: '0+19x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-storage-ops-failing
+        exp_alerts: []

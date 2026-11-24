@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Iterator, Mapping
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,6 +19,7 @@ from app.agents.tools.coding._artifacts import (
 from app.agents.tools.coding._context import sh_quote
 from app.agents.workspace.paths import MountRole, detect_content_type, session_artifacts
 from app.config.settings import settings
+from app.constants.sandbox import ARTIFACT_ENUMERATE_TIMEOUT_SECONDS
 from app.models.short_link_models import ShortLink, ShortLinkTargetType, WorkspaceFileTarget
 from app.services.artifact_events import ArtifactFileEvent
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
@@ -162,10 +163,10 @@ def test_no_links_means_no_note() -> None:
     assert artifact_links_note({}) == ""
 
 
-def _sandbox(stdout: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        commands=SimpleNamespace(run=AsyncMock(return_value=SimpleNamespace(stdout=stdout)))
-    )
+def _sandbox(stdout: str) -> MagicMock:
+    sandbox = MagicMock()
+    sandbox.commands.run = AsyncMock(return_value=SimpleNamespace(stdout=stdout))
+    return sandbox
 
 
 async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
@@ -176,6 +177,8 @@ async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
 
     sandbox.commands.run.assert_awaited_once()
     (command,) = sandbox.commands.run.await_args.args
+    # Unbounded, a find on a wedged mount holds the tool past the command it followed.
+    assert sandbox.commands.run.await_args.kwargs == {"timeout": ARTIFACT_ENUMERATE_TIMEOUT_SECONDS}
     assert command.startswith(f"find {sh_quote(session_artifacts('c1'))} -type f ")
     # The trailing record is cut short (no mtime), so only the complete one is carded.
     assert [card["artifact_data"] for card in written] == [
