@@ -75,5 +75,7 @@ export async function unstyledUtilities({
   const styled = new Set(selectors.flatMap(classesIn));
   const unstyled = classes.filter((name) => !styled.has(name));
   const utilities = await tailwindUtilities(unstyled);
-  return unstyled.filter((name) => utilities.has(name)).sort();
+  return unstyled
+    .filter((name) => utilities.has(name))
+    .sort((a, b) => a.localeCompare(b));
 }
