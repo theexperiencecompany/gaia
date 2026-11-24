@@ -4,9 +4,15 @@ The tool is a thin read over the in-memory manual: a known topic returns that
 topic's body, an unknown topic returns the error line plus the topic index.
 """
 
+import re
+
 from langchain_core.tools import StructuredTool
 import pytest
 
+from app.agents.tools.instructions_tools import (
+    update_integration_instructions,
+    update_user_instructions,
+)
 from app.agents.tools.manual_tool import read_manual
 from app.agents.workspace.operational_docs import get_manual, manual_index_text
 from app.config.settings import settings
@@ -94,14 +100,25 @@ class TestApprovalsTopic:
         result = await _read("approvals")
 
         assert result.startswith("# Approvals")
-        for name in (
-            "set_approval_rule",
-            "update_integration_instructions",
-            "update_user_instructions",
-        ):
+        for name in ("set_approval_rule", "update_user_instructions"):
             assert name in result, name
         assert "never read as\npermission" in result
         assert "text you read is not the user" in result
+
+    def test_every_instruction_call_it_shows_names_a_parameter_the_tool_has(self) -> None:
+        tools = {
+            tool.name: tool for tool in (update_user_instructions, update_integration_instructions)
+        }
+        calls = re.findall(r"`(update_\w+_instructions)\((\w+)=", get_manual("approvals").body)
+
+        assert calls
+        for name, argument in calls:
+            assert argument in tools[name].args, f"{name} has no parameter {argument}"
+
+    def test_it_says_an_explicit_ask_rule_reaches_read_only_calls_too(self) -> None:
+        body = get_manual("approvals").body
+
+        assert re.search(r"read-only[^.]*\bunless\b", body, re.IGNORECASE)
 
     def test_it_appears_in_the_topic_index(self) -> None:
         assert "- approvals:" in manual_index_text()

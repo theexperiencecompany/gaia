@@ -23,6 +23,7 @@ import pytest
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILMode, HILPreferences
 from app.services.hil.policy import (
+    asks_every_time,
     gated_tool_key,
     gated_tool_object,
     is_gated,
@@ -308,6 +309,24 @@ class TestAlwaysGate:
             assert (
                 await resolve_policy(make_request(), USER_ID, "update_user_instructions") == "ask"
             )
+
+
+class TestAsksEveryTime:
+    """A pure answer from the call's name and args: callers read it directly, nothing to await."""
+
+    @pytest.mark.parametrize(
+        ("tool_name", "args", "asks"),
+        [
+            ("update_preferences", None, True),
+            ("manage_linked_account", {"action": "disconnect"}, True),
+            ("manage_linked_account", {"action": "generate_link"}, False),
+            ("web_search", {"query": "x"}, False),
+        ],
+    )
+    def test_a_call_asks_in_every_mode_only_when_its_name_or_args_say_so(
+        self, tool_name: str, args: dict[str, object] | None, asks: bool
+    ) -> None:
+        assert asks_every_time(tool_name, args) is asks
 
 
 class TestArgumentGate:

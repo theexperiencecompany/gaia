@@ -99,7 +99,13 @@ from app.utils.errors import ConversationNotFoundError
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.context import analytics_context
 from shared.py.conversation_wire import ToolDataEntry
-from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
+from shared.py.wide_events import (
+    WorkflowContext,
+    current_workflow_execution_id,
+    get_trace_id,
+    log,
+    wide_task,
+)
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
 #: exactly the runs a turn handed off, not every background task in the process.
@@ -688,10 +694,13 @@ async def _prepare_executor_run(
         "thread_id": conversation_id,
         "execution_mode": "interactive",
     }
+    # The run's owner as build_run_item records it: a wake from inside a workflow carries no
+    # id, yet the run is the workflow's, and a workflow's run never borrows the chat's words.
+    workflow_execution_id = workflow_execution_id or current_workflow_execution_id()
     if workflow_execution_id is None:
-        log = runtime_ports().log
-        head = (await log.state(conversation_id, user.user_id)).head
-        before = await turns_before(log, conversation_id, user.user_id, head + 1)
+        conversation_log = runtime_ports().log
+        head = (await conversation_log.state(conversation_id, user.user_id)).head
+        before = await turns_before(conversation_log, conversation_id, user.user_id, head + 1)
         configurable["user_messages"] = recent_user_messages(before, [])
         configurable["assistant_turns"] = recent_assistant_replies(before)
     # Equivalent under mutation: prepare_run_from_item claims the conversation it is

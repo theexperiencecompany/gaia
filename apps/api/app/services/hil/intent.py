@@ -152,18 +152,20 @@ def history_line(history: AutoHistory, tool_name: str) -> str:
 class AssistantTurns:
     """The assistant's recent words: context for a shorthand, never authorization.
 
-    shown are the replies the user saw before their turn, the only ones that may
-    ground a pick from a listed result. run are this run's own messages, unseen.
+    shown are the replies the user saw before their turn, the only ones a confirmation or
+    a pick from a listed result may rest on. run are this run's own messages, unseen.
     """
 
     shown: tuple[str, ...] = ()
     run: tuple[str, ...] = ()
 
-    def context(self) -> list[str]:
-        """Return what the user saw first; this run's own messages fill only what is left."""
-        kept = list(self.shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
-        room = HIL_JUDGE_MAX_ASSISTANT_TURNS - len(kept)
-        return [*kept, *self.run[-room:]] if room else kept
+    def recent_shown(self) -> list[str]:
+        """Return the latest replies the user saw, oldest first."""
+        return list(self.shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
+
+    def recent_run(self) -> list[str]:
+        """Return the run's latest own messages, oldest first."""
+        return list(self.run[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
 
 
 class IntentJudge(Protocol):
@@ -322,7 +324,7 @@ def ungrounded_targets(
     return [
         target
         for target in _target_values(args)
-        if not any(_normalize(target) in source for source in sources)
+        if not any(_mentions(source, _normalize(target)) for source in sources)
         and _normalize(target) not in normalized_known
         and _local_part(target) not in user_tokens
         and not _listed_entry_pointed_at(target, prior_calls, pointed_at)
@@ -337,7 +339,7 @@ def _listed_entry_pointed_at(target: str, prior_calls: list[PriorCall], context:
     text = _normalize(" ".join(context))
     tokens = set(text.split())
     return any(
-        _normalize(address) in text or _local_part(address) in tokens
+        _mentions(text, _normalize(address)) or _local_part(address) in tokens
         for call in prior_calls
         for entry in _entries_holding(call.output, target)
         for address in _ADDRESS.findall(entry)
@@ -355,12 +357,15 @@ def _entries_holding(output: str, target: str) -> list[str]:
 
 
 def _own_fields(record: dict[str, object]) -> str:
-    """Render a record's own scalar fields; a nested record is a different entry.
+    """Render a record's own scalar fields, free text apart; a nested record is a different entry.
 
-    A draft to bob@x.com quoting a mail from simonne@x.com is Bob's draft, not Simonne's.
+    A draft to bob@x.com quoting a mail from simonne@x.com, as a nested record or in its
+    body, is Bob's draft, not Simonne's.
     """
     values: list[object] = []
-    for value in record.values():
+    for key, value in record.items():
+        if str(key).lower() in _PROSE_FIELDS:
+            continue
         if isinstance(value, list):
             values += [item for item in value if not isinstance(item, (dict, list))]
         elif not isinstance(value, dict):
@@ -446,3 +451,11 @@ def _target_string(value: str) -> str | None:
 
 def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _mentions(source: str, phrase: str) -> bool:
+    """Whether normalized source holds the normalized phrase as whole words.
+
+    "ann x com" is not in "joann x com": an address the user named never grounds one it ends.
+    """
+    return f" {phrase} " in f" {source} "

@@ -1,7 +1,8 @@
 """The user's approval rules, set from chat: when one tool or a whole integration asks.
 
-Writes the same per-tool overrides the settings page does, one per tool, storing only
-what differs from the tool's default, so the page shows exactly what was said.
+Writes the same per-tool overrides the settings page does, one per tool. An explicit ask
+is always stored, since it outranks the mode; a "don't ask" is stored only where the tool
+would otherwise ask, so the page shows exactly what was said.
 """
 
 from app.agents.tools.core.registry import get_tool_registry
@@ -36,11 +37,18 @@ async def set_approval_rule(
 
 
 def _override(rule: ApprovalRule, *, destructive: bool | None) -> bool | None:
-    """Return the override to store: None when the rule matches the tool's own default."""
-    if rule is ApprovalRule.DEFAULT:
-        return None
-    ask = rule is ApprovalRule.ASK
-    return None if ask == destructive else ask
+    """Return the override to store; None clears it.
+
+    ASK is never cleared, even on a tool that asks by default: with no override stored,
+    always_allow runs it and auto lets the judge run it.
+    """
+    match rule:
+        case ApprovalRule.ASK:
+            return True
+        case ApprovalRule.DONT_ASK:
+            return None if destructive is False else False
+        case ApprovalRule.DEFAULT:
+            return None
 
 
 async def _integration_targets(integration: str) -> list[tuple[str, bool | None]]:

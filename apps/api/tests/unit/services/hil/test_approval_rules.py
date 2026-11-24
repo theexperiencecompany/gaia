@@ -50,14 +50,17 @@ class TestAWholeIntegration:
         ]
         assert "notion" in reply and "2" in reply
 
-    async def test_ask_makes_every_tool_ask(self) -> None:
+    async def test_ask_stores_an_explicit_rule_for_every_tool_even_one_that_asks_by_default(
+        self,
+    ) -> None:
+        """A stored ask outranks the mode; clearing it would let always_allow run the tool."""
         listed, written = _seams()
         with listed, written as override:
             await approval_rules.set_approval_rule(
                 USER, rule=hil_constants.ApprovalRule.ASK, integration="notion"
             )
         assert override.await_args_list == [
-            call(USER, "NOTION_CREATE_PAGE", None),
+            call(USER, "NOTION_CREATE_PAGE", True),
             call(USER, "NOTION_SEARCH", True),
         ]
 
@@ -94,6 +97,20 @@ class TestOneTool:
                 USER, rule=hil_constants.ApprovalRule.DONT_ASK, tool="GMAIL_SEND_EMAIL"
             )
         override.assert_awaited_once_with(USER, "GMAIL_SEND_EMAIL", False)
+
+    async def test_ask_on_a_tool_that_asks_by_default_still_stores_the_rule(self) -> None:
+        meta = SimpleNamespace(
+            name="GMAIL_SEND_EMAIL", tool=SimpleNamespace(metadata={}), destructive=True
+        )
+        registry = SimpleNamespace(get_tool_meta=lambda name: meta)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
+        ):
+            await approval_rules.set_approval_rule(
+                USER, rule=hil_constants.ApprovalRule.ASK, tool="GMAIL_SEND_EMAIL"
+            )
+        override.assert_awaited_once_with(USER, "GMAIL_SEND_EMAIL", True)
 
     async def test_an_unknown_tool_writes_nothing(self) -> None:
         registry = SimpleNamespace(get_tool_meta=lambda name: None)

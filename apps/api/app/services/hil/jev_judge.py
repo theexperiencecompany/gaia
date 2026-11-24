@@ -67,9 +67,9 @@ def map_jev_choice(choice: str, confidence: float, *, accept_line: float) -> Aut
 
 #: Forbid tripwire on the accept path: crisp prohibitions, not moods.
 #: Temporary boundaries ask on merits; these claim the act itself is off limits.
-#: Bare "no" absent — "no, send it" lifts, not forbids.
+#: Bare "no" absent — "no, send it" lifts, not forbids; so is "never mind".
 _FORBID_PATTERNS = (
-    r"\bnever\b",
+    r"\bnever\b(?!\s+mind\b)",
     r"\bdon'?t\b",
     r"\bdo not\b",
     r"\bdoesn'?t\b",
@@ -85,18 +85,22 @@ _FORBID_PATTERNS = (
     r"\bdon'?t touch\b",
 )
 
-#: Later-turn language that lifts a forbid. Searched only AFTER the forbid turn.
-_LIFT_PATTERNS = (
-    r"\bactually\b",
-    r"\bgo ahead\b",
-    r"\bnever mind\b",
-    r"\bnevermind\b",
-    r"\byes do it\b",
-    r"\bdo it now\b",
-    r"\boverride\b",
-    r"\bignore (that|my last|the last)\b",
-    r"\bchange of plans\b",
-    r"\bon second thought\b",
+#: A later turn lifts a forbid only when it opens with the lift ("actually, go ahead and
+#: send"), so a lift word inside another request ("actually, can you also summarize it")
+#: lifts nothing. Searched only AFTER the forbid turn.
+_LIFT_OPENING = r"^\W*((actually|ok(ay)?|yes|yeah)\W+)*"
+_LIFT_PATTERNS = tuple(
+    f"{_LIFT_OPENING}{phrase}\\b"
+    for phrase in (
+        r"go ahead",
+        r"never ?mind",
+        r"do it( now)?",
+        r"proceed",
+        r"override",
+        r"ignore (that|my last|the last)",
+        r"change of plans",
+        r"on second thought",
+    )
 )
 
 #: A hold the user put on acting at all. Not a forbid (an authorized call is still
@@ -104,6 +108,8 @@ _LIFT_PATTERNS = (
 _HOLD_PATTERNS = (
     r"\bnot yet\b",
     r"\bhold off\b",
+    r"\bhold on\b",
+    r"\bwait before\b",
     r"\bcheck with me\b",
     r"\bask me (first|before)\b",
     r"\buntil i (say|confirm)\b",
@@ -117,6 +123,15 @@ _HOLD_PATTERNS = (
 _HOLD_LIFT_PATTERNS = (
     r"^\W*(ok(ay)?\W+)?(yes\W+)?(go ahead|do it( now)?|proceed|you can (go ahead|proceed|do it))\W*$",
 )
+
+
+def carries_forbid_language(user_messages: list[str]) -> bool:
+    """Whether any turn carries forbid words, lifted or not.
+
+    A lift is a regex guess at the user's meaning, so it never clears forbid words on its
+    own where only the focused check can (a contained or go-ahead run).
+    """
+    return any(_matches_any(turn, _FORBID_PATTERNS) for turn in user_messages)
 
 
 def forbid_tripwire(user_messages: list[str]) -> bool:
@@ -169,7 +184,7 @@ async def ask_jev(
     call: JudgedCall,
     prior_calls: list[PriorCall],
     history: AutoHistory,
-    assistant_turns: list[str] | None = None,
+    assistant: AssistantTurns = AssistantTurns(),
     transport: DecisionsTransport = JUDGE_TRANSPORT,
 ) -> tuple["JevVerdict", int, int]:
     """One Decisions call: the verdict (authorization choice + containment) and (in, out) tokens.
@@ -194,8 +209,10 @@ async def ask_jev(
         "recent_history": history_line(history, call.tool_name),
         "now": datetime.now(UTC).isoformat(),
     }
-    if assistant_turns:
-        state["assistant_turns"] = list(assistant_turns)
+    if assistant.shown:
+        state["assistant_turns"] = assistant.recent_shown()
+    if assistant.run:
+        state["run_messages"] = assistant.recent_run()
     body = await transport(
         state,
         {
@@ -246,7 +263,7 @@ def needs_forbid_check(user_messages: list[str], verdict: "JevVerdict") -> bool:
     get a focused question instead of a blanket veto: a "don't" that forbids nothing
     ("don't we have the draft ready?") no longer stops the call.
     """
-    return verdict.choice != JevChoice.FORBIDDEN and forbid_tripwire(user_messages)
+    return verdict.choice != JevChoice.FORBIDDEN and carries_forbid_language(user_messages)
 
 
 async def ask_jev_go_ahead(
@@ -345,7 +362,7 @@ class JevIntentJudge:
             call=call,
             prior_calls=prior_calls,
             history=history,
-            assistant_turns=assistant.context(),
+            assistant=assistant,
             transport=self._transport,
         )
         case = JevCase(
@@ -357,7 +374,9 @@ class JevIntentJudge:
         )
         verdict = replace(asked, forbid=await self._forbid_verdict(asked, user_messages, call))
         if needs_go_ahead_check(verdict, case):
-            verdict = replace(verdict, go_ahead=await self._go_ahead(case, assistant.context()))
+            verdict = replace(
+                verdict, go_ahead=await self._go_ahead(case, assistant.recent_shown())
+            )
         return decide_from_verdict(verdict, case)
 
     async def standing_rules_hold(
@@ -537,7 +556,9 @@ def _nothing_objects(verdict: JevVerdict, case: JevCase) -> bool:
         # An answer without P(forbidden) can't show the call is safe to run unasked.
         and (verdict.probabilities or {}).get(JevChoice.FORBIDDEN, 1.0)
         < HIL_JEV_CONTAINED_MAX_FORBIDDEN
-        and (verdict.forbid == JevChoice.PERMITTED or not forbid_tripwire(case.user_messages))
+        and (
+            verdict.forbid == JevChoice.PERMITTED or not carries_forbid_language(case.user_messages)
+        )
         and not user_held_or_denied(case.user_messages, case.history)
     )
 

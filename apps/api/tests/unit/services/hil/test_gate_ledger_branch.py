@@ -51,6 +51,7 @@ from .conftest import (
     account_gated_request,
     gated_request,
     make_request,
+    make_tool,
 )
 
 MODULE = "app.services.hil.gate"
@@ -483,13 +484,13 @@ class TestLedgerRegistration:
         self, gate_seams: GateSeams
     ) -> None:
         with (
-            patch(f"{MODULE}.asks_every_time", new=AsyncMock(return_value=True)) as asks,
+            patch(f"{MODULE}.asks_every_time", new=MagicMock(return_value=True)) as asks,
             patch(f"{MODULE}.work_of_run", new=AsyncMock(return_value="t1")) as work,
         ):
             result = await gate.decide_tool_call(gated_request())
 
         work.assert_awaited_once_with(CONVERSATION_ID, USER_ID, STREAM_ID)
-        asks.assert_awaited_once_with(GATED_TOOL, GATED_ARGS)
+        asks.assert_called_once_with(GATED_TOOL, GATED_ARGS)
         gate_seams.requested.assert_awaited_once_with(
             CONVERSATION_ID,
             USER_ID,
@@ -816,6 +817,29 @@ class TestLedgerAutoMode:
             "Always ask before emailing my boss.",
         )
 
+    async def test_a_call_whose_tool_cannot_be_resolved_still_gets_its_integrations_instructions(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = None
+        gate_seams.instructions.return_value = {"gmail": "Always ask before emailing my boss."}
+
+        await gate.decide_tool_call(gated_request())
+
+        (context,) = gate_seams.judge.await_args.args
+        assert context.standing_rules == ("Always ask before emailing my boss.",)
+
+    async def test_a_call_with_no_resolvable_tool_or_integration_asks_instead_of_being_judged(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+
+        await gate.decide_tool_call(gated_request(name="some_server_tool"))
+
+        gate_seams.judge.assert_not_awaited()
+        gate_seams.ledger.register.assert_awaited_once()
+
     async def test_unreadable_instructions_ask_instead_of_running_unchecked(
         self, gate_seams: GateSeams
     ) -> None:
@@ -831,6 +855,8 @@ class TestLedgerAutoMode:
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = make_tool("DROP_TABLE")
 
         await gate.decide_tool_call(gated_request(name="DROP_TABLE"))
 
@@ -842,6 +868,8 @@ class TestLedgerAutoMode:
     async def test_the_card_and_the_judge_name_a_date_on_the_users_own_calendar(
         self, gate_seams: GateSeams
     ) -> None:
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = make_tool("create_todo")
         todo = gated_request(
             name="create_todo",
             args={"title": "Pay rent", "due_date": "2026-11-15"},

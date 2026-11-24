@@ -195,7 +195,7 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
     ledger.recent_tool_outcomes = AsyncMock(return_value=[])
     with (
         patch(f"{GATE_MODULE}.resolve_policy", new=AsyncMock(return_value="ask")) as policy,
-        patch(f"{GATE_MODULE}.asks_every_time", new=AsyncMock(return_value=False)),
+        patch(f"{GATE_MODULE}.asks_every_time", new=MagicMock(return_value=False)),
         patch(f"{GATE_MODULE}.approval_ledger_repository", new=ledger),
         patch(f"{GATE_MODULE}.get_tool_registry", new=AsyncMock(return_value=_fake_registry())),
         patch(

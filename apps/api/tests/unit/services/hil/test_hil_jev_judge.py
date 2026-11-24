@@ -146,6 +146,33 @@ class TestForbidTripwire:
     async def test_lift_language_clears_the_tripwire(self) -> None:
         assert forbid_tripwire(["don't send anything yet", "actually, go ahead and send"]) is False
 
+    @pytest.mark.parametrize(
+        "lift",
+        [
+            "Never mind, send it",
+            "yes do it",
+            "ok, go ahead",
+            "on second thought, do it",
+            "ignore my last message and send it",
+        ],
+    )
+    async def test_a_turn_that_opens_with_the_lift_clears_the_tripwire(self, lift: str) -> None:
+        assert forbid_tripwire(["don't send anything yet", lift]) is False
+
+    @pytest.mark.parametrize(
+        "later",
+        [
+            "actually can you also summarize the thread",
+            "can you override the page theme",
+            "I'll go ahead and review it myself",
+            "that never mind button is broken",
+        ],
+    )
+    async def test_a_lift_word_inside_an_unrelated_turn_leaves_the_forbid_standing(
+        self, later: str
+    ) -> None:
+        assert forbid_tripwire(["never email my boss", later]) is True
+
     async def test_clean_history_never_trips(self) -> None:
         assert forbid_tripwire(["draft an email to bob", "looks good, send it"]) is False
 
@@ -356,6 +383,7 @@ class TestWire:
         }
         assert posted["state"]["prior_actions"] == [{"tool": "FIND", "args": {}}]
         assert "assistant_turns" not in posted["state"]
+        assert "run_messages" not in posted["state"]
 
         client = _client(_answer("unclear", 0.5))
         with patch(f"{CLIENT_MODULE}.jev_http_client", client):
@@ -368,7 +396,7 @@ class TestWire:
                     ),
                     prior_calls=[PriorCall(name="CREATE", args={}, output='{"draft_id": "r1"}')],
                     history=AutoHistory(),
-                    assistant_turns=["your draft is ready"],
+                    assistant=intent.AssistantTurns(shown=("your draft is ready",)),
                 )
         posted = client.post.await_args.kwargs["json"]
         assert posted["state"]["pending_action"]["tool_schema"] == {
@@ -437,7 +465,7 @@ class TestTheLinesAreInclusive:
 
 class TestTheTripwireReadsEachLaterTurn:
     async def test_a_lift_in_any_later_turn_clears_it(self) -> None:
-        assert forbid_tripwire(["don't send it", "actually", "ok"]) is False
+        assert forbid_tripwire(["don't send it", "never mind", "ok"]) is False
 
     async def test_a_lift_is_never_assembled_from_two_turns(self) -> None:
         assert forbid_tripwire(["don't send it", "go", "ahead"]) is True
@@ -896,6 +924,23 @@ class TestContainedActionsRunWithoutExplicitWords:
             _contained_case(_verdict(forbid=JevChoice.PERMITTED), turns=turns).outcome == "accept"
         )
 
+    @pytest.mark.parametrize(
+        "later",
+        ["actually, count the signups", "actually, go ahead and tidy them"],
+        ids=["unrelated-lift-word", "genuine-lift"],
+    )
+    async def test_a_prohibition_earns_the_focused_check_whatever_later_turns_say(
+        self, later: str
+    ) -> None:
+        """Lift words are regex guesses: only the focused check may clear a contained call."""
+        turns = ["never edit my notes", later]
+
+        assert jev_judge.needs_forbid_check(turns, _verdict()) is True
+        assert _contained_case(turns=turns).outcome == "ask"
+        assert _contained_case(_verdict(forbid=JevChoice.PERMITTED), turns=turns).outcome == (
+            "accept"
+        )
+
     async def test_a_focused_forbid_holds_it(self) -> None:
         turns = ["never touch my notes", "tidy the notes page"]
 
@@ -917,10 +962,17 @@ class TestContainedActionsRunWithoutExplicitWords:
             "wait for my approval before editing my notes",
             "don't touch the notes page yet",
             "anything on my notes needs my go-ahead",
+            "wait before editing my notes",
+            "hold on, don't change my notes",
         ],
     )
     async def test_a_hold_the_user_set_keeps_it_asking(self, hold: str) -> None:
         assert _contained_case(turns=[hold, "summarize the page"]).outcome == "ask"
+
+    async def test_a_bare_go_ahead_lifts_a_wait_before(self) -> None:
+        turns = ["wait before editing my notes", "ok, go ahead"]
+
+        assert _contained_case(turns=turns).outcome == "accept"
 
     @pytest.mark.parametrize(
         "later",
@@ -1039,6 +1091,75 @@ class TestTheUsersSavedInstructions:
             )
             is holds
         )
+
+
+class TestAnAnswerWithoutConfidence:
+    """A missing confidence reads as 0.0, under every floor: it can never clear a rule."""
+
+    @pytest.mark.parametrize("choice", ["forbidden", "permitted"])
+    async def test_a_saved_instruction_still_holds_the_call(self, choice: str) -> None:
+        body = _standing_answer(choice, 0.0)
+        body["answers"][hil_constants.JEV_STANDING_QUESTION_KEY]["confidence"] = None
+
+        holds = await JevIntentJudge(transport=_transport(body)).standing_rules_hold(
+            standing_rules=("Always ask me before emailing my boss.",), call=_call()
+        )
+
+        assert holds is True
+
+    @pytest.mark.parametrize("choice", ["forbidden", "permitted"])
+    async def test_a_focused_forbid_check_still_forbids(self, choice: str) -> None:
+        turns = ["never email bob", "email bob the deck"]
+        transport = _transport(_forbid_answer(choice, None))
+
+        verdict = await JevIntentJudge(transport=transport)._forbid_verdict(
+            _verdict(), turns, _call()
+        )
+
+        assert verdict == JevChoice.FORBIDDEN
+
+
+class TestWhatTheUserSawStaysApartFromTheRunsOwnMessages:
+    """Only replies the user was shown can say what their "Send" confirms."""
+
+    async def test_jev_gets_the_runs_messages_under_their_own_key(self) -> None:
+        transport = _transport(_answer("unclear", 0.5, _FULL_PROBS, contained=0.0))
+        assistant = intent.AssistantTurns(
+            shown=("Drafted the reply to Simonne.",), run=("Prepared a reply to Bob.",)
+        )
+
+        await ask_jev(
+            user_messages=["Send"],
+            call=_call(),
+            prior_calls=[],
+            history=AutoHistory(),
+            assistant=assistant,
+            transport=transport,
+        )
+
+        state, _questions = transport.await_args.args
+        assert state["assistant_turns"] == ["Drafted the reply to Simonne."]
+        assert state["run_messages"] == ["Prepared a reply to Bob."]
+
+    async def test_the_go_ahead_question_never_sees_the_runs_messages(self) -> None:
+        transport = _transport(
+            _answer("unclear", 0.5, _FULL_PROBS, contained=0.0), _go_ahead_answer("unclear", 0.5)
+        )
+
+        await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["Send"],
+            call=_call(),
+            prior_calls=[],
+            history=AutoHistory(),
+            assistant=intent.AssistantTurns(
+                shown=("Drafted the reply to Simonne.",), run=("Prepared a reply to Bob.",)
+            ),
+        )
+
+        go_ahead_state, _questions = transport.await_args_list[1].args
+        assert go_ahead_state["assistant_turns"] == ["Drafted the reply to Simonne."]
+        assert "Prepared a reply to Bob." not in str(go_ahead_state)
 
 
 def _go_ahead_answer(choice: str, confidence: float) -> dict[str, Any]:

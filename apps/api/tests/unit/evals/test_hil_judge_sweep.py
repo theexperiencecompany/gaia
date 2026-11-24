@@ -12,11 +12,12 @@ import httpx
 import pytest
 from scripts.evals import sweep_hil_judge
 from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.openai_decisions import OPENAI_DECISIONS_MODEL_NAME
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites import hil_judge
 from scripts.evals.suites.hil_judge import JudgeTransport, sweep_journal
 
-from app.constants.hil import JevChoice
+from app.constants.hil import HIL_JEV_JUDGE_MODEL_NAME, JEV_FORBID_CHECK_FAILED, JevChoice
 from app.services.hil.jev_judge import JevVerdict
 
 from .conftest import eval_config
@@ -46,8 +47,10 @@ def _go_ahead_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hil_judge, "ask_jev_go_ahead", _ask_jev_go_ahead)
 
 
-async def _judge(monkeypatch: pytest.MonkeyPatch, case: Case = _CASE) -> CaseRun:
-    monkeypatch.setenv("HIL_JUDGE_EVAL_TRANSPORT", "jev")
+async def _judge(
+    monkeypatch: pytest.MonkeyPatch, case: Case = _CASE, transport: str = "jev"
+) -> CaseRun:
+    monkeypatch.setenv("HIL_JUDGE_EVAL_TRANSPORT", transport)
     cfg = eval_config()
     provider = cfg.providers["fake"]
     return await JudgeTransport().run(
@@ -55,7 +58,7 @@ async def _judge(monkeypatch: pytest.MonkeyPatch, case: Case = _CASE) -> CaseRun
     )
 
 
-async def _jev_run(monkeypatch: pytest.MonkeyPatch) -> CaseRun:
+async def _jev_run(monkeypatch: pytest.MonkeyPatch, transport: str = "jev") -> CaseRun:
     async def _ask_jev(**kwargs: object) -> tuple[JevVerdict, int, int]:
         verdict = JevVerdict(
             choice=JevChoice.AUTHORIZED,
@@ -66,7 +69,7 @@ async def _jev_run(monkeypatch: pytest.MonkeyPatch) -> CaseRun:
         return verdict, 10, 2
 
     monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
-    return await _judge(monkeypatch)
+    return await _judge(monkeypatch, transport=transport)
 
 
 def _journal(tmp_path: Path, *runs: CaseRun) -> Path:
@@ -99,6 +102,26 @@ async def test_a_jev_run_journals_the_verdict_it_was_graded_on(
     assert end_state["forbid_choice"] is None
     assert end_state["contained"] == 0.2
     assert end_state["go_ahead"] == _GO_AHEAD
+
+
+async def test_a_jev_run_journals_the_transport_and_model_that_answered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    end_state = (await _jev_run(monkeypatch)).end_state or {}
+
+    assert end_state["backend"] == "jev"
+    assert end_state["decisions_model"] == HIL_JEV_JUDGE_MODEL_NAME
+
+
+async def test_a_comparison_run_is_journaled_as_the_transport_that_answered_not_as_jev(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    run = await _jev_run(monkeypatch, transport="openai")
+
+    assert (run.end_state or {})["backend"] == "openai"
+    assert (run.end_state or {})["decisions_model"] == OPENAI_DECISIONS_MODEL_NAME
+    with pytest.raises(SystemExit, match="openai"):
+        sweep_journal(_journal(tmp_path, run))
 
 
 async def test_the_sweep_refuses_a_journal_of_another_judges_rows(
@@ -237,6 +260,33 @@ async def test_a_failed_focused_request_prod_would_ask_fails_the_case(
 
     with pytest.raises(ProviderError, match="forbid check failed"):
         await _judge(monkeypatch, replace(_CASE, setup=_FORBID_SETUP))
+
+
+@pytest.mark.parametrize(
+    ("asked_by_prod", "journaled"),
+    [(True, JEV_FORBID_CHECK_FAILED), (False, None)],
+    ids=["prod-asks-it", "prod-would-not-ask"],
+)
+async def test_a_failed_focused_request_is_reported_before_the_case_goes_on(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    asked_by_prod: bool,
+    journaled: str | None,
+) -> None:
+    async def _ask_jev(**kwargs: object) -> tuple[JevVerdict, int, int]:
+        choice = JevChoice.UNCLEAR if asked_by_prod else JevChoice.FORBIDDEN
+        return JevVerdict(choice=choice, confidence=0.6, contained=0.1), 10, 2
+
+    async def _ask_jev_forbid(**kwargs: object) -> tuple[str, float, int, int]:
+        raise RuntimeError("decisions answer was malformed")
+
+    monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
+    monkeypatch.setattr(hil_judge, "ask_jev_forbid", _ask_jev_forbid)
+
+    run = await _judge(monkeypatch, replace(_CASE, setup=_FORBID_SETUP))
+
+    assert (run.end_state or {})["forbid_choice"] == journaled
+    assert "decisions answer was malformed" in capsys.readouterr().out
 
 
 def test_a_blank_transport_setting_means_the_default(monkeypatch: pytest.MonkeyPatch) -> None:

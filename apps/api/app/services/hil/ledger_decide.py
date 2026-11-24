@@ -128,7 +128,7 @@ async def decide_ledger_card(
 ) -> LedgerDecision:
     """Commit a card tap; an approved "always" tap also stops asking for the tool."""
     row = await _owned_row(approval_id, user_id)
-    if tap.scope == "always_tool" and await asks_every_time(row.tool_name, row.args):
+    if tap.scope == "always_tool" and asks_every_time(row.tool_name, row.args):
         raise ToolAlwaysAsksError()
     decision = await _commit_decision(
         row, user_id=user_id, kind=tap.decision, feedback=tap.feedback, via="card"

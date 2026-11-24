@@ -262,7 +262,7 @@ async def test_a_forbidden_verdict_asks_the_user_instead_of_refusing() -> None:
         patch("app.services.hil.gate.gated_tool_object", new=AsyncMock(return_value=None)),
         patch("app.services.hil.jev_judge.ask_jev", new=jev),
         patch("app.services.hil.gate.announce_approval", new=AsyncMock()),
-        patch("app.services.hil.gate.asks_every_time", new=AsyncMock(return_value=False)),
+        patch("app.services.hil.gate.asks_every_time", new=MagicMock(return_value=False)),
         patch("app.services.hil.gate.record_approval_requested", new=AsyncMock()) as requested,
     ):
         result = await gate.decide_tool_call(_auto_request())
@@ -317,7 +317,7 @@ async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="vague scope")),
         ),
         patch("app.services.hil.gate.announce_approval", new=AsyncMock()),
-        patch("app.services.hil.gate.asks_every_time", new=AsyncMock(return_value=False)),
+        patch("app.services.hil.gate.asks_every_time", new=MagicMock(return_value=False)),
         patch("app.services.hil.gate.record_approval_requested", new=AsyncMock()) as requested,
     ):
         result = await gate.decide_tool_call(_auto_request())

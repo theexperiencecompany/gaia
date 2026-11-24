@@ -73,6 +73,14 @@ class TestWhatCountsAsATarget:
 
         assert ungrounded_targets({"order_id": "d123"}, ["refund it"], priors) == []
 
+    def test_a_target_is_matched_whole_in_the_users_words_never_as_part_of_a_longer_address(
+        self,
+    ) -> None:
+        assert ungrounded_targets({"to": "ann@x.com"}, ["email joann@x.com the deck"], []) == [
+            "ann@x.com"
+        ]
+        assert ungrounded_targets({"to": "ann@x.com"}, ["email ann@x.com the deck"], []) == []
+
     def test_a_target_is_never_grounded_by_two_priors_glued_together(self) -> None:
         priors = [PriorCall(name="SEARCH", args={"q": "x1"}), PriorCall(name="LOOKUP", args={})]
 
@@ -85,27 +93,20 @@ class TestWhatCountsAsATarget:
 
 
 class TestTheAssistantsWordsTheJudgeReads:
-    def test_a_runs_own_messages_never_push_out_what_the_user_saw(self) -> None:
+    def test_what_the_user_saw_is_kept_apart_from_the_runs_own_messages(self) -> None:
         shown = "Drafted the reply to Simonne with the invoice attached."
-        internal = tuple(f"step {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS))
+        turns = intent.AssistantTurns(shown=(shown,), run=("Prepared a reply to Bob.",))
 
-        turns = intent.AssistantTurns(shown=(shown,), run=internal).context()
+        assert turns.recent_shown() == [shown]
+        assert turns.recent_run() == ["Prepared a reply to Bob."]
 
-        assert turns == [shown, *internal[-(HIL_JUDGE_MAX_ASSISTANT_TURNS - 1) :]]
+    def test_each_side_keeps_only_its_latest_turns(self) -> None:
+        many = tuple(f"turn {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS + 2))
+        turns = intent.AssistantTurns(shown=many, run=many)
 
-    def test_with_nothing_shown_the_runs_latest_messages_fill_it(self) -> None:
-        internal = tuple(f"step {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS + 2))
-
-        assert intent.AssistantTurns(run=internal).context() == list(
-            internal[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
-        )
-
-    def test_a_full_set_of_shown_replies_leaves_no_room_for_the_run(self) -> None:
-        shown = tuple(f"reply {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS + 1))
-
-        assert intent.AssistantTurns(shown=shown, run=("step",)).context() == list(
-            shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
-        )
+        latest = list(many[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
+        assert turns.recent_shown() == latest
+        assert turns.recent_run() == latest
 
 
 # The real shape: Composio's GMAIL_LIST_DRAFTS compacted into one line per draft.
@@ -177,6 +178,35 @@ class TestAPickFromAList:
         ]
 
         assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]
+
+    def test_a_message_quoted_in_a_draft_is_not_the_drafts_recipient(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '[{"id": "d-1", "to": "bob@x.com", "body": "Forwarded message from '
+                    'simonne@x.com"}, {"id": "d-2", "to": "simonne@x.com"}]'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]
+        assert ungrounded_targets({"id": "d-2"}, ["send simonne's"], listed) == []
+
+    def test_an_address_the_user_named_is_matched_whole_not_as_the_tail_of_a_longer_one(
+        self,
+    ) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output='[{"id": "d-1", "to": "ann@x.com"}, {"id": "d-2", "to": "joann@x.com"}]',
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send joann@x.com's"], listed) == ["d-1"]
+        assert ungrounded_targets({"id": "d-2"}, ["send joann@x.com's"], listed) == []
 
     def test_a_wrapped_list_grounds_by_the_record_holding_the_id(self) -> None:
         listed = [

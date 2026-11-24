@@ -40,7 +40,9 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import InboxEntry
 from app.models.conversation_log_models import Reply, UserMessage
 from app.models.user_models import AuthenticatedUser
+from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
+from tests.unit.services.conversation.log_helpers import settled
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
@@ -302,6 +304,8 @@ class TestTheUsersWordsACarryRunJudgesBy:
         await runtime.log.append(
             CONVERSATION, "u1", Reply(id="r1", reply_id="r1", attempt_id="a1", text=shown)
         )
+        # Settled: only a reply the user saw whole counts as shown.
+        await runtime.log.append(CONVERSATION, "u1", settled("s1", ["m1"], through=1))
         for n, text in enumerate(rest, start=2):
             await runtime.log.append(
                 CONVERSATION,
@@ -324,6 +328,22 @@ class TestTheUsersWordsACarryRunJudgesBy:
         configurable = h.spawn.call_args.args[0].configurable
         assert configurable["user_messages"] == ["draft a reply to Bob", "send it"]
         assert configurable["assistant_turns"] == ["Drafted the reply to Bob."]
+
+    async def test_a_run_woken_inside_a_workflow_never_borrows_the_chats_words(
+        self, fake_redis, conversation_runtime: Runtime
+    ) -> None:
+        """A wake from inside a workflow carries no id; the run is still the workflow's."""
+        await self._say(conversation_runtime, user=["send it"], shown="Drafted.")
+        log.reset()
+        log.set(workflow={"execution_id": "exec-ambient"})
+
+        with _real_lifecycle() as h:
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        prepared = h.spawn.call_args.args[0]
+        assert prepared.run.workflow_execution_id == "exec-ambient"
+        assert prepared.configurable.get("user_messages") is None
+        assert prepared.configurable.get("assistant_turns") is None
 
     async def test_a_workflows_run_never_borrows_the_chats_words(
         self, fake_redis, conversation_runtime: Runtime

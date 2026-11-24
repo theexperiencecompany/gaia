@@ -231,12 +231,12 @@ class TestAReviewedIntegrationDecidesWithoutTheRegistry:
     @pytest.mark.parametrize(
         ("tool", "destructive"),
         [
-            ("NOTION_UPDATE_PAGE", False),
-            ("GMAIL_CREATE_EMAIL_DRAFT", False),
-            ("GMAIL_DELETE_DRAFT", False),
+            pytest.param("NOTION_UPDATE_PAGE", False, marks=pytest.mark.regression),
+            pytest.param("GMAIL_CREATE_EMAIL_DRAFT", False, marks=pytest.mark.regression),
+            pytest.param("GMAIL_DELETE_DRAFT", False, marks=pytest.mark.regression),
             # Taking a label off a message is undone by putting it back.
-            ("GMAIL_REMOVE_LABEL", False),
-            ("GMAIL_SEND_EMAIL", True),
+            pytest.param("GMAIL_REMOVE_LABEL", False, marks=pytest.mark.regression),
+            pytest.param("GMAIL_SEND_EMAIL", True, marks=pytest.mark.regression),
         ],
     )
     async def test_its_curated_list_decides_with_no_llm_call(

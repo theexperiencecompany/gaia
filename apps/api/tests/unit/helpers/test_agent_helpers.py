@@ -14,7 +14,6 @@ from app.constants import hil as hil_constants
 from app.constants.hil import (
     HIL_JUDGE_MAX_ASSISTANT_CHARS,
     HIL_JUDGE_MAX_ASSISTANT_TURNS,
-    HIL_JUDGE_MAX_TURN_CHARS,
 )
 from app.constants.llm import LLM_LABEL_METADATA_KEY, LLMProviderName
 from app.constants.notifications import ProactiveMessageClass
@@ -35,6 +34,7 @@ from app.models.agent_models import AgentUserContext, run_analytics_context
 from app.models.message_models import MessageDict
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
+from app.services.hil.jev_judge import forbid_tripwire
 from app.utils.general_utils import clip_text
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
@@ -1290,7 +1290,7 @@ class TestRecentUserMessages:
             "send it",
         ]
 
-    def test_only_the_latest_turns_are_kept_each_clipped(self):
+    def test_only_the_latest_turns_are_kept_each_in_full(self):
         history: list[MessageDict] = [
             {"role": "user", "content": f"turn {i} " + "x" * 2000} for i in range(9)
         ]
@@ -1298,8 +1298,15 @@ class TestRecentUserMessages:
         turns = agent_helpers.recent_user_messages(history, ["send it"])
 
         assert len(turns) == hil_constants.HIL_JUDGE_MAX_USER_TURNS
-        assert turns[-2] == clip_text("turn 8 " + "x" * 2000, HIL_JUDGE_MAX_TURN_CHARS)
+        assert turns[-2] == "turn 8 " + "x" * 2000
         assert turns[-1] == "send it"
+
+    def test_a_restriction_at_the_end_of_a_long_turn_still_reaches_the_forbid_check(self):
+        long_turn = "Here is the whole thread: " + "x" * 2000 + " Do not send anything."
+
+        turns = agent_helpers.recent_user_messages([], [long_turn])
+
+        assert forbid_tripwire(turns) is True
 
 
 class TestRecentAssistantReplies:

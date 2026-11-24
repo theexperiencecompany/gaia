@@ -219,8 +219,8 @@ class _CancellingEffects(RecordingEffects):
 
 
 @pytest.fixture(autouse=True)
-def conversation_runtime(monkeypatch: pytest.MonkeyPatch) -> Runtime:
-    """Install the conversation runtime over an in-memory log; a cancel's Stop is logged on it."""
+def _cancelling_conversation_runtime(monkeypatch: pytest.MonkeyPatch) -> Runtime:
+    """Install a runtime whose effects cancel named work; the shared conversation_runtime cannot."""
     rt = Runtime(effects=_CancellingEffects())
     monkeypatch.setattr(runtime._Installed, "ports", rt.ports)
     _turn_steps.clear()

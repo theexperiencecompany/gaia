@@ -31,6 +31,7 @@ from app.constants.conversation import (
     WORKFLOW_RUN_REQUEST,
 )
 from app.constants.graphs import GraphName
+from app.helpers.agent_helpers import recent_user_messages
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
 from app.models.conversation_log_models import (
@@ -141,6 +142,7 @@ class CommsGraphRun:
         configurable: AgentConfigurable = agent_configurable(self._config)
         if (step := configurable.get("conversation_step")) is not None:
             _join(step, joined)
+        _join_user_messages(configurable, joined)
         self._sealed = len(joined) < len(entries)
 
     async def cancel(self, reason: CancelReason) -> None:
@@ -312,6 +314,17 @@ def _join(step: StepTurnRef, joined: Sequence[LoggedEntry]) -> None:
         step["cause_through"] = joined[-1].seq
         step["answers"] = [*step["answers"], *_answered(joined)]
         step["asked"] = step["asked"] or _asks(joined)
+
+
+def _join_user_messages(configurable: AgentConfigurable, joined: Sequence[LoggedEntry]) -> None:
+    """Extend the run's own user messages in place, so the approval judge reads what joiners said.
+
+    In place because a node's config copies the dict but shares this list.
+    """
+    said = [logged.entry.text for logged in joined if isinstance(logged.entry, UserMessage)]
+    turns = configurable.get("user_messages")
+    if said and turns is not None:
+        turns[:] = recent_user_messages([], [*turns, *said])
 
 
 def _asks(entries: Sequence[LoggedEntry]) -> bool:

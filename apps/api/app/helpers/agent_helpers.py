@@ -157,11 +157,12 @@ def recent_user_messages(history: list[MessageDict], current: list[str]) -> list
 
     Intent routinely spans turns ("draft an email to Bob" … "looks good, send it"), so
     the live messages alone can't be grounded against. Only the user's turns: the HIL
-    judge must never read assistant text as authorization.
+    judge must never read assistant text as authorization. Never clipped: the forbid and
+    hold checks scan these, and a restriction ends a long message as easily as it starts one.
     """
     earlier = [turn["content"] for turn in history if turn["role"] == "user"]
     turns = [text.strip() for text in [*earlier, *current] if text.strip()]
-    return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
+    return turns[-HIL_JUDGE_MAX_USER_TURNS:]
 
 
 def recent_assistant_replies(history: list[MessageDict]) -> list[str]:

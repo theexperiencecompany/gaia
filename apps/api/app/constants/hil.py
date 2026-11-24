@@ -28,8 +28,9 @@ DECISION_OUTCOME: Final[dict[ApprovalDecision, DecidedOutcome]] = {
 # HILPreferences field default, so it lives with the model).
 
 # The user's own recent turns the judge grounds against: intent spans turns ("draft
-# an email to Bob" … "send it"), so the live message alone can't be judged.
+# an email to Bob" … "send it"). Kept whole, since the forbid and hold checks scan them.
 HIL_JUDGE_MAX_USER_TURNS = 6
+# Clips only the schedule text a background run adds as authorization.
 HIL_JUDGE_MAX_TURN_CHARS = 800
 
 # The pending call's arguments, and the run's earlier tool calls (provenance for

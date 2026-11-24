@@ -208,8 +208,10 @@ def _config(
     recursion_limit: int = 25,
     step: StepTurnRef | None = None,
     source: ConversationSource = ConversationSource.WEB,
+    user_messages: list[str] | None = None,
 ) -> AgentRunnableConfig:
     step_ref = {} if step is None else {"conversation_step": step}
+    said_ref = {} if user_messages is None else {"user_messages": user_messages}
     return cast(
         AgentRunnableConfig,
         {
@@ -219,6 +221,7 @@ def _config(
                 "agent_name": "comms_agent",
                 "conversation_source": source.value,
                 **step_ref,
+                **said_ref,
             },
             "metadata": {"user_id": USER},
             "recursion_limit": recursion_limit,
@@ -239,10 +242,11 @@ def runner(
     recursion_limit: int = 25,
     step: StepTurnRef | None = None,
     source: ConversationSource = ConversationSource.WEB,
+    user_messages: list[str] | None = None,
 ) -> CommsGraphRunner:
     async def build(claim: StepClaim, batch: Batch) -> CommsTurn:
         return CommsTurn(
-            config=_config(conversation_id, recursion_limit, step, source),
+            config=_config(conversation_id, recursion_limit, step, source, user_messages),
             opening=[
                 SystemMessage(content="STATIC PROMPT"),
                 mark(SystemMessage(content="DYNAMIC CONTEXT"), DYNAMIC_CONTEXT_MARKER),
@@ -653,6 +657,30 @@ async def test_absorbed_input_reaches_the_next_model_call(conversation_id: str) 
         "answers": ["u1", "u3"],
         "asked": True,
     }
+
+
+async def test_a_message_absorbed_into_the_attempt_joins_what_the_approval_judge_reads(
+    conversation_id: str,
+) -> None:
+    """The judge reads the run's own list: a "don't send it" that joins must reach it."""
+    model = gated(recall_call(), "answered both")
+    first = batch(logged(1, user("u1")))
+    judged = ["text of u1"]
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(
+                conversation_id,
+                step=step_turn_ref(claim(conversation_id), first),
+                user_messages=judged,
+            ).start(claim(conversation_id), first, (), LEDGER)
+
+            async def absorb_on_tool_call(event: RunEvent) -> None:
+                if event == ModelOutput(has_tool_calls=True):
+                    await run.absorb([logged(3, user("u3"))])
+
+            await collect(run, absorb_on_tool_call)
+
+    assert judged == ["text of u1", "text of u3"]
 
 
 @pytest.mark.parametrize(

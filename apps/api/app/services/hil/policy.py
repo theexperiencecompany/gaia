@@ -44,7 +44,7 @@ def _argument_gate_hit(tool_name: str, args: Mapping[str, object] | None) -> boo
     return all(args.get(key) == value for key, value in required.items())
 
 
-async def asks_every_time(tool_name: str, args: Mapping[str, object] | None) -> bool:
+def asks_every_time(tool_name: str, args: Mapping[str, object] | None) -> bool:
     """Whether this call asks in every mode, beyond any per-tool override's reach."""
     return tool_name in ALWAYS_ASK_TOOLS or _argument_gate_hit(tool_name, args)
 
@@ -104,7 +104,7 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     "always ask" asks even in always_allow or auto, "never ask" runs in every mode.
     """
     call = unpack_tool_call(request)
-    if await asks_every_time(tool_name, call.args):
+    if asks_every_time(tool_name, call.args):
         return "ask"
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow" and not prefs.tool_overrides:
@@ -138,7 +138,7 @@ async def is_gated(
     Otherwise the user's per-tool choice wins in both directions — even over an
     MCP destructiveHint — since it is a deliberate setting on their own account.
     """
-    if await asks_every_time(tool_name, args):
+    if asks_every_time(tool_name, args):
         return True
     override = _tool_override(prefs, tool_name, tool)
     if override is not None:

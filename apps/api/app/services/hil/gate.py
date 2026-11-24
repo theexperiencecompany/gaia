@@ -18,12 +18,14 @@ from typing import Any
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool
 from langgraph.types import Command
 from pydantic_core import to_jsonable_python
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
 from app.agents.tools.tool_integration import tool_integration_id
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.hil import (
     AUTO_ASK_NOTE,
     HIL_APPROVAL_TIMEOUT_SECONDS,
@@ -103,6 +105,10 @@ Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
 
 _INSTRUCTIONS_UNREADABLE_REASON = (
     "Your saved instructions could not be read, so this waits for you."
+)
+_TOOL_UNRESOLVED_REASON = (
+    "GAIA could not tell which integration this call belongs to, so your saved "
+    "instructions for it could not be checked and this waits for you."
 )
 
 
@@ -265,7 +271,7 @@ async def _decide_ledger(
                 integration_name=integration_name,
                 args_preview=to_jsonable_python(call.args),
                 auto_reason=AUTO_ASK_NOTE if auto.asked else None,
-                always_asks=await asks_every_time(call.name, call.args),
+                always_asks=asks_every_time(call.name, call.args),
             ),
         )
         registered = await approval_ledger_repository.register(proposal, ap_id)
@@ -380,6 +386,10 @@ async def _judge(
     """Ask the intent judge whether the user's request authorizes this call."""
     history = await _auto_history(context.user_id, call.name)
     tool = await gated_tool_object(request, context.user_id, call.name)
+    integration = _integration_of(tool, call.name)
+    if integration is None and tool is None:
+        log.warning(f"{LogTag.HIL} tool and integration unresolved; asking", tool_name=call.name)
+        return IntentDecision("ask", _TOOL_UNRESOLVED_REASON)
     # A deny rule is a security input: unreadable, the gate fails closed rather than judging without it.
     prefs = await get_hil_preferences(context.user_id)
     never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in prefs.never_auto_tools
@@ -393,7 +403,6 @@ async def _judge(
             error_type=type(e).__name__,
         )
         return IntentDecision("ask", _INSTRUCTIONS_UNREADABLE_REASON)
-    integration = tool_integration_id(tool) if tool else None
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
@@ -433,6 +442,18 @@ async def _judge(
             ),
         )
     return decision
+
+
+def _integration_of(tool: BaseTool | None, tool_name: str) -> str | None:
+    """Return the integration whose saved instructions reach this call.
+
+    An unresolved tool still names its Composio toolkit in its slug; an MCP tool
+    that did not resolve has no slug, so None there means the gate cannot tell.
+    """
+    if tool is not None:
+        return tool_integration_id(tool)
+    integration = get_integration_by_tool_slug(tool_name)
+    return integration.id if integration else None
 
 
 async def _auto_history(user_id: str, tool_name: str) -> AutoHistory:

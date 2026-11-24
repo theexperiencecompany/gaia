@@ -38,7 +38,7 @@ from app.constants.hil import (
 # Canonical question + mapping live in app (prompts.py, jev_judge.py) — the
 # suite imports them so editing the judge text IS retuning, and every run
 # journals the questions version it graded.
-from app.services.hil.intent import AutoHistory, JudgedCall, history_line
+from app.services.hil.intent import AssistantTurns, AutoHistory, JudgedCall, history_line
 from app.services.hil.jev_client import JevUnconfiguredError
 from app.services.hil.jev_judge import (
     JUDGE_TRANSPORT,
@@ -48,8 +48,8 @@ from app.services.hil.jev_judge import (
     ask_jev,
     ask_jev_forbid,
     ask_jev_go_ahead,
+    carries_forbid_language,
     decide_from_verdict,
-    forbid_tripwire,
     needs_forbid_check,
     needs_go_ahead_check,
     settle_forbid,
@@ -70,16 +70,16 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "hil-judge"
 
-#: The judge every journal row was graded by; the sweep regrades only these.
-JEV_BACKEND = "jev"
-
 #: A sweep row its journal can't grade at a candidate line: the focused forbid answer or
 #: the containment score that line needs was never recorded.
 UNRESOLVED = "unresolved"
 
 
 class DecisionsProvider(StrEnum):
-    """Who answers the Decisions judge's questions — HIL_JUDGE_EVAL_TRANSPORT."""
+    """Who answers the Decisions judge's questions — HIL_JUDGE_EVAL_TRANSPORT.
+
+    Journaled as each row's backend: the sweep regrades only JEV's.
+    """
 
     JEV = "jev"
     OPENAI = "openai"
@@ -217,6 +217,7 @@ class JudgeTransport:
         provider = DecisionsProvider(
             os.environ.get("HIL_JUDGE_EVAL_TRANSPORT") or DecisionsProvider.JEV
         )
+        self._provider = provider
         self._decisions, self._decisions_model = _DECISIONS_PROVIDERS[provider]
 
     async def run(
@@ -236,7 +237,8 @@ class JudgeTransport:
         print(f"[{mark}] {case.id}: want={want} got={outcome} ({duration_s:.1f}s) {detail}")
         end_state: dict[str, Any] = {
             "outcome": outcome,
-            "backend": JEV_BACKEND,
+            "backend": self._provider,
+            "decisions_model": self._decisions_model,
             "questions_version": JEV_QUESTIONS_VERSION,
             # The full grading input: offline re-scoring replays decide_from_verdict
             # exactly (mapping + grounding + history), so threshold experiments
@@ -271,7 +273,7 @@ class JudgeTransport:
                 call=call,
                 prior_calls=case.prior_calls,
                 history=history,
-                assistant_turns=_eval_assistant_turns(setup),
+                assistant=AssistantTurns(shown=case.shown_turns),
                 transport=self._decisions,
             )
         except (httpx.HTTPError, JevUnconfiguredError, OpenAIDecisionsUnconfiguredError) as e:
@@ -339,7 +341,7 @@ class JudgeTransport:
         _graded_outcome drops the answer where prod would not have asked. A failed
         request prod would not have made leaves no answer rather than losing the verdict.
         """
-        if not forbid_tripwire(case.user_messages):
+        if not carries_forbid_language(case.user_messages):
             return None, 0.0, (0, 0)
         try:
             choice, confidence, tokens_in, tokens_out = await ask_jev_forbid(
@@ -349,7 +351,8 @@ class JudgeTransport:
             if prod_asks_it:
                 raise ProviderError(provider.name, f"forbid check failed: {e}") from e
             return None, 0.0, (0, 0)
-        except Exception:
+        except Exception as e:  # optional here: report it, never lose the primary verdict
+            print(f"[hil-judge] focused forbid check failed: {type(e).__name__}: {e}")
             return (JEV_FORBID_CHECK_FAILED if prod_asks_it else None), 0.0, (0, 0)
         return choice, confidence, (tokens_in, tokens_out)
 
@@ -366,7 +369,7 @@ def sweep_journal(run_dir: Path) -> str:
     rows = list(RunJournal(run_dir.parent, run_dir.name).latest_per_case().values())
     unjudged = sum(1 for r in rows if not r.get("end_state"))
     rows = [r for r in rows if r.get("end_state")]
-    foreign = sorted({str(r["end_state"].get("backend")) for r in rows} - {JEV_BACKEND})
+    foreign = sorted({str(r["end_state"].get("backend")) for r in rows} - {DecisionsProvider.JEV})
     if foreign:
         raise SystemExit(
             f"{run_dir} holds judge rows from backend(s) {', '.join(foreign)}: the sweep "

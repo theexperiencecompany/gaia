@@ -995,7 +995,7 @@ APPROVALS_DOC: Final[str] = """# Approvals - when GAIA asks before acting
 
 Some tool calls change something real: sending, deleting, paying, sharing,
 posting. Those can stop for the user's approval (a card in chat). Read-only
-calls never ask.
+calls don't ask, unless the user set an ask rule for that tool or its integration.
 
 ## How the check decides
 
@@ -1021,7 +1021,7 @@ only the user's do. When it asks, the card's reason line says why.
 | "Never ask me for Notion" / "always ask before anything in Gmail" | `set_approval_rule(rule="dont_ask" or "ask", integration="<id>")` |
 | The same for one tool | `set_approval_rule(rule=..., tool="<exact tool name>")` |
 | Undo a rule | `set_approval_rule(rule="default", ...)` |
-| A situation, not a whole tool ("ask before emailing my boss", "never archive pages") | save it as a standing instruction: `update_integration_instructions(scope="<id>")`, or `update_user_instructions(scope="global")` for every integration |
+| A situation, not a whole tool ("ask before emailing my boss", "never archive pages") | save it as a standing instruction: `update_user_instructions(scope="<id>")` for one integration, or `update_user_instructions(scope="global")` for every integration |
 | Change the mode itself | the user does it in their approval settings; there is no tool |
 
 `set_approval_rule` on an integration writes one rule per tool it has, the same
