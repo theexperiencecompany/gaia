@@ -91,6 +91,142 @@
     "width": 1672,
     "height": 941
   },
+  "/images/briefing/editions/almanac.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/band.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/boardingpass.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/broadsheet.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/demo/almanac.webp": {
+    "width": 1144,
+    "height": 5909
+  },
+  "/images/briefing/editions/demo/band.webp": {
+    "width": 1144,
+    "height": 4987
+  },
+  "/images/briefing/editions/demo/boardingpass.webp": {
+    "width": 1144,
+    "height": 4577
+  },
+  "/images/briefing/editions/demo/broadsheet.webp": {
+    "width": 1144,
+    "height": 6277
+  },
+  "/images/briefing/editions/demo/exhibition.webp": {
+    "width": 1144,
+    "height": 5741
+  },
+  "/images/briefing/editions/demo/flightplan.webp": {
+    "width": 1144,
+    "height": 4811
+  },
+  "/images/briefing/editions/demo/gradient.webp": {
+    "width": 1144,
+    "height": 4726
+  },
+  "/images/briefing/editions/demo/instrument.webp": {
+    "width": 1144,
+    "height": 4962
+  },
+  "/images/briefing/editions/demo/invoice.webp": {
+    "width": 1144,
+    "height": 5144
+  },
+  "/images/briefing/editions/demo/librarycard.webp": {
+    "width": 1144,
+    "height": 4826
+  },
+  "/images/briefing/editions/demo/memo.webp": {
+    "width": 1144,
+    "height": 5405
+  },
+  "/images/briefing/editions/demo/menu.webp": {
+    "width": 1144,
+    "height": 4269
+  },
+  "/images/briefing/editions/demo/metromap.webp": {
+    "width": 1144,
+    "height": 4947
+  },
+  "/images/briefing/editions/demo/playfair.webp": {
+    "width": 1144,
+    "height": 4938
+  },
+  "/images/briefing/editions/demo/postal.webp": {
+    "width": 1144,
+    "height": 4762
+  },
+  "/images/briefing/editions/demo/receipt.webp": {
+    "width": 1144,
+    "height": 6204
+  },
+  "/images/briefing/editions/demo/swiss.webp": {
+    "width": 1144,
+    "height": 5042
+  },
+  "/images/briefing/editions/exhibition.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/flightplan.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/gradient.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/instrument.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/invoice.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/librarycard.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/memo.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/menu.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/metromap.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/playfair.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/postal.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/receipt.webp": {
+    "width": 360,
+    "height": 480
+  },
+  "/images/briefing/editions/swiss.webp": {
+    "width": 360,
+    "height": 480
+  },
   "/images/icons/airtable.svg": {
     "width": 128,
     "height": 128
@@ -267,9 +403,9 @@
     "width": 264,
     "height": 264
   },
-  "/images/icons/macos/mail.png": {
-    "width": 264,
-    "height": 264
+  "/images/icons/macos/mail.webp": {
+    "width": 256,
+    "height": 256
   },
   "/images/icons/macos/notion_calendar.webp": {
     "width": 256,

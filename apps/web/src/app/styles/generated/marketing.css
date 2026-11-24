@@ -426,6 +426,7 @@
 @source "../../[locale]/(landing)/terms/page.tsx";
 @source "../../[locale]/(landing)/thanks/page.tsx";
 @source "../../[locale]/(landing)/use-cases/client.tsx";
+@source "../../[locale]/(landing)/use-cases/layout.tsx";
 @source "../../[locale]/(landing)/use-cases/page.tsx";
 @source "../../[locale]/(unindexed)/desktop-login/desktop-login-client.tsx";
 @source "../../[locale]/(unindexed)/desktop-login/layout.tsx";

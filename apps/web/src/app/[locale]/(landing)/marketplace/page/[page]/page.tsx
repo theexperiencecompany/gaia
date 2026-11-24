@@ -22,8 +22,6 @@ import {
   siteConfig,
 } from "@/lib/seo";
 
-export const revalidate = 3600;
-
 interface PageProps {
   readonly params: Promise<{ readonly page: string }>;
 }

@@ -34,8 +34,6 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export const revalidate = 3600; // Revalidate every hour
-
 const COMMUNITY_LISTING_SIZE = 8;
 // Every official template, as the sitemap reads them, so no copy slips through.
 const EXPLORE_TEMPLATE_LIMIT = 1000;
