@@ -215,8 +215,10 @@ class AsyncRedisCommands(Protocol):
         """XADD — returns the new entry's stream id."""
         ...
 
-    async def xrange(self, name: str, start: str, end: str, /) -> list[tuple[str, dict[str, str]]]:
-        """XRANGE — [(entry_id, fields)] oldest first, from start to end inclusive."""
+    async def xrange(
+        self, name: str, start: str = "-", end: str = "+", /
+    ) -> list[tuple[str, dict[str, str]]]:
+        """XRANGE — [(entry_id, fields)] oldest first, from start to end inclusive; the whole stream by default."""
         ...
 
     async def xrevrange(
