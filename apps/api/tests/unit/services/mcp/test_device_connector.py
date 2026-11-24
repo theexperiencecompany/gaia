@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -36,6 +36,7 @@ from app.constants.device_bridge import (
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
 )
+from app.services.device import up_listener
 from app.services.mcp.device_connector import DeviceConnectionError, DeviceConnector
 
 if TYPE_CHECKING:
@@ -211,3 +212,34 @@ async def test_a_request_sent_while_the_session_ends_does_not_break_the_ending()
     ]
     assert sorted(answered) == [1, 2]
     assert connector._unanswered == {3}
+
+
+async def test_a_connector_whose_session_the_device_ended_opens_a_new_one_on_next_use() -> None:
+    sent: list[str] = []
+
+    async def send_down(device_id: str, frame: BridgeFrame) -> None:
+        sent.append(frame["t"])
+        if frame["t"] == "mcp.open":
+            up_listener._inboxes[str(frame["sid"])].put_nowait(
+                {"t": "mcp.opened", "sid": frame["sid"]}
+            )
+
+    connector = DeviceConnector(device_id="dev-1", server_key="server-1")
+    with (
+        patch("app.services.mcp.device_connector.redis_cache", MagicMock()),
+        patch("app.services.mcp.device_connector.is_online", AsyncMock(return_value=True)),
+        patch("app.services.mcp.device_connector.send_down", send_down),
+    ):
+        await connector.connect()
+        lost_session = connector.session_id
+        up_listener._inboxes[lost_session].put_nowait({"t": "tunnel.closed"})
+        assert connector._reader_task is not None
+        await asyncio.wait_for(connector._reader_task, timeout=2.0)
+        assert not connector.is_connected
+
+        await connector.connect()
+
+        assert connector.is_connected
+        assert connector.session_id != lost_session
+        assert sent == ["mcp.open", "mcp.close", "mcp.open"]
+        await connector.disconnect()

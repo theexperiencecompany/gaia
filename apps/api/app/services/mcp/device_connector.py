@@ -65,6 +65,8 @@ class DeviceConnector(BaseConnector):
         self.device_id = device_id
         self.server_key = server_key
         self.session_id = uuid.uuid4().hex
+        # Set when the device side ended the session; the next call reconnects instead of reusing it.
+        self._session_lost = False
         # Fed by the shared per-pod up-listener (up_listener.py); drained by
         # _reader_task. Replaces a per-session Redis pub/sub subscription.
         # No mutate: connect() sets the inbox before anything reads it.
@@ -82,10 +84,20 @@ class DeviceConnector(BaseConnector):
     def public_identifier(self) -> str:
         return f"device:{self.device_id}:{self.server_key}"
 
+    @property
+    def is_connected(self) -> bool:
+        """Whether the session is open and the device has not ended it."""
+        return bool(super().is_connected) and not self._session_lost
+
     async def connect(self) -> None:
         """Open the session on the device and start the MCP client over the tunnel."""
         if self.client_session is not None:
-            return
+            if not self._session_lost:
+                return
+            await self.disconnect()
+        self._session_lost = False
+        # A fresh id per session: the socket that carried the lost one may still fail its id later.
+        self.session_id = uuid.uuid4().hex
         if not redis_cache.redis:
             raise DeviceConnectionError("Device bridge unavailable (no Redis connection)")
         if not await is_online(self.device_id):
@@ -203,6 +215,7 @@ class DeviceConnector(BaseConnector):
 
         A request sent while the answers go out is failed by the closing stream instead.
         """
+        self._session_lost = True
         unanswered, self._unanswered = self._unanswered, set()
         log.warning(
             f"{LogTag.MCP} Device session lost", reason=reason, unanswered_calls=len(unanswered)
