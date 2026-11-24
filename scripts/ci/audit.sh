@@ -151,8 +151,9 @@ for (const e of expired) console.error(`::error::pnpm-audit: allowlist entry ${e
 for (const f of failing) console.error(`::error::pnpm-audit: ${f.severity} ${f.module} ${f.id} ${f.cves.join(",")} ${f.url}`);
 for (const id of unused) console.warn(`::warning::pnpm-audit: allowlist entry ${id} no longer matches any advisory; remove it`);
 
-if (failing.length || expired.length) process.exit(1);
-console.log(`pnpm-audit: OK (${suppressed.length} allowlisted, threshold ${LEVEL})`);
+// exitCode, never exit(): stdout to a pipe is async on macOS, and exit() cuts the summary off.
+if (failing.length || expired.length) process.exitCode = 1;
+else console.log(`pnpm-audit: OK (${suppressed.length} allowlisted, threshold ${LEVEL})`);
 NODE
 }
 
