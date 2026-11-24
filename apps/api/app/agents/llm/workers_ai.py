@@ -41,7 +41,7 @@ def _without_caps(tool: JsonValue) -> JsonValue:
     if spec.function is None or "parameters" not in spec.function.model_fields_set:
         return tool
     spec.function.parameters = without_size_caps(spec.function.parameters)
-    return spec.model_dump(exclude_unset=True)
+    return spec.model_dump()
 
 
 class _StreamReducer:

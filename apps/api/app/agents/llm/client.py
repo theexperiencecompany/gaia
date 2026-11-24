@@ -1813,7 +1813,7 @@ def _gemini_schema_runnable(llm: ChatGoogleGenerativeAI, schema: type[_Structure
 
 
 def structured_runnable(
-    model: BaseChatModel, schema: type[_StructuredT], *, held: bool = False
+    model: BaseChatModel, schema: type[_StructuredT], *, held: bool
 ) -> Runnable:
     """Build the runnable that has model answer in schema; held has the provider hold the reply to it."""
     if held and isinstance(model, ChatGoogleGenerativeAI):

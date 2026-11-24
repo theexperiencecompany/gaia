@@ -2231,6 +2231,27 @@ class TestAinvokeStructured:
         assert result.fact == "from-openai"
         assert _workers_ai_then_openai == ["ChatWorkersAI", "ChatOpenAI"]
 
+    async def test_the_fallback_is_the_same_call_off_the_provider_that_failed(
+        self, _workers_ai_then_openai: list[str]
+    ) -> None:
+        """The config carries the sticky session and the user the spend is booked to."""
+        config = RunnableConfig(configurable={"user_id": USER_ID, "session_id": "s-1"})
+        options = StructuredCallOptions(temperature=0.2)
+
+        with (
+            patch(f"{_CLIENT}._structured_runnable") as mock_runnable,
+            patch(
+                f"{_CLIENT}.ainvoke_llm", new=AsyncMock(return_value=self._Schema(answer="42"))
+            ) as mock_invoke,
+        ):
+            await ainvoke_structured(self._Schema, "q", label="hil", config=config, options=options)
+            fallback = mock_invoke.call_args.kwargs["fallback"]
+            mock_runnable.reset_mock()
+            built = fallback()
+
+        assert built is mock_runnable.return_value
+        assert mock_runnable.call_args.args == (self._Schema, config, options, "cloudflare")
+
     async def test_a_one_shot_with_one_provider_has_no_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

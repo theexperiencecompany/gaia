@@ -147,7 +147,7 @@ async def _empty_tools(model: BaseChatModel) -> Result:
 
 
 async def _structured(model: BaseChatModel) -> Result:
-    answer = await structured_runnable(model, Verdict).ainvoke("Is 4 an even number?")
+    answer = await structured_runnable(model, Verdict, held=False).ainvoke("Is 4 an even number?")
     observed = f"is_even={answer.is_even}"
     return Result("structured output", "is_even=True", observed, answer.is_even is True)
 

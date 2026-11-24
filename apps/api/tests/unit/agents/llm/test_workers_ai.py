@@ -339,6 +339,22 @@ class TestAToolSchemaCarriesNoSizeCap:
         assert sent["function"]["description"] == "Write a headline."
         assert sent["function"]["strict"] is True
 
+    @pytest.mark.parametrize(
+        "tool_spec",
+        [
+            {"type": "function", "function": {"name": "ping", "description": "Ping."}},
+        ],
+    )
+    def test_a_tool_with_no_arguments_schema_is_sent_as_it_is(
+        self, tool_spec: dict[str, Any]
+    ) -> None:
+        requests: list[dict[str, Any]] = []
+        model = _model(_TEXT_REPLY, requests).bind(tools=[tool_spec])
+
+        model.invoke([HumanMessage("hi")])
+
+        assert requests[0]["tools"] == [tool_spec]
+
     def test_binding_does_not_change_the_callers_tool(self) -> None:
         model = _model(_TOOL_CALL_REPLY).bind_tools([_CAPPED_TOOL])
 
