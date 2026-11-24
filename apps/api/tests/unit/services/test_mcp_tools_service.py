@@ -1,8 +1,11 @@
 """Unit tests for the global MCP tools service (cache + shaping over the repository)."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
+from app.constants.public_pages import PublicPageDomain
 from app.models.integration_models import (
     IntegrationToolsRecord,
     McpToolsRollupEntry,
@@ -50,6 +53,7 @@ class TestStoreMcpTools:
             patch(f"{_MOD}.delete_cache", new_callable=AsyncMock) as mock_del,
             patch(f"{_MOD}._schedule_refresh"),
         ):
+            mock_repo.get_public = AsyncMock(return_value=None)
             mock_repo.store_tools = AsyncMock()
             await mcp_tools_service.store_mcp_tools("int1", [{"name": "t1", "description": "d"}])
 
@@ -193,3 +197,38 @@ class TestGetAllMcpTools:
 
         assert result == {}
         mock_set.assert_not_awaited()
+
+
+class TestStoreMcpToolsClearsThePublicPages:
+    """A published integration's marketplace page lists its tools."""
+
+    @pytest.mark.parametrize(
+        ("published_tools", "expected"),
+        [
+            pytest.param(["old"], [PublicPageDomain.INTEGRATIONS], id="published, tools changed"),
+            pytest.param(["new"], [], id="published, tools unchanged"),
+            pytest.param(None, [], id="not published"),
+        ],
+    )
+    async def test_only_a_published_integration_whose_tools_changed_clears_them(
+        self, published_tools: list[str] | None, expected: list[PublicPageDomain]
+    ) -> None:
+        published = (
+            None
+            if published_tools is None
+            else MagicMock(
+                tools=[StoredIntegrationTool(name=name, description="") for name in published_tools]
+            )
+        )
+        with (
+            patch(f"{_MOD}.integration_repository") as mock_repo,
+            patch(f"{_MOD}.delete_cache", new_callable=AsyncMock),
+            patch(f"{_MOD}._schedule_refresh"),
+            patch(f"{_MOD}.invalidate_public_pages", new_callable=AsyncMock) as invalidate_pages,
+        ):
+            mock_repo.get_public = AsyncMock(return_value=published)
+            mock_repo.store_tools = AsyncMock()
+            await mcp_tools_service.store_mcp_tools("int-1", [{"name": "new"}])
+
+        mock_repo.get_public.assert_awaited_once_with("int-1")
+        assert [c.args[0] for c in invalidate_pages.await_args_list] == expected

@@ -2,6 +2,7 @@ from datetime import datetime
 import secrets
 
 from app.constants.log_tags import LogTag
+from app.constants.public_pages import COMMUNITY_WORKFLOWS_CACHE_PREFIX, PublicPageDomain
 from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.constants.waits import WaitCondition
 from app.db.chroma.chromadb import ChromaClient
@@ -30,6 +31,7 @@ from app.models.workflow_models import (
 from app.services.briefing.errors import refuse_a_missing_brief
 from app.services.briefing.held import release_on_tell_me_now
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.public_pages import invalidate_public_pages
 from app.services.system_workflows.registry import UNLISTED_KEYS, behaviour_of
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.wait_service import report_wait_met
@@ -771,6 +773,8 @@ class WorkflowService:
 
             if updated is None:
                 return None
+            if current_workflow.is_public:
+                await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
             await release_on_tell_me_now(user_id, [workflow_id], request.delivery)
             if trigger_config_changed:
                 await report_wait_met(
@@ -826,6 +830,8 @@ class WorkflowService:
 
             if not deleted:
                 return False
+            if workflow and workflow.is_public:
+                await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
 
             log.set(workflow={"id": workflow_id, "status": "deleted"})
             log.info(
@@ -1191,6 +1197,8 @@ class WorkflowService:
             )
 
             if result:
+                if result.is_public:
+                    await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
                 workflow = WorkflowWithIntegrations(**result.model_dump())
                 # Match get_workflow/list_workflows so the regenerated steps'
                 # required/missing integrations surface in the UI.
@@ -1243,7 +1251,11 @@ class WorkflowService:
             return False
 
     @staticmethod
-    @Cacheable(smart_hash=True, ttl=300, model=PublicWorkflowsResponse)
+    @Cacheable(
+        key_pattern=COMMUNITY_WORKFLOWS_CACHE_PREFIX + ":{limit}:{offset}:{user_id}",
+        ttl=300,
+        model=PublicWorkflowsResponse,
+    )
     async def get_community_workflows(
         limit: int = 20,
         offset: int = 0,
@@ -1375,9 +1387,11 @@ class WorkflowService:
                     missing_integrations=[m.id for m in missing],
                 )
 
-            await workflow_repository.set_steps(
+            stored = await workflow_repository.set_steps(
                 workflow_id, user_id, steps, deactivate=bool(missing)
             )
+            if stored is not None and stored.is_public:
+                await invalidate_public_pages(PublicPageDomain.WORKFLOWS)
 
         except Exception as e:
             log.error(

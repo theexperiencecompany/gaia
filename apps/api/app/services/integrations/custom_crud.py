@@ -14,7 +14,6 @@ from app.constants.public_pages import PublicPageDomain
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache_by_pattern
 from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
@@ -199,6 +198,8 @@ async def update_custom_integration(
 
     update = IntegrationUpdate.model_validate(changes)
     updated = await integration_repository.update(integration_id, update)
+    if updated is not None and (doc.is_public or updated.is_public):
+        await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
 
     # name / description / is_public all embed into every connected user's cached
     # catalog item (MyIntegrationItem + connected-list). Bust those users so the
@@ -233,7 +234,6 @@ async def _delete_owned_integration(doc: Integration, user_id: str, integration_
 
     if doc.is_public:
         # Only once the row is gone: a marketplace read before that would cache it again.
-        await delete_cache_by_pattern("marketplace:community:*")
         await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
 
     # A device MCP server has an authoritative Postgres row that the Mongo

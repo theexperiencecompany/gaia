@@ -8,7 +8,11 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.public_pages import PublicPageDomain
-from app.services.integrations.custom_crud import _delete_owned_integration
+from app.models.integration_models import UpdateCustomIntegrationRequest
+from app.services.integrations.custom_crud import (
+    _delete_owned_integration,
+    update_custom_integration,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -54,7 +58,6 @@ def _marketplace_seams(deleted: bool) -> Iterator[list[tuple[object, ...]]]:
         _delete_seams(AsyncMock()),
         patch(f"{_MODULE}.integration_repository.delete_custom", record("delete", deleted)),
         patch(f"{_MODULE}.remove_public_integration", AsyncMock()),
-        patch(f"{_MODULE}.delete_cache_by_pattern", record("clear_cache")),
         patch(f"{_MODULE}.invalidate_public_pages", record("invalidate_public_pages")),
     ):
         yield calls
@@ -90,7 +93,6 @@ class TestDeleteOwnedIntegration:
 
         assert calls == [
             ("delete", "int-1", "user-1"),
-            ("clear_cache", "marketplace:community:*"),
             ("invalidate_public_pages", PublicPageDomain.INTEGRATIONS),
         ]
 
@@ -112,3 +114,54 @@ class TestDeleteOwnedIntegration:
 
         assert deleted is False
         assert calls == [("delete", "int-1", "user-1")]
+
+
+class TestUpdateCustomIntegrationClearsThePublicPages:
+    @pytest.mark.parametrize(
+        ("was_public", "is_public", "expected"),
+        [
+            pytest.param(True, True, [PublicPageDomain.INTEGRATIONS], id="published, edited"),
+            pytest.param(True, False, [PublicPageDomain.INTEGRATIONS], id="made private"),
+            pytest.param(False, True, [PublicPageDomain.INTEGRATIONS], id="made public"),
+            pytest.param(False, False, [], id="private, edited"),
+        ],
+    )
+    async def test_an_edit_clears_them_when_the_integration_is_or_was_published(
+        self, was_public: bool, is_public: bool, expected: list[PublicPageDomain]
+    ) -> None:
+        with (
+            patch(f"{_MODULE}.integration_repository") as repo,
+            patch(
+                f"{_MODULE}.user_integration_repository.user_ids_with_integration",
+                AsyncMock(return_value=[]),
+            ),
+            patch(f"{_MODULE}.invalidate_public_pages", new_callable=AsyncMock) as invalidate_pages,
+        ):
+            repo.get_custom_for_user = AsyncMock(
+                return_value=MagicMock(is_public=was_public, mcp_config=None)
+            )
+            repo.update = AsyncMock(return_value=MagicMock(is_public=is_public))
+            await update_custom_integration(
+                "user-1", "int-1", UpdateCustomIntegrationRequest(name="Renamed")
+            )
+
+        assert [c.args[0] for c in invalidate_pages.await_args_list] == expected
+
+    async def test_an_edit_that_stored_nothing_leaves_them_alone(self) -> None:
+        with (
+            patch(f"{_MODULE}.integration_repository") as repo,
+            patch(
+                f"{_MODULE}.user_integration_repository.user_ids_with_integration",
+                AsyncMock(return_value=[]),
+            ),
+            patch(f"{_MODULE}.invalidate_public_pages", new_callable=AsyncMock) as invalidate_pages,
+        ):
+            repo.get_custom_for_user = AsyncMock(
+                return_value=MagicMock(is_public=True, mcp_config=None)
+            )
+            repo.update = AsyncMock(return_value=None)
+            await update_custom_integration(
+                "user-1", "int-1", UpdateCustomIntegrationRequest(name="Renamed")
+            )
+
+        invalidate_pages.assert_not_awaited()

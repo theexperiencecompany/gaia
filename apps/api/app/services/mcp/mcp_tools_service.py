@@ -10,9 +10,11 @@ from typing import NotRequired, TypedDict
 
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.constants.log_tags import LogTag
+from app.constants.public_pages import PublicPageDomain
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.integration_models import McpToolsRollupEntry, StoredIntegrationTool
+from app.services.public_pages import invalidate_public_pages
 from shared.py.wide_events import log, spawn_logged_task
 
 _ROLLUP = dict[str, McpToolsRollupEntry]
@@ -66,9 +68,13 @@ async def store_mcp_tools(integration_id: str, tools: Sequence[RawToolMetadata])
     if not formatted:
         return
     try:
+        published = await integration_repository.get_public(integration_id)
         await integration_repository.store_tools(integration_id, formatted)
         await invalidate_mcp_tools_cache()
         _schedule_refresh()
+        # A published integration's marketplace page lists its tools.
+        if published is not None and published.tools != formatted:
+            await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
     except Exception as e:
         log.error(
             f"{LogTag.MCP} Error storing tools",

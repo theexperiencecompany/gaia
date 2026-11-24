@@ -14,6 +14,14 @@ class PublicPageDomain(StrEnum):
     WORKFLOWS = "workflows"
 
 
+#: Redis key prefixes of the API's own cached public lists, which a rebuilt page reads.
+COMMUNITY_INTEGRATIONS_CACHE_PREFIX = "marketplace:community"
+COMMUNITY_WORKFLOWS_CACHE_PREFIX = "workflows:community"
+PUBLIC_LIST_CACHE_PREFIXES: dict[PublicPageDomain, str] = {
+    PublicPageDomain.INTEGRATIONS: COMMUNITY_INTEGRATIONS_CACHE_PREFIX,
+    PublicPageDomain.WORKFLOWS: COMMUNITY_WORKFLOWS_CACHE_PREFIX,
+}
+
 #: The web server's route handler (apps/web/src/app/api/public-pages/revalidate/route.ts).
 PUBLIC_PAGES_REVALIDATE_PATH = "/api/public-pages/revalidate"
 #: Per attempt. The publisher's request waits on it, since their browser opens the page next.

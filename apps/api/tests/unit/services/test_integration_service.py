@@ -36,6 +36,7 @@ from app.constants.integrations import (
     MAX_ACCOUNTS_PER_INTEGRATION,
     IntegrationStatus,
 )
+from app.constants.public_pages import PublicPageDomain
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.db.repositories.scouts import scouts_repository
@@ -1864,9 +1865,9 @@ class TestDeleteCustomIntegration:
                 new_callable=AsyncMock,
             ) as delete_cache,
             patch(
-                "app.services.integrations.custom_crud.delete_cache_by_pattern",
+                "app.services.integrations.custom_crud.invalidate_public_pages",
                 new_callable=AsyncMock,
-            ) as delete_pattern,
+            ) as invalidate_pages,
             patch(
                 "app.services.integrations.custom_crud.drop_local_sessions",
                 new_callable=AsyncMock,
@@ -1881,7 +1882,7 @@ class TestDeleteCustomIntegration:
                 chroma=chroma,
                 deregister=deregister,
                 delete_cache=delete_cache,
-                delete_pattern=delete_pattern,
+                invalidate_pages=invalidate_pages,
                 drop_sessions=drop_sessions,
             )
 
@@ -1928,7 +1929,7 @@ class TestDeleteCustomIntegration:
         # Private: the marketplace store is untouched, but the tools cache for
         # every user is still busted.
         seams.remove_public.assert_not_called()
-        seams.delete_pattern.assert_not_called()
+        seams.invalidate_pages.assert_not_called()
         seams.delete_cache.assert_awaited_once_with(MCP_TOOLS_CACHE_KEY)
         # Chroma namespace cleanup runs against the OLD stored URL.
         seams.chroma.assert_awaited_once_with(CUSTOM_INTEGRATION_ID, SERVER_URL)
@@ -1963,7 +1964,7 @@ class TestDeleteCustomIntegration:
         assert result is True
         seams.remove_public.assert_awaited_once_with(CUSTOM_INTEGRATION_ID)
         # Public delete also busts the marketplace listing cache.
-        seams.delete_pattern.assert_awaited_once_with("marketplace:community:*")
+        seams.invalidate_pages.assert_awaited_once_with(PublicPageDomain.INTEGRATIONS)
 
     @patch(
         "app.services.integrations.custom_crud.remove_user_integration",

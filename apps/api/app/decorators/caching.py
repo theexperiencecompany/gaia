@@ -147,6 +147,8 @@ class CacheInvalidator:
     """Clear the entries named by key_patterns, key_generator or key once func succeeds.
 
     Clearing first would let a read during the write re-cache the old value.
+    clear_first is for a func that runs after the write and tells another
+    server to re-read: the stale entry must be gone before that server asks.
 
     Wildcard patterns are expensive on large Redis instances — prefer specific keys.
     """
@@ -156,6 +158,8 @@ class CacheInvalidator:
         key_patterns: list[str] | None = None,
         key_generator: _InvalidationKeyGenerator | None = None,
         key: str | None = None,
+        *,
+        clear_first: bool = False,
     ):
         """Initialize the cache invalidator.
 
@@ -164,6 +168,7 @@ class CacheInvalidator:
         self.key_patterns = key_patterns
         self.key_generator = key_generator
         self.key = key
+        self.clear_first = clear_first
         if not key and not key_patterns and not key_generator:
             raise ValueError("Either key, key_patterns, or key_generator must be provided.")
 
@@ -202,14 +207,19 @@ class CacheInvalidator:
                     for pattern in self.key_patterns
                 ]
 
+            async def clear() -> None:
+                log.debug(f"{LogTag.API} Cache invalidation for keys", cache_keys=cache_keys)
+                await asyncio.gather(*[delete_cache(key) for key in cache_keys])
+
+            if self.clear_first:
+                await clear()
             result: R
             if asyncio.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
             else:
                 result = cast(R, func(*args, **kwargs))
-
-            log.debug(f"{LogTag.API} Cache invalidation for keys", cache_keys=cache_keys)
-            await asyncio.gather(*[delete_cache(key) for key in cache_keys])
+            if not self.clear_first:
+                await clear()
             return result
 
         return wrapper
