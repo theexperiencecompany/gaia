@@ -3,7 +3,6 @@
 import { Home01Icon } from "@icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { defaultFont } from "@/app/fonts";
 import { ChevronLeft } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 
@@ -11,10 +10,7 @@ export default function PageNotFound() {
   const router = useRouter();
 
   return (
-    // Renders outside the locale layout, so it carries the theme and font itself.
-    <div
-      className={`dark flex h-screen w-screen flex-col items-center justify-center gap-4 bg-linear-to-b from-zinc-900 to-black ${defaultFont.className}`}
-    >
+    <div className="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-linear-to-b from-zinc-900 to-black">
       <div className="absolute z-0 mx-auto w-full text-center text-[40vw] font-bold text-zinc-900/40">
         404
       </div>
