@@ -23,6 +23,7 @@ from pydantic_core import to_jsonable_python
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
+from app.agents.tools.tool_integration import tool_integration_id
 from app.constants.hil import (
     AUTO_ASK_NOTE,
     HIL_APPROVAL_TIMEOUT_SECONDS,
@@ -39,6 +40,7 @@ from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
 )
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import (
     record_approval_decided,
@@ -88,6 +90,7 @@ from app.services.hil.utils import (
 )
 from app.services.hil.when import UserClock
 from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.user_instructions_service import get_all_instructions
 from app.utils.general_utils import clip_text
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
@@ -96,6 +99,10 @@ from shared.py.approvals import ApprovalOutcome
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
+
+_INSTRUCTIONS_UNREADABLE_REASON = (
+    "Your saved instructions could not be read, so this waits for you."
+)
 
 
 @dataclass(frozen=True)
@@ -366,11 +373,27 @@ async def _judge(
     # A deny rule is a security input: unreadable, the gate fails closed rather than judging without it.
     prefs = await get_hil_preferences(context.user_id)
     never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in prefs.never_auto_tools
+    try:
+        instructions = await get_all_instructions(context.user_id)
+    except Exception as e:  # a rule the user saved may cover this call: ask rather than guess
+        log.warning(
+            f"{LogTag.HIL} saved instructions unreadable; asking",
+            tool_name=call.name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return IntentDecision("ask", _INSTRUCTIONS_UNREADABLE_REASON)
+    integration = tool_integration_id(tool) if tool else None
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
             history=history,
             never_auto=never_auto,
+            standing_rules=tuple(
+                text
+                for scope in (GLOBAL_INSTRUCTIONS_SCOPE, integration)
+                if scope and (text := instructions.get(scope))
+            ),
         ),
         user_messages=context.user_messages,
         judge=JevIntentJudge(),

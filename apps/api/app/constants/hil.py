@@ -95,6 +95,7 @@ HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
 HIL_JEV_FORBID_FLOOR = 0.50
 #: The name the focused forbid question goes by, asked when forbid words may block a run.
 JEV_FORBID_QUESTION_KEY = "forbid"
+JEV_STANDING_QUESTION_KEY: Final = "standing"
 #: The forbid verdict recorded when the focused check itself failed (the call asks).
 JEV_FORBID_CHECK_FAILED = "unclear-forbid"
 

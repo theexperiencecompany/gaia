@@ -961,3 +961,50 @@ class TestAConfirmationOfWhatTheUserWasShown:
         )
 
         assert decision.outcome == "ask"
+
+
+def _standing_answer(choice: str, confidence: float) -> dict[str, Any]:
+    return {
+        "answers": {
+            hil_constants.JEV_STANDING_QUESTION_KEY: {
+                "type": "choice",
+                "choice": choice,
+                "confidence": confidence,
+            }
+        }
+    }
+
+
+class TestTheUsersSavedInstructions:
+    """Only the instructions and the pending action reach the question: no turns to lift them."""
+
+    RULES = ("Always ask me before emailing my boss.", "Reply in English.")
+
+    async def test_the_question_sees_the_instructions_and_the_action_alone(self) -> None:
+        transport = _transport(_standing_answer("forbidden", 0.9))
+        await JevIntentJudge(transport=transport).standing_rules_hold(
+            standing_rules=self.RULES, call=_call()
+        )
+        state, questions = transport.await_args.args
+        assert state == {
+            "standing_instructions": list(self.RULES),
+            "pending_action": {"tool": "send_email", "args": _call().args},
+        }
+        assert questions == {hil_constants.JEV_STANDING_QUESTION_KEY: prompts.JEV_STANDING_QUESTION}
+
+    @pytest.mark.parametrize(
+        ("choice", "offset", "holds"),
+        [("forbidden", 0.0, True), ("forbidden", -0.01, False), ("permitted", 0.0, False)],
+        ids=["forbidden-at-floor", "forbidden-below-floor", "permitted"],
+    )
+    async def test_a_rule_holds_only_when_forbidden_at_the_floor(
+        self, choice: str, offset: float, holds: bool
+    ) -> None:
+        confidence = hil_constants.HIL_JEV_FORBID_FLOOR + offset
+        transport = _transport(_standing_answer(choice, confidence))
+        assert (
+            await JevIntentJudge(transport=transport).standing_rules_hold(
+                standing_rules=self.RULES, call=_call()
+            )
+            is holds
+        )

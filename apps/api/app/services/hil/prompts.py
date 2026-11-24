@@ -163,6 +163,29 @@ JEV_FORBID_QUESTION: dict[str, object] = {
 # asked once per action in a single call. {number} is the action's position in
 # state.pending_actions. Tuned through the hil-reply calibration suite.
 
+#: Asked only after a call would run in auto mode and only when the user has saved
+#: instructions reaching it. It never sees the user's turns: an instruction can only make
+#: the call ask, and nothing said in chat lifts "always ask me first".
+JEV_STANDING_QUESTION: dict[str, object] = {
+    "type": "choice",
+    "instructions": (
+        "standing_instructions are rules the user saved for their assistant. Does any of "
+        "them forbid pending_action, or require asking the user before an action like it?"
+    ),
+    "criteria": {
+        JevChoice.FORBIDDEN: (
+            "An instruction forbids this exact action ('never email Alice', 'don't touch "
+            "the archive') or asks to be asked first for actions like it ('always ask me "
+            "before emailing my boss', 'check with me before posting in #general')."
+        ),
+        JevChoice.PERMITTED: (
+            "No instruction covers this action, or the instructions only shape how it is "
+            "done (tone, language, format, timing notes this call does not break)."
+        ),
+    },
+}
+
+
 JEV_REPLY_QUESTIONS_VERSION = "v3-amend"
 
 JEV_REPLY_INSTRUCTIONS = (

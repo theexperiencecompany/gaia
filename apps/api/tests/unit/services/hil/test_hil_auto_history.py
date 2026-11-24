@@ -64,6 +64,9 @@ class _AllowingJudge:
     async def decide(self, **_: object) -> IntentDecision:
         return IntentDecision(outcome="accept", reason="You asked to email Bob the deck.")
 
+    async def standing_rules_hold(self, **_: object) -> bool:
+        return False
+
 
 async def _judge(history: AutoHistory) -> IntentDecision:
     """Real judge_intent with a judge that allows: what comes back is the history's doing."""

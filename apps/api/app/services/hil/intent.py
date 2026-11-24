@@ -36,6 +36,9 @@ _NO_REQUEST_REASON = "Could not check this against anything you asked for."
 _JUDGE_FAILED_REASON = "The approval check could not run."
 #: Shown when a call ran on containment rather than on the user's explicit words.
 CONTAINED_RUN_REASON = "Auto mode ran this: it stays in your account and can be undone"
+STANDING_RULE_REASON = (
+    "One of your saved instructions asks for your go-ahead before this {tool} call."
+)
 
 
 @dataclass(frozen=True)
@@ -181,6 +184,12 @@ class IntentJudge(Protocol):
         assistant: AssistantTurns = AssistantTurns(),
     ) -> IntentDecision: ...
 
+    async def standing_rules_hold(
+        self, *, standing_rules: tuple[str, ...], call: JudgedCall
+    ) -> bool:
+        """Whether a saved instruction forbids this call or asks to be asked first."""
+        ...
+
 
 @dataclass(frozen=True)
 class AutoContext:
@@ -190,6 +199,9 @@ class AutoContext:
     history: AutoHistory = AutoHistory()
     # The user put this call's tool on their never-auto list (matched by HIL tool key).
     never_auto: bool = False
+    # Saved instructions that reach this call (global and its integration's): they can
+    # only make it ask, never authorize it.
+    standing_rules: tuple[str, ...] = ()
 
 
 async def judge_intent(
@@ -222,7 +234,7 @@ async def judge_intent(
         )
 
     try:
-        return await judge.decide(
+        decision = await judge.decide(
             user_id=auto.user_id,
             user_messages=turns,
             call=call,
@@ -230,6 +242,12 @@ async def judge_intent(
             history=auto.history,
             assistant=assistant,
         )
+        if (
+            decision.outcome == "accept"
+            and auto.standing_rules
+            and await judge.standing_rules_hold(standing_rules=auto.standing_rules, call=call)
+        ):
+            return IntentDecision("ask", STANDING_RULE_REASON.format(tool=call.tool_name))
     except Exception as e:  # the one classifier failed: the call waits on the user instead
         log.error(
             f"{LogTag.HIL} intent judge failed; asking",
@@ -238,6 +256,7 @@ async def judge_intent(
             error_type=type(e).__name__,
         )
         return IntentDecision("ask", _JUDGE_FAILED_REASON)
+    return decision
 
 
 def _history_blocks(history: AutoHistory) -> bool:

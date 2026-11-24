@@ -26,6 +26,7 @@ from app.constants.hil import (
     JEV_DECISION_QUESTION_KEY,
     JEV_FORBID_CHECK_FAILED,
     JEV_FORBID_QUESTION_KEY,
+    JEV_STANDING_QUESTION_KEY,
     JevChoice,
 )
 from app.constants.log_tags import LogTag
@@ -47,6 +48,7 @@ from app.services.hil.prompts import (
     JEV_FORBID_QUESTION,
     JEV_QUESTION,
     JEV_QUESTIONS_VERSION,
+    JEV_STANDING_QUESTION,
 )
 from app.services.hil.utils import PriorCall
 from shared.py.wide_events import log
@@ -303,6 +305,28 @@ class JevIntentJudge:
                 shown_turns=assistant.shown,
             ),
         )
+
+    async def standing_rules_hold(
+        self, *, standing_rules: tuple[str, ...], call: JudgedCall
+    ) -> bool:
+        """Whether a saved instruction forbids this call or asks to be asked first; raises on failure."""
+        state = {
+            "standing_instructions": list(standing_rules),
+            "pending_action": {"tool": call.tool_name, "args": call.args},
+        }
+        body = await self._transport(state, {JEV_STANDING_QUESTION_KEY: JEV_STANDING_QUESTION})
+        answer = body.choice(
+            JEV_STANDING_QUESTION_KEY,
+            (JevChoice.FORBIDDEN, JevChoice.PERMITTED),
+            label="standing ",
+        )
+        verdict = settle_forbid(answer.choice, float(answer.confidence or 0.0))
+        log.info(
+            f"{LogTag.HIL} standing instructions check",
+            tool_name=call.tool_name,
+            hil={"choice": answer.choice, "holds": verdict is JevChoice.FORBIDDEN},
+        )
+        return verdict is JevChoice.FORBIDDEN
 
     async def _forbid_verdict(
         self, asked: "JevVerdict", user_messages: list[str], call: JudgedCall

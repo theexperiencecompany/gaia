@@ -797,6 +797,36 @@ class TestLedgerAutoMode:
             run=("Fetched both drafts.",),
         )
 
+    async def test_the_judge_reads_the_users_global_and_this_integrations_instructions(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.instructions.return_value = {
+            "global": "Reply in English.",
+            "gmail": "Always ask before emailing my boss.",
+            "notion": "Never archive pages.",
+        }
+
+        await gate.decide_tool_call(gated_request())
+
+        gate_seams.instructions.assert_awaited_once_with(USER_ID)
+        (context,) = gate_seams.judge.await_args.args
+        assert context.standing_rules == (
+            "Reply in English.",
+            "Always ask before emailing my boss.",
+        )
+
+    async def test_unreadable_instructions_ask_instead_of_running_unchecked(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.instructions.side_effect = ConnectionError("mongo down")
+
+        await gate.decide_tool_call(gated_request())
+
+        gate_seams.judge.assert_not_awaited()
+        gate_seams.ledger.register.assert_awaited_once()
+
     async def test_a_tool_the_user_never_lets_auto_mode_run_reaches_the_judge_as_never_auto(
         self, gate_seams: GateSeams
     ) -> None:

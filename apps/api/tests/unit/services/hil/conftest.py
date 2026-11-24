@@ -162,6 +162,7 @@ class GateSeams:
     prefs: AsyncMock
     judge: AsyncMock
     log: MagicMock
+    instructions: AsyncMock
 
 
 def _fake_registry() -> MagicMock:
@@ -207,6 +208,9 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
             new=AsyncMock(return_value=IntentDecision("ask", "")),
         ) as judge,
         patch(f"{GATE_MODULE}.log") as log,
+        patch(
+            f"{GATE_MODULE}.get_all_instructions", new=AsyncMock(return_value={})
+        ) as instructions,
     ):
         yield GateSeams(
             policy=policy,
@@ -218,6 +222,7 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
             prefs=prefs,
             judge=judge,
             log=log,
+            instructions=instructions,
         )
 
 
