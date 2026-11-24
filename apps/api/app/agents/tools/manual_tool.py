@@ -45,6 +45,8 @@ async def read_manual(topic: ManualTopic) -> str:
       spreadsheets, CSV) from a request and its data.
     - ``billing``: the user's plan and payment history; handing them a checkout
       link to upgrade to Pro; what to say when they hit a usage limit.
+    - ``approvals``: when GAIA asks before acting; the rules the user can set
+      for a tool, an integration or a situation; what always asks.
     - ``device-setup``: connect the user's own machine with the ``gaia bridge``
       CLI (install, pair via a code pasted in chat or the approval page, expose
       MCP servers or local files, keep it online); how to use a connected device.

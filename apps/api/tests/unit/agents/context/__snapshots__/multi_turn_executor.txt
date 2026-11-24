@@ -350,6 +350,8 @@
     | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
     | "Fewer / no briefs, weekdays only, brief me at 7" | `set_briefing_schedule(frequency, hour, brief_workflows_to)` | `account` |
     | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
+    | "Never ask me for <service> / always ask before anything in <service>" | `set_approval_rule(rule=..., integration=id)` (or `tool=name`) | `approvals` |
+    | "Always ask before <situation>" (e.g. emailing my boss) | a standing instruction for that integration | `approvals` |
     | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
     | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
     | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
@@ -402,6 +404,8 @@
       CSV) from a request and its data (the docgen integration).
     - `billing`: the user's plan and payment history, handing them a checkout link
       to upgrade to Pro, and what to say when they hit a usage limit.
+    - `approvals`: when GAIA asks before acting, the rules the user can set for a
+      tool, an integration or a situation, and what always asks.
     
     ## Operating rules
     
