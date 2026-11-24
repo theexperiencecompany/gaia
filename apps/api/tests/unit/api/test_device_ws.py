@@ -22,10 +22,13 @@ from app.constants.device_bridge import (
     DEVICE_TOKEN_AUDIENCE,
     FRAME_EXEC_EXIT,
     FRAME_EXEC_OPEN,
+    FRAME_EXEC_STDERR,
+    FRAME_EXEC_STDOUT,
     FRAME_MCP_CLOSE,
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
     FRAME_MCP_OPEN,
+    FRAME_MCP_OPENED,
 )
 from app.services.device import device_auth
 from tests.helpers import (
@@ -275,12 +278,15 @@ async def test_a_closing_socket_fails_each_session_it_still_carries():
     """Regression for #1144: a dropped socket told no one, so each waiting call ran out its timeout."""
 
     async def relay(websocket, device_id, sessions, ready=None):
-        ws_module._track_session(sessions, {"t": FRAME_MCP_OPEN, "sid": "s-mcp", "pod": "pod-a"})
-        ws_module._track_session(sessions, {"t": FRAME_EXEC_OPEN, "sid": "s-exec", "pod": "pod-b"})
+        ws_module._track_session(
+            sessions, {"t": FRAME_MCP_OPEN, "sid": "s-unanswered", "pod": "pod-c"}
+        )
         ready.set()
 
     async def receive(websocket, device_id, user_id, state, sessions):
         await asyncio.sleep(0)
+        ws_module._track_session(sessions, {"t": FRAME_MCP_OPENED, "sid": "s-mcp", "pod": "pod-a"})
+        ws_module._track_session(sessions, {"t": "exec.started", "sid": "s-exec", "pod": "pod-b"})
         ws_module._track_session(sessions, {"t": FRAME_EXEC_EXIT, "sid": "s-exec", "pod": "pod-b"})
         raise WebSocketDisconnect()
 
@@ -297,10 +303,14 @@ async def test_a_closing_socket_fails_each_session_it_still_carries():
 @pytest.mark.parametrize(
     ("frame", "carried"),
     [
-        ({"t": FRAME_MCP_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
-        ({"t": FRAME_EXEC_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
-        ({"t": FRAME_MCP_OPEN, "sid": "s1"}, {"s0": "p0"}),
-        ({"t": FRAME_MCP_OPEN, "pod": "p1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_OPENED, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": "exec.started", "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_EXEC_STDOUT, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_EXEC_STDERR, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_MCP_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0"}),
+        ({"t": FRAME_EXEC_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_OPENED, "sid": "s1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_OPENED, "pod": "p1"}, {"s0": "p0"}),
         ({"t": FRAME_MCP_CLOSE, "sid": "s0"}, {}),
         ({"t": FRAME_MCP_ERROR, "sid": "s0", "pod": "p0"}, {}),
         ({"t": FRAME_EXEC_EXIT, "sid": "s0", "pod": "p0"}, {}),
@@ -308,10 +318,14 @@ async def test_a_closing_socket_fails_each_session_it_still_carries():
         ({"t": FRAME_MCP_CLOSE, "sid": "s-other"}, {"s0": "p0"}),
     ],
     ids=[
-        "mcp-open",
-        "exec-open",
-        "open-no-pod",
-        "no-sid",
+        "mcp-opened",
+        "exec-started",
+        "exec-stdout",
+        "exec-stderr",
+        "mcp-open-relayed-but-unanswered",
+        "exec-open-relayed-but-unanswered",
+        "answer-without-pod",
+        "answer-without-sid",
         "close",
         "error",
         "exit",
@@ -319,7 +333,7 @@ async def test_a_closing_socket_fails_each_session_it_still_carries():
         "close-of-an-untracked-session",
     ],
 )
-def test_a_socket_carries_a_session_from_its_open_to_its_end(frame, carried):
+def test_a_socket_carries_a_session_from_the_devices_answer_to_its_end(frame, carried):
     sessions = {"s0": "p0"}
 
     ws_module._track_session(sessions, frame)
@@ -328,8 +342,8 @@ def test_a_socket_carries_a_session_from_its_open_to_its_end(frame, carried):
 
 
 @pytest.mark.asyncio
-async def test_the_down_relay_records_a_session_it_opens_and_forwards_the_frame():
-    raw = json.dumps({"t": FRAME_MCP_OPEN, "sid": "s1", "pod": "p1"})
+async def test_the_down_relay_forgets_a_session_it_closes_and_forwards_the_frame():
+    raw = json.dumps({"t": FRAME_MCP_CLOSE, "sid": "s1"})
     delivered = [{"type": "message", "data": raw.encode()}]
 
     async def get_message(**kwargs):
@@ -346,7 +360,7 @@ async def test_the_down_relay_records_a_session_it_opens_and_forwards_the_frame(
     ws = _socket()
     sent = asyncio.Event()
     ws.send_text = AsyncMock(side_effect=lambda _data: sent.set())
-    sessions: dict[str, str] = {}
+    sessions = {"s1": "p1"}
 
     with patch.object(ws_module.redis_cache, "redis", redis):
         task = asyncio.create_task(ws_module._down_relay(ws, "d1", sessions))
@@ -355,5 +369,5 @@ async def test_the_down_relay_records_a_session_it_opens_and_forwards_the_frame(
         with contextlib.suppress(asyncio.CancelledError):
             await task
 
-    assert sessions == {"s1": "p1"}
+    assert sessions == {}
     ws.send_text.assert_awaited_once_with(raw)

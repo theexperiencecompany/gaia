@@ -190,3 +190,24 @@ async def test_a_failure_while_opening_fails_the_open_with_its_reason() -> None:
 
     with pytest.raises(DeviceConnectionError, match="Local server 'x' exited"):
         await connector._opened
+
+
+async def test_a_request_sent_while_the_session_ends_does_not_break_the_ending() -> None:
+    """A request admitted mid-loop once raised 'Set changed size' and skipped closing the stream."""
+    connector = DeviceConnector(device_id="dev-1", server_key="server-1")
+    connector._unanswered = {1, 2}
+    read_send, read_recv = anyio.create_memory_object_stream[SessionMessage | Exception](0)
+    ending = asyncio.create_task(connector._end_session(read_send, "gone"))
+
+    first = await asyncio.wait_for(read_recv.receive(), timeout=2.0)
+    connector._unanswered.add(3)
+    rest = [message async for message in read_recv]
+    await asyncio.wait_for(ending, timeout=2.0)
+
+    answered = [
+        m.message.root.id
+        for m in (first, *rest)
+        if isinstance(m, SessionMessage) and isinstance(m.message.root, JSONRPCError)
+    ]
+    assert sorted(answered) == [1, 2]
+    assert connector._unanswered == {3}

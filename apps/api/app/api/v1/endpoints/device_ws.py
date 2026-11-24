@@ -24,14 +24,13 @@ from app.constants.device_bridge import (
     DEVICE_HEARTBEAT_TIMEOUT_SECONDS,
     DEVICE_RELAY_READY_TIMEOUT_SECONDS,
     FRAME_EXEC_EXIT,
-    FRAME_EXEC_OPEN,
+    FRAME_EXEC_STARTED,
     FRAME_EXEC_STDERR,
     FRAME_EXEC_STDOUT,
     FRAME_HELLO,
     FRAME_MCP_CLOSE,
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
-    FRAME_MCP_OPEN,
     FRAME_MCP_OPENED,
     FRAME_PING,
     FRAME_PONG,
@@ -68,7 +67,9 @@ class SocketLiveness(TypedDict):
 
 # session id -> the consumer pod waiting on it, for every session open on one socket
 OpenSessions = dict[str, str]
-_SESSION_OPENS = (FRAME_MCP_OPEN, FRAME_EXEC_OPEN)
+# The device answering on this socket is what makes a session the socket's: an open relayed
+# down a superseded, half-open socket reaches the replacement too, and must not be failed here.
+_SESSION_OPENS = (FRAME_MCP_OPENED, FRAME_EXEC_STARTED, FRAME_EXEC_STDOUT, FRAME_EXEC_STDERR)
 # Frames after which the session is over, from either end of the socket.
 _SESSION_ENDS = (FRAME_MCP_CLOSE, FRAME_MCP_ERROR, FRAME_EXEC_EXIT)
 
@@ -194,7 +195,7 @@ async def _enqueue_warmup(device_id: str) -> None:
 
 
 def _track_session(sessions: OpenSessions, frame: BridgeFrame) -> None:
-    """Record a session this socket opens and forget one it ends."""
+    """Record a session the device answered on this socket and forget one that ended."""
     frame_type = frame.get("t")
     session_id = frame.get("sid")
     if not isinstance(session_id, str):
@@ -241,6 +242,7 @@ async def _receive_loop(
             FRAME_MCP_MSG,
             FRAME_MCP_OPENED,
             FRAME_MCP_ERROR,
+            FRAME_EXEC_STARTED,
             FRAME_EXEC_STDOUT,
             FRAME_EXEC_STDERR,
             FRAME_EXEC_EXIT,

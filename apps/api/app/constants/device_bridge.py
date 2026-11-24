@@ -109,6 +109,7 @@ FRAME_MCP_OPENED: Final[str] = "mcp.opened"
 FRAME_MCP_ERROR: Final[str] = "mcp.error"
 # exec-over-bridge (run_on_device): cloud -> device open, device -> cloud stream.
 FRAME_EXEC_OPEN: Final[str] = "exec.open"
+FRAME_EXEC_STARTED: Final[str] = "exec.started"
 FRAME_EXEC_STDOUT: Final[str] = "exec.stdout"
 FRAME_EXEC_STDERR: Final[str] = "exec.stderr"
 FRAME_EXEC_EXIT: Final[str] = "exec.exit"

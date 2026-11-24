@@ -199,21 +199,24 @@ class DeviceConnector(BaseConnector):
     async def _end_session(
         self, read_send: MemoryObjectSendStream[SessionMessage | Exception], reason: str
     ) -> None:
-        """Answer every unanswered request with reason, then close the read stream to end the session."""
+        """Answer every unanswered request with reason, then close the read stream to end the session.
+
+        A request sent while the answers go out is failed by the closing stream instead.
+        """
+        unanswered, self._unanswered = self._unanswered, set()
         log.warning(
-            f"{LogTag.MCP} Device session lost",
-            reason=reason,
-            unanswered_calls=len(self._unanswered),
+            f"{LogTag.MCP} Device session lost", reason=reason, unanswered_calls=len(unanswered)
         )
-        for request_id in self._unanswered:
-            error = ErrorData(code=CONNECTION_CLOSED, message=reason)
-            await read_send.send(
-                SessionMessage(
-                    JSONRPCMessage(JSONRPCError(jsonrpc="2.0", id=request_id, error=error))
+        error = ErrorData(code=CONNECTION_CLOSED, message=reason)
+        try:
+            for request_id in unanswered:
+                await read_send.send(
+                    SessionMessage(
+                        JSONRPCMessage(JSONRPCError(jsonrpc="2.0", id=request_id, error=error))
+                    )
                 )
-            )
-        self._unanswered.clear()
-        await read_send.aclose()
+        finally:
+            await read_send.aclose()
 
     async def _pump_downstream(self, write_recv: MemoryObjectReceiveStream[SessionMessage]) -> None:
         """Pump the ClientSession's write stream into the Redis down-channel to the device."""
