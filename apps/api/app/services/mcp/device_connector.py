@@ -190,8 +190,10 @@ class DeviceConnector(BaseConnector):
             log.warning(
                 f"{LogTag.MCP} Device inbox drain ended", error=str(e), error_type=type(e).__name__
             )
+            # Fail the read stream so an in-flight call unblocks immediately and
+            # the session tears down, instead of hanging until the read timeout.
             with contextlib.suppress(Exception):
-                await self._end_session(read_send, "device tunnel closed")
+                await read_send.send(DeviceConnectionError("device tunnel closed"))
 
     async def _end_session(
         self, read_send: MemoryObjectSendStream[SessionMessage | Exception], reason: str

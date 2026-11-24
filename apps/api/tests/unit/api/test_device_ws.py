@@ -8,6 +8,7 @@ next reconnect.
 
 import asyncio
 import contextlib
+import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,7 +17,16 @@ from fastapi.exceptions import WebSocketException
 import pytest
 
 from app.api.v1.endpoints import device_ws as ws_module
-from app.constants.device_bridge import DEVICE_TOKEN_AUDIENCE
+from app.constants.device_bridge import (
+    DEVICE_TOKEN_AUDIENCE,
+    FRAME_EXEC_EXIT,
+    FRAME_EXEC_OPEN,
+    FRAME_MCP_CLOSE,
+    FRAME_MCP_ERROR,
+    FRAME_MCP_MSG,
+    FRAME_MCP_OPEN,
+    FRAME_TUNNEL_CLOSED,
+)
 from app.services.device import device_auth
 from tests.helpers import (
     JOSE_AGENT_DEVICE_SECRET,
@@ -257,3 +267,81 @@ async def test_a_device_token_minted_by_python_jose_gets_past_the_socket_auth(mo
 
     assert exc.value.reason == "device revoked"
     get_active.assert_awaited_once_with("dev-jose")
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_a_closing_socket_fails_each_session_it_still_carries():
+    """Regression for #1144: a dropped socket told no one, so each waiting call ran out its timeout."""
+
+    async def relay(websocket, device_id, sessions, ready=None):
+        ws_module._track_session(sessions, {"t": FRAME_MCP_OPEN, "sid": "s-mcp", "pod": "pod-a"})
+        ws_module._track_session(sessions, {"t": FRAME_EXEC_OPEN, "sid": "s-exec", "pod": "pod-b"})
+        ready.set()
+
+    async def receive(websocket, device_id, user_id, state, sessions):
+        await asyncio.sleep(0)
+        ws_module._track_session(sessions, {"t": FRAME_EXEC_EXIT, "sid": "s-exec", "pod": "pod-b"})
+        raise WebSocketDisconnect()
+
+    publish = AsyncMock()
+    with patch.object(ws_module, "publish_up_to_pod", publish):
+        await _run_handler(_socket(), relay, AsyncMock(), receive)
+
+    publish.assert_awaited_once_with(
+        "pod-a", json.dumps({"t": FRAME_TUNNEL_CLOSED, "sid": "s-mcp", "pod": "pod-a"})
+    )
+
+
+@pytest.mark.parametrize(
+    ("frame", "carried"),
+    [
+        ({"t": FRAME_MCP_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_EXEC_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_MCP_OPEN, "sid": "s1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_OPEN, "pod": "p1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_CLOSE, "sid": "s0"}, {}),
+        ({"t": FRAME_MCP_ERROR, "sid": "s0", "pod": "p0"}, {}),
+        ({"t": FRAME_EXEC_EXIT, "sid": "s0", "pod": "p0"}, {}),
+        ({"t": FRAME_MCP_MSG, "sid": "s0", "pod": "p0"}, {"s0": "p0"}),
+    ],
+    ids=["mcp-open", "exec-open", "open-no-pod", "no-sid", "close", "error", "exit", "msg"],
+)
+def test_a_socket_carries_a_session_from_its_open_to_its_end(frame, carried):
+    sessions = {"s0": "p0"}
+
+    ws_module._track_session(sessions, frame)
+
+    assert sessions == carried
+
+
+@pytest.mark.asyncio
+async def test_the_down_relay_records_a_session_it_opens_and_forwards_the_frame():
+    raw = json.dumps({"t": FRAME_MCP_OPEN, "sid": "s1", "pod": "p1"})
+    delivered = [{"type": "message", "data": raw.encode()}]
+
+    async def get_message(**kwargs):
+        await asyncio.sleep(0.01)
+        return delivered.pop() if delivered else None
+
+    pubsub = MagicMock()
+    pubsub.get_message = AsyncMock(side_effect=get_message)
+    pubsub.subscribe = AsyncMock()
+    pubsub.unsubscribe = AsyncMock()
+    pubsub.aclose = AsyncMock()
+    redis = MagicMock()
+    redis.pubsub = MagicMock(return_value=pubsub)
+    ws = _socket()
+    sent = asyncio.Event()
+    ws.send_text = AsyncMock(side_effect=lambda _data: sent.set())
+    sessions: dict[str, str] = {}
+
+    with patch.object(ws_module.redis_cache, "redis", redis):
+        task = asyncio.create_task(ws_module._down_relay(ws, "d1", sessions))
+        await asyncio.wait_for(sent.wait(), 5)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    assert sessions == {"s1": "p1"}
+    ws.send_text.assert_awaited_once_with(raw)

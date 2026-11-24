@@ -136,18 +136,7 @@ async def device_ws(websocket: WebSocket) -> None:
             f"{LogTag.API} Down relay not subscribed before warmup",
             device_id=device_id,
         )
-    # A device coming online re-drives warm-connect for all its servers, so tools
-    # a registration couldn't index (Redis down, or the device was offline) get
-    # indexed now. Best-effort — a socket must never fail on the warmup enqueue.
-    try:
-        await enqueue_device_server_warmup(device_id)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.API} Failed to enqueue device warmup on connect",
-            device_id=device_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    await _enqueue_warmup(device_id)
 
     try:
         await _receive_loop(websocket, device_id, user_id, state, sessions)
@@ -164,26 +153,35 @@ async def device_ws(websocket: WebSocket) -> None:
             error=str(e),
         )
     finally:
-        await _close_socket(websocket, device_id, tasks, sessions)
+        for task in tasks:
+            task.cancel()
+        with contextlib.suppress(Exception):
+            await asyncio.gather(*tasks, return_exceptions=True)
+        device_connection_manager.remove(device_id, websocket)
+        # Only clear presence if this pod holds no more sockets for the device:
+        # mark_offline's compare-and-delete keys only on POD_ID, so an old
+        # socket's teardown could wipe a newer same-pod socket's re-claimed key.
+        if not device_connection_manager.owns(device_id):
+            await mark_offline(device_id)
+        await _fail_open_sessions(sessions)
+        with contextlib.suppress(Exception):
+            await websocket.close()
 
 
-async def _close_socket(
-    websocket: WebSocket, device_id: str, tasks: list[asyncio.Task[None]], sessions: OpenSessions
-) -> None:
-    """Stop the socket's relays, release its presence, and fail the sessions it carried."""
-    for task in tasks:
-        task.cancel()
-    with contextlib.suppress(Exception):
-        await asyncio.gather(*tasks, return_exceptions=True)
-    device_connection_manager.remove(device_id, websocket)
-    # Only clear presence if this pod holds no more sockets for the device:
-    # mark_offline's compare-and-delete keys only on POD_ID, so an old
-    # socket's teardown could wipe a newer same-pod socket's re-claimed key.
-    if not device_connection_manager.owns(device_id):
-        await mark_offline(device_id)
-    await _fail_open_sessions(sessions)
-    with contextlib.suppress(Exception):
-        await websocket.close()
+async def _enqueue_warmup(device_id: str) -> None:
+    """Re-drive warm-connect for the device's servers; best-effort, a socket never fails on it.
+
+    Tools a registration couldn't index (Redis down, or the device was offline) get indexed now.
+    """
+    try:
+        await enqueue_device_server_warmup(device_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.API} Failed to enqueue device warmup on connect",
+            device_id=device_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 def _track_session(sessions: OpenSessions, frame: dict[str, Any]) -> None:
