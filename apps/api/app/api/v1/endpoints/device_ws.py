@@ -294,9 +294,8 @@ async def _down_relay(
         subscribed.set()
     try:
         while True:
-            message: PubSubMessage | None = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=1.0
-            )
+            message: PubSubMessage | None
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message is None or message.get("type") != "message":
                 continue
             data = message["data"]

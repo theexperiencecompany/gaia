@@ -87,9 +87,8 @@ async def _consume() -> None:
     await pubsub.subscribe(up_pod_channel(POD_ID))
     try:
         while True:
-            message: PubSubMessage | None = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=1.0
-            )
+            message: PubSubMessage | None
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message is None or message.get("type") != "message":
                 continue
             raw = message["data"]

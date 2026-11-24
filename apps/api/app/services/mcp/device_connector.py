@@ -67,7 +67,9 @@ class DeviceConnector(BaseConnector):
         self.session_id = uuid.uuid4().hex
         # Fed by the shared per-pod up-listener (up_listener.py); drained by
         # _reader_task. Replaces a per-session Redis pub/sub subscription.
-        self._inbox: asyncio.Queue[BridgeFrame] | None = None
+        self._inbox: asyncio.Queue[BridgeFrame] | None = (
+            None  # pragma: no mutate — read only after connect() sets it
+        )
         self._reader_task: asyncio.Task[None] | None = None
         self._writer_task: asyncio.Task[None] | None = None
         self._opened: asyncio.Future[None] | None = None
