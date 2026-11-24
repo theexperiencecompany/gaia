@@ -1,27 +1,37 @@
 import { z } from "zod";
 import type {
   ConversationUpdatedFrame,
+  ItemChange,
   LiveTask,
   ReplyDeltaFrame,
   RetractFrame,
   ScreenFrame,
   ScreenInsertFrame,
+  ScreenPatchFrame,
   ScreenUpdateFrame,
   StateFrame,
 } from "../api/generated";
-import { ToolDataEntrySchema } from "../chat/schema";
-import { ScreenItemSchema, ToolTimelineSchema } from "./entries";
+import {
+  ScreenItemSchema,
+  ToolTimelineSchema,
+  UnfoldedCardsSchema,
+} from "./entries";
 
 /**
  * Zod mirror of the conversation event stream's frames, each tied to its generated
  * API type. A reply delta carries text for a bubble the server already split, or the
- * reply's cards with the timeline the server folded them to.
+ * timeline the server folded the reply's cards to: whole from a server older than wire 2,
+ * as the changes since the last one from wire 2.
  */
+
+/** The frame shapes this build reads, sent as the events route's wire parameter. */
+export const EVENTS_WIRE = 2;
 
 export const FRAME_KIND = {
   SCREEN: "screen",
   SCREEN_INSERT: "screen_insert",
   SCREEN_UPDATE: "screen_update",
+  SCREEN_PATCH: "screen_patch",
   REPLY_DELTA: "reply_delta",
   RETRACT: "retract",
   STATE: "state",
@@ -37,13 +47,20 @@ export const DISPLAY_STATE = {
 
 const index = z.number().int().min(0);
 
+const ItemChangeSchema = z.object({
+  op: z.enum(["set", "append", "remove"]),
+  path: z.array(z.union([z.string(), z.number().int()])),
+  value: z.json(),
+}) satisfies z.ZodType<ItemChange>;
+
 const ReplyDeltaSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("bubble_text"), bubble: index, text: z.string() }),
   z.object({
     type: z.literal("cards"),
-    tool_data: z.array(ToolDataEntrySchema),
+    tool_data: UnfoldedCardsSchema,
     timeline: ToolTimelineSchema,
   }),
+  z.object({ type: z.literal("timeline"), changes: z.array(ItemChangeSchema) }),
   z.object({
     type: z.literal("follow_up_actions"),
     follow_up_actions: z.array(z.string()),
@@ -74,6 +91,13 @@ const ScreenUpdateFrameSchema = z.object({
   item: ScreenItemSchema,
   head,
 }) satisfies z.ZodType<ScreenUpdateFrame>;
+
+const ScreenPatchFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.SCREEN_PATCH),
+  id: z.string().min(1),
+  changes: z.array(ItemChangeSchema),
+  head,
+}) satisfies z.ZodType<ScreenPatchFrame>;
 
 // The payload is checked against its generated union above; these tie the rest of each delta frame.
 const ReplyDeltaFields = z.object({
@@ -109,6 +133,7 @@ export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   ScreenFrameSchema,
   ScreenInsertFrameSchema,
   ScreenUpdateFrameSchema,
+  ScreenPatchFrameSchema,
   ReplyDeltaFields.extend({ payload: ReplyDeltaSchema }),
   RetractFrameSchema,
   StateFrameSchema,

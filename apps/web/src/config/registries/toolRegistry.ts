@@ -188,13 +188,3 @@ export type TypedToolDataEntry = Omit<ToolDataEntry, "tool_name" | "data"> & {
   tool_name: ToolName;
   data: ToolDataMap[ToolName];
 };
-
-// Optional wrapper for tool data in messages
-type ToolsMessageSchema = {
-  tool_data?: TypedToolDataEntry[] | null;
-};
-
-export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
-  tool_data: undefined,
-};
-export type ToolsMessageData = ToolsMessageSchema;

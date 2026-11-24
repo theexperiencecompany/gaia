@@ -330,6 +330,52 @@ describe("an events stream the API answers with a 4xx", () => {
     expect(sent.at(-1)).toBe("Your flight is booked.");
   });
 
+  it("reconnects after the log head its screen reached, having opened on the whole screen", async () => {
+    vi.useFakeTimers();
+    const asked: (number | null)[] = [];
+    const source: ConversationEventSource = async function* (
+      _ctx,
+      _conversationId,
+      _signal,
+      after,
+    ) {
+      asked.push(after);
+      if (asked.length === 1) {
+        yield screenFrame([
+          userItemWith("u1", 1, {
+            surface: "telegram",
+            platform_message_id: "11",
+          }),
+        ]);
+        yield insertFrame(replyItem("r1", 2, "Your"));
+        throw Object.assign(new Error("stream dropped"), {
+          response: { status: 502 },
+        });
+      }
+      yield screenFrame([replyItem("r1", 2, "Your flight", "answered")], 3);
+      yield stateFrame(3, "idle");
+    };
+    const sent: string[] = [];
+    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
+    followers.follow(
+      { platform: "telegram", platformUserId: "1" },
+      "c1",
+      1,
+      { delivered_seq: 0, partial_reply: null },
+      surface(sent, null),
+    );
+    let ended = false;
+    void followers.idle().then(() => {
+      ended = true;
+    });
+    for (let tick = 0; tick < 60 && !ended; tick += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+
+    expect(asked).toEqual([null, 2]);
+    expect(sent.at(-1)).toBe("Your flight");
+  });
+
   it("ends the follow on a refusal, which fails the same way every time", async () => {
     const { opened, sent } = await followThrough(401);
 

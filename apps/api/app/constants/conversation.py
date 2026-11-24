@@ -1,7 +1,7 @@
 """Conversation runtime constants."""
 
 from datetime import timedelta
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 from app.constants.cache import ONE_DAY_TTL
 from shared.py.conversation_wire import FailureReason
@@ -128,6 +128,17 @@ EVENTS_STREAM_TTL_SECONDS = ONE_DAY_TTL
 EVENTS_BLOCK_MS = 15_000
 #: The cursor that reads a stream from its oldest retained frame.
 EVENTS_STREAM_START = "0-0"
+
+
+class EventsWire(IntEnum):
+    """How the events stream writes its frames for one connection; a client names the newest it reads."""
+
+    # Whole items carrying their cards twice, as tool_data and as timeline; what a client built before wire 2 reads.
+    ITEMS = 1
+    # Cards once, as timeline; a change to an item already sent is a screen_patch, a reply's cards a timeline delta.
+    PATCHES = 2
+
+
 #: conv:work_deltas:{conversation_id}:{task_id}, every payload a task's work published; a resumed run appends to it.
 WORK_DELTAS_KEY_PREFIX = "conv:work_deltas:"
 # Outlives the longest approval a paused run waits on, so a resumed run still has its cards.

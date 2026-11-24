@@ -1,3 +1,4 @@
+import { applyChanges } from "./patch";
 import type { ConversationFrame, ReplyDraft } from "./types";
 
 type ReplyDelta = Extract<
@@ -12,11 +13,11 @@ export const EMPTY_REPLY_DRAFT: ReplyDraft = {
   follow_up_actions: [],
 };
 
-/** Fold one reply delta into what the reply shows; the server already split and folded it. */
+/** Fold one reply delta into what the reply shows; null when its changes have no place in the draft's timeline. */
 export function applyReplyDelta(
   draft: ReplyDraft,
   delta: ReplyDelta,
-): ReplyDraft {
+): ReplyDraft | null {
   switch (delta.type) {
     case "bubble_text": {
       const bubbles = [...draft.bubbles];
@@ -25,6 +26,10 @@ export function applyReplyDelta(
     }
     case "cards":
       return { ...draft, tool_data: delta.tool_data, timeline: delta.timeline };
+    case "timeline": {
+      const timeline = applyChanges(draft.timeline, delta.changes);
+      return timeline && { ...draft, timeline };
+    }
     case "follow_up_actions":
       return { ...draft, follow_up_actions: delta.follow_up_actions };
     default: {

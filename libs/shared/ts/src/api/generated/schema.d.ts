@@ -1282,7 +1282,10 @@ export interface paths {
         };
         /**
          * Conversation Events Endpoint
-         * @description Stream the conversation's screen as SSE: the newest page, then patches and live deltas.
+         * @description Stream the conversation's screen as SSE: what a client at entry after lacks, then patches and live deltas.
+         *
+         *     after is the log head of the last item frame the client applied from this stream, 0 when it
+         *     holds nothing. wire names the newest frame shapes the client reads.
          */
         get: operations["conversations_conversation_events_endpoint"];
         put?: never;
@@ -8256,18 +8259,22 @@ export interface components {
         CalendarResponse: "own" | "accepted" | "tentative" | "needs_action" | "declined";
         /**
          * CardsDelta
-         * @description The reply's cards as they now stand, with the timeline they fold to.
+         * @description The reply's cards as they now stand, as the timeline they fold to; wire 2 sends a TimelineDelta instead.
          */
         CardsDelta: {
             timeline: components["schemas"]["ToolTimeline"];
-            /** Tool Data */
-            tool_data: components["schemas"]["ToolDataEntry"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             type: "cards";
         };
+        /**
+         * ChangeOp
+         * @description How one change alters the JSON at its path.
+         * @enum {string}
+         */
+        ChangeOp: "set" | "append" | "remove";
         /**
          * ChangePasswordRequest
          * @description Body of ``PATCH /api/v1/auth/password`` — rotates the caller's own
@@ -8810,7 +8817,7 @@ export interface components {
          */
         ConversationEvent: {
             /** Frame */
-            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
+            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ScreenPatchFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
         };
         /**
          * ConversationListResponse
@@ -10112,6 +10119,12 @@ export interface components {
             /** Success */
             success: boolean;
         };
+        /**
+         * EventsWire
+         * @description How the events stream writes its frames for one connection; a client names the newest it reads.
+         * @enum {integer}
+         */
+        EventsWire: 1 | 2;
         /**
          * EventUpdateRequest
          * @description Request to update one event's fields, identified by id and calendar.
@@ -11481,6 +11494,16 @@ export interface components {
             expires_at: string;
             /** Id */
             id: string;
+        };
+        /**
+         * ItemChange
+         * @description One change to the JSON a client already holds; path walks keys and list indices from its root.
+         */
+        ItemChange: {
+            op: components["schemas"]["ChangeOp"];
+            /** Path */
+            path: (string | number)[];
+            value: components["schemas"]["JsonValue"];
         };
         /**
          * ItemState
@@ -12907,8 +12930,6 @@ export interface components {
             /** Seq */
             seq: number;
             timeline: components["schemas"]["ToolTimeline"];
-            /** Tool Data */
-            tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * NotificationAction
@@ -15031,7 +15052,7 @@ export interface components {
              */
             kind: "reply_delta";
             /** Payload */
-            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["FollowUpsDelta"];
+            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["TimelineDelta"] | components["schemas"]["FollowUpsDelta"];
             /** Reply Id */
             reply_id: string | null;
         };
@@ -15087,8 +15108,6 @@ export interface components {
             /** Seq */
             seq: number;
             timeline: components["schemas"]["ToolTimeline"];
-            /** Tool Data */
-            tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * ReplyOutcome
@@ -15246,7 +15265,7 @@ export interface components {
         ScoutSkipReason: "failed" | "budget" | "backoff" | "source_failed" | "no_read_only_tools" | "unknown_integration" | "signed_out" | "out_of_time" | "free_plan" | "dormant";
         /**
          * ScreenFrame
-         * @description The newest page of the screen; a client replaces what it holds from the first item's seq on.
+         * @description The screen a connection opens on: its newest page, or only what is new or changed since the client's after.
          */
         ScreenFrame: {
             /** Head */
@@ -15273,6 +15292,23 @@ export interface components {
              * @enum {string}
              */
             kind: "screen_insert";
+        };
+        /**
+         * ScreenPatchFrame
+         * @description What changed in an item this connection already sent; the item keeps its position.
+         */
+        ScreenPatchFrame: {
+            /** Changes */
+            changes: components["schemas"]["ItemChange"][];
+            /** Head */
+            head: number;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_patch";
         };
         /**
          * ScreenUpdateFrame
@@ -16607,6 +16643,19 @@ export interface components {
             card: components["schemas"]["ToolDataEntry"];
             /** Key */
             key: string;
+        };
+        /**
+         * TimelineDelta
+         * @description What changed in the reply's timeline since the attempt's last one; the first is against an empty timeline.
+         */
+        TimelineDelta: {
+            /** Changes */
+            changes: components["schemas"]["ItemChange"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "timeline";
         };
         /**
          * TimelineStep
@@ -18896,8 +18945,6 @@ export interface components {
             /** Task Id */
             task_id: string;
             timeline: components["schemas"]["ToolTimeline"];
-            /** Tool Data */
-            tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * WorkspaceFileTarget
@@ -19096,6 +19143,7 @@ export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPr
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
 export type CalendarResponse = components['schemas']['CalendarResponse'];
 export type CardsDelta = components['schemas']['CardsDelta'];
+export type ChangeOp = components['schemas']['ChangeOp'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
@@ -19198,6 +19246,7 @@ export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
+export type EventsWire = components['schemas']['EventsWire'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
 export type FailureReason = components['schemas']['FailureReason'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
@@ -19279,6 +19328,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type ItemChange = components['schemas']['ItemChange'];
 export type ItemState = components['schemas']['ItemState'];
 export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
@@ -19491,6 +19541,7 @@ export type ScheduleRejection = components['schemas']['ScheduleRejection'];
 export type ScoutSkipReason = components['schemas']['ScoutSkipReason'];
 export type ScreenFrame = components['schemas']['ScreenFrame'];
 export type ScreenInsertFrame = components['schemas']['ScreenInsertFrame'];
+export type ScreenPatchFrame = components['schemas']['ScreenPatchFrame'];
 export type ScreenUpdateFrame = components['schemas']['ScreenUpdateFrame'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
@@ -19568,6 +19619,7 @@ export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type SystemWorkflowsProvisionedNotification = components['schemas']['SystemWorkflowsProvisionedNotification'];
 export type TimelineCard = components['schemas']['TimelineCard'];
+export type TimelineDelta = components['schemas']['TimelineDelta'];
 export type TimelineStep = components['schemas']['TimelineStep'];
 export type TimelineStepKind = components['schemas']['TimelineStepKind'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
@@ -23319,7 +23371,12 @@ export interface operations {
     };
     conversations_conversation_events_endpoint: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The log head the client's copy of the screen reached */
+                after?: number;
+                /** @description The newest frame shapes the client reads */
+                wire?: components["schemas"]["EventsWire"];
+            };
             header?: never;
             path: {
                 conversation_id: string;

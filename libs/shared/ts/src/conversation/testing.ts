@@ -59,6 +59,29 @@ export function userItem(
 
 const NO_TIMELINE = { steps: [], cards: [], progress: null };
 
+/** The timeline the server folds one grouped tool's cards to: one card holding every call's data, in order. */
+export const groupedTimeline = (
+  cards: readonly { tool_name: string; data: unknown }[],
+): Extract<ScreenItem, { kind: "reply" }>["timeline"] => {
+  const [first] = cards;
+  if (!first) return NO_TIMELINE;
+  return {
+    steps: [],
+    cards: [
+      {
+        key: `grouped-${first.tool_name}`,
+        card: {
+          tool_name: first.tool_name,
+          tool_category: "",
+          data: cards.map((card) => card.data),
+          timestamp: null,
+        },
+      },
+    ],
+    progress: null,
+  };
+};
+
 /** A reply item of one bubble, or of the bubbles given; outcome null while it is still being written. */
 export const replyItem = (
   id: string,
@@ -112,6 +135,29 @@ export const updateFrame = (
   item: ScreenItem,
   head = item.seq,
 ): ConversationFrame => ({ kind: "screen_update", item, head });
+
+type Changes = Extract<ConversationFrame, { kind: "screen_patch" }>["changes"];
+
+/** What changed in an item the connection already sent, at the log head given. */
+export const patchFrame = (
+  id: string,
+  changes: Changes,
+  head: number,
+): ConversationFrame => ({ kind: "screen_patch", id, changes, head });
+
+/** What changed in a reply's timeline since the attempt's last cards, as wire 2 sends its cards. */
+export const timelineDelta = (
+  attemptId: string,
+  replyId: string | null,
+  index: number,
+  changes: Changes,
+): ConversationFrame => ({
+  kind: "reply_delta",
+  attempt_id: attemptId,
+  reply_id: replyId,
+  index,
+  payload: { type: "timeline", changes },
+});
 
 export const screenFrame = (
   items: ScreenItem[],
@@ -208,7 +254,7 @@ export const workItem = (
   status: WorkItem["status"],
   asking: WorkItem["asking"] = [],
   askedSeq = asking.length > 0 ? seq : 0,
-): WorkItem => ({
+): WorkItem & Pick<Extract<ScreenItem, { kind: "work" }>, "tool_data"> => ({
   kind: "work",
   id: `work:${taskId}`,
   seq,

@@ -1,6 +1,7 @@
 import { applyReplyDelta, EMPTY_REPLY_DRAFT } from "./draft";
 import { LIVE_WORK_STATUS, SCREEN_ITEM_KIND } from "./entries";
 import { DISPLAY_STATE, FRAME_KIND } from "./frames";
+import { applyChanges } from "./patch";
 import type {
   ConversationFrame,
   ConversationView,
@@ -107,19 +108,29 @@ function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
   if (frame.index > draft.nextIndex) {
     return { status: "index_gap", expected: draft.nextIndex, view };
   }
-  const advanced = {
-    nextIndex: draft.nextIndex + 1,
-    content: applyReplyDelta(draft.content, frame.payload),
-  };
+  const content = applyReplyDelta(draft.content, frame.payload);
+  if (!content) return { status: "stale_copy", view };
   const updated: StreamDraft = {
     ...draft,
-    ...advanced,
+    nextIndex: draft.nextIndex + 1,
+    content,
     replyId: frame.reply_id ?? draft.replyId,
   };
   const drafts = existing
     ? view.drafts.map((current) => (current === existing ? updated : current))
     : [...view.drafts, updated];
   return applied({ ...view, drafts });
+}
+
+type PatchFrame = Extract<ConversationFrame, { kind: "screen_patch" }>;
+
+/** A patch for an item the view does not hold belongs to history not loaded here. */
+function patch(view: ConversationView, frame: PatchFrame): FrameOutcome {
+  const held = view.items.find((item) => item.id === frame.id);
+  if (!held) return applied(view);
+  const item = applyChanges(held, frame.changes);
+  if (!item) return { status: "stale_copy", view };
+  return applied(withItems(view, [item], frame.head));
 }
 
 function retract(view: ConversationView, attemptId: string): ConversationView {
@@ -143,6 +154,8 @@ export function applyFrame(
       return applied(withItems(view, [frame.item], frame.head));
     case FRAME_KIND.SCREEN_UPDATE:
       return applied(update(view, frame.item, frame.head));
+    case FRAME_KIND.SCREEN_PATCH:
+      return patch(view, frame);
     case FRAME_KIND.REPLY_DELTA:
       return applyDelta(view, frame);
     case FRAME_KIND.RETRACT:

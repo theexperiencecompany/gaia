@@ -3,12 +3,16 @@ import { screenRows } from "./selectors";
 import {
   founderConversationFrames,
   insertFrame,
+  patchFrame,
   replyDelta,
   replyItem,
   screenFrame,
   stateFrame,
+  timelineDelta,
+  toolCallCard,
   updateFrame,
   userItem,
+  workItem,
 } from "./testing";
 import type { ConversationFrame, ConversationView } from "./types";
 import {
@@ -170,6 +174,150 @@ describe("a client's copy of the server's screen", () => {
     );
     expect(view.drafts).toEqual([]);
     expect(apply(view, replyDelta("a1", "r1", 2, "!"))).toEqual(view);
+  });
+
+  it("patches an item it holds, keeping its place and every step the patch did not touch", () => {
+    const first = { kind: "tool" as const, key: "tc-a", data: { id: "a" } };
+    const running = {
+      ...workItem("t1", 2, "running"),
+      timeline: { steps: [first], cards: [], progress: null },
+    };
+    const opened = apply(
+      EMPTY_CONVERSATION_VIEW,
+      screenFrame([userItem("u1", 1), running, userItem("u3", 3)]),
+    );
+    const view = apply(
+      opened,
+      patchFrame(
+        "work:t1",
+        [
+          {
+            op: "set",
+            path: ["timeline", "steps", 0, "data", "output"],
+            value: "out",
+          },
+          {
+            op: "set",
+            path: ["timeline", "steps", 1],
+            value: { kind: "tool", key: "tc-b", data: { id: "b" } },
+          },
+          { op: "set", path: ["status"], value: "done" },
+        ],
+        4,
+      ),
+    );
+
+    expect(ids(view)).toEqual(["u1", "work:t1", "u3"]);
+    const work = view.items[1];
+    expect(work.kind === "work" && work.status).toBe("done");
+    expect(work.kind === "work" && work.timeline.steps).toEqual([
+      { kind: "tool", key: "tc-a", data: { id: "a", output: "out" } },
+      { kind: "tool", key: "tc-b", data: { id: "b" } },
+    ]);
+    expect(view.screenHead).toBe(4);
+    expect(view.items[0]).toBe(opened.items[0]);
+  });
+
+  it("closes finished work's stream when a patch ends it", () => {
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      insertFrame(workItem("t1", 1, "running")),
+    );
+    view = apply(
+      view,
+      patchFrame(
+        "work:t1",
+        [{ op: "set", path: ["status"], value: "done" }],
+        2,
+      ),
+    );
+    expect(view.closed).toEqual({ t1: true });
+  });
+
+  it("ignores a patch for an item it does not hold", () => {
+    const view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u5", 5)));
+    const patch = patchFrame(
+      "work:old",
+      [{ op: "set", path: ["status"], value: "done" }],
+      6,
+    );
+    expect(apply(view, patch)).toBe(view);
+  });
+
+  it("reports a patch that has no place in the item it holds, so the client reopens on the whole screen", () => {
+    const view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      insertFrame(workItem("t1", 1, "running")),
+    );
+    const outcome = applyFrame(
+      view,
+      patchFrame(
+        "work:t1",
+        [
+          {
+            op: "set",
+            path: ["timeline", "steps", 3, "data", "output"],
+            value: "x",
+          },
+        ],
+        1,
+      ),
+    );
+    expect(outcome.status).toBe("stale_copy");
+    expect(outcome.view).toBe(view);
+  });
+
+  it("folds a reply's cards from the changes to its timeline, starting from none", () => {
+    const card = { key: "search-c1", card: toolCallCard("c1", "Searching") };
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      timelineDelta("a1", "r1", 0, [
+        { op: "set", path: ["cards", 0], value: card },
+      ]),
+    );
+    view = apply(
+      view,
+      timelineDelta("a1", "r1", 1, [
+        {
+          op: "set",
+          path: ["cards", 0, "card", "data", "output"],
+          value: "found",
+        },
+      ]),
+    );
+
+    expect(view.drafts[0].content.timeline.cards).toEqual([
+      {
+        key: "search-c1",
+        card: { ...card.card, data: { ...card.card.data, output: "found" } },
+      },
+    ]);
+  });
+
+  it("still takes a reply's cards whole, as a server older than wire 2 sends them", () => {
+    const timeline = {
+      steps: [],
+      cards: [{ key: "search-c1", card: toolCallCard("c1", "Searching") }],
+      progress: null,
+    };
+    const view = apply(EMPTY_CONVERSATION_VIEW, {
+      kind: "reply_delta",
+      attempt_id: "a1",
+      reply_id: "r1",
+      index: 0,
+      payload: { type: "cards", tool_data: [], timeline },
+    });
+    expect(view.drafts[0].content.timeline).toEqual(timeline);
+  });
+
+  it("reports timeline changes that have no place in the reply's draft", () => {
+    const outcome = applyFrame(
+      EMPTY_CONVERSATION_VIEW,
+      timelineDelta("a1", "r1", 0, [
+        { op: "set", path: ["cards", 2, "card", "data"], value: 1 },
+      ]),
+    );
+    expect(outcome.status).toBe("stale_copy");
   });
 
   it("reports a gap in a stream's deltas so the client reopens for a fresh screen", () => {

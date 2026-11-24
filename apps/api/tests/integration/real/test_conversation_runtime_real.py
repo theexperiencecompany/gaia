@@ -846,7 +846,10 @@ async def test_the_events_stream_sends_only_json_data_lines_and_comment_keepaliv
     await rig.send("m1", "hi")
     await rig.settle()
     lines = event_stream.event_lines(
-        rig.ports.log, rig.conversation_id, rig.user_id, _never_disconnected, asyncio.Event()
+        event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id),
+        rig.user_id,
+        _never_disconnected,
+        asyncio.Event(),
     )
     blocks: list[str] = []
     with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
@@ -867,7 +870,10 @@ async def test_an_open_events_stream_ends_at_once_when_the_process_is_stopping(
     rig = await rig_for(gated("hello there"))
     stopping = asyncio.Event()
     lines = event_stream.event_lines(
-        rig.ports.log, rig.conversation_id, rig.user_id, _never_disconnected, stopping
+        event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id),
+        rig.user_id,
+        _never_disconnected,
+        stopping,
     )
     await anext(lines)
     await anext(lines)

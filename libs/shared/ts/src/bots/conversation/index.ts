@@ -1,5 +1,5 @@
 export { neverReopened, STREAMING_DEFAULTS } from "./delivery-options";
-export { ConversationFollower } from "./follower";
+export { ConversationFollower, StaleScreen } from "./follower";
 export type {
   AwaitedDecision,
   ConversationSurface,

@@ -4,6 +4,7 @@ import {
   type ScreenItem,
   type ScreenRow,
   type StreamDraft,
+  timelineShows,
   WORK_STATUS,
 } from "@shared/conversation";
 import type { Dispatch, SetStateAction } from "react";
@@ -62,7 +63,7 @@ function itemShows(item: ScreenItem, draft: StreamDraft | null): boolean {
     case SCREEN_ITEM_KIND.REPLY:
       return (
         hasText(draft?.content.bubbles ?? item.bubbles) ||
-        (draft?.content.tool_data ?? item.tool_data).length > 0 ||
+        timelineShows(draft?.content.timeline ?? item.timeline) ||
         item.image !== null ||
         item.outcome === REPLY_OUTCOME.FAILED ||
         item.outcome === REPLY_OUTCOME.STOPPED
@@ -70,13 +71,13 @@ function itemShows(item: ScreenItem, draft: StreamDraft | null): boolean {
     case SCREEN_ITEM_KIND.WORK:
       return (
         item.handoff !== null ||
-        item.tool_data.length > 0 ||
+        timelineShows(item.timeline) ||
         item.approvals.length > 0 ||
         item.image !== null ||
         STOPPED_WORK.has(item.status)
       );
     case SCREEN_ITEM_KIND.NOTICE:
-      return hasText(item.bubbles) || item.tool_data.length > 0;
+      return hasText(item.bubbles) || timelineShows(item.timeline);
     default:
       return true;
   }
@@ -95,7 +96,7 @@ export function rowShows(row: ChatRow, alwaysShowsGaia: boolean): boolean {
     case "draft":
       return (
         hasText(row.draft.content.bubbles) ||
-        row.draft.content.tool_data.length > 0
+        timelineShows(row.draft.content.timeline)
       );
     default:
       return true;

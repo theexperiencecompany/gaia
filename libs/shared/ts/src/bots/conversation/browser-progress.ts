@@ -7,12 +7,13 @@
  * drives their browser and a step photo can show a signed-in page.
  */
 
-import type { ToolDataEntry } from "../../api/generated";
+import type { ToolTimeline } from "../../api/generated";
 import type {
   BrowserHandoffSnapshot,
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "../../conversation/browser-cards.types";
+import { cardData } from "../../conversation/selectors";
 import { isChatGone } from "../utils/failure-reasons";
 import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
 import type { PrivateSurface } from "./follower.types";
@@ -41,15 +42,9 @@ const isSnapshot = (data: unknown): data is BrowserTaskSnapshot =>
   typeof data.kind === "string" &&
   CARD_KINDS.has(data.kind);
 
-/** The browser cards among a work item's cards, in the order the run emitted them. */
-export function browserCards(
-  cards: readonly ToolDataEntry[],
-): BrowserTaskSnapshot[] {
-  return cards.flatMap((card) =>
-    card.tool_name === BROWSER_CARD_TOOL && isSnapshot(card.data)
-      ? [card.data]
-      : [],
-  );
+/** The browser cards in a work item's timeline, in the order the run emitted them. */
+export function browserCards(timeline: ToolTimeline): BrowserTaskSnapshot[] {
+  return cardData(timeline, BROWSER_CARD_TOOL).filter(isSnapshot);
 }
 
 const isBlankTab = (url: string | null | undefined): boolean =>

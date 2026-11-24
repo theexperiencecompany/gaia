@@ -21,6 +21,7 @@ import type {
 import {
   type ConversationPage,
   ConversationPageSchema,
+  EVENTS_WIRE,
 } from "@shared/conversation";
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
@@ -261,16 +262,20 @@ export const chatApi = {
     }),
 
   /**
-   * Follow a conversation's event stream from the log after seq `after`; resolves when
-   * the server closes it. Each `data:` line is handed over raw for the caller to parse.
+   * Follow a conversation's event stream; resolves when the server closes it. With `after`,
+   * the log head this device's copy reached, the server opens on only what changed since.
+   * Each `data:` line is handed over raw for the caller to parse.
    */
   subscribeToConversationEvents: async (
     conversationId: string,
     onData: (raw: string) => void,
     signal: AbortSignal,
+    after: number | null,
   ): Promise<void> => {
+    const query = new URLSearchParams({ wire: String(EVENTS_WIRE) });
+    if (after !== null) query.set("after", String(after));
     await fetchEventSource(
-      `${apiBaseUrl}/conversations/${encodeURIComponent(conversationId)}/events`,
+      `${apiBaseUrl}/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
       {
         method: "GET",
         openWhenHidden: true,

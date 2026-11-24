@@ -1,15 +1,15 @@
 /**
  * Reads a conversation's events stream (`GET /conversations/{id}/events`) as
  * typed events. One call is one connection: it ends when the server closes it
- * or goes quiet past the keepalive, and the caller reconnects with the newest
- * stream id it saw.
+ * or goes quiet past the keepalive, and the caller reconnects after the log head
+ * its copy of the screen reached.
  *
  * @module
  */
 import type { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import type { AxiosInstance } from "axios";
-import { parseConversationEvent } from "../../conversation/frames";
+import { EVENTS_WIRE, parseConversationEvent } from "../../conversation/frames";
 import type { ConversationFrame } from "../../conversation/types";
 import { wideLog } from "../utils/wide-events";
 
@@ -56,12 +56,17 @@ function sseDataSplitter(): (text: string) => string[] {
   };
 }
 
-/** Yields every frame on one connection to the conversation's events stream, opening with its screen. */
+/**
+ * Yields every frame on one connection to the conversation's events stream. It opens
+ * with the whole screen, or with what changed since log head after when the caller
+ * still holds the screen through it.
+ */
 export async function* readConversationEvents(
   client: AxiosInstance,
   headers: Record<string, string>,
   conversationId: string,
   signal: AbortSignal,
+  after: number | null,
 ): AsyncGenerator<ConversationFrame> {
   const response = await client.get(
     `/api/v1/conversations/${encodeURIComponent(conversationId)}/events`,
@@ -69,6 +74,7 @@ export async function* readConversationEvents(
       responseType: "stream",
       signal,
       headers: { Accept: "text/event-stream", ...headers },
+      params: { wire: EVENTS_WIRE, ...(after === null ? {} : { after }) },
     },
   );
   const stream = response.data as Readable;

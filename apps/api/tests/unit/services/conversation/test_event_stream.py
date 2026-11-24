@@ -62,7 +62,9 @@ async def test_a_client_leaving_mid_wait_closes_the_follow_without_an_aclose_rac
     """Regression: cancelling the response while a frame was pending raised RuntimeError from aclose."""
     runtime = Runtime()
     await runtime.log.append(CONVERSATION, USER, user("u1"))
-    lines = event_lines(runtime.log, CONVERSATION, USER, _never_disconnected, asyncio.Event())
+    lines = event_lines(
+        follow_screen(runtime.log, CONVERSATION, USER), USER, _never_disconnected, asyncio.Event()
+    )
     assert (await anext(lines)).startswith("data: ")
     pending = asyncio.ensure_future(anext(lines))
     await asyncio.sleep(0)

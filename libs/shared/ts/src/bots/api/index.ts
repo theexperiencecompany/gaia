@@ -226,17 +226,19 @@ export class GaiaClient {
     return accepted;
   }
 
-  /** One connection to a conversation's events stream, after a seq or a stream id. */
+  /** One connection to a conversation's events stream: the whole screen, or what changed since log head after. */
   conversationEvents(
     ctx: BotUserContext,
     conversationId: string,
     signal: AbortSignal,
+    after: number | null,
   ): AsyncGenerator<ConversationFrame> {
     return readConversationEvents(
       this.client,
       this.userHeaders(ctx),
       conversationId,
       signal,
+      after,
     );
   }
 

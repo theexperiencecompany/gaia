@@ -17,14 +17,17 @@ import {
   type FollowStart,
   type FollowSurface,
   REACTION_OUTCOME,
+  StaleScreen,
   type StreamingOptions,
 } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 import {
   approvalAsked,
   founderConversationFrames,
+  groupedTimeline,
   insertFrame,
   noticeItem,
+  patchFrame,
   replyDelta,
   replyItem,
   retractFrame,
@@ -422,7 +425,7 @@ describe("a usage limit the run hit", () => {
       screenFrame([inbound("u1", 1, "11")]),
       updateFrame({
         ...replyItem("r1", 2, "", "answered"),
-        tool_data: [limitCard("free")],
+        timeline: groupedTimeline([limitCard("free")]),
       }),
     ]);
 
@@ -446,7 +449,7 @@ describe("a usage limit the run hit", () => {
     );
     const limited = {
       ...workItem("t1", 2, "failed"),
-      tool_data: [limitCard("pro")],
+      timeline: groupedTimeline([limitCard("pro")]),
     };
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11")]),
@@ -1246,7 +1249,7 @@ describe("a browser run on a work item", () => {
   });
   const running = (cards: ReturnType<typeof browserCard>[]) => ({
     ...workItem("t1", 2, "running"),
-    tool_data: cards,
+    timeline: groupedTimeline(cards),
   });
   const frames: ConversationFrame[] = [
     screenFrame([inbound("u1", 1, "11")]),
@@ -1285,6 +1288,57 @@ describe("a browser run on a work item", () => {
       },
       { op: "notice", bubbles: [`📽 Here's a recap of the run: ${REPLAY}`] },
     ]);
+  });
+
+  it("shows a step that arrives as a patch to the work item, once", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    const steps = ["timeline", "cards", 0, "card", "data"];
+
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(running([session])),
+      patchFrame(
+        "work:t1",
+        [{ op: "set", path: [...steps, 1], value: step.data }],
+        2,
+      ),
+      patchFrame("work:t1", [{ op: "set", path: ["image"], value: null }], 2),
+    ]);
+
+    expect(calls.filter((call) => call.op === "photo")).toEqual([
+      { op: "photo", url: SHOT, caption: "Step 1 · open the booking page" },
+    ]);
+    expect(follower.resumeAfter).toBe(2);
+  });
+
+  it("reopens on the whole screen after a patch that has no place in the item it holds", async () => {
+    const { surface } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(running([session])),
+    ]);
+    const unplaced = patchFrame(
+      "work:t1",
+      [{ op: "set", path: ["timeline", "cards", 4, "card"], value: {} }],
+      2,
+    );
+
+    await expect(follower.apply(unplaced)).rejects.toThrow(StaleScreen);
+    expect(follower.resumeAfter).toBeNull();
+    await feed(follower, [screenFrame([inbound("u1", 1, "11")], 2)]);
+    expect(follower.resumeAfter).toBe(2);
   });
 
   it("shows a run asked for in a group to the requester's own chat, and nothing in the group", async () => {

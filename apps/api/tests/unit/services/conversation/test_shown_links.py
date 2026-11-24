@@ -12,7 +12,7 @@ from app.models.conversation_frame_models import RetractFrame
 from app.models.conversation_log_models import Reply
 from app.models.conversation_screen_models import ScreenInsertFrame, ScreenUpdateFrame
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
-from app.services.conversation.event_stream import event_lines
+from app.services.conversation.event_stream import event_lines, follow_screen
 from app.services.conversation.shown_links import shown_frame
 from app.services.links.placeholders import link_placeholder
 from app.services.links.urls import build_url
@@ -53,7 +53,9 @@ async def test_a_client_is_sent_the_reply_with_its_link_while_the_log_keeps_the_
     )
     await runtime.log.append(CONVERSATION, USER, settled("s3", ["u1"], 2))
 
-    lines = event_lines(runtime.log, CONVERSATION, USER, _never_disconnected, asyncio.Event())
+    lines = event_lines(
+        follow_screen(runtime.log, CONVERSATION, USER), USER, _never_disconnected, asyncio.Event()
+    )
     first = await anext(lines)
     await lines.aclose()
 
