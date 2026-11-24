@@ -195,10 +195,7 @@
      "id": "canvas"
     }
    ],
-   "expected": "refused",
-   "refusals": [
-    "time_expression"
-   ]
+   "expected": "accepted"
   }
  ]
 }

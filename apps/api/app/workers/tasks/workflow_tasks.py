@@ -109,6 +109,12 @@ from app.services.links.placeholders import link_placeholder, resolve_link_place
 from app.services.links.service import attach_link
 from app.services.notification_service import notification_service
 from app.services.quiet_hours import message_class
+from app.services.scheduler_metrics import (
+    ScheduledTaskKind,
+    ScheduledTaskOutcome,
+    observe_claim_lateness,
+    observe_scheduled_fire,
+)
 from app.services.system_workflows.registry import behaviour_of
 from app.services.system_workflows.runs import SYSTEM_RUNS
 from app.services.triggers.batching import (
@@ -431,10 +437,14 @@ async def _rearm_quietly(
         log.error(f"{LogTag.WORKER} Failed to re-arm workflow %s: %s" % (workflow_id, rearm_err))
 
 
-def _log_schedule_drift(workflow: Workflow, workflow_id: str, actual_fire_utc: datetime) -> None:
+def _log_schedule_drift(
+    workflow: Workflow, workflow_id: str, actual_fire_utc: datetime, trigger_type: str
+) -> None:
     scheduled_at = getattr(workflow, "scheduled_at", None)
     if not isinstance(scheduled_at, datetime):
         return
+    if trigger_type == TriggerType.SCHEDULE.value:
+        observe_claim_lateness(ScheduledTaskKind.WORKFLOW, scheduled_at)
 
     if scheduled_at.tzinfo is None:
         scheduled_at = scheduled_at.replace(tzinfo=UTC)
@@ -1262,7 +1272,7 @@ async def _admit_fire(
     ):
         return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
-    _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
+    _log_schedule_drift(workflow, workflow_id, actual_fire_utc, trigger_type)
 
     # System-initiated runs skip a user who hasn't finished onboarding: their
     # auto-created workflows would drain the daily budget and trigger "you hit
@@ -1659,6 +1669,12 @@ def _fire_analytics_context(trigger_type: str) -> AnalyticsContext:
     return current_analytics_context()
 
 
+def _count_scheduled_fire(trigger_type: str, outcome: ScheduledTaskOutcome) -> None:
+    # A manual or integration fire is no scheduled task; the reminder scheduler counts its own.
+    if trigger_type == TriggerType.SCHEDULE.value:
+        observe_scheduled_fire(ScheduledTaskKind.WORKFLOW, outcome)
+
+
 async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | None) -> str:
     """Execute a workflow by ID with proper execution count tracking."""
     log.set(workflow_id=workflow_id)
@@ -1761,7 +1777,9 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             execution_id=execution_id,
             quiet_hours=stamp.quiet_hours,
         )
-        return await _run_and_record_success(fire, trigger_type, execution_id)
+        result = await _run_and_record_success(fire, trigger_type, execution_id)
+        _count_scheduled_fire(trigger_type, ScheduledTaskOutcome.OK)
+        return result
 
     except WorkflowFireOverlapped as never_ran:
         # Recorded on the wide event from the block that caught it; the helper
@@ -1776,6 +1794,7 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             never_ran, workflow, workflow_id, trigger_type, stamp.execution_id
         )
     except asyncio.CancelledError:
+        _count_scheduled_fire(trigger_type, ScheduledTaskOutcome.FAILED)
         await _record_timed_out_fire(workflow, workflow_id, execution_id, stamp.trigger_type)
         raise
     except Exception as e:
@@ -1799,6 +1818,7 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
                 error=str(cause),
                 error_type=type(cause).__name__,
             )
+            _count_scheduled_fire(trigger_type, ScheduledTaskOutcome.FAILED)
         return await _record_run_failure(e, workflow, workflow_id, execution_id, stamp.trigger_type)
     finally:
         await _give_back_admission(admission)
