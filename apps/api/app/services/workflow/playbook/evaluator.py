@@ -379,8 +379,10 @@ def _resolve_moment(match: re.Match[str], now: datetime) -> datetime:
         moment = now - offset if match.group("sign") == "-" else now + offset
     clock = match.group("clock")
     if clock is not None:
-        hour, minute = clock.split(":")
-        moment = moment.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+        hour, minute, second = (*clock.split(":"), "0")[:3]
+        moment = moment.replace(
+            hour=int(hour), minute=int(minute), second=int(second), microsecond=0
+        )
     return moment
 
 

@@ -2354,7 +2354,7 @@ steps:
       to: a@b.com
       subject:
         window:
-          - {"$time": "$today + 1d 23:59:59", "format": "%Y-%m-%d %H:%M:%S"}
+          - {"$time": "$today + 1d 9am", "format": "%Y-%m-%d %H:%M:%S"}
 result_brief: x
 """
         )
