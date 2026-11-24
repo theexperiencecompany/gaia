@@ -46,8 +46,6 @@ import {
   generateIntegrationTitle,
 } from "./integrationMeta";
 
-export const revalidate = 60;
-
 /**
  * Generate static params for all public integrations (community + native).
  * This enables search engines to crawl and index all integration pages.

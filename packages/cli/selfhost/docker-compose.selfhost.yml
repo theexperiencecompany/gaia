@@ -148,6 +148,9 @@ services:
       # the web server's page fetches name each visitor instead of all counting
       # as the web container's one address.
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      # Where the API tells gaia-web to rebuild a cached public page (a published
+      # integration or workflow): the private network, as FRONTEND_URL may not resolve here.
+      WEB_INTERNAL_URL: http://gaia-web:3000
     # The image CMD runs uvicorn with --proxy-headers --forwarded-allow-ips *.
     # That trust is safe here because port 8000 is never published: the only
     # peers are containers on gaia_network, and the bundled proxy (Caddy)

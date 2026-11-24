@@ -15,6 +15,7 @@ x-backend-environment: &backend_environment
   JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
   MEMORY_MODEL_CACHE_DIR: /models
   INTERNAL_API_TOKEN: ${SERVICE_PASSWORD_64_INTERNALAPI}
+  WEB_INTERNAL_URL: http://gaia-web:3000
   ENV: selfhost
   AUTH_MODE: local
   MONGO_DB: mongodb://mongo:27017/gaia
