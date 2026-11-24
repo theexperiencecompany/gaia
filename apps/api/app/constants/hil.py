@@ -309,5 +309,14 @@ ALWAYS_ASK_TOOLS: Final[frozenset[str]] = frozenset(
         DISCONNECT_INTEGRATION_TOOL,
         "update_user_instructions",
         "update_integration_instructions",
+        "set_approval_rule",
     }
 )
+
+
+class ApprovalRule(StrEnum):
+    """What the user wants for a tool or an integration: ask, don't ask, or GAIA's default."""
+
+    ASK = "ask"
+    DONT_ASK = "dont_ask"
+    DEFAULT = "default"

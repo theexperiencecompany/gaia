@@ -432,6 +432,7 @@ _EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
     "update_preferences",
     "update_user_instructions",
     "update_integration_instructions",
+    "set_approval_rule",
 }
 
 
@@ -731,6 +732,7 @@ class TestCoreInitializationContract:
             "set_selected_voice",
             "set_briefing_schedule",
             "manage_linked_account",
+            "set_approval_rule",
         ]
         assert {
             tool.name for tool in category.tools if tool.name in hil_constants.ALWAYS_ASK_TOOLS
@@ -739,6 +741,7 @@ class TestCoreInitializationContract:
             "update_preferences",
             "set_selected_voice",
             "set_briefing_schedule",
+            "set_approval_rule",
         }
         assert all(tool.destructive is False for tool in category.tools)
 
