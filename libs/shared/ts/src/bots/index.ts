@@ -85,6 +85,7 @@ export type {
   LinkState,
   ParsedLinkCode,
 } from "./link-codes.types";
+export { setPlatformConnected } from "./metrics";
 export type {
   AuthenticatedSettingsResponse,
   AuthStatus,

@@ -1747,7 +1747,7 @@ export interface paths {
          *     Args:
          *         request (Request): The FastAPI request object (required for rate limiting).
          *         data (URLRequest): The URL request containing an array of URLs.
-         *         user_id (str): The authenticated user's id (contact lookups are per-user).
+         *         caller (Caller): A signed-in user, or GAIA's web server (which gets web URLs only).
          *
          *     Returns:
          *         MultiURLResponse: The metadata for all URLs.

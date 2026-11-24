@@ -12,6 +12,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+from prometheus_client import REGISTRY
 import pytest
 
 from app.constants.log_tags import LogTag
@@ -24,12 +25,17 @@ from app.models.payment_models import (
     ProCheckout,
     SubscriptionDocument,
 )
+from app.services.payments.webhook_metrics import (
+    PAYMENT_WEBHOOK_TOTAL,
+    create_payment_webhook_series,
+)
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import (
     PaymentCheckoutStarted,
     SubscriptionCancellationRequested,
 )
 from tests.conftest import FAKE_USER
+from tests.helpers import series_labels
 from tests.unit.services.conftest import SUBSCRIPTION_DATA_PAYLOAD, _make_webhook_event
 
 PLANS_URL = "/api/v1/payments/plans"
@@ -40,6 +46,18 @@ VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
 WEBHOOK_URL = "/api/v1/payments/webhooks/dodo"
 DISCOUNT_CODES_URL = "/api/v1/payments/discount-codes"
+
+
+_WEBHOOK_HEADERS = {
+    "content-type": "application/json",
+    "webhook-id": "wh_123",
+    "webhook-timestamp": "1234567890",
+    "webhook-signature": "v1,sig_abc",
+}
+
+
+def _webhook_count(outcome: str) -> float:
+    return REGISTRY.get_sample_value("gaia_payment_webhook_total", {"outcome": outcome}) or 0.0
 
 
 def _make_plan(**overrides) -> dict:
@@ -887,6 +905,59 @@ class TestDodoWebhook:
             "Webhook processed" in str(call.args[0]) for call in mock_log.info.call_args_list
         )
 
+    @pytest.mark.parametrize(
+        ("status", "code"), [("processed", 200), ("failed", 503), ("abandoned", 200)]
+    )
+    async def test_a_delivery_counts_under_the_status_it_was_processed_to(
+        self, client: AsyncClient, status: str, code: int
+    ):
+        before = _webhook_count(status)
+        result = MagicMock(event_type="subscription.active", status=status, message="m")
+        with (
+            patch(
+                "app.services.payments.payment_webhook_service.payment_webhook_service.verify_webhook_signature",
+                return_value=True,
+            ),
+            patch(
+                "app.services.payments.payment_webhook_service.payment_webhook_service.process_webhook",
+                new_callable=AsyncMock,
+                return_value=result,
+            ),
+        ):
+            response = await client.post(WEBHOOK_URL, content="{}", headers=_WEBHOOK_HEADERS)
+
+        assert response.status_code == code
+        assert _webhook_count(status) == before + 1
+
+    async def test_an_unsigned_delivery_counts_invalid_signature(self, client: AsyncClient):
+        before = _webhook_count("invalid_signature")
+        with patch(
+            "app.services.payments.payment_webhook_service.payment_webhook_service.verify_webhook_signature",
+            return_value=False,
+        ):
+            response = await client.post(WEBHOOK_URL, content="{}", headers=_WEBHOOK_HEADERS)
+
+        assert response.status_code == 401
+        assert _webhook_count("invalid_signature") == before + 1
+
+    async def test_a_handler_that_raises_counts_error(self, client: AsyncClient):
+        before = _webhook_count("error")
+        with (
+            patch(
+                "app.services.payments.payment_webhook_service.payment_webhook_service.verify_webhook_signature",
+                return_value=True,
+            ),
+            patch(
+                "app.services.payments.payment_webhook_service.payment_webhook_service.process_webhook",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("db down"),
+            ),
+        ):
+            response = await client.post(WEBHOOK_URL, content="{}", headers=_WEBHOOK_HEADERS)
+
+        assert response.status_code == 500
+        assert _webhook_count("error") == before + 1
+
     async def test_webhook_invalid_signature_returns_401(self, client: AsyncClient):
         with patch(
             "app.services.payments.payment_webhook_service.payment_webhook_service.verify_webhook_signature",
@@ -915,6 +986,7 @@ class TestDodoWebhook:
         assert response.status_code == 422
 
     async def test_webhook_invalid_json_returns_400(self, client: AsyncClient):
+        before = _webhook_count("error")
         with patch(
             "app.services.payments.payment_webhook_service.payment_webhook_service.verify_webhook_signature",
             return_value=True,
@@ -932,6 +1004,21 @@ class TestDodoWebhook:
 
         assert response.status_code == 400
         assert "Invalid JSON" in response.json()["message"]
+        assert _webhook_count("error") == before + 1
+
+    def test_every_webhook_series_exists_before_the_first_delivery(self):
+        PAYMENT_WEBHOOK_TOTAL.clear()
+
+        create_payment_webhook_series()
+
+        assert series_labels("gaia_payment_webhook_total") == {
+            ("processed",),
+            ("ignored",),
+            ("failed",),
+            ("abandoned",),
+            ("invalid_signature",),
+            ("error",),
+        }
 
     async def test_webhook_processing_error_returns_500(self, client: AsyncClient):
         with (

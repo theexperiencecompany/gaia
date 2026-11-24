@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from arq import ArqRedis, create_pool
 
@@ -16,6 +16,12 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
     TaskOutcome,
     TaskRearm,
+)
+from app.services.scheduler_metrics import (
+    SCHEDULED_TASK_LATENESS_SECONDS,
+    SCHEDULED_TASK_TOTAL,
+    ScheduledTaskKind,
+    ScheduledTaskOutcome,
 )
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -56,6 +62,8 @@ class BaseSchedulerService(ABC):
 
     Subclasses must implement task-specific operations like CRUD and execution.
     """
+
+    kind: ClassVar[ScheduledTaskKind]
 
     def __init__(self) -> None:
         """Initialize the scheduler service."""
@@ -113,6 +121,7 @@ class BaseSchedulerService(ABC):
             )
 
         log.info("Processing task", task_id=task_id)
+        self._observe_lateness(task)
 
         occurrence_count = task.occurrence_count + 1
 
@@ -125,6 +134,16 @@ class BaseSchedulerService(ABC):
             execution_result = TaskExecutionResult(
                 outcome=TaskOutcome.FAILED, message=f"Task execution failed: {e!s}"
             )
+
+        if execution_result.outcome is not TaskOutcome.ENTITLEMENT_BLOCKED:
+            SCHEDULED_TASK_TOTAL.labels(
+                self.kind.value,
+                (
+                    ScheduledTaskOutcome.OK
+                    if execution_result.success
+                    else ScheduledTaskOutcome.FAILED
+                ).value,
+            ).inc()
 
         if task.repeat and execution_result.outcome is TaskOutcome.ENTITLEMENT_BLOCKED:
             # Re-arming a blocked series fires the paywall again every tick, forever.
@@ -148,11 +167,21 @@ class BaseSchedulerService(ABC):
                 ScheduledTaskStatus.FAILED,
                 TaskRearm(occurrence_count=occurrence_count),
             )
-            log.warning(
+            log.error(
                 "One-time task failed", task_id=task_id, failure_reason=execution_result.message
             )
 
         return execution_result
+
+    def _observe_lateness(self, task: BaseScheduledTask) -> None:
+        """Record how long past its scheduled time the task was when claimed."""
+        scheduled_at = task.scheduled_at
+        if scheduled_at is None:
+            return
+        if scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=UTC)
+        late = (datetime.now(UTC) - scheduled_at).total_seconds()
+        SCHEDULED_TASK_LATENESS_SECONDS.labels(self.kind.value).observe(max(0.0, late))
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
         """Cancel a scheduled task.
@@ -262,6 +291,7 @@ class BaseSchedulerService(ABC):
                     error_type=type(e).__name__,
                 )
                 continue
+            SCHEDULED_TASK_TOTAL.labels(self.kind.value, ScheduledTaskOutcome.REAPED.value).inc()
             reaped += 1
 
         return reaped
@@ -287,7 +317,7 @@ class BaseSchedulerService(ABC):
         updated_at = getattr(task, "updated_at", None)
         if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=UTC)
-        log.warning(
+        log.error(
             "Reaped task stuck in EXECUTING; reset to SCHEDULED",
             task_id=task_id,
             scheduler_class=self.__class__.__name__,

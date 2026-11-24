@@ -36,8 +36,8 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.execute_models import AccountChoice, DispatchError, DispatchErrorKind
 from app.services.analytics_service import capture
-from app.services.storage.metrics import _register_once
 from app.services.tool_shape_service import record_observed_shape
+from app.utils.prometheus_registry import register_once
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolExecuteFailed
 from shared.py.wide_events import log, spawn_logged_task
@@ -45,7 +45,7 @@ from shared.py.wide_events import log, spawn_logged_task
 # Health metric of the proxy migration: invalid_args/ok is the
 # retries-per-successful-action ratio. Charted in Grafana; labels are the
 # closed outcome set below, never tool names (unbounded cardinality).
-_EXECUTE_DISPATCH_TOTAL = _register_once(
+_EXECUTE_DISPATCH_TOTAL = register_once(
     "gaia_execute_dispatch_total",
     lambda: Counter(
         "gaia_execute_dispatch_total",

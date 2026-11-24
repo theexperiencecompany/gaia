@@ -1,0 +1,40 @@
+# gaia-llm-provider-failing: fires when half of one provider's calls fail, for that provider only; quiet when a tenth of a provider's calls fail.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-llm-provider-failing fires when half of one provider's calls fail, for that provider only
+    interval: 1m
+    input_series:
+      - series: 'gaia_llm_call_total{job="gaia-api",provider="gemini",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_llm_call_total{job="gaia-api",provider="gemini",outcome="ok"}'
+        values: '0+1x60'
+      - series: 'gaia_llm_call_total{job="gaia-api",provider="openrouter",outcome="failed"}'
+        values: '0x60'
+      - series: 'gaia_llm_call_total{job="gaia-api",provider="openrouter",outcome="ok"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-llm-provider-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+              provider: gemini
+            exp_annotations:
+              description: >-
+                Calls to this provider are failing after retries. Users mostly still get an answer from the default model, slower and at its cost, but anything pinned to this provider degrades. Split outcome failed from rate_limited: rate limiting is a quota or credit problem on the provider key, failures are the provider's outage or a bad key. Check the provider's status page.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-llm-provider-failing
+
+  - name: gaia-llm-provider-failing stays quiet when a tenth of a provider's calls fail
+    interval: 1m
+    input_series:
+      - series: 'gaia_llm_call_total{job="gaia-api",provider="gemini",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_llm_call_total{job="gaia-api",provider="gemini",outcome="ok"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-llm-provider-failing
+        exp_alerts: []

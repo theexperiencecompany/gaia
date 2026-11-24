@@ -7,8 +7,9 @@ to verify routing, status codes, redirects, and cookie handling.
 from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
 from httpx import AsyncClient
+from prometheus_client import REGISTRY
 import pytest
 
 from app.config.settings import settings
@@ -18,14 +19,20 @@ from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.composio_callback import ConnectionCompleted, ConnectionRejected
+from app.services.oauth.metrics import OAUTH_CALLBACK_TOTAL, create_oauth_callback_series
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
-from tests.helpers import session_set_cookies
+from tests.helpers import series_labels, session_set_cookies
 
 OAUTH_BASE = "/api/v1/oauth"
 FRONTEND = settings.FRONTEND_URL
 RejectionReason = Literal["account_not_found", "user_missing", "config_missing", "user_mismatch"]
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+
+
+def _callbacks(flow: str, outcome: str) -> float:
+    labels = {"flow": flow, "outcome": outcome}
+    return REGISTRY.get_sample_value("gaia_oauth_callback_total", labels) or 0.0
 
 
 def _oauth_ns(log_mock: MagicMock) -> dict:
@@ -663,7 +670,7 @@ class TestComposioCallback:
             follow_redirects=False,
         )
         assert response.status_code == 307
-        assert "oauth_error=invalid_state" in response.headers["location"]
+        assert response.headers["location"] == f"{FRONTEND}/redirect?oauth_error=invalid_state"
 
     @pytest.mark.usefixtures("composio_state")
     async def test_composio_callback_failed_status(self, route_log: MagicMock, client: AsyncClient):
@@ -679,12 +686,17 @@ class TestComposioCallback:
 
     @pytest.mark.usefixtures("composio_state")
     async def test_composio_callback_access_denied(self, client: AsyncClient):
+        cancelled = _callbacks("integration", "cancelled")
+        failed = _callbacks("integration", "failed")
         response = await client.get(
             f"{OAUTH_BASE}/composio/callback?status=failed&state=tok&error=access_denied",
             follow_redirects=False,
         )
         assert response.status_code == 307
         assert response.headers["location"] == f"{FRONTEND}/integrations?oauth_error=cancelled"
+        # The user said no on the consent screen: counted, but not a failure.
+        assert _callbacks("integration", "cancelled") == cancelled + 1
+        assert _callbacks("integration", "failed") == failed
 
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
@@ -839,3 +851,131 @@ class TestComposioCallback:
             exc_info=True,
         )
         route_log.audit.assert_not_called()
+
+    @pytest.mark.usefixtures("composio_state")
+    async def test_a_connection_that_lands_counts_ok_and_one_that_is_rejected_counts_failed(
+        self, completed_connection: AsyncMock, client: AsyncClient
+    ):
+        completed_connection.return_value = ConnectionCompleted(
+            user_id=USER_ID,
+            integration_id="gmail",
+            provider="google",
+            outcome=AccountConnectOutcome.ADDED,
+        )
+        url = f"{OAUTH_BASE}/composio/callback?status=success&state=tok&connectedAccountId=acc1"
+        ok = _callbacks("integration", "ok")
+        failed = _callbacks("integration", "failed")
+
+        await client.get(url, follow_redirects=False)
+        assert (_callbacks("integration", "ok"), _callbacks("integration", "failed")) == (
+            ok + 1,
+            failed,
+        )
+
+        completed_connection.return_value = ConnectionRejected(reason="user_mismatch")
+        await client.get(url, follow_redirects=False)
+        assert _callbacks("integration", "failed") == failed + 1
+        assert _callbacks("integration", "ok") == ok + 1
+
+
+LOGIN_CALLBACKS = ("workos/desktop/callback", "workos/mobile/callback", "workos/callback")
+
+
+class TestOAuthCallbackMetric:
+    @pytest.mark.parametrize("path", LOGIN_CALLBACKS)
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_a_login_callback_without_a_code_counts_failed(
+        self, mock_redis: MagicMock, path: str, client: AsyncClient
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        before = _callbacks("login", "failed")
+
+        response = await client.get(f"{OAUTH_BASE}/{path}", follow_redirects=False)
+
+        assert "error=missing_code" in response.headers["location"]
+        assert _callbacks("login", "failed") == before + 1
+
+    @pytest.mark.parametrize("path", LOGIN_CALLBACKS)
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_a_login_that_signs_in_counts_ok(
+        self,
+        mock_redis: MagicMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        path: str,
+        client: AsyncClient,
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.return_value = (MagicMock(), False)
+        before = (_callbacks("login", "ok"), _callbacks("login", "failed"))
+
+        response = await client.get(f"{OAUTH_BASE}/{path}?code=abc", follow_redirects=False)
+
+        assert "error=" not in response.headers["location"]
+        assert (_callbacks("login", "ok"), _callbacks("login", "failed")) == (
+            before[0] + 1,
+            before[1],
+        )
+
+    @pytest.mark.parametrize("path", LOGIN_CALLBACKS)
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_a_login_refused_with_an_http_error_counts_failed(
+        self,
+        mock_redis: MagicMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        path: str,
+        client: AsyncClient,
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.side_effect = HTTPException(status_code=403, detail="signups_closed")
+        before = (_callbacks("login", "ok"), _callbacks("login", "failed"))
+
+        response = await client.get(f"{OAUTH_BASE}/{path}?code=abc", follow_redirects=False)
+
+        assert response.headers["location"].endswith("?error=signups_closed")
+        assert (_callbacks("login", "ok"), _callbacks("login", "failed")) == (
+            before[0],
+            before[1] + 1,
+        )
+
+    @pytest.mark.parametrize("path", LOGIN_CALLBACKS)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_a_login_that_raises_counts_failed(
+        self, mock_redis: MagicMock, mock_workos: MagicMock, path: str, client: AsyncClient
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.return_value.user_management.authenticate_with_code.side_effect = Exception(
+            "boom"
+        )
+        before = (_callbacks("login", "ok"), _callbacks("login", "failed"))
+
+        response = await client.get(f"{OAUTH_BASE}/{path}?code=abc", follow_redirects=False)
+
+        assert response.headers["location"].endswith("?error=server_error")
+        assert (_callbacks("login", "ok"), _callbacks("login", "failed")) == (
+            before[0],
+            before[1] + 1,
+        )
+
+    def test_every_callback_series_exists_before_its_first_callback(self):
+        OAUTH_CALLBACK_TOTAL.clear()
+
+        create_oauth_callback_series()
+
+        assert series_labels("gaia_oauth_callback_total") == {
+            (flow, outcome)
+            for flow in ("login", "integration")
+            for outcome in ("ok", "failed", "cancelled")
+        }

@@ -673,7 +673,8 @@ jobs:
           docker buildx imagetools inspect "$IMAGE:$GIT_SHA"
 
   # Grafana provisioning (dashboards/datasources/alerting) is baked into a custom
-  # image so production needs no host bind mount. Built unconditionally — it's a
+  # image so production needs no host bind mount; alert-rules.yaml is copied in
+  # from this repo, the rest comes from gaia-infra. Built unconditionally — it's a
   # tiny COPY layer over the upstream image, and the prod stack always references
   # gaia-grafana:latest.
   docker-grafana:
@@ -698,6 +699,16 @@ jobs:
           ssh-key: ${{ secrets.GAIA_INFRA_DEPLOY_KEY }}
           path: .infra
           persist-credentials: false
+
+      # gaia-infra has no alert-rules.yaml; this repo owns the file.
+      - name: Add the alert rules to the build context
+        env:
+          RULES_SRC: infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml
+          RULES_DST: .infra/docker/observability/grafana/provisioning/alerting
+        run: |
+          set -euo pipefail
+          cp "$RULES_SRC" "$RULES_DST/"
+          test -s "$RULES_DST/alert-rules.yaml"
 
       - name: Log in to GHCR
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0

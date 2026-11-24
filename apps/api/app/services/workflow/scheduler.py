@@ -20,6 +20,7 @@ from app.models.workflow_models import (
     TriggerType,
     Workflow,
 )
+from app.services.scheduler_metrics import ScheduledTaskKind
 from app.services.scheduler_service import BaseSchedulerService
 from app.services.system_workflows.behaviour import RunAhead
 from app.services.system_workflows.registry import behaviour_of
@@ -55,6 +56,8 @@ class WorkflowScheduler(BaseSchedulerService):
     - Cron expression handling
     - stop_after and max_occurrences support
     """
+
+    kind = ScheduledTaskKind.WORKFLOW
 
     def get_job_name(self) -> str:
         """Get the ARQ job name for workflow processing."""

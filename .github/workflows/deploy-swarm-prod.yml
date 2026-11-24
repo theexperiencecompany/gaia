@@ -195,6 +195,12 @@ jobs:
           BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
         run: bash scripts/ci/deploy.sh verify-commit
 
+      # The image bakes the rules in at build time; this catches a build that
+      # shipped a different rule set than the repo's alert-rules.yaml.
+      - name: Verify Grafana serves the repo's alert rules
+        if: inputs.action == 'deploy' && inputs.grafana_image_tag != ''
+        run: bash scripts/ci/deploy.sh verify-alert-rules
+
       # Only after convergence proved the deploy healthy does :latest move —
       # this is what makes :latest "what prod runs" instead of "what was last
       # built". A failed deploy leaves :latest on the previous good images.
