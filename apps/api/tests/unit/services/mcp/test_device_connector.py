@@ -214,7 +214,9 @@ async def test_a_request_sent_while_the_session_ends_does_not_break_the_ending()
     assert connector._unanswered == {3}
 
 
+@pytest.mark.regression
 async def test_a_connector_whose_session_the_device_ended_opens_a_new_one_on_next_use() -> None:
+    """A lost session stayed cached, so every later call on the connector failed until eviction."""
     sent: list[str] = []
 
     async def send_down(device_id: str, frame: BridgeFrame) -> None:
