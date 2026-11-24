@@ -868,10 +868,9 @@ class TestUserNameLookup:
             }
         ]
 
-    async def test_a_programming_error_propagates(self) -> None:
+    async def test_an_id_the_store_cannot_read_falls_back_to_the_generic_name(self) -> None:
         with patch(
             "app.memory.consolidation.user_repository.get",
-            AsyncMock(side_effect=TypeError("bug")),
+            AsyncMock(side_effect=ValueError("not a database id")),
         ):
-            with pytest.raises(TypeError):
-                await _get_user_name(USER)
+            assert await _get_user_name(USER) == "the user"
