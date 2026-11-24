@@ -15,6 +15,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import (
     AIMessage,
@@ -24,12 +25,17 @@ from langchain_core.messages import (
     ToolCall,
     ToolMessage,
 )
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import ConfigurableField, RunnableConfig
+from openai import InternalServerError, RateLimitError
+from pydantic import Field
 import pytest
+import tenacity
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.agents.llm import lane as lane_module
+from app.agents.llm.lane import ModelLane
 from app.agents.middleware.interrupted_lookups import LOOKUPS_CLOSED
 from app.config.settings import settings
 from app.constants.conversation import (
@@ -37,6 +43,12 @@ from app.constants.conversation import (
     ABSORBED_NOTE_SUFFIX,
     LOG_SEQ,
     TURN_CONTEXT_ID_SUFFIX,
+)
+from app.constants.llm import (
+    DEFAULT_MAX_TOKENS,
+    LANE_FIELD_ID,
+    LLM_RETRY_MAX_ATTEMPTS,
+    LLMProviderName,
 )
 from app.models.integration_models import UserIntegrationCapabilities
 from app.utils.search import WebSearchResult
@@ -860,3 +872,88 @@ class TestCommsLookupsCloseOnInterruption:
         assert [call.kwargs["query"] for call in search.await_args_list] == ["a"]
         assert results["n1"].status == "success"
         assert results["x1"].content != LOOKUPS_CLOSED
+
+
+_WORKERS_AI_REQUEST = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+
+
+class _RefusingModel(BindableToolsFakeModel):
+    """A chat model whose provider answers every call with one error, counting the attempts."""
+
+    refusal: Any
+    attempts: list[int] = Field(default_factory=list)
+
+    async def ainvoke(
+        self,
+        input: LanguageModelInput,  # noqa: A002 - overrides langchain Runnable.ainvoke's contract
+        config: RunnableConfig | None = None,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: object,
+    ) -> AIMessage:
+        self.attempts.append(1)
+        raise self.refusal
+
+
+class TestWorkersAiFailuresThroughTheCommsGraph:
+    """A comms turn on a Workers AI lane, with Gemini configured as the next provider."""
+
+    @staticmethod
+    async def _turn(refusal: Exception) -> tuple[list[int], str]:
+        """Run one turn on a refusing Workers AI lane; return its attempts and the reply's text."""
+        workers_ai = _RefusingModel(responses=[], refusal=refusal)
+        llm = workers_ai.configurable_alternatives(
+            ConfigurableField(id="provider"),
+            default_key=LLMProviderName.CLOUDFLARE,
+            prefix_keys=False,
+            gemini=BindableToolsFakeModel(responses=[AIMessage(content="from gemini")]),
+        )
+        lane = ModelLane(
+            provider=LLMProviderName.CLOUDFLARE,
+            model="@cf/vendor/model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
+        config = RunnableConfig(
+            configurable=_thread_config(
+                {**lane.binding_keys(), LANE_FIELD_ID: lane.to_configurable()}
+            )["configurable"]
+        )
+        with (
+            _apply_all_patches(_make_chroma_store_mock(), _follow_up_node_io_patches()),
+            patch.object(
+                lane_module, "chat_route", lambda _current: (LLMProviderName.GEMINI, "gemini-x")
+            ),
+            patch.object(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0),
+        ):
+            async with build_comms_graph(chat_llm=llm, in_memory_checkpointer=True) as graph:
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content="hello")]}, config=config
+                )
+        return workers_ai.attempts, str(result["messages"][-1].content)
+
+    @pytest.mark.regression
+    async def test_a_rate_limit_is_tried_once_and_the_next_provider_answers(self) -> None:
+        attempts, reply = await self._turn(
+            RateLimitError(
+                "rate limiting",
+                response=httpx.Response(429, request=_WORKERS_AI_REQUEST),
+                body=None,
+            )
+        )
+
+        assert len(attempts) == 1
+        assert reply == "from gemini"
+
+    async def test_a_server_error_keeps_its_retries_before_the_next_provider_answers(self) -> None:
+        attempts, reply = await self._turn(
+            InternalServerError(
+                "upstream error",
+                response=httpx.Response(500, request=_WORKERS_AI_REQUEST),
+                body=None,
+            )
+        )
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+        assert reply == "from gemini"

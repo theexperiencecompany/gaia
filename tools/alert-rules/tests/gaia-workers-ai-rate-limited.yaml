@@ -19,7 +19,7 @@ tests:
               service: api
             exp_annotations:
               description: >-
-                Workers AI is refusing more model calls than its usual daily bursts. Each refused call is retried and then answered by the fallback model, slower and at that model's cost, so users mostly still get an answer. Check which job and label is sending the calls (the llm_call log lines with error_family rate_limit), then the Workers AI limits on the Cloudflare account and whether a background job is looping.
+                Workers AI is refusing more model calls than its usual daily bursts. A refused call goes straight to the fallback model, at that model's cost, so users mostly still get an answer; a call with no fallback is retried and then fails. Check which job and label is sending the calls (the llm_call log lines with error_family rate_limit), then the Workers AI limits on the Cloudflare account and whether a background job is looping.
               runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-workers-ai-rate-limited
 
   - name: gaia-workers-ai-rate-limited fires when burst-level rate limiting does not stop
@@ -36,7 +36,7 @@ tests:
               service: api
             exp_annotations:
               description: >-
-                Workers AI is refusing more model calls than its usual daily bursts. Each refused call is retried and then answered by the fallback model, slower and at that model's cost, so users mostly still get an answer. Check which job and label is sending the calls (the llm_call log lines with error_family rate_limit), then the Workers AI limits on the Cloudflare account and whether a background job is looping.
+                Workers AI is refusing more model calls than its usual daily bursts. A refused call goes straight to the fallback model, at that model's cost, so users mostly still get an answer; a call with no fallback is retried and then fails. Check which job and label is sending the calls (the llm_call log lines with error_family rate_limit), then the Workers AI limits on the Cloudflare account and whether a background job is looping.
               runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-workers-ai-rate-limited
 
   - name: gaia-workers-ai-rate-limited stays quiet on two of the largest daily bursts back to back
