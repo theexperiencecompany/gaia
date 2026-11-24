@@ -304,8 +304,19 @@ async def test_a_closing_socket_fails_each_session_it_still_carries():
         ({"t": FRAME_MCP_ERROR, "sid": "s0", "pod": "p0"}, {}),
         ({"t": FRAME_EXEC_EXIT, "sid": "s0", "pod": "p0"}, {}),
         ({"t": FRAME_MCP_MSG, "sid": "s0", "pod": "p0"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_CLOSE, "sid": "s-other"}, {"s0": "p0"}),
     ],
-    ids=["mcp-open", "exec-open", "open-no-pod", "no-sid", "close", "error", "exit", "msg"],
+    ids=[
+        "mcp-open",
+        "exec-open",
+        "open-no-pod",
+        "no-sid",
+        "close",
+        "error",
+        "exit",
+        "msg",
+        "close-of-an-untracked-session",
+    ],
 )
 def test_a_socket_carries_a_session_from_its_open_to_its_end(frame, carried):
     sessions = {"s0": "p0"}
