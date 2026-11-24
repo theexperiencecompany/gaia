@@ -39,6 +39,7 @@ import {
   renderForPlatform,
   type SentMessage,
   sanitizeErrorForLog,
+  setPlatformConnected,
   wideLog,
   withWideEvent,
 } from "@gaia/shared/bots";
@@ -143,12 +144,32 @@ export class DiscordAdapter extends BaseBotAdapter {
     this.client.on(Events.Error, (error) => {
       void withWideEvent(
         "bot_runtime_error",
-        { platform: this.platform, component: "adapter" },
+        {
+          platform: this.platform,
+          component: "adapter",
+          operation: "gateway_error",
+        },
         async () => {
           recordBotFailure("discord_client_error", error);
         },
       );
     });
+
+    this.client.on(Events.ClientReady, () =>
+      this.recordGatewayConnection(true),
+    );
+    // A shard that re-identifies after a drop emits ShardReady, never ClientReady again.
+    this.client.on(Events.ShardReady, () => this.recordGatewayConnection(true));
+    this.client.on(Events.ShardResume, () =>
+      this.recordGatewayConnection(true),
+    );
+    // ShardDisconnect fires only once a shard gives up, so a shard stuck retrying is caught here.
+    this.client.on(Events.ShardReconnecting, () =>
+      this.recordGatewayConnection(false),
+    );
+    this.client.on(Events.ShardDisconnect, () =>
+      this.recordGatewayConnection(false),
+    );
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
       const receivedAt = Date.now();
@@ -192,6 +213,21 @@ export class DiscordAdapter extends BaseBotAdapter {
     });
   }
 
+  /** Moves the connection gauge and logs the gateway transition as its own event. */
+  private recordGatewayConnection(connected: boolean): void {
+    void withWideEvent(
+      "gateway_connection",
+      {
+        platform: this.platform,
+        component: "adapter",
+        operation: connected ? "gateway_connected" : "gateway_disconnected",
+      },
+      async () => {
+        setPlatformConnected(this.platform, connected);
+      },
+    );
+  }
+
   /** Logs in to Discord. */
   protected async start(): Promise<void> {
     await this.client.login(this.token);
@@ -204,6 +240,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       this.statusRotationTimer = null;
     }
     this.client.destroy();
+    setPlatformConnected(this.platform, false);
   }
 
   /**

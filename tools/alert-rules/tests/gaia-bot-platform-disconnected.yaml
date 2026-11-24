@@ -1,0 +1,39 @@
+# gaia-bot-platform-disconnected: fires when a bot's platform connection gauge is 0 for 5m.
+# whatsapp and imessage are webhook-only and never export the gauge: a bot with no series
+# must not alert.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-bot-platform-disconnected fires for the disconnected platform only
+    interval: 1m
+    input_series:
+      - series: 'gaia_bot_platform_connected{job="bots",instance="telegram-bot:3202",platform="telegram"}'
+        values: '1x5 0x25'
+      - series: 'gaia_bot_platform_connected{job="bots",instance="discord-bot:3200",platform="discord"}'
+        values: '1x30'
+      - series: 'gaia_bot_inbound_total{job="bots",instance="whatsapp-bot:3203",platform="whatsapp",outcome="ok"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-bot-platform-disconnected
+        exp_alerts:
+          - exp_labels:
+              severity: 'critical'
+              service: 'bots'
+              incident: 'availability'
+              platform: 'telegram'
+            exp_annotations:
+              description: >-
+                The bot container is healthy but is not connected to the platform, so messages sent to GAIA there are not received and nothing is answered. The usual causes are a revoked or rotated bot token and a platform outage. Read that bot's logs for the disconnect reason before restarting it.
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-bot-platform-disconnected'
+
+  - name: gaia-bot-platform-disconnected stays quiet through a reconnect shorter than 5m
+    interval: 1m
+    input_series:
+      - series: 'gaia_bot_platform_connected{job="bots",instance="telegram-bot:3202",platform="telegram"}'
+        values: '1x5 0x3 1x22'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-bot-platform-disconnected
+        exp_alerts: []

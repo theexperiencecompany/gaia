@@ -29,7 +29,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
-from e2b import AsyncSandbox, CommandExitException, SandboxState
+from e2b import AsyncSandbox, CommandExitException, NotFoundException, SandboxState
 import pytest
 from tests.helpers import captured_wide_event
 
@@ -580,6 +580,44 @@ async def test_a_missing_canary_file_reports_a_stale_filesystem() -> None:
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="ts-1")
     with _recorded_canary("sbx-1", "ts-1"):
         assert await lifecycle._verify_canary_or_die("u1", entry) is False
+
+
+async def test_an_expected_missing_canary_logs_nothing() -> None:
+    sbx = _fake_sandbox()
+    sbx.files.read = AsyncMock(side_effect=NotFoundException("no canary"))
+    with patch.object(lifecycle, "log") as mock_log:
+        assert await lifecycle._read_canary(sbx) is None
+    mock_log.warning.assert_not_called()
+
+
+async def test_an_unreadable_canary_is_stale_and_says_why() -> None:
+    sbx = _fake_sandbox("sbx-9")
+    sbx.files.read = AsyncMock(side_effect=ConnectionError("reset"))
+    async with captured_wide_event() as event:
+        assert await lifecycle._read_canary(sbx) is None
+    assert event["warnings"] == [
+        {
+            "msg": f"{LogTag.SANDBOX} canary read failed",
+            "sandbox_id": "sbx-9",
+            "error": "reset",
+            "error_type": "ConnectionError",
+        }
+    ]
+
+
+async def test_a_failed_health_probe_is_false_and_says_why() -> None:
+    sbx = _fake_sandbox("sbx-3")
+    sbx.is_running = AsyncMock(side_effect=ConnectionError("down"))
+    async with captured_wide_event() as event:
+        assert await lifecycle._health_probe(sbx) is False
+    assert event["warnings"] == [
+        {
+            "msg": f"{LogTag.SANDBOX} health probe failed",
+            "sandbox_id": "sbx-3",
+            "error": "down",
+            "error_type": "ConnectionError",
+        }
+    ]
 
 
 async def test_an_empty_canary_file_reports_a_stale_filesystem() -> None:

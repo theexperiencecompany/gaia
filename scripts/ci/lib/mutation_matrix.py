@@ -14,6 +14,8 @@ Output: [{"module": ..., "testfiles": [...], "changed_lines": [...], "mutants": 
         `mutants` estimates how many mutants mutmut will generate on the
         changed lines; mutation.py plans its shards by it.
 Exit 1 with a ::error message when a changed module has no test file.
+A module `exclusion` names (data migrations, modules with no function) is
+skipped with a ::notice before any of that.
 """
 
 from __future__ import annotations
@@ -35,6 +37,8 @@ TESTS_DIR = Path("apps/api/tests")
 # The repo has one base branch (CLAUDE.md); local runs diff against it so a
 # local mutation run scopes exactly like the PR lane does.
 LOCAL_BASE_BRANCH = "master"
+# The --scope answer for an excluded module; mutation.py reads it as "do not mutate".
+EXCLUDED_SCOPE = "excluded"
 # The nodes mutmut 3.7 rewrites, counted inside function bodies (it mutates
 # nothing else). On PR #1799's 132 graded modules the count's rank correlation
 # with the real mutant count was 0.92, at 1.04 real mutants per counted node.
@@ -51,6 +55,24 @@ MUTABLE_NODES = (
     ast.Subscript,
     ast.UnaryOp,
     ast.keyword,
+)
+# One-shot data migrations and backfills, measured zero-value on #1853. Every other
+# operator script (deleting a user, resetting a password) stays mutated.
+# apps/api/scripts/ never reaches the lane (outside app/).
+SCRIPTS_DIR = "app/scripts/"
+MIGRATION_PREFIXES = ("migrate_", "backfill_")
+ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "Flag", "IntFlag"})
+# A module-level value holding any of these is logic, and keeps its module in the lane.
+LOGIC_NODES = (
+    ast.Lambda,
+    ast.IfExp,
+    ast.BoolOp,
+    ast.Compare,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+    ast.NamedExpr,
 )
 
 
@@ -187,6 +209,81 @@ def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
     if old_code is None or new_code is None:
         return False  # unparseable on either side — don't guess, enforce normally
     return old_code == new_code
+
+
+def _is_enum(node: ast.ClassDef) -> bool:
+    """Return True for an undecorated-or-@unique Enum subclass holding only member assignments."""
+    bases = {ast.unparse(base).rsplit(".", 1)[-1] for base in node.bases}
+    return (
+        bool(bases & ENUM_BASES)
+        and all(
+            ast.unparse(decorator) in ("unique", "enum.unique") for decorator in node.decorator_list
+        )
+        and all(
+            isinstance(stmt, ast.Pass) or _is_docstring(stmt) or _is_plain_assignment(stmt)
+            for stmt in node.body
+        )
+    )
+
+
+def _is_plain_assignment(stmt: ast.stmt) -> bool:
+    return isinstance(stmt, ast.Assign | ast.AnnAssign) and not any(
+        isinstance(node, LOGIC_NODES) for node in ast.walk(stmt)
+    )
+
+
+def _is_docstring(stmt: ast.stmt) -> bool:
+    return (
+        isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Constant)
+        and isinstance(stmt.value.value, str)
+    )
+
+
+def _is_declaration(stmt: ast.stmt) -> bool:
+    """Return True for an import, a docstring, an enum, or an assignment with no branching or function."""
+    if isinstance(stmt, ast.Import | ast.ImportFrom) or _is_docstring(stmt):
+        return True
+    if isinstance(stmt, ast.ClassDef):
+        return _is_enum(stmt)
+    if isinstance(stmt, ast.If):
+        # `if TYPE_CHECKING:` around imports is a declaration, not a branch.
+        return (
+            ast.unparse(stmt.test) in ("TYPE_CHECKING", "typing.TYPE_CHECKING")
+            and not stmt.orelse
+            and all(isinstance(inner, ast.Import | ast.ImportFrom) for inner in stmt.body)
+        )
+    return _is_plain_assignment(stmt)
+
+
+def is_declarative(source: str) -> bool:
+    """Return True when every top-level statement is a declaration: prompt text, constants, enums."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return all(_is_declaration(stmt) for stmt in tree.body)
+
+
+def exclusion(module_rel: str) -> str | None:
+    """Return why the lane leaves this app module (app/...) unmutated, or None when it mutates it."""
+    if module_rel.startswith(SCRIPTS_DIR) and Path(module_rel).name.startswith(MIGRATION_PREFIXES):
+        return "a one-shot data migration or backfill"
+    path = APP_DIR.parent / module_rel
+    if path.is_file() and is_declarative(path.read_text(encoding="utf-8")):
+        return "only prompt text, constants or enums: no function for mutmut to mutate"
+    return None
+
+
+def skips_excluded(module_rel: str) -> bool:
+    """Print the lane's skip notice and return True when exclusion() leaves this module out."""
+    reason = exclusion(module_rel)
+    if reason:
+        print(
+            f"::notice::mutation gate: {module_rel} is outside the lane's scope ({reason}) — skipping",
+            file=sys.stderr,
+        )
+    return reason is not None
 
 
 @cache
@@ -389,6 +486,9 @@ def scope(module_rel: str) -> int:
     to prevent.
     """
     path = f"apps/api/{module_rel}"
+    if skips_excluded(module_rel):
+        print(EXCLUDED_SCOPE)
+        return 0
     merge_base = _merge_base()
     if not merge_base:
         print(
@@ -429,6 +529,8 @@ def main() -> int:
     failures: list[str] = []
     for module in changed:
         rel = module.removeprefix("apps/api/")
+        if skips_excluded(rel):
+            continue
         # A comment-only diff has zero possible mutants — checked before the
         # test-file lookup, and regardless of whether a test file exists.
         # This isn't just about the "no test file" failure: even a module

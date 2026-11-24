@@ -9,18 +9,44 @@ the AST-based first version reported it as a gap anyway.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import importlib.util
 from pathlib import Path
+import sys
+from types import ModuleType
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
-_SPEC = importlib.util.spec_from_file_location(
-    "mutation_gap", REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_gap.py"
-)
-assert _SPEC is not None and _SPEC.loader is not None
-gap = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(gap)
+CI_DIR = REPO_ROOT / "scripts" / "ci"
+
+
+def _load(name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    # Registered before it runs: mutation.py's dataclasses resolve their module there.
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def gap(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ModuleType]:
+    """Import mutation_gap from a workdir configure_mutmut wrote, as the lane does.
+
+    mutmut reads [tool.mutmut] from the cwd, and importing it already loads that config.
+    """
+    sys.path.insert(0, str(CI_DIR))
+    mutation = _load("mutation", CI_DIR / "mutation.py")
+    workdir = tmp_path_factory.mktemp("lane")
+    (workdir / "pyproject.toml").write_text('[project]\nname = "probe"\n')
+    request = mutation.ModuleRequest(module="sample.py", testfiles=("t.py",), ranges="[[1,1]]")
+    mutation.configure_mutmut(request, workdir)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(workdir)
+        yield _load("mutation_gap", CI_DIR / "lib" / "mutation_gap.py")
+
 
 SOURCE = '''\
 from app.x import y                       # 1
@@ -54,55 +80,57 @@ class Model(BaseModel):                   # 23
 '''
 
 
-def _lines(ranges: list[list[int]]) -> list[int]:
+def _lines(gap: ModuleType, ranges: list[list[int]]) -> list[int]:
     return gap.mutable_changed_lines("sample.py", SOURCE, ranges)
 
 
-def test_imports_and_constants_are_not_a_gap() -> None:
+def test_imports_and_constants_are_not_a_gap(gap: ModuleType) -> None:
     """Mutmut credits kills only through a function trampoline, so a module-level constant can never be killed."""
-    assert _lines([[1, 2]]) == []
+    assert _lines(gap, [[1, 2]]) == []
 
 
-def test_a_docstring_generates_no_mutants() -> None:
-    assert _lines([[5, 5]]) == []
+def test_a_docstring_generates_no_mutants(gap: ModuleType) -> None:
+    assert _lines(gap, [[5, 5]]) == []
 
 
-def test_statement_lines_in_a_plain_function_are_reported() -> None:
-    assert _lines([[6, 7]]) == [6, 7]
+def test_statement_lines_in_a_plain_function_are_reported(gap: ModuleType) -> None:
+    assert _lines(gap, [[6, 7]]) == [6, 7]
 
 
-def test_an_interior_line_of_a_multi_line_call_is_never_a_gap() -> None:
+def test_an_interior_line_of_a_multi_line_call_is_never_a_gap(gap: ModuleType) -> None:
     """Mutmut scopes by a node's start line: line 12 belongs to the call opening on line 11 and hosts no mutant."""
-    assert _lines([[12, 12]]) == []
-    assert _lines([[13, 13]]) == [13]
+    assert _lines(gap, [[12, 12]]) == []
+    assert _lines(gap, [[13, 13]]) == [13]
 
 
-def test_the_line_that_opens_the_call_is_reported() -> None:
-    assert _lines([[11, 11]]) == [11]
+def test_the_line_that_opens_the_call_is_reported(gap: ModuleType) -> None:
+    assert _lines(gap, [[11, 11]]) == [11]
 
 
-def test_a_decorated_function_counts_because_the_lane_patches_mutmut_to_mutate_it() -> None:
+def test_a_decorated_function_counts_because_the_lane_patches_mutmut_to_mutate_it(
+    gap: ModuleType,
+) -> None:
     # Bare mutmut 3.7 skips decorated defs; scripts/test/mutmut_decorated_patch.py
     # lifts that for the lane, and this classifier loads the same patch.
-    assert _lines([[18, 18]]) == [18]
+    assert _lines(gap, [[18, 18]]) == [18]
 
 
-def test_class_fields_and_enum_members_are_not_a_gap() -> None:
+def test_class_fields_and_enum_members_are_not_a_gap(gap: ModuleType) -> None:
     """A class-body assignment's enclosing node is its STATEMENT, not a def, so it has no trampoline to be credited through (caught via first_steps_models.py, run 34593115851)."""
-    assert _lines([[21, 21]]) == []
-    assert _lines([[24, 25]]) == []
+    assert _lines(gap, [[21, 21]]) == []
+    assert _lines(gap, [[24, 25]]) == []
 
 
-def test_a_method_body_is_still_reported() -> None:
-    assert _lines([[28, 28]]) == [28]
+def test_a_method_body_is_still_reported(gap: ModuleType) -> None:
+    assert _lines(gap, [[28, 28]]) == [28]
 
 
-def test_unparsable_source_reports_nothing_rather_than_crashing() -> None:
+def test_unparsable_source_reports_nothing_rather_than_crashing(gap: ModuleType) -> None:
     assert gap.mutable_changed_lines("broken.py", "def broken(:\n", [[1, 1]]) == []
 
 
 def test_the_cli_prints_one_line_number_per_line(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    gap: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     module = tmp_path / "m.py"
     module.write_text(SOURCE)

@@ -192,25 +192,59 @@ mut_lines = _blank_call_next_arg(_normalized(mut_raw))
 if orig_lines == mut_lines:
     print("EQUIV")
     sys.exit(0)
-# The ONLY unassertable logging is log.debug/log.info. Verified in
-# libs/shared/py/wide_events.py: those two just emit a loguru line, while
-# warning/error/critical/exception call _append(), which stores
-# entry = {"msg": message, **kwargs} on the wide event. So on the recorded
-# levels BOTH the message and the kwargs land in warnings[]/errors[] — a
-# consumed, queryable surface that tests already assert against
-# (tests/integration/api/test_wide_event_contracts.py) — and every mutation of
-# them is killable. log.audit, log.set and log.set_ns are likewise never
-# excluded. Only debug/info are, and for those the whole call goes: their
-# kwargs never reach anywhere a test could read them.
-_LOG_NARRATION = {"debug", "info"}
+# Pinning wide-event and log arguments was measured zero-value on #1853 (founder-approved
+# scope), so a mutant inside any of these calls on shared.py.wide_events.log is LOGGING.
+_LOG_WRITES = {
+    "set",
+    "set_ns",
+    "audit",
+    "debug",
+    "info",
+    "warning",
+    "error",
+    "critical",
+    "exception",
+}
+# Top-level fields code reads back through log.get(), so a set() writing one stays gated;
+# set() also routes trace_id to a ContextVar. A ** splat may hold any of them.
+# test_mutation_classify.py derives the read-backs from apps/api/app and libs/shared/py.
+_READ_BACK_FIELDS = {
+    "trace_id",
+    "job_id",
+    "task",
+    "conversation_source",
+    "model",
+    "composio",
+    "user",
+    "outcome",
+    "workflow",
+}
+
+
+def _log_names(tree: ast.Module) -> set[str]:
+    """Names the module imports the wide-event logger as; a local merely named log is not it."""
+    return {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "shared.py.wide_events"
+        for alias in node.names
+        if alias.name == "log"
+    }
+
+
+def _writes_read_back_field(call: ast.Call) -> bool:
+    return call.func.attr == "set" and any(
+        keyword.arg is None or keyword.arg in _READ_BACK_FIELDS for keyword in call.keywords
+    )
 
 
 def _excluded_span(path: str, line_no: int):
-    """Span of the log.debug/log.info call covering line_no, or None."""
+    """Span of the wide-event log call covering line_no, or None."""
     try:
         tree = ast.parse(Path(path).read_text())
     except SyntaxError:
         return None
+    receivers = _log_names(tree)
     best = None
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -219,9 +253,9 @@ def _excluded_span(path: str, line_no: int):
         if not (
             isinstance(func, ast.Attribute)
             and isinstance(func.value, ast.Name)
-            and func.value.id == "log"
-            and func.attr in _LOG_NARRATION
-        ):
+            and func.value.id in receivers
+            and func.attr in _LOG_WRITES
+        ) or _writes_read_back_field(node):
             continue
         if node.lineno <= line_no <= (node.end_lineno or node.lineno):
             # Innermost enclosing call wins.

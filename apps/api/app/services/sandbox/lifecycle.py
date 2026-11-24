@@ -439,8 +439,16 @@ async def _read_canary(sbx: AsyncSandbox) -> str | None:
     """Return the canary contents, or None if the file is missing/unreadable."""
     try:
         content = await sbx.files.read(CANARY_PATH)
-    except Exception:
-        # Missing (NotFoundException) or any read failure → treat as stale.
+    except NotFoundException:
+        return None
+    except Exception as e:
+        # An unreadable canary is treated as stale (the sandbox is recreated), but say why.
+        log.warning(
+            f"{LogTag.SANDBOX} canary read failed",
+            sandbox_id=sbx.sandbox_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
     return content.strip() or None
 
@@ -513,7 +521,13 @@ async def _health_probe(
             return await asyncio.wait_for(
                 sbx.is_running(request_timeout=request_timeout), timeout=wait_timeout
             )
-        except Exception:
+        except Exception as e:
+            log.warning(
+                f"{LogTag.SANDBOX} health probe failed",
+                sandbox_id=sbx.sandbox_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
 

@@ -1,0 +1,36 @@
+# gaia-scheduled-tasks-late: fires when every reminder is claimed over five minutes late; quiet when every reminder is claimed within five minutes.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-scheduled-tasks-late fires when every reminder is claimed over five minutes late
+    interval: 1m
+    input_series:
+      - series: 'gaia_scheduled_task_lateness_seconds_count{job="arq_worker",kind="reminder"}'
+        values: '0+1x60'
+      - series: 'gaia_scheduled_task_lateness_seconds_bucket{job="arq_worker",kind="reminder",le="300.0"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-scheduled-tasks-late
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: arq_worker
+              kind: reminder
+            exp_annotations:
+              description: >-
+                Reminders are arriving late and scheduled workflows are starting late. The worker is behind: it was down and is catching up, its queue is backed up behind long jobs, or the due-task scan is slow. Check the ARQ worker dashboard for queue depth and task duration, and whether gaia-arq-worker-down fired just before this.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-scheduled-tasks-late
+
+  - name: gaia-scheduled-tasks-late stays quiet when every reminder is claimed within five minutes
+    interval: 1m
+    input_series:
+      - series: 'gaia_scheduled_task_lateness_seconds_count{job="arq_worker",kind="reminder"}'
+        values: '0+1x60'
+      - series: 'gaia_scheduled_task_lateness_seconds_bucket{job="arq_worker",kind="reminder",le="300.0"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-scheduled-tasks-late
+        exp_alerts: []

@@ -14,7 +14,7 @@ from typing import Final
 from prometheus_client import Counter
 
 from app.models.playbook_models import DeclineKind, PlaybookRefusal, PlaybookRunStatus
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 
 class PlaybookDecisionTool(str, Enum):
@@ -37,7 +37,7 @@ class PlaybookDecisionOutcome(str, Enum):
 #: The reason label on a decision that needs none (a write that stood, a disable).
 NO_REASON: Final = "none"
 
-PLAYBOOK_DECISION_TOTAL = _register_once(
+PLAYBOOK_DECISION_TOTAL = register_once(
     "gaia_playbook_decision_total",
     lambda: Counter(
         name="gaia_playbook_decision_total",
@@ -46,7 +46,7 @@ PLAYBOOK_DECISION_TOTAL = _register_once(
     ),
 )
 
-PLAYBOOK_REPLAY_TOTAL = _register_once(
+PLAYBOOK_REPLAY_TOTAL = register_once(
     "gaia_playbook_replay_total",
     lambda: Counter(
         name="gaia_playbook_replay_total",

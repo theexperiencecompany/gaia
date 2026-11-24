@@ -1,31 +1,50 @@
-# gaia-ssl-cert-expiry — fires when a watched TLS cert (api.heygaia.io or the
-# JuiceFS metadata Redis) is <14 days from expiry. The expression groups by
-# instance, so the alert names the cert that is expiring.
+# gaia-ssl-cert-expiry: fires when a watched TLS cert (the API, the web app, the JuiceFS
+# metadata Redis) is under 14 days from expiry. Grouped by instance, so the alert names the cert.
 rule_files: [../gaia-rules.yaml]
 evaluation_interval: 1m
 
 tests:
-  - name: gaia-ssl-cert-expiry fires when the cert expires in ~7 days
+  - name: gaia-ssl-cert-expiry fires for https://api.heygaia.io/health expiring in 7 days
     interval: 1m
     input_series:
-      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_api",instance="https://api.heygaia.io"}'
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_api",instance="https://api.heygaia.io/health"}'
         values: '604800x30'
     alert_rule_test:
       - eval_time: 30m
         alertname: gaia-ssl-cert-expiry
         exp_alerts:
           - exp_labels:
-              severity: critical
-              service: api
-              instance: 'https://api.heygaia.io'
+              severity: 'critical'
+              service: 'api'
+              instance: 'https://api.heygaia.io/health'
             exp_annotations:
               description: >-
                 When this certificate expires every HTTPS client fails at the TLS handshake — web, desktop, mobile and any external integration — with no graceful degradation. Renewal is normally automatic, so this firing means the renewal path itself is broken and needs a look before the deadline.
-              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
-              __dashboardUid__: gaia-api-prometheus
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry'
+              __dashboardUid__: 'gaia-api-prometheus'
               __panelId__: '13'
 
-  - name: gaia-ssl-cert-expiry fires for the JuiceFS metadata Redis cert
+  - name: gaia-ssl-cert-expiry fires for https://heygaia.io/ expiring in 7 days
+    interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_web",instance="https://heygaia.io/"}'
+        values: '604800x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-ssl-cert-expiry
+        exp_alerts:
+          - exp_labels:
+              severity: 'critical'
+              service: 'api'
+              instance: 'https://heygaia.io/'
+            exp_annotations:
+              description: >-
+                When this certificate expires every HTTPS client fails at the TLS handshake — web, desktop, mobile and any external integration — with no graceful degradation. Renewal is normally automatic, so this firing means the renewal path itself is broken and needs a look before the deadline.
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry'
+              __dashboardUid__: 'gaia-api-prometheus'
+              __panelId__: '13'
+
+  - name: gaia-ssl-cert-expiry fires for jfs-meta-redis:6379 expiring in 7 days
     interval: 1m
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_jfs_meta",instance="jfs-meta-redis:6379"}'
@@ -35,20 +54,20 @@ tests:
         alertname: gaia-ssl-cert-expiry
         exp_alerts:
           - exp_labels:
-              severity: critical
-              service: api
-              instance: jfs-meta-redis:6379
+              severity: 'critical'
+              service: 'api'
+              instance: 'jfs-meta-redis:6379'
             exp_annotations:
               description: >-
                 When this certificate expires every HTTPS client fails at the TLS handshake — web, desktop, mobile and any external integration — with no graceful degradation. Renewal is normally automatic, so this firing means the renewal path itself is broken and needs a look before the deadline.
-              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
-              __dashboardUid__: gaia-api-prometheus
+              runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry'
+              __dashboardUid__: 'gaia-api-prometheus'
               __panelId__: '13'
 
-  - name: gaia-ssl-cert-expiry stays quiet when the cert expires in ~30 days
+  - name: gaia-ssl-cert-expiry stays quiet when the cert expires in 30 days
     interval: 1m
     input_series:
-      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_api",instance="https://api.heygaia.io"}'
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_web",instance="https://heygaia.io/"}'
         values: '2592000x30'
     alert_rule_test:
       - eval_time: 30m

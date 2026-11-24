@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import patch
 import uuid
 
 import pytest
@@ -209,6 +210,17 @@ class TestIntegrationsRepository:
         await repo.create(_integration(b, "B", source="platform", is_public=True))
         found = await repo.find_by_ids([a, b, f"missing-{uuid.uuid4().hex}"])
         assert {i.integration_id for i in found} == {a, b}
+
+    @pytest.mark.regression
+    async def test_find_by_ids_leaves_out_a_tools_only_stub(self, repo):
+        full = f"full-{uuid.uuid4().hex}"
+        stub = f"stub-{uuid.uuid4().hex}"
+        await repo.create(_integration(full, "Full"))
+        await repo.store_tools(stub, [StoredIntegrationTool(name="t1")])
+        with patch("app.db.repositories.base.log") as base_log:
+            found = await repo.find_by_ids([full, stub])
+        assert [i.integration_id for i in found] == [full]
+        base_log.warning.assert_not_called()
 
     async def test_store_and_get_tools_upserts(self, repo):
         iid = f"tools-{uuid.uuid4().hex}"

@@ -3,6 +3,9 @@
 A reply counts only when it answers a user message, under that message's analytics context
 and on its id, the stream_id its chat:message_submitted carried. A settle that covers finished
 background work also counts chat:background_update_resolved: a message, or silence.
+
+The same settle feeds the chat_turn_total, chat_ttft_seconds and chat_e2e_full_seconds series,
+which also count a failed turn.
 """
 
 from collections.abc import Sequence
@@ -21,6 +24,12 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.services.conversation.ports import Appended, TurnAnalytics
+from app.services.latency_metrics import (
+    ChatTurnStatus,
+    observe_chat_e2e_full,
+    observe_chat_ttft,
+    observe_chat_turn_total,
+)
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.chat import (
@@ -36,6 +45,14 @@ _TURN_END: dict[ReplyOutcome, type[ChatMessageCompleted | ChatMessageCancelled]]
     ReplyOutcome.ANSWERED: ChatMessageCompleted,
     ReplyOutcome.TRUNCATED: ChatMessageCompleted,
     ReplyOutcome.STOPPED: ChatMessageCancelled,
+}
+# A silent settle answered its message with no words, as an emoji reaction does.
+_TURN_STATUS: dict[ReplyOutcome, ChatTurnStatus] = {
+    ReplyOutcome.ANSWERED: ChatTurnStatus.OK,
+    ReplyOutcome.TRUNCATED: ChatTurnStatus.OK,
+    ReplyOutcome.SILENT: ChatTurnStatus.OK,
+    ReplyOutcome.FAILED: ChatTurnStatus.ERROR,
+    ReplyOutcome.STOPPED: ChatTurnStatus.CANCELLED,
 }
 _WORK_RESOLVED: dict[ReplyOutcome, Literal["message", "silence"]] = {
     ReplyOutcome.ANSWERED: "message",
@@ -76,8 +93,8 @@ def capture_reply_ended(
     settled_at: datetime,
     since: Sequence[LoggedEntry],
 ) -> None:
-    """Count a reply settle that answered or stopped a user message, and the finished work it resolved; since is the log after covers[0]."""
-    if settled.outcome in _TURN_END:
+    """Count a reply settle that answered, failed or stopped a user message, and the finished work it resolved; since is the log after covers[0]."""
+    if settled.outcome in _TURN_STATUS:
         _capture_answered(analytics, claim, covers, settled, settled_at, since)
     if settled.outcome in _WORK_RESOLVED and any(
         isinstance(logged.entry, WorkFinished) for logged in covers
@@ -159,6 +176,15 @@ class _TurnEnd:
     reply_id: str | None
 
 
+def _observe_turn_end(
+    surface: ConversationSource, status: ChatTurnStatus, ttft_ms: float | None, e2e_full_ms: float
+) -> None:
+    observe_chat_turn_total(source=surface, status=status)
+    observe_chat_e2e_full(e2e_full_ms / 1000.0, source=surface, status=status)
+    if ttft_ms is not None:
+        observe_chat_ttft(ttft_ms / 1000.0, source=surface, status=status)
+
+
 def _capture_turn_end(
     analytics: TurnAnalytics,
     outcome: ReplyOutcome,
@@ -173,7 +199,13 @@ def _capture_turn_end(
         return
     asked, message = said[-1]
     first = end.covers[0].seq
-    event = _TURN_END[outcome](
+    ttft_ms = None if end.shown is None else _ms(asked.at, end.shown)
+    e2e_full_ms = _ms(asked.at, end.ended_at)
+    _observe_turn_end(message.surface, _TURN_STATUS[outcome], ttft_ms, e2e_full_ms)
+    event_type = _TURN_END.get(outcome)
+    if event_type is None:
+        return
+    event = event_type(
         stream_id=message.id,
         conversation_id=conversation_id,
         is_new_conversation=first == 1,
@@ -189,8 +221,8 @@ def _capture_turn_end(
             and logged.seq > asked.seq  # pragma: no mutate
             for logged in end.since
         ),
-        ttft_ms=None if end.shown is None else _ms(asked.at, end.shown),
-        e2e_full_ms=_ms(asked.at, end.ended_at),
+        ttft_ms=ttft_ms,
+        e2e_full_ms=e2e_full_ms,
         source=message.surface.value,
     )
     analytics.capture(

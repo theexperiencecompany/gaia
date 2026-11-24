@@ -1,0 +1,35 @@
+# gaia-voice-sessions-failing: fires when half of the calls end in an error; quiet when two calls end in an error, under the three-failure floor.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-voice-sessions-failing fires when half of the calls end in an error
+    interval: 1m
+    input_series:
+      - series: 'gaia_voice_session_total{job="voice_agent",outcome="error"}'
+        values: '0+1x90'
+      - series: 'gaia_voice_session_total{job="voice_agent",outcome="ok"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: gaia-voice-sessions-failing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: voice_agent
+            exp_annotations:
+              description: >-
+                Voice calls are dropping mid-conversation. The worker is up (gaia-voice-agent-down is the page when it is not) but its sessions fail: the speech-to-text, text-to-speech or language model behind it is erroring, or LiveKit is. The worker logs 'session error' with the error type and whether it was recoverable.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-voice-sessions-failing
+
+  - name: gaia-voice-sessions-failing stays quiet when two calls end in an error, under the three-failure floor
+    interval: 1m
+    input_series:
+      - series: 'gaia_voice_session_total{job="voice_agent",outcome="error"}'
+        values: '0x30 2x60'
+      - series: 'gaia_voice_session_total{job="voice_agent",outcome="ok"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: gaia-voice-sessions-failing
+        exp_alerts: []

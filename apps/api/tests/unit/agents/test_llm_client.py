@@ -38,6 +38,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openai import APIConnectionError, AuthenticationError, RateLimitError
+from openrouter.errors import TooManyRequestsResponseError
+from prometheus_client import REGISTRY
 from pydantic import BaseModel, Field, SecretStr
 import pytest
 import tenacity
@@ -78,6 +80,7 @@ from app.agents.llm.exceptions import (
     MalformedStructuredOutputError,
 )
 from app.agents.llm.types import LLMProvider, ProviderLLM
+from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.deployment import DeploymentKind, baseline_profile
 from app.config.settings import settings
 from app.constants.llm import (
@@ -882,6 +885,16 @@ class TestResolveModelOnOpenRouter:
 # ---------------------------------------------------------------------------
 
 
+def _llm_call_counts(provider: str) -> dict[str, float]:
+    return {
+        outcome: REGISTRY.get_sample_value(
+            "gaia_llm_call_total", {"provider": provider, "outcome": outcome}
+        )
+        or 0.0
+        for outcome in ("ok", "rate_limited", "failed")
+    }
+
+
 class TestAinvokeLlm:
     @staticmethod
     def _runnable(side_effect: Any = None, result: Any = None) -> NonCallableMagicMock:
@@ -897,6 +910,123 @@ class TestAinvokeLlm:
         primary = self._runnable(result=AIMessage(content="ok"))
         result = await ainvoke_llm(primary, [HumanMessage(content="hi")])
         assert result.content == "ok"
+
+    @staticmethod
+    def _count(metric: str, **labels: str) -> float:
+        return REGISTRY.get_sample_value(metric, labels) or 0.0
+
+    @staticmethod
+    def _on(provider: str) -> RunnableConfig:
+        return cast(RunnableConfig, {"configurable": {"provider": provider}})
+
+    async def test_a_returned_call_counts_ok_for_its_lane_provider(self) -> None:
+        labels = {"provider": "gemini", "outcome": "ok"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        await ainvoke_llm(
+            self._runnable(result=AIMessage(content="ok")),
+            [HumanMessage(content="hi")],
+            config=self._on("gemini"),
+        )
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
+
+    async def test_a_recovered_fallback_counts_the_failed_call_and_the_recovery(self) -> None:
+        call = {"provider": "openrouter", "outcome": "failed"}
+        calls, recovered = (
+            self._count("gaia_llm_call_total", **call),
+            self._count("gaia_llm_fallback_total", outcome="recovered"),
+        )
+
+        await ainvoke_llm(
+            self._runnable(side_effect=ConnectionError("provider down")),
+            [HumanMessage(content="hi")],
+            fallback=self._runnable(result=AIMessage(content="fallback-ok")),
+            config=self._on("openrouter"),
+        )
+
+        assert self._count("gaia_llm_call_total", **call) == calls + 1
+        assert self._count("gaia_llm_fallback_total", outcome="recovered") == recovered + 1
+
+    async def test_a_fallback_that_fails_too_counts_exhausted(self) -> None:
+        before = self._count("gaia_llm_fallback_total", outcome="exhausted")
+
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+                fallback=self._runnable(side_effect=ConnectionError("also down")),
+            )
+
+        assert self._count("gaia_llm_fallback_total", outcome="exhausted") == before + 1
+
+    async def test_a_call_with_no_fallback_to_try_counts_exhausted(self) -> None:
+        before = self._count("gaia_llm_fallback_total", outcome="exhausted")
+
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+            )
+
+        assert self._count("gaia_llm_fallback_total", outcome="exhausted") == before + 1
+
+    async def test_a_rate_limited_call_is_counted_apart_from_other_failures(self) -> None:
+        rate_limited = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
+        labels = {"provider": "openrouter", "outcome": "rate_limited"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        with pytest.raises(TooManyRequestsResponseError):
+            await ainvoke_llm(
+                self._runnable(side_effect=rate_limited),
+                [HumanMessage(content="hi")],
+                config=self._on("openrouter"),
+            )
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
+
+    async def test_a_call_with_no_lane_counts_for_the_provider_its_client_talks_to(self) -> None:
+        primary = NonCallableMagicMock(spec=ChatOpenRouter)
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
+        labels = {"provider": "openrouter", "outcome": "ok"}
+        before = self._count("gaia_llm_call_total", **labels)
+
+        await ainvoke_llm(primary, [HumanMessage(content="hi")])
+
+        assert self._count("gaia_llm_call_total", **labels) == before + 1
+
+    async def test_a_bug_in_the_call_is_not_counted_as_a_provider_failure(self) -> None:
+        before = _llm_call_counts("gemini")
+
+        with pytest.raises(ValueError, match="bug"):
+            await ainvoke_llm(
+                self._runnable(side_effect=ValueError("bug")),
+                [HumanMessage(content="hi")],
+                config=self._on("gemini"),
+            )
+
+        assert _llm_call_counts("gemini") == before
+
+    async def test_a_deadline_during_the_fallback_does_not_count_the_failed_call_twice(
+        self,
+    ) -> None:
+        async def _never_answers(*_args: object, **_kwargs: object) -> AIMessage:
+            await asyncio.sleep(30)
+            return AIMessage(content="too late")
+
+        before = _llm_call_counts("gemini")
+
+        with pytest.raises(TimeoutError):
+            await ainvoke_llm(
+                self._runnable(side_effect=ConnectionError("provider down")),
+                [HumanMessage(content="hi")],
+                fallback=self._runnable(side_effect=_never_answers),
+                config=self._on("gemini"),
+                options=LLMInvokeOptions(timeout=0.05, meter_auxiliary=False),
+            )
+
+        assert _llm_call_counts("gemini") == {**before, "failed": before["failed"] + 1}
 
     @patch("app.agents.llm.client.log")
     async def test_falls_back_to_default_on_provider_error(self, mock_log: MagicMock) -> None:
@@ -2801,6 +2931,68 @@ class TestTheSyncFallback:
                 options=LLMInvokeOptions(max_attempts=1),
             )
 
+    def test_a_returned_call_counts_ok_for_its_lane_provider(self) -> None:
+        primary = self._failing_primary()
+        primary.invoke = MagicMock(return_value=AIMessage(content="ok"))
+        before = _llm_call_counts("gemini")
+
+        invoke_llm(primary, "hi", config=RunnableConfig(configurable={"provider": "gemini"}))
+
+        assert _llm_call_counts("gemini") == {**before, "ok": before["ok"] + 1}
+
+    def test_a_call_with_no_lane_counts_for_the_provider_its_client_talks_to(self) -> None:
+        primary = NonCallableMagicMock(spec=ChatOpenRouter)
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.invoke = MagicMock(return_value=AIMessage(content="ok"))
+        before = _llm_call_counts("openrouter")
+
+        invoke_llm(primary, "hi")
+
+        assert _llm_call_counts("openrouter") == {**before, "ok": before["ok"] + 1}
+
+    def test_a_failed_call_counts_failed_for_its_lane_provider(self) -> None:
+        before = _llm_call_counts("gemini")
+
+        invoke_llm(
+            self._failing_primary(),
+            "hi",
+            fallback=self._fallback(),
+            config=RunnableConfig(configurable={"provider": "gemini"}),
+        )
+
+        assert _llm_call_counts("gemini") == {**before, "failed": before["failed"] + 1}
+
+    def test_a_rate_limited_call_is_counted_apart_from_other_failures(self) -> None:
+        rate_limited = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
+        rate_limited.message = "slow down"
+        primary = self._failing_primary()
+        primary.invoke = MagicMock(side_effect=rate_limited)
+        before = _llm_call_counts("openrouter")
+
+        invoke_llm(
+            primary,
+            "hi",
+            fallback=self._fallback(),
+            config=RunnableConfig(configurable={"provider": "openrouter"}),
+        )
+
+        assert _llm_call_counts("openrouter") == {
+            **before,
+            "rate_limited": before["rate_limited"] + 1,
+        }
+
+    def test_one_attempt_means_the_provider_is_called_once(self) -> None:
+        calls: list[object] = []
+
+        def _down(prompt: object) -> AIMessage:
+            calls.append(prompt)
+            raise ConnectionError("provider down")
+
+        with pytest.raises(ConnectionError, match="provider down"):
+            invoke_llm(RunnableLambda(_down), "hi", options=LLMInvokeOptions(max_attempts=1))
+
+        assert calls == ["hi"]
+
 
 class TestTheInvokeTimeoutIsEnforced:
     """The caller's timeout is the ceiling on a whole attempt, retries included.
@@ -2820,6 +3012,20 @@ class TestTheInvokeTimeoutIsEnforced:
         runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(side_effect=_never_answers)
         return runnable
+
+    async def test_a_provider_that_stops_answering_counts_as_a_failed_call(self) -> None:
+        labels = {"provider": "gemini", "outcome": "failed"}
+        before = REGISTRY.get_sample_value("gaia_llm_call_total", labels) or 0.0
+
+        with pytest.raises(TimeoutError):
+            await ainvoke_llm(
+                self._hanging_primary(),
+                [HumanMessage(content="hi")],
+                config=cast(RunnableConfig, {"configurable": {"provider": "gemini"}}),
+                options=LLMInvokeOptions(timeout=0.05, meter_auxiliary=False),
+            )
+
+        assert REGISTRY.get_sample_value("gaia_llm_call_total", labels) == before + 1
 
     async def test_a_provider_that_stops_answering_hits_the_ceiling(self) -> None:
         with pytest.raises(TimeoutError):
@@ -3672,3 +3878,52 @@ class TestIsOpenrouterWire:
         binding = NonCallableMagicMock(spec=RunnableBinding)
         binding.bound = inner
         assert client_module._is_openrouter_wire(binding) is False
+
+
+_NO_LANE: RunnableConfig | None = None
+
+
+@pytest.mark.unit
+class TestCallProvider:
+    """_call_provider names the provider a call's counter is labelled with."""
+
+    @staticmethod
+    def _on(provider: str) -> RunnableConfig:
+        return cast(RunnableConfig, {"configurable": {"provider": provider}})
+
+    def test_the_lane_named_in_the_config_outranks_the_client(self) -> None:
+        client = ChatOpenRouter(model="m", api_key=SecretStr("k"))
+        assert client_module._call_provider(client, self._on("custom")) is LLMProviderName.CUSTOM
+
+    def test_a_lane_name_that_is_no_provider_falls_back_to_the_client(self) -> None:
+        client = ChatOpenRouter(model="m", api_key=SecretStr("k"))
+        provider = client_module._call_provider(client, self._on("not-a-provider"))
+        assert provider is LLMProviderName.OPENROUTER
+
+    @pytest.mark.parametrize(
+        ("client", "provider"),
+        [
+            (ChatOpenRouter(model="m", api_key=SecretStr("k")), LLMProviderName.OPENROUTER),
+            (ChatGoogleGenerativeAI(model="m", api_key=SecretStr("k")), LLMProviderName.GEMINI),
+            (
+                ChatWorkersAI(
+                    model="m", api_key=SecretStr("k"), base_url="https://api.cloudflare.com/v1"
+                ),
+                LLMProviderName.CLOUDFLARE,
+            ),
+            (ChatOpenAI(model="m", api_key=SecretStr("k")), LLMProviderName.OPENAI),
+            (
+                ChatOpenAI(model="m", api_key=SecretStr("k"), base_url="http://127.0.0.1:8787/v1"),
+                None,
+            ),
+            (RunnableLambda(lambda prompt: prompt), None),
+        ],
+    )
+    def test_with_no_lane_the_client_class_names_the_provider(
+        self, client: Runnable, provider: LLMProviderName | None
+    ) -> None:
+        assert client_module._call_provider(client, _NO_LANE) is provider
+
+    def test_a_tool_bound_client_is_still_named_by_the_model_under_it(self) -> None:
+        bound = ChatOpenRouter(model="m", api_key=SecretStr("k")).bind(stop=["x"])
+        assert client_module._call_provider(bound, _NO_LANE) is LLMProviderName.OPENROUTER

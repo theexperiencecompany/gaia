@@ -135,6 +135,9 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("libs/shared/py/__init__.py", "api:test"),
         ("tools/gaia-connect/main.go", "gaia-connect:check"),
         ("config/pint.hcl", "alert-rules:check"),
+        # A refactor that drops a metric's callers must re-run the metric contract.
+        ("apps/api/app/services/latency_metrics.py", "alert-rules:check"),
+        ("libs/shared/ts/src/bots/metrics.ts", "alert-rules:check"),
         (".github/workflows/ci.yml", "ci:harness-tests"),
         # The per-Dockerfile ignore file decides what enters the build context.
         ("apps/api/Dockerfile.dockerignore", "ci:api-image"),

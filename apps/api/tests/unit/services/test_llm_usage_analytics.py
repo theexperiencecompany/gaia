@@ -13,7 +13,13 @@ from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
+from app.constants.briefing import (
+    BRIEF_COMPOSITION_LABEL,
+    BRIEF_HEADING_CHECK_LABEL,
+    BRIEF_VOICE_LABEL,
+)
 from app.constants.llm import DEFAULT_MODEL_NAME
+from app.constants.scouts import SCOUT_AGENT_NAME
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.services.analytics_service import AIFeature
 from app.services.llm_usage_analytics import (
@@ -145,6 +151,15 @@ def test_every_label_the_codebase_passes_has_a_feature() -> None:
                         unmapped.add(label)
 
     assert not unmapped, f"labels no AIFeature member claims: {sorted(unmapped)}"
+
+
+@pytest.mark.parametrize(
+    "label",
+    [BRIEF_COMPOSITION_LABEL, BRIEF_HEADING_CHECK_LABEL, BRIEF_VOICE_LABEL, SCOUT_AGENT_NAME],
+)
+def test_every_briefing_label_is_briefing_spend(label: str) -> None:
+    """Regression: brief_scout reached the ledger as agent_name and was logged unmapped 21x a day."""
+    assert feature_for_label(label) is AIFeature.BRIEFING
 
 
 def test_no_member_claims_a_label_nothing_passes() -> None:

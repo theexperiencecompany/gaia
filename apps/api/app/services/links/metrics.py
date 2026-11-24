@@ -10,7 +10,7 @@ from enum import StrEnum
 
 from prometheus_client import Counter
 
-from app.services.storage.metrics import _register_once
+from app.utils.prometheus_registry import register_once
 
 
 class LinkMintOutcome(StrEnum):
@@ -20,7 +20,7 @@ class LinkMintOutcome(StrEnum):
     FAILED = "failed"
 
 
-LINK_MINT_TOTAL = _register_once(
+LINK_MINT_TOTAL = register_once(
     "gaia_link_mint_total",
     lambda: Counter(
         name="gaia_link_mint_total",

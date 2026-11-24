@@ -5,6 +5,7 @@ the retry, the fact-check and the agenda rendering under test are real.
 """
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
@@ -27,8 +28,9 @@ from app.constants.memory import (
     MemoryShelfLife,
     MemorySourceType,
 )
-from app.memory import consolidation
-from app.memory.consolidation import consolidate, render_agenda_document
+from app.db.repositories.errors import RepositoryError
+from app.memory import consolidation, pg_store
+from app.memory.consolidation import _get_user_name, consolidate, render_agenda_document
 from app.memory.schemas import ExtractedFact, VerifiedDocument
 from app.models.memory_db_models import MemoryRecord
 from tests.helpers import captured_wide_event
@@ -52,7 +54,7 @@ def make_row(content: str = "sam is vegetarian", importance: float = 0.5) -> Mem
 
 
 @pytest.fixture
-def boundaries() -> MagicMock:
+def boundaries() -> Iterator[MagicMock]:
     """Patch every I/O edge of consolidate()/render_agenda_document()."""
     mocks = MagicMock()
     mocks.rewrite = AsyncMock(return_value="# About\n- something")
@@ -64,7 +66,7 @@ def boundaries() -> MagicMock:
     mocks.get_entities = AsyncMock(return_value=[])
     with (
         patch.multiple(
-            consolidation.pg_store,
+            pg_store,
             get_document=mocks.get_document,
             get_facts_for_consolidation=mocks.get_facts,
             get_agenda_memories=mocks.get_agenda,
@@ -846,3 +848,29 @@ class TestDebouncedScheduling:
             await waiter
 
         run.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestUserNameLookup:
+    async def test_a_database_failure_falls_back_to_the_generic_name_and_is_logged(self) -> None:
+        async with captured_wide_event() as event:
+            with patch(
+                "app.memory.consolidation.user_repository.get",
+                AsyncMock(side_effect=RepositoryError("timeout")),
+            ):
+                assert await _get_user_name(USER) == "the user"
+        assert event["warnings"] == [
+            {
+                "msg": "memory_consolidation_user_name_unavailable",
+                "user_id": USER,
+                "error": "timeout",
+                "error_type": "RepositoryError",
+            }
+        ]
+
+    async def test_an_id_the_store_cannot_read_falls_back_to_the_generic_name(self) -> None:
+        with patch(
+            "app.memory.consolidation.user_repository.get",
+            AsyncMock(side_effect=ValueError("not a database id")),
+        ):
+            assert await _get_user_name(USER) == "the user"

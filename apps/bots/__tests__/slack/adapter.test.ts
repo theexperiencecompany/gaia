@@ -35,6 +35,9 @@ const mockApp = {
 
 vi.mock("@slack/bolt", () => ({
   App: vi.fn().mockImplementation(() => mockApp),
+  SocketModeReceiver: vi
+    .fn()
+    .mockImplementation(() => ({ client: { on: vi.fn() } })),
 }));
 
 // ---------------------------------------------------------------------------

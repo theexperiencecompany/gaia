@@ -1,0 +1,39 @@
+# gaia-login-failing: fires when every sign-in fails, whatever integration connects do; quiet when two sign-ins fail, and only integration connects fail in number.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-login-failing fires when every sign-in fails, whatever integration connects do
+    interval: 1m
+    input_series:
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="login",outcome="failed"}'
+        values: '0+1x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="login",outcome="ok"}'
+        values: '0x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="ok"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-login-failing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: api
+            exp_annotations:
+              description: >-
+                People are signing in and being sent back to the login page with an error, so new users cannot sign up and signed-out users cannot get in. The API logs each failed WorkOS callback with its error type. Check WorkOS's status, the WorkOS API key and client id the API runs with, and the redirect URIs configured in WorkOS.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-login-failing
+
+  - name: gaia-login-failing stays quiet when two sign-ins fail, and only integration connects fail in number
+    interval: 1m
+    input_series:
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="login",outcome="failed"}'
+        values: '0x30 2x30'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="login",outcome="ok"}'
+        values: '0x60'
+      - series: 'gaia_oauth_callback_total{job="gaia-api",flow="integration",outcome="failed"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: gaia-login-failing
+        exp_alerts: []

@@ -17,6 +17,12 @@ without a second, hand-maintained copy of it.
 Any rule that does not match the documented three-node A/B/C shape aborts the
 run. A rule that quietly drops out of linting is exactly the failure mode this
 exists to prevent.
+
+A rule whose query node reads a log datasource (LOG_DATASOURCES) is LogQL, which
+pint and promtool cannot read. It is held to the same shape, for, annotation and
+runbook checks, left out of the derived file, and named on stdout as a log rule
+with no promtool test. Its LogQL is not syntax-checked: no parser is available
+offline, so it is verified against Loki when the rule is written.
 """
 
 from __future__ import annotations
@@ -30,6 +36,9 @@ from typing import Any, NoReturn
 import yaml
 
 EXPRESSION_DATASOURCE = "__expr__"
+#: Datasource uids whose query language is LogQL (gaia-infra's datasources.yaml).
+LOG_DATASOURCES = frozenset({"loki"})
+RUNBOOKS = "https://internal.lab.heygaia.io/production/runbooks"
 COMPARISONS = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 DOC = "infra/docker/observability/CLAUDE.md → Adding an alert rule"
 # Grafana `for` durations. Single-unit to keep it honest: every rule here uses
@@ -166,7 +175,8 @@ def _validate_annotations(uid: str, annotations: dict[str, Any]) -> None:
                 )
 
 
-def _alerting_rule(rule: dict[str, Any]) -> dict[str, Any]:
+def _alerting_rule(rule: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Return the rule as a Prometheus alerting rule, and whether it is a log rule."""
     uid = rule.get("uid")
     if not isinstance(uid, str) or not uid:
         _fail(str(rule.get("title", "<untitled>")), "has no uid")
@@ -202,7 +212,11 @@ def _alerting_rule(rule: dict[str, Any]) -> dict[str, Any]:
     literal = {k: v for k, v in (rule.get("annotations") or {}).items() if "{{" not in str(v)}
     if literal:
         out["annotations"] = literal
-    return out
+    is_log_rule = nodes[query].get("datasourceUid") in LOG_DATASOURCES
+    # No fixture asserts a log rule's runbook link, so its presence is checked here.
+    if is_log_rule and literal.get("runbook_url") != f"{RUNBOOKS}/{uid}":
+        _fail(uid, f"log rule must carry runbook_url {RUNBOOKS}/{uid}")
+    return out, is_log_rule
 
 
 class _BlockDumper(yaml.SafeDumper):
@@ -218,7 +232,7 @@ _BlockDumper.add_representer(str, _represent_str)
 
 
 def _check_test_coverage(test_dir: Path, rules: dict[str, Any]) -> None:
-    """Fail if any rule lacks a promtool test file, or any test has no rule.
+    """Fail if any PromQL rule lacks a promtool test file, or any test has no such rule.
 
     A rule without a test is exactly the failure mode everything here guards
     against: it provisions cleanly, is never executed, and no one notices. The
@@ -243,18 +257,24 @@ def _check_test_coverage(test_dir: Path, rules: dict[str, Any]) -> None:
 
 
 def extract(source: Path) -> dict[str, Any]:
-    """Translate the Grafana rules file into a Prometheus-native rules document.
+    """Translate the PromQL rules of the Grafana rules file into a Prometheus-native rules document.
 
     Every rule must match the documented A/B/C shape or the run aborts; see the
     module docstring for the contract. The returned document has the same
     ``groups`` structure as a Prometheus rule file, ready for pint/promtool.
     """
+    return translate(source)[0]
+
+
+def translate(source: Path) -> tuple[dict[str, Any], list[str]]:
+    """Return the Prometheus-native rules document and the uids of the validated log rules."""
     document = yaml.safe_load(source.read_text())
     groups = document.get("groups") if isinstance(document, dict) else None
     if not isinstance(groups, list) or not groups:
         raise RuleShapeError(f"{source}: has no groups[]")
 
     seen: set[str] = set()
+    log_rules: list[str] = []
     out_groups: list[dict[str, Any]] = []
     for group in groups:
         rules = group.get("rules")
@@ -262,17 +282,22 @@ def extract(source: Path) -> dict[str, Any]:
             raise RuleShapeError(f"group {group.get('name')!r}: has no rules[]")
         out_rules = []
         for rule in rules:
-            alerting = _alerting_rule(rule)
+            alerting, is_log_rule = _alerting_rule(rule)
             if alerting["alert"] in seen:
                 _fail(alerting["alert"], "uid is declared twice; the second rule overwrites it")
             seen.add(alerting["alert"])
-            out_rules.append(alerting)
+            if is_log_rule:
+                log_rules.append(alerting["alert"])
+            else:
+                out_rules.append(alerting)
+        if not out_rules:
+            continue
         out_group: dict[str, Any] = {"name": group["name"]}
         if group.get("interval"):
             out_group["interval"] = group["interval"]
         out_group["rules"] = out_rules
         out_groups.append(out_group)
-    return {"groups": out_groups}
+    return {"groups": out_groups}, log_rules
 
 
 def main(argv: list[str]) -> int:
@@ -304,7 +329,7 @@ def main(argv: list[str]) -> int:
     test_dir = args.test_dir.resolve() if args.test_dir is not None else None
 
     try:
-        rules = extract(source)
+        rules, log_rules = translate(source)
         if test_dir is not None:
             _check_test_coverage(test_dir, rules)
     except RuleShapeError as err:
@@ -327,6 +352,12 @@ def main(argv: list[str]) -> int:
         print(f"extracted {count} alert rules from {args.source} to {args.output}")
     else:
         sys.stdout.write(rendered)
+    for uid in log_rules:
+        print(
+            f"log rule, no promtool test: {uid} (shape, for, annotations and runbook checked; "
+            "LogQL not syntax-checked)",
+            file=sys.stdout if args.output else sys.stderr,
+        )
     return 0
 
 

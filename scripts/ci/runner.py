@@ -5,12 +5,13 @@
 """runner.py — everything about WHERE and HOW HARD a CI job runs.
 
 Subcommands:
-  select              Route each runner class to GitHub-hosted, overflowing to
-                      the home box once GitHub's queue is saturated and to
-                      Blacksmith once the box has no idle listener either. Writes light / heavy / services (runs-on JSON
-                      arrays) plus runner / runner_label / is_self_hosted /
-                      reason (the heavy class) to $GITHUB_OUTPUT (stdout when
-                      unset).
+  select              Route each runner class to GitHub-hosted. Once GitHub's
+                      queue is saturated the light class overflows to the home
+                      box; the other classes, and light when the box has no
+                      idle listener for it, go to Blacksmith. Writes light /
+                      heavy / services (runs-on JSON arrays) plus runner_label /
+                      is_self_hosted / reason (the class on the box, else
+                      heavy) to $GITHUB_OUTPUT (stdout when unset).
   watchdog            Cancel this run once any job has stayed `queued` past
                       the limit — a box that died after `select` decided.
   requeue-stranded    Force-cancel and fully re-run any re-run attempt whose lanes
@@ -113,9 +114,6 @@ DEFAULT_FALLBACK = json.dumps([HOSTED_LINUX_IMAGE])
 # once the 20 slots are taken: 5 waiting is the cap already hit, while a lone
 # fan-out still being provisioned clears in seconds and rarely reads that high.
 HOSTED_SATURATED_QUEUE_DEPTH = 5
-TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
-# test-mutation's `max-parallel` in ci.yml: the shards one run holds at once.
-MUTATION_WAVE = 6
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 
@@ -273,22 +271,13 @@ class RunnerClass(StrEnum):
     SERVICES = "services"
 
 
-def class_demand() -> dict[RunnerClass, int]:
-    """Count the listeners one full run holds at once per class; a class shares one label."""
-    slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
-    with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
-    return {
-        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
-        RunnerClass.LIGHT: 6,
-        # probe, ts-build-test, docker-image, plus the slices that need no services
-        RunnerClass.HEAVY: 3 + len(slices) - with_services,
-        # the slices that need services (test-python, test-python-engines), test-mutation's wave
-        RunnerClass.SERVICES: with_services + MUTATION_WAVE,
-    }
-
-
-# The order the box's idle listeners are handed out: the slowest lanes first.
-OVERFLOW_ORDER = (RunnerClass.SERVICES, RunnerClass.HEAVY, RunnerClass.LIGHT)
+# The box is slower per job on heavy work (cold TS build 22 min vs 8 min hosted)
+# and its unit lanes have no real DNS, so only these classes overflow to it, each
+# with the listeners one full run holds at once (a class shares one label).
+BOX_OVERFLOW_DEMAND = {
+    # detect, lint-node, lint-python, lint-mixed, python-audit, scan
+    RunnerClass.LIGHT: 6,
+}
 
 
 @dataclass(frozen=True)
@@ -339,7 +328,7 @@ def trust_gate(repo: str) -> tuple[str, str] | None:
 
 @dataclass
 class Router:
-    """One select invocation: GitHub-hosted first, the box as overflow, Blacksmith last.
+    """One select invocation: GitHub-hosted first, the box as light overflow, Blacksmith last.
 
     Every probe runs at most once and is shared by the classes. The box is
     reached only once GitHub's own queue is saturated: under load a box job
@@ -353,7 +342,6 @@ class Router:
     blacksmith: str
     threshold: int
     pools: dict[str, Pool | None | GitHubError] = field(default_factory=dict)
-    claimed: dict[str, int] = field(default_factory=dict)
 
     def fallback_choice(self, reason: str, note: str) -> Choice:
         return Choice(self.fallback, self.fallback[0], reason, note)
@@ -384,7 +372,7 @@ class Router:
             raise reading
         return reading
 
-    def route(self, label: str, demand: int) -> Choice:
+    def route(self, cls: RunnerClass, label: str) -> Choice:
         if self.force_home:
             return self._forced_home(label)
         depth = self.hosted_depth
@@ -392,7 +380,10 @@ class Router:
             return self.fallback_choice("hosted-queue-unknown", "GitHub queue unreadable")
         if depth < self.threshold:
             return self.fallback_choice("github-hosted", f"GitHub queue {depth} < {self.threshold}")
-        return self._overflow(label, demand, f"GitHub queue {depth} >= {self.threshold}")
+        saturated = f"GitHub queue {depth} >= {self.threshold}"
+        if cls not in BOX_OVERFLOW_DEMAND:
+            return self._last_resort(f"{saturated}; `{cls.value}` never overflows to the box")
+        return self._overflow(label, BOX_OVERFLOW_DEMAND[cls], saturated)
 
     def _overflow(self, label: str, demand: int, saturated: str) -> Choice:
         """Take the box only when every job of the class gets its own idle listener."""
@@ -402,10 +393,8 @@ class Router:
             return self._last_resort(f"{saturated}; `{label}` unreadable")
         if pool is None:
             return self._last_resort(f"{saturated}; no runner with label `{label}` registered")
-        free = pool.idle - self.claimed.get(label, 0)
-        note = f"{saturated}; `{label}`: {pool.describe()}, {free} free for {demand} job(s)"
-        if free >= demand:
-            self.claimed[label] = self.claimed.get(label, 0) + demand
+        note = f"{saturated}; `{label}`: {pool.describe()} for {demand} job(s)"
+        if pool.idle >= demand:
             return Choice((SELF_HOSTED, label), label, "home-overflow", note)
         return self._last_resort(note)
 
@@ -448,18 +437,18 @@ def route() -> dict[RunnerClass, Choice]:
     home = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
     labels = dict.fromkeys(RunnerClass, home)
     labels[RunnerClass.SERVICES] = os.environ.get("SERVICES_RUNNER_LABEL") or DEFAULT_HOME_LABEL
-    demand = class_demand()
-    routed = {cls: router.route(labels[cls], demand[cls]) for cls in OVERFLOW_ORDER}
-    return {cls: routed[cls] for cls in RunnerClass}
+    return {cls: router.route(cls, labels[cls]) for cls in RunnerClass}
 
 
 def cmd_select(_args: list[str]) -> int:
     choices = route()
-    heavy = choices[RunnerClass.HEAVY]
+    # The watchdog watches the label these name, so a class on the box leads.
+    on_box = [c for c in choices.values() if c.is_self_hosted]
+    lead = on_box[0] if on_box else choices[RunnerClass.HEAVY]
     lines = [
-        f"runner_label={heavy.label}",
-        f"is_self_hosted={str(heavy.is_self_hosted).lower()}",
-        f"reason={heavy.reason}",
+        f"runner_label={lead.label}",
+        f"is_self_hosted={str(lead.is_self_hosted).lower()}",
+        f"reason={lead.reason}",
         *(f"{cls.value}={choice.runs_on_json()}" for cls, choice in choices.items()),
     ]
     output = os.environ.get("GITHUB_OUTPUT")
