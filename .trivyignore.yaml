@@ -10,16 +10,6 @@ vulnerabilities:
       no fixed release exists (4.0.7 is still affected). Reached only through build
       tooling matching our own glob patterns, never untrusted input. Mirrors the
       config/pnpm-audit-allowlist.json entry; drop both once a fix ships.
-  - id: CVE-2026-132276
-    paths: ["uv.lock"]
-    expired_at: 2026-12-21
-    statement: >-
-      wcmatch 10.1 (fixed in 11.2). e2b up to 2.37.0 caps wcmatch<11 and imports it
-      only in its template builder (e2b/template/utils.py), reached only from the
-      operator script apps/api/scripts/build_e2b_template.py over our own file names,
-      never request input. The real fix is the e2b >= 2.37.1 upgrade (PR #1862) with
-      uv.lock resolving wcmatch >= 11.2; drop this entry and the PIP_AUDIT_IGNORED
-      one once the lock holds wcmatch >= 11.2.
 secrets:
   - id: stripe-secret-token
     paths: [".gitleaks.toml"]
