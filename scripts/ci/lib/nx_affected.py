@@ -49,9 +49,10 @@ TASK_FILES_ENV = "TASK_FILES_PATH"
 # a master push may, and checks nothing the queue checked.
 VERIFIED_TIER = "verified"
 DEPLOY_BRANCH = "master"
-# ci.yml's web-build job builds the bundle deploy-web ships; web:build is what opens it.
+# ci.yml's web-build job builds the bundle deploy-web ships; web:build is what opens it,
+# and usercontent-worker:build opens deploy-usercontent-worker.
 SHIPPING_JOBS = frozenset({"web-build"})
-SHIPPED_TASKS = frozenset({"web:build"})
+SHIPPED_TASKS = frozenset({"web:build", "usercontent-worker:build"})
 # pnpm records a finished install here; the workspace's nx and its plugins are in it.
 PNPM_INSTALL_MARKER = REPO_ROOT / "node_modules" / ".modules.yaml"
 
