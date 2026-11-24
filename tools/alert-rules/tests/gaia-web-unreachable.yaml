@@ -16,6 +16,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: 'critical'
+              notify: 'email'
               service: 'web'
               incident: 'availability'
               job: 'blackbox_web'

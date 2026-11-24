@@ -132,6 +132,14 @@ def test_a_time_slot_layout_may_carry_the_words_around_the_date() -> None:
     assert resolve_value(slot, _context()) == "Plan for March 15, 2026"
 
 
+@pytest.mark.regression
+def test_a_clock_may_name_its_seconds() -> None:
+    """The model writes the end of a day as 23:59:59; refusing it failed every run of that workflow."""
+    slot = {"$time": "$today + 1d 23:59:59", "format": "%Y-%m-%d %H:%M:%S"}
+    assert resolve_value(slot, _context()) == "2026-03-15 23:59:59"
+    assert resolve_value("$today 07:05:09", _context()) == "2026-03-14T07:05:09+01:00"
+
+
 def test_a_clock_in_a_time_slot_lands_on_the_exact_second() -> None:
     context = _context(now=NOW.replace(second=41, microsecond=624690))
     slot = {"$time": "$now 17:45", "format": "%H:%M:%S.%f"}
@@ -181,6 +189,15 @@ def test_item_outside_a_for_each_is_refused_with_the_fix() -> None:
     assert caught.value.fix == (
         "give the step a for_each, or address the value through $steps.<id>.<field>"
     )
+
+
+@pytest.mark.regression
+def test_a_stored_time_slot_the_grammar_no_longer_reads_is_a_placeholder_failure() -> None:
+    """A raw ValidationError here failed the whole workflow run instead of handing it to the agent."""
+    slot = {"$time": "$today + 1d 9am", "format": "%Y-%m-%d %H:%M:%S"}
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value(slot, _context())
+    assert caught.value.message == "'$today + 1d 9am' is not a time placeholder"
 
 
 def test_a_time_slot_that_is_not_a_time_is_refused_with_the_grammar() -> None:

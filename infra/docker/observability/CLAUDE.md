@@ -80,8 +80,9 @@ threshold. `condition: C`.
     __dashboardUid__: gaia-overview
     __panelId__: "3"
   labels:
-    severity: critical             # critical | warning — drives routing
+    severity: critical             # critical | warning — drives Slack cadence, never email
     service: api                   # api | arq_worker | postgres | redis | ...
+    # notify: email                # opt-in, only when users are fully blocked or money is lost
 ```
 
 `title` is the Slack message title and the first thing on-call reads. Name the
@@ -297,14 +298,19 @@ that in mind when adding a rule that will fire alongside existing ones.
 Routing and repeat cadence (see `notification-policies.yaml` — the first
 matching route wins):
 
-- DatasourceError / DatasourceNoData → `critical-slack-email`, grouped by
-  `alertname`, repeats 6h. One "monitoring is broken" thread, whatever the
-  severity of the affected rules.
-- `incident: availability` → `critical-slack-email`, grouped by `incident`,
-  group_wait 90s so one outage batches into a single thread, repeats 1h.
-- Remaining `severity: critical` → `critical-slack-email` (Slack **and** email),
-  repeats 12h.
-- Everything else (root) → `slack-alerts` (Slack only), repeats 24h.
+- `notify: email` on a rule → `urgent-email`: one email per incident, repeating
+  every 12h, with no resolve email, then on to the Slack routes below. **This is
+  the only route that emails.** A rule opts in with the label, never by its
+  severity, and only when users are fully blocked or money is lost (the public
+  API, the API's databases, the web app, chat turns, payments, sign-in). A new
+  rule goes to Slack only unless the founder asks for the email.
+- DatasourceError / DatasourceNoData → `slack-alerts`, grouped by `alertname`,
+  repeats 6h. One "monitoring is broken" thread, whatever the severity of the
+  affected rules.
+- `incident: availability` → `slack-alerts`, grouped by `incident`, group_wait
+  90s so one outage batches into a single thread, repeats 1h.
+- Remaining `severity: critical` → `slack-alerts`, repeats 12h.
+- Everything else (root) → `slack-alerts`, repeats 24h.
 
 The cadences are deliberately slow: warnings and criticals describe states that
 move over days, and the availability route's faster 1h repeat is the "act now"

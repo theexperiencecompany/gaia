@@ -17,6 +17,7 @@ export const FRAME = {
   MCP_ERROR: "mcp.error",
   // exec-over-bridge (run_on_device): cloud -> device open, device -> cloud stream.
   EXEC_OPEN: "exec.open",
+  EXEC_STARTED: "exec.started",
   EXEC_STDOUT: "exec.stdout",
   EXEC_STDERR: "exec.stderr",
   EXEC_EXIT: "exec.exit",

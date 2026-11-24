@@ -18,10 +18,10 @@ from app.models.scheduler_models import (
     TaskRearm,
 )
 from app.services.scheduler_metrics import (
-    SCHEDULED_TASK_LATENESS_SECONDS,
-    SCHEDULED_TASK_TOTAL,
     ScheduledTaskKind,
     ScheduledTaskOutcome,
+    observe_claim_lateness,
+    observe_scheduled_fire,
 )
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -121,7 +121,7 @@ class BaseSchedulerService(ABC):
             )
 
         log.info("Processing task", task_id=task_id)
-        self._observe_lateness(task)
+        observe_claim_lateness(self.kind, task.scheduled_at)
 
         occurrence_count = task.occurrence_count + 1
 
@@ -136,14 +136,12 @@ class BaseSchedulerService(ABC):
             )
 
         if execution_result.outcome is not TaskOutcome.ENTITLEMENT_BLOCKED:
-            SCHEDULED_TASK_TOTAL.labels(
-                self.kind.value,
-                (
-                    ScheduledTaskOutcome.OK
-                    if execution_result.success
-                    else ScheduledTaskOutcome.FAILED
-                ).value,
-            ).inc()
+            observe_scheduled_fire(
+                self.kind,
+                ScheduledTaskOutcome.OK
+                if execution_result.success
+                else ScheduledTaskOutcome.FAILED,
+            )
 
         if task.repeat and execution_result.outcome is TaskOutcome.ENTITLEMENT_BLOCKED:
             # Re-arming a blocked series fires the paywall again every tick, forever.
@@ -172,16 +170,6 @@ class BaseSchedulerService(ABC):
             )
 
         return execution_result
-
-    def _observe_lateness(self, task: BaseScheduledTask) -> None:
-        """Record how long past its scheduled time the task was when claimed."""
-        scheduled_at = task.scheduled_at
-        if scheduled_at is None:
-            return
-        if scheduled_at.tzinfo is None:
-            scheduled_at = scheduled_at.replace(tzinfo=UTC)
-        late = (datetime.now(UTC) - scheduled_at).total_seconds()
-        SCHEDULED_TASK_LATENESS_SECONDS.labels(self.kind.value).observe(max(0.0, late))
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
         """Cancel a scheduled task.
@@ -291,7 +279,7 @@ class BaseSchedulerService(ABC):
                     error_type=type(e).__name__,
                 )
                 continue
-            SCHEDULED_TASK_TOTAL.labels(self.kind.value, ScheduledTaskOutcome.REAPED.value).inc()
+            observe_scheduled_fire(self.kind, ScheduledTaskOutcome.REAPED)
             reaped += 1
 
         return reaped

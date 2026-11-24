@@ -48,7 +48,7 @@ tests:
               service: 'api'
             exp_annotations:
               description: >-
-                Same signal as the warning-tier rule, at the point where replies hang rather than lag. This tier also pages email. Treat it as an incident: look for a wedged executor lock (executor_queue_wait_seconds climbing), a model provider outage (gaia-llm-provider-failing) or a runaway tool (tool_call_seconds).
+                Same signal as the warning-tier rule, at the point where replies hang rather than lag. Treat it as an incident: look for a wedged executor lock (executor_queue_wait_seconds climbing), a model provider outage (gaia-llm-provider-failing) or a runaway tool (tool_call_seconds).
               runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-chat-reply-critically-slow'
               __dashboardUid__: 'gaia-latency'
               __panelId__: '2'

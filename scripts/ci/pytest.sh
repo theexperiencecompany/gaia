@@ -445,6 +445,8 @@ cmd_regression_proof() {
   echo "regression-proof: ${#new_regression_ids[@]} new regression test(s) to prove on base:"
   printf '  %s\n' "${new_regression_ids[@]}"
 
+  regression_proof_install_node "$WT"
+
   local rc
   set +e
   regression_proof_run "$JUNIT" "$LOG" "${new_regression_ids[@]}"
@@ -511,6 +513,27 @@ cmd_regression_proof() {
     tail -40 "$LOG"
     exit 1
   fi
+}
+
+# Give the base worktree its own node_modules when this lane's checkout has one.
+# The bridge e2e drives packages/cli through tsx, and a bare worktree has none, so
+# its CLI fixture ERRORED before the assertion (run 45456295720). The base's own
+# lockfile is installed, from the store the checkout used, so the CLI and the
+# @gaia/shared it links are the base's product code — the JS twin of PYTHONPATH.
+regression_proof_install_node() {
+  local wt="$1" modules="$REPO_ROOT/node_modules/.modules.yaml" store log
+  [ -f "$modules" ] || return 0
+  store="$(sed -n 's/^storeDir: *//p' "$modules")"
+  log="$(mktemp)"
+  echo "regression-proof: installing the base revision's node_modules (store $store)"
+  if ! ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm --dir "$wt" install --frozen-lockfile --prefer-offline \
+    --store-dir "$store" > "$log" 2>&1; then
+    tail -40 "$log"
+    ci_verdict_die --lane "$LANE" --status error \
+      --summary "pnpm install failed in the base worktree — the base revision's JS could not run" \
+      --advice "The log above is pnpm's; the base lockfile must install from the checkout's store."
+  fi
+  rm -f "$log"
 }
 
 # One base-revision pytest run over the given node ids: report to $1, output to $2.

@@ -11,7 +11,7 @@ design, generalized to a long-lived bidirectional MCP stream.
 from __future__ import annotations
 
 import json
-from typing import Any, Final
+from typing import Final, TypedDict
 import uuid
 
 from app.constants.device_bridge import (
@@ -24,6 +24,26 @@ from app.constants.device_bridge import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from shared.py.wide_events import log
+
+
+class BridgeFrame(TypedDict, total=False):
+    """One JSON frame on the device tunnel; t names it, the rest depends on t.
+
+    The values come off the wire unchecked, so a reader isinstance-checks what it relies on.
+    """
+
+    t: str
+    sid: object
+    pod: object
+    data: object
+    error: str
+    code: object
+    servers: object
+    server: str
+    key: str
+    command: str
+    cwd: str | None
+
 
 # Unique per process. Stamped into a device's presence key so teardown can tell
 # "I still own this device" from "it reconnected onto another pod", and doubles
@@ -38,10 +58,12 @@ _PRESENCE_CAD_LUA: Final[str] = (
 
 
 def down_channel(device_id: str) -> str:
+    """Name the channel the device's owning pod relays down its socket."""
     return f"{DEVICE_DOWN_CHANNEL_PREFIX}{device_id}"
 
 
 def up_pod_channel(pod_id: str) -> str:
+    """Name the channel a pod's up-listener reads device replies from."""
     return f"{DEVICE_UP_POD_CHANNEL_PREFIX}{pod_id}"
 
 
@@ -68,12 +90,14 @@ async def mark_offline(device_id: str) -> None:
 
 
 async def is_online(device_id: str) -> bool:
+    """Whether some pod holds the device's socket; False without Redis."""
     if not redis_cache.redis:
         return False
     return bool(await redis_cache.redis.exists(_presence_key(device_id)))
 
 
 async def online_device_ids(device_ids: list[str]) -> set[str]:
+    """Return the ids of the devices some pod holds a socket for."""
     online: set[str] = set()
     for device_id in device_ids:
         if await is_online(device_id):
@@ -81,7 +105,7 @@ async def online_device_ids(device_ids: list[str]) -> set[str]:
     return online
 
 
-async def send_down(device_id: str, frame: dict[str, Any]) -> None:
+async def send_down(device_id: str, frame: BridgeFrame) -> None:
     """Publish a frame to the device's owning pod for relay down the socket."""
     if not redis_cache.redis:
         raise RuntimeError("Device bridge unavailable (no Redis connection)")

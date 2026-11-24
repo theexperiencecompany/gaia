@@ -109,9 +109,16 @@ FRAME_MCP_OPENED: Final[str] = "mcp.opened"
 FRAME_MCP_ERROR: Final[str] = "mcp.error"
 # exec-over-bridge (run_on_device): cloud -> device open, device -> cloud stream.
 FRAME_EXEC_OPEN: Final[str] = "exec.open"
+FRAME_EXEC_STARTED: Final[str] = "exec.started"
 FRAME_EXEC_STDOUT: Final[str] = "exec.stdout"
 FRAME_EXEC_STDERR: Final[str] = "exec.stderr"
 FRAME_EXEC_EXIT: Final[str] = "exec.exit"
+# owning pod -> consumer pod only (never on the socket): the session's device socket closed.
+FRAME_TUNNEL_CLOSED: Final[str] = "tunnel.closed"
+# What a call in flight on a dropped device socket fails with.
+DEVICE_DISCONNECTED_MESSAGE: Final[str] = (
+    "Your device disconnected before it replied. Run `gaia bridge up` on that machine and try again."
+)
 
 # --- Chat-driven onboarding copy (surfaced by the add_device tool's card) ---
 # Global install commands for the `@heygaia/cli` package. MUST match
