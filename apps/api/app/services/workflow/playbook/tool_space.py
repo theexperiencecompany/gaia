@@ -18,7 +18,7 @@ class ToolSpace:
 
     tools: Mapping[str, BaseTool]
     #: A replay in this space runs as a read-only run: the HIL gate refuses every tool
-    #: whose metadata does not declare it read-only.
+    #: whose metadata does not declare it read-only, and every call that needs approval.
     read_only: bool = False
 
 
