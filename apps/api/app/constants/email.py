@@ -63,26 +63,22 @@ NO_SUBJECT = "[No Subject]"
 
 # Kept as single-line constants so mutation testing can suppress them (it
 # cannot suppress interior lines of a multi-line log/error call).
-EMAIL_ATTACHMENT_FAIL_LOG = "File attachment could not be resolved"  # pragma: no mutate
-EMAIL_ATTACHMENT_FAIL_WHY = "The file could not be read or uploaded."  # pragma: no mutate
-EMAIL_ATTACHMENT_FAIL_FIX = (
-    "Check the workspace path or URL is correct, then retry."  # pragma: no mutate
-)
+EMAIL_ATTACHMENT_FAIL_LOG = "File attachment could not be resolved"
+EMAIL_ATTACHMENT_FAIL_WHY = "The file could not be read or uploaded."
+EMAIL_ATTACHMENT_FAIL_FIX = "Check the workspace path or URL is correct, then retry."
 
 # Gmail compose hooks (app/utils/composio_hooks/gmail_hooks.py) — same single-line
 # rule as above. Import LogTag so the f-string prefix stays identical.
-GMAIL_TO_MAPPED_LOG = f"{LogTag.COMPOSIO} Mapped 'to' to 'recipient_email' for"  # pragma: no mutate
-GMAIL_SKIP_STREAM_LOG = f"{LogTag.COMPOSIO} Skipping streaming: missing fields"  # pragma: no mutate
-GMAIL_DRAFT_ID_MISSING_LOG = f"{LogTag.COMPOSIO} Draft response carried no id; compose card with attachments suppressed"  # pragma: no mutate
-ATTACHMENTS_NOT_LIST_ERROR = "`attachments` must be a list of file references."  # pragma: no mutate
-ATTACHMENTS_NO_USER_ERROR = (
-    "Cannot resolve file attachments without a user context."  # pragma: no mutate
+GMAIL_TO_MAPPED_LOG = f"{LogTag.COMPOSIO} Mapped 'to' to 'recipient_email' for"
+GMAIL_SKIP_STREAM_LOG = f"{LogTag.COMPOSIO} Skipping streaming: missing fields"
+GMAIL_DRAFT_ID_MISSING_LOG = (
+    f"{LogTag.COMPOSIO} Draft response carried no id; compose card with attachments suppressed"
 )
+ATTACHMENTS_NOT_LIST_ERROR = "`attachments` must be a list of file references."
+ATTACHMENTS_NO_USER_ERROR = "Cannot resolve file attachments without a user context."
 # The pinned Composio Gmail toolkit types `attachment` as a single FileUploadable
 # object, not an array, so a second file would upload and then fail the send.
-GMAIL_MULTIPLE_ATTACHMENTS_ERROR = (
-    "Gmail accepts only one attachment per message."  # pragma: no mutate
-)
+GMAIL_MULTIPLE_ATTACHMENTS_ERROR = "Gmail accepts only one attachment per message."
 
 # Agent-facing description for the friendly ``attachments`` array param (the schema
 # itself is derived from AttachmentReference in mail_models, so field changes land

@@ -10,6 +10,7 @@ Driven as a real script, the way the lane invokes it: a throwaway mutants file
 in the layout mutmut emits, and the verdict read off stdout.
 """
 
+import ast
 from pathlib import Path
 import subprocess
 import sys
@@ -58,6 +59,78 @@ def _classify(
         text=True,
         check=False,
     )
+
+
+def _read_back_fields() -> set[str]:
+    """Parse the classifier's _READ_BACK_FIELDS literal; the script runs on import."""
+    for node in ast.parse(CLASSIFIER.read_text()).body:
+        if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "_READ_BACK_FIELDS":
+            return set(ast.literal_eval(node.value))
+    raise AssertionError("mutation_classify.py defines no _READ_BACK_FIELDS")
+
+
+def _logger_names(tree: ast.Module) -> set[str]:
+    """Names bound to the wide-event logger: imported from shared.py.wide_events, or built there."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "shared.py.wide_events":
+            names.update(alias.asname or "log" for alias in node.names if alias.name == "log")
+        elif isinstance(node, ast.Assign) and ast.unparse(node.value) == "WideEventLogger()":
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return names
+
+
+def _wide_event_reads(tree: ast.Module) -> set[str]:
+    """Return the top-level wide-event keys a module reads back through log.get()."""
+    loggers = _logger_names(tree)
+
+    def is_log_get(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in loggers
+            and not node.args
+        )
+
+    holders = {
+        target.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and is_log_get(node.value)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+    def is_event(node: ast.AST) -> bool:
+        return is_log_get(node) or (isinstance(node, ast.Name) and node.id in holders)
+
+    keys: set[str] = set()
+    for node in ast.walk(tree):
+        key = None
+        if isinstance(node, ast.Subscript) and is_event(node.value):
+            key = node.slice
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and is_event(node.func.value)
+            and node.args
+        ):
+            key = node.args[0]
+        # Model.model_validate(log.get()).field reads that field back.
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "model_validate"
+            and node.value.args
+            and is_event(node.value.args[0])
+        ):
+            keys.add(node.attr)
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            keys.add(key.value)
+    return keys
 
 
 @pytest.fixture
@@ -1058,3 +1131,84 @@ class TestCaseInsensitiveHeading:
 
         assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
         assert result.returncode == 1
+
+
+class TestWideEventLogArguments:
+    """A mutant inside a wide-event log call only changes what is recorded, so it is LOGGING."""
+
+    def _classify_call(self, workdir: Path, call: str, *, alias: str = "") -> str:
+        name = alias or "log"
+        import_line = f"from shared.py.wide_events import log{f' as {alias}' if alias else ''}\n"
+        body = f"    {name}.{call}\n    return count > 3"
+        (workdir / MODULE_REL).write_text(f"{import_line}def probe(count):\n{body}\n")
+        _write_mutants(workdir, body, body.replace("count=count", "count=None"))
+        return _classify(workdir).stdout.strip()
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "set(briefing={'count': count}, count=count)",
+            "set_ns('briefing', count=count)",
+            "audit('brief sent', count=count)",
+            "error('brief failed', count=count)",
+            "info('brief built', count=count)",
+        ],
+    )
+    def test_a_field_argument_of_a_log_call_is_logging(self, workdir: Path, call: str) -> None:
+        assert self._classify_call(workdir, call) == "LOGGING:3"
+
+    def test_an_aliased_wide_event_logger_is_logging(self, workdir: Path) -> None:
+        verdict = self._classify_call(workdir, "set(count=count)", alias="wide_log")
+
+        assert verdict == "LOGGING:3"
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "set(trace_id=trace, count=count)",
+            "set(conversation_source=source, count=count)",
+            "set(**fields, count=count)",
+        ],
+        ids=["trace-id", "ledger-field", "splat"],
+    )
+    def test_a_set_writing_a_field_the_app_reads_back_stays_gated(
+        self, workdir: Path, call: str
+    ) -> None:
+        assert self._classify_call(workdir, call) == "CHANGED:3"
+
+    def test_a_set_on_another_receiver_stays_gated(self, workdir: Path) -> None:
+        body = "    cache.set(count=count)\n    return count > 3"
+        (workdir / MODULE_REL).write_text(f"def probe(count):\n{body}\n")
+        _write_mutants(workdir, body, body.replace("count=count", "count=None"))
+
+        assert _classify(workdir).stdout.strip() == "CHANGED:2"
+
+    def test_a_local_named_log_in_a_module_without_the_logger_stays_gated(
+        self, workdir: Path
+    ) -> None:
+        body = "    log.set(count=count)\n    return count > 3"
+        (workdir / MODULE_REL).write_text(f"def probe(log, count):\n{body}\n")
+        _write_mutants(workdir, body, body.replace("count=count", "count=None"))
+
+        assert _classify(workdir).stdout.strip() == "CHANGED:2"
+
+    def test_every_field_app_code_reads_back_stays_gated(self) -> None:
+        sources = [
+            path
+            for root in ("apps/api/app", "libs/shared/py")
+            for path in (REPO_ROOT / root).rglob("*.py")
+            if "tests" not in path.relative_to(REPO_ROOT).parts
+        ]
+        reads = set().union(*(_wide_event_reads(ast.parse(p.read_text())) for p in sources))
+
+        assert reads <= _read_back_fields()
+        assert reads >= {"job_id", "task", "conversation_source", "model", "user", "composio"}
+
+    def test_the_decision_beside_a_log_call_stays_gated(self, workdir: Path) -> None:
+        body = "    log.set(count=count)\n    return count > 3"
+        (workdir / MODULE_REL).write_text(
+            f"from shared.py.wide_events import log\ndef probe(count):\n{body}\n"
+        )
+        _write_mutants(workdir, body, body.replace("> 3", ">= 3"))
+
+        assert _classify(workdir).stdout.strip() == "CHANGED:4"

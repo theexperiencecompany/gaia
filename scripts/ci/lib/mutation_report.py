@@ -86,8 +86,8 @@ _GAP_LINES = re.compile(r"^\s*line\(s\) (?P<lines>[\d ]+)$", re.MULTILINE)
 # Why a survivor was taken off the verdict, in the words of someone who has
 # never met mutmut. The keys are `mutation_classify.py`'s verdicts.
 EXCLUSION_REASONS = {
-    "LOGGING": "logging-only — the edit lands inside a log.debug/log.info call, "
-    "the two levels that never reach the wide event",
+    "LOGGING": "logging-only — the edit lands inside a wide-event log call "
+    "(log.set/set_ns/audit or a log level), which only records what happened",
     "EQUIV": "provably equivalent — the mutated program does the same thing at runtime",
     "UNCHANGED": "on a line this PR did not change (the gate is diff-driven)",
     "LINTED": 'lint-caught — the mutation rewrites the mode="json" literal of a model_dump '

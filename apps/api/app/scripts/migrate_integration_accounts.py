@@ -162,7 +162,7 @@ async def _plan(
                     id=new_account_id(),
                     connected_account_id=stored.id,
                     # Equivalent under mutation: account_label treats a None identity as {}.
-                    label=account_label(integration, {}, set()),  # pragma: no mutate
+                    label=account_label(integration, {}, set()),
                     status=IntegrationStatus.EXPIRED,
                     connected_at=datetime.fromisoformat(stored.created_at),
                     expired_at=datetime.now(UTC),

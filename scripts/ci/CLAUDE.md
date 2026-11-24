@@ -155,6 +155,21 @@ path, writes its record to `verify-logs/mutation/<module>.verdict.json`, and
 prints that view on failure — the local proof step, with no lane and nothing
 to poll.
 
+What the lane mutates has two owners, both measured on #1853 (116
+mutation-driven commits: the 4 real bugs were all decision logic) and approved
+by the founder in that narrow form. Modules: `mutation_matrix.exclusion`, read
+by `plan`, `local` and a `module` run that derives its own scope, skips `app/scripts/migrate_*` and `backfill_*`
+(one-shot data migrations; every other operator script, such as deleting a
+user, stays mutated; `apps/api/scripts/` is outside `app/` and never reached the lane)
+and declarative modules — every top-level statement an import, docstring, enum
+or assignment with no branch, comprehension or lambda (prompt text, constants;
+an enum member is held to the same assignment rule).
+Mutants: `mutation_classify.py` grades a survivor inside a call on the logger
+imported from `shared.py.wide_events` (`log.set`/`set_ns`/`audit` or a level)
+LOGGING, except a `log.set` that writes a field code reads back through
+`log.get()` (`_READ_BACK_FIELDS`, checked against `apps/api/app` and
+`libs/shared/py` by a test) or a `**` splat. Everything else is mutated as before.
+
 Shards are sized by estimated cost, not by module count. The detector stamps
 each module with `mutants`, its count of mutable AST nodes inside functions on
 the changed lines (rank correlation 0.92 with mutmut's real count on PR #1799).

@@ -349,7 +349,7 @@ def _steps_running(job: dict[str, Any], command: str) -> list[dict[str, Any]]:
 
 def test_every_check_names_a_job_ci_yml_has(workflow: dict[str, Any]) -> None:
     for check in nx_affected.checks().values():
-        assert check.job in workflow["jobs"] or check.job == "selfhost-smoke", check.task
+        assert check.job in workflow["jobs"], check.task
 
 
 def test_every_grouped_job_runs_its_nx_checks_then_posts_every_check(

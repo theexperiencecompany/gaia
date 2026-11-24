@@ -47,6 +47,7 @@
         "{workspaceRoot}/apps/web/playwright.selfhost.config.ts",
         "{workspaceRoot}/tools/llm-stub/**/*",
         "{workspaceRoot}/.github/workflows/selfhost-smoke.yml",
+        "{workspaceRoot}/.github/workflows/selfhost-e2e.yml",
         "{workspaceRoot}/scripts/ci/selfhost.sh",
         "{workspaceRoot}/scripts/ci/lib/log.sh",
         "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
@@ -57,7 +58,8 @@
       ],
       "metadata": {
         "ci": {
-          "job": "selfhost-smoke"
+          "job": "selfhost-e2e",
+          "events": ["merge_group", "workflow_dispatch"]
         }
       }
     }

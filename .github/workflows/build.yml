@@ -104,8 +104,11 @@ on:
       docker_release_result:
         value: ${{ jobs.docker-release.result }}
 
+# Deploys queue one behind another and never cancel. A build phase takes a group
+# of its own: a group keeps one pending entry, so an older run's deploy phase
+# joining it cancelled the newer run's waiting build (run 45297800153).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ inputs.phase == 'build' && format('-build-{0}', github.run_id) || '' }}
   cancel-in-progress: false
 
 jobs:

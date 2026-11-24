@@ -28,7 +28,9 @@ work behind a runner's setup.
   every push, `pytest.sh regression-proof --services false|true` either way,
   with the same outcomes, including "cannot run on base" for a test tree that
   does not collect there),
-  `python-audit`, `scan`, `docker-image` and `coverage`. A PR reaches master
+  `python-audit`, `scan`, `docker-image`, `coverage` and `selfhost-e2e` (the
+  `gaia up` + Playwright journey, `selfhost-e2e.yml`; merge queue and dispatch
+  only, when nx's `cli:selfhost-e2e` is affected). A PR reaches master
   only through the queue, so the slow checks run once per merge, not once per
   push. `detect` decides the tier (`tier` output) and `pytest.sh slices` cuts
   the slice matrix to it.
@@ -58,7 +60,7 @@ work behind a runner's setup.
   secret (the PostHog ones) is a step, `runner: action`/`step` in its metadata.
 - **Never add a check twice.** One check, one nx target, one job.
 
-## Where jobs run: GitHub-hosted first, the home box as overflow
+## Where jobs run: GitHub-hosted first, the home box as light overflow
 
 ci.yml opens with a `select-runner` job (the control-plane runner, no
 Tailscale needed) that reads GitHub's hosted queue and the Actions runners API
@@ -67,17 +69,21 @@ composite, once. It publishes three pools — `light` (detect, the lint jobs,
 the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
 (the slices and mutation shards that need the test-services namespace) — and
 every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`.
-Every pool is routed the same way:
+Every pool starts on GitHub-hosted; only `light` ever overflows to the box:
 
 1. `ubuntu-24.04` (`HOSTED_LINUX_IMAGE` in `runner.py`) by default (public
    repo: 4 vCPU / 16 GB, 20 concurrent jobs on the org's Free plan).
 2. Once GitHub's hosted queue holds `HOSTED_SATURATED_QUEUE_DEPTH` (5) queued
    jobs or more — the 20-job cap is hit; override with the
-   `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
-   has an idle listener for every job of the pool (`class_demand` in
-   `runner.py`: light 6, heavy 5, services 9, handed out services first). A
-   busy box is never queued on; a new lane in a pool raises its count.
-3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
+   `CI_HOSTED_QUEUE_THRESHOLD` repo variable — the `light` pool goes to
+   `gaia-home`, and only when it has an idle listener for every light job
+   (`BOX_OVERFLOW_DEMAND` in `runner.py`: light 6). A busy box is never queued on; a
+   new light lane raises the count. `heavy` and `services` never overflow to
+   the box (the same table): a cold TS build takes 22 min there against
+   8 min hosted, and unit tests that need real DNS fail on it. Moving the light
+   jobs frees hosted slots for them.
+3. `heavy` and `services` on a saturated GitHub, and `light` when the box has
+   no room, go to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
 
 Measured: an all-GitHub run (dispatch `force_github`, run 40178782875) went
 green in 10.3 min with every job started within 6 s; the box needs 9.6 min
