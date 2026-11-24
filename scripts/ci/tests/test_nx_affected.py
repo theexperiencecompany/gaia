@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import re
 
-from doc_shape import sequence
+from doc_shape import mapping, sequence
 from lib import nx_affected
 import pytest
 import yaml
@@ -240,7 +240,8 @@ def test_the_full_tier_keeps_every_affected_check() -> None:
 
 def _production_deploy_gates() -> dict[str, list[str]]:
     """Map each ci.yml production job to the affected tasks its `if:` waits on."""
-    jobs = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())["jobs"]
+    ci = mapping(yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()))
+    jobs = {name: mapping(job) for name, job in mapping(ci["jobs"]).items()}
     return {
         name: DETECT_TASK_GATE.findall(str(job.get("if", "")))
         for name, job in jobs.items()
