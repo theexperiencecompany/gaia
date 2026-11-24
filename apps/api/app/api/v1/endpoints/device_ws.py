@@ -14,7 +14,7 @@ import asyncio
 import contextlib
 import json
 import time
-from typing import Any
+from typing import TypedDict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import WebSocketException
@@ -24,19 +24,24 @@ from app.constants.device_bridge import (
     DEVICE_HEARTBEAT_TIMEOUT_SECONDS,
     DEVICE_RELAY_READY_TIMEOUT_SECONDS,
     FRAME_EXEC_EXIT,
+    FRAME_EXEC_STARTED,
     FRAME_EXEC_STDERR,
     FRAME_EXEC_STDOUT,
     FRAME_HELLO,
+    FRAME_MCP_CLOSE,
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
     FRAME_MCP_OPENED,
     FRAME_PING,
     FRAME_PONG,
+    FRAME_TUNNEL_CLOSED,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
+from app.db.redis import PubSubMessage, redis_cache
 from app.decorators.entitlements import is_paid
+from app.schemas.device.responses import DeviceTokenClaims
 from app.services.device.bridge import (
+    BridgeFrame,
     down_channel,
     mark_offline,
     mark_online,
@@ -52,6 +57,21 @@ from app.services.device.device_service import (
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/ws", tags=["Device Bridge"])
+
+
+class SocketLiveness(TypedDict):
+    """When the socket last received a frame, by the monotonic clock; the heartbeat reads it."""
+
+    last_recv: float
+
+
+# session id -> the consumer pod waiting on it, for every session open on one socket
+OpenSessions = dict[str, str]
+# The device answering on this socket is what makes a session the socket's: an open relayed
+# down a superseded, half-open socket reaches the replacement too, and must not be failed here.
+_SESSION_OPENS = (FRAME_MCP_OPENED, FRAME_EXEC_STARTED, FRAME_EXEC_STDOUT, FRAME_EXEC_STDERR)
+# Frames after which the session is over, from either end of the socket.
+_SESSION_ENDS = (FRAME_MCP_CLOSE, FRAME_MCP_ERROR, FRAME_EXEC_EXIT)
 
 
 def _extract_token(websocket: WebSocket) -> str | None:
@@ -78,7 +98,7 @@ async def device_ws(websocket: WebSocket) -> None:
     too — so this handler just calls ``log.set()`` like an HTTP handler.
     """
     token = _extract_token(websocket)
-    info = verify_device_token(token) if token else None
+    info: DeviceTokenClaims | None = verify_device_token(token) if token else None
     if not info:
         log.set(disconnect_reason="auth_failure")
         raise _rejected("device token missing or invalid")
@@ -112,9 +132,10 @@ async def device_ws(websocket: WebSocket) -> None:
     # Redis drops pub/sub frames with no subscriber, surfacing as a warmup
     # open-timeout that leaves tools undiscoverable until reconnect (bounded above).
     subscribed = asyncio.Event()
-    state = {"last_recv": time.monotonic()}
+    state: SocketLiveness = {"last_recv": time.monotonic()}
+    sessions: OpenSessions = {}
     tasks = [
-        asyncio.create_task(_down_relay(websocket, device_id, subscribed)),
+        asyncio.create_task(_down_relay(websocket, device_id, sessions, subscribed)),
         asyncio.create_task(_heartbeat(websocket, device_id, state)),
     ]
     try:
@@ -125,21 +146,10 @@ async def device_ws(websocket: WebSocket) -> None:
             f"{LogTag.API} Down relay not subscribed before warmup",
             device_id=device_id,
         )
-    # A device coming online re-drives warm-connect for all its servers, so tools
-    # a registration couldn't index (Redis down, or the device was offline) get
-    # indexed now. Best-effort — a socket must never fail on the warmup enqueue.
-    try:
-        await enqueue_device_server_warmup(device_id)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.API} Failed to enqueue device warmup on connect",
-            device_id=device_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    await _enqueue_warmup(device_id)
 
     try:
-        await _receive_loop(websocket, device_id, user_id, state)
+        await _receive_loop(websocket, device_id, user_id, state, sessions)
     # evlog-map-disable-next-line error-handling -- normal websocket disconnect; info-level is correct
     except WebSocketDisconnect:
         log.set(disconnect_reason="client_close")
@@ -163,19 +173,62 @@ async def device_ws(websocket: WebSocket) -> None:
         # socket's teardown could wipe a newer same-pod socket's re-claimed key.
         if not device_connection_manager.owns(device_id):
             await mark_offline(device_id)
+        await _fail_open_sessions(sessions)
         with contextlib.suppress(Exception):
             await websocket.close()
 
 
+async def _enqueue_warmup(device_id: str) -> None:
+    """Re-drive warm-connect for the device's servers; best-effort, a socket never fails on it.
+
+    Tools a registration couldn't index (Redis down, or the device was offline) get indexed now.
+    """
+    try:
+        await enqueue_device_server_warmup(device_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.API} Failed to enqueue device warmup on connect",
+            device_id=device_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
+def _track_session(sessions: OpenSessions, frame: BridgeFrame) -> None:
+    """Record a session the device answered on this socket and forget one that ended."""
+    frame_type = frame.get("t")
+    session_id = frame.get("sid")
+    if not isinstance(session_id, str):
+        return
+    pod = frame.get("pod")
+    if frame_type in _SESSION_OPENS and isinstance(pod, str):
+        sessions[session_id] = pod
+    elif frame_type in _SESSION_ENDS:
+        sessions.pop(session_id, None)
+
+
+async def _fail_open_sessions(sessions: OpenSessions) -> None:
+    """Tell each waiting pod its session died with this socket, so its call fails now, not on timeout."""
+    for session_id, pod in sessions.items():
+        await publish_up_to_pod(
+            pod, json.dumps({"t": FRAME_TUNNEL_CLOSED, "sid": session_id, "pod": pod})
+        )
+    log.set(device={"sessions_failed_on_close": len(sessions)})
+
+
 async def _receive_loop(
-    websocket: WebSocket, device_id: str, user_id: str, state: dict[str, float]
+    websocket: WebSocket,
+    device_id: str,
+    user_id: str,
+    state: SocketLiveness,
+    sessions: OpenSessions,
 ) -> None:
     """Read frames off the socket and route upstream ones onto Redis."""
     while True:
         raw = await websocket.receive_text()
         state["last_recv"] = time.monotonic()
         try:
-            frame: dict[str, Any] = json.loads(raw)
+            frame: BridgeFrame = json.loads(raw)
         except json.JSONDecodeError:
             log.warning(f"{LogTag.API} Device sent malformed frame", device_id=device_id)
             continue
@@ -189,6 +242,7 @@ async def _receive_loop(
             FRAME_MCP_MSG,
             FRAME_MCP_OPENED,
             FRAME_MCP_ERROR,
+            FRAME_EXEC_STARTED,
             FRAME_EXEC_STDOUT,
             FRAME_EXEC_STDERR,
             FRAME_EXEC_EXIT,
@@ -199,6 +253,7 @@ async def _receive_loop(
             pod = frame.get("pod")
             if isinstance(pod, str):
                 await publish_up_to_pod(pod, raw)
+            _track_session(sessions, frame)
             continue
         if frame_type == FRAME_HELLO:
             # The daemon's local config is the source of truth: prune server rows it
@@ -221,7 +276,10 @@ async def _receive_loop(
 
 
 async def _down_relay(
-    websocket: WebSocket, device_id: str, subscribed: asyncio.Event | None = None
+    websocket: WebSocket,
+    device_id: str,
+    sessions: OpenSessions,
+    subscribed: asyncio.Event | None = None,
 ) -> None:
     """Subscribe to this device's down channel and write frames to the socket.
 
@@ -238,12 +296,14 @@ async def _down_relay(
         subscribed.set()
     try:
         while True:
+            message: PubSubMessage | None
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message is None or message.get("type") != "message":
                 continue
             data = message["data"]
             if isinstance(data, bytes):
                 data = data.decode("utf-8")
+            _track_session(sessions, json.loads(data))
             await websocket.send_text(data)
     finally:
         with contextlib.suppress(Exception):
@@ -251,7 +311,7 @@ async def _down_relay(
             await pubsub.aclose()
 
 
-async def _heartbeat(websocket: WebSocket, device_id: str, state: dict[str, float]) -> None:
+async def _heartbeat(websocket: WebSocket, device_id: str, state: SocketLiveness) -> None:
     """Ping periodically; refresh presence; drop the socket if it goes silent."""
     while True:
         await asyncio.sleep(DEVICE_HEARTBEAT_INTERVAL_SECONDS)

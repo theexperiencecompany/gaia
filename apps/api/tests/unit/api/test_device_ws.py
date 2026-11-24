@@ -8,6 +8,7 @@ next reconnect.
 
 import asyncio
 import contextlib
+import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,7 +17,19 @@ from fastapi.exceptions import WebSocketException
 import pytest
 
 from app.api.v1.endpoints import device_ws as ws_module
-from app.constants.device_bridge import DEVICE_TOKEN_AUDIENCE
+from app.constants import device_bridge
+from app.constants.device_bridge import (
+    DEVICE_TOKEN_AUDIENCE,
+    FRAME_EXEC_EXIT,
+    FRAME_EXEC_OPEN,
+    FRAME_EXEC_STDERR,
+    FRAME_EXEC_STDOUT,
+    FRAME_MCP_CLOSE,
+    FRAME_MCP_ERROR,
+    FRAME_MCP_MSG,
+    FRAME_MCP_OPEN,
+    FRAME_MCP_OPENED,
+)
 from app.services.device import device_auth
 from tests.helpers import (
     JOSE_AGENT_DEVICE_SECRET,
@@ -83,7 +96,7 @@ async def test_warmup_enqueued_only_after_relay_subscribes():
     seen: dict[str, object] = {}
     ws = _socket()
 
-    async def fake_relay(websocket, device_id, ready=None):
+    async def fake_relay(websocket, device_id, sessions, ready=None):
         order.append("relay-start")
         seen["relay"] = (websocket, device_id, ready)
         await asyncio.sleep(0)
@@ -115,7 +128,7 @@ async def test_stalled_relay_does_not_block_the_socket():
     """A subscribe that never lands still lets the socket connect: the wait is bounded and the enqueue proceeds."""
     enqueued = asyncio.Event()
 
-    async def stalled_relay(websocket, device_id, ready=None):
+    async def stalled_relay(websocket, device_id, sessions, ready=None):
         await asyncio.sleep(60)
 
     async def fake_enqueue(device_id, server_keys=None):
@@ -138,7 +151,7 @@ async def test_enqueue_failure_is_logged_with_its_cause_and_not_fatal():
     """A Redis outage on the enqueue must not fail the socket, but the failure and its cause must still reach the wide event."""
     enqueued = asyncio.Event()
 
-    async def fake_relay(websocket, device_id, ready=None):
+    async def fake_relay(websocket, device_id, sessions, ready=None):
         ready.set()
 
     async def failing_enqueue(device_id, *args, **kwargs):
@@ -183,7 +196,7 @@ async def test_relay_signals_only_after_subscribe_returns():
     ready = asyncio.Event()
 
     with patch.object(ws_module.redis_cache, "redis", redis):
-        task = asyncio.create_task(ws_module._down_relay(ws, "d1", ready))
+        task = asyncio.create_task(ws_module._down_relay(ws, "d1", {}, ready))
         await asyncio.wait_for(ready.wait(), 5)
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -198,7 +211,7 @@ async def test_relay_without_redis_still_signals_ready():
     """No Redis means no subscription is possible — signal anyway so the handler's bounded wait never stalls."""
     ready = asyncio.Event()
     with patch.object(ws_module.redis_cache, "redis", None):
-        await ws_module._down_relay(_socket(), "d1", ready)
+        await ws_module._down_relay(_socket(), "d1", {}, ready)
     assert ready.is_set()
 
 
@@ -257,3 +270,108 @@ async def test_a_device_token_minted_by_python_jose_gets_past_the_socket_auth(mo
 
     assert exc.value.reason == "device revoked"
     get_active.assert_awaited_once_with("dev-jose")
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_a_closing_socket_fails_each_session_it_still_carries():
+    """Regression for #1144: a dropped socket told no one, so each waiting call ran out its timeout."""
+
+    relayed: list[dict[str, str]] = []
+
+    async def relay(websocket, device_id, sessions, ready=None):
+        relayed.append(sessions)
+        ws_module._track_session(
+            sessions, {"t": FRAME_MCP_OPEN, "sid": "s-unanswered", "pod": "pod-c"}
+        )
+        ready.set()
+
+    async def receive(websocket, device_id, user_id, state, sessions):
+        await asyncio.sleep(0)
+        assert relayed[0] is sessions
+        ws_module._track_session(sessions, {"t": FRAME_MCP_OPENED, "sid": "s-mcp", "pod": "pod-a"})
+        ws_module._track_session(sessions, {"t": "exec.started", "sid": "s-exec", "pod": "pod-b"})
+        ws_module._track_session(sessions, {"t": FRAME_EXEC_EXIT, "sid": "s-exec", "pod": "pod-b"})
+        raise WebSocketDisconnect()
+
+    publish = AsyncMock()
+    with patch.object(ws_module, "publish_up_to_pod", publish):
+        await _run_handler(_socket(), relay, AsyncMock(), receive)
+
+    publish.assert_awaited_once_with(
+        "pod-a",
+        json.dumps({"t": device_bridge.FRAME_TUNNEL_CLOSED, "sid": "s-mcp", "pod": "pod-a"}),
+    )
+
+
+@pytest.mark.parametrize(
+    ("frame", "carried"),
+    [
+        ({"t": FRAME_MCP_OPENED, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": "exec.started", "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_EXEC_STDOUT, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_EXEC_STDERR, "sid": "s1", "pod": "p1"}, {"s0": "p0", "s1": "p1"}),
+        ({"t": FRAME_MCP_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0"}),
+        ({"t": FRAME_EXEC_OPEN, "sid": "s1", "pod": "p1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_OPENED, "sid": "s1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_OPENED, "pod": "p1"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_CLOSE, "sid": "s0"}, {}),
+        ({"t": FRAME_MCP_ERROR, "sid": "s0", "pod": "p0"}, {}),
+        ({"t": FRAME_EXEC_EXIT, "sid": "s0", "pod": "p0"}, {}),
+        ({"t": FRAME_MCP_MSG, "sid": "s0", "pod": "p0"}, {"s0": "p0"}),
+        ({"t": FRAME_MCP_CLOSE, "sid": "s-other"}, {"s0": "p0"}),
+    ],
+    ids=[
+        "mcp-opened",
+        "exec-started",
+        "exec-stdout",
+        "exec-stderr",
+        "mcp-open-relayed-but-unanswered",
+        "exec-open-relayed-but-unanswered",
+        "answer-without-pod",
+        "answer-without-sid",
+        "close",
+        "error",
+        "exit",
+        "msg",
+        "close-of-an-untracked-session",
+    ],
+)
+def test_a_socket_carries_a_session_from_the_devices_answer_to_its_end(frame, carried):
+    sessions = {"s0": "p0"}
+
+    ws_module._track_session(sessions, frame)
+
+    assert sessions == carried
+
+
+@pytest.mark.asyncio
+async def test_the_down_relay_forgets_a_session_it_closes_and_forwards_the_frame():
+    raw = json.dumps({"t": FRAME_MCP_CLOSE, "sid": "s1"})
+    delivered = [{"type": "message", "data": raw.encode()}]
+
+    async def get_message(**kwargs):
+        await asyncio.sleep(0.01)
+        return delivered.pop() if delivered else None
+
+    pubsub = MagicMock()
+    pubsub.get_message = AsyncMock(side_effect=get_message)
+    pubsub.subscribe = AsyncMock()
+    pubsub.unsubscribe = AsyncMock()
+    pubsub.aclose = AsyncMock()
+    redis = MagicMock()
+    redis.pubsub = MagicMock(return_value=pubsub)
+    ws = _socket()
+    sent = asyncio.Event()
+    ws.send_text = AsyncMock(side_effect=lambda _data: sent.set())
+    sessions = {"s1": "p1"}
+
+    with patch.object(ws_module.redis_cache, "redis", redis):
+        task = asyncio.create_task(ws_module._down_relay(ws, "d1", sessions))
+        await asyncio.wait_for(sent.wait(), 5)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    assert sessions == {}
+    ws.send_text.assert_awaited_once_with(raw)

@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import timedelta
-from typing import Any
 import uuid
 
 import anyio
@@ -23,21 +22,31 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 from mcp_use.client.connectors.base import BaseConnector
 
 from app.constants.device_bridge import (
+    DEVICE_DISCONNECTED_MESSAGE,
     FRAME_MCP_CLOSE,
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
     FRAME_MCP_OPEN,
     FRAME_MCP_OPENED,
+    FRAME_TUNNEL_CLOSED,
     MCP_SESSION_CALL_TIMEOUT_SECONDS,
     MCP_SESSION_OPEN_TIMEOUT_SECONDS,
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.services.device.bridge import POD_ID, is_online, send_down
+from app.services.device.bridge import POD_ID, BridgeFrame, is_online, send_down
 from app.services.device.up_listener import register_up_session, unregister_up_session
 from mcp import ClientSession
 from mcp.shared.message import SessionMessage
-from mcp.types import JSONRPCMessage
+from mcp.types import (
+    CONNECTION_CLOSED,
+    ErrorData,
+    JSONRPCError,
+    JSONRPCMessage,
+    JSONRPCRequest,
+    JSONRPCResponse,
+    RequestId,
+)
 from shared.py.wide_events import log
 
 
@@ -56,22 +65,40 @@ class DeviceConnector(BaseConnector):
         self.device_id = device_id
         self.server_key = server_key
         self.session_id = uuid.uuid4().hex
+        # Set when the device side ended the session; the next call reconnects instead of reusing it.
+        # No mutate: is_connected reads it only once a session exists, and connect() resets it.
+        self._session_lost = False  # pragma: no mutate
         # Fed by the shared per-pod up-listener (up_listener.py); drained by
         # _reader_task. Replaces a per-session Redis pub/sub subscription.
-        self._inbox: asyncio.Queue[dict[str, Any]] | None = None
+        # No mutate: connect() sets the inbox before anything reads it.
+        self._inbox: asyncio.Queue[BridgeFrame] | None = None  # pragma: no mutate
         self._reader_task: asyncio.Task[None] | None = None
         self._writer_task: asyncio.Task[None] | None = None
         self._opened: asyncio.Future[None] | None = None
         self._read_send: MemoryObjectSendStream[SessionMessage | Exception] | None = None
         self._write_recv: MemoryObjectReceiveStream[SessionMessage] | None = None
+        # Requests sent down and not yet answered: the ones a lost session must fail itself,
+        # since ClientSession ignores an exception on its read stream and waits out the timeout.
+        self._unanswered: set[RequestId] = set()
 
     @property
     def public_identifier(self) -> str:
         return f"device:{self.device_id}:{self.server_key}"
 
+    @property
+    def is_connected(self) -> bool:
+        """Whether the session is open and the device has not ended it."""
+        return bool(super().is_connected) and not self._session_lost
+
     async def connect(self) -> None:
+        """Open the session on the device and start the MCP client over the tunnel."""
         if self.client_session is not None:
-            return
+            if not self._session_lost:
+                return
+            await self.disconnect()
+        self._session_lost = False  # pragma: no mutate — None reads as False too
+        # A fresh id per session: the socket that carried the lost one may still fail its id later.
+        self.session_id = uuid.uuid4().hex
         if not redis_cache.redis:
             raise DeviceConnectionError("Device bridge unavailable (no Redis connection)")
         if not await is_online(self.device_id):
@@ -146,16 +173,19 @@ class DeviceConnector(BaseConnector):
         inbox = self._inbox
         try:
             while True:
-                frame = await inbox.get()
+                frame: BridgeFrame = await inbox.get()
                 frame_type = frame.get("t")
                 if frame_type == FRAME_MCP_OPENED:
                     self._resolve_open(None)
-                elif frame_type == FRAME_MCP_ERROR:
-                    error = DeviceConnectionError(frame.get("error") or "device MCP error")
-                    if not self._resolve_open(error):
-                        # Mid-session error: fail the read stream to tear down.
-                        with contextlib.suppress(Exception):
-                            await read_send.send(error)
+                elif frame_type in (FRAME_MCP_ERROR, FRAME_TUNNEL_CLOSED):
+                    reason = (
+                        DEVICE_DISCONNECTED_MESSAGE
+                        if frame_type == FRAME_TUNNEL_CLOSED
+                        else frame.get("error") or "device MCP error"
+                    )
+                    if not self._resolve_open(DeviceConnectionError(reason)):
+                        await self._end_session(read_send, reason)
+                    return
                 elif frame_type == FRAME_MCP_MSG:
                     data = frame.get("data")
                     if not isinstance(data, str):
@@ -165,6 +195,8 @@ class DeviceConnector(BaseConnector):
                     except Exception as parse_err:  # forward as stream error
                         await read_send.send(parse_err)
                         continue
+                    if isinstance(jsonrpc.root, JSONRPCResponse | JSONRPCError):
+                        self._unanswered.discard(jsonrpc.root.id)
                     await read_send.send(SessionMessage(jsonrpc))
         except asyncio.CancelledError:
             raise
@@ -177,10 +209,35 @@ class DeviceConnector(BaseConnector):
             with contextlib.suppress(Exception):
                 await read_send.send(DeviceConnectionError("device tunnel closed"))
 
+    async def _end_session(
+        self, read_send: MemoryObjectSendStream[SessionMessage | Exception], reason: str
+    ) -> None:
+        """Answer every unanswered request with reason, then close the read stream to end the session.
+
+        A request sent while the answers go out is failed by the closing stream instead.
+        """
+        self._session_lost = True
+        unanswered, self._unanswered = self._unanswered, set()
+        log.warning(
+            f"{LogTag.MCP} Device session lost", reason=reason, unanswered_calls=len(unanswered)
+        )
+        error = ErrorData(code=CONNECTION_CLOSED, message=reason)
+        try:
+            for request_id in unanswered:
+                await read_send.send(
+                    SessionMessage(
+                        JSONRPCMessage(JSONRPCError(jsonrpc="2.0", id=request_id, error=error))
+                    )
+                )
+        finally:
+            await read_send.aclose()
+
     async def _pump_downstream(self, write_recv: MemoryObjectReceiveStream[SessionMessage]) -> None:
         """Pump the ClientSession's write stream into the Redis down-channel to the device."""
         try:
             async for session_message in write_recv:
+                if isinstance(session_message.message.root, JSONRPCRequest):
+                    self._unanswered.add(session_message.message.root.id)
                 payload = session_message.message.model_dump_json(by_alias=True, exclude_none=True)
                 await send_down(
                     self.device_id,
@@ -206,6 +263,7 @@ class DeviceConnector(BaseConnector):
         return True
 
     async def disconnect(self) -> None:
+        """Close the device session and stop pumping frames; safe to call twice."""
         if not self._connected and self._reader_task is None:
             return
         with contextlib.suppress(Exception):

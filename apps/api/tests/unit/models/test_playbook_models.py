@@ -23,6 +23,7 @@ from app.models.playbook_models import (
     ask_slots,
     is_work_call,
     walk_ask_slots,
+    walk_time_slots,
 )
 
 
@@ -208,3 +209,19 @@ class TestIsWorkCall:
         self, tool_name: str, expected: bool
     ) -> None:
         assert is_work_call(tool_name) is expected
+
+
+@pytest.mark.unit
+class TestWalkTimeSlots:
+    def test_every_time_slot_is_found_with_the_path_that_addresses_it(self) -> None:
+        whole = {"$time": "$now", "format": "%Y"}
+        nested = {"$time": "$today", "format": "%d"}
+
+        assert list(walk_time_slots(whole)) == [((), whole)]
+        assert list(walk_time_slots({"window": ["first", nested]})) == [(("window", 1), nested)]
+
+    def test_an_ask_slot_is_a_leaf_and_plain_values_hold_none(self) -> None:
+        prompt_naming_a_time = {"$ask": {"$time": "$now", "format": "%Y"}}
+
+        assert list(walk_time_slots(prompt_naming_a_time)) == []
+        assert list(walk_time_slots(["text", 3, {"plain": "value"}])) == []

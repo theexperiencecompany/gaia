@@ -16,30 +16,28 @@ own queue and never stalls the shared listener or other sessions.
 import asyncio
 import contextlib
 import json
-from typing import Any
 
 from app.constants.device_bridge import DEVICE_LISTENER_RESUBSCRIBE_SECONDS
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
-from app.services.device.bridge import POD_ID, up_pod_channel
+from app.db.redis import PubSubMessage, redis_cache
+from app.services.device.bridge import POD_ID, BridgeFrame, up_pod_channel
 from shared.py.wide_events import log, log_context
 
-Frame = dict[str, Any]
-
 # session_id -> that session's inbox. The owning connector creates and drains it.
-_inboxes: dict[str, asyncio.Queue[Frame]] = {}
+_inboxes: dict[str, asyncio.Queue[BridgeFrame]] = {}
 
 _listener_task: asyncio.Task[None] | None = None
 
 
-def register_up_session(session_id: str) -> asyncio.Queue[Frame]:
+def register_up_session(session_id: str) -> asyncio.Queue[BridgeFrame]:
     """Create and register an inbox for a session; the connector drains it."""
-    queue: asyncio.Queue[Frame] = asyncio.Queue()
+    queue: asyncio.Queue[BridgeFrame] = asyncio.Queue()
     _inboxes[session_id] = queue
     return queue
 
 
 def unregister_up_session(session_id: str) -> None:
+    """Drop a session's inbox; frames for it are then dropped as unknown."""
     _inboxes.pop(session_id, None)
 
 
@@ -52,7 +50,7 @@ async def _dispatch(raw: str) -> None:
     """
     async with log_context("device_up_frame"):
         try:
-            frame: Frame = json.loads(raw)
+            frame: BridgeFrame = json.loads(raw)
         except json.JSONDecodeError as e:
             log.warning(
                 f"{LogTag.API} Dropped malformed device up-frame",
@@ -89,6 +87,7 @@ async def _consume() -> None:
     await pubsub.subscribe(up_pod_channel(POD_ID))
     try:
         while True:
+            message: PubSubMessage | None
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message is None or message.get("type") != "message":
                 continue
