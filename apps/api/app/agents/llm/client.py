@@ -1136,12 +1136,13 @@ def _requested_model(runnable: Any) -> str:  # noqa: ANN401 -- any Runnable shap
     """Return the model id this runnable was going to ask for, or UNKNOWN_MODEL_NAME.
 
     A failed call has no reply to read the served model off, so the ledger's
-    model_requested is all there is. Read defensively: the bound runnable is a
-    chat model on the graph lane but a with_structured_output wrapper on the
-    auxiliary one.
+    model_requested is all there is. Read off the client the wrappers end in:
+    the runnable is a chat model on the graph lane but a with_structured_output
+    sequence on the auxiliary one, and a sequence names no model itself.
     """
+    client = _wire_client(runnable)
     for attribute in ("model_name", "model"):
-        value = getattr(runnable, attribute, None)
+        value = getattr(client, attribute, None)
         if isinstance(value, str) and value:
             return value
     return UNKNOWN_MODEL_NAME
@@ -1640,7 +1641,7 @@ async def _record_auxiliary_usage(
     # provider served, and naming the wrong one is worse than naming none.
     booked_provider = facts.provider if attributable else None
     # Named, or the log facade stamps the failing call's message on the warning below.
-    failed_with: Mapping[str, object] = failure or {}
+    failed_with: Mapping[str, object] = {} if failure is None else failure
     for model_name, model_usage in handler.usage_metadata.items():
         usage: UsageMetadata = model_usage
         input_tokens = int(usage.get("input_tokens", 0) or 0)

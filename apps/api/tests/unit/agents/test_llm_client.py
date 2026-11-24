@@ -1423,7 +1423,8 @@ class TestFallbackHandover:
                 options=LLMInvokeOptions(max_attempts=1),
             )
 
-        assert any("not metered" in record["message"] for record in records)
+        (unmetered,) = [record for record in records if "not metered" in record["message"]]
+        assert unmetered["extra"]["error_type"] == "BadRequestError"
         assert USER_TEXT not in json.dumps(records)
 
 
@@ -3163,7 +3164,8 @@ class TestTheSyncFallback:
     @staticmethod
     def _fallback() -> NonCallableMagicMock:
         runnable = TestFallbackHandover._bindable_runnable(AIMessage(content="ok"))
-        runnable.model_name = "fallback-model"
+        # The binding names no model of its own; the client it wraps does.
+        runnable.bound = ChatOpenRouter(model="fallback-model", api_key=SecretStr("k"))
         runnable.invoke = MagicMock(side_effect=lambda *_a, **_k: AIMessage(content="ok"))
         return runnable
 
@@ -3362,6 +3364,23 @@ class TestAWorkersAiRateLimitSkipsTheRetries:
 
         with pytest.raises(RateLimitError):
             await ainvoke_llm(primary, "hi", config=self._ON_WORKERS_AI)
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+
+    def test_the_sync_call_still_retries_a_rate_limit_with_no_fallback(self) -> None:
+        primary, attempts = self._failing(self._rate_limited())
+
+        with pytest.raises(RateLimitError):
+            invoke_llm(primary, "hi", config=self._ON_WORKERS_AI)
+
+        assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
+
+    def test_the_retry_wrapper_retries_a_rate_limit_unless_told_not_to(self) -> None:
+        """The fallback's own retries and the file summarizer take the default."""
+        primary, attempts = self._failing(self._rate_limited())
+
+        with pytest.raises(RateLimitError):
+            with_llm_retry(primary).invoke("hi")
 
         assert len(attempts) == LLM_RETRY_MAX_ATTEMPTS
 
@@ -4025,6 +4044,14 @@ class TestRequestedModel:
         runnable.model = "gemini-3-pro"
 
         assert _requested_model(runnable) == "gemini-3-pro"
+
+    def test_a_structured_output_sequence_reports_its_chat_models_name(self) -> None:
+        """Regression: the sequence names no model, so a failed structured call was booked and logged as unknown."""
+        structured = ChatOpenAI(model="gpt-x", api_key=SecretStr("k")).with_structured_output(
+            _Extracted
+        )
+
+        assert _requested_model(structured) == "gpt-x"
 
     def test_a_runnable_that_names_no_model_is_unknown_not_a_crash(self) -> None:
         """Metering a failure must not itself fail — an unnameable model is recorded as unknown, which is still a row."""
