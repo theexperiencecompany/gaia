@@ -17,6 +17,7 @@ from fastapi.exceptions import WebSocketException
 import pytest
 
 from app.api.v1.endpoints import device_ws as ws_module
+from app.constants import device_bridge
 from app.constants.device_bridge import (
     DEVICE_TOKEN_AUDIENCE,
     FRAME_EXEC_EXIT,
@@ -25,7 +26,6 @@ from app.constants.device_bridge import (
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
     FRAME_MCP_OPEN,
-    FRAME_TUNNEL_CLOSED,
 )
 from app.services.device import device_auth
 from tests.helpers import (
@@ -289,7 +289,8 @@ async def test_a_closing_socket_fails_each_session_it_still_carries():
         await _run_handler(_socket(), relay, AsyncMock(), receive)
 
     publish.assert_awaited_once_with(
-        "pod-a", json.dumps({"t": FRAME_TUNNEL_CLOSED, "sid": "s-mcp", "pod": "pod-a"})
+        "pod-a",
+        json.dumps({"t": device_bridge.FRAME_TUNNEL_CLOSED, "sid": "s-mcp", "pod": "pod-a"}),
     )
 
 

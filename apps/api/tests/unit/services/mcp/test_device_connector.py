@@ -30,11 +30,10 @@ from mcp.types import (
 )
 import pytest
 
+from app.constants import device_bridge
 from app.constants.device_bridge import (
-    DEVICE_DISCONNECTED_MESSAGE,
     FRAME_MCP_ERROR,
     FRAME_MCP_MSG,
-    FRAME_TUNNEL_CLOSED,
 )
 from app.services.mcp.device_connector import DeviceConnectionError, DeviceConnector
 
@@ -148,17 +147,28 @@ async def _lose_session_mid_call(loss: dict[str, object]) -> list[SessionMessage
 @pytest.mark.parametrize(
     ("loss", "reason"),
     [
-        ({"t": FRAME_TUNNEL_CLOSED}, DEVICE_DISCONNECTED_MESSAGE),
         ({"t": FRAME_MCP_ERROR, "error": "Local server 'x' exited"}, "Local server 'x' exited"),
         ({"t": FRAME_MCP_ERROR}, "device MCP error"),
     ],
-    ids=["socket-dropped", "local-server-exited", "unexplained"],
+    ids=["local-server-exited", "unexplained"],
 )
 async def test_a_lost_session_answers_only_its_unanswered_request_then_ends(
     loss: dict[str, object], reason: str
 ) -> None:
-    """Regression for #1144: the session read the loss as an exception and its call waited 120s."""
+    """The daemon's mcp.error reached the session as an exception and its call waited 120s."""
     answered, failed = await _lose_session_mid_call(loss)
+
+    assert answered.message.root == JSONRPCResponse(jsonrpc="2.0", id=1, result={})
+    assert failed.message.root == JSONRPCError(
+        jsonrpc="2.0", id=2, error=ErrorData(code=CONNECTION_CLOSED, message=reason)
+    )
+
+
+@pytest.mark.regression
+async def test_a_dropped_socket_answers_the_unanswered_request_with_the_disconnect() -> None:
+    """Regression for #1144: nothing told the session its socket dropped, so its call waited 120s."""
+    reason = device_bridge.DEVICE_DISCONNECTED_MESSAGE
+    answered, failed = await _lose_session_mid_call({"t": device_bridge.FRAME_TUNNEL_CLOSED})
 
     assert answered.message.root == JSONRPCResponse(jsonrpc="2.0", id=1, result={})
     assert failed.message.root == JSONRPCError(

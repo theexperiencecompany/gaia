@@ -38,7 +38,7 @@ import websockets
 
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
-from app.constants.device_bridge import DEVICE_DISCONNECTED_MESSAGE
+from app.constants import device_bridge
 from app.services.integrations import custom_crud
 from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.device_exec import DeviceExecError, run_device_command
@@ -730,7 +730,9 @@ class TestDeviceDisconnect:
             os.kill(daemon.daemon_pid, signal.SIGKILL)
             daemon.mark("daemon killed mid-call")
 
-            with pytest.raises(McpError, match=re.escape(DEVICE_DISCONNECTED_MESSAGE)):
+            with pytest.raises(
+                McpError, match=re.escape(device_bridge.DEVICE_DISCONNECTED_MESSAGE)
+            ):
                 await asyncio.wait_for(call, timeout=DISCONNECT_FAILS_A_CALL_WITHIN_SECONDS)
         finally:
             if connector is not None:
@@ -766,7 +768,9 @@ class TestDeviceDisconnect:
             os.kill(daemon.daemon_pid, signal.SIGKILL)
             daemon.mark("daemon killed mid-command")
 
-            with pytest.raises(DeviceExecError, match=re.escape(DEVICE_DISCONNECTED_MESSAGE)):
+            with pytest.raises(
+                DeviceExecError, match=re.escape(device_bridge.DEVICE_DISCONNECTED_MESSAGE)
+            ):
                 await asyncio.wait_for(command, timeout=DISCONNECT_FAILS_A_CALL_WITHIN_SECONDS)
         finally:
             await owner.aclose()

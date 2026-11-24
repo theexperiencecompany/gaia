@@ -25,7 +25,7 @@ from app.constants.cache import (
 from app.constants.log_tags import LogTag
 from app.constants.websocket import DESKTOP_TOOL_REQUEST_MESSAGE
 from app.core.websocket_manager import websocket_manager
-from app.db.redis import redis_cache
+from app.db.redis import PubSubMessage, redis_cache
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -64,13 +64,6 @@ class _PendingDesktopRequest(TypedDict, total=False):
 
     user_id: str
     tool: str
-
-
-class _PubSubMessage(TypedDict):
-    """A redis-py pub/sub message; data is the published payload when type is "message"."""
-
-    type: str
-    data: str | bytes
 
 
 class _DesktopResultMessage(TypedDict, total=False):
@@ -171,8 +164,8 @@ async def request_desktop_action(
 async def _await_result(pubsub: PubSub) -> DesktopToolOutcome:
     """Block on the result channel until a parseable outcome arrives."""
     while True:
-        message: _PubSubMessage | None = cast(
-            "_PubSubMessage | None",
+        message: PubSubMessage | None = cast(
+            "PubSubMessage | None",
             await pubsub.get_message(
                 ignore_subscribe_messages=True,
                 timeout=_PUBSUB_POLL_SECONDS,

@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import timedelta
-from typing import Any
 import uuid
 
 import anyio
@@ -35,7 +34,7 @@ from app.constants.device_bridge import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.services.device.bridge import POD_ID, is_online, send_down
+from app.services.device.bridge import POD_ID, BridgeFrame, is_online, send_down
 from app.services.device.up_listener import register_up_session, unregister_up_session
 from mcp import ClientSession
 from mcp.shared.message import SessionMessage
@@ -68,7 +67,7 @@ class DeviceConnector(BaseConnector):
         self.session_id = uuid.uuid4().hex
         # Fed by the shared per-pod up-listener (up_listener.py); drained by
         # _reader_task. Replaces a per-session Redis pub/sub subscription.
-        self._inbox: asyncio.Queue[dict[str, Any]] | None = None
+        self._inbox: asyncio.Queue[BridgeFrame] | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self._writer_task: asyncio.Task[None] | None = None
         self._opened: asyncio.Future[None] | None = None
@@ -83,6 +82,7 @@ class DeviceConnector(BaseConnector):
         return f"device:{self.device_id}:{self.server_key}"
 
     async def connect(self) -> None:
+        """Open the session on the device and start the MCP client over the tunnel."""
         if self.client_session is not None:
             return
         if not redis_cache.redis:
@@ -159,7 +159,7 @@ class DeviceConnector(BaseConnector):
         inbox = self._inbox
         try:
             while True:
-                frame = await inbox.get()
+                frame: BridgeFrame = await inbox.get()
                 frame_type = frame.get("t")
                 if frame_type == FRAME_MCP_OPENED:
                     self._resolve_open(None)
@@ -245,6 +245,7 @@ class DeviceConnector(BaseConnector):
         return True
 
     async def disconnect(self) -> None:
+        """Close the device session and stop pumping frames; safe to call twice."""
         if not self._connected and self._reader_task is None:
             return
         with contextlib.suppress(Exception):

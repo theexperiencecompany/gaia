@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.device_bridge import DEVICE_DISCONNECTED_MESSAGE, FRAME_TUNNEL_CLOSED
+from app.constants import device_bridge
 from app.services.mcp.device_exec import DeviceExecError, run_device_command
 
 _MODULE = "app.services.mcp.device_exec"
@@ -17,7 +17,7 @@ _MODULE = "app.services.mcp.device_exec"
 async def test_a_command_fails_at_once_when_its_device_socket_closes() -> None:
     """Regression for #1144: a dropped socket left run_on_device waiting out its 105s timeout."""
     inbox: asyncio.Queue[dict[str, object]] = asyncio.Queue()
-    inbox.put_nowait({"t": FRAME_TUNNEL_CLOSED})
+    inbox.put_nowait({"t": device_bridge.FRAME_TUNNEL_CLOSED})
     with (
         patch(f"{_MODULE}.redis_cache", MagicMock()),
         patch(f"{_MODULE}.is_online", AsyncMock(return_value=True)),
@@ -27,4 +27,4 @@ async def test_a_command_fails_at_once_when_its_device_socket_closes() -> None:
     ):
         await asyncio.wait_for(run_device_command("dev-1", "sleep 30"), timeout=2.0)
 
-    assert str(failed.value) == DEVICE_DISCONNECTED_MESSAGE
+    assert str(failed.value) == device_bridge.DEVICE_DISCONNECTED_MESSAGE

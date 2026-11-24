@@ -14,7 +14,7 @@ import asyncio
 import contextlib
 import json
 import time
-from typing import Any
+from typing import TypedDict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import WebSocketException
@@ -38,9 +38,11 @@ from app.constants.device_bridge import (
     FRAME_TUNNEL_CLOSED,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
+from app.db.redis import PubSubMessage, redis_cache
 from app.decorators.entitlements import is_paid
+from app.schemas.device.responses import DeviceTokenClaims
 from app.services.device.bridge import (
+    BridgeFrame,
     down_channel,
     mark_offline,
     mark_online,
@@ -56,6 +58,13 @@ from app.services.device.device_service import (
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/ws", tags=["Device Bridge"])
+
+
+class SocketLiveness(TypedDict):
+    """When the socket last received a frame, by the monotonic clock; the heartbeat reads it."""
+
+    last_recv: float
+
 
 # session id -> the consumer pod waiting on it, for every session open on one socket
 OpenSessions = dict[str, str]
@@ -88,7 +97,7 @@ async def device_ws(websocket: WebSocket) -> None:
     too — so this handler just calls ``log.set()`` like an HTTP handler.
     """
     token = _extract_token(websocket)
-    info = verify_device_token(token) if token else None
+    info: DeviceTokenClaims | None = verify_device_token(token) if token else None
     if not info:
         log.set(disconnect_reason="auth_failure")
         raise _rejected("device token missing or invalid")
@@ -122,7 +131,7 @@ async def device_ws(websocket: WebSocket) -> None:
     # Redis drops pub/sub frames with no subscriber, surfacing as a warmup
     # open-timeout that leaves tools undiscoverable until reconnect (bounded above).
     subscribed = asyncio.Event()
-    state = {"last_recv": time.monotonic()}
+    state: SocketLiveness = {"last_recv": time.monotonic()}
     sessions: OpenSessions = {}
     tasks = [
         asyncio.create_task(_down_relay(websocket, device_id, sessions, subscribed)),
@@ -184,7 +193,7 @@ async def _enqueue_warmup(device_id: str) -> None:
         )
 
 
-def _track_session(sessions: OpenSessions, frame: dict[str, Any]) -> None:
+def _track_session(sessions: OpenSessions, frame: BridgeFrame) -> None:
     """Record a session this socket opens and forget one it ends."""
     frame_type = frame.get("t")
     session_id = frame.get("sid")
@@ -210,7 +219,7 @@ async def _receive_loop(
     websocket: WebSocket,
     device_id: str,
     user_id: str,
-    state: dict[str, float],
+    state: SocketLiveness,
     sessions: OpenSessions,
 ) -> None:
     """Read frames off the socket and route upstream ones onto Redis."""
@@ -218,7 +227,7 @@ async def _receive_loop(
         raw = await websocket.receive_text()
         state["last_recv"] = time.monotonic()
         try:
-            frame: dict[str, Any] = json.loads(raw)
+            frame: BridgeFrame = json.loads(raw)
         except json.JSONDecodeError:
             log.warning(f"{LogTag.API} Device sent malformed frame", device_id=device_id)
             continue
@@ -285,7 +294,9 @@ async def _down_relay(
         subscribed.set()
     try:
         while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            message: PubSubMessage | None = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=1.0
+            )
             if message is None or message.get("type") != "message":
                 continue
             data = message["data"]
@@ -299,7 +310,7 @@ async def _down_relay(
             await pubsub.aclose()
 
 
-async def _heartbeat(websocket: WebSocket, device_id: str, state: dict[str, float]) -> None:
+async def _heartbeat(websocket: WebSocket, device_id: str, state: SocketLiveness) -> None:
     """Ping periodically; refresh presence; drop the socket if it goes silent."""
     while True:
         await asyncio.sleep(DEVICE_HEARTBEAT_INTERVAL_SECONDS)

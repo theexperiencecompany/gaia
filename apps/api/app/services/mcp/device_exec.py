@@ -25,7 +25,7 @@ from app.constants.device_bridge import (
     FRAME_TUNNEL_CLOSED,
 )
 from app.db.redis import redis_cache
-from app.services.device.bridge import POD_ID, is_online, send_down
+from app.services.device.bridge import POD_ID, BridgeFrame, is_online, send_down
 from app.services.device.up_listener import register_up_session, unregister_up_session
 
 # The device kills the process at DEVICE_EXEC_TIMEOUT_SECONDS and sends EXEC_EXIT;
@@ -38,6 +38,8 @@ class DeviceExecError(RuntimeError):
 
 
 class DeviceExecResult(BaseModel):
+    """What a command run on the device returned, its output capped."""
+
     exit_code: int
     stdout: str
     stderr: str
@@ -65,7 +67,7 @@ async def run_device_command(
     async def _collect() -> int:
         nonlocal collected, truncated
         while True:
-            frame = await inbox.get()
+            frame: BridgeFrame = await inbox.get()
             frame_type = frame.get("t")
             if frame_type in (FRAME_EXEC_STDOUT, FRAME_EXEC_STDERR):
                 data = frame.get("data")
