@@ -245,7 +245,7 @@ class TestOneCall:
 
         composed = await compose_brief(USER, only_event, DAILY)
 
-        assert composed.rendered.blocks == []
+        assert (composed.rendered.blocks, composed.salvaged) == ([], False)
         model.assert_not_awaited()
 
 
