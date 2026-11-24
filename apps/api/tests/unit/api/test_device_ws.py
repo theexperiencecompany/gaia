@@ -277,7 +277,10 @@ async def test_a_device_token_minted_by_python_jose_gets_past_the_socket_auth(mo
 async def test_a_closing_socket_fails_each_session_it_still_carries():
     """Regression for #1144: a dropped socket told no one, so each waiting call ran out its timeout."""
 
+    relayed: list[dict[str, str]] = []
+
     async def relay(websocket, device_id, sessions, ready=None):
+        relayed.append(sessions)
         ws_module._track_session(
             sessions, {"t": FRAME_MCP_OPEN, "sid": "s-unanswered", "pod": "pod-c"}
         )
@@ -285,6 +288,7 @@ async def test_a_closing_socket_fails_each_session_it_still_carries():
 
     async def receive(websocket, device_id, user_id, state, sessions):
         await asyncio.sleep(0)
+        assert relayed[0] is sessions
         ws_module._track_session(sessions, {"t": FRAME_MCP_OPENED, "sid": "s-mcp", "pod": "pod-a"})
         ws_module._track_session(sessions, {"t": "exec.started", "sid": "s-exec", "pod": "pod-b"})
         ws_module._track_session(sessions, {"t": FRAME_EXEC_EXIT, "sid": "s-exec", "pod": "pod-b"})
