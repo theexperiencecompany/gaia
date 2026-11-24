@@ -3278,7 +3278,7 @@ groups:
         for: 0m
         annotations:
           headline: >-
-            {{ if $values.B }}{{ $labels.service_name }} keeps logging the same error{{ else }}A service keeps logging the same error{{ end }}
+            {{ if $values.B }}{{ $labels.service_name }} keeps logging: {{ printf "%.80s" $labels.message }}{{ else }}A service keeps logging the same error{{ end }}
           summary: >-
             {{ if $values.B }}{{ $labels.service_name }} logged "{{ $labels.message }}"
             {{ printf "%.0f" $values.B.Value }} times in the last 24 hours (threshold:
