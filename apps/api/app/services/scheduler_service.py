@@ -78,6 +78,7 @@ class BaseSchedulerService(ABC):
         """Close ARQ pool connection."""
         if self.arq_pool:
             await self.arq_pool.aclose()
+            self.arq_pool = None
         log.info("closed", self_class_name=self.__class__.__name__)
 
     async def schedule_task(self, task_id: str, schedule_config: ScheduleConfig) -> bool:

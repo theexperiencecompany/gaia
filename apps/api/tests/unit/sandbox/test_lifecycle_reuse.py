@@ -10,7 +10,7 @@ import asyncio
 from contextlib import AbstractContextManager
 import time
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 import uuid
 
@@ -25,10 +25,15 @@ from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
 
-def _healthy_entry() -> PooledSandbox:
+def _healthy_entry(sandbox_id: str = "sbx-1") -> PooledSandbox:
     sbx = AsyncMock()
+    sbx.sandbox_id = sandbox_id
     sbx.set_timeout = AsyncMock()
     return PooledSandbox(sandbox=sbx, last_canary_ts="x")
+
+
+def set_timeout_mock(entry: PooledSandbox) -> AsyncMock:
+    return cast(AsyncMock, entry.sandbox.set_timeout)
 
 
 def _seed(entry: PooledSandbox) -> str:
@@ -60,7 +65,7 @@ async def test_set_timeout_refreshed_when_window_elapsed() -> None:
     with p1, p2, p3:
         _, result = await _reuse(entry)
     assert result is entry
-    entry.sandbox.set_timeout.assert_awaited_once()
+    set_timeout_mock(entry).assert_awaited_once()
     assert entry.timeout_refreshed_at > time.monotonic() - 5, "refresh clock must advance"
 
 
@@ -71,7 +76,7 @@ async def test_set_timeout_skipped_when_recently_refreshed() -> None:
     with p1, p2, p3:
         _, result = await _reuse(entry)
     assert result is entry
-    entry.sandbox.set_timeout.assert_not_awaited()  # no wasted round-trip in a rapid turn
+    set_timeout_mock(entry).assert_not_awaited()  # no wasted round-trip in a rapid turn
 
 
 async def test_unhealthy_cached_handle_is_evicted() -> None:
@@ -86,7 +91,7 @@ async def test_unhealthy_cached_handle_is_evicted() -> None:
         result = await lifecycle._reuse_cached_entry(user_id, {}, "gaia-coder")
         assert result is None, "an unhealthy cached handle must not be reused"
         assert get_sandbox_pool().get(user_id) is None, "it must be evicted"
-        entry.sandbox.set_timeout.assert_not_awaited()
+        set_timeout_mock(entry).assert_not_awaited()
         # Evicting in-memory is not enough — Mongo must also record the
         # sandbox as dead, or a stale doc lets _acquire_or_create resume a
         # sandbox_id that no longer exists (the 404-on-resume bug).
@@ -155,7 +160,7 @@ async def test_a_live_sandbox_that_misses_one_health_probe_is_kept() -> None:
     ):
         _, result = await _reuse(entry)
     assert result is entry
-    entry.sandbox.kill.assert_not_awaited()
+    cast(AsyncMock, entry.sandbox.kill).assert_not_awaited()
     repo.mark_dead.assert_not_awaited()
 
 
@@ -178,8 +183,7 @@ async def test_a_running_sandbox_whose_health_endpoint_stays_silent_is_evicted()
 async def test_evicting_a_dead_cached_sandbox_marks_only_that_sandbox_dead() -> None:
     # Another process may already have replaced it; marking the user's record
     # dead wholesale abandoned that replacement and created a third sandbox.
-    entry = _healthy_entry()
-    entry.sandbox.sandbox_id = "sbx-stale"
+    entry = _healthy_entry(sandbox_id="sbx-stale")
     repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
@@ -205,10 +209,10 @@ async def test_an_agent_lab_sandbox_refreshes_to_its_own_lifetime_on_its_own_win
     ):
         entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LIFETIME_SECONDS + 5)
         await _reuse(entry)
-        entry.sandbox.set_timeout.assert_not_awaited()
+        set_timeout_mock(entry).assert_not_awaited()
         entry.timeout_refreshed_at = time.monotonic() - (lab_lifetime // 2 + 5)
         await _reuse(entry)
-    entry.sandbox.set_timeout.assert_awaited_once_with(lab_lifetime)
+    set_timeout_mock(entry).assert_awaited_once_with(lab_lifetime)
 
 
 @pytest.mark.regression
@@ -229,7 +233,7 @@ async def test_a_paused_cached_sandbox_is_dropped_for_resume_never_killed() -> N
         assert get_sandbox_pool().get(user_id) is None
     assert result is None
     assert recorded["cache_evicted"] == "paused"
-    entry.sandbox.kill.assert_not_awaited()
+    cast(AsyncMock, entry.sandbox.kill).assert_not_awaited()
     repo.mark_dead.assert_not_awaited()
 
 
@@ -322,12 +326,12 @@ async def test_the_kill_timer_is_refreshed_only_once_half_its_lifetime_has_passe
         _frozen_clock(10_000.0 + elapsed),
     ):
         assert await pool_module.refresh_sandbox_timeout(entry) is refreshed
-    assert entry.sandbox.set_timeout.await_count == int(refreshed)
+    assert set_timeout_mock(entry).await_count == int(refreshed)
 
 
 async def test_a_failed_kill_timer_refresh_is_logged_and_retried_on_the_next_call() -> None:
     entry = _healthy_entry()
-    entry.sandbox.set_timeout = AsyncMock(side_effect=RuntimeError("e2b 502"))
+    set_timeout_mock(entry).side_effect = RuntimeError("e2b 502")
     entry.timeout_refreshed_at = 10_000.0
     async with captured_wide_event() as event:
         with _frozen_clock(10_000.0 + SANDBOX_LIFETIME_SECONDS):

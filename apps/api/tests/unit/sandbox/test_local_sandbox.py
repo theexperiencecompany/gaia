@@ -25,7 +25,13 @@ from tests.helpers import captured_wide_event
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.sandbox import SANDBOX_USER_HOME, SELFHOST_WORKSPACE_VOLUME
+from app.constants.sandbox import (
+    LOCAL_SANDBOX_KILLED_EXIT_CODE,
+    LOCAL_SANDBOX_LAYOUT,
+    LOCAL_SANDBOX_LAYOUT_LABEL,
+    SANDBOX_USER_HOME,
+    SELFHOST_WORKSPACE_VOLUME,
+)
 from app.services.sandbox import local_sandbox
 from app.services.sandbox.local_sandbox import (
     LocalDockerSandbox,
@@ -358,7 +364,7 @@ async def test_write_creates_parents_then_copies_an_in_memory_tar(
         assert members[0].name == "canary.txt"
         # --archive keeps these, so the file belongs to the sandbox user, not root.
         assert (members[0].uid, members[0].gid) == (os.getuid(), os.getgid())
-        assert tar.extractfile(members[0]).read() == b"ts-1"  # type: ignore[union-attr]  # tarfile stubs: extractfile is Optional only for sparse/odd members
+        assert tar.extractfile(members[0]).read() == b"ts-1"
     assert info.name == "canary.txt"
     assert info.type is FileType.FILE
     assert info.path == "/workspace/.gaia/canary.txt"
@@ -375,7 +381,7 @@ async def test_write_round_trips_arbitrary_bytes_without_shell_mangling(
     with tarfile.open(fileobj=io.BytesIO(tar_payload)) as tar:
         member = tar.getmembers()[0]
         assert member.name == "blob.bin"
-        assert tar.extractfile(member).read() == payload  # type: ignore[union-attr]  # tarfile stubs: extractfile is Optional only for sparse/odd members
+        assert tar.extractfile(member).read() == payload
 
 
 async def test_write_rejects_non_str_bytes_data_instead_of_corrupting_it(
@@ -422,8 +428,10 @@ async def test_read_failure_that_is_not_missing_is_loud(recorder: SpawnRecorder)
 
 
 async def test_read_stream_format_is_unsupported(recorder: SpawnRecorder) -> None:
+    # Typed callers cannot pass it; the guard is for an untyped e2b-style caller.
+    stream_format: Any = "stream"
     with pytest.raises(ValueError, match="format"):
-        await _sandbox().files.read("/workspace/f", format="stream")
+        await _sandbox().files.read("/workspace/f", format=stream_format)
     assert recorder.argvs == []
 
 
@@ -449,7 +457,7 @@ async def test_rename_moves_then_returns_metadata_for_the_new_path(
 
 async def test_remove_is_rm_rf(recorder: SpawnRecorder) -> None:
     recorder._responses = [FakeProcess()]
-    assert await _sandbox().files.remove("/workspace/tmp") is None
+    await _sandbox().files.remove("/workspace/tmp")
     argv = recorder.argv()
     assert argv[argv.index("rm") :] == ["rm", "-rf", "--", "/workspace/tmp"]
 
@@ -621,7 +629,7 @@ async def test_the_sandbox_runs_as_the_api_user_so_both_can_write_the_workspace(
 
     assert run[run.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
     assert run[run.index("--label") + 1] == "gaia.sandbox.user=userB"
-    assert f"{local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.RUN_SPEC}" in run
+    assert f"{LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.RUN_SPEC}" in run
     assert run[-3:] == [local_sandbox.LOCAL_SANDBOX_IMAGE, "sleep", "infinity"]
 
 
@@ -791,16 +799,16 @@ async def test_set_timeout_validates_but_does_nothing(recorder: SpawnRecorder) -
         await _sandbox().set_timeout(0)
 
 
-async def test_beta_pause_stops_the_container(recorder: SpawnRecorder) -> None:
+async def test_pause_stops_the_container(recorder: SpawnRecorder) -> None:
     recorder._responses = [FakeProcess()]
-    await _sandbox().beta_pause()
+    await _sandbox().pause()
     assert recorder.argv()[:2] == ["docker", "stop"]
 
 
-async def test_beta_pause_surfaces_failures(recorder: SpawnRecorder) -> None:
+async def test_pause_surfaces_failures(recorder: SpawnRecorder) -> None:
     recorder._responses = [FakeProcess(stderr=b"nope", returncode=1)]
     with pytest.raises(LocalSandboxError, match="stop failed"):
-        await _sandbox().beta_pause()
+        await _sandbox().pause()
 
 
 async def test_kill_reports_true_when_removed(recorder: SpawnRecorder) -> None:
@@ -951,7 +959,7 @@ async def test_a_failed_inspect_names_the_container_and_the_daemon_error(
     assert (
         str(raised.value) == "docker inspect failed for gaia-sandbox-u1: cannot connect to daemon"
     )
-    layout = local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL
+    layout = LOCAL_SANDBOX_LAYOUT_LABEL
     assert recorder.argv() == [
         "docker",
         "container",
@@ -1003,7 +1011,7 @@ async def test_docker_run_names_labels_and_restarts_the_container(
     assert run[:5] == ["docker", "run", "-d", "--name", "gaia-sandbox-userB"]
     assert [value for flag, value in itertools.pairwise(run) if flag == "--label"] == [
         "gaia.sandbox.user=userB",
-        f"{local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.RUN_SPEC}",
+        f"{LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.RUN_SPEC}",
     ]
     assert _flag(run, "--env") == f"HOME={SANDBOX_USER_HOME}"
     assert _flag(run, "--restart") == "unless-stopped"
@@ -1067,7 +1075,7 @@ async def test_a_container_from_an_older_image_is_replaced_not_restarted(
     recorder: SpawnRecorder, workspace_root: Path
 ) -> None:
     recorder._responses = [
-        _inspect_response(f"true {local_sandbox.LOCAL_SANDBOX_LAYOUT}@gaia-local-sandbox:0ld"),
+        _inspect_response(f"true {LOCAL_SANDBOX_LAYOUT}@gaia-local-sandbox:0ld"),
         FakeProcess(returncode=0),
         _image_present(),
         FakeProcess(returncode=0),
@@ -1181,7 +1189,7 @@ async def test_a_fractional_timeout_is_accepted(recorder: SpawnRecorder) -> None
 
 async def test_pause_and_kill_target_the_users_container(recorder: SpawnRecorder) -> None:
     recorder._responses = [FakeProcess(), FakeProcess(stdout=b"gaia-sandbox-u1\n")]
-    await _sandbox().beta_pause()
+    await _sandbox().pause()
     await _sandbox().kill()
     assert recorder.argvs == [
         ["docker", "stop", "gaia-sandbox-u1"],
@@ -1229,7 +1237,7 @@ async def test_a_killed_command_at_exactly_its_deadline_is_a_timeout(
     clock = itertools.chain([100.0], itertools.repeat(160.0))
     monkeypatch.setattr(asyncio.get_running_loop(), "time", lambda: next(clock))
     long_cmd = "x" * 300
-    recorder._responses = [FakeProcess(returncode=local_sandbox.LOCAL_SANDBOX_KILLED_EXIT_CODE)]
+    recorder._responses = [FakeProcess(returncode=LOCAL_SANDBOX_KILLED_EXIT_CODE)]
     with pytest.raises(TimeoutException) as raised:
         await _sandbox().commands.run(long_cmd, timeout=60)
     assert str(raised.value) == (

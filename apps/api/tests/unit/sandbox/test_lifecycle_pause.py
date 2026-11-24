@@ -1,7 +1,7 @@
-"""Layer 3 — idle pause uses beta_pause (the original-bug regression).
+"""Layer 3 — idle pause really calls the SDK pause (the original-bug regression).
 
 The outage was getattr(sbx, "pause") → None → pause silently skipped. These
-assert the lifecycle actually calls beta_pause and records the paused state, and
+assert the lifecycle actually calls pause and records the paused state, and
 that the scheduler doesn't leak overlapping pause tasks.
 """
 
@@ -29,21 +29,21 @@ def _paused_state_written(repo: AsyncMock) -> bool:
     return repo.mark_paused.await_count > 0
 
 
-async def test_pause_sandbox_calls_beta_pause_and_records_state() -> None:
+async def test_pause_sandbox_calls_pause_and_records_state() -> None:
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock()
+    sbx.pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x")
     coll = AsyncMock()
     with patch.object(lifecycle, "e2b_sandbox_repository", coll):
         ok = await lifecycle._pause_sandbox("u1", entry)
     assert ok is True
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
     assert _paused_state_written(coll), "must persist state=paused"
 
 
 async def test_pause_sandbox_returns_false_and_swallows_errors() -> None:
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock(side_effect=RuntimeError("e2b 500"))
+    sbx.pause = AsyncMock(side_effect=RuntimeError("e2b 500"))
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x")
     with patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()):
         ok = await lifecycle._pause_sandbox("u1", entry)
@@ -101,13 +101,13 @@ async def _fire_idle_timer(entry: PooledSandbox, user_id: str) -> None:
 
 async def test_scheduled_idle_pause_actually_pauses() -> None:
     # End-to-end of the scheduler→pause path with a zero idle window. Would fail
-    # if beta_pause were never called (the original bug).
+    # if pause were never called (the original bug).
     sbx = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
     with _idle_timer_world(entry, _record()) as (user_id, repo):
         await _fire_idle_timer(entry, user_id)
         assert get_sandbox_pool().get(user_id) is None, "a frozen sandbox stayed pooled"
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
     assert _paused_state_written(repo)
 
 
@@ -131,7 +131,7 @@ async def test_the_idle_timer_pauses_under_the_users_lock() -> None:
     async def pause() -> None:
         paused_holding.append(bool(held))
 
-    sbx.beta_pause = AsyncMock(side_effect=pause)
+    sbx.pause = AsyncMock(side_effect=pause)
     with (
         _idle_timer_world(entry, _record()) as (user_id, _repo),
         patch.object(get_sandbox_pool(), "distributed_lock", lock),
@@ -146,7 +146,7 @@ async def test_scheduled_pause_aborts_if_work_arrived() -> None:
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=1)
     with _idle_timer_world(entry, _record()) as (user_id, _repo):
         await _fire_idle_timer(entry, user_id)
-    sbx.beta_pause.assert_not_awaited()
+    sbx.pause.assert_not_awaited()
 
 
 async def test_scheduled_pause_aborts_if_another_replica_is_using_the_sandbox() -> None:
@@ -159,7 +159,7 @@ async def test_scheduled_pause_aborts_if_another_replica_is_using_the_sandbox() 
         patch.object(asyncio, "sleep", AsyncMock()),
     ):
         await _fire_idle_timer(entry, user_id)
-    sbx.beta_pause.assert_not_awaited(), "paused a sandbox another replica was using"
+    sbx.pause.assert_not_awaited(), "paused a sandbox another replica was using"
     repo.get_for_user.assert_awaited_with(user_id)
 
 
@@ -173,7 +173,7 @@ async def test_scheduled_pause_proceeds_when_no_replica_has_touched_it() -> None
         patch.object(asyncio, "sleep", AsyncMock()),
     ):
         await _fire_idle_timer(entry, user_id)
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
 
 
 async def test_a_live_lab_run_keeps_the_users_agent_lab_sandbox_from_idle_pausing() -> None:
@@ -185,7 +185,7 @@ async def test_a_live_lab_run_keeps_the_users_agent_lab_sandbox_from_idle_pausin
         patch.object(lifecycle, "lab_run_status", status),
     ):
         await _fire_idle_timer(entry, user_id)
-    sbx.beta_pause.assert_not_awaited()
+    sbx.pause.assert_not_awaited()
     status.assert_awaited_once_with(user_id)
 
 
@@ -200,14 +200,14 @@ async def test_a_default_template_sandbox_idle_pauses_without_asking_about_lab_r
         patch.object(lifecycle, "lab_run_status", status),
     ):
         await _fire_idle_timer(entry, user_id)
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
     status.assert_not_awaited()
 
 
 async def test_schedule_pause_cancels_a_prior_pending_task() -> None:
     # Two schedules without an intervening reuse must not leave two live tasks.
     sbx = AsyncMock()
-    sbx.beta_pause = AsyncMock()
+    sbx.pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)
     with (
         patch.object(settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 1000),  # long: won't fire

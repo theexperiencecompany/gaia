@@ -33,6 +33,7 @@ from app.agents.workspace.paths import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    ARTIFACT_ENUMERATE_TIMEOUT_SECONDS,
     ARTIFACT_MTIME_SKEW_SECONDS,
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
@@ -58,6 +59,7 @@ from app.services.agent_lab.sandbox_setup import (
 )
 from app.services.feature_flags import is_code_mode_enabled
 from app.services.sandbox import (
+    CodingSandbox,
     SandboxAcquisitionError,
     acquire_sandbox,
 )
@@ -243,7 +245,7 @@ class _BashInvocation:
     scoped_tools: Mapping[str, BaseTool] | None
 
 
-async def _build_execute_env(run: _BashInvocation, sbx: object) -> dict[str, str] | None:
+async def _build_execute_env(run: _BashInvocation, sbx: CodingSandbox) -> dict[str, str] | None:
     """Seed code mode and mint the per-run execute env, or None when code mode is off."""
     # Two gates: the env secret arms the mechanism globally, the
     # per-user flag rolls it out (default off).
@@ -304,7 +306,9 @@ async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument |
     return todo
 
 
-async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tuple[str, str] | str:
+async def _seed_lab_run(
+    *, user_id: str, sandbox_run_id: str, sbx: CodingSandbox
+) -> tuple[str, str] | str:
     """Mint the hooks token, stage the seed, run it; or the loud error. Returns (url, token)."""
     try:
         url = lab_events_url(sbx)
@@ -315,13 +319,13 @@ async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tu
     try:
         # Absolute paths inside, so no cwd; minimal kwargs keep the seed
         # runnable on the same surface the fake-sandbox harness implements.
-        await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+        await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)
     except Exception as e:
         return f"Error: lab seed failed ({e}), ran nothing"
     return url, token
 
 
-async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
+async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: CodingSandbox) -> _LabRun | str:
     """Mint the run token, stage the seed, and subscribe the todo; or return the loud error.
 
     On any failure the caller runs nothing. The error is a plain string (the
@@ -363,7 +367,7 @@ def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
 
 
 async def _lab_run_and_env(
-    *, user_id: str, run_todo_id: str | None, sbx: object, base_env: dict[str, str] | None
+    *, user_id: str, run_todo_id: str | None, sbx: CodingSandbox, base_env: dict[str, str] | None
 ) -> tuple[_LabRun | None, dict[str, str] | None] | str:
     """Set up the lab run for run_todo_id and merge its env over base_env; error as string."""
     if run_todo_id is None:
@@ -376,7 +380,7 @@ async def _lab_run_and_env(
 
 async def _run_sandbox_command(
     *,
-    sbx: object,
+    sbx: CodingSandbox,
     run: _BashInvocation,
     command_env: dict[str, str] | None,
     background: bool,
@@ -515,7 +519,7 @@ async def _run_bash(
 
 
 async def _publish_artifacts(
-    sbx: object, user_id: str, session_id: str, *, changed_since: float
+    sbx: CodingSandbox, user_id: str, session_id: str, *, changed_since: float
 ) -> dict[str, str]:
     """Card each file in artifacts/ on the run; return the links of the ones this command wrote.
 
@@ -531,7 +535,7 @@ async def _publish_artifacts(
     )
     links: dict[str, str] = {}
     try:
-        res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+        res = await sbx.commands.run(enumerate_cmd, timeout=ARTIFACT_ENUMERATE_TIMEOUT_SECONDS)
     except Exception:
         return links
 
@@ -563,7 +567,7 @@ async def _publish_artifacts(
     return links
 
 
-async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -> None:
+async def _persist_run_log(sbx: CodingSandbox, run_id: str, stdout: str, stderr: str) -> None:
     """Write the full foreground output to /workspace/.gaia/runs/{run_id}.log.
 
     The bash docstring promises this; it lets the agent re-read output that
@@ -574,11 +578,11 @@ async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -
     # Native write auto-creates the runs/ parent and takes the body as data —
     # no base64 round-trip, no shell.
     with contextlib.suppress(Exception):
-        await sbx.files.write(log_path, body)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+        await sbx.files.write(log_path, body)
 
 
 async def _run_foreground(
-    sbx: object, run: _BashInvocation, envs: dict[str, str] | None = None
+    sbx: CodingSandbox, run: _BashInvocation, envs: dict[str, str] | None = None
 ) -> str:
     """Run a command synchronously and stream stdout/stderr chunks."""
 
@@ -611,7 +615,7 @@ async def _run_foreground(
     try:
         # `run.timeout` is the e2b server-side deadline; a local asyncio.timeout
         # would only cancel our coroutine, not the remote command.
-        result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b SDK ships no stubs  # NOSONAR python:S7483
+        result = await sbx.commands.run(  # NOSONAR python:S7483
             run.command,
             cwd=run.cwd or WORKSPACE_ROOT,
             envs=envs or {},
@@ -661,7 +665,7 @@ async def _run_foreground(
 
 
 async def _run_background(
-    sbx: object, run: _BashInvocation, envs: dict[str, str] | None = None
+    sbx: CodingSandbox, run: _BashInvocation, envs: dict[str, str] | None = None
 ) -> str:
     """Detach a long-running command and return its pid + log path.
 
@@ -677,7 +681,7 @@ async def _run_background(
         f"{{ nohup bash -c {sh_quote(run.command)} > {sh_quote(log_path)} 2>&1 & }} "
         "&& echo $!"
     )
-    result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+    result = await sbx.commands.run(
         wrapped, cwd=run.cwd or WORKSPACE_ROOT, envs=envs or {}, timeout=10
     )
     pid = (getattr(result, "stdout", "") or "").strip()

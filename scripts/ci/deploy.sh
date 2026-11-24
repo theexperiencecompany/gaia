@@ -24,6 +24,14 @@
 #                               single service — the rehearsal to run after
 #                               changing the infra repo, the deploy key or
 #                               the tailnet path.
+#   smoke                       Read production as an anonymous visitor (the
+#                               public pages and API reads in
+#                               lib/prod-smoke-targets.toml, then a polite burst
+#                               against the anonymous rate limit) and write
+#                               verdict=pass|warn|fail|error and summary=. Fails
+#                               on fail or error. It never changes production:
+#                               a failure alerts, and rolling back is a person's
+#                               call (action=rollback).
 #   retag from-env|rolled-back  Re-point the :latest tags in GHCR at what
 #                               production actually runs, so ":latest ==
 #                               deployed" holds as an invariant.
@@ -55,6 +63,8 @@
 #           the images; empty falls through to the compose file's
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
+#   smoke   PROD_ORIGIN, PROD_WEB_ORIGIN; GITHUB_OUTPUT, GITHUB_STEP_SUMMARY.
+#           No secrets: every read is anonymous.
 #   migrate GITHUB_OUTPUT (required); GAIA_IMAGE_TAG as `stack`;
 #           MIGRATE_RELEASE_TIMEOUT_SECS, MIGRATE_CHECK_TIMEOUT_SECS,
 #           MIGRATE_CATCH_UP_TIMEOUT_SECS, MIGRATE_WRITERS_TIMEOUT_SECS,
@@ -537,6 +547,15 @@ cmd_retag() {
   esac
 }
 
+cmd_smoke() {
+  : "${PROD_ORIGIN:?PROD_ORIGIN is required}"
+  : "${PROD_WEB_ORIGIN:?PROD_WEB_ORIGIN is required}"
+  # Extra arguments pass through (prod_smoke.py --help); the workflow passes none.
+  python3 -I "$(dirname "$0")/lib/prod_smoke.py" --api "$PROD_ORIGIN" --web "$PROD_WEB_ORIGIN" "$@" \
+    || ci_die "deploy smoke: production fails an anonymous visitor, or the smoke could not decide (verdict above)"
+  ci_ok "deploy smoke: OK ($PROD_ORIGIN and $PROD_WEB_ORIGIN answer an anonymous visitor as expected; warnings above, if any)"
+}
+
 # A message is a state, its impact, the cause, the action and what clears it —
 # eight content lines, no prose. Past that nobody reads it and the template has
 # drifted, so notify refuses to send (see the guard in cmd_notify).
@@ -945,6 +964,7 @@ cmd_unwedge() {
 }
 
 usage() {
+  # The header comment, up to the line before `set -euo pipefail`.
   sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' >&2
 }
 
@@ -956,6 +976,7 @@ main() {
     stack)  _cmd_swarm_stack deploy "$@" ;;
     migrate) cmd_migrate "$@" ;;
     verify) _cmd_swarm_stack verify "$@" ;;
+    smoke)  cmd_smoke "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;
     failing-checks) cmd_failing_checks "$@" ;;

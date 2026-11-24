@@ -23,6 +23,8 @@ WORKSPACE_TMP_SUFFIX = ".gaia-tmp"
 # Allowed host/sandbox clock drift when deciding which artifacts a bash command
 # wrote (artifact mtime comes from the sandbox clock, the run start from ours).
 ARTIFACT_MTIME_SKEW_SECONDS = 5
+# Bound on the one find that lists a session's artifacts after each bash command.
+ARTIFACT_ENUMERATE_TIMEOUT_SECONDS = 15
 
 # Health-probe windows (seconds). `is_running()` hits E2B's GET /health; we
 # bound both the request itself and the surrounding wait so a hung control

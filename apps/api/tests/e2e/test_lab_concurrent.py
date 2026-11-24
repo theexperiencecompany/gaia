@@ -35,8 +35,8 @@ async def test_concurrent_runs_each_wake_only_their_own_todo(client: AsyncClient
     finished = {"hook_event_name": "Stop"}
 
     with lab_world(todos) as enqueue:
-        run_a = await _setup_lab_run(user_id=USER_ID, run_todo_id="t-a", sbx=fake)
-        run_b = await _setup_lab_run(user_id=USER_ID, run_todo_id="t-b", sbx=fake)
+        run_a = await _setup_lab_run(user_id=USER_ID, run_todo_id="t-a", sbx=fake.as_sandbox())
+        run_b = await _setup_lab_run(user_id=USER_ID, run_todo_id="t-b", sbx=fake.as_sandbox())
         assert not isinstance(run_a, str), run_a
         assert not isinstance(run_b, str), run_b
         token_a = await token_from_seeded_env(fake, run_a.run_id)
