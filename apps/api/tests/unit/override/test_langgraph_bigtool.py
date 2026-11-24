@@ -6,10 +6,11 @@ from inspect import iscoroutinefunction
 import math
 import re
 from types import SimpleNamespace
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, ClassVar, Protocol, cast, runtime_checkable
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import fakeredis
+import httpx
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -28,8 +29,10 @@ from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
+from openai import RateLimitError
 from pydantic import SecretStr, ValidationError
 import pytest
+import tenacity
 
 from app.agents.llm import lane as lane_module
 from app.agents.llm.client import _sim_llm
@@ -47,6 +50,7 @@ from app.constants.llm import (
     EXECUTOR_RECURSION_LIMIT,
     LANE_FIELD_ID,
     LLM_LABEL_METADATA_KEY,
+    LLM_RETRY_MAX_ATTEMPTS,
     OPENAI_PROMPT_CACHE_KEY_MAX_CHARS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
@@ -1560,6 +1564,92 @@ class TestFallbackPreparation:
         rebound = _fallback_config(cast(RunnableConfig, {}), _gemini_lane())
 
         assert rebound["configurable"]["provider"] == LLMProviderName.GEMINI
+
+
+class _RateLimitedChatModel(_NamedChatModel):
+    """A chat model the provider answers with a 429 every time, counting the attempts."""
+
+    attempts: ClassVar[list[int]] = []
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: object = None,
+        **kwargs: object,
+    ) -> ChatResult:
+        self.attempts.append(1)
+        request = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+        raise RateLimitError(
+            "rate limiting", response=httpx.Response(429, request=request), body=None
+        )
+
+
+class TestAWorkersAiRateLimitInTheAgentGraph:
+    """The agent node's model call, sync and async, on a Workers AI lane the provider is rate limiting."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_attempts_without_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _RateLimitedChatModel.attempts.clear()
+        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+
+    @staticmethod
+    def _node() -> _ModelNode:
+        llm = _RateLimitedChatModel(answer="workers-ai").configurable_alternatives(
+            ConfigurableField(id="provider"),
+            default_key=LLMProviderName.CLOUDFLARE,
+            prefix_keys=False,
+            gemini=_NamedChatModel(answer="gemini"),
+        )
+        builder = create_agent(llm, _make_tool_registry(dummy_tool_a), tools_config=_BINDS_TOOL_A)
+        return _agent_runnable(builder)
+
+    @staticmethod
+    def _on_workers_ai() -> RunnableConfig:
+        lane = ModelLane(
+            provider=LLMProviderName.CLOUDFLARE,
+            model="@cf/vendor/model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
+        return _make_config(**lane.binding_keys(), **{LANE_FIELD_ID: lane.to_configurable()})
+
+    @pytest.mark.regression
+    async def test_the_turn_is_answered_by_the_fallback_after_one_attempt(self) -> None:
+        with _next_is_gemini():
+            result = await self._node().afunc(
+                _make_state(), self._on_workers_ai(), store=MagicMock()
+            )
+
+        assert len(_RateLimitedChatModel.attempts) == 1
+        assert result["messages"][-1].content == "gemini"
+
+    @pytest.mark.regression
+    def test_the_sync_turn_is_answered_by_the_fallback_after_one_attempt(self) -> None:
+        with _next_is_gemini():
+            result = self._node().func(_make_state(), self._on_workers_ai(), store=MagicMock())
+
+        assert len(_RateLimitedChatModel.attempts) == 1
+        assert result["messages"][-1].content == "gemini"
+
+    async def test_with_no_other_provider_the_turn_keeps_its_retries(self) -> None:
+        with (
+            patch.object(lane_module, "chat_route", lambda _current: None),
+            pytest.raises(RateLimitError),
+        ):
+            await self._node().afunc(_make_state(), self._on_workers_ai(), store=MagicMock())
+
+        assert len(_RateLimitedChatModel.attempts) == LLM_RETRY_MAX_ATTEMPTS
+
+    def test_with_no_other_provider_the_sync_turn_keeps_its_retries(self) -> None:
+        with (
+            patch.object(lane_module, "chat_route", lambda _current: None),
+            pytest.raises(RateLimitError),
+        ):
+            self._node().func(_make_state(), self._on_workers_ai(), store=MagicMock())
+
+        assert len(_RateLimitedChatModel.attempts) == LLM_RETRY_MAX_ATTEMPTS
 
 
 class TestTheFallbackKeepsTheAgentsOwnChain:

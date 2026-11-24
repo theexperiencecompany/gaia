@@ -3234,6 +3234,58 @@ groups:
           severity: warning
           service: api
 
+      # 19. Workers AI is rate limiting us beyond its daily bursts. Measured
+      # baseline (2026-11): three bursts a day of 250-420 rate limited calls,
+      # each inside one hour, on the worker, and near zero otherwise. So three
+      # hours hold one burst (420 at most) or, back to back, two (840). More
+      # than 1000 is either one hour at over twice the largest burst or burst-level
+      # rate limiting that did not stop. Slack only. No dashboard link: nothing
+      # charts this counter.
+      - uid: gaia-workers-ai-rate-limited
+        title: Workers AI is rate limiting us more than usual
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 10800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_llm_call_total{job=~"gaia-api|arq_worker", provider="cloudflare", outcome="rate_limited"}[3h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [1000] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Workers AI rate limited {{ printf "%.0f" $values.B.Value }}
+            model calls in the last 3 hours (threshold: more than 1000; a normal
+            daily burst is 250 to 420 in one hour){{ else }}Unable to read the
+            Workers AI rate limit count — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Workers AI is refusing more model calls than its usual daily bursts.
+            A refused call goes straight to the fallback model, at that model's
+            cost, so users mostly still get an answer; a call with no fallback
+            is retried and then fails. Check which job and label is sending the
+            calls (the llm_call log lines with error_family rate_limit), then
+            the Workers AI limits on the Cloudflare account and whether a
+            background job is looping.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-workers-ai-rate-limited
+        labels:
+          severity: warning
+          service: api
+
   # Log rules read Loki, not Prometheus, so pint and promtool cannot test them:
   # tools/alert-rules/extract_promql.py validates their shape and names them as
   # log rules, and the LogQL is verified against Loki when the rule is written.

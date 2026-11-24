@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from functools import cache
@@ -41,7 +42,9 @@ from app.agents.llm.exceptions import (
     LLMNotConfiguredError,
     MalformedStructuredOutputError,
 )
+from app.agents.llm.failure_fields import FailedCallFields, failed_call_fields
 from app.agents.llm.metrics import (
+    UNKNOWN_PROVIDER,
     LLMFallbackOutcome,
     fallback_leg,
     observe_llm_call_failed,
@@ -107,6 +110,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    RATE_LIMIT_ERRORS,
     LLMCallContext,
     TokenUsage,
     extract_finish_reason,
@@ -161,15 +165,28 @@ def without_sdk_retry(llm: _LLMT) -> _LLMT:  # NOSONAR python:S3516
     return llm
 
 
-def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
+#: The retry set without the rate limits the call classifier names.
+_RETRYABLE_EXCEPT_RATE_LIMITS: tuple[type[BaseException], ...] = tuple(
+    error for error in LLM_RETRYABLE_EXCEPTIONS if not issubclass(error, RATE_LIMIT_ERRORS)
+)
+
+
+def with_llm_retry(
+    runnable: Runnable,
+    *,
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    retry_rate_limits: bool = True,
+) -> Runnable:
     """Wrap runnable with the single, canonical LLM retry policy.
 
     Applied AFTER bind_tools so the RunnableRetry wrapper never has to expose
     bind_tools. max_attempts=1 disables retry for callers on a hard latency
-    budget.
+    budget; retry_rate_limits=False sends a rate limit straight to the fallback.
     """
     return runnable.with_retry(
-        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
+        retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS
+        if retry_rate_limits
+        else _RETRYABLE_EXCEPT_RATE_LIMITS,
         stop_after_attempt=max_attempts,
         wait_exponential_jitter=True,
     )
@@ -1042,6 +1059,8 @@ def _resolve_fallback(
     label: str,
     primary_error: BaseException,
     *,
+    primary: Runnable,
+    provider: LLMProviderName | None,
     session_id: str | None = None,
 ) -> tuple[Runnable, str]:
     """Materialize the fallback, log the downgrade, and return the retry-wrapped runnable and the model it asks for.
@@ -1057,13 +1076,27 @@ def _resolve_fallback(
         raise primary_error
     log.warning(
         f"{LogTag.AGENT} llm call failed; falling back to the default model",
-        llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
-        error=str(primary_error),
+        llm={
+            "label": label,
+            "provider": provider.value if provider else UNKNOWN_PROVIDER,
+            "model": _requested_model(primary),
+            "fell_back": True,
+        },
+        **failed_call_fields(primary_error),
     )
     requested = _requested_model(resolved)
     if session_id and _is_openrouter_wire(resolved):
         resolved = resolved.bind(session_id=session_id)
     return with_llm_retry(resolved), requested
+
+
+def _retries_rate_limits(provider: LLMProviderName | None, fallback: LLMFallback) -> bool:
+    """Whether a rate limited call is retried on its own provider before the fallback.
+
+    Workers AI limits per minute, so a retry seconds later fails again and only
+    delays the fallback. With no fallback the retries are all the call has.
+    """
+    return provider is not LLMProviderName.CLOUDFLARE or fallback is None
 
 
 def _call_provider(runnable: Runnable, config: RunnableConfig | None) -> LLMProviderName | None:
@@ -1103,12 +1136,13 @@ def _requested_model(runnable: Any) -> str:  # noqa: ANN401 -- any Runnable shap
     """Return the model id this runnable was going to ask for, or UNKNOWN_MODEL_NAME.
 
     A failed call has no reply to read the served model off, so the ledger's
-    model_requested is all there is. Read defensively: the bound runnable is a
-    chat model on the graph lane but a with_structured_output wrapper on the
-    auxiliary one.
+    model_requested is all there is. Read off the client the wrappers end in:
+    the runnable is a chat model on the graph lane but a with_structured_output
+    sequence on the auxiliary one, and a sequence names no model itself.
     """
+    client = _wire_client(runnable)
     for attribute in ("model_name", "model"):
-        value = getattr(runnable, attribute, None)
+        value = getattr(client, attribute, None)
         if isinstance(value, str) and value:
             return value
     return UNKNOWN_MODEL_NAME
@@ -1216,6 +1250,7 @@ async def ainvoke_llm(
     user_id = call_configurable.get("user_id")
     provider = _call_provider(primary, config)
     primary_counted = False
+    failure: FailedCallFields | None = None
     # Wall time of the whole provider interaction, including retries and the
     # fallback attempt. Started before the timeout scope so a killed call still
     # reports how long it burned.
@@ -1224,7 +1259,11 @@ async def ainvoke_llm(
         try:
             async with asyncio.timeout(opts.timeout):
                 try:
-                    reply = await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
+                    reply = await with_llm_retry(
+                        primary,
+                        max_attempts=opts.max_attempts,
+                        retry_rate_limits=_retries_rate_limits(provider, fallback),
+                    ).ainvoke(
                         messages,
                         config=_with_usage_handler(
                             _with_usage_handler(config, usage_handler), generation_handler
@@ -1242,6 +1281,8 @@ async def ainvoke_llm(
                         fallback,
                         label,
                         primary_error,
+                        primary=primary,
+                        provider=provider,
                         session_id=opts.sticky_session_id
                         or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     )
@@ -1257,6 +1298,7 @@ async def ainvoke_llm(
                         fallback_reply, opts.fallback_model or fallback_requested
                     )
         except Exception as call_error:
+            failure = failed_call_fields(call_error)
             # One row per failed CALL, not per attempt. ``except Exception``
             # deliberately excludes ``CancelledError`` — a caller hanging up is
             # not the provider failing.
@@ -1290,6 +1332,7 @@ async def ainvoke_llm(
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
                 facts=(generation_handler.facts if generation_handler else ResponseFacts()),
+                failure=failure,
             )
 
 
@@ -1313,9 +1356,11 @@ def invoke_llm(
     config = _with_call_label(config, label)
     provider = _call_provider(primary, config)
     try:
-        reply = with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
-            messages, config=config
-        )
+        reply = with_llm_retry(
+            primary,
+            max_attempts=opts.max_attempts,
+            retry_rate_limits=_retries_rate_limits(provider, fallback),
+        ).invoke(messages, config=config)
         observe_llm_call_ok(provider)
         return reply
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
@@ -1324,6 +1369,8 @@ def invoke_llm(
             fallback,
             label,
             primary_error,
+            primary=primary,
+            provider=provider,
             # Passed through like the async path — this branch used to hand
             # _resolve_fallback nothing, so a sync fallback silently landed
             # on whatever provider the router picked.
@@ -1575,6 +1622,7 @@ async def _record_auxiliary_usage(
     *,
     context: LLMCallContext,
     facts: ResponseFacts,
+    failure: FailedCallFields | None = None,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1592,6 +1640,8 @@ async def _record_auxiliary_usage(
     # Same rule for the upstream: a fan-out cannot say which model any one
     # provider served, and naming the wrong one is worse than naming none.
     booked_provider = facts.provider if attributable else None
+    # Named, or the log facade stamps the failing call's message on the warning below.
+    failed_with: Mapping[str, object] = {} if failure is None else failure
     for model_name, model_usage in handler.usage_metadata.items():
         usage: UsageMetadata = model_usage
         input_tokens = int(usage.get("input_tokens", 0) or 0)
@@ -1608,6 +1658,7 @@ async def _record_auxiliary_usage(
                 f"{LogTag.AGENT} auxiliary llm spend not metered — no user_id in "
                 "config.configurable (threading gap?)",
                 llm={"label": label, "model": model_name},
+                **failed_with,
             )
 
         cost = await record_llm_call(

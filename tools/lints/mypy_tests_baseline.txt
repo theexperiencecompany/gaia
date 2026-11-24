@@ -32,7 +32,6 @@ apps/api/tests/e2e/test_voice_device_realtime_e2e.py	arg-type
 apps/api/tests/e2e/test_voice_device_realtime_e2e.py	attr-defined
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
-apps/api/tests/integration/agents/conftest.py	attr-defined
 apps/api/tests/integration/agents/test_executor_queue_roundtrip.py	arg-type
 apps/api/tests/integration/agents/test_graph_routing.py	attr-defined
 apps/api/tests/integration/agents/test_harness_completion.py	attr-defined
