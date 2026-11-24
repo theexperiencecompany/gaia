@@ -460,6 +460,10 @@ run = "cd apps/api && uv run --group backend python -m scripts.analytics_ops rec
 description = "PostHog backfills, dry run unless --apply: `merge-email-persons` (IRREVERSIBLE merges; --pilot N first), then `backfill-paid-status`, then `backfill-history`. Example: `mise analytics:backfill merge-email-persons --pilot 5`"
 run = "cd apps/api && uv run --group backend python -m scripts.analytics_ops"
 
+[tasks."llm:conformance"]
+description = "Make about ten small real calls to every configured LLM provider (or the ones named: `mise llm:conformance cloudflare gemini`) and fail when one behaves differently from what the code assumes: streamed usage and finish_reason counted once, tool calls, structured output, no reply cut at maxLength, an empty tool list, a 429 answered by another provider. Run before changing a model or provider; needs real keys, so team members run it as `mise infisical llm:conformance`. Not a CI lane"
+run = "cd apps/api && LOG_LEVEL=ERROR uv run --group backend python -m scripts.llm_conformance"
+
 [tasks."analytics:types"]
 description = "Export the Pydantic event catalog to analytics-catalog.json and regenerate the TypeScript event types in libs/shared/ts/src/analytics/generated (CI fails when either drifts)"
 run = "node scripts/ci/checks.mjs analytics-catalog --write"

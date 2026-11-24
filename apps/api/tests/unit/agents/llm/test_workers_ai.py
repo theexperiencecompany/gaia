@@ -278,6 +278,114 @@ class TestFinishReasonIsReportedOnce:
         assert _streamed(_TEXT_REPLY).response_metadata["finish_reason"] == "stop"
 
 
+#: A tool as it reaches the wire: caps on a string and a list, and an argument NAMED like a cap.
+_CAPPED_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "write_headline",
+        "description": "Write a headline.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "headline": {"type": "string", "minLength": 1, "maxLength": 52},
+                "tags": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+                "maxItems": {"type": "integer", "default": {"maxLength": 9}},
+            },
+            "required": ["headline", "tags", "maxItems"],
+        },
+    },
+}
+
+
+class TestAToolSchemaCarriesNoSizeCap:
+    """Workers AI cuts a forced or strict tool call at maxLength/maxItems, mid-sentence."""
+
+    async def test_a_bound_tool_reaches_the_wire_without_its_caps(self) -> None:
+        """Regression: a brief's headline came back cut at 52 characters."""
+        requests: list[dict[str, Any]] = []
+        model = _model(_TOOL_CALL_REPLY, requests).bind_tools(
+            [_CAPPED_TOOL], tool_choice="required"
+        )
+
+        await model.ainvoke([HumanMessage("hi")])
+
+        properties = requests[0]["tools"][0]["function"]["parameters"]["properties"]
+        assert properties["headline"] == {"type": "string", "minLength": 1}
+        assert properties["tags"] == {"type": "array", "items": {"type": "string"}}
+
+    def test_an_argument_named_like_a_cap_and_a_default_holding_one_survive(self) -> None:
+        requests: list[dict[str, Any]] = []
+        model = _model(_TOOL_CALL_REPLY, requests).bind_tools([_CAPPED_TOOL])
+
+        model.invoke([HumanMessage("hi")])
+
+        parameters = requests[0]["tools"][0]["function"]["parameters"]
+        assert parameters["properties"]["maxItems"] == {
+            "type": "integer",
+            "default": {"maxLength": 9},
+        }
+        assert parameters["required"] == ["headline", "tags", "maxItems"]
+
+    def test_the_rest_of_the_tool_is_sent_as_bound(self) -> None:
+        requests: list[dict[str, Any]] = []
+        strict_tool = {**_CAPPED_TOOL, "function": {**_CAPPED_TOOL["function"], "strict": True}}
+        model = _model(_TOOL_CALL_REPLY, requests).bind_tools([strict_tool])
+
+        model.invoke([HumanMessage("hi")])
+
+        sent = requests[0]["tools"][0]
+        assert sent["type"] == "function"
+        assert sent["function"]["name"] == "write_headline"
+        assert sent["function"]["description"] == "Write a headline."
+        assert sent["function"]["strict"] is True
+
+    def test_binding_does_not_change_the_callers_tool(self) -> None:
+        model = _model(_TOOL_CALL_REPLY).bind_tools([_CAPPED_TOOL])
+
+        model.invoke([HumanMessage("hi")])
+
+        assert _CAPPED_TOOL["function"]["parameters"]["properties"]["headline"]["maxLength"] == 52
+
+
+class TestAnEmptyToolListIsNeverSent:
+    """Workers AI answers 400 to tools: [] where the field left off is a plain call."""
+
+    async def test_the_async_call_leaves_the_tools_off(self) -> None:
+        requests: list[dict[str, Any]] = []
+        model = _model(_TEXT_REPLY, requests).bind_tools([], tool_choice="auto")
+
+        reply = await model.ainvoke([HumanMessage("hi")])
+
+        assert "tools" not in requests[0]
+        assert "tool_choice" not in requests[0]
+        assert reply.content == "pong"
+
+    def test_the_sync_call_leaves_the_tools_off(self) -> None:
+        requests: list[dict[str, Any]] = []
+        model = _model(_TEXT_REPLY, requests).bind_tools([], parallel_tool_calls=False)
+
+        model.invoke([HumanMessage("hi")])
+
+        assert "tools" not in requests[0]
+        assert "parallel_tool_calls" not in requests[0]
+
+    def test_a_call_with_tools_keeps_its_tool_choice(self) -> None:
+        requests: list[dict[str, Any]] = []
+        model = _model(_TOOL_CALL_REPLY, requests).bind_tools([_get_weather], tool_choice="any")
+
+        model.invoke([HumanMessage("hi")])
+
+        assert requests[0]["tool_choice"] == "required"
+        assert [t["function"]["name"] for t in requests[0]["tools"]] == ["_get_weather"]
+
+    def test_a_call_that_bound_no_tools_sends_none(self) -> None:
+        requests: list[dict[str, Any]] = []
+
+        _model(_TEXT_REPLY, requests).invoke([HumanMessage("hi")])
+
+        assert "tools" not in requests[0]
+
+
 class TestTheReplyItselfIsUntouched:
     async def test_text_arrives_whole(self) -> None:
         assert (await _astreamed(_TEXT_REPLY)).content == "pong"

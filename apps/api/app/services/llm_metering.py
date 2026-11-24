@@ -22,6 +22,7 @@ from typing import Any, TypedDict
 
 from google.genai.errors import ServerError as GeminiServerError
 from langchain_core.messages import AIMessage
+import openai
 from openrouter.errors import (
     BadGatewayResponseError,
     BadRequestResponseError,
@@ -65,10 +66,14 @@ from shared.py.wide_events import current_workflow_execution_id, log
 
 # Exception types per :func:`classify_error_family`. Curated tuples rather than
 # message matching, and ordered most-specific-first at the call site.
-_RATE_LIMIT_ERRORS: tuple[type[BaseException], ...] = (TooManyRequestsResponseError,)
+_RATE_LIMIT_ERRORS: tuple[type[BaseException], ...] = (
+    TooManyRequestsResponseError,
+    openai.RateLimitError,
+)
 _TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (
     RequestTimeoutResponseError,
     EdgeNetworkTimeoutResponseError,
+    openai.APITimeoutError,
     # asyncio.TimeoutError IS TimeoutError on 3.11+, so the invoke seam's own
     # wall-clock ceiling lands here too.
     TimeoutError,
@@ -80,6 +85,8 @@ _UNAVAILABLE_ERRORS: tuple[type[BaseException], ...] = (
     ProviderOverloadedResponseError,
     NoResponseError,
     GeminiServerError,
+    openai.InternalServerError,
+    openai.APIConnectionError,
     ConnectionError,
 )
 _INVALID_REQUEST_ERRORS: tuple[type[BaseException], ...] = (
@@ -89,6 +96,11 @@ _INVALID_REQUEST_ERRORS: tuple[type[BaseException], ...] = (
     ForbiddenResponseError,
     NotFoundResponseError,
     PayloadTooLargeResponseError,
+    openai.BadRequestError,
+    openai.UnprocessableEntityError,
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+    openai.NotFoundError,
     # Out of credits is our account being wrong, not the upstream being down.
     PaymentRequiredResponseError,
 )

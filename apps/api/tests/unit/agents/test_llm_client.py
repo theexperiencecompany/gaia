@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 from bson import ObjectId
 import httpx
 from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
+from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.messages.ai import UsageMetadata
@@ -71,6 +72,7 @@ from app.agents.llm.client import (
     invoke_llm,
     register_llm_providers,
     resolve_model,
+    with_llm_retry,
     without_sdk_retry,
 )
 from app.agents.llm.exceptions import (
@@ -1337,6 +1339,7 @@ class TestMemoryLaneProviderSelection:
         mock_settings.GAIA_SIM_MODE = True
         assert aux_lane_available() is True
 
+    @patch("app.agents.llm.client.one_shot_route", return_value=("cloudflare", "m"))
     @patch("app.agents.llm.client._structured_runnable")
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
     @patch("app.agents.llm.client.resolve_model")
@@ -1349,6 +1352,7 @@ class TestMemoryLaneProviderSelection:
         mock_memory_llm: MagicMock,
         mock_ainvoke: AsyncMock,
         mock_aux_runnable: MagicMock,
+        mock_route: MagicMock,
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-aux")
         config = RunnableConfig(configurable={"user_id": USER_ID})
@@ -1377,6 +1381,9 @@ class TestMemoryLaneProviderSelection:
         assert fallback() is mock_memory_llm.return_value.with_structured_output.return_value
         assert mock_memory_llm.call_args.args == (ModelUse.MEMORY,)
         assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
+        assert mock_memory_llm.call_args.kwargs["exclude"] == "cloudflare"
+        assert mock_available.call_args.args == ("cloudflare",)
+        assert mock_route.call_args.args == (ModelUse.HELPER,)
         assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
 
     @patch("app.agents.llm.client._structured_runnable")
@@ -1633,6 +1640,39 @@ class TestConstants:
         assert not isinstance(unauthorized, LLM_RETRYABLE_EXCEPTIONS)
         for exc in (rate_limited, unauthorized, disconnected):
             assert isinstance(exc, LLM_FALLBACK_EXCEPTIONS), type(exc).__name__
+
+    def test_an_openai_quota_429_goes_straight_to_fallback_without_retrying(self) -> None:
+        """A spent quota cannot recover, so retrying it only delays the fallback."""
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        quota_exhausted = RateLimitError(
+            "spend limit",
+            response=httpx.Response(429, request=request),
+            body={"type": "insufficient_quota", "code": "project_spend_limit_exceeded"},
+        )
+        calls: list[int] = []
+
+        def _call(_: object) -> None:
+            calls.append(1)
+            raise quota_exhausted
+
+        with pytest.raises(RateLimitError):
+            with_llm_retry(RunnableLambda(_call)).invoke("hi")
+
+        assert len(calls) == 1
+        assert not isinstance(quota_exhausted, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(quota_exhausted, LLM_FALLBACK_EXCEPTIONS)
+
+    def test_a_workers_ai_per_minute_429_keeps_its_retries(self) -> None:
+        """Workers AI's body names no error type; its rate limit clears within the minute."""
+        request = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+        throttled = RateLimitError(
+            "rate limiting",
+            response=httpx.Response(429, request=request),
+            body={"errors": [{"message": "AiError: rate limiting", "code": 3040}]},
+        )
+
+        assert isinstance(throttled, LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(ValueError("insufficient_quota"), LLM_RETRYABLE_EXCEPTIONS)
 
     def test_non_retryable_exception_not_in_tuple(self) -> None:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
@@ -2125,10 +2165,89 @@ class TestAinvokeStructured:
         assert mock_resolve.call_args.kwargs == {
             "temperature": 0.3,
             "reasoning": ReasoningLevel.OFF,
+            "exclude": None,
         }
         assert mock_structured_tool.call_args.args == (model, self._Schema)
         assert mock_invoke.call_args.args[0] is structured
         assert result.answer == "42"
+
+    @pytest.fixture
+    def _workers_ai_then_openai(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Production with Workers AI rate limiting us; return the providers a call was sent to."""
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(settings, "DEV_DEFAULT_MODEL", None)
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", "acct-1")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_API_TOKEN", "cf-token")
+        asked: list[str] = []
+        request = httpx.Request("POST", "https://api.cloudflare.com/client/v4/accounts/a/ai/v1")
+        throttled = RateLimitError(
+            "rate limiting", response=httpx.Response(429, request=request), body=None
+        )
+
+        def _answer(model: BaseChatModel, schema: type[BaseModel], **_: object) -> Runnable:
+            def _call(_prompt: object) -> BaseModel:
+                asked.append(type(model).__name__)
+                if isinstance(model, ChatWorkersAI):
+                    raise throttled
+                return schema.model_validate({"answer": "from-openai", "fact": "from-openai"})
+
+            return RunnableLambda(_call)
+
+        monkeypatch.setattr(client_module, "structured_runnable", _answer)
+        monkeypatch.setattr(
+            ChatOpenAI,
+            "with_structured_output",
+            lambda model, schema, **_: _answer(model, schema),
+        )
+        return asked
+
+    async def test_a_rate_limited_workers_ai_one_shot_is_answered_by_another_provider(
+        self, _workers_ai_then_openai: list[str]
+    ) -> None:
+        """Regression: 16 helper calls failed outright in prod when Workers AI answered 429."""
+        result = await ainvoke_structured(
+            self._Schema, "q", label="hil", options=StructuredCallOptions(max_attempts=1)
+        )
+
+        assert result.answer == "from-openai"
+        assert _workers_ai_then_openai == ["ChatWorkersAI", "ChatOpenAI"]
+
+    async def test_the_memory_fallback_leaves_the_provider_that_failed(
+        self, _workers_ai_then_openai: list[str]
+    ) -> None:
+        """Regression: the memory lane's fallback resolved to Workers AI again and met the same 429."""
+        result = await ainvoke_structured_gemini(
+            _Extracted,
+            "q",
+            label="memory:extraction",
+            options=StructuredCallOptions(max_attempts=1),
+        )
+
+        assert result.fact == "from-openai"
+        assert _workers_ai_then_openai == ["ChatWorkersAI", "ChatOpenAI"]
+
+    async def test_a_one_shot_with_one_provider_has_no_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(settings, "DEV_DEFAULT_MODEL", None)
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+        for unset in ("GOOGLE_API_KEY", "OPENAI_API_KEY", "CLOUDFLARE_AI_ACCOUNT_ID"):
+            monkeypatch.setattr(settings, unset, None)
+
+        with patch(
+            f"{_CLIENT}.ainvoke_llm", new=AsyncMock(return_value=self._Schema(answer="42"))
+        ) as mock_invoke:
+            await ainvoke_structured(self._Schema, "q", label="hil")
+
+        assert mock_invoke.call_args.kwargs["fallback"] is None
 
     async def test_reasoning_off_reaches_the_request_and_the_default_sends_none(
         self, monkeypatch: pytest.MonkeyPatch
