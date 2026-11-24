@@ -489,6 +489,8 @@ export interface EventProperties {
     "pool_item_count": number;
     "series_count": number;
     "source_count": number;
+    "composition_salvaged": boolean;
+    "voice_salvaged": boolean;
   };
   "browser:engine_switched": {
     "actor": "user" | "agent";

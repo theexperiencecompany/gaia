@@ -88,6 +88,8 @@ class TestTheComposition:
 
         assert world.composer.await_count == 2
         assert len(salvaged(event, "composition")) == 1
+        sent = world.capture.call_args.args[1]
+        assert (sent.composition_salvaged, sent.voice_salvaged) == (True, False)
         (section,) = world.stored().sections
         assert (section.title, [i.text for i in section.items]) == (
             "Replies to send",
@@ -127,6 +129,8 @@ class TestTheVoice:
 
         assert world.voice.await_count == MAX_VOICE_ATTEMPTS
         assert len(salvaged(event, "voice")) == 1
+        sent = world.capture.call_args.args[1]
+        assert (sent.composition_salvaged, sent.voice_salvaged) == (False, True)
         world.sent_plainly()
 
     async def test_the_stored_brief_holds_each_slot_filled_from_its_fact(
