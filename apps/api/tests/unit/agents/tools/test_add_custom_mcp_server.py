@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.integration_tool import add_custom_mcp_server
+from app.constants import hil as hil_constants
 from app.constants.integrations import IntegrationStatus
 from app.schemas.integrations.responses import CustomIntegrationConnectionResult
 from tests.helpers import captured_wide_event
@@ -331,17 +331,8 @@ async def test_unexpected_failure_is_caught_and_logged(seams):
     assert error["error_type"] == "RuntimeError"
 
 
-def test_add_custom_mcp_server_is_force_gated():
-    """HIL is globally always_allow pre-launch; only always_gate_tools force a confirmation card."""
-    registry = ToolRegistry()
-    registry._initialize_categories()
-
-    add_meta = registry.get_tool_meta("add_custom_mcp_server")
-    assert add_meta is not None
-    assert add_meta.always_gate is True
-
-    # Control: connect_integration is destructive but not force-gated, so the
-    # assertion above proves the stamp is selective, not blanket-true.
-    connect_meta = registry.get_tool_meta("connect_integration")
-    assert connect_meta is not None
-    assert connect_meta.always_gate is False
+def test_add_custom_mcp_server_always_asks():
+    """Adding an untrusted MCP server confirms in every HIL mode."""
+    assert "add_custom_mcp_server" in hil_constants.ALWAYS_ASK_TOOLS
+    # Control: connect_integration is destructive but not forced, so the set is selective.
+    assert "connect_integration" not in hil_constants.ALWAYS_ASK_TOOLS

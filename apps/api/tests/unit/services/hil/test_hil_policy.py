@@ -61,16 +61,6 @@ def _quiet_log():
         yield
 
 
-@pytest.fixture(autouse=True)
-def _registry_without_stamps():
-    """Default registry where every tool looks up as unregistered (meta None → never always-gated); tests exercising the stamp patch get_tool_registry themselves."""
-    with patch(
-        f"{MODULE}.get_tool_registry",
-        new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
-    ):
-        yield
-
-
 class TestResolvePolicy:
     @pytest.mark.parametrize(
         ("mode", "destructive", "expected"),
@@ -277,144 +267,59 @@ class TestPreferencesFailure:
 
 
 class TestAlwaysGate:
-    """The registry's forced-ask stamp: product invariants outrank preferences."""
-
-    def meta(self, always_gate: bool):
-        return SimpleNamespace(always_gate=always_gate)
+    """ALWAYS_ASK_TOOLS: tools that change the user's account or rules outrank every preference."""
 
     async def test_forced_ask_wins_over_every_mode_without_reading_preferences(self) -> None:
         # The check runs BEFORE the preference lookup, so a dead preference
-        # store cannot wave an account mutation through. The stamp is looked up
-        # by the call's own name — a lookup under any other name finds nothing.
-        with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(
-                    return_value=SimpleNamespace(
-                        get_tool_meta=lambda name: (
-                            self.meta(True) if name == "update_preferences" else None
-                        )
-                    )
-                ),
-            ),
-            patch(
-                f"{MODULE}._preferences",
-                new=AsyncMock(side_effect=AssertionError("must not read prefs")),
-            ) as prefs_read,
-            patch(
-                f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
-            ),
-        ):
+        # store cannot wave an account mutation through.
+        with patch(
+            f"{MODULE}._preferences",
+            new=AsyncMock(side_effect=AssertionError("must not read prefs")),
+        ) as prefs_read:
             assert await resolve_policy(make_request(), USER_ID, "update_preferences") == "ask"
         prefs_read.assert_not_awaited()
 
-    async def test_per_tool_allow_override_does_not_bypass_the_stamp(self) -> None:
+    async def test_per_tool_allow_override_does_not_bypass_it(self) -> None:
         tool = make_tool(name="update_preferences")
-        with patch(
-            f"{MODULE}.get_tool_registry",
-            new=AsyncMock(
-                return_value=SimpleNamespace(
-                    get_tool_meta=lambda name: (
-                        self.meta(True) if name == "update_preferences" else None
-                    )
-                )
+        assert (
+            await is_gated(
+                prefs("always_ask", update_preferences=False), "update_preferences", tool
+            )
+            is True
+        )
+
+    async def test_ungated_tools_are_unaffected(self) -> None:
+        tool = make_tool(name="web_search")
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)):
+            assert await is_gated(prefs(), "web_search", tool) is False
+
+    async def test_a_forced_ask_needs_nothing_but_the_tools_name(self) -> None:
+        """A tool that edits the user's own rules asks even when nothing else can be read."""
+        with (
+            patch(
+                f"{MODULE}.gated_tool_object",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("always_allow", update_user_instructions=False)),
             ),
         ):
             assert (
-                await is_gated(
-                    prefs("always_ask", update_preferences=False), "update_preferences", tool
-                )
-                is True
+                await resolve_policy(make_request(), USER_ID, "update_user_instructions") == "ask"
             )
-
-    async def test_ungated_tools_are_unaffected_by_the_stamp_path(self) -> None:
-        tool = make_tool(name="web_search")
-        with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(
-                    return_value=SimpleNamespace(get_tool_meta=lambda name: self.meta(False))
-                ),
-            ),
-            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
-        ):
-            assert await is_gated(prefs(), "web_search", tool) is False
-
-    async def test_an_unreachable_registry_still_asks_for_the_users_gated_tool(self) -> None:
-        # THE regression: the stamp read sits ahead of everything, so raising out of it
-        # took the WHOLE gate down (fails closed by DENYING) — a missing tool_registry
-        # provider refused every gated call outright. The stamp is an escalation; the rest of the policy must still run when it can't be read.
-        with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
-            ),
-            patch(
-                f"{MODULE}.get_hil_preferences",
-                new=AsyncMock(return_value=prefs("always_ask", SEND_GMAIL=True)),
-            ),
-        ):
-            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "ask"
-
-    async def test_an_unreachable_registry_reads_no_stamp_so_the_user_still_decides(self) -> None:
-        # The other half of the escalation contract: unreadable means "no stamp",
-        # never "ask". Failing closed here would gate a call the user has HIL
-        # switched off for — a registry blip must not start prompting everyone.
-        with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
-            ),
-            patch(
-                f"{MODULE}.get_hil_preferences",
-                new=AsyncMock(return_value=prefs("always_allow")),
-            ),
-        ):
-            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "allow"
-
-    async def test_the_unreachable_registry_is_reported_with_the_failure_it_hit(self) -> None:
-        # The warning has to carry WHICH failure it was — a bare "registry unavailable"
-        # line cannot tell a missing provider apart from a dead Chroma.
-        with (
-            patch(f"{MODULE}.log") as logger,
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
-            ),
-            patch(
-                f"{MODULE}.get_hil_preferences",
-                new=AsyncMock(return_value=prefs("always_allow")),
-            ),
-        ):
-            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "allow"
-
-        logger.warning.assert_called_once()
-        message, fields = logger.warning.call_args.args, logger.warning.call_args.kwargs
-        assert len(message) == 1 and "tool registry unavailable" in message[0]
-        assert "Provider 'tool_registry' not found" in fields["error"]
-        assert fields["error_type"] == "KeyError"
 
 
 class TestArgumentGate:
     """manage_linked_account: disconnect confirms; generate_link does not."""
 
-    def registry_with_stamp(self, always_gate: bool = False):
-        return AsyncMock(
-            return_value=SimpleNamespace(
-                get_tool_meta=lambda name: SimpleNamespace(always_gate=always_gate)
-            )
-        )
-
     async def test_disconnect_always_asks_regardless_of_mode(self) -> None:
         request = make_request(
             name="manage_linked_account", args={"platform": "slack", "action": "disconnect"}
         )
-        with (
-            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
-            patch(
-                f"{MODULE}._preferences",
-                new=AsyncMock(side_effect=AssertionError("must not read prefs")),
-            ),
+        with patch(
+            f"{MODULE}._preferences",
+            new=AsyncMock(side_effect=AssertionError("must not read prefs")),
         ):
             assert await resolve_policy(request, USER_ID, "manage_linked_account") == "ask"
 
@@ -422,11 +327,8 @@ class TestArgumentGate:
         request = make_request(
             name="manage_linked_account", args={"platform": "slack", "action": "generate_link"}
         )
-        with (
-            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
-            patch(
-                f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
-            ),
+        with patch(
+            f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
         ):
             assert await resolve_policy(request, USER_ID, "manage_linked_account") == "allow"
 
@@ -434,10 +336,7 @@ class TestArgumentGate:
         # Direct gate checks (e.g. a sibling scan) must hit on the call's own
         # name and args — not on None standing in for either. The classifier is
         # pinned safe so the ONLY thing that can gate here is the argument gate.
-        with (
-            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
-            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
-        ):
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)):
             assert (
                 await is_gated(
                     prefs(), "manage_linked_account", None, args={"action": "disconnect"}

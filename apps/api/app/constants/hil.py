@@ -14,6 +14,7 @@ from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.integrations import DISCONNECT_INTEGRATION_TOOL
 from shared.py.approvals import ApprovalOutcome, DecidedOutcome
 
 # What a user decides on a pending approval, and the outcome each decision ends it with.
@@ -290,5 +291,23 @@ WRITE_INTENT_TOKENS: Final[frozenset[str]] = frozenset(
         "upload",
         "upsert",
         "write",
+    }
+)
+
+
+#: GAIA's own tools that ask in every HIL mode, past any per-tool override and with nothing
+#: else readable: each changes what the agent may do later or what the user's account is,
+#: so text it read in an email or a page must never be able to apply it unseen.
+ALWAYS_ASK_TOOLS: Final[frozenset[str]] = frozenset(
+    {
+        "update_notification_settings",
+        "update_preferences",
+        "set_selected_voice",
+        "set_briefing_schedule",
+        "add_custom_mcp_server",
+        "approve_device_pairing",
+        DISCONNECT_INTEGRATION_TOOL,
+        "update_user_instructions",
+        "update_integration_instructions",
     }
 )

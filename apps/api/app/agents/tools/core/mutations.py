@@ -9,7 +9,7 @@ its args schema and an ``apply`` coroutine of real business logic, so twenty
 tool modules don't each re-derive it (and drift).
 
 HIL note: tools built here are ordinary registry tools. Gating posture is
-stamped at registration time (``Tool.always_gate``), never inside the wrapper.
+set by ``ALWAYS_ASK_TOOLS`` (app.constants.hil), never inside the wrapper.
 """
 
 from collections.abc import Awaitable, Callable
