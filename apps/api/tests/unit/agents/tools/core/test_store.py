@@ -5,15 +5,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 from google.genai.errors import APIError, ClientError, ServerError
 from google.genai.types import EmbedContentConfig
-from pydantic import SecretStr
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import pytest
 
 from app.agents.tools.core import store as store_module
 from app.agents.tools.core.local_embeddings import FastEmbedEmbeddings
-from app.agents.tools.core.store import RetryingGeminiEmbeddings, embedding_dims, init_embeddings
+from app.agents.tools.core.store import embedding_dims, init_embeddings
 from app.config.settings import settings
 from app.constants.chroma import (
-    GEMINI_EMBED_QUERY_RETRIES,
     GEMINI_EMBEDDING_DIMS,
     GEMINI_EMBEDDING_MODEL,
 )
@@ -23,6 +22,7 @@ from shared.py.retry import RetryPolicy
 from tests.helpers import captured_wide_event
 
 _VECTOR = [0.25, 0.5]
+_NO_WAIT_RETRY = RetryPolicy(retries=3, min_s=0.0, max_s=0.0)
 
 
 def test_a_google_key_selects_gemini_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -30,7 +30,7 @@ def test_a_google_key_selects_gemini_embeddings(monkeypatch: pytest.MonkeyPatch)
 
     embeddings = init_embeddings().loader_func()
 
-    assert isinstance(embeddings, RetryingGeminiEmbeddings)
+    assert isinstance(embeddings, GoogleGenerativeAIEmbeddings)
     assert embeddings.model == GEMINI_EMBEDDING_MODEL
     assert embedding_dims(embeddings) == GEMINI_EMBEDDING_DIMS
 
@@ -50,17 +50,12 @@ def _rate_limited() -> ClientError:
 
 def _gemini(
     monkeypatch: pytest.MonkeyPatch, *answers: object
-) -> tuple[RetryingGeminiEmbeddings, AsyncMock]:
-    """Gemini embeddings whose SDK call answers each of answers in turn, with no wait between tries."""
-    monkeypatch.setattr(
-        store_module,
-        "_EMBED_QUERY_RETRY",
-        RetryPolicy(retries=GEMINI_EMBED_QUERY_RETRIES, min_s=0.0, max_s=0.0),
-    )
-    embeddings = RetryingGeminiEmbeddings(
-        model=GEMINI_EMBEDDING_MODEL,
-        api_key=SecretStr("google-test-key"),  # pragma: allowlist secret
-    )
+) -> tuple[GoogleGenerativeAIEmbeddings, AsyncMock]:
+    """Build the configured Gemini embeddings, its SDK call answering each of answers in turn."""
+    monkeypatch.setattr(store_module, "_EMBED_QUERY_RETRY", _NO_WAIT_RETRY, raising=False)
+    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "google-test-key")  # pragma: allowlist secret
+    embeddings = init_embeddings().loader_func()
+    assert isinstance(embeddings, GoogleGenerativeAIEmbeddings)
     embed_content = AsyncMock(
         side_effect=[
             answer
@@ -103,7 +98,7 @@ async def test_a_refused_query_embed_is_not_retried(monkeypatch: pytest.MonkeyPa
 async def test_a_quota_that_stays_exhausted_fails_after_the_last_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    attempts = GEMINI_EMBED_QUERY_RETRIES + 1
+    attempts = _NO_WAIT_RETRY.retries + 1
     embeddings, embed_content = _gemini(monkeypatch, *(_rate_limited() for _ in range(attempts)))
 
     with pytest.raises(Exception, match="429"):

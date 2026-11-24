@@ -18,7 +18,6 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.tools import BaseTool, tool
 from langgraph.store.base import GetOp, PutOp, SearchOp
 import numpy as np
-from pydantic import SecretStr
 import pytest
 
 from app.agents.tools.core.registry import CategoryOptions, ToolCategory, ToolRegistry
@@ -28,8 +27,8 @@ from app.agents.tools.core.retrieval import (
     _raise_if_every_search_failed,
     _RetrievalScope,
 )
-from app.agents.tools.core.store import RetryingGeminiEmbeddings
-from app.constants.chroma import GEMINI_EMBEDDING_MODEL
+from app.agents.tools.core.store import init_embeddings
+from app.config.settings import settings
 from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
@@ -1107,7 +1106,7 @@ class TestToolRegistryCategories:
 class TestDiscoveryThroughARateLimit:
     @pytest.mark.regression
     async def test_a_rate_limit_on_every_search_still_discovers_the_tool(
-        self, indexed_store: ChromaStore, ephemeral_client
+        self, indexed_store: ChromaStore, ephemeral_client, monkeypatch: pytest.MonkeyPatch
     ):
         """Regression for #1171: a 429 hit each namespace's embed at once and discovery raised."""
         await indexed_store.abatch(
@@ -1131,10 +1130,10 @@ class TestDiscoveryThroughARateLimit:
                 embeddings=[SimpleNamespace(values=_text_to_embedding(contents))]
             )
 
-        gemini = RetryingGeminiEmbeddings(
-            model=GEMINI_EMBEDDING_MODEL,
-            api_key=SecretStr("google-test-key"),  # pragma: allowlist secret
-        )
+        monkeypatch.setattr(
+            settings, "GOOGLE_API_KEY", "google-test-key"
+        )  # pragma: allowlist secret
+        gemini = init_embeddings().loader_func()
         gemini.client = MagicMock()
         gemini.client.aio.models.embed_content = embed_content
         store = ChromaStore(
