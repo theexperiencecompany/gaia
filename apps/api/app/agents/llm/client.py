@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from functools import cache
@@ -41,7 +42,9 @@ from app.agents.llm.exceptions import (
     LLMNotConfiguredError,
     MalformedStructuredOutputError,
 )
+from app.agents.llm.failure_fields import FailedCallFields, failed_call_fields
 from app.agents.llm.metrics import (
+    UNKNOWN_PROVIDER,
     LLMFallbackOutcome,
     fallback_leg,
     observe_llm_call_failed,
@@ -1042,6 +1045,8 @@ def _resolve_fallback(
     label: str,
     primary_error: BaseException,
     *,
+    primary: Runnable,
+    provider: LLMProviderName | None,
     session_id: str | None = None,
 ) -> tuple[Runnable, str]:
     """Materialize the fallback, log the downgrade, and return the retry-wrapped runnable and the model it asks for.
@@ -1057,8 +1062,13 @@ def _resolve_fallback(
         raise primary_error
     log.warning(
         f"{LogTag.AGENT} llm call failed; falling back to the default model",
-        llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
-        error=str(primary_error),
+        llm={
+            "label": label,
+            "provider": provider.value if provider else UNKNOWN_PROVIDER,
+            "model": _requested_model(primary),
+            "fell_back": True,
+        },
+        **failed_call_fields(primary_error),
     )
     requested = _requested_model(resolved)
     if session_id and _is_openrouter_wire(resolved):
@@ -1216,6 +1226,7 @@ async def ainvoke_llm(
     user_id = call_configurable.get("user_id")
     provider = _call_provider(primary, config)
     primary_counted = False
+    failure: FailedCallFields | None = None
     # Wall time of the whole provider interaction, including retries and the
     # fallback attempt. Started before the timeout scope so a killed call still
     # reports how long it burned.
@@ -1242,6 +1253,8 @@ async def ainvoke_llm(
                         fallback,
                         label,
                         primary_error,
+                        primary=primary,
+                        provider=provider,
                         session_id=opts.sticky_session_id
                         or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     )
@@ -1257,6 +1270,7 @@ async def ainvoke_llm(
                         fallback_reply, opts.fallback_model or fallback_requested
                     )
         except Exception as call_error:
+            failure = failed_call_fields(call_error)
             # One row per failed CALL, not per attempt. ``except Exception``
             # deliberately excludes ``CancelledError`` — a caller hanging up is
             # not the provider failing.
@@ -1290,6 +1304,7 @@ async def ainvoke_llm(
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
                 facts=(generation_handler.facts if generation_handler else ResponseFacts()),
+                failure=failure,
             )
 
 
@@ -1324,6 +1339,8 @@ def invoke_llm(
             fallback,
             label,
             primary_error,
+            primary=primary,
+            provider=provider,
             # Passed through like the async path — this branch used to hand
             # _resolve_fallback nothing, so a sync fallback silently landed
             # on whatever provider the router picked.
@@ -1575,6 +1592,7 @@ async def _record_auxiliary_usage(
     *,
     context: LLMCallContext,
     facts: ResponseFacts,
+    failure: FailedCallFields | None = None,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1592,6 +1610,8 @@ async def _record_auxiliary_usage(
     # Same rule for the upstream: a fan-out cannot say which model any one
     # provider served, and naming the wrong one is worse than naming none.
     booked_provider = facts.provider if attributable else None
+    # Named, or the log facade stamps the failing call's message on the warning below.
+    failed_with: Mapping[str, object] = failure or {}
     for model_name, model_usage in handler.usage_metadata.items():
         usage: UsageMetadata = model_usage
         input_tokens = int(usage.get("input_tokens", 0) or 0)
@@ -1608,6 +1628,7 @@ async def _record_auxiliary_usage(
                 f"{LogTag.AGENT} auxiliary llm spend not metered — no user_id in "
                 "config.configurable (threading gap?)",
                 llm={"label": label, "model": model_name},
+                **failed_with,
             )
 
         cost = await record_llm_call(

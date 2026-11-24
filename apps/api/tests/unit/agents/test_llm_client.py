@@ -38,7 +38,7 @@ from langchain_core.runnables.configurable import RunnableConfigurableFields
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
-from openai import APIConnectionError, AuthenticationError, RateLimitError
+from openai import APIConnectionError, AuthenticationError, BadRequestError, RateLimitError
 from openrouter.errors import TooManyRequestsResponseError
 from prometheus_client import REGISTRY
 from pydantic import BaseModel, Field, SecretStr
@@ -118,7 +118,7 @@ from app.services.llm_metering import LLMCallContext
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
-from tests.helpers import create_fake_llm
+from tests.helpers import create_fake_llm, emitted_log_records
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -129,6 +129,26 @@ from tests.helpers import create_fake_llm
 # context; the row it produces is covered in test_llm_metering_ledger.py.
 _CLIENT = "app.agents.llm.client"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+#: Stands in for a user's memory or message text quoted inside a provider error.
+USER_TEXT = "my sister Asha is moving to Lisbon in March"
+
+
+def _openrouter_429() -> TooManyRequestsResponseError:
+    """Build OpenRouter's rate-limit error without the response model its constructor parses."""
+    error = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
+    error.message = "slow down"
+    error.status_code = 429
+    return error
+
+
+def _provider_400() -> BadRequestError:
+    """Build a provider 400 whose message echoes the request, as an OpenAI-wire provider's can."""
+    return BadRequestError(
+        f"Invalid request: messages[1].content {USER_TEXT!r} exceeds the context window",
+        response=httpx.Response(400, request=httpx.Request("POST", "https://provider.test")),
+        body={"message": USER_TEXT, "code": "context_length_exceeded"},
+    )
+
 
 _AUX_CONTEXT = LLMCallContext(
     agent_name="memory_extraction", background=True, charge_to_budget=False
@@ -974,7 +994,7 @@ class TestAinvokeLlm:
         assert self._count("gaia_llm_fallback_total", outcome="exhausted") == before + 1
 
     async def test_a_rate_limited_call_is_counted_apart_from_other_failures(self) -> None:
-        rate_limited = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
+        rate_limited = _openrouter_429()
         labels = {"provider": "openrouter", "outcome": "rate_limited"}
         before = self._count("gaia_llm_call_total", **labels)
 
@@ -1297,9 +1317,107 @@ class TestFallbackHandover:
 
         assert mock_log.warning.call_args.kwargs["llm"] == {
             "label": "the_judge",
-            "error_type": "ConnectionError",
+            "provider": "unknown",
+            "model": "unknown",
             "fell_back": True,
         }
+        assert mock_log.warning.call_args.kwargs["error_type"] == "ConnectionError"
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "primary_error",
+        [
+            MalformedStructuredOutputError(
+                f"ConsolidatedDocument: reply made no ConsolidatedDocument tool call (content: {USER_TEXT!r})",
+                llm_output=USER_TEXT,
+            ),
+            _provider_400(),
+        ],
+        ids=["malformed_structured_reply", "provider_400_echoing_the_request"],
+    )
+    async def test_the_downgrade_warning_never_carries_the_error_text(
+        self, primary_error: Exception
+    ) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=primary_error)
+
+        with emitted_log_records() as records:
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                label="memory_consolidation",
+                fallback=self._bindable_runnable(AIMessage(content="fallback-ok")),
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        assert any("falling back" in record["message"] for record in records)
+        assert USER_TEXT not in json.dumps(records)
+
+    @pytest.mark.regression
+    async def test_the_downgrade_warning_carries_the_shape_of_the_failure(self) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=_provider_400())
+        primary.model_name = "@cf/some/model"
+
+        with emitted_log_records() as records:
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                label="memory_consolidation",
+                fallback=self._bindable_runnable(AIMessage(content="fallback-ok")),
+                config=RunnableConfig(configurable={"provider": "cloudflare"}),
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        (warning,) = [record for record in records if "falling back" in record["message"]]
+        shape = ("llm", "error_type", "error_family", "http_status", "provider_code")
+        assert {key: warning["extra"].get(key) for key in shape} == {
+            "llm": {
+                "label": "memory_consolidation",
+                "provider": "cloudflare",
+                "model": "@cf/some/model",
+                "fell_back": True,
+            },
+            "error_type": "BadRequestError",
+            "error_family": "invalid_request",
+            "http_status": 400,
+            "provider_code": "context_length_exceeded",
+        }
+
+    @pytest.mark.regression
+    async def test_a_failed_calls_unattributed_spend_warning_never_carries_the_error_text(
+        self,
+    ) -> None:
+        """The warning fires while the call's error is propagating, and the log facade stamps an in-flight exception's text unless told its type."""
+
+        async def _burn_tokens_then_fail(
+            _messages: Any, config: RunnableConfig | None = None
+        ) -> AIMessage:
+            callbacks = (config or {}).get("callbacks") or []
+            assert isinstance(callbacks, list)
+            for handler in callbacks:
+                if isinstance(handler, UsageMetadataCallbackHandler):
+                    handler.usage_metadata = {
+                        "m": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+                    }
+            raise _provider_400()
+
+        primary = TestAinvokeLlm._runnable(side_effect=_burn_tokens_then_fail)
+
+        with (
+            patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.1)),
+            patch(f"{_CLIENT}.record_failed_llm_call", new=AsyncMock()),
+            emitted_log_records() as records,
+            pytest.raises(BadRequestError),
+        ):
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                config=RunnableConfig(),
+                label="memory_consolidation",
+                options=LLMInvokeOptions(max_attempts=1),
+            )
+
+        assert any("not metered" in record["message"] for record in records)
+        assert USER_TEXT not in json.dumps(records)
 
 
 class _Extracted(BaseModel):
@@ -1725,6 +1843,22 @@ class TestChatbot:
         with pytest.raises(ConnectionError):
             await chatbot([HumanMessage(content="hello")])
         mock_log.error.assert_called_once()
+
+    @pytest.mark.regression
+    @patch("app.agents.llm.chatbot.ainvoke_llm")
+    @patch("app.agents.llm.chatbot.resolve_model")
+    async def test_the_failure_log_never_carries_the_error_text(
+        self, mock_get_helper: MagicMock, mock_ainvoke: AsyncMock
+    ) -> None:
+        mock_get_helper.return_value = MagicMock()
+        mock_ainvoke.side_effect = _provider_400()
+
+        with emitted_log_records() as records, pytest.raises(BadRequestError):
+            await chatbot([HumanMessage(content="hello")])
+
+        (failure,) = [r for r in records if "chatbot LLM call failed" in r["message"]]
+        assert failure["extra"]["http_status"] == 400
+        assert USER_TEXT not in json.dumps(records)
 
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
@@ -3045,9 +3179,24 @@ class TestTheSyncFallback:
         assert result.response_metadata["gaia_fallback_model"] == "fallback-model"
         assert mock_log.warning.call_args.kwargs["llm"] == {
             "label": "memory_extraction",
-            "error_type": "ConnectionError",
+            "provider": "unknown",
+            "model": "unknown",
             "fell_back": True,
         }
+        assert mock_log.warning.call_args.kwargs["error_type"] == "ConnectionError"
+
+    @pytest.mark.regression
+    def test_the_downgrade_warning_never_carries_the_error_text(self) -> None:
+        primary = self._failing_primary()
+        primary.invoke = MagicMock(side_effect=ConnectionError(f"upstream reset on {USER_TEXT!r}"))
+
+        with emitted_log_records() as records:
+            invoke_llm(
+                primary, "hi", fallback=self._fallback(), options=LLMInvokeOptions(max_attempts=1)
+            )
+
+        assert any("falling back" in record["message"] for record in records)
+        assert USER_TEXT not in json.dumps(records)
 
     def test_an_explicit_sticky_session_outranks_the_runs(self) -> None:
         fallback = self._fallback()
@@ -3103,8 +3252,7 @@ class TestTheSyncFallback:
         assert _llm_call_counts("gemini") == {**before, "failed": before["failed"] + 1}
 
     def test_a_rate_limited_call_is_counted_apart_from_other_failures(self) -> None:
-        rate_limited = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
-        rate_limited.message = "slow down"
+        rate_limited = _openrouter_429()
         primary = self._failing_primary()
         primary.invoke = MagicMock(side_effect=rate_limited)
         before = _llm_call_counts("openrouter")

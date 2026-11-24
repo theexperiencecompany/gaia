@@ -1,0 +1,56 @@
+# gaia-workers-ai-rate-limited: fires on one hour at three times the largest daily burst and on burst-level rate limiting that does not stop; quiet on two back-to-back daily bursts.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-workers-ai-rate-limited fires when one hour holds three times the largest daily burst
+    interval: 1m
+    input_series:
+      - series: 'gaia_llm_call_total{job="arq_worker",provider="cloudflare",outcome="rate_limited"}'
+        values: '0x60 0+21x60 1260x120'
+      - series: 'gaia_llm_call_total{job="gaia-api",provider="cloudflare",outcome="rate_limited"}'
+        values: '0x240'
+    alert_rule_test:
+      - eval_time: 130m
+        alertname: gaia-workers-ai-rate-limited
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                Workers AI is refusing more model calls than its usual daily bursts. Each refused call is retried and then answered by the fallback model, slower and at that model's cost, so users mostly still get an answer. Check which job and label is sending the calls (the llm_call log lines with error_family rate_limit), then the Workers AI limits on the Cloudflare account and whether a background job is looping.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-workers-ai-rate-limited
+
+  - name: gaia-workers-ai-rate-limited fires when burst-level rate limiting does not stop
+    interval: 1m
+    input_series:
+      - series: 'gaia_llm_call_total{job="arq_worker",provider="cloudflare",outcome="rate_limited"}'
+        values: '0x60 0+7x240'
+    alert_rule_test:
+      - eval_time: 235m
+        alertname: gaia-workers-ai-rate-limited
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                Workers AI is refusing more model calls than its usual daily bursts. Each refused call is retried and then answered by the fallback model, slower and at that model's cost, so users mostly still get an answer. Check which job and label is sending the calls (the llm_call log lines with error_family rate_limit), then the Workers AI limits on the Cloudflare account and whether a background job is looping.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-workers-ai-rate-limited
+
+  - name: gaia-workers-ai-rate-limited stays quiet on two of the largest daily bursts back to back
+    interval: 1m
+    input_series:
+      - series: 'gaia_llm_call_total{job="arq_worker",provider="cloudflare",outcome="rate_limited"}'
+        values: '0x60 0+7x120 840x120'
+    alert_rule_test:
+      - eval_time: 125m
+        alertname: gaia-workers-ai-rate-limited
+        exp_alerts: []
+      - eval_time: 185m
+        alertname: gaia-workers-ai-rate-limited
+        exp_alerts: []
+      - eval_time: 240m
+        alertname: gaia-workers-ai-rate-limited
+        exp_alerts: []
