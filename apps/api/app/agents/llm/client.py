@@ -49,6 +49,7 @@ from app.agents.llm.metrics import (
     observe_llm_call_timed_out,
     observe_llm_fallback,
 )
+from app.agents.llm.schema_caps import without_size_caps
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
 from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
@@ -756,21 +757,29 @@ def _one_shot_model(provider: LLMProviderName, use: ModelUse) -> str | None:
     return chat_model(provider)
 
 
-def one_shot_route(use: ModelUse) -> tuple[LLMProviderName, str] | None:
+def one_shot_route(
+    use: ModelUse, exclude: LLMProviderName | None = None
+) -> tuple[LLMProviderName, str] | None:
     """Return the provider and model a one-shot use runs on, or None when nothing configured can serve it.
 
     A configured OVERRIDE_PROVIDER comes first everywhere. Then production runs the
     hosted table and nothing else; elsewhere the hosted provider, then every
-    configured provider in priority order.
+    configured provider in priority order. A fallback excludes the provider that
+    just failed, and takes its PINNED_FALLBACKS target first, as chat_route does.
     """
-    hosted = HOSTED_ONE_SHOT_PROVIDERS[use]
-    candidates = (
-        (OVERRIDE_PROVIDER, hosted)
-        if settings.deployment.hosted_models
-        else (OVERRIDE_PROVIDER, hosted, *LLM_PROVIDER_PRIORITY)
-    )
+    pinned = PINNED_FALLBACKS.get(exclude) if exclude else None
+    candidates = [
+        *([pinned] if pinned else []),
+        OVERRIDE_PROVIDER,
+        HOSTED_ONE_SHOT_PROVIDERS[use],
+        *(() if settings.deployment.hosted_models else LLM_PROVIDER_PRIORITY),
+    ]
     for provider in candidates:
-        if provider_configured(provider) and (model := _one_shot_model(provider, use)):
+        if (
+            provider != exclude
+            and provider_configured(provider)
+            and (model := _one_shot_model(provider, use))
+        ):
             return provider, model
     return None
 
@@ -780,12 +789,13 @@ def resolve_model(
     *,
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     reasoning: ReasoningLevel | None = None,
+    exclude: LLMProviderName | None = None,
 ) -> BaseChatModel:
     """Return the chat model a one-shot call for use runs on: the one place a one-shot's model is chosen.
 
     Sim mode wins, then the forced dev lane (every use on the custom endpoint),
-    then one_shot_route. reasoning None keeps the model's default. Raises
-    LLMNotConfiguredError naming the use when no configured provider can serve it.
+    then one_shot_route, which never picks exclude. reasoning None keeps the model's
+    default. Raises LLMNotConfiguredError naming the use when no configured provider can serve it.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
@@ -796,14 +806,25 @@ def resolve_model(
             endpoint=custom_endpoint(),
             reasoning=reasoning,
         )
-    route = one_shot_route(use)
+    route = one_shot_route(use, exclude)
     if route is None:
         raise LLMNotConfiguredError(
             f"No configured AI provider can serve {use.value} calls. Configure "
             f"{HOSTED_ONE_SHOT_PROVIDERS[use].value} (or, off production, any provider that "
             "serves it) in Settings → AI Providers or via its API-key env var."
         )
-    provider, model = route
+    return one_shot_client(*route, use=use, temperature=temperature, reasoning=reasoning)
+
+
+def one_shot_client(
+    provider: LLMProviderName,
+    model: str,
+    *,
+    use: ModelUse,
+    temperature: float,
+    reasoning: ReasoningLevel | None,
+) -> BaseChatModel:
+    """Build the one-shot client that runs model on provider; reasoning None keeps the model's default."""
     match provider:
         case LLMProviderName.OPENROUTER:
             return _openrouter_one_shot(
@@ -918,9 +939,9 @@ def _build_openai_wire_one_shot(
     return llm
 
 
-def memory_lane_available() -> bool:
-    """Whether resolve_model(MEMORY) can serve a call instead of raising."""
-    return settings.GAIA_SIM_MODE or one_shot_route(ModelUse.MEMORY) is not None
+def memory_lane_available(exclude: LLMProviderName | None = None) -> bool:
+    """Whether resolve_model(MEMORY) can serve a call, off exclude, instead of raising."""
+    return settings.GAIA_SIM_MODE or one_shot_route(ModelUse.MEMORY, exclude) is not None
 
 
 def aux_lane_available() -> bool:
@@ -1733,22 +1754,6 @@ def _structured_tool_choice(llm: BaseChatModel) -> str:
     return "required" if forced else "auto"
 
 
-#: The bounds a provider holding a reply to its schema enforces by cutting it short: a
-#: string ends mid-sentence at maxLength, a list at maxItems. Code checks them after.
-_SIZE_CAPS = frozenset({"maxLength", "maxItems"})
-
-
-def _without_size_caps(schema: JsonValue) -> JsonValue:
-    """Return the JSON schema without its size caps, so a held reply arrives whole and is checked."""
-    if isinstance(schema, list):
-        return [_without_size_caps(node) for node in schema]
-    if isinstance(schema, dict):
-        return {
-            key: _without_size_caps(node) for key, node in schema.items() if key not in _SIZE_CAPS
-        }
-    return schema
-
-
 def _structured_tool_runnable(
     llm: BaseChatModel, schema: type[_StructuredT], *, strict: bool = False
 ) -> Runnable:
@@ -1761,7 +1766,7 @@ def _structured_tool_runnable(
     """
     spec = _OpenAIToolSpec.model_validate(convert_to_openai_tool(schema, strict=strict or None))
     if strict:
-        spec.function.parameters = _without_size_caps(spec.function.parameters)
+        spec.function.parameters = without_size_caps(spec.function.parameters)
     tool = spec.model_dump()
     tool_choice = _structured_tool_choice(llm)
     bound = llm.model_copy(update={"streaming": False}).bind_tools(
@@ -1800,32 +1805,52 @@ def _gemini_schema_runnable(llm: ChatGoogleGenerativeAI, schema: type[_Structure
     """Build a Gemini one-shot whose reply the response schema holds: JSON that fits, field for field."""
     bound = llm.bind(
         response_mime_type="application/json",
-        response_json_schema=_without_size_caps(schema.model_json_schema()),
+        response_json_schema=without_size_caps(schema.model_json_schema()),
     )
     return bound | RunnableLambda(
         lambda message: _parse_json_reply(message, schema), name=_structured_tool_name(schema)
     )
 
 
-def _structured_runnable(
-    schema: type[_StructuredT], config: RunnableConfig | None, options: StructuredCallOptions
+def structured_runnable(
+    model: BaseChatModel, schema: type[_StructuredT], *, held: bool
 ) -> Runnable:
-    """Build the structured runnable a one-shot runs on, on the model resolve_model picks for it.
+    """Build the runnable that has model answer in schema; held has the provider hold the reply to it."""
+    if held and isinstance(model, ChatGoogleGenerativeAI):
+        return _gemini_schema_runnable(model, schema)
+    return _structured_tool_runnable(model, schema, strict=held)
+
+
+def _structured_runnable(
+    schema: type[_StructuredT],
+    config: RunnableConfig | None,
+    options: StructuredCallOptions,
+    exclude: LLMProviderName | None = None,
+) -> Runnable:
+    """Build the structured runnable a one-shot runs on, on the model resolve_model picks for it off exclude.
 
     Aux one-shots get their OWN suffixed sticky session, bound after bind_tools
     (which drops outer bindings): sharing the conversation's session_id re-pinned
     its provider (measured: rotation dips). Only an OpenRouter wire receives it.
     """
-    model = resolve_model(options.use, temperature=options.temperature, reasoning=options.reasoning)
-    structured = (
-        _gemini_schema_runnable(model, schema)
-        if options.schema_held and isinstance(model, ChatGoogleGenerativeAI)
-        else _structured_tool_runnable(model, schema, strict=options.schema_held)
+    model = resolve_model(
+        options.use, temperature=options.temperature, reasoning=options.reasoning, exclude=exclude
     )
+    structured = structured_runnable(model, schema, held=options.schema_held)
     session_id = _sticky_session_id(config, auxiliary=True)
     if session_id and _is_openrouter_wire(structured):
         structured = structured.bind(session_id=session_id)
     return structured
+
+
+def _structured_fallback(
+    schema: type[_StructuredT], config: RunnableConfig | None, options: StructuredCallOptions
+) -> LLMFallback:
+    """Return the same structured call on the next provider that serves its use; None when there is no other."""
+    primary = one_shot_route(options.use)
+    if primary is None or one_shot_route(options.use, primary[0]) is None:
+        return None
+    return lambda: _structured_runnable(schema, config, options, primary[0])
 
 
 async def ainvoke_structured(
@@ -1838,8 +1863,8 @@ async def ainvoke_structured(
 ) -> _StructuredT:
     """Run the single canonical one-shot structured call on the model options.use resolves to.
 
-    Adds retry + fallback via :func:ainvoke_llm. Raises LLMNotConfiguredError
-    when that model's provider has no key.
+    Adds retry via :func:ainvoke_llm, then the same call on another provider when
+    one serves its use. Raises LLMNotConfiguredError when that model's provider has no key.
     """
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
@@ -1848,6 +1873,7 @@ async def ainvoke_structured(
         await ainvoke_llm(
             _structured_runnable(schema, config, options),
             prompt,
+            fallback=_structured_fallback(schema, config, options),
             config=config,
             label=label,
             options=LLMInvokeOptions(timeout=options.timeout, max_attempts=options.max_attempts),
@@ -1855,9 +1881,13 @@ async def ainvoke_structured(
     )
 
 
-def _memory_structured_runnable(schema: type[_StructuredT], temperature: float) -> Runnable:
-    """Build the direct-Gemini structured runnable the memory pipeline falls back to."""
-    return resolve_model(ModelUse.MEMORY, temperature=temperature).with_structured_output(schema)
+def _memory_structured_runnable(
+    schema: type[_StructuredT], temperature: float, exclude: LLMProviderName | None = None
+) -> Runnable:
+    """Build the memory-lane structured runnable the memory pipeline falls back to, off exclude."""
+    return resolve_model(
+        ModelUse.MEMORY, temperature=temperature, exclude=exclude
+    ).with_structured_output(schema)
 
 
 async def ainvoke_structured_gemini(
@@ -1899,9 +1929,11 @@ async def ainvoke_structured_gemini(
         )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
+    primary = one_shot_route(options.use)
+    failed = primary[0] if primary else None
     fallback: LLMFallback = (
-        (lambda: _memory_structured_runnable(schema, options.temperature))
-        if memory_lane_available()
+        (lambda: _memory_structured_runnable(schema, options.temperature, failed))
+        if memory_lane_available(failed)
         else None
     )
     return cast(
