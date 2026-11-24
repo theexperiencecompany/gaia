@@ -8,7 +8,6 @@ GitHub's queue is saturated, and Blacksmith only when the box has no idle listen
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 import re
@@ -129,7 +128,7 @@ def idle_home(count: int, busy: int = 0) -> list[dict[str, object]]:
 def test_a_saturated_github_queue_overflows_only_the_light_class_to_the_box(
     github: FakeGitHub,
 ) -> None:
-    pool(github, *idle_home(sum(ci_class_demand().values()), busy=2))
+    pool(github, *idle_home(ci_light_demand() + 10, busy=2))
     saturate(github)
     out = select(github)
     assert out["light"] == HOME
@@ -140,7 +139,7 @@ def test_a_saturated_github_queue_overflows_only_the_light_class_to_the_box(
 
 
 def test_heavy_and_services_skip_an_idle_box_for_blacksmith(github: FakeGitHub) -> None:
-    pool(github, *idle_home(sum(ci_class_demand().values())))
+    pool(github, *idle_home(ci_light_demand() + 10))
     saturate(github)
     out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
     assert out["light"] == HOME
@@ -155,30 +154,10 @@ def test_one_idle_listener_takes_no_class_it_cannot_fit(github: FakeGitHub) -> N
     assert out["light"] == out["heavy"] == out["services"] == f'["{BLACKSMITH}"]'
 
 
-def ci_class_demand() -> dict[str, int]:
-    """Count the jobs ci.yml routes to each class; a matrix counts at its concurrent width."""
-    repo = RUNNER.parent.parent.parent
-    workflow = (repo / ".github/workflows/ci.yml").read_text()
-    routed: dict[str, list[str]] = {"light": [], "heavy": [], "services": []}
-    job = ""
-    for line in workflow.splitlines():
-        if match := re.match(r"^  ([a-z][a-z0-9_-]*):$", line):
-            job = match.group(1)
-        elif "runs-on:" in line and job != "test-python":
-            if match := re.search(r"select-runner\.outputs\.(light|heavy|services)\)", line):
-                routed[match.group(1)].append(job)
-    assert routed["services"] == ["test-python-engines", "test-mutation"]
-    split = "[matrix.slice].services == 'true' && fromJSON(needs.select-runner.outputs.services)"
-    assert split in workflow, "test-python no longer picks its pool per slice"
-    slices = json.loads((repo / "scripts/ci/lib/test-slices.json").read_text())["slices"]
-    services = sum(1 for s in slices if s["services"] == "true")
-    wave = re.search(r"max-parallel: (\d+)", workflow[workflow.index("\n  test-mutation:") :])
-    assert wave is not None
-    return {
-        "light": len(routed["light"]),
-        "heavy": len(routed["heavy"]) + len(slices) - services,
-        "services": services + int(wave.group(1)),
-    }
+def ci_light_demand() -> int:
+    """Count the jobs ci.yml routes to the light class."""
+    workflow = (RUNNER.parent.parent.parent / ".github/workflows/ci.yml").read_text()
+    return len(re.findall(r"runs-on:.*select-runner\.outputs\.light\)", workflow))
 
 
 @pytest.mark.parametrize("short", [0, 1])
@@ -186,7 +165,7 @@ def test_the_box_takes_the_light_class_only_with_a_listener_per_light_job(
     github: FakeGitHub, short: int
 ) -> None:
     """A lane added to the light class must raise its demand, or its jobs queue on the box."""
-    pool(github, *idle_home(ci_class_demand()["light"] - short))
+    pool(github, *idle_home(ci_light_demand() - short))
     saturate(github)
     out = select(github)
     assert out["light"] == (HOME if short == 0 else HOSTED)

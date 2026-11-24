@@ -1,22 +1,65 @@
 """The post-deploy step against real Mongo: each migration once, in order, a failure retried."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
+from typing import Any
 from unittest.mock import AsyncMock
 import uuid
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
+from redis.asyncio import Redis
 from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
 from scripts.retire_legacy_triggers import migrate as retire_legacy_triggers
 
-from app.constants.workflows import WorkflowDelivery
+from app.config.settings import settings
+from app.constants.workflows import EXECUTE_WORKFLOW_TASK, WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_configs import GmailNewMessageConfig
 from app.models.workflow_models import TriggerType
+from app.services.workflow.scheduler import workflow_scheduler
 from scripts import post_deploy
 from tests.factories import make_user_id
+from tests.helpers import worker_redis_url
+
+
+class _FakeClock:
+    """A stand-in for post_deploy's datetime whose now() only moves when the test advances it."""
+
+    def __init__(self, start: datetime) -> None:
+        self.current = start
+        self.claim_refreshed = asyncio.Event()
+
+    def now(self, tz: tzinfo | None = None) -> datetime:
+        return self.current
+
+    def advance(self, by: timedelta) -> None:
+        self.current += by
+        self.claim_refreshed.clear()
+
+    def watching(self, collection: AsyncIOMotorCollection) -> "_ClaimWatcher":
+        return _ClaimWatcher(collection, self)
+
+
+class _ClaimWatcher:
+    """Wraps the deploy_steps collection and tells the clock once a heartbeat has stamped its current time."""
+
+    def __init__(self, collection: AsyncIOMotorCollection, clock: _FakeClock) -> None:
+        self._collection = collection
+        self._clock = clock
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._collection, name)
+
+    async def update_one(self, query: dict[str, Any], update: dict[str, Any], **kwargs: Any) -> Any:
+        result = await self._collection.update_one(query, update, **kwargs)
+        if (
+            update["$set"].get("claimed_at") == self._clock.current
+            and "applied_at" not in update["$set"]
+        ):
+            self._clock.claim_refreshed.set()
+        return result
 
 
 def _steps(*names: str) -> dict[str, AsyncMock]:
@@ -88,12 +131,73 @@ async def test_a_step_a_live_runner_holds_is_waited_for_before_the_next_runs(
     assert second_saw_first_applied == [True]
 
 
-async def test_a_stale_claim_is_taken_over(steps: dict[str, AsyncMock], raw_collection) -> None:
+@pytest.mark.regression
+async def test_a_claim_left_by_a_release_job_killed_at_its_cap_is_taken_over(
+    steps: dict[str, AsyncMock], raw_collection
+) -> None:
+    """Regression: a 2h window blocked the re-run after deploy.sh's 1800s cap killed a step."""
+    killed_at_cap = datetime.now(UTC) - timedelta(minutes=3)
     await raw_collection.insert_one(
-        {"_id": "first", "claimed_at": datetime.now(UTC) - timedelta(days=1), "applied_at": None}
+        {"_id": "first", "claimed_at": killed_at_cap, "applied_at": None}
     )
 
-    assert await post_deploy.run_post_deploy(apply=True) == ["first", "second"]
+    run = post_deploy.run_post_deploy(apply=True)
+    assert await asyncio.wait_for(run, timeout=5) == ["first", "second"]
+
+
+async def test_a_step_running_past_the_stale_window_keeps_its_claim_from_a_second_runner(
+    steps: dict[str, AsyncMock], raw_collection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = _FakeClock(datetime.now(UTC))
+    monkeypatch.setattr(post_deploy, "datetime", clock)
+    monkeypatch.setattr(post_deploy, "deploy_steps", clock.watching(raw_collection))
+    monkeypatch.setattr(post_deploy, "_CLAIM_HEARTBEAT", timedelta(milliseconds=10))
+    monkeypatch.setattr(post_deploy, "_CLAIM_POLL", timedelta(milliseconds=10))
+    holding = asyncio.Event()
+    release_step = asyncio.Event()
+
+    async def long_step(apply: bool) -> None:
+        holding.set()
+        await release_step.wait()
+
+    steps["first"].side_effect = long_step
+
+    async def scenario() -> tuple[list[str], list[str]]:
+        first = asyncio.create_task(post_deploy.run_post_deploy(apply=True))
+        await holding.wait()
+        clock.advance(post_deploy._STALE_CLAIM * 3)
+        await clock.claim_refreshed.wait()
+        second = asyncio.create_task(post_deploy.run_post_deploy(apply=True))
+        await asyncio.sleep(0.05)
+        release_step.set()
+        return await first, await second
+
+    first, second = await asyncio.wait_for(scenario(), timeout=10)
+
+    assert steps["first"].await_count == 1
+    assert sorted([*first, *second]) == ["first", "second"]
+
+
+@pytest.mark.regression
+async def test_a_workflow_a_release_step_arms_is_queued_in_arq_at_once(
+    steps: dict[str, AsyncMock], redis: Redis, redis_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the release job had no ARQ pool, so every workflow it activated went unqueued."""
+    monkeypatch.setattr(settings, "REDIS_URL", worker_redis_url(redis_url))
+    workflow_id = f"wf_{uuid.uuid4().hex[:12]}"
+    armed: list[bool] = []
+
+    async def first(apply: bool) -> None:
+        at = datetime.now(UTC) + timedelta(hours=1)
+        armed.append(await workflow_scheduler.schedule_workflow_execution(workflow_id, at))
+
+    steps["first"].side_effect = first
+
+    assert await post_deploy.release(apply=True) == ["first", "second"]
+
+    assert armed == [True]
+    assert await redis.keys(f"arq:job:{EXECUTE_WORKFLOW_TASK}:{workflow_id}:*") != []
+    assert workflow_scheduler.arq_pool is None
 
 
 #: The workflow migrations, in the order the real release runs them.

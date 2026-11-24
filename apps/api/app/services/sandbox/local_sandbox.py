@@ -5,7 +5,7 @@ the same commands and files surface the coding tools use. Results are genuine
 E2B dataclasses and failures raise genuine E2B exceptions so existing handlers
 keep matching.
 
-Divergences are intentional: set timeout is a validated no-op, beta pause
+Divergences are intentional: set timeout is a validated no-op, pause
 stops the container, remove is idempotent, and background runs are rejected.
 Like E2B's per-user JuiceFS subdir, a container mounts only its own user's
 subtree of the workspace volume, so files survive recreation and no user can
@@ -29,8 +29,10 @@ import re
 import signal
 import tarfile
 import time
+from typing import Literal, TypeAlias, overload
 
 from e2b import (
+    AsyncSandbox,
     CommandExitException,
     CommandResult,
     EntryInfo,
@@ -73,6 +75,7 @@ from app.services.storage.system_workspace import SANDBOX_SYSTEM_DIR, SYSTEM_SUB
 from shared.py.wide_events import log
 
 __all__ = [
+    "CodingSandbox",
     "CommandExitException",
     "LocalDockerSandbox",
     "LocalSandboxError",
@@ -475,7 +478,7 @@ class LocalDockerSandbox:
         if float(timeout) <= 0:
             raise ValueError(f"timeout must be positive, got {timeout}")
 
-    async def beta_pause(self) -> None:
+    async def pause(self) -> None:
         """Stop the container (its files survive on the workspace volume)."""
         rc, _, stderr = await self._run_docker("stop", self.container_name)
         if rc != 0:
@@ -633,7 +636,13 @@ class LocalDockerSandbox:
         def __init__(self, sandbox: LocalDockerSandbox) -> None:
             self._sandbox = sandbox
 
-        async def read(self, path: str, format: str = "text") -> str | bytes:
+        @overload
+        async def read(self, path: str, format: Literal["text"] = "text") -> str: ...
+
+        @overload
+        async def read(self, path: str, format: Literal["bytes"]) -> bytes: ...
+
+        async def read(self, path: str, format: Literal["text", "bytes"] = "text") -> str | bytes:
             """Read a file byte-exact; missing paths raise NotFoundException."""
             if format not in ("text", "bytes"):
                 raise ValueError(f"unsupported read format: {format!r}")
@@ -733,6 +742,10 @@ class LocalDockerSandbox:
 # ── per-process registry ────────────────────────────────────────────────────
 
 _local_sandboxes: dict[str, LocalDockerSandbox] = {}
+
+
+# What acquire_sandbox yields: the E2B sandbox, or this stand-in on self-host without a key.
+CodingSandbox: TypeAlias = AsyncSandbox | LocalDockerSandbox
 
 
 def get_local_sandbox(user_id: str) -> LocalDockerSandbox:

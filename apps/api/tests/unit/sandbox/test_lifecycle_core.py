@@ -78,7 +78,7 @@ def _fake_sandbox(sandbox_id: str = "sbx-1") -> AsyncMock:
     sbx.files.read = AsyncMock(return_value="")
     sbx.set_timeout = AsyncMock()
     sbx.kill = AsyncMock()
-    sbx.beta_pause = AsyncMock()
+    sbx.pause = AsyncMock()
     return sbx
 
 
@@ -371,6 +371,8 @@ async def test_mount_credentials_ride_in_env_and_never_in_the_command_argv() -> 
     assert "r2-secret" not in call.args[0]
     assert call.kwargs["envs"] == env
     assert call.kwargs["user"] == "root", "envd must fork the script directly as root"
+    # e2b's default is 60s; a cold JuiceFS mount can take longer.
+    assert call.kwargs["timeout"] == sandbox_limits.SANDBOX_MOUNT_TIMEOUT_SECONDS
 
 
 async def test_mount_script_falls_back_to_the_template_copy_when_the_api_file_is_unreadable() -> (
@@ -387,10 +389,29 @@ async def test_mount_script_falls_back_to_the_template_copy_when_the_api_file_is
 async def test_a_crashed_mount_script_raises_with_its_stderr() -> None:
     # Swallowing a crashed mount hands back a sandbox with no /workspace at
     # all; every subsequent file tool then fails with a confusing ENOENT.
+    # e2b raises CommandExitException on a non-zero exit (observed live on 2.37.1).
     sbx = _fake_sandbox()
-    sbx.commands.run = AsyncMock(return_value=_cmd_result(exit_code=3, stderr="mount: no juicefs"))
-    with pytest.raises(SandboxAcquisitionError, match="mount: no juicefs"):
+    sbx.commands.run = AsyncMock(
+        side_effect=CommandExitException(
+            stdout="", stderr="mount: no juicefs", exit_code=3, error=None
+        )
+    )
+    with pytest.raises(SandboxAcquisitionError, match=r"exit 3\): mount: no juicefs"):
         await lifecycle._run_mount_script(sbx, {})
+
+
+async def test_a_fresh_sandbox_whose_mount_crashed_is_killed_not_orphaned() -> None:
+    # Nothing records a sandbox whose mount crashed, so only this kill stops it
+    # running (and billing) until its lifetime cap.
+    sbx = _fake_sandbox("sbx-orphan")
+    crash = AsyncMock(side_effect=SandboxAcquisitionError("Mount script crashed (exit 3): x"))
+    with (
+        patch.object(lifecycle, "AsyncSandbox", _sandbox_class(sbx)),
+        patch.object(lifecycle, "_run_mount_script", crash),
+        pytest.raises(SandboxAcquisitionError, match="Mount script crashed"),
+    ):
+        await lifecycle._create_fresh_sandbox("u1", 0, "gaia-coder")
+    sbx.kill.assert_awaited_once_with()
 
 
 async def test_an_ephemeral_fallback_mount_is_recorded_but_not_treated_as_a_crash() -> None:
@@ -401,9 +422,16 @@ async def test_an_ephemeral_fallback_mount_is_recorded_but_not_treated_as_a_cras
         return_value=_cmd_result(exit_code=0, stderr="WARN: falling back to ephemeral\n")
     )
     recorded: dict[str, object] = {}
-    with patch.object(lifecycle, "_record", recorded.update):
+    with (
+        patch.object(lifecycle, "_record", recorded.update),
+        patch.object(lifecycle, "log") as log,
+    ):
         await lifecycle._run_mount_script(sbx, {})
     assert recorded["mount_status"] == "ephemeral_fallback"
+    log.warning.assert_called_once_with(
+        f"{LogTag.SANDBOX} ephemeral /workspace fallback",
+        stderr="WARN: falling back to ephemeral",
+    )
 
 
 async def test_a_clean_mount_is_recorded_as_mounted() -> None:
@@ -419,31 +447,33 @@ async def test_a_clean_mount_is_recorded_as_mounted() -> None:
 # --------------------------------------------------------------------------
 
 
-async def test_silent_probe_reports_a_non_zero_exit_instead_of_raising() -> None:
+async def test_silent_probe_reports_a_zero_exit_with_its_output() -> None:
     sbx = _fake_sandbox()
-    sbx.commands.run = AsyncMock(return_value=_cmd_result(exit_code=1, stdout="o", stderr="e"))
-    assert await lifecycle._run_silent(sbx, "mountpoint -q /workspace") == (1, "o", "e")
+    sbx.commands.run = AsyncMock(return_value=_cmd_result(stdout="o", stderr="e"))
+    assert await lifecycle._run_silent(sbx, "true") == (0, "o", "e")
 
 
-async def test_silent_probe_turns_a_raised_command_error_into_a_negative_answer() -> None:
+async def test_silent_probe_reports_a_raised_non_zero_exit_with_its_real_code_and_output() -> None:
     # e2b raises CommandExitException on ANY non-zero exit. If that escaped,
-    # `mountpoint -q` returning 1 (a legitimate "not mounted") would crash the
+    # `mountpoint -q` returning 32 (a legitimate "not mounted") would crash the
     # acquire path instead of triggering a remount.
     sbx = _fake_sandbox()
     sbx.commands.run = AsyncMock(
         side_effect=CommandExitException(
-            stdout="", stderr="not a mountpoint", exit_code=1, error=None
+            stdout="partial", stderr="not a mountpoint", exit_code=32, error=None
         )
     )
-    exit_code, _, stderr = await lifecycle._run_silent(sbx, "mountpoint -q /workspace")
-    assert exit_code == 1
-    assert "not a mountpoint" in stderr
+    assert await lifecycle._run_silent(sbx, "mountpoint -q /workspace") == (
+        32,
+        "partial",
+        "not a mountpoint",
+    )
 
 
-async def test_silent_probe_normalises_a_missing_exit_code_to_success() -> None:
+async def test_silent_probe_turns_any_other_failure_into_a_negative_answer() -> None:
     sbx = _fake_sandbox()
-    sbx.commands.run = AsyncMock(return_value=SimpleNamespace(exit_code=None))
-    assert await lifecycle._run_silent(sbx, "true") == (0, "", "")
+    sbx.commands.run = AsyncMock(side_effect=TimeoutError("probe hung"))
+    assert await lifecycle._run_silent(sbx, "stat /workspace") == (1, "", "probe hung")
 
 
 # --------------------------------------------------------------------------
@@ -558,6 +588,13 @@ async def test_an_empty_canary_file_reports_a_stale_filesystem() -> None:
     sbx = _fake_sandbox()
     sbx.files.read = AsyncMock(return_value="   \n")
     assert await lifecycle._read_canary(sbx) is None
+
+
+async def test_the_canary_is_read_from_its_fixed_path() -> None:
+    sbx = _fake_sandbox()
+    sbx.files.read = AsyncMock(return_value="ts-1\n")
+    assert await lifecycle._read_canary(sbx) == "ts-1"
+    sbx.files.read.assert_awaited_once_with(lifecycle.CANARY_PATH)
 
 
 async def test_canary_comparison_survives_a_trailing_newline_from_the_sandbox() -> None:
@@ -1354,7 +1391,7 @@ async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_h
         for p in reversed(stack):
             p.stop()
     try:
-        old.beta_pause.assert_awaited_once()
+        old.pause.assert_awaited_once()
         cls.connect.assert_awaited_once_with("sbx-1", timeout=LAB_LIFETIME, api_key="test-e2b-key")
         assert get_sandbox_pool().get(uid).sandbox is resumed
     finally:
@@ -1421,7 +1458,7 @@ async def test_an_idle_sandbox_is_paused_and_its_handle_dropped() -> None:
         assert await lifecycle.pause_idle_sandbox(uid) is True
     dlock.assert_called_once_with(uid)
     assert repo.get_for_user.await_args_list == [call(uid), call(uid)]
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
     repo.mark_paused.assert_awaited_once_with(uid, timestamp=NOW)
     assert pending.done()
     assert get_sandbox_pool().get(uid) is None
@@ -1436,7 +1473,7 @@ async def test_a_sandbox_used_inside_the_idle_window_is_left_running() -> None:
             assert await lifecycle.pause_idle_sandbox(uid) is False
     finally:
         get_sandbox_pool().evict(uid)
-    sbx.beta_pause.assert_not_awaited()
+    sbx.pause.assert_not_awaited()
 
 
 async def test_a_sandbox_in_use_on_this_replica_is_left_running() -> None:
@@ -1448,7 +1485,7 @@ async def test_a_sandbox_in_use_on_this_replica_is_left_running() -> None:
             assert await lifecycle.pause_idle_sandbox(uid) is False
     finally:
         get_sandbox_pool().evict(uid)
-    sbx.beta_pause.assert_not_awaited()
+    sbx.pause.assert_not_awaited()
 
 
 async def test_a_sandbox_that_is_not_running_is_left_alone() -> None:
@@ -1469,7 +1506,7 @@ async def test_a_sandbox_another_process_holds_is_connected_and_paused() -> None
         patch.object(lifecycle, "_connect_sandbox", AsyncMock(return_value=sbx)),
     ):
         assert await lifecycle.pause_idle_sandbox(_uid()) is True
-    sbx.beta_pause.assert_awaited_once()
+    sbx.pause.assert_awaited_once()
 
 
 async def test_an_unpooled_agent_lab_sandbox_is_connected_for_its_lifetime_and_saved() -> None:
@@ -1521,7 +1558,7 @@ async def test_an_agent_lab_sandbox_saves_its_agents_home_before_pausing() -> No
     # A paused sandbox may never resume; the save is what a replacement restores.
     order: list[str] = []
     sbx = _fake_sandbox("sbx-1")
-    sbx.beta_pause = AsyncMock(side_effect=lambda: order.append("pause"))
+    sbx.pause = AsyncMock(side_effect=lambda: order.append("pause"))
     entry = PooledSandbox(sandbox=sbx, template_id="gaia-coder-8gb")
 
     async def record_save(_user_id: str, _sbx: object) -> bool:

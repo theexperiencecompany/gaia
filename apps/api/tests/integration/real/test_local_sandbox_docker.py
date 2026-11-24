@@ -9,6 +9,7 @@ on exit.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 import os
 import shutil
 from typing import Any
@@ -29,6 +30,7 @@ from app.services.agent_lab.agents_home import (
 from app.services.sandbox import lifecycle, local_sandbox
 from app.services.sandbox.lifecycle import acquire_sandbox
 from app.services.sandbox.local_sandbox import LocalDockerSandbox, pop_local_sandbox
+from app.services.storage.juicefs import user_workspace_path
 
 pytestmark = pytest.mark.skipif(
     shutil.which("docker") is None, reason="requires the docker CLI + daemon"
@@ -62,7 +64,7 @@ async def throwaway_workspace_volume(monkeypatch: pytest.MonkeyPatch) -> Any:
 
     async def prepare_in_daemon(self: LocalDockerSandbox) -> None:
         root = settings.JUICEFS_HOST_MOUNT_PATH
-        user_root = local_sandbox.user_workspace_path(self.user_id).relative_to(root)
+        user_root = user_workspace_path(self.user_id).relative_to(root)
         dirs = [
             f"/v/{m.source.relative_to(root).as_posix()}"
             for m in local_sandbox._workspace_mounts(self.user_id)
@@ -88,7 +90,7 @@ async def throwaway_workspace_volume(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 @pytest.fixture
-async def sbx() -> LocalDockerSandbox:
+async def sbx() -> AsyncIterator[LocalDockerSandbox]:
     sandbox = LocalDockerSandbox(_uid())
     await sandbox.ensure_started()
     try:
@@ -254,12 +256,12 @@ async def test_kill_is_false_for_a_container_that_never_existed() -> None:
     assert await sandbox.kill() is False
 
 
-async def test_beta_pause_stops_and_ensure_started_resumes_fs_intact() -> None:
+async def test_pause_stops_and_ensure_started_resumes_fs_intact() -> None:
     sandbox = LocalDockerSandbox(_uid())
     try:
         await sandbox.ensure_started()
         await sandbox.files.write("/workspace/pause-proof/canary.txt", "still here")
-        await sandbox.beta_pause()
+        await sandbox.pause()
         assert await sandbox.is_running() is False
         await sandbox.ensure_started()
         # The workspace volume outlives the stop/start cycle.

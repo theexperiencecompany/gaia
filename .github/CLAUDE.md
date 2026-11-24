@@ -75,9 +75,9 @@ Every pool starts on GitHub-hosted; only `light` ever overflows to the box:
    jobs or more — the 20-job cap is hit; override with the
    `CI_HOSTED_QUEUE_THRESHOLD` repo variable — the `light` pool goes to
    `gaia-home`, and only when it has an idle listener for every light job
-   (`class_demand` in `runner.py`: light 6). A busy box is never queued on; a
+   (`BOX_OVERFLOW_DEMAND` in `runner.py`: light 6). A busy box is never queued on; a
    new light lane raises the count. `heavy` and `services` never overflow to
-   the box (`BOX_OVERFLOW_CLASSES`): a cold TS build takes 22 min there against
+   the box (the same table): a cold TS build takes 22 min there against
    8 min hosted, and unit tests that need real DNS fail on it. Moving the light
    jobs frees hosted slots for them.
 3. `heavy` and `services` on a saturated GitHub, and `light` when the box has
@@ -244,7 +244,7 @@ is the one local gate; locally, run test files with `mise test:one`, the
 real-infra tier with `mise test:python:real` and the browser stack with
 `mise test:python:browser`. The browser slice (`engines: true` in
 `test-slices.json`) needs Chromium and an Obscura build, and on Linux the
-Fortress release the gaia image pins (`FORTRESS_BIN`), which only Fortress's own
+Fortress release the gaia-fortress image pins (`FORTRESS_BIN`), which only Fortress's own
 identity test launches. In CI the engine
 slices run as their own job, `test-python-engines` (test-python's steps by YAML
 alias), which needs `obscura-bin`: that job builds Obscura through

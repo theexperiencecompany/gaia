@@ -114,9 +114,6 @@ DEFAULT_FALLBACK = json.dumps([HOSTED_LINUX_IMAGE])
 # once the 20 slots are taken: 5 waiting is the cap already hit, while a lone
 # fan-out still being provisioned clears in seconds and rarely reads that high.
 HOSTED_SATURATED_QUEUE_DEPTH = 5
-TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
-# test-mutation's `max-parallel` in ci.yml: the shards one run holds at once.
-MUTATION_WAVE = 6
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 
@@ -274,23 +271,13 @@ class RunnerClass(StrEnum):
     SERVICES = "services"
 
 
-def class_demand() -> dict[RunnerClass, int]:
-    """Count the listeners one full run holds at once per class; a class shares one label."""
-    slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
-    with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
-    return {
-        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
-        RunnerClass.LIGHT: 6,
-        # probe, ts-build-test, docker-image, plus the slices that need no services
-        RunnerClass.HEAVY: 3 + len(slices) - with_services,
-        # the slices that need services (test-python, test-python-engines), test-mutation's wave
-        RunnerClass.SERVICES: with_services + MUTATION_WAVE,
-    }
-
-
 # The box is slower per job on heavy work (cold TS build 22 min vs 8 min hosted)
-# and its unit lanes have no real DNS, so only these classes overflow to it.
-BOX_OVERFLOW_CLASSES = frozenset({RunnerClass.LIGHT})
+# and its unit lanes have no real DNS, so only these classes overflow to it, each
+# with the listeners one full run holds at once (a class shares one label).
+BOX_OVERFLOW_DEMAND = {
+    # detect, lint-node, lint-python, lint-mixed, python-audit, scan
+    RunnerClass.LIGHT: 6,
+}
 
 
 @dataclass(frozen=True)
@@ -385,7 +372,7 @@ class Router:
             raise reading
         return reading
 
-    def route(self, cls: RunnerClass, label: str, demand: int) -> Choice:
+    def route(self, cls: RunnerClass, label: str) -> Choice:
         if self.force_home:
             return self._forced_home(label)
         depth = self.hosted_depth
@@ -394,9 +381,9 @@ class Router:
         if depth < self.threshold:
             return self.fallback_choice("github-hosted", f"GitHub queue {depth} < {self.threshold}")
         saturated = f"GitHub queue {depth} >= {self.threshold}"
-        if cls not in BOX_OVERFLOW_CLASSES:
+        if cls not in BOX_OVERFLOW_DEMAND:
             return self._last_resort(f"{saturated}; `{cls.value}` never overflows to the box")
-        return self._overflow(label, demand, saturated)
+        return self._overflow(label, BOX_OVERFLOW_DEMAND[cls], saturated)
 
     def _overflow(self, label: str, demand: int, saturated: str) -> Choice:
         """Take the box only when every job of the class gets its own idle listener."""
@@ -450,8 +437,7 @@ def route() -> dict[RunnerClass, Choice]:
     home = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
     labels = dict.fromkeys(RunnerClass, home)
     labels[RunnerClass.SERVICES] = os.environ.get("SERVICES_RUNNER_LABEL") or DEFAULT_HOME_LABEL
-    demand = class_demand()
-    return {cls: router.route(cls, labels[cls], demand[cls]) for cls in RunnerClass}
+    return {cls: router.route(cls, labels[cls]) for cls in RunnerClass}
 
 
 def cmd_select(_args: list[str]) -> int:

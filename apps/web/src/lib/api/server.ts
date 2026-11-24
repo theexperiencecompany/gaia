@@ -13,7 +13,8 @@ import {
 import { toApiOrigin } from "./origin";
 
 /**
- * A build waits out a briefly slow API and a rate limit window (a build without
+ * A build waits out a briefly slow API, a gateway with no API behind it (a
+ * deploy's rolling restart) and a rate limit window (a build without
  * INTERNAL_API_TOKEN, as on a fork PR, shares one address's anonymous ceiling)
  * and still fails on an outage; a visitor's render fails fast.
  */
@@ -29,6 +30,16 @@ const REQUEST_FETCH_POLICY = {
 } as const;
 
 const TOO_MANY_REQUESTS = 429;
+/** Statuses the proxy in front of the API answers with when the API did not. */
+const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+/** A gateway answer an attempt gives up on so the next one can reach the API. */
+class GatewayError extends Error {
+  constructor(status: number) {
+    super(`The API gateway answered ${status}`);
+    this.name = "GatewayError";
+  }
+}
 
 function isProductionBuild(): boolean {
   return process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
@@ -48,8 +59,9 @@ function rateLimitWaitSeconds(response: Response): number | null {
 
 /**
  * Fetch the API with the phase's per-attempt timeout and the server's token,
- * retrying timeouts and network errors, and at build time waiting out a 429's
- * Retry-After a bounded number of times before handing the 429 back.
+ * retrying timeouts, network errors and gateway answers (the last attempt's is
+ * handed back), and at build time waiting out a 429's Retry-After a bounded
+ * number of times before handing the 429 back.
  */
 export async function serverFetch(request: Request): Promise<Response> {
   const { timeoutMs, retries, rateLimitWaits } = isProductionBuild()
@@ -57,12 +69,19 @@ export async function serverFetch(request: Request): Promise<Response> {
     : REQUEST_FETCH_POLICY;
   for (let waited = 0; ; waited++) {
     const response = await pRetry(
-      () => {
+      async (attemptNumber) => {
         const attempt = request.clone();
         for (const [name, value] of Object.entries(internalApiHeaders())) {
           attempt.headers.set(name, value);
         }
-        return fetch(attempt, { signal: AbortSignal.timeout(timeoutMs) });
+        const answer = await fetch(attempt, {
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!GATEWAY_STATUSES.has(answer.status) || attemptNumber > retries) {
+          return answer;
+        }
+        await answer.body?.cancel();
+        throw new GatewayError(answer.status);
       },
       { retries },
     );

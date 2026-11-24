@@ -4,7 +4,8 @@ The conversation runner opens a ledger per attempt under the run's comms_run key
 closes only when a tool names it: answered, react, stay_silent or call_executor; or, when it is
 the only one open, when the run ends on words. Each records its closure here; the step drains
 closures and settles replies from them.
-A run without that key (every run the runner did not start) has no ledger and closes nothing.
+A run without that key (every run the runner did not start) has no ledger and closes nothing; nor
+does a run given no message (a workflow fire's turn), whose work answers what woke it.
 """
 
 from collections.abc import Mapping, Sequence
@@ -94,7 +95,7 @@ def answer_sole(run_id: str) -> bool:
 
 
 def named(config: RunnableConfig, seqs: Sequence[int]) -> tuple[str, ...] | None:
-    """Return the message ids of seqs, all still open on the run's ledger; None for a run with no ledger."""
+    """Return the message ids of seqs, all still open on the run's ledger; None for a run given no message."""
     ledger = _ledger_of(config)
     return None if ledger is None else _checked(ledger, seqs)
 
@@ -102,7 +103,7 @@ def named(config: RunnableConfig, seqs: Sequence[int]) -> tuple[str, ...] | None
 def close(
     config: RunnableConfig, how: Closing, seqs: Sequence[int], emoji: str | None = None
 ) -> tuple[str, ...] | None:
-    """Close seqs on the run's ledger and return their message ids; None for a run with no ledger."""
+    """Close seqs on the run's ledger and return their message ids; None for a run given no message."""
     ledger = _ledger_of(config)
     if ledger is None:
         return None
@@ -119,9 +120,11 @@ def close(
 
 
 def _ledger_of(config: RunnableConfig) -> _Ledger | None:
+    """Return the ledger whose messages the run names; None when it has none or was given none to name."""
     configurable: AgentConfigurable = agent_configurable(config)
     run_id = configurable.get("comms_run")
-    return _LEDGERS.get(run_id) if run_id is not None else None
+    ledger = _LEDGERS.get(run_id) if run_id is not None else None
+    return ledger if ledger is not None and ledger.given else None
 
 
 def _checked(ledger: _Ledger, seqs: Sequence[int]) -> tuple[str, ...]:

@@ -36,7 +36,8 @@ COMMAND_SEPARATOR = re.compile(r"[;&|()\n]")
 SHELL_RUNNERS = frozenset({"bash", "sh", "zsh", "dash", "ssh"})
 
 WATCH_ADVICE = (
-    "Wait on CI with `mise ci:watch <PR>` (exits on the first red check that blocks merge and prints its failure), "
+    "Wait on CI with `mise ci:watch <PR|branch>` (exits on the first red check that blocks merge and prints its failure; "
+    "`mise ci:watch master` also watches the deploy, rollback included), "
     "run it in the background, and read the result when it exits."
 )
 

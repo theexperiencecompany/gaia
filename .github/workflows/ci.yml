@@ -1263,7 +1263,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -la .coverage.*
-          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.render .coverage.bridge .coverage.browser
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
           echo "coverage gate: fail-under=$FAIL_UNDER (whole-suite runs only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
@@ -1701,6 +1701,17 @@ jobs:
       web_image_tag: ${{ needs.build-images.outputs.web_tag }}
       docker_release_result: ${{ needs.build-images.outputs.docker_release_result }}
     secrets: inherit # pragma: allowlist secret
+  # A leaf beside trigger-build, not inside build-images, so the deploy never
+  # waits on the optional Fortress build.
+  fortress-image:
+    needs: [build-images]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/master' && needs.build-images.outputs.apps_tag != '' }}
+    uses: ./.github/workflows/fortress-image.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      apps_tag: ${{ needs.build-images.outputs.apps_tag }}
 
   # ── Master only: ship the web bundle web-build built, behind the gate ─────
   # A red gate or a failed build deploys nothing, and the run stays red, so the
