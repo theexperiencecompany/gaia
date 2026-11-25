@@ -225,15 +225,17 @@ async def finish_while_alive(alive: asyncio.Task[None], finish: Awaitable[None])
 
     Saving a finish can outlast the liveness left once the beat stops, and work that is
     still live with no liveness is what the sweep calls lost. A beat that gives up proving
-    liveness cancels its holder: a finish under way takes that cancel once and still ends on its own.
+    liveness during the finish cancels its holder: the finish takes that one cancel and still ends
+    on its own. Every other cancel, a deadline or a shutdown, stops it.
     """
+    beating = not alive.done()
     saving = asyncio.ensure_future(finish)
     try:
         try:
             await asyncio.shield(saving)
         except asyncio.CancelledError:
-            # A beat that gave up has returned; one still beating means someone else cancelled.
-            if not alive.done() or alive.cancelled():
+            # A beat that gave up has returned. One that had already stopped cancelled nothing here.
+            if not (beating and alive.done() and not alive.cancelled()):
                 saving.cancel()
                 raise
             running = cast("asyncio.Task[object]", asyncio.current_task())  # pragma: no mutate

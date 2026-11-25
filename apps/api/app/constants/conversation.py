@@ -164,9 +164,12 @@ WORK_LOST_REPORT = (
 )
 #: What work reports when its own process ended it and the store never took that ending.
 WORK_UNRECORDED_REPORT = (
-    "The background work ran to its end, but its result could not be saved, so it cannot be shown."
+    "The background work ended, but its result could not be saved, so it cannot be shown."
 )
-#: conv:work_ended:{conversation_id}:{task_id} exists while a finish its own process could not save is unsaved.
+# The finish save's whole budget, retries included: under the 20 s a shutdown drains steps for and
+# the 60 s a timed-out job has to clean up, with no single store call left to wait its own 30 s.
+WORK_FINISH_SAVE_SECONDS = 15.0
+#: conv:work_ended:{conversation_id}:{task_id} exists once a finish its own process could not save was given up on.
 WORK_ENDED_KEY_PREFIX = "conv:work_ended:"
 # Outlives a store outage: the sweep reads it once the store takes writes again.
 WORK_ENDED_TTL_SECONDS = ONE_DAY_TTL

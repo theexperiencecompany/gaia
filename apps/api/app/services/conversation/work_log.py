@@ -1,5 +1,6 @@
 """Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
+import asyncio
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -8,9 +9,11 @@ from redis.exceptions import RedisError
 from tenacity import retry_if_exception
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
+from app.constants.chat import ARTIFACT_CARD
 from app.constants.conversation import (
     WORK_ENDED_KEY_PREFIX,
     WORK_ENDED_TTL_SECONDS,
+    WORK_FINISH_SAVE_SECONDS,
     WORK_LOST_REPORT,
     WORK_UNRECORDED_REPORT,
 )
@@ -112,7 +115,11 @@ async def record_work_finished(
     *,
     continued_by_decision: bool = False,
 ) -> None:
-    """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply."""
+    """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply.
+
+    A finish the store does not take within WORK_FINISH_SAVE_SECONDS raises, marked ended so
+    the sweep reports it unsaved, never lost with its server.
+    """
     ports = runtime_ports()
     entry = WorkFinished(
         id=f"work:{task_id}:finished",
@@ -130,69 +137,58 @@ async def record_work_finished(
         awaits_decision=report.awaits_decision,
     )
     try:
-        await accept(ports, conversation_id, user_id, entry)
-    except ConversationStoreError as refused:
-        await _save_refused_finish(ports, conversation_id, user_id, entry, refused)
+        async with asyncio.timeout(WORK_FINISH_SAVE_SECONDS):
+            await _save_finish(ports, conversation_id, user_id, entry)
+    except (ConversationStoreError, TimeoutError) as unsaved:
+        await _mark_ended_unsaved(conversation_id, task_id, unsaved)
+        raise
 
 
-async def _save_refused_finish(
-    ports: RuntimePorts,
-    conversation_id: str,
-    user_id: str,
-    entry: WorkFinished,
-    refused: ConversationStoreError,
+async def _save_finish(
+    ports: RuntimePorts, conversation_id: str, user_id: str, entry: WorkFinished
 ) -> None:
-    """Save a finish the store refused: wait out an outage, then drop its cards so the outcome and report land.
+    """Append the finish, waiting out a store that is briefly unreachable; one the store calls too large is appended with only its file cards."""
+    async for attempt in TRANSIENT_MONGO_RETRY.copy(retry=_UNLESS_TOO_LARGE):
+        with attempt:
+            try:
+                await accept(ports, conversation_id, user_id, entry)
+            except ConversationStoreError as refused:
+                files = tuple(
+                    card for card in entry.tool_data if card["tool_name"] == ARTIFACT_CARD
+                )
+                if not refused.too_large or len(files) == len(entry.tool_data):
+                    raise
+                lean = entry.model_copy(update={"tool_data": files})
+                await accept(ports, conversation_id, user_id, lean)
+                log.warning(
+                    "work finish too large; saved with only its file cards",
+                    conversation_id=conversation_id,
+                    task_id=entry.task_id,
+                    cards_dropped=len(entry.tool_data) - len(files),
+                    error_type=type(refused).__name__,
+                )
 
-    The work is marked ended meanwhile, so the sweep never takes it for work a dead server left.
-    """
-    ended_key = _ended_key(conversation_id, entry.task_id)
-    marked = True
-    try:
-        await redis_cache.client.set(ended_key, "1", ex=WORK_ENDED_TTL_SECONDS)
-    except RedisError as unmarked:
-        # The save below can still land, and matters more than the mark.
-        marked = False
-        log.error(
-            "work finish not marked ended; unsaved, the sweep would call it lost",
-            conversation_id=conversation_id,
-            task_id=entry.task_id,
-            error_type=type(unmarked).__name__,
-        )
+
+async def _mark_ended_unsaved(conversation_id: str, task_id: str, unsaved: Exception) -> None:
+    """Leave the proof that the work's own process ended it, which the sweep reads once its liveness lapses."""
     log.error(
-        "work finish refused by the conversation store",
+        "work finish not saved",
         conversation_id=conversation_id,
-        task_id=entry.task_id,
-        error_type=type(refused).__name__,
-        too_large=refused.too_large,
-        cards=len(entry.tool_data),
+        task_id=task_id,
+        error_type=type(unsaved).__name__,
+        too_large=isinstance(unsaved, ConversationStoreError) and unsaved.too_large,
     )
     try:
-        if refused.too_large:
-            raise refused
-        async for attempt in TRANSIENT_MONGO_RETRY.copy(retry=_UNLESS_TOO_LARGE):
-            with attempt:
-                await accept(ports, conversation_id, user_id, entry)
-    except ConversationStoreError:
-        if not entry.tool_data:
-            raise
-        await accept(ports, conversation_id, user_id, entry.model_copy(update={"tool_data": ()}))
-        log.warning(
-            "work finish saved without its cards",
-            conversation_id=conversation_id,
-            task_id=entry.task_id,
+        await redis_cache.client.set(
+            _ended_key(conversation_id, task_id), "1", ex=WORK_ENDED_TTL_SECONDS
         )
-    if marked:
-        try:
-            await redis_cache.client.delete(ended_key)
-        except RedisError as uncleared:
-            # The finish is saved: a mark left behind lapses on its own and changes nothing for ended work.
-            log.error(
-                "work finish saved but its ended mark not cleared",
-                conversation_id=conversation_id,
-                task_id=entry.task_id,
-                error_type=type(uncleared).__name__,
-            )
+    except RedisError as unmarked:
+        log.error(
+            "work finish not marked ended; the sweep will call it lost",
+            conversation_id=conversation_id,
+            task_id=task_id,
+            error_type=type(unmarked).__name__,
+        )
 
 
 async def record_work_lost(conversation_id: str, user_id: str, task_id: str) -> WorkOutcome:

@@ -8,7 +8,11 @@ it logs the cards its work recorded on that work's WorkFinished, then drops its 
 """
 
 from app.agents.core.background.executor_capture import session_approval_cards
-from app.agents.core.background.executor_queue import build_lock_value, keep_alive
+from app.agents.core.background.executor_queue import (
+    build_lock_value,
+    finish_while_alive,
+    keep_alive,
+)
 from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.session import (
     RunKind,
@@ -49,20 +53,11 @@ async def open_folded_stream(stream_id: str, *, conversation_id: str, user_id: s
 
 async def close_folded_stream(stream_id: str, *, conversation_id: str, user_id: str) -> None:
     """Log the run's end with the cards its stream collected, then drop its session."""
-    cancelled = await stop_requested(stream_id)
+    session = get_session(stream_id)
+    alive = session.alive if session is not None else None
+    saving = _log_run_end(stream_id, conversation_id, user_id)
     try:
-        published = await work_cards(conversation_id, [stream_id])
-        approvals = (ToolDataEvent(tool_data=card) for card in session_approval_cards(stream_id))
-        cards = fold_cards(approvals, seed=published.tool_data)
-        await record_work_finished(
-            conversation_id,
-            user_id,
-            stream_id,
-            WorkOutcome.CANCELLED if cancelled else WorkOutcome.DONE,
-            WorkReport(
-                text="", tool_data=cards.tool_data, nothing_for_user=True, image=published.image
-            ),
-        )
+        await (saving if alive is None else finish_while_alive(alive, saving))
     except Exception as e:  # unlogged cards must not also cost the run its ending
         log.error(
             f"{LogTag.AGENT} Could not log a detached run's end",
@@ -72,7 +67,20 @@ async def close_folded_stream(stream_id: str, *, conversation_id: str, user_id: 
             error=str(e),
         )
     finally:
-        session = get_session(stream_id)
-        if session is not None and session.alive is not None:
-            session.alive.cancel()
         teardown_session(stream_id)
+
+
+async def _log_run_end(stream_id: str, conversation_id: str, user_id: str) -> None:
+    cancelled = await stop_requested(stream_id)
+    published = await work_cards(conversation_id, [stream_id])
+    approvals = (ToolDataEvent(tool_data=card) for card in session_approval_cards(stream_id))
+    cards = fold_cards(approvals, seed=published.tool_data)
+    await record_work_finished(
+        conversation_id,
+        user_id,
+        stream_id,
+        WorkOutcome.CANCELLED if cancelled else WorkOutcome.DONE,
+        WorkReport(
+            text="", tool_data=cards.tool_data, nothing_for_user=True, image=published.image
+        ),
+    )

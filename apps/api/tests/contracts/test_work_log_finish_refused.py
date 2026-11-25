@@ -70,7 +70,7 @@ async def test_a_finish_that_would_grow_its_head_past_the_cap_is_saved_without_i
         "second",
         (),
     )
-    refused, gave_up = event["errors"]
+    (refused,) = event["errors"]
     assert 9 * MEGABYTE < refused.pop("entry_bytes") < MONGO_DOCUMENT_CAP
     assert refused == {
         "msg": "conversation store call failed",
@@ -79,15 +79,11 @@ async def test_a_finish_that_would_grow_its_head_past_the_cap_is_saved_without_i
         "mongo_code": BSON_OBJECT_TOO_LARGE,
         "too_large": True,
     }
-    assert gave_up == {
-        "msg": "work finish refused by the conversation store",
-        "conversation_id": conversation,
-        "task_id": "t2",
-        "error_type": "ConversationStoreError",
-        "too_large": True,
-        "cards": 1,
-    }
-    assert [w["msg"] for w in event["warnings"]][-1] == "work finish saved without its cards"
+    dropped = event["warnings"][-1]
+    assert (dropped["msg"], dropped["cards_dropped"]) == (
+        "work finish too large; saved with only its file cards",
+        1,
+    )
     assert await redis.keys(f"{WORK_ENDED_KEY_PREFIX}*") == []
 
 

@@ -821,6 +821,39 @@ class TestLivenessRenewal:
         # The beat's cancel was taken, not left owed to whatever scope the run sits in.
         assert cancels_owed == [0]
 
+    @pytest.mark.parametrize("by", ["deadline", "cancel"])
+    async def test_a_beat_that_gave_up_before_the_finish_takes_no_later_cancel_for_it(
+        self, redis, by: str
+    ) -> None:
+        """Regression for #1947 review: a beat already stopped made the finish swallow a deadline or a shutdown."""
+        ended: list[str] = []
+
+        async def _finish() -> None:
+            try:
+                for _ in range(5):
+                    await asyncio.sleep(0)
+                ended.append("saved")
+            except asyncio.CancelledError:
+                ended.append("cancelled")
+                raise
+
+        gave_up_earlier = asyncio.ensure_future(asyncio.sleep(0))
+        await gave_up_earlier
+
+        if by == "deadline":
+            with pytest.raises(TimeoutError):
+                async with asyncio.timeout(0):
+                    await finish_while_alive(gave_up_earlier, _finish())
+        else:
+            run = asyncio.create_task(finish_while_alive(gave_up_earlier, _finish()))
+            await asyncio.sleep(0)
+            run.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await run
+        await asyncio.sleep(0)
+
+        assert ended == ["cancelled"]
+
     async def test_a_finish_under_way_is_still_cancelled_by_anyone_but_its_own_beat(
         self, redis
     ) -> None:
