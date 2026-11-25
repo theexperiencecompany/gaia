@@ -21,4 +21,6 @@ for arg in "$@"; do
 done
 
 cd "$repo_root/apps/api"
-exec uv run --group backend --group dev pytest -p no:xdist -q ${args[@]+"${args[@]}"}
+# -c pins the config: pytest picks its rootdir from the paths' common ancestor, so one
+# path outside apps/api dropped pytest.ini (asyncio_mode=auto) and failed every async test.
+exec uv run --group backend --group dev pytest -c pytest.ini -p no:xdist -q ${args[@]+"${args[@]}"}
