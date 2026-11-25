@@ -68,6 +68,28 @@ describe("the head a follow reconnects after", () => {
     expect(asked).toEqual([null, 3, 5]);
   });
 
+  it("reconnects after the head before an entry when cut off between that entry's two frames", async () => {
+    vi.useFakeTimers();
+    // One entry at seq 4 changes two items: the server names 4 only on the last of its frames.
+    const { asked, release } = following([
+      [
+        line(screenFrame([userItem("u1", 1), userItem("u2", 2)], 3)),
+        line(
+          patchFrame(
+            "u1",
+            [{ op: "set", path: ["at"], value: "2026-11-12T10:00:09+00:00" }],
+            3,
+          ),
+        ),
+      ],
+      [line(insertFrame(userItem("u4", 4), 4))],
+    ]);
+    await settle(3);
+    release();
+
+    expect(asked).toEqual([null, 3, 4]);
+  });
+
   it("opens on the whole screen again after a change that had no place in its copy", async () => {
     vi.useFakeTimers();
     const unplaced = patchFrame(

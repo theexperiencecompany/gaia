@@ -34,6 +34,7 @@ from app.services.conversation.event_stream import (
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen import TOOL_CALL_CARD
 from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ToolDataEntry
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import opened, settled, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
@@ -406,3 +407,18 @@ async def test_event_lines_write_whole_items_unless_the_client_reads_patches(
     assert isinstance(screen, dict) and isinstance(patch, dict)
     assert "tool_data" not in json.dumps(screen)
     assert (patch["kind"], patch["id"], patch["base"]) == ("screen_patch", "work:t1", 0)
+
+
+@pytest.mark.parametrize("stored", ["not json", "{}", '{"kind": "entry", "seq": "two"}'])
+async def test_a_stream_entry_that_is_no_frame_vouches_for_nothing_and_is_logged(
+    fake_redis: fakeredis.aioredis.FakeRedis, stored: str
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2", "u3")
+    await fake_redis.xadd(f"{EVENTS_KEY_PREFIX}{CONVERSATION}", {"frame": stored})
+
+    async with captured_wide_event() as event:
+        assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+    [warning] = event["warnings"]
+    assert warning["msg"] == "conversation stream frame unreadable, so it vouches for no head"
+    assert warning["conversation_id"] == CONVERSATION

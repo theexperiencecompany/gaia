@@ -1,9 +1,10 @@
 """GET /conversations/{id}/events over real HTTP, Mongo and Redis: what wire 2 and after send, in bytes."""
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 import json
 from uuid import uuid4
@@ -20,6 +21,7 @@ from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
 from app.models.conversation_log_models import (
+    ApprovalRequested,
     Reaction,
     StepClaim,
     UserMessage,
@@ -36,12 +38,17 @@ from app.services.conversation.screen import project_screen
 from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.work_deltas import WorkDeltas, work_payloads
-from app.services.conversation.work_log import WorkReport, record_work_finished
+from app.services.conversation.work_log import (
+    WorkReport,
+    record_approval_requested,
+    record_work_finished,
+)
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import ItemChange
 from tests.conftest import FAKE_USER
 from tests.helpers import serve_asgi
 from tests.unit.services.conversation.change_helpers import with_changes
+from tests.unit.services.conversation.log_helpers import SEND_EMAIL
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
     RecordingEffects,
@@ -369,3 +376,27 @@ async def test_a_client_that_names_no_wire_is_sent_whole_items_with_their_cards(
     assert [
         "output" in _item(card["data"]) for card in _items(live.items["work:t1"]["tool_data"])
     ] == [True, True]
+
+
+async def test_a_connection_cut_between_two_frames_of_one_entry_resumes_with_the_second(
+    api: str, conversation: Conversation
+) -> None:
+    await conversation.start_work("t1", await conversation.say("m1"))
+    expiring = ApprovalRequested(
+        id="ask:a1",
+        task_id="t1",
+        approval_id="a1",
+        description=SEND_EMAIL,
+        expires_at=datetime.now(UTC) + timedelta(milliseconds=300),
+    )
+    await record_approval_requested(conversation.id, USER, expiring)
+    async with _following(api, conversation.id, wire=2) as follow:
+        await follow.until(_opened)
+        await asyncio.sleep(0.4)
+        # The message shows, and the approval that ran out before it stops being asked: two frames.
+        await conversation.say("m2")
+        cut = await follow.until(lambda held: held.kinds()[-1] == "screen_patch")
+    assert "m2" not in cut.items
+    resumed = await _read(api, conversation.id, wire=2, after=cut.head)
+    cut.items.update(resumed.items)
+    assert cut.items == await conversation.screen()

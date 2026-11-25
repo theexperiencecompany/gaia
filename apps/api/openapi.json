@@ -4572,6 +4572,15 @@
           "timeline": {
             "$ref": "#/components/schemas/ToolTimeline"
           },
+          "tool_data": {
+            "default": [],
+            "deprecated": true,
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
+          },
           "type": {
             "const": "cards",
             "default": "cards",
@@ -14360,6 +14369,15 @@
           },
           "timeline": {
             "$ref": "#/components/schemas/ToolTimeline"
+          },
+          "tool_data": {
+            "default": [],
+            "deprecated": true,
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
           }
         },
         "required": [
@@ -19125,6 +19143,15 @@
           },
           "timeline": {
             "$ref": "#/components/schemas/ToolTimeline"
+          },
+          "tool_data": {
+            "default": [],
+            "deprecated": true,
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
           }
         },
         "required": [
@@ -26200,6 +26227,15 @@
           },
           "timeline": {
             "$ref": "#/components/schemas/ToolTimeline"
+          },
+          "tool_data": {
+            "default": [],
+            "deprecated": true,
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
           }
         },
         "required": [

@@ -344,8 +344,18 @@ class _Positioned(BaseModel):
 async def _vouched(conversation_id: str, after: int) -> bool:
     """Return whether the stream still holds entry after's frame with no amendment since to an entry at or below it."""
     # Newest first: everything read before the entry's own frame came after it.
-    for _stream_id, fields in await redis_cache.client.xrevrange(_key(conversation_id)):
-        frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
+    for stream_id, fields in await redis_cache.client.xrevrange(_key(conversation_id)):
+        try:
+            frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
+        except ValidationError as error:
+            # It may be the amendment or the entry looked for: the whole screen is the safe answer.
+            wide_log.warning(
+                "conversation stream frame unreadable, so it vouches for no head",
+                conversation_id=conversation_id,
+                stream_id=stream_id,
+                error=str(error)[:300],
+            )
+            return False
         if frame.seq is not None and frame.seq <= after:
             # The newest frame of an entry the client held: its own, or an amendment it may have missed.
             return frame.kind == FrameKind.ENTRY and frame.seq == after

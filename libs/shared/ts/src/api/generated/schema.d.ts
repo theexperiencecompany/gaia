@@ -8264,6 +8264,12 @@ export interface components {
         CardsDelta: {
             timeline: components["schemas"]["ToolTimeline"];
             /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -12930,6 +12936,12 @@ export interface components {
             /** Seq */
             seq: number;
             timeline: components["schemas"]["ToolTimeline"];
+            /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * NotificationAction
@@ -15108,6 +15120,12 @@ export interface components {
             /** Seq */
             seq: number;
             timeline: components["schemas"]["ToolTimeline"];
+            /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * ReplyOutcome
@@ -18947,6 +18965,12 @@ export interface components {
             /** Task Id */
             task_id: string;
             timeline: components["schemas"]["ToolTimeline"];
+            /**
+             * Tool Data
+             * @deprecated
+             * @default []
+             */
+            tool_data?: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * WorkspaceFileTarget

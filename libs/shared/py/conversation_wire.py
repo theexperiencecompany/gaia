@@ -9,7 +9,6 @@ from typing import Annotated, Any, Generic, Literal, NotRequired, TypeVar
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, with_config
 from pydantic.config import JsonDict
-from pydantic.json_schema import SkipJsonSchema
 from typing_extensions import TypedDict
 
 # A defaulted field is always serialized, so the generated client type marks it required.
@@ -173,8 +172,15 @@ class ToolTimeline(BaseModel):
     progress: ToolProgress | None = None
 
 
-#: An item's cards before folding: the server's own read, and sent only on wire 1. Never in the client types.
-UnfoldedCards = SkipJsonSchema[tuple[ToolDataEntry, ...]]
+#: An item's cards before folding: the server's own read, and sent only on wire 1, so optional and deprecated in the schema.
+UnfoldedCards = Annotated[tuple[ToolDataEntry, ...], Field(json_schema_extra={"deprecated": True})]
+
+
+def _unfolded_cards_optional(schema: JsonDict) -> None:
+    """Leave tool_data out of the required keys: wire 2 never sends it."""
+    required = schema.get("required")
+    if isinstance(required, list):
+        schema["required"] = [key for key in required if key != "tool_data"]
 
 
 class ChangeOp(StrEnum):
@@ -258,7 +264,7 @@ class BubbleTextDelta(BaseModel):
 class CardsDelta(BaseModel):
     """The reply's cards as they now stand, as the timeline they fold to; wire 2 sends a TimelineDelta instead."""
 
-    model_config = WIRE_CONFIG
+    model_config = ConfigDict(**WIRE_CONFIG, json_schema_extra=_unfolded_cards_optional)
 
     type: Literal["cards"] = "cards"
     tool_data: UnfoldedCards = ()
@@ -337,6 +343,8 @@ class ScreenInsertFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN_INSERT] = FrameKind.SCREEN_INSERT
     item: ItemT
+    # The log head the client's screen is whole through once this is applied, where it resumes
+    # from: when one entry changes several items, only the last of its frames names that entry.
     head: int = Field(ge=0)
 
 
