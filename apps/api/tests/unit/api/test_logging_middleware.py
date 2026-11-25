@@ -4,6 +4,7 @@ Covers skip paths, status code handling, trace-id propagation, exception
 handling, and request/response size capture.
 """
 
+from array import array
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -96,6 +97,11 @@ def _build_test_app(skip_paths: frozenset | None = None):
                 wide_log.set(result_count=written)
 
         return StreamingResponse(lines(), media_type="text/event-stream")
+
+    @app.get("/api/v1/views")
+    async def views_route():
+        # Two-byte items, so a view's length is half its bytes.
+        return StreamingResponse(iter([memoryview(array("H", [1, 2])), memoryview(b"abc")]))
 
     app.add_middleware(LoggingMiddleware)
     return app
@@ -277,9 +283,9 @@ class TestLoggingMiddlewareRequestSize:
 
 
 class TestLoggingMiddlewareResponseSize:
-    """The event carries the bytes the client was sent, whether or not the response named its size."""
+    """The event carries the body bytes handed to the server, whether or not the response named its size."""
 
-    def test_a_streamed_response_logs_the_bytes_the_client_received(self) -> None:
+    def test_a_streamed_response_logs_the_bytes_written_to_the_server(self) -> None:
         with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
             resp = TestClient(_build_test_app()).get("/api/v1/stream")
         context = mock_logger.bind.call_args.kwargs
@@ -312,11 +318,17 @@ class TestLoggingMiddlewareResponseSize:
         assert context["client_ip"] == "testclient"
         assert resp.headers["x-trace-id"] == context["trace_id"]
 
-    def test_a_sized_response_logs_the_bytes_the_client_received(self) -> None:
+    def test_a_sized_response_logs_the_bytes_written_to_the_server(self) -> None:
         with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
             resp = TestClient(_build_test_app()).get("/api/v1/test")
         context = mock_logger.bind.call_args.kwargs
         assert context["response_size_bytes"] == len(resp.content) == len(b'{"result":"ok"}')
+
+    def test_a_body_sent_as_memoryviews_is_counted_in_bytes(self) -> None:
+        with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
+            resp = TestClient(_build_test_app()).get("/api/v1/views")
+        context = mock_logger.bind.call_args.kwargs
+        assert context["response_size_bytes"] == len(resp.content) == 7
 
     async def test_a_client_that_leaves_mid_stream_still_gets_its_event(self) -> None:
         written: list[bytes] = []

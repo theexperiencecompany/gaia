@@ -98,5 +98,20 @@ async def test_a_connection_dropped_mid_stream_counts_what_was_sent_and_closes_i
         await stream.aclose()
         frames = event["conversation"]["frames"]
 
-    assert (first, second, frames, closed) == (b"data: 1\n\n", b"data: 2\n\n", 2, [True])
+    # The second frame was handed over and never asked past: its send is not known to have ended.
+    assert (first, second, frames, closed) == (b"data: 1\n\n", b"data: 2\n\n", 1, [True])
     assert _value("stream_bytes_total", wire, surface) - before == len(first)
+
+
+async def test_an_opening_frame_whose_send_never_ended_is_not_measured() -> None:
+    wire, surface = EventsWire.PATCHES, EntrySurface.BOT
+    before = _value("opening_frame_bytes_count", wire, surface)
+
+    async with captured_wide_event() as event:
+        stream = metered(_lines("data: 1\n\n"), wire, surface)
+        await anext(stream)
+        await stream.aclose()
+        measured = dict(event["conversation"])
+
+    assert measured == {"frames": 0}
+    assert _value("opening_frame_bytes_count", wire, surface) == before

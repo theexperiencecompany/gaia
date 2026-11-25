@@ -65,8 +65,9 @@ class _Served:
 
 
 class _CountedResponse(Response):
-    """Send a response, and report the body bytes written once the last is sent or the client has gone.
+    """Send a response, and report the body bytes the server took once the last is sent or the client has gone.
 
+    Taken by the server is all an app can know: a client that left mid-write may have read fewer.
     Only its call is used: the status and headers the client gets are the wrapped response's.
     """
 
@@ -82,8 +83,8 @@ class _CountedResponse(Response):
             nonlocal size
             await send(message)
             match message:
-                case {"type": "http.response.body", "body": bytes() as body}:
-                    size += len(body)
+                case {"type": "http.response.body", "body": bytes() | memoryview() as body}:
+                    size += memoryview(body).nbytes
 
         try:
             await self._response(scope, receive, counting)  # pragma: no mutate — unread args
@@ -238,6 +239,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "request_id": request.headers.get("x-request-id"),
             "user_agent": request.headers.get("user-agent"),
             "request_size_bytes": served.request_size_bytes,
+            # Body bytes the server took from the app, not bytes the client is known to have read.
             "response_size_bytes": response_size_bytes,
         }
 

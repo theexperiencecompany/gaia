@@ -51,7 +51,7 @@ STREAM_BYTES_TOTAL = register_once(
     "gaia_conversation_events_stream_bytes_total",
     lambda: Counter(
         name="gaia_conversation_events_stream_bytes_total",
-        documentation="Bytes the events stream sent its clients, by wire and surface",
+        documentation="Bytes the events stream handed the server for its clients, by wire and surface",
         labelnames=_LABELS,
     ),
 )
@@ -68,10 +68,10 @@ def create_events_stream_series() -> None:
 async def metered(
     lines: AsyncGenerator[str], wire: EventsWire, surface: EntrySurface
 ) -> AsyncGenerator[bytes]:
-    """Yield a stream's SSE lines as the bytes sent, counting them and the frame it opens on.
+    """Yield a stream's SSE lines as bytes, counting each line and the opening frame once the server took it.
 
-    The request's wide event gets the opening frame's bytes when it is sent, and the
-    frames written when the stream closes.
+    The request's wide event gets the opening frame's bytes then, and the frames taken when
+    the stream closes. Taken by the server is all this can know: not that the client read it.
     """
     labels = (str(wire.value), surface.value)
     frames = 0
@@ -79,12 +79,13 @@ async def metered(
         async with aclosing(lines):
             async for line in lines:
                 sent = line.encode()
+                yield sent
+                # Asked for the next line, so the server took this one; a send that failed never gets here.
+                STREAM_BYTES_TOTAL.labels(*labels).inc(len(sent))
                 if line.startswith(_FRAME_LINE):
                     if not frames:
                         OPENING_FRAME_BYTES.labels(*labels).observe(len(sent))
                         log.set_ns("conversation", opening_frame_bytes=len(sent))
                     frames += 1
-                yield sent
-                STREAM_BYTES_TOTAL.labels(*labels).inc(len(sent))
     finally:
         log.set_ns("conversation", frames=frames)
