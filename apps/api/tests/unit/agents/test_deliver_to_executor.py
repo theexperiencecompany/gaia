@@ -38,7 +38,7 @@ from app.constants.chat import ConversationSource
 from app.constants.executor import EXECUTOR_CARRY_TASK
 from app.constants.log_tags import LogTag
 from app.models.agent_models import InboxEntry
-from app.models.conversation_log_models import Reply, UserMessage
+from app.models.conversation_log_models import ConversationState, Reply, UserMessage
 from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
@@ -328,6 +328,31 @@ class TestTheUsersWordsACarryRunJudgesBy:
         configurable = h.spawn.call_args.args[0].configurable
         assert configurable["user_messages"] == ["draft a reply to Bob", "send it"]
         assert configurable["assistant_turns"] == ["Drafted the reply to Bob."]
+
+    async def test_a_message_landing_after_the_head_was_read_is_not_carried(
+        self, fake_redis, conversation_runtime: Runtime
+    ) -> None:
+        """The run reads the log as it stood at the head it saw; later words are not what it was woken by."""
+        await self._say(conversation_runtime, user=["draft a reply to Bob"], shown="Drafted.")
+        read_state = conversation_runtime.log.state
+
+        async def state_then_a_new_message(conversation_id: str, user_id: str) -> ConversationState:
+            seen = await read_state(conversation_id, user_id)
+            await conversation_runtime.log.append(
+                conversation_id,
+                user_id,
+                UserMessage(id="late", text="send it to everyone", surface=ConversationSource.WEB),
+            )
+            return seen
+
+        with (
+            patch.object(conversation_runtime.log, "state", state_then_a_new_message),
+            _real_lifecycle() as h,
+        ):
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        configurable = h.spawn.call_args.args[0].configurable
+        assert configurable["user_messages"] == ["draft a reply to Bob"]
 
     async def test_a_run_woken_inside_a_workflow_never_borrows_the_chats_words(
         self, fake_redis, conversation_runtime: Runtime

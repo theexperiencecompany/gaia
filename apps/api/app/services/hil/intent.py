@@ -343,23 +343,46 @@ def _listed_entry_pointed_at(target: str, prior_calls: list[PriorCall], context:
     return any(
         _mentions(text, _normalize(address)) or _local_part(address) in tokens
         for call in prior_calls
-        for entry in _entries_holding(call.output, target)
-        for address in _ADDRESS.findall(entry)
+        for addresses in _entry_addresses(call.output, target)
+        for address in addresses
     )
 
 
-def _entries_holding(output: str, target: str) -> list[str]:
-    """Return the entries of a listed result that carry target: JSON objects, else lines.
+def _entry_addresses(output: str, target: str) -> list[list[str]]:
+    """Return the own addresses of each listed entry that carries target: JSON objects, else lines.
 
     A plain-text line's quoted text is content (a forwarded mail, a subject), never the
-    entry's own fields, so it is dropped before an address can ground the entry.
+    entry's own fields, so it is dropped before its recipients are read (_line_recipients).
     """
     try:
         parsed: object = json.loads(output)
     except (json.JSONDecodeError, ValueError):
         holds = re.compile(rf"(?<![\w-]){re.escape(target)}(?![\w-])")
-        return [_QUOTED.sub(" ", line) for line in output.splitlines() if holds.search(line)]
-    return [_own_fields(node) for node in _objects(parsed) if target in node.values()]
+        return [
+            _line_recipients(_QUOTED.sub(" ", line))
+            for line in output.splitlines()
+            if holds.search(line)
+        ]
+    return [
+        _ADDRESS.findall(_own_fields(node)) for node in _objects(parsed) if target in node.values()
+    ]
+
+
+def _line_recipients(line: str) -> list[str]:
+    """Return the addresses a plain-text list line names as its own recipients.
+
+    A columned line ("id | to | subject | gist") holds them in its first column with an
+    address; later columns are content ("Forwarded from simonne@x.com"). A line without
+    columns naming more than one address can't say which is its own, so it names none.
+    """
+    cells = line.split("|")
+    if len(cells) > 1:
+        for cell in cells:
+            if found := _ADDRESS.findall(cell):
+                return found
+        return []
+    found = _ADDRESS.findall(line)
+    return found if len(found) <= 1 else []
 
 
 def _own_fields(record: dict[str, object]) -> str:

@@ -5,6 +5,8 @@ is always stored, since it outranks the mode; a "don't ask" is stored only where
 would otherwise ask, so the page shows exactly what was said.
 """
 
+from typing import assert_never
+
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.hil import ALWAYS_ASK_TOOLS, ApprovalRule
 from app.services.hil.preferences import set_tool_override
@@ -49,6 +51,8 @@ def _override(rule: ApprovalRule, *, destructive: bool | None) -> bool | None:
             return None if destructive is False else False
         case ApprovalRule.DEFAULT:
             return None
+        case _:
+            assert_never(rule)
 
 
 async def _integration_targets(integration: str) -> list[tuple[str, bool | None]]:
@@ -69,7 +73,8 @@ async def _tool_target(name: str | None) -> list[tuple[str, bool | None]]:
             why="it changes the user's account or rules, so it always needs their yes",
             status_code=400,
         )
-    meta = (await get_tool_registry()).get_tool_meta(name or "")
+    registry = await get_tool_registry()
+    meta = registry.get_tool_meta(name or "")  # pragma: no mutate — any unregistered name misses
     if meta is None:
         raise AppError(message=f"Unknown tool '{name}'", status_code=404)
     return [(hil_tool_key(meta.name, mcp_tool_identity(meta.tool)), meta.destructive)]

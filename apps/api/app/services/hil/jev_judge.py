@@ -291,8 +291,11 @@ async def ask_jev_go_ahead(
     answer = body.choice(
         JEV_GO_AHEAD_QUESTION_KEY, (JevChoice.AUTHORIZED, JevChoice.UNCLEAR), label="go-ahead "
     )
-    confidence = float(answer.confidence or 0.0)
-    go_ahead = confidence if answer.choice == JevChoice.AUTHORIZED else 1.0 - confidence
+    if answer.confidence is None:
+        # Nothing to read the go-ahead from: "0% unclear" would otherwise score as a sure yes.
+        return (0.0, *body.tokens())
+    authorized = answer.choice == JevChoice.AUTHORIZED
+    go_ahead = answer.confidence if authorized else 1.0 - answer.confidence
     return (go_ahead, *body.tokens())
 
 
@@ -553,8 +556,9 @@ def _nothing_objects(verdict: JevVerdict, case: JevCase) -> bool:
     """Whether nothing JEV or the user said or did argues against running the call unasked."""
     return (
         verdict.choice != JevChoice.FORBIDDEN
-        # An answer without P(forbidden) can't show the call is safe to run unasked.
-        and (verdict.probabilities or {}).get(JevChoice.FORBIDDEN, 1.0)
+        # An answer without P(forbidden) can't show the call is safe to run unasked. Equivalent
+        # under mutation: any default at or above the line says so, 1.0 as much as 2.0.
+        and (verdict.probabilities or {}).get(JevChoice.FORBIDDEN, 1.0)  # pragma: no mutate
         < HIL_JEV_CONTAINED_MAX_FORBIDDEN
         and (
             verdict.forbid == JevChoice.PERMITTED or not carries_forbid_language(case.user_messages)

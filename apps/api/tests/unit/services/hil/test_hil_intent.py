@@ -171,6 +171,87 @@ class TestAPickFromAList:
 
         assert missing == ["d-1"]
 
+    def test_a_dotted_address_the_user_was_shown_grounds_its_entry(self) -> None:
+        """The whole address is the match: its local part, dots and all, is no single word."""
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output='[{"id": "d-1", "to": "simonne.lee@x.com"}, {"id": "d-2", "to": "bob@x.com"}]',
+            )
+        ]
+        shown = ["I drafted the reply to simonne.lee@x.com"]
+
+        assert ungrounded_targets({"id": "d-1"}, ["Send"], listed, shown_turns=shown) == []
+        assert ungrounded_targets({"id": "d-2"}, ["Send"], listed, shown_turns=shown) == ["d-2"]
+
+    def test_a_recipient_after_a_prose_field_still_identifies_the_entry(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '[{"id": "d-1", "body": "Hello", "to": "bob@x.com"}, '
+                    '{"id": "d-2", "to": "lisa@x.com"}]'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send bob's"], listed) == []
+        assert ungrounded_targets({"id": "d-2"}, ["send bob's"], listed) == ["d-2"]
+
+    def test_quoted_text_pressed_against_an_address_never_becomes_part_of_it(self) -> None:
+        listed = [
+            PriorCall(name="LIST", args={}, output='d-1 | "Intro"bob@x.com\nd-2 | lisa@x.com'),
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send bob's"], listed) == []
+
+    def test_an_address_after_the_recipients_column_never_grounds_its_entry(self) -> None:
+        """'Forwarded from simonne@x.com' unquoted, in the gist column: d-1 is Bob's draft."""
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output="d-1 | bob@x.com | Forwarded from simonne@x.com\nd-2 | carol@x.com",
+            )
+        ]
+
+        missing = ungrounded_targets({"draft_id": "d-1"}, ["send the one to simonne@x.com"], listed)
+
+        assert missing == ["d-1"]
+
+    def test_a_line_without_columns_naming_two_addresses_grounds_neither(self) -> None:
+        listed = [
+            PriorCall(name="LIST", args={}, output="d-1 to bob@x.com, forwarded from simonne@x.com")
+        ]
+
+        missing = ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed)
+
+        assert missing == ["d-1"]
+
+    def test_every_recipient_in_the_recipients_column_grounds_its_entry(self) -> None:
+        listed = [
+            PriorCall(name="LIST", args={}, output="d-1 | simonne@x.com, lisa@x.com | invoice")
+        ]
+
+        assert ungrounded_targets({"draft_id": "d-1"}, ["send lisa@x.com's"], listed) == []
+
+    def test_a_two_column_line_reads_its_recipients_from_the_column_holding_them(self) -> None:
+        listed = [PriorCall(name="LIST", args={}, output="d-1 bob@x.com, simonne@x.com | note")]
+
+        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == []
+
+    def test_a_columned_line_with_no_address_grounds_nothing(self) -> None:
+        listed = [PriorCall(name="LIST", args={}, output="d-1 | invoice | october")]
+
+        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == ["d-1"]
+
+    def test_a_line_without_columns_naming_one_address_grounds_it(self) -> None:
+        listed = [PriorCall(name="LIST", args={}, output="d-1 to simonne@x.com")]
+
+        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == []
+
     def test_an_id_is_matched_whole_never_as_part_of_a_longer_one(self) -> None:
         listed = [
             PriorCall(name="LIST", args={}, output="1. d-10 | simonne@x.com\n2. d-2 | bob@x.com")

@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from unittest.mock import AsyncMock, MagicMock
 
+from app.constants.conversation import RECENT_TURNS_LOOKBACK_SEQS
 from app.models.conversation_log_models import Entry, Reply
 from app.models.message_models import MessageDict
 from app.services.conversation.turns_before import turns_before
@@ -20,12 +21,16 @@ def _reply(text: str, *, heard_through: int | None = None) -> Reply:
     )
 
 
-async def _turns_before(entries: Sequence[Entry], seq: int) -> list[MessageDict]:
+def _log_of(entries: Sequence[Entry]) -> MagicMock:
     log = MagicMock()
     log.read_after = AsyncMock(
         return_value=[logged(number, entry) for number, entry in enumerate(entries, start=1)]
     )
-    return await turns_before(log, CONVERSATION, USER, seq)
+    return log
+
+
+async def _turns_before(entries: Sequence[Entry], seq: int) -> list[MessageDict]:
+    return await turns_before(_log_of(entries), CONVERSATION, USER, seq)
 
 
 async def test_the_user_and_the_settled_reply_before_the_point_are_read_in_order() -> None:
@@ -63,3 +68,20 @@ async def test_a_voice_reply_is_read_only_as_far_as_the_user_heard_it() -> None:
     turns = await _turns_before([*entries, user("u1")], seq=4)
 
     assert turns[-1] == {"role": "assistant", "content": "Draft ready"}
+
+
+async def test_the_log_is_read_from_the_lookback_window_before_the_point() -> None:
+    """Reads this conversation for this user from RECENT_TURNS_LOOKBACK_SEQS before seq."""
+    log = _log_of([])
+
+    await turns_before(log, CONVERSATION, USER, 50)
+
+    log.read_after.assert_awaited_once_with(CONVERSATION, USER, 50 - 1 - RECENT_TURNS_LOOKBACK_SEQS)
+
+
+async def test_a_point_near_the_start_of_the_log_reads_from_the_beginning() -> None:
+    log = _log_of([])
+
+    await turns_before(log, CONVERSATION, USER, 5)
+
+    log.read_after.assert_awaited_once_with(CONVERSATION, USER, 0)

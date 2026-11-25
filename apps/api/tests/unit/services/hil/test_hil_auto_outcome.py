@@ -43,7 +43,9 @@ class FakeJudge(IntentJudge):
         self._decision = decision
         self._standing = standing
         self.calls = 0
+        self.assistants: list[intent.AssistantTurns] = []
         self.standing_asked: list[tuple[str, ...]] = []
+        self.standing_calls: list[JudgedCall] = []
 
     async def decide(
         self,
@@ -56,12 +58,14 @@ class FakeJudge(IntentJudge):
         assistant: intent.AssistantTurns = intent.AssistantTurns(),
     ) -> IntentDecision:
         self.calls += 1
+        self.assistants.append(assistant)
         return self._decision
 
     async def standing_rules_hold(
         self, *, standing_rules: tuple[str, ...], call: JudgedCall
     ) -> bool:
         self.standing_asked.append(standing_rules)
+        self.standing_calls.append(call)
         if isinstance(self._standing, Exception):
             raise self._standing
         return self._standing
@@ -87,6 +91,22 @@ async def test_injected_judge_decides_without_calling_the_llm() -> None:
     )
     assert d.outcome == "ask"
     assert fake.calls == 1
+
+
+async def test_the_judge_is_given_what_the_user_was_shown_and_the_runs_own_words() -> None:
+    fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"))
+    assistant = intent.AssistantTurns(shown=("Drafted the reply to Bob.",), run=("Sending now.",))
+
+    await judge_intent(
+        AutoContext(user_id="u"),
+        user_messages=["send it"],
+        call=_call(),
+        prior_calls=[],
+        judge=fake,
+        assistant=assistant,
+    )
+
+    assert fake.assistants == [assistant]
 
 
 async def test_never_auto_tool_asks_without_calling_the_llm() -> None:
@@ -124,6 +144,11 @@ class TestStandingInstructionsOnlyEverAsk:
         assert d.outcome == "ask"
         assert d.reason == intent.STANDING_RULE_REASON.format(tool="send_email")
         assert fake.standing_asked == [self.RULES]
+
+    async def test_the_rules_are_checked_against_the_call_being_judged(self) -> None:
+        fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"))
+        await self._judged(fake)
+        assert fake.standing_calls == [_call()]
 
     async def test_a_rule_that_does_not_cover_it_lets_it_run(self) -> None:
         fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"), standing=False)

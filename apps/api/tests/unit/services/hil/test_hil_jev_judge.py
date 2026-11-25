@@ -1310,3 +1310,108 @@ class TestAGoAheadForWhatTheRunIsDoing:
             assistant=intent.AssistantTurns(shown=_SHOWN),
         )
         assert decision.outcome == "ask"
+
+
+class TestTheFocusedGoAheadQuestion:
+    async def _ask(self, body: dict[str, Any], turns: list[str] | None = None) -> float:
+        go_ahead, _in, _out = await jev_judge.ask_jev_go_ahead(
+            user_messages=turns or ["send"],
+            call=_call(**_SEND_DRAFT),
+            prior_calls=[_DRAFTED],
+            assistant_turns=list(_SHOWN),
+            transport=_transport(body),
+        )
+        return go_ahead
+
+    async def test_only_the_two_latest_turns_are_put_to_the_question(self) -> None:
+        transport = _transport(_go_ahead_answer("authorized", 0.9))
+
+        await jev_judge.ask_jev_go_ahead(
+            user_messages=["draft it", "show me", "send"],
+            call=_call(**_SEND_DRAFT),
+            prior_calls=[],
+            assistant_turns=[],
+            transport=transport,
+        )
+
+        state, _questions = transport.await_args.args
+        assert state["latest_turns"] == ["show me", "send"]
+
+    async def test_an_authorized_answer_is_the_go_ahead_at_its_confidence(self) -> None:
+        assert await self._ask(_go_ahead_answer("authorized", 0.9)) == pytest.approx(0.9)
+
+    async def test_an_unclear_answer_leaves_the_rest_of_its_confidence_as_the_go_ahead(
+        self,
+    ) -> None:
+        assert await self._ask(_go_ahead_answer("unclear", 0.2)) == pytest.approx(0.8)
+
+    @pytest.mark.parametrize("choice", ["authorized", "unclear"])
+    async def test_an_answer_without_confidence_is_never_a_go_ahead(self, choice: str) -> None:
+        """No probability to read means nothing can clear the line, whichever way it was answered."""
+        body = _go_ahead_answer(choice, 0.0)
+        body["answers"][hil_constants.JEV_GO_AHEAD_QUESTION_KEY]["confidence"] = None
+
+        assert await self._ask(body) == 0.0
+
+    async def test_an_unclear_answer_without_confidence_never_runs_the_call(self) -> None:
+        """Read as "0% unclear", the answer was a certain go-ahead and the draft was sent."""
+        follow_up = _go_ahead_answer("unclear", 0.0)
+        follow_up["answers"][hil_constants.JEV_GO_AHEAD_QUESTION_KEY]["confidence"] = None
+        transport = _transport(
+            _answer("authorized", 0.7, {"authorized": 0.7, "unclear": 0.3, "forbidden": 0.0}),
+            follow_up,
+        )
+
+        decision = await JevIntentJudge(transport=transport).decide(
+            user_id="u",
+            user_messages=["send"],
+            call=_call(**_SEND_DRAFT),
+            prior_calls=[_DRAFTED],
+            history=AutoHistory(),
+            assistant=intent.AssistantTurns(shown=_SHOWN),
+        )
+
+        assert decision.outcome == "ask"
+
+    async def test_a_choice_the_question_never_offered_is_refused_naming_the_question(self) -> None:
+        with pytest.raises(ValueError, match=r"^unknown JEV go-ahead choice: 'forbidden'$"):
+            await self._ask(_go_ahead_answer("forbidden", 0.9))
+
+
+class TestTheStandingInstructionsQuestion:
+    async def test_a_choice_the_question_never_offered_is_refused_naming_the_question(self) -> None:
+        with pytest.raises(ValueError, match=r"^unknown JEV standing choice: 'authorized'$"):
+            await JevIntentJudge(
+                transport=_transport(_standing_answer("authorized", 0.9))
+            ).standing_rules_hold(standing_rules=("Reply in English.",), call=_call())
+
+
+class TestARunOnAGoAheadStopsAtTheLine:
+    def test_a_go_ahead_exactly_on_the_line_runs(self) -> None:
+        assert _go_ahead_case(_unsure(hil_constants.HIL_JEV_GO_AHEAD_LINE)).outcome == "accept"
+
+    def test_an_address_from_the_users_past_runs_is_not_an_untraced_target(self) -> None:
+        case = JevCase(
+            call=_call(),
+            user_messages=["send"],
+            prior_calls=[],
+            history=AutoHistory(known_targets=("bob@example.com",)),
+            shown_turns=_SHOWN,
+        )
+
+        assert decide_from_verdict(_unsure(0.95), case).outcome == "accept"
+
+    def test_a_pick_from_a_list_is_grounded_by_what_the_user_was_shown(self) -> None:
+        listing = (
+            '1. r2569937965309608501 | boardy@x.com | "Intro"\n'
+            '2. r8807310570127663349 | simonne@intrinsicurlyme.co.za | "Re: October Invoice"'
+        )
+        case = JevCase(
+            call=_call(tool_name="GMAIL_SEND_DRAFT", args={"draft_id": "r8807310570127663349"}),
+            user_messages=["Send"],
+            prior_calls=[PriorCall(name="GMAIL_LIST_DRAFTS", args={}, output=listing)],
+            history=AutoHistory(),
+            shown_turns=("I drafted the reply to Simonne with the October invoice attached.",),
+        )
+
+        assert decide_from_verdict(_unsure(0.95), case).outcome == "accept"

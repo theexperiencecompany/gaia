@@ -208,8 +208,9 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
             new=AsyncMock(return_value=IntentDecision("ask", "")),
         ) as judge,
         patch(f"{GATE_MODULE}.log") as log,
+        # create=True: the regression-proof lane runs this fixture on master, before the seam exists.
         patch(
-            f"{GATE_MODULE}.get_all_instructions", new=AsyncMock(return_value={})
+            f"{GATE_MODULE}.get_all_instructions", new=AsyncMock(return_value={}), create=True
         ) as instructions,
     ):
         yield GateSeams(

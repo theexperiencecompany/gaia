@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, call, patch
 import pytest
 
 from app.constants import hil as hil_constants
+from app.constants.mcp import MCP_INTEGRATION_ID_METADATA_KEY, MCP_SERVER_NAME_METADATA_KEY
 from app.schemas.integrations.responses import IntegrationToolApproval
 from app.services.hil import approval_rules
 from app.utils.errors import AppError
@@ -74,11 +75,16 @@ class TestAWholeIntegration:
 
     async def test_an_integration_with_no_tools_writes_nothing(self) -> None:
         listed, written = _seams([])
-        with listed, written as override, pytest.raises(AppError):
+        with listed, written as override, pytest.raises(AppError) as raised:
             await approval_rules.set_approval_rule(
                 USER, rule=hil_constants.ApprovalRule.DONT_ASK, integration="nope"
             )
         override.assert_not_awaited()
+        assert raised.value.status_code == 404
+        assert raised.value.message == "No tools found for integration 'nope'"
+        assert raised.value.fix == (
+            "Use the integration's id as listed in the user's connected integrations"
+        )
 
 
 class TestOneTool:
@@ -97,6 +103,42 @@ class TestOneTool:
                 USER, rule=hil_constants.ApprovalRule.DONT_ASK, tool="GMAIL_SEND_EMAIL"
             )
         override.assert_awaited_once_with(USER, "GMAIL_SEND_EMAIL", False)
+
+    async def test_the_reply_names_the_tool_the_rule_was_saved_for(self) -> None:
+        meta = SimpleNamespace(
+            name="GMAIL_SEND_EMAIL", tool=SimpleNamespace(metadata={}), destructive=True
+        )
+        registry = SimpleNamespace(get_tool_meta=lambda name: meta)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.set_tool_override", new=AsyncMock()),
+        ):
+            reply = await approval_rules.set_approval_rule(
+                USER, rule=hil_constants.ApprovalRule.DONT_ASK, tool="GMAIL_SEND_EMAIL"
+            )
+        assert reply == "Approval rule saved: GMAIL_SEND_EMAIL will run without asking."
+
+    async def test_an_mcp_tool_is_stored_under_its_server_scoped_key(self) -> None:
+        """Two servers can expose one tool name; the rule must follow the server, not the name."""
+        meta = SimpleNamespace(
+            name="posthog_delete_item",
+            tool=SimpleNamespace(
+                metadata={
+                    MCP_INTEGRATION_ID_METADATA_KEY: "posthog",
+                    MCP_SERVER_NAME_METADATA_KEY: "delete_item",
+                }
+            ),
+            destructive=True,
+        )
+        registry = SimpleNamespace(get_tool_meta=lambda name: meta)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
+        ):
+            await approval_rules.set_approval_rule(
+                USER, rule=hil_constants.ApprovalRule.ASK, tool="posthog_delete_item"
+            )
+        override.assert_awaited_once_with(USER, "mcp:posthog:delete_item", True)
 
     async def test_ask_on_a_tool_that_asks_by_default_still_stores_the_rule(self) -> None:
         meta = SimpleNamespace(
@@ -117,24 +159,31 @@ class TestOneTool:
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
             patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
-            pytest.raises(AppError),
+            pytest.raises(AppError) as raised,
         ):
             await approval_rules.set_approval_rule(
                 USER, rule=hil_constants.ApprovalRule.DONT_ASK, tool="NOPE"
             )
         override.assert_not_awaited()
+        assert raised.value.status_code == 404
+        assert raised.value.message == "Unknown tool 'NOPE'"
 
     @pytest.mark.parametrize("name", ["set_approval_rule", "update_user_instructions"])
     async def test_a_tool_that_always_asks_refuses_any_rule(self, name: str) -> None:
         """Saying "never ask" to these would be a no-op the user believes worked."""
         with (
             patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
-            pytest.raises(AppError),
+            pytest.raises(AppError) as raised,
         ):
             await approval_rules.set_approval_rule(
                 USER, rule=hil_constants.ApprovalRule.DONT_ASK, tool=name
             )
         override.assert_not_awaited()
+        assert raised.value.status_code == 400
+        assert raised.value.message == f"{name} always asks; no rule can change that"
+        assert raised.value.why == (
+            "it changes the user's account or rules, so it always needs their yes"
+        )
 
 
 @pytest.mark.parametrize(
@@ -143,10 +192,13 @@ class TestOneTool:
 async def test_exactly_one_target_is_named(target: dict[str, str]) -> None:
     with (
         patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
-        pytest.raises(AppError),
+        pytest.raises(AppError) as raised,
     ):
         await approval_rules.set_approval_rule(USER, rule=hil_constants.ApprovalRule.ASK, **target)
     override.assert_not_awaited()
+    assert raised.value.status_code == 400
+    assert raised.value.message == "Name exactly one of integration or tool"
+    assert raised.value.fix == "Pass integration (e.g. 'notion') for all its tools, or tool for one"
 
 
 def test_the_rule_tool_itself_always_asks() -> None:

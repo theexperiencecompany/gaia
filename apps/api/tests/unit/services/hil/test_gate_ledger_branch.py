@@ -14,6 +14,7 @@ import time_machine
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.hil import AUTO_ASK_NOTE, HIL_APPROVAL_TIMEOUT_SECONDS, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_INTEGRATION_ID_METADATA_KEY, MCP_SERVER_NAME_METADATA_KEY
 from app.models.conversation_log_models import ApprovalRequested
 from app.models.hil_models import (
     ApprovalDetail,
@@ -72,6 +73,13 @@ def _ledger(
     ledger.find_amended = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value=registered_id)
     return ledger
+
+
+_JUDGED_RUN = gate.GateContext(STREAM_ID, USER_ID, CONVERSATION_ID, ["send it"], False)
+
+
+def _call(name: str) -> GatedCall:
+    return GatedCall(name=name, id="call-1", args={})
 
 
 def _gated_request(**overrides: Any) -> ToolCallRequest:
@@ -862,6 +870,71 @@ class TestLedgerAutoMode:
 
         (context,) = gate_seams.judge.await_args.args
         assert context.never_auto is True
+
+    async def test_an_mcp_tool_gets_the_instructions_of_the_integration_it_is_stamped_with(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """Its name is no Composio slug, so only the resolved tool says which integration it is."""
+        gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = make_tool(
+            "linear_close_issue",
+            metadata={
+                MCP_INTEGRATION_ID_METADATA_KEY: "linear",
+                MCP_SERVER_NAME_METADATA_KEY: "close_issue",
+            },
+        )
+        gate_seams.instructions.return_value = {"linear": "Never close an issue without asking."}
+
+        await gate.decide_tool_call(gated_request(name="linear_close_issue"))
+
+        (context,) = gate_seams.judge.await_args.args
+        assert context.standing_rules == ("Never close an issue without asking.",)
+
+    async def test_a_call_with_no_resolvable_tool_or_integration_is_not_judged_and_says_why(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = None
+
+        decision = await gate._judge(
+            gated_request(name="some_server_tool"), _JUDGED_RUN, _call("some_server_tool"), "Do it"
+        )
+
+        assert decision == IntentDecision("ask", gate._TOOL_UNRESOLVED_REASON)
+        gate_seams.instructions.assert_not_awaited()
+        gate_seams.judge.assert_not_awaited()
+
+    async def test_unreadable_instructions_are_not_judged_and_say_why(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.instructions.side_effect = ConnectionError("mongo down")
+
+        decision = await gate._judge(gated_request(), _JUDGED_RUN, _call(GATED_TOOL), "Email")
+
+        assert decision == IntentDecision("ask", gate._INSTRUCTIONS_UNREADABLE_REASON)
+        gate_seams.judge.assert_not_awaited()
+
+    async def test_the_model_is_told_why_an_unresolvable_call_waits(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = None
+
+        result = await gate.decide_tool_call(gated_request(name="some_server_tool"))
+
+        assert gate._TOOL_UNRESOLVED_REASON in str(result.content)
+
+    async def test_the_model_is_told_why_unreadable_instructions_make_a_call_wait(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.instructions.side_effect = ConnectionError("mongo down")
+
+        result = await gate.decide_tool_call(gated_request())
+
+        assert gate._INSTRUCTIONS_UNREADABLE_REASON in str(result.content)
 
     # 20:00 UTC on the 14th is already the 15th in Kolkata.
     @time_machine.travel(datetime(2026, 11, 14, 20, 0, tzinfo=UTC), tick=False)
