@@ -336,6 +336,7 @@ async def _fire(harness: _Harness) -> str:
         return await execute_workflow_by_id({}, harness.workflow.id or "")
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize("finish_fails", [False, True])
 async def test_a_replay_stays_alive_until_its_finish_is_saved_or_refused(
     finish_fails: bool,

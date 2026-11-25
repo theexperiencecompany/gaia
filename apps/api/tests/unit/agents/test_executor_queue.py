@@ -31,6 +31,7 @@ from app.agents.core.background.executor_queue import (
     break_holder_lock,
     build_lock_value,
     build_run_item,
+    finish_while_alive,
     get_lock_holder,
     get_lock_state,
     hold_run_alive,
@@ -769,6 +770,80 @@ class TestLivenessRenewal:
         assert {
             (e["conversation_id"], e["holder"], e["error_type"], e["error"]) for e in failures
         } == {(CONVERSATION, "s1:t1", "ConnectionError", "redis down")}
+
+    @pytest.mark.parametrize("save_fails", [False, True])
+    async def test_a_finish_under_way_ends_on_its_own_when_liveness_can_no_longer_be_proven(
+        self, redis, save_fails: bool
+    ) -> None:
+        """Regression for #1947 review: the beat's give-up cancelled the run in the middle of saving its finish."""
+        gave_up = asyncio.Event()
+        saved: list[str] = []
+        writes: list[str] = []
+
+        async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
+            writes.append(lock_value)
+            if len(writes) > 1:
+                gave_up.set()
+                raise ConnectionError("redis down")
+
+        async def _finish() -> None:
+            await gave_up.wait()
+            # Long enough for the beat's cancel to reach the run that holds it.
+            for _ in range(5):
+                await asyncio.sleep(0)
+            if save_fails:
+                raise ValueError("store refused")
+            saved.append("finish")
+
+        cancels_owed: list[int] = []
+
+        async def _run() -> None:
+            alive = await keep_alive(CONVERSATION, "s1:t1")
+            try:
+                await finish_while_alive(alive, _finish())
+            finally:
+                cancels_owed.append(run.cancelling())
+
+        with (
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
+            patch.object(eq, "EXECUTOR_ALIVE_GIVE_UP_SECONDS", 0),
+            patch.object(eq, "hold_run_alive", _hold),
+        ):
+            run = asyncio.create_task(_run())
+            if save_fails:
+                with pytest.raises(ValueError, match="store refused"):
+                    await asyncio.wait_for(run, timeout=5)
+            else:
+                await asyncio.wait_for(run, timeout=5)
+
+        assert saved == ([] if save_fails else ["finish"])
+        assert not run.cancelled()
+        # The beat's cancel was taken, not left owed to whatever scope the run sits in.
+        assert cancels_owed == [0]
+
+    async def test_a_finish_under_way_is_still_cancelled_by_anyone_but_its_own_beat(
+        self, redis
+    ) -> None:
+        started = asyncio.Event()
+        ended: list[str] = []
+
+        async def _finish() -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                ended.append("cancelled")
+
+        alive = await keep_alive(CONVERSATION, "s1:t1")
+        run = asyncio.create_task(finish_while_alive(alive, _finish()))
+        await started.wait()
+        run.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await run
+        await asyncio.sleep(0)
+        assert ended == ["cancelled"]
+        assert alive.cancelled() or alive.cancelling()
 
 
 class TestReadExecutorActivity:
