@@ -157,6 +157,9 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Where the API reaches the web server itself. Unset, it is FRONTEND_URL; a
+    # self-host names the web container, since its public URL may not resolve from here.
+    WEB_INTERNAL_URL: str = "https://heygaia.io"
     # Short-link base (heygaia.link/<slug> on GAIA Cloud). Unset elsewhere, it is
     # FRONTEND_URL/l, the instance's own route. No trailing slash.
     SHORTLINK_BASE_URL: str = "https://heygaia.link"
@@ -182,7 +185,7 @@ class Settings(BrowserHostSettings):
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
 
-    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "WEB_INTERNAL_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
@@ -663,6 +666,13 @@ class Settings(BrowserHostSettings):
             and "SHORTLINK_BASE_URL" not in self.model_fields_set
         ):
             self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
+        return self
+
+    @model_validator(mode="after")
+    def _web_server_at_the_frontend_url(self) -> Self:
+        """Reach the web server at FRONTEND_URL unless WEB_INTERNAL_URL names another address."""
+        if "WEB_INTERNAL_URL" not in self.model_fields_set:
+            self.WEB_INTERNAL_URL = self.FRONTEND_URL
         return self
 
     @model_validator(mode="after")

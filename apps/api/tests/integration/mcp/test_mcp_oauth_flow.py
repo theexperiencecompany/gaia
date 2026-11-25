@@ -943,6 +943,10 @@ class TestToolDiscovery:
                 "app.services.mcp.mcp_tools_service.integration_repository.store_tools",
                 mock_store,
             ),
+            patch(
+                "app.services.mcp.mcp_tools_service.integration_repository.get_public",
+                new=AsyncMock(return_value=None),
+            ),
             patch("app.services.mcp.mcp_tools_service.delete_cache", new=AsyncMock()),
             patch("app.services.mcp.mcp_tools_service._schedule_refresh", new=MagicMock()),
         ):

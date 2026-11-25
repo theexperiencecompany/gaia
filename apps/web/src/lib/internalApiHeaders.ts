@@ -3,7 +3,7 @@ import "server-only";
 import { isSelfhostWeb } from "@/lib/selfhost";
 
 /** Header names the API's rate limiter reads (apps/api/app/constants/http.py). */
-const INTERNAL_CALLER_HEADER = "X-Gaia-Internal";
+export const INTERNAL_CALLER_HEADER = "X-Gaia-Internal";
 const VIEWER_IP_HEADER = "X-Gaia-Viewer-IP";
 
 /**

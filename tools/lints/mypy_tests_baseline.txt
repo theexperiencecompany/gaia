@@ -240,7 +240,6 @@ apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
-apps/api/tests/unit/services/test_publish_service.py	arg-type
 apps/api/tests/unit/services/test_s3_blob_store.py	union-attr
 apps/api/tests/unit/services/test_share_fetcher_compat.py	attr-defined
 apps/api/tests/unit/services/test_share_fetcher_compat.py	misc

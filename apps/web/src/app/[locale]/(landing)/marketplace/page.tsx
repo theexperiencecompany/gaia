@@ -45,8 +45,6 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export const revalidate = 3600;
-
 const TOP_INTEGRATIONS_IN_SCHEMA = 10;
 
 export default async function MarketplacePage() {

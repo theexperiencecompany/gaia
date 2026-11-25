@@ -190,6 +190,22 @@ class ChromaStore(BaseStore):
             )
         return asyncio.run(self.abatch(ops))
 
+    async def asearch(
+        self,
+        namespace_prefix: tuple[str, ...],
+        /,
+        *,
+        query: str | None = None,
+        filter: dict[str, object] | None = None,  # noqa: A002 -- BaseStore's own parameter name
+        limit: int = 10,
+        offset: int = 0,
+        refresh_ttl: bool | None = None,  # noqa: ARG002 -- BaseStore's signature; this store keeps no TTLs
+    ) -> list[SearchItem]:
+        """Search a namespace, dots allowed: labels join on "::" here, and an MCP's is its host."""
+        op = SearchOp(namespace_prefix, filter, limit, offset, query)
+        (results,) = await self.abatch([op])
+        return cast(list[SearchItem], results)
+
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
         """Execute a batch of operations (async version)."""
         collection = await self._get_collection()
