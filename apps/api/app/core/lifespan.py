@@ -25,6 +25,7 @@ from app.services.conversation.composition import (
     drain_conversation_steps,
 )
 from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.stream_metrics import create_events_stream_series
 from app.services.device.revoke_listener import (
     start_revoke_listener,
     stop_revoke_listener,
@@ -78,6 +79,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             create_link_mint_series()
             create_internal_caller_series()
             create_chat_turn_series()
+            create_events_stream_series()
             create_llm_series()
             create_scheduled_task_series()
             create_payment_webhook_series()

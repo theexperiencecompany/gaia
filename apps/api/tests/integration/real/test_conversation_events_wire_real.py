@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import partial
 import json
+from typing import Any
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from fastapi import FastAPI
@@ -15,6 +17,8 @@ from pydantic import JsonValue, TypeAdapter
 import pytest
 from redis.asyncio import Redis
 
+from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
+from app.api.v1.middleware.logging import LoggingMiddleware
 from app.constants.chat import ConversationSource
 from app.constants.conversation import EVENTS_KEY_PREFIX
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -45,6 +49,7 @@ from app.services.conversation.work_log import (
 )
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import ItemChange
+from shared.py.wide_events import EventsResume
 from tests.conftest import FAKE_USER
 from tests.helpers import serve_asgi
 from tests.unit.services.conversation.change_helpers import with_changes
@@ -97,7 +102,8 @@ def quick_reads(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 async def api(test_app: FastAPI, quick_reads: None) -> AsyncIterator[str]:
-    async with serve_asgi(test_app) as base_url:
+    # The request's analytics context is bound by its middleware, as in production.
+    async with serve_asgi(PostHogRequestContextMiddleware(app=test_app)) as base_url:
         yield base_url
 
 
@@ -400,3 +406,106 @@ async def test_a_connection_cut_between_two_frames_of_one_entry_resumes_with_the
     resumed = await _read(api, conversation.id, wire=2, after=cut.head)
     cut.items.update(resumed.items)
     assert cut.items == await conversation.screen()
+
+
+_KEEPALIVE = b": keepalive\n\n"
+_STATE = b'"kind":"state"'
+
+
+@dataclass
+class Logged:
+    """The API behind its logging middleware, and the request event each connection leaves."""
+
+    api: str
+    logger: MagicMock
+    emitted: asyncio.Event
+
+    async def left_after_opening(self, conversation_id: str, **params: int) -> "Left":
+        """Read the screen the stream opens on, leave, and wait for the event the server emits."""
+        url = f"{self.api}/api/v1/conversations/{conversation_id}/events"
+        received = b""
+        async with (
+            httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as http,
+            http.stream("GET", url, params=params) as response,
+        ):
+            assert response.status_code == 200, await response.aread()
+            async for chunk in response.aiter_bytes():
+                received += chunk
+                if _STATE in received and received.endswith(b"\n\n"):
+                    break
+        async with asyncio.timeout(10):
+            await self.emitted.wait()
+        self.emitted.clear()
+        return Left(received, self.logger.bind.call_args.kwargs)
+
+
+@dataclass(frozen=True)
+class Left:
+    """What a client that left was sent, and the event its request left behind."""
+
+    received: bytes
+    event: dict[str, Any]
+
+    @property
+    def frames(self) -> list[bytes]:
+        return [line for line in self.received.split(b"\n\n") if line.startswith(b"data: ")]
+
+    @property
+    def stream(self) -> dict[str, Any]:
+        stream: dict[str, Any] = self.event["conversation"]
+        return stream
+
+
+@pytest.fixture
+async def logged(test_app: FastAPI, quick_reads: None) -> AsyncIterator[Logged]:
+    emitted = asyncio.Event()
+
+    def bound(**_context: object) -> MagicMock:
+        emitted.set()
+        return MagicMock()
+
+    with patch("app.api.v1.middleware.logging.request_logger") as logger:
+        logger.bind.side_effect = bound
+        served = LoggingMiddleware(app=PostHogRequestContextMiddleware(app=test_app))
+        async with serve_asgi(served) as base_url:
+            yield Logged(base_url, logger, emitted)
+
+
+async def test_a_client_that_leaves_mid_stream_leaves_an_event_with_the_bytes_it_was_sent(
+    logged: Logged, conversation: Conversation
+) -> None:
+    calls = 3
+    await conversation.start_work("t1", await conversation.say("m1"))
+    await conversation.run_tools("t1", iter(range(calls)))
+    await conversation.finish_work("t1")
+
+    left = await logged.left_after_opening(conversation.id, wire=2)
+
+    # Only keepalives can follow the state frame the client left on.
+    unread = left.event["response_size_bytes"] - len(left.received)
+    assert len(left.received) > calls * OUTPUT_BYTES
+    assert (unread >= 0, unread % len(_KEEPALIVE)) == (True, 0)
+    assert (left.event["status_code"], left.stream["wire"]) == (200, 2)
+    assert left.stream["resume"] == EventsResume.FRESH
+    assert left.stream["opening_frame_bytes"] == len(left.frames[0]) + len(b"\n\n")
+    assert left.stream["frames"] == len(left.frames)
+    assert left.event["response_duration_ms"] >= left.event["duration_ms"]
+
+
+async def test_each_reconnect_s_event_says_whether_its_head_was_honoured(
+    logged: Logged, conversation: Conversation, real_redis: Redis
+) -> None:
+    head = await conversation.say("m1")
+    await conversation.say("m2")
+
+    plain = await logged.left_after_opening(conversation.id)
+    resumed = await logged.left_after_opening(conversation.id, wire=2, after=head)
+    await real_redis.delete(f"{EVENTS_KEY_PREFIX}{conversation.id}")
+    refused = await logged.left_after_opening(conversation.id, wire=2, after=head)
+
+    assert [(left.stream["wire"], left.stream["resume"]) for left in (plain, resumed, refused)] == [
+        (1, EventsResume.FRESH),
+        (2, EventsResume.RESUMED),
+        (2, EventsResume.FULL_NOT_HELD),
+    ]
+    assert resumed.stream["opening_frame_bytes"] < refused.stream["opening_frame_bytes"]
