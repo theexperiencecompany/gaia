@@ -38,8 +38,6 @@ interface PageProps {
 /** The hero tile draws the workflow's icon at this size. */
 const HERO_ICON_SIZE = 26;
 
-export const revalidate = 3600; // Revalidate every hour
-
 async function allStaticParams() {
   const [explore, community] = await Promise.all([
     getExploreWorkflowsServer(1000),

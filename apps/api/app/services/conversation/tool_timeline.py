@@ -19,7 +19,7 @@ from app.constants.chat import (
     GROUPED_TOOL_CARDS,
     SUBAGENT_GROUP_TOOL_NAME,
 )
-from app.services.conversation.tool_cards import TOOL_CALLS_CARD
+from app.services.conversation.tool_cards import TOOL_CALLS_CARD, merged_thinking
 from shared.py.conversation_wire import (
     TimelineCard,
     TimelineStep,
@@ -121,22 +121,8 @@ def _is_reasoning(call: _Json) -> bool:
     return isinstance(call.get("reasoning"), str)
 
 
-def _coalesced(calls: list[_Json]) -> list[_Json]:
-    """Merge adjacent thinking steps into one, as a nested call dropping out of a level splits them."""
-    out: list[_Json] = []
-    for call in calls:
-        if out and _is_reasoning(call) and _is_reasoning(out[-1]):
-            out[-1] = {
-                **out[-1],
-                "reasoning": _text(out[-1]["reasoning"]) + _text(call["reasoning"]),
-            }
-            continue
-        out.append(call)
-    return out
-
-
 def _enriched(group: _Json) -> _Json:
-    group["tool_calls"] = list(_coalesced(_dicts(group.get("tool_calls"))))
+    group["tool_calls"] = list(merged_thinking(_dicts(group.get("tool_calls"))))
     group["nested_subagents"] = [
         _enriched(nested) for nested in _dicts(group.get("nested_subagents"))
     ]

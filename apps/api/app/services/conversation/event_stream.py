@@ -16,9 +16,12 @@ from app.constants.conversation import (
     EVENTS_BLOCK_MS,
     EVENTS_KEY_PREFIX,
     EVENTS_OPEN_REPLY_KEY_PREFIX,
+    EVENTS_RESUME_PAGE,
+    EVENTS_RESUME_PAGE_GROWTH,
     EVENTS_STREAM_MAXLEN,
     EVENTS_STREAM_START,
     EVENTS_STREAM_TTL_SECONDS,
+    EventsWire,
 )
 from app.db.redis import redis_cache
 from app.models.conversation_frame_models import (
@@ -36,12 +39,19 @@ from app.models.conversation_log_models import (
     Reply,
     ReplySettled,
 )
-from app.models.conversation_screen_models import ScreenFrame, ScreenStreamFrame
+from app.models.conversation_screen_models import (
+    ScreenFrame,
+    ScreenItem,
+    ScreenStreamFrame,
+)
 from app.models.conversation_send_models import ConversationEvent
+from app.services.conversation.patched_wire import PatchedWire
 from app.services.conversation.ports import ConversationLog
+from app.services.conversation.screen import project_screen
 from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation.shown_links import shown_frame
-from shared.py.conversation_wire import ReplyDeltaFrame
+from app.utils.artifact_utils import FILE_LINKS
+from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame
 from shared.py.wide_events import log as wide_log
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
@@ -280,28 +290,37 @@ def _unlogged(
 
 
 async def follow_screen(
-    log: ConversationLog, conversation_id: str, user_id: str
+    log: ConversationLog, conversation_id: str, user_id: str, after: int = 0
 ) -> AsyncGenerator[ScreenStreamFrame | None]:
-    """Yield the newest page of the screen, then its patches and the deltas of what is still being written.
+    """Yield the screen a client at entry after still lacks, then its patches and the deltas of what is being written.
 
-    A reconnect is a fresh call: the screen it opens with is how a client heals any gap, so a
-    live frame another deploy wrote, which this code can't read, reopens on a fresh screen.
+    after is 0 for a client that holds nothing. A live frame another deploy wrote, which this
+    code can't read, reopens on the full screen: that is how a client heals any gap.
     """
     while True:
         try:
-            async for frame in _screen_from_the_head(log, conversation_id, user_id):
+            async for frame in _screen_from_the_head(log, conversation_id, user_id, after):
                 yield frame
         except UnreadableFrames:
-            continue
+            after = 0
 
 
 async def _screen_from_the_head(
-    log: ConversationLog, conversation_id: str, user_id: str
+    log: ConversationLog, conversation_id: str, user_id: str, after: int
 ) -> AsyncGenerator[ScreenStreamFrame | None]:
     entries = await log.read_after(conversation_id, user_id, 0)
     tracker = await ScreenTracker.load(conversation_id, entries)
     head = entries[-1].seq if entries else 0
-    yield ScreenFrame(items=tuple(tracker.items[-CONVERSATION_READ_LIMIT:]), head=head)
+    held = await _held_at(conversation_id, entries, after)
+    yield ScreenFrame(
+        items=tuple(
+            item
+            for item in tracker.items[-CONVERSATION_READ_LIMIT:]
+            # Running work's cards are in no entry, so its item never equals the one held at after.
+            if held.get(item.id) != item
+        ),
+        head=head,
+    )
     async for streamed in follow(log, conversation_id, user_id, head):
         if streamed is None:
             yield None
@@ -317,26 +336,91 @@ async def _screen_from_the_head(
             yield frame
 
 
+class _Positioned(BaseModel):
+    """Where a stream frame sits in the log, read without building its entry."""
+
+    kind: str
+    seq: int | None = None
+
+
+def _vouches(conversation_id: str, stream_id: str, fields: object, after: int) -> bool | None:
+    """Return what one stream entry says of a client at entry after: None when it is newer and says nothing."""
+    try:
+        frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
+    except ValidationError as error:
+        # It may be the amendment or the entry looked for: the whole screen is the safe answer.
+        wide_log.warning(
+            "conversation stream frame unreadable, so it vouches for no head",
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            error=str(error)[:300],
+        )
+        return False
+    if frame.seq is None or frame.seq > after:
+        return None
+    # The newest frame of an entry the client held: its own, or an amendment it may have missed.
+    return frame.kind == FrameKind.ENTRY and frame.seq == after
+
+
+async def _vouched(conversation_id: str, after: int) -> bool:
+    """Return whether the stream still holds entry after's frame with no amendment since to an entry at or below it.
+
+    Read newest first, a page at a time: everything before the entry's own frame came after it,
+    and a reply's deltas can put hundreds of frames past a head a page would otherwise reach.
+    """
+    count, read = EVENTS_RESUME_PAGE, 0
+    while True:
+        page = await redis_cache.client.xrevrange(_key(conversation_id), count=count)
+        # Frames published since the last read sit at the front, so none past read is new.
+        for stream_id, fields in page[read:]:
+            verdict = _vouches(conversation_id, stream_id, fields, after)
+            if verdict is not None:
+                return verdict
+        if len(page) < count:
+            return False
+        count, read = count * EVENTS_RESUME_PAGE_GROWTH, len(page)
+
+
+async def _held_at(
+    conversation_id: str, entries: Sequence[LoggedEntry], after: int
+) -> dict[str, ScreenItem]:
+    """Return the items a client that followed through entry after still holds as they stand, by id.
+
+    Empty unless the stream vouches for it: it must still hold that entry's frame, with no
+    amendment to an entry at or below it since, which the log read after it cannot show.
+    """
+    if after <= 0 or not await _vouched(conversation_id, after):
+        return {}
+    seen = [logged for logged in entries if logged.seq <= after]
+    return {item.id: item for item in project_screen(conversation_id, seen, FILE_LINKS)}
+
+
 async def event_lines(
-    log: ConversationLog,
-    conversation_id: str,
+    frames: AsyncGenerator[ScreenStreamFrame | None],
     user_id: str,
     disconnected: Callable[[], Awaitable[bool]],
     stopping: asyncio.Event,
+    wire: EventsWire = EventsWire.ITEMS,
 ) -> AsyncGenerator[str]:
-    """Render the conversation's screen frames as SSE until the client goes or the process stops.
+    """Render a followed screen's frames as SSE, in the client's wire, until it goes or the process stops.
 
-    A client cut off by a stopping process reconnects and opens on a fresh screen; the
+    A client cut off by a stopping process reconnects from the head it reached; the
     keepalive is an SSE comment, never a data line.
     """
-    async for frame in _until(stopping, follow_screen(log, conversation_id, user_id)):
+    patched = PatchedWire() if wire is EventsWire.PATCHES else None
+    async for frame in _until(stopping, frames):
         if await disconnected():
             return
         if frame is None:
             yield ": keepalive\n\n"
             continue
         shown = await shown_frame(user_id, frame)
-        yield f"data: {ConversationEvent(frame=shown).model_dump_json()}\n\n"
+        line = (
+            ConversationEvent(frame=shown).model_dump_json()
+            if patched is None
+            else patched.line(shown)
+        )
+        yield f"data: {line}\n\n"
 
 
 async def _until(

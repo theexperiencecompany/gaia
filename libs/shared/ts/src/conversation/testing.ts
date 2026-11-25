@@ -1,4 +1,4 @@
-import type { UserItem, WorkItem } from "../api/generated";
+import type { UserItem } from "../api/generated";
 import founderFrames from "./fixtures/c41f18c5.frames.json";
 import { parseConversationEvent } from "./frames";
 import type {
@@ -57,7 +57,33 @@ export function userItem(
   return frame.item;
 }
 
+/** A work item as the stream delivers it. */
+type Work = Extract<ScreenItem, { kind: "work" }>;
+
 const NO_TIMELINE = { steps: [], cards: [], progress: null };
+
+/** The timeline the server folds one grouped tool's cards to: one card holding every call's data, in order. */
+export const groupedTimeline = (
+  cards: readonly { tool_name: string; data: unknown }[],
+): Extract<ScreenItem, { kind: "reply" }>["timeline"] => {
+  const [first] = cards;
+  if (!first) return NO_TIMELINE;
+  return {
+    steps: [],
+    cards: [
+      {
+        key: `grouped-${first.tool_name}`,
+        card: {
+          tool_name: first.tool_name,
+          tool_category: "",
+          data: cards.map((card) => card.data),
+          timestamp: null,
+        },
+      },
+    ],
+    progress: null,
+  };
+};
 
 /** A reply item of one bubble, or of the bubbles given; outcome null while it is still being written. */
 export const replyItem = (
@@ -112,6 +138,30 @@ export const updateFrame = (
   item: ScreenItem,
   head = item.seq,
 ): ConversationFrame => ({ kind: "screen_update", item, head });
+
+type Changes = Extract<ConversationFrame, { kind: "screen_patch" }>["changes"];
+
+/** What changed in an item the connection already sent, at the log head given; base counts the patches it was sent before. */
+export const patchFrame = (
+  id: string,
+  changes: Changes,
+  head: number,
+  base = 0,
+): ConversationFrame => ({ kind: "screen_patch", id, base, changes, head });
+
+/** What changed in a reply's timeline since the attempt's last cards, as wire 2 sends its cards. */
+export const timelineDelta = (
+  attemptId: string,
+  replyId: string | null,
+  index: number,
+  changes: Changes,
+): ConversationFrame => ({
+  kind: "reply_delta",
+  attempt_id: attemptId,
+  reply_id: replyId,
+  index,
+  payload: { type: "timeline", changes },
+});
 
 export const screenFrame = (
   items: ScreenItem[],
@@ -176,8 +226,8 @@ export const approvalAsked = (
   approvalId: string,
   headline: string,
   expiresAt: string | null = null,
-  described: Partial<WorkItem["asking"][number]["description"]> = {},
-): WorkItem["asking"][number] => ({
+  described: Partial<Work["asking"][number]["description"]> = {},
+): Work["asking"][number] => ({
   kind: "approval_requested",
   id: `${approvalId}:asked`,
   task_id: taskId,
@@ -205,10 +255,10 @@ export const approvalAsked = (
 export const workItem = (
   taskId: string,
   seq: number,
-  status: WorkItem["status"],
-  asking: WorkItem["asking"] = [],
+  status: Work["status"],
+  asking: Work["asking"] = [],
   askedSeq = asking.length > 0 ? seq : 0,
-): WorkItem => ({
+): Work => ({
   kind: "work",
   id: `work:${taskId}`,
   seq,

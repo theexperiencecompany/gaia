@@ -15,8 +15,6 @@ import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { AttachedFileData } from "@/types/shared/fileTypes";
 
-import { TOOLS_MESSAGE_SCHEMA } from "./toolRegistry";
-
 /**
  * BASE_MESSAGE_SCHEMA
  * Each property uses a typed placeholder to:
@@ -60,8 +58,6 @@ export const BASE_MESSAGE_SCHEMA = {
   bubbles: undefined as readonly string[] | undefined,
   // The tool thread and stand-alone cards the server folded the message's cards into.
   timeline: undefined as ToolTimeline | undefined,
-  // Tool fields (spread from tool registry)
-  ...TOOLS_MESSAGE_SCHEMA,
 };
 
 export type BaseMessageData = typeof BASE_MESSAGE_SCHEMA;

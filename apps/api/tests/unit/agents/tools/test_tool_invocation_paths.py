@@ -52,7 +52,8 @@ NOT_A_TOOL: dict[tuple[str, str], str] = {
     ("agents/tools/flowchart_tool.py", "FLOWCHART_PROMPT_TEMPLATE"): "a prompt template",
     (
         "agents/llm/client.py",
-        "with_llm_retry(primary, max_attempts=opts.max_attempts)",
+        "with_llm_retry(primary, max_attempts=opts.max_attempts, "
+        "retry_rate_limits=_retries_rate_limits(provider, fallback))",
     ): "the LLM client with retries",
     ("agents/llm/client.py", "fallback_runnable"): "the LLM client's fallback model",
     ("agents/memory/profile_crawler.py", "crawler"): "a web crawler",

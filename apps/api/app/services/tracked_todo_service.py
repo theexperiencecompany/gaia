@@ -171,11 +171,7 @@ async def require_sub_todo_parent(
     child_id names an existing todo being moved under it, which must be open, not the
     parent itself, and without sub-todos of its own: sub-todos go one level deep.
     """
-    parent = (
-        await todo_repository.get(parent_todo_id, user_id=user_id)
-        if todo_repository.is_valid_id(parent_todo_id)
-        else None
-    )
+    parent = await todo_repository.get(parent_todo_id, user_id=user_id)
     if parent is None:
         raise SubTodoParentError(f"The user has no open tracked todo with the id {parent_todo_id}.")
     if GAIA_TRACKED_LABEL not in parent.labels:

@@ -58,3 +58,8 @@ GAIA_KNOWLEDGE_SNAPSHOT_TTL_SECONDS = ONE_HOUR_TTL
 # size their collections declare for it (FastEmbedEmbeddings declares its own).
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
 GEMINI_EMBEDDING_DIMS = 768
+# A rate-limited or 5xx query embed is retried this often, the jittered wait doubling to the cap:
+# about 3.5s at most on the reply path, against losing every search one retrieve_tools fans out.
+GEMINI_EMBED_QUERY_RETRIES = 3
+GEMINI_EMBED_QUERY_RETRY_MIN_SECONDS = 0.5
+GEMINI_EMBED_QUERY_RETRY_MAX_SECONDS = 4.0

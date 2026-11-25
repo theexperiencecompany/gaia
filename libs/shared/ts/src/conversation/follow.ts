@@ -2,9 +2,10 @@
  * Follows a conversation's events stream for a client that shows it (web, mobile).
  *
  * One connection per conversation while anything holds it open. Each frame goes to
- * the platform's store; every connection opens on the server's screen, so a frame the
- * view cannot apply (an index gap) reopens the stream, and a dropped or ended
- * connection reconnects with backoff.
+ * the platform's store. A dropped or ended connection reconnects with backoff from the
+ * log head its item frames reached, so the server sends only what changed since. The
+ * first connection, and the one after a frame the view could not apply or this build
+ * could not read, names no head and opens on the server's whole screen.
  */
 
 import { isRetryableStatus, reconnectDelayMs } from "../retry";
@@ -17,11 +18,15 @@ import type { ConversationFrame, FrameGap } from "./types";
 
 /** What a platform gives the follower: its transport, its store, and where to report. */
 export interface ConversationFollowPorts {
-  /** Read one connection, handing over each data line raw; resolves when the server closes it. */
+  /**
+   * Read one connection, handing over each data line raw; resolves when the server closes it.
+   * after is the log head the view's items reached on this stream, null to open on the whole screen.
+   */
   subscribe: (
     conversationId: string,
     onData: (raw: string) => void,
     signal: AbortSignal,
+    after: number | null,
   ) => Promise<void>;
   /** The subscribe error for a conversation that does not exist yet. */
   isNotFound: (error: unknown) => boolean;
@@ -49,9 +54,19 @@ interface Connection {
   refs: number;
   closed: boolean;
   controller: AbortController | null;
+  /** The log head the stream's item frames reached; null when the next connection must open on the whole screen. */
+  after: number | null;
   /** Resolves the current wait early: a send just created the conversation, or the caller closed. */
   wake: (() => void) | null;
 }
+
+/** The frames whose head says how far the view's items reflect the log. */
+const ITEM_FRAMES: ReadonlySet<string> = new Set([
+  FRAME_KIND.SCREEN,
+  FRAME_KIND.SCREEN_INSERT,
+  FRAME_KIND.SCREEN_UPDATE,
+  FRAME_KIND.SCREEN_PATCH,
+]);
 
 function wait(connection: Connection, ms: number | null): Promise<void> {
   return new Promise((resolve) => {
@@ -78,12 +93,17 @@ export function createConversationFollower(
     connection.controller = controller;
     let gap: FrameGap | null = null;
     let delivered = false;
+    // Whether the view has taken every frame of this connection: only then is its head a place to resume from.
+    let whole = true;
+    const { after } = connection;
     await ports.subscribe(
       conversationId,
       (raw) => {
         if (gap) return;
         const parsed = parseConversationEvent(raw);
         if (!parsed.ok) {
+          whole = false;
+          connection.after = null;
           ports.onInvalidFrame(conversationId, parsed.error);
           return;
         }
@@ -94,9 +114,15 @@ export function createConversationFollower(
           return;
         }
         gap = ports.apply(conversationId, frame);
-        if (gap) controller.abort();
+        if (gap) {
+          connection.after = null;
+          controller.abort();
+        } else if (whole && ITEM_FRAMES.has(frame.kind) && "head" in frame) {
+          connection.after = Math.max(connection.after ?? 0, frame.head);
+        }
       },
       controller.signal,
+      after,
     );
     return { gap, delivered };
   }
@@ -156,6 +182,7 @@ export function createConversationFollower(
         refs: 0,
         closed: false,
         controller: null,
+        after: null,
         wake: null,
       };
       connections.set(conversationId, opened);

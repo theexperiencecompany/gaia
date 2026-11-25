@@ -8,7 +8,7 @@
 # the build stayed green. This runs the thing: each route must answer 200 with
 # its own <title> and no Next error page, then a browser loads the pages
 # (apps/web/playwright.worker.config.ts) and fails on any uncaught error or
-# unloaded chunk.
+# unloaded chunk, and on a rendered Tailwind utility no stylesheet on the page defines.
 #
 # `visual` instead screenshots the key marketing pages on the same booted worker
 # (apps/web/playwright.visual.config.ts) and fails on any pixel that differs from

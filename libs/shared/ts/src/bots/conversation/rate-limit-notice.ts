@@ -4,7 +4,8 @@
  * with the upgrade link.
  */
 
-import type { ToolDataEntry } from "../../api/generated";
+import type { ToolTimeline } from "../../api/generated";
+import { cardData } from "../../conversation/selectors";
 import type { FollowLinks } from "./follower.types";
 
 const RATE_LIMIT_TOOL = "rate_limit_data";
@@ -35,14 +36,12 @@ const noticeLine = (card: RateLimitCardData, pricingUrl: string): string => {
     : `${said} [Upgrade to Pro](${pricingUrl}) for higher limits.`;
 };
 
-/** One line per usage limit among the cards, in the order they were hit. */
+/** One line per usage limit in the timeline, in the order they were hit. */
 export function rateLimitNotices(
-  cards: readonly ToolDataEntry[],
+  timeline: ToolTimeline,
   links: FollowLinks,
 ): string[] {
-  return cards.flatMap((card) =>
-    card.tool_name === RATE_LIMIT_TOOL && isRateLimitData(card.data)
-      ? [noticeLine(card.data, links.pricing)]
-      : [],
+  return cardData(timeline, RATE_LIMIT_TOOL).flatMap((card) =>
+    isRateLimitData(card) ? [noticeLine(card, links.pricing)] : [],
   );
 }

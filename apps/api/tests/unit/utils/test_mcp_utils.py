@@ -158,6 +158,21 @@ class TestWrapToolWithNullFilter:
 
         assert await wrapped._arun() == "MCP tool error after reconnect: server busy"
 
+    @pytest.mark.regression
+    async def test_a_terminated_session_reconnects_and_retries(self) -> None:
+        """Regression: an expired MCP session (HTTP 404) failed every call until the pod restarted."""
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("Session terminated")))
+        evict = MagicMock()
+        reconnect = AsyncMock(return_value="recovery: 82%")
+
+        wrapped = wrap_tool_with_null_filter(
+            tool, on_connection_error=evict, reconnect_and_retry=reconnect
+        )
+
+        assert await wrapped._arun(day="today") == "recovery: 82%"
+        evict.assert_called_once()
+        reconnect.assert_awaited_once_with(tool.name, {"day": "today"})
+
     async def test_reraises_unauthorized_error_case_insensitive(self) -> None:
         original = AsyncMock(side_effect=Exception("Access Unauthorized for user"))
         tool = _make_tool(arun=original)

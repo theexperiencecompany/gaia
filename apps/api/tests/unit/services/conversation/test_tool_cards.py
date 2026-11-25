@@ -29,8 +29,10 @@ from app.services.conversation.tool_cards import (
     TODO_PROGRESS_CARD,
     TOOL_CALLS_CARD,
     FoldedCards,
+    coalesced_thinking,
     fold_cards,
 )
+from app.services.conversation.tool_timeline import tool_timeline
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 
 STARTED_AT = "2026-11-14T10:00:00+00:00"
@@ -342,3 +344,68 @@ def test_only_an_approval_or_artifact_card_is_replaced_by_its_id() -> None:
     ]
     folded = fold_cards([ToolDataEvent(tool_data=shown) for shown in cards])
     assert folded.tool_data == tuple(cards)
+
+
+def thought(text: str, **extra: str) -> ToolDataEntry:
+    """One thinking card as logs written before blocks were merged stored them: one per token."""
+    step = {"tool_name": REASONING_STEP, "tool_category": REASONING_STEP, "message": ""}
+    return card(TOOL_CALLS_CARD, {**step, "reasoning": text}, tool_category=REASONING_STEP, **extra)
+
+
+def test_a_run_of_one_token_thinking_cards_becomes_one_card_with_their_text() -> None:
+    search = card("search_results", {"q": "x"})
+    call = card(TOOL_CALLS_CARD, {"tool_name": "LIST", "tool_call_id": "c1"})
+    cards = [thought("The "), thought("user "), thought("asks"), call, thought("Now "), search]
+    assert coalesced_thinking(cards) == (thought("The user asks"), call, thought("Now "), search)
+
+
+def test_thinking_from_two_subagents_is_never_merged() -> None:
+    cards = [thought("a", subagent_id="s1"), thought("b", subagent_id="s2"), thought("c")]
+    assert coalesced_thinking(cards) == tuple(cards)
+
+
+def test_merging_thinking_cards_leaves_the_timeline_they_fold_to_unchanged() -> None:
+    call = card(TOOL_CALLS_CARD, {"tool_name": "LIST", "tool_call_id": "c1", "message": "Listing"})
+    cards = [thought("The "), thought("user"), call, thought("Then "), thought("done")]
+    assert tool_timeline(coalesced_thinking(cards)) == tool_timeline(cards)
+    assert cards[0] == thought("The ")
+
+
+def _thinks(text: str) -> dict[str, object]:
+    return {"tool_name": REASONING_STEP, "tool_category": REASONING_STEP, "reasoning": text}
+
+
+def test_thinking_inside_a_subagent_group_and_its_nested_groups_is_merged() -> None:
+    call = {"tool_name": "LIST", "tool_call_id": "c1"}
+    inner = {"subagent_id": "s2", "tool_calls": [_thinks("x"), _thinks("y")]}
+    group = card(
+        SUBAGENT_GROUP_TOOL_NAME,
+        {
+            "subagent_id": "s1",
+            "tool_calls": [_thinks("a"), _thinks("b"), call, _thinks("c")],
+            "nested_subagents": [inner],
+        },
+    )
+    (merged,) = coalesced_thinking([group])
+    assert merged["data"] == {
+        "subagent_id": "s1",
+        "tool_calls": [_thinks("ab"), call, _thinks("c")],
+        "nested_subagents": [
+            {"subagent_id": "s2", "tool_calls": [_thinks("xy")], "nested_subagents": []}
+        ],
+    }
+    assert tool_timeline([merged]) == tool_timeline([group])
+
+
+def test_only_a_tool_call_card_holding_one_thinking_step_is_merged() -> None:
+    other = [card("search_results", {"reasoning": "a"}), card("search_results", {"reasoning": "b"})]
+    listed = [card(TOOL_CALLS_CARD, [_thinks("a")]), card(TOOL_CALLS_CARD, [_thinks("b")])]
+    assert coalesced_thinking(other) == tuple(other)
+    assert coalesced_thinking(listed) == tuple(listed)
+
+
+def test_thinking_after_a_subagent_group_is_kept_and_merged() -> None:
+    group = card(SUBAGENT_GROUP_TOOL_NAME, {"subagent_id": "s1", "tool_calls": []})
+    (kept, merged) = coalesced_thinking([group, thought("a"), thought("b")])
+    assert kept["tool_name"] == SUBAGENT_GROUP_TOOL_NAME
+    assert merged == thought("ab")

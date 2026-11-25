@@ -36,6 +36,7 @@ from app.models.playbook_models import (
     ToolStep,
     is_time_slot,
     walk_ask_slots,
+    walk_time_slots,
 )
 from app.models.workflow_execution_models import carries_no_data
 from app.services.workflow.playbook.evaluator import (
@@ -225,8 +226,10 @@ def _check_tool_step(
             continue
         # The evaluator's own scanner, so a placeholder embedded in text
         # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
+        example = recorded.args.get(key) if recorded is not None else None
+        for slot_path, slot in walk_time_slots(value):
+            _check_time_slot(slot, key, slot_path, example, where, walk)
         if is_time_slot(value):
-            _check_time_slot(value, key, where, recorded, walk)
             continue
         arg_tokens = list(placeholder_tokens(value))
         for token in arg_tokens:
@@ -593,9 +596,18 @@ def _time_slot_hint(placeholder: str, layout: str) -> str:
 
 
 def _check_time_slot(
-    value: Mapping[str, object], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
+    value: Mapping[str, object],
+    key: str,
+    path: tuple[str | int, ...],
+    example: object,
+    where: str,
+    walk: _Walk,
 ) -> None:
-    """Check a $time slot is well-formed and its layout is the one the tool took."""
+    """Check a $time slot, at path inside its argument, is well-formed and in the tool's layout."""
+    for part in path:
+        where += f"[{part}]" if isinstance(part, int) else f".{part}"
+        key += f"[{part}]" if isinstance(part, int) else f".{part}"
+        example = _child(example, part)
     try:
         slot = TimeSlot.model_validate(value)
     except ValidationError as error:
@@ -607,7 +619,6 @@ def _check_time_slot(
             )
         )
         return
-    example = recorded.args.get(key) if recorded is not None else None
     layout = detect_layout(example)
     if layout is not None and slot_layout(example, slot.format) != slot.format:
         walk.issues.append(
@@ -621,6 +632,13 @@ def _check_time_slot(
                 ),
             )
         )
+
+
+def _child(value: object, part: str | int) -> object:
+    """Return the item one path step inside a recorded argument, or None when it has none."""
+    if isinstance(part, int):
+        return value[part] if isinstance(value, list) and part < len(value) else None
+    return value.get(part) if isinstance(value, Mapping) else None
 
 
 def _check_time_layout(

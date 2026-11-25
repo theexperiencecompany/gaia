@@ -56,7 +56,7 @@ tests:
               service: 'api'
             exp_annotations:
               description: >-
-                Same signal as the warning-tier rule, at the point where chat looks broken rather than slow: a third of users wait over a minute for the first word. This tier also pages email. Check the model provider first (llm_ttft_seconds and gaia-llm-provider-failing), then a conversation stuck behind a running executor (executor_queue_wait_seconds).
+                Same signal as the warning-tier rule, at the point where chat looks broken rather than slow: a third of users wait over a minute for the first word. Check the model provider first (llm_ttft_seconds and gaia-llm-provider-failing), then a conversation stuck behind a running executor (executor_queue_wait_seconds).
               runbook_url: 'https://internal.lab.heygaia.io/production/runbooks/gaia-chat-first-reply-critically-slow'
               __dashboardUid__: 'gaia-latency'
               __panelId__: '1'

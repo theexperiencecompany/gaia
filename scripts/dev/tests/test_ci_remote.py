@@ -422,6 +422,25 @@ def test_a_verdict_artifact_replaced_while_it_is_read_is_read_from_its_replaceme
     assert any(call.endswith("/artifacts/56/zip") for call in fake.calls)
 
 
+class RunWithNoArtifactListYet(FakeGh):
+    """GitHub answers 404 for the artifact list of a run it has only just created."""
+
+    def respond(self, req: Request) -> Reply:
+        if req.path.endswith("/artifacts"):
+            return Reply(404, {"message": "Not Found"})
+        return super().respond(req)
+
+
+def test_a_run_with_no_artifact_list_yet_reads_as_a_lane_without_a_verdict(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch died on a 404 from the artifact list of a run created seconds earlier."""
+    wire(RunWithNoArtifactListYet(checks=[FAILED_CHECK]))
+
+    assert run_cli(monkeypatch, []) == 1
+    assert "lane uploaded no verdict artifact — log tail" in capsys.readouterr().out
+
+
 def test_a_lane_with_no_verdict_falls_back_to_the_job_log_and_says_so(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

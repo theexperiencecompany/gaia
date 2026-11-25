@@ -38,7 +38,8 @@ work behind a runner's setup.
   fast-forwards master to the group commit it tested, so a master push whose SHA
   has a green `merge_group` run of ci.yml (`verdict.py queue-verified`, its one
   owner; an unreadable API means the full tier, never verified) runs no check
-  lane: `nx_affected.outputs` keeps only the web bundle (`web-build`) and the
+  lane: `nx_affected.outputs` keeps only what a deploy job waits on
+  (`SHIPPED_TASKS`: the web bundle and the usercontent Worker) and the
   checks only a master push runs (analytics-sync, which publishes), the gate
   passes naming the queue run, and `build-images` / `deploy-web` /
   `trigger-build` start as soon as their artifacts exist. A direct push and a

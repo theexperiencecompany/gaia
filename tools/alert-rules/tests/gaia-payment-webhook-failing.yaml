@@ -16,6 +16,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              notify: email
               service: api
             exp_annotations:
               description: >-

@@ -142,8 +142,6 @@ async def authenticate_local_session(token: str) -> AuthenticatedUser | LocalSes
         return LocalSessionFailure.UNAVAILABLE
     if not user_id:
         return LocalSessionFailure.INVALID_OR_EXPIRED
-    if not user_repository.is_valid_id(user_id):
-        return LocalSessionFailure.UNKNOWN_USER
 
     try:
         user_data = await user_repository.get(user_id)

@@ -1,6 +1,9 @@
 "use client";
 
+import { UNPAID_APP_ROUTES } from "@/features/auth/constants";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
+import { usePathname } from "@/i18n/navigation";
 
 import { useIsPaid } from "./useIsPaid";
 import { useUserSubscriptionStatus } from "./usePricing";
@@ -10,7 +13,7 @@ import { useUserSubscriptionStatus } from "./usePricing";
  *
  * - entitled: on Pro, or billing is off on this deployment.
  * - lapsed: subscribed before, not now; the app's 402s raise the UpgradeModal.
- * - never_subscribed: belongs on the onboarding paywall, never in the app.
+ * - never_subscribed: finishes onboarding on its paywall; in the app, the same UpgradeModal.
  * - unknown: the plan has not been read yet.
  */
 export type Entitlement =
@@ -33,11 +36,18 @@ export function useEntitlement(): Entitlement {
 }
 
 /**
- * Whether the paid app session (sidebar data, sync, realtime, notifications)
- * may run. Never for an account that has not paid or a plan not yet read:
- * every one of those requests would 402.
+ * Whether the app session (sidebar data, sync, realtime, notifications) may run.
+ * A signed-in account gets it at once, so the plan read never holds the app
+ * back; an unpaid account's 402s raise the UpgradeModal.
+ * The exception is the routes an unpaid account lives on (the wizard's
+ * paywall): there it mounts only for a plan known to allow it, so nothing
+ * 402s behind the paywall.
  */
 export function useAppSessionEnabled(): boolean {
   const entitlement = useEntitlement();
-  return entitlement === "entitled" || entitlement === "lapsed";
+  const { userId } = useCurrentUser();
+  const pathname = usePathname();
+  const planAllows = entitlement === "entitled" || entitlement === "lapsed";
+  if (UNPAID_APP_ROUTES.includes(pathname)) return planAllows;
+  return planAllows || !!userId;
 }

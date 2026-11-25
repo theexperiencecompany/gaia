@@ -43,7 +43,6 @@ describe("TextBubble with a card that throws while rendering", () => {
     const props = turn({
       text: "Here is the streamed progress",
       bubbles: ["Here is the streamed progress"],
-      tool_data: CRASHING_CARD,
       // The bubble draws the cards the server folded into its timeline.
       timeline: {
         steps: [],

@@ -990,8 +990,8 @@ export abstract class BaseBotAdapter {
   /** One follower per conversation a message was posted into, reading its events through gaia. */
   private get followers(): ConversationFollowers {
     this._followers ??= new ConversationFollowers(
-      (ctx, conversationId, signal) =>
-        this.gaia.conversationEvents(ctx, conversationId, signal),
+      (ctx, conversationId, signal, after) =>
+        this.gaia.conversationEvents(ctx, conversationId, signal, after),
       STREAMING_DEFAULTS[this.platform],
       (_ctx, conversationId, cursor) =>
         this.recordDelivered(conversationId, cursor),

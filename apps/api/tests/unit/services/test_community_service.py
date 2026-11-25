@@ -9,6 +9,7 @@ import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.constants.public_pages import PUBLIC_LIST_CACHE_PREFIXES, PublicPageDomain
 from app.db.repositories.integrations import IntegrationsRepository
 from app.schemas.integrations.responses import CommunityIntegrationItem
 from app.services.integrations import community_service
@@ -130,3 +131,19 @@ def test_community_search_filter_applies_category() -> None:
     assert with_category["category"] == "developer"
     # "all" means no category constraint
     assert "category" not in IntegrationsRepository._community_search_filter("q", "all")
+
+
+async def test_the_browse_list_is_cached_under_the_prefix_an_integration_change_clears() -> None:
+    with (
+        patch.object(community_service, "get_cache", AsyncMock(return_value=None)) as get_cache,
+        patch.object(community_service, "set_cache", new_callable=AsyncMock) as set_cache,
+        patch.object(community_service, "integration_repository") as repo,
+    ):
+        repo.count_community_browse = AsyncMock(return_value=0)
+        repo.community_browse = AsyncMock(return_value=[])
+        await community_service._browse_community_integrations("popular", "all", 100, 200)
+
+    key = "marketplace:community:popular:all:100:200"
+    get_cache.assert_awaited_once_with(key)
+    assert set_cache.await_args.args[0] == key
+    assert key.startswith(f"{PUBLIC_LIST_CACHE_PREFIXES[PublicPageDomain.INTEGRATIONS]}:")

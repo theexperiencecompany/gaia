@@ -61,6 +61,7 @@ export {
   ConversationFollowers,
   neverReopened,
   STREAMING_DEFAULTS,
+  StaleScreen,
 } from "./conversation";
 export type {
   DeliveryFailure,

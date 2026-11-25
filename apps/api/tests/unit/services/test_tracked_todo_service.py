@@ -118,7 +118,6 @@ def mock_repo():
         m.find_latest_by_external_ref = AsyncMock(return_value=None)
         m.find_sub_todos = AsyncMock(return_value=[])
         m.count_open_sub_todos = AsyncMock(return_value={})
-        m.is_valid_id = MagicMock(side_effect=lambda todo_id: len(todo_id) == 24)
         yield m
 
 
@@ -1013,12 +1012,6 @@ class TestSubTodoParent:
 
         with pytest.raises(SubTodoParentError, match=reason):
             await require_sub_todo_parent(USER_ID, _PARENT_ID)
-
-    async def test_a_malformed_id_is_refused_without_a_lookup(self, mock_repo):
-        with pytest.raises(SubTodoParentError, match="no open tracked todo"):
-            await require_sub_todo_parent(USER_ID, "not-an-id")
-
-        mock_repo.get.assert_not_awaited()
 
     async def test_a_todo_cannot_be_its_own_parent(self, mock_repo):
         mock_repo.get.return_value = _parent()

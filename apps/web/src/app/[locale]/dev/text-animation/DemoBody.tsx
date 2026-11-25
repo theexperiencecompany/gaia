@@ -197,7 +197,6 @@ function Previews({
             text={botShown}
             loading={botLoading}
             message_id="demo-bot"
-            tool_data={[]}
             setOpenImage={noop}
             setImageData={noop}
           />

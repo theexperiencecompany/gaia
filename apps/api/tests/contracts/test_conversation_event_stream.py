@@ -357,7 +357,7 @@ async def test_a_retracted_draft_is_not_replayed(redis: Redis) -> None:
 async def test_event_lines_render_frames_as_sse_and_stop_with_the_process(redis: Redis) -> None:
     log = await _log(user("u1"))
     stopping = asyncio.Event()
-    lines = event_lines(log, CID, UID, _never, stopping)
+    lines = event_lines(follow_screen(log, CID, UID), UID, _never, stopping)
 
     shown = [await anext(lines), await anext(lines)]
     assert all(line.startswith("data: ") and line.endswith("\n\n") for line in shown)
@@ -380,7 +380,9 @@ async def test_event_lines_end_when_the_client_is_gone(redis: Redis) -> None:
     async def gone() -> bool:
         return True
 
-    lines = [line async for line in event_lines(log, CID, UID, gone, asyncio.Event())]
+    lines = [
+        line async for line in event_lines(follow_screen(log, CID, UID), UID, gone, asyncio.Event())
+    ]
 
     assert lines == []
 
@@ -389,7 +391,7 @@ async def test_event_lines_on_an_empty_conversation_follow_its_first_entry(
     redis: Redis,
 ) -> None:
     log = InMemoryConversationLog(FakeClock())
-    lines = event_lines(log, CID, UID, _never, asyncio.Event())
+    lines = event_lines(follow_screen(log, CID, UID), UID, _never, asyncio.Event())
     screen = ConversationEvent.model_validate_json((await anext(lines)).removeprefix("data: "))
     assert isinstance(screen.frame, ScreenFrame)
     assert screen.frame.items == ()
@@ -405,7 +407,7 @@ async def test_event_lines_on_an_empty_conversation_follow_its_first_entry(
 
 async def test_a_quiet_stream_keeps_the_client_alive_and_still_follows(redis: Redis) -> None:
     log = await _log(user("u1"))
-    lines = event_lines(log, CID, UID, _never, asyncio.Event())
+    lines = event_lines(follow_screen(log, CID, UID), UID, _never, asyncio.Event())
     await anext(lines)
     await anext(lines)
 

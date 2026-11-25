@@ -28,7 +28,7 @@ import type {
   PartialReply,
   ReplyFile,
   ReplyItem,
-  ToolDataEntry,
+  ToolTimeline,
   UserItem,
 } from "../../api/generated";
 import { SCREEN_ITEM_KIND } from "../../conversation/entries";
@@ -85,6 +85,14 @@ const deliverySeq = (item: ScreenItem): number =>
     ? Math.max(item.seq, item.asked_seq)
     : item.seq;
 
+/** A change had no place in the screen the follower holds: its connection is reopened on the whole screen. */
+export class StaleScreen extends Error {
+  constructor() {
+    super("a change had no place in the screen held");
+    this.name = "StaleScreen";
+  }
+}
+
 export class ConversationFollower {
   private view: ConversationView = EMPTY_CONVERSATION_VIEW;
   /** Seqs of the messages this follow must see answered or stopped. */
@@ -115,6 +123,8 @@ export class ConversationFollower {
   private chain: Promise<void> = Promise.resolve();
   private closed = false;
   private failed: { error: unknown } | null = null;
+  /** Whether a change had no place in the screen held: the next connection opens on the whole screen. */
+  private stale = false;
   readonly summary: FollowSummary = {
     repliesDelivered: 0,
     reactionsPlaced: 0,
@@ -147,6 +157,11 @@ export class ConversationFollower {
     return this.recorded;
   }
 
+  /** The log head a reconnect resumes after; null while the follower holds no screen it can trust. */
+  get resumeAfter(): number | null {
+    return this.opened && !this.stale ? this.view.screenHead : null;
+  }
+
   /** A message posted into this conversation: the follow stays until it is answered. */
   expect(seq: number): void {
     this.expected.add(seq);
@@ -173,11 +188,17 @@ export class ConversationFollower {
   apply(frame: ConversationFrame): Promise<void> {
     const before = this.view;
     if (frame.kind === FRAME_KIND.STATE) this.stated = true;
+    // The whole screen heals whatever the held one lacked.
+    if (frame.kind === FRAME_KIND.SCREEN) this.stale = false;
     const outcome = applyFrame(before, frame);
     this.view = outcome.view;
     if (outcome.status === "index_gap") {
       // The reply's saved text replaces what streamed when it settles.
       logger.info("reply_delta_gap", { expected: outcome.expected });
+    }
+    if (outcome.status === "stale_copy") {
+      this.stale = true;
+      return Promise.reject(new StaleScreen());
     }
     if (outcome.view !== before) this.enqueue(() => this.render(frame));
     return this.rendered();
@@ -233,6 +254,11 @@ export class ConversationFollower {
       case FRAME_KIND.SCREEN_UPDATE:
         await this.renderItems([frame.item]);
         return;
+      case FRAME_KIND.SCREEN_PATCH:
+        await this.renderItems(
+          this.view.items.filter((item) => item.id === frame.id),
+        );
+        return;
       case FRAME_KIND.REPLY_DELTA:
         await this.renderDelta(frame.attempt_id, frame.reply_id, frame.payload);
         return;
@@ -262,7 +288,7 @@ export class ConversationFollower {
         for (const request of item.asking) this.asked.add(request.approval_id);
       if (item.seq > this.floor) continue;
       if (item.kind === SCREEN_ITEM_KIND.WORK) {
-        this.browserRun(item.id).skip(browserCards(item.tool_data));
+        this.browserRun(item.id).skip(browserCards(item.timeline));
         this.limitTold.add(item.id);
       }
       if (item.kind === SCREEN_ITEM_KIND.USER && item.message.reaction)
@@ -293,8 +319,8 @@ export class ConversationFollower {
             item.asking.some(({ approval_id }) => !this.asked.has(approval_id))
           )
             await this.askApproval();
-          await this.browserRun(item.id).render(browserCards(item.tool_data));
-          await this.tellLimit(item.id, item.tool_data);
+          await this.browserRun(item.id).render(browserCards(item.timeline));
+          await this.tellLimit(item.id, item.timeline);
           break;
         case SCREEN_ITEM_KIND.NOTICE:
           await this.sendNotice(item);
@@ -373,10 +399,10 @@ export class ConversationFollower {
   /** Tell the usage limit a work item's run hit, once per item. */
   private async tellLimit(
     itemId: string,
-    cards: readonly ToolDataEntry[],
+    timeline: ToolTimeline,
   ): Promise<void> {
     if (this.limitTold.has(itemId)) return;
-    const lines = rateLimitNotices(cards, this.surface.links);
+    const lines = rateLimitNotices(timeline, this.surface.links);
     if (lines.length === 0) return;
     this.limitTold.add(itemId);
     await this.sendLines(lines);
@@ -417,7 +443,7 @@ export class ConversationFollower {
   ): OpenReply | null {
     if (this.open?.attempts.has(attemptId)) return this.open;
     const opened = this.view.items.find(
-      (item): item is ReplyItem =>
+      (item): item is Extract<ScreenItem, { kind: "reply" }> =>
         item.kind === SCREEN_ITEM_KIND.REPLY &&
         item.id === replyId &&
         item.seq > this.floor,
@@ -449,7 +475,7 @@ export class ConversationFollower {
     this.finishedReplies.add(reply.id);
     this.clearPreview();
     const tail = [
-      ...rateLimitNotices(reply.tool_data, this.surface.links),
+      ...rateLimitNotices(reply.timeline, this.surface.links),
       ...(reply.failure_line ? [reply.failure_line] : []),
     ];
     const says = reply.bubbles.length > 0 || tail.length > 0;

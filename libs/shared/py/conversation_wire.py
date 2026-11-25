@@ -105,6 +105,7 @@ class FrameKind(StrEnum):
     SCREEN = "screen"
     SCREEN_INSERT = "screen_insert"
     SCREEN_UPDATE = "screen_update"
+    SCREEN_PATCH = "screen_patch"
 
 
 class ScreenItemKind(StrEnum):
@@ -171,6 +172,38 @@ class ToolTimeline(BaseModel):
     progress: ToolProgress | None = None
 
 
+#: An item's cards before folding: the server's own read, and sent only on wire 1, so optional and deprecated in the schema.
+UnfoldedCards = Annotated[tuple[ToolDataEntry, ...], Field(json_schema_extra={"deprecated": True})]
+
+
+def _unfolded_cards_optional(schema: JsonDict) -> None:
+    """Leave tool_data out of the required keys: wire 2 never sends it."""
+    required = schema.get("required")
+    if isinstance(required, list):
+        schema["required"] = [key for key in required if key != "tool_data"]
+
+
+class ChangeOp(StrEnum):
+    """How one change alters the JSON at its path."""
+
+    # Put the value there; an index equal to a list's length appends it.
+    SET = "set"
+    # Add the value to the end of the string there.
+    APPEND = "append"
+    # Drop the key, or the list's last element, there.
+    REMOVE = "remove"
+
+
+class ItemChange(BaseModel):
+    """One change to the JSON a client already holds; path walks keys and list indices from its root."""
+
+    model_config = WIRE_CONFIG
+
+    op: ChangeOp
+    path: tuple[str | int, ...]
+    value: JsonValue = None
+
+
 class ScreenItemBase(BaseModel):
     """Where an item sits on the screen."""
 
@@ -201,7 +234,7 @@ class ReplyItem(ScreenItemBase):
 
     kind: Literal[ScreenItemKind.REPLY] = ScreenItemKind.REPLY
     bubbles: tuple[str, ...]
-    tool_data: tuple[ToolDataEntry, ...]
+    tool_data: UnfoldedCards = ()
     timeline: ToolTimeline
     follow_up_actions: tuple[str, ...]
     image: ImageData | None
@@ -229,13 +262,22 @@ class BubbleTextDelta(BaseModel):
 
 
 class CardsDelta(BaseModel):
-    """The reply's cards as they now stand, with the timeline they fold to."""
+    """The reply's cards as they now stand, as the timeline they fold to; wire 2 sends a TimelineDelta instead."""
+
+    model_config = ConfigDict(**WIRE_CONFIG, json_schema_extra=_unfolded_cards_optional)
+
+    type: Literal["cards"] = "cards"
+    tool_data: UnfoldedCards = ()
+    timeline: ToolTimeline
+
+
+class TimelineDelta(BaseModel):
+    """What changed in the reply's timeline since the attempt's last one; the first is against an empty timeline."""
 
     model_config = WIRE_CONFIG
 
-    type: Literal["cards"] = "cards"
-    tool_data: tuple[ToolDataEntry, ...]
-    timeline: ToolTimeline
+    type: Literal["timeline"] = "timeline"
+    changes: tuple[ItemChange, ...]
 
 
 class FollowUpsDelta(BaseModel):
@@ -247,7 +289,9 @@ class FollowUpsDelta(BaseModel):
     follow_up_actions: tuple[str, ...]
 
 
-ReplyDelta = Annotated[BubbleTextDelta | CardsDelta | FollowUpsDelta, Field(discriminator="type")]
+ReplyDelta = Annotated[
+    BubbleTextDelta | CardsDelta | TimelineDelta | FollowUpsDelta, Field(discriminator="type")
+]
 
 
 class ReplyDeltaFrame(BaseModel):
@@ -282,7 +326,7 @@ ItemT = TypeVar("ItemT")
 
 
 class ScreenFrame(BaseModel, Generic[ItemT]):
-    """The newest page of the screen; a client replaces what it holds from the first item's seq on."""
+    """The screen a connection opens on: its newest page, or only what is new or changed since the client's after."""
 
     model_config = WIRE_CONFIG
 
@@ -299,6 +343,8 @@ class ScreenInsertFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN_INSERT] = FrameKind.SCREEN_INSERT
     item: ItemT
+    # The log head the client's screen is whole through once this is applied, where it resumes
+    # from: when one entry changes several items, only the last of its frames names that entry.
     head: int = Field(ge=0)
 
 
@@ -310,4 +356,18 @@ class ScreenUpdateFrame(BaseModel, Generic[ItemT]):
     kind: Literal[FrameKind.SCREEN_UPDATE] = FrameKind.SCREEN_UPDATE
     item: ItemT
     # An amended entry changes an item without a new seq, so the head names the log it reflects.
+    head: int = Field(ge=0)
+
+
+class ScreenPatchFrame(BaseModel):
+    """What changed in an item this connection already sent; the item keeps its position."""
+
+    model_config = WIRE_CONFIG
+
+    kind: Literal[FrameKind.SCREEN_PATCH] = FrameKind.SCREEN_PATCH
+    id: str = Field(min_length=1)
+    # How many patches this connection sent the item since it last sent it whole: the copy the
+    # changes were written against. A client holding any other copy must not apply them.
+    base: int = Field(ge=0)
+    changes: tuple[ItemChange, ...]
     head: int = Field(ge=0)

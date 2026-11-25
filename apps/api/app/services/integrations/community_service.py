@@ -4,6 +4,7 @@ from typing import cast
 
 from app.constants.cache import COMMUNITY_CACHE_TTL
 from app.constants.log_tags import LogTag
+from app.constants.public_pages import COMMUNITY_INTEGRATIONS_CACHE_PREFIX
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
@@ -104,7 +105,7 @@ async def _browse_community_integrations(
     offset: int,
 ) -> CommunityListResponse:
     """Browse community integrations with caching."""
-    cache_key = f"marketplace:community:{sort}:{category}:{limit}:{offset}"
+    cache_key = f"{COMMUNITY_INTEGRATIONS_CACHE_PREFIX}:{sort}:{category}:{limit}:{offset}"
     # Only the model_dump() written below lives under this key.
     cached = cast("dict[str, object] | None", await get_cache(cache_key))
     if cached:

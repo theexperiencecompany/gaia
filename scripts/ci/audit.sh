@@ -151,8 +151,9 @@ for (const e of expired) console.error(`::error::pnpm-audit: allowlist entry ${e
 for (const f of failing) console.error(`::error::pnpm-audit: ${f.severity} ${f.module} ${f.id} ${f.cves.join(",")} ${f.url}`);
 for (const id of unused) console.warn(`::warning::pnpm-audit: allowlist entry ${id} no longer matches any advisory; remove it`);
 
-if (failing.length || expired.length) process.exit(1);
-console.log(`pnpm-audit: OK (${suppressed.length} allowlisted, threshold ${LEVEL})`);
+// exitCode, never exit(): stdout to a pipe is async on macOS, and exit() cuts the summary off.
+if (failing.length || expired.length) process.exitCode = 1;
+else console.log(`pnpm-audit: OK (${suppressed.length} allowlisted, threshold ${LEVEL})`);
 NODE
 }
 
@@ -168,12 +169,6 @@ PIP_AUDIT_IGNORED=(
   GHSA-2wm9-hf6c-p5cr
   GHSA-xph7-9rjv-w5fr
   GHSA-36p7-vc44-83pf
-  # wcmatch 10.1 (fix: 11.2), expires 2026-12-21. e2b <= 2.37.0 caps wcmatch<11 and
-  # imports it only in the template builder (e2b/template/utils.py), reached only
-  # from the operator script apps/api/scripts/build_e2b_template.py over our own
-  # file names. Real fix: e2b >= 2.37.1 (PR #1862) with uv.lock on wcmatch >= 11.2;
-  # drop this entry once the lock holds wcmatch >= 11.2.
-  CVE-2026-132276
 )
 
 cmd_pip() {

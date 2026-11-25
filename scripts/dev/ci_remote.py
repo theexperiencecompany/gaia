@@ -546,9 +546,14 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
 
 
 def run_artifacts(repo: Repo, run_id: int) -> list[dict]:
-    return repo.github.get(repo.api(f"actions/runs/{run_id}/artifacts?per_page=100")).get(
-        "artifacts", []
-    )
+    """Return a run's artifacts; none for a run GitHub created too recently to list any."""
+    try:
+        doc = repo.github.get(repo.api(f"actions/runs/{run_id}/artifacts?per_page=100"))
+    except GitHubError as err:
+        if err.status == HTTPStatus.NOT_FOUND:
+            return []
+        raise
+    return doc.get("artifacts", [])
 
 
 def is_current_attempt(verdict: Verdict, checks: list[Check]) -> bool:

@@ -206,7 +206,6 @@
 @source "../../../config/openui/promptSpecs.ts";
 @source "../../../config/openui/theme.ts";
 @source "../../../config/registries/baseMessageRegistry.ts";
-@source "../../../config/registries/toolRegistry.ts";
 @source "../../../features/artifacts/LazyArtifactRenderer.tsx";
 @source "../../../features/auth/constants.ts";
 @source "../../../features/bots/constants.ts";
@@ -315,6 +314,7 @@
 @source "../../../../../../libs/shared/ts/src/conversation/index.ts";
 @source "../../../../../../libs/shared/ts/src/conversation/live.ts";
 @source "../../../../../../libs/shared/ts/src/conversation/liveStore.ts";
+@source "../../../../../../libs/shared/ts/src/conversation/patch.ts";
 @source "../../../../../../libs/shared/ts/src/conversation/selectors.ts";
 @source "../../../../../../libs/shared/ts/src/conversation/view.ts";
 @source "../../../../../../libs/shared/ts/src/desktop-tools/index.ts";

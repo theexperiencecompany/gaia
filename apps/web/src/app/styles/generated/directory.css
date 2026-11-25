@@ -299,6 +299,7 @@
 @source "../../[locale]/(landing)/blog/client.tsx";
 @source "../../[locale]/(landing)/blog/page.tsx";
 @source "../../[locale]/(landing)/marketplace/client.tsx";
+@source "../../[locale]/(landing)/marketplace/layout.tsx";
 @source "../../[locale]/(landing)/marketplace/page.tsx";
 @source "../../../features/chat/components/code-block/CodeBlock.tsx";
 @source "../../../features/chat/components/code-block/CopyButton.tsx";

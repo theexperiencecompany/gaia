@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.client_type import request_client_source
 from app.constants.chat import CONVERSATION_READ_LIMIT
+from app.constants.conversation import EventsWire
 from app.constants.general import MAX_PAGE_NUMBER
 from app.core.shutdown_signal import shutdown_requested
 from app.decorators import tiered_rate_limit
@@ -37,7 +38,7 @@ from app.models.conversation_send_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import ConversationStopResponse
-from app.services.conversation.event_stream import event_lines
+from app.services.conversation.event_stream import event_lines, follow_screen
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.send import submit_barge_in, submit_message, submit_retry
 from app.services.conversation_service import (
@@ -224,20 +225,30 @@ async def barge_in_endpoint(
 async def conversation_events_endpoint(
     request: Request,
     conversation_id: str,
+    after: int = Query(
+        default=0, ge=0, description="The log head the client's copy of the screen reached"
+    ),
+    wire: EventsWire = Query(
+        default=EventsWire.ITEMS, description="The newest frame shapes the client reads"
+    ),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Stream the conversation's screen as SSE: the newest page, then patches and live deltas."""
+    """Stream the conversation's screen as SSE: what a client at entry after lacks, then patches and live deltas.
+
+    after is the log head of the last item frame the client applied from this stream, 0 when it
+    holds nothing. wire names the newest frame shapes the client reads.
+    """
     log.set(
         user={"id": user.user_id},
         conversation={"operation": ConversationOperation.EVENTS, "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
     lines = event_lines(
-        runtime_ports().log,
-        conversation_id,
+        follow_screen(runtime_ports().log, conversation_id, user.user_id, after),
         user.user_id,
         request.is_disconnected,
         shutdown_requested(),
+        wire,
     )
     return StreamingResponse(
         lines,

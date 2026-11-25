@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
-from typing import cast
+from typing import TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -41,6 +41,7 @@ _DEFAULT_TODO_SOURCE = "executor"
 
 _Json = dict[str, object]
 _Group = dict[str, object]
+_Value = TypeVar("_Value")
 
 
 class _CardRefs(BaseModel):
@@ -108,6 +109,70 @@ def fold_cards(
             case ArtifactDeltaEvent(artifact_delta=delta):
                 _take_artifact_delta(cards, delta)
     return FoldedCards(tool_data=tuple(cards), image=image)
+
+
+def merged_thinking(calls: Iterable[dict[str, _Value]]) -> list[dict[str, _Value]]:
+    """Return calls with each run of thinking steps merged into its first."""
+    merged: list[dict[str, _Value]] = []
+    for call in calls:
+        last = merged[-1] if merged else None
+        more = call.get("reasoning")
+        held = None if last is None else last.get("reasoning")
+        if last is None or not isinstance(held, str) or not isinstance(more, str):
+            merged.append(call)
+        else:
+            # Text is a value of either JSON typing a caller holds its steps in.
+            merged[-1] = {**last, "reasoning": cast(_Value, held + more)}
+    return merged
+
+
+def _merged_group(group: _Group) -> _Group:
+    """Return the subagent group with its thinking merged, and its nested groups' the same way."""
+    calls = _calls(group)
+    steps = [call for call in calls if isinstance(call, dict)]
+    return {
+        **group,
+        # A call that is no step is kept as stored: nothing reads it, and nothing here guesses at it.
+        "tool_calls": merged_thinking(steps) if len(steps) == len(calls) else calls,
+        "nested_subagents": [
+            _merged_group(nested) if isinstance(nested, dict) else nested
+            for nested in _nested(group)
+        ],
+    }
+
+
+def _thinking_step(card: ToolDataEntry) -> _Json | None:
+    """Return the step of a card that is one thinking step and nothing else."""
+    data = card["data"]
+    if card["tool_name"] != TOOL_CALLS_CARD or not isinstance(data, dict):
+        return None
+    return data if isinstance(data.get("reasoning"), str) else None
+
+
+def coalesced_thinking(cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
+    """Return cards with each run of thinking merged into its first step, at the top and inside subagent groups.
+
+    Older logs stored one thinking step per token.
+    """
+    merged: list[ToolDataEntry] = []
+    for card in cards:
+        data = card["data"]
+        if card["tool_name"] == SUBAGENT_GROUP_TOOL_NAME and isinstance(data, dict):
+            merged.append(cast(ToolDataEntry, {**card, "data": _merged_group(data)}))
+            continue
+        last = merged[-1] if merged else None
+        step = _thinking_step(card)
+        held = None if last is None or step is None else _thinking_step(last)
+        if last is None or held is None or step is None or _subagent(last) != _subagent(card):
+            merged.append(card)
+            continue
+        (both,) = merged_thinking([held, step])
+        merged[-1] = cast(ToolDataEntry, {**last, "data": both})
+    return tuple(merged)
+
+
+def _subagent(card: ToolDataEntry) -> str | None:
+    return card.get("subagent_id")
 
 
 def _copy(card: ToolDataEntry) -> ToolDataEntry:

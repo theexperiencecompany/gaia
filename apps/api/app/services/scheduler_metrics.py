@@ -5,6 +5,7 @@ reset. Lateness is the time between a task's scheduled time and the moment a wor
 Every series is created at zero when the API and the worker start serving metrics.
 """
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final
 
@@ -54,6 +55,21 @@ ALL_SCHEDULER_COLLECTORS: Final[tuple[Counter | Histogram, ...]] = (
     SCHEDULED_TASK_TOTAL,
     SCHEDULED_TASK_LATENESS_SECONDS,
 )
+
+
+def observe_scheduled_fire(kind: ScheduledTaskKind, outcome: ScheduledTaskOutcome) -> None:
+    """Count one fire of a scheduled task by how it ended."""
+    SCHEDULED_TASK_TOTAL.labels(kind.value, outcome.value).inc()
+
+
+def observe_claim_lateness(kind: ScheduledTaskKind, scheduled_at: datetime | None) -> None:
+    """Record how long past its scheduled time a task was when a worker claimed it."""
+    if scheduled_at is None:
+        return
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=UTC)
+    late = (datetime.now(UTC) - scheduled_at).total_seconds()
+    SCHEDULED_TASK_LATENESS_SECONDS.labels(kind.value).observe(max(0.0, late))
 
 
 def create_scheduled_task_series() -> None:

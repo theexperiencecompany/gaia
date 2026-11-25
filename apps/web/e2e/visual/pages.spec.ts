@@ -1,35 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
+import { MARKETING_PAGES } from "../marketing-pages";
 
 /**
  * Every key marketing page must render pixel-identical to the baseline build.
  * Third-party responses (API, CDN logos, avatars) are recorded beside the
  * baseline and replayed afterwards, so both builds see the same bytes.
  */
-const PAGES = [
-  "/",
-  "/pricing",
-  "/about",
-  "/contact",
-  "/features",
-  "/compare",
-  "/compare/motion",
-  "/alternative-to/motion",
-  "/for/consultants",
-  "/de/for/consultants",
-  "/learn/agent-loop",
-  "/automate",
-  "/automate/airtable-notion",
-  "/blog",
-  "/blog/desktop",
-  "/faq",
-  "/marketplace",
-  "/marketplace/airtable",
-  "/use-cases/morning-briefing",
-  "/bots",
-];
-
 const FIXED_TIME = new Date("2026-01-15T12:00:00Z");
 const CF_IMAGE_PREFIX = "/cdn-cgi/image/";
 const UPDATING = process.env.VISUAL_UPDATE === "1";
@@ -198,7 +176,7 @@ function seedRandom(): void {
   };
 }
 
-for (const route of PAGES) {
+for (const route of MARKETING_PAGES) {
   test(route, async ({ page, baseURL }) => {
     if (!baseURL) throw new Error("run through playwright.visual.config.ts");
     const origin = new URL(baseURL).origin;

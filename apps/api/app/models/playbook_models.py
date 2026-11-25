@@ -553,6 +553,20 @@ def walk_ask_slots(
             yield from walk_ask_slots(item, (*path, index))
 
 
+def walk_time_slots(
+    value: object, path: tuple[str | int, ...] = ()
+) -> Iterator[tuple[tuple[str | int, ...], Mapping[str, object]]]:
+    """Every time slot inside one value, with the argument path that addresses it."""
+    if is_time_slot(value):
+        yield path, value
+    elif isinstance(value, Mapping) and not is_ask_slot(value):
+        for key, item in value.items():
+            yield from walk_time_slots(item, (*path, str(key)))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from walk_time_slots(item, (*path, index))
+
+
 class PlaybookBody(BaseModel):
     """The authored part of a playbook — what round-trips through YAML."""
 

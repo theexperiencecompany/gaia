@@ -33,7 +33,6 @@ import zoneinfo
 from arq.connections import ArqRedis
 from arq.jobs import JobDef
 from bson import ObjectId
-from bson.errors import InvalidId
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -44,6 +43,7 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
+from loguru import logger as loguru_logger
 from motor.motor_asyncio import AsyncIOMotorCollection
 from prometheus_client import REGISTRY, CollectorRegistry
 from pydantic import Field
@@ -92,10 +92,8 @@ UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
 
 
 async def users_get(user_id: str) -> UserDocument | None:
-    """Stand in for user_repository.get: bson refuses a non-ObjectId, UNKNOWN_USER_ID has no row."""
-    if not ObjectId.is_valid(user_id):
-        raise InvalidId(f"{user_id!r} is not a valid ObjectId")
-    if user_id == UNKNOWN_USER_ID:
+    """Stand in for user_repository.get: a non-ObjectId and UNKNOWN_USER_ID name no row."""
+    if not ObjectId.is_valid(user_id) or user_id == UNKNOWN_USER_ID:
         return None
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
@@ -743,6 +741,19 @@ class WideEventRecorder:
                 f"emitted: {[event.get('task') for event in self.events]}"
             )
         return matches[0]
+
+
+@contextmanager
+def emitted_log_records() -> Iterator[list[dict[str, Any]]]:
+    """Collect every record the real loguru sink is handed, as the JSON sink serializes it."""
+    records: list[dict[str, Any]] = []
+    sink_id = loguru_logger.add(
+        lambda line: records.append(json.loads(line)["record"]), serialize=True, level="DEBUG"
+    )
+    try:
+        yield records
+    finally:
+        loguru_logger.remove(sink_id)
 
 
 @asynccontextmanager

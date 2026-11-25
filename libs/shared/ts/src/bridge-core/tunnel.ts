@@ -271,6 +271,8 @@ export class Tunnel {
     if (!sid || !command) return;
     // Echo the consumer pod on every up-frame so the cloud routes the stream to
     // the pod that opened the session (same contract as the MCP path).
+    // The ack tells the socket's pod this command runs here, so a drop fails it at once.
+    this.send({ t: FRAME.EXEC_STARTED, sid, pod });
     await runDeviceExec(command, frame.cwd, {
       stdout: (data) => this.send({ t: FRAME.EXEC_STDOUT, sid, pod, data }),
       stderr: (data) => this.send({ t: FRAME.EXEC_STDERR, sid, pod, data }),

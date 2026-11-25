@@ -1229,3 +1229,20 @@ async def test_a_running_continuation_adds_its_live_cards_after_the_ended_runs_o
 
     [work] = [item for item in tracker.items if isinstance(item, WorkItem)]
     assert (work.task_id, work.tool_data) == ("t1", (_card("ask"), _card("x"), _card("y")))
+
+
+def test_only_the_last_patch_of_one_entry_names_its_head() -> None:
+    """A client cut off between two patches of one entry must resume from the head before it."""
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    waiting = asked("ask:a1", "t1", "a1").model_copy(update={"expires_at": at(4)})
+    tracker = ScreenTracker(
+        "c1", [logged(1, user("u1")), logged(2, started), logged(3, waiting)], {}
+    )
+
+    # The message arrives after the approval ran out: it shows, and the work stops asking.
+    patches = tracker.take(EntryFrame(seq=4, at=at(9), entry=user("u4")))
+
+    assert [(type(patch), patch.item.id, patch.head) for patch in patches] == [
+        (ScreenUpdateFrame, "work:t1", 3),
+        (ScreenInsertFrame, "u4", 4),
+    ]

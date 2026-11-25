@@ -30,7 +30,7 @@ from app.db.repositories.cached_base import (
 )
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.models.document_models import MongoDocument, UserScopedDocument
-from app.utils.errors import EmptyUpdateError
+from app.utils.errors import EmptyUpdateError, MalformedIdError
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 
@@ -435,6 +435,19 @@ class TestGlobalRepository:
 
         assert first is not None and (first.name, first.tag) == ("first", "kept")
         assert second is not None and (second.name, second.tag) == ("second", "kept")
+        assert await global_repo.count() == 1
+
+    async def test_a_malformed_id_reads_nothing_and_refuses_an_upsert(self, global_repo):
+        await global_repo.create(_GlobalDocument(name="kept"))
+
+        assert await global_repo.get("not-an-id") is None
+        assert await global_repo.delete("not-an-id") is False
+        with pytest.raises(MalformedIdError) as refused:
+            await global_repo.upsert("not-an-id", _GlobalUpdate(name="stray"))
+        assert (
+            str(refused.value)
+            == "cannot upsert _GlobalRepository under the malformed id 'not-an-id'"
+        )
         assert await global_repo.count() == 1
 
 

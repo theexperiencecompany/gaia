@@ -10,10 +10,10 @@ from sqlalchemy import delete
 from app.constants.device_bridge import DEVICE_CATEGORY
 from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
+from app.constants.public_pages import PublicPageDomain
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache_by_pattern
 from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
@@ -44,6 +44,7 @@ from app.services.mcp.mcp_errors import DCRNotSupportedError, DCRRegistrationErr
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_service import invalidate_mcp_tools_cache
+from app.services.public_pages import invalidate_public_pages
 from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import OAuthDiscoveryError, OAuthSecurityError
 from shared.py.wide_events import log
@@ -197,6 +198,8 @@ async def update_custom_integration(
 
     update = IntegrationUpdate.model_validate(changes)
     updated = await integration_repository.update(integration_id, update)
+    if updated is not None and (doc.is_public or updated.is_public):
+        await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
 
     # name / description / is_public all embed into every connected user's cached
     # catalog item (MyIntegrationItem + connected-list). Bust those users so the
@@ -224,12 +227,14 @@ async def _delete_owned_integration(doc: Integration, user_id: str, integration_
                 user_id=user_id,
                 integration_id=integration_id,
             )
-        # Drop the deleted integration from the cached community marketplace list.
-        await delete_cache_by_pattern("marketplace:community:*")
 
     deleted = await integration_repository.delete_custom(integration_id, user_id)
     if not deleted:
         return False
+
+    if doc.is_public:
+        # Only once the row is gone: a marketplace read before that would cache it again.
+        await invalidate_public_pages(PublicPageDomain.INTEGRATIONS)
 
     # A device MCP server has an authoritative Postgres row that the Mongo
     # delete above leaves behind (and which would resurrect the doc on the

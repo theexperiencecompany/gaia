@@ -1997,7 +1997,7 @@ class TestCollectReferenceLearnings:
         owned = [_doc(id=_ref_id(2), title="Kept", canvas_content="## Learnings\n- kept lesson")]
         result, find = await self._run(["not-an-id", _ref_id(1), _ref_id(2)], owned)
 
-        find.assert_awaited_once_with(OWNER_ID, [_ref_id(1), _ref_id(2)])
+        find.assert_awaited_once_with(OWNER_ID, ["not-an-id", _ref_id(1), _ref_id(2)])
         assert result.endswith('From past todo "Kept":\n## Learnings\n- kept lesson')
 
     async def test_learnings_keep_the_order_the_todo_lists_them_in(self) -> None:

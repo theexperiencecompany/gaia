@@ -4,6 +4,7 @@ import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
 } from "@shared/chat";
+import { cardData } from "@shared/conversation";
 import * as m from "motion/react-m";
 import React, { useId } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -317,7 +318,6 @@ export default function TextBubble({
   bubbles = NO_BUBBLES,
   timeline,
   disclaimer,
-  tool_data,
   isConvoSystemGenerated,
   systemPurpose,
   loading,
@@ -339,31 +339,36 @@ export default function TextBubble({
   const steps = (timeline?.steps ?? []) as readonly TimelineItem[];
   const cards = timeline?.cards ?? [];
 
-  // Dev-only: record what this bubble did with each tool_data entry.
-  useToolRenderAudit(message_id, tool_data);
+  // Every approval the item asked for, as the server grouped them into one card.
+  const approvals = React.useMemo(
+    () =>
+      (timeline
+        ? cardData(timeline, APPROVAL_REQUEST_TOOL_NAME)
+        : []) as (ApprovalRequestData | null)[],
+    [timeline],
+  );
+
+  // Dev-only: record what this bubble did with each card of the timeline.
+  useToolRenderAudit(message_id, timeline);
 
   // Tool calls currently blocked on a HIL approval, keyed by the shared
   // tool_call_id. Lets the tool row/subagent show "Waiting for approval"
   // instead of a generic spinner while the approval card handles the decision.
   const pendingApprovalToolCallIds = React.useMemo(() => {
     const ids = new Set<string>();
-    tool_data?.forEach((entry) => {
-      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
-      const data = entry.data as ApprovalRequestData | null;
+    for (const data of approvals) {
       if (data?.status === "waiting" && data.tool_call_id) {
         ids.add(data.tool_call_id);
       }
-    });
+    }
     return ids;
-  }, [tool_data]);
+  }, [approvals]);
 
   // Settled decisions, keyed the same way — the tool's row carries the outcome
   // as a chip, with feedback so it shows the receipt, not just "Approved".
   const { approvalOutcomeByToolCallId } = React.useMemo(() => {
     const outcomes = new Map<string, ApprovalReceipt>();
-    tool_data?.forEach((entry) => {
-      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
-      const data = entry.data as ApprovalRequestData | null;
+    for (const data of approvals) {
       if (data?.tool_call_id && data.status !== "waiting") {
         outcomes.set(data.tool_call_id, {
           status: data.status,
@@ -372,9 +377,9 @@ export default function TextBubble({
           feedback: data.feedback ?? null,
         });
       }
-    });
+    }
     return { approvalOutcomeByToolCallId: outcomes };
-  }, [tool_data]);
+  }, [approvals]);
 
   return (
     <>

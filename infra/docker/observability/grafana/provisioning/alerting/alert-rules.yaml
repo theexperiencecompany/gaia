@@ -555,6 +555,7 @@ groups:
           __panelId__: "10"
         labels:
           severity: critical
+          notify: email
           service: api
           incident: availability
 
@@ -841,9 +842,8 @@ groups:
           incident: availability
 
       # 14. API severely slow: p95 > 3s for 5m. The warning-tier latency rule
-      # (gaia-api-p95-latency, >1s) goes to Slack only; this critical tier also
-      # pages email so a real latency incident isn't missed. Same handlers and
-      # same 100-request floor as the warning tier.
+      # (gaia-api-p95-latency, >1s) repeats daily; this critical tier repeats
+      # every 12h. Same handlers and same 100-request floor as the warning tier.
       - uid: gaia-api-p95-latency-critical
         title: API responses are critically slow
         condition: C
@@ -884,8 +884,7 @@ groups:
             unreachable.{{ end }}
           description: >-
             Same signal as the warning-tier latency rule, at the point where the
-            product is effectively unusable rather than merely slow. This tier
-            also pages email. Treat it as an incident: check whether the API is
+            product is effectively unusable rather than merely slow. Treat it as an incident: check whether the API is
             saturated (event-loop lag, CPU) or a database it reads on every
             request (Mongo, Redis, Postgres) is slow.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
@@ -960,8 +959,7 @@ groups:
           severity: warning
           service: api
 
-      # 27. Over 30% of replies showed their first text after 60s. Critical tier:
-      # also pages email.
+      # 27. Over 30% of replies showed their first text after 60s.
       - uid: gaia-chat-first-reply-critically-slow
         title: Chat first reply is critically slow
         condition: C
@@ -1007,7 +1005,7 @@ groups:
           description: >-
             Same signal as the warning-tier rule, at the point where chat looks
             broken rather than slow: a third of users wait over a minute for the
-            first word. This tier also pages email. Check the model provider
+            first word. Check the model provider
             first (llm_ttft_seconds and gaia-llm-provider-failing), then a
             conversation stuck behind a running executor
             (executor_queue_wait_seconds).
@@ -1075,7 +1073,6 @@ groups:
           service: api
 
       # 29. Over 30% of replies took more than 5 minutes to settle (normal: 4%).
-      # Critical tier: also pages email.
       - uid: gaia-chat-reply-critically-slow
         title: Chat replies are critically slow end to end
         condition: C
@@ -1120,7 +1117,7 @@ groups:
             unreachable.{{ end }}
           description: >-
             Same signal as the warning-tier rule, at the point where replies
-            hang rather than lag. This tier also pages email. Treat it as an
+            hang rather than lag. Treat it as an
             incident: look for a wedged executor lock
             (executor_queue_wait_seconds climbing), a model provider outage
             (gaia-llm-provider-failing) or a runaway tool (tool_call_seconds).
@@ -1410,6 +1407,7 @@ groups:
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-dependencies-not-ready
         labels:
           severity: critical
+          notify: email
           service: api
           incident: availability
 
@@ -1452,6 +1450,7 @@ groups:
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-web-unreachable
         labels:
           severity: critical
+          notify: email
           service: web
           incident: availability
 
@@ -2324,6 +2323,7 @@ groups:
           __panelId__: "4"
         labels:
           severity: critical
+          notify: email
           service: api
           incident: availability
 
@@ -2589,6 +2589,7 @@ groups:
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-payment-webhook-failing
         labels:
           severity: critical
+          notify: email
           service: api
 
       # 7. Dodo deliveries are failing verification and none is getting through. A
@@ -2692,6 +2693,7 @@ groups:
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-login-failing
         labels:
           severity: critical
+          notify: email
           service: api
 
       # 9. Integration connects are failing at the Composio callback. Same counter
@@ -3232,6 +3234,58 @@ groups:
           severity: warning
           service: api
 
+      # 19. Workers AI is rate limiting us beyond its daily bursts. Measured
+      # baseline (2026-11): three bursts a day of 250-420 rate limited calls,
+      # each inside one hour, on the worker, and near zero otherwise. So three
+      # hours hold one burst (420 at most) or, back to back, two (840). More
+      # than 1000 is either one hour at over twice the largest burst or burst-level
+      # rate limiting that did not stop. Slack only. No dashboard link: nothing
+      # charts this counter.
+      - uid: gaia-workers-ai-rate-limited
+        title: Workers AI is rate limiting us more than usual
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 10800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(gaia_llm_call_total{job=~"gaia-api|arq_worker", provider="cloudflare", outcome="rate_limited"}[3h]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [1000] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Workers AI rate limited {{ printf "%.0f" $values.B.Value }}
+            model calls in the last 3 hours (threshold: more than 1000; a normal
+            daily burst is 250 to 420 in one hour){{ else }}Unable to read the
+            Workers AI rate limit count — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Workers AI is refusing more model calls than its usual daily bursts.
+            A refused call goes straight to the fallback model, at that model's
+            cost, so users mostly still get an answer; a call with no fallback
+            is retried and then fails. Check which job and label is sending the
+            calls (the llm_call log lines with error_family rate_limit), then
+            the Workers AI limits on the Cloudflare account and whether a
+            background job is looping.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-workers-ai-rate-limited
+        labels:
+          severity: warning
+          service: api
+
   # Log rules read Loki, not Prometheus, so pint and promtool cannot test them:
   # tools/alert-rules/extract_promql.py validates their shape and names them as
   # log rules, and the LogQL is verified against Loki when the rule is written.
@@ -3272,7 +3326,7 @@ groups:
               type: threshold
               expression: B
               conditions:
-                - evaluator: { type: gt, params: [7] }
+                - evaluator: { type: gt, params: [25] }
         noDataState: OK
         execErrState: Error
         for: 0m
@@ -3282,7 +3336,7 @@ groups:
           summary: >-
             {{ if $values.B }}{{ $labels.service_name }} logged "{{ $labels.message }}"
             {{ printf "%.0f" $values.B.Value }} times in the last 24 hours (threshold:
-            more than 7){{ else }}Unable to read the error log counts — this rule
+            more than 25){{ else }}Unable to read the error log counts — this rule
             could not be evaluated, which almost always means Loki is down or
             unreachable.{{ end }}
           description: >-
