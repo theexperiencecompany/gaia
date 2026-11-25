@@ -12,6 +12,8 @@ from pytest_mock import MockerFixture
 
 from app.config.deployment import DeploymentKind, baseline_profile
 from app.core.lifespan import lifespan
+from app.services.conversation.stream_metrics import STREAM_BYTES_TOTAL
+from tests.helpers import series_labels
 
 
 def _boot_patches(mocker: MockerFixture) -> None:
@@ -178,3 +180,12 @@ async def test_boot_installs_the_conversation_runtime_it_builds(mocker: MockerFi
 
     async with lifespan(None):
         install.assert_called_once_with(ports)
+
+
+async def test_boot_creates_the_events_stream_series_at_zero(mocker: MockerFixture) -> None:
+    _set_posthog(mocker, None, None, DeploymentKind.SELFHOST)
+    _boot_patches(mocker)
+    STREAM_BYTES_TOTAL.clear()
+
+    async with lifespan(None):
+        assert ("2", "web") in series_labels("gaia_conversation_events_stream_bytes_total")

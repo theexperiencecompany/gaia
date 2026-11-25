@@ -41,6 +41,7 @@ from app.models.work_cancel_models import ConversationStopResponse
 from app.services.conversation.event_stream import event_lines, follow_screen
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.send import submit_barge_in, submit_message, submit_retry
+from app.services.conversation.stream_metrics import metered
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -58,6 +59,7 @@ from app.services.conversation_service import (
     update_conversation_description,
 )
 from app.services.conversation_stop_service import press_stop
+from shared.py.analytics.context import current_analytics_context
 from shared.py.wide_events import ConversationOperation, log
 
 router = APIRouter()
@@ -240,7 +242,11 @@ async def conversation_events_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": ConversationOperation.EVENTS, "id": conversation_id},
+        conversation={
+            "operation": ConversationOperation.EVENTS,
+            "id": conversation_id,
+            "wire": wire.value,
+        },
     )
     await require_owned_conversation(conversation_id, user.user_id)
     lines = event_lines(
@@ -251,7 +257,7 @@ async def conversation_events_endpoint(
         wire,
     )
     return StreamingResponse(
-        lines,
+        metered(lines, wire, current_analytics_context().attribution.surface),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
