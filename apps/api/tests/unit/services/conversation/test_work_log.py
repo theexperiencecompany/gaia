@@ -1,15 +1,25 @@
 """work_log: background work's entries on the conversation log, and what each write hands back."""
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
+from dataclasses import dataclass, field
+from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background.executor_queue import build_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.conversation import (
+    WORK_ENDED_KEY_PREFIX,
+    WORK_ENDED_TTL_SECONDS,
+    WORK_LOST_REPORT,
+)
+from app.constants.db import MONGO_TRANSIENT_RETRY_ATTEMPTS
+from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.models.agent_config import StepTurnRef
 from app.models.conversation_frame_models import EntryFrame
 from app.models.conversation_log_models import (
+    Entry,
     StopBy,
     StopRequested,
     WorkFinished,
@@ -19,6 +29,7 @@ from app.models.conversation_log_models import (
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation import work_log
 from app.services.conversation.log import accept
+from app.services.conversation.ports import Appended
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.work_log import (
     Continuing,
@@ -28,9 +39,11 @@ from app.services.conversation.work_log import (
     record_gaia_stop,
     record_work_carried,
     record_work_finished,
+    record_work_lost,
     record_work_started,
     work_of_run,
 )
+from app.utils.errors import ConversationStoreError
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import asked, stop, user
@@ -153,15 +166,257 @@ async def test_finished_work_is_logged_with_its_report_under_the_users_conversat
     )
 
 
-async def test_lost_work_is_logged_under_its_own_id_so_a_late_result_is_never_its_duplicate(
-    rt: Runtime,
-) -> None:
+CARD: ToolDataEntry = {"tool_name": "weather", "data": {"city": "Pune"}}
+IMAGE = ImageData(url="https://img", prompt="a map")
+ENDED_KEY = f"{WORK_ENDED_KEY_PREFIX}{CONVERSATION}:t1"
+CARDS_DROPPED = "work finish saved without its cards"
+
+
+@dataclass
+class Refusals:
+    """The finishes the log was asked to append, and whether each found its work marked ended."""
+
+    asked: list[WorkFinished] = field(default_factory=list)
+    marked_ended: list[bool] = field(default_factory=list)
+
+
+@pytest.fixture
+async def live(rt: Runtime, fake_redis: fakeredis.aioredis.FakeRedis) -> AsyncIterator[Runtime]:
+    """Return the runtime with work t1 running, and no wait between its store retries."""
     await accept(rt.ports, CONVERSATION, USER, user("u1"))
     assert await record_work_carried(CONVERSATION, USER, "t1")
-    await record_work_finished(CONVERSATION, USER, "t1", WorkOutcome.LOST, WorkReport(text=""))
-    assert (await rt.entries())[-1].entry == WorkFinished(
-        id="work:t1:lost", task_id="t1", outcome=WorkOutcome.LOST, report=""
+    with patch.object(TRANSIENT_MONGO_RETRY, "sleep", AsyncMock()):
+        yield rt
+
+
+def refuse(
+    rt: Runtime,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    refusing: Callable[[WorkFinished, int], Exception | None],
+) -> Refusals:
+    """Make the log refuse each WorkFinished that refusing, given the entry and its attempt, returns an error for."""
+    seen = Refusals()
+    append = rt.log.append
+
+    async def refusing_append(conversation_id: str, user_id: str, entry: Entry) -> Appended:
+        if isinstance(entry, WorkFinished):
+            seen.asked.append(entry)
+            seen.marked_ended.append(bool(await fake_redis.exists(ENDED_KEY)))
+            if (error := refusing(entry, len(seen.asked))) is not None:
+                raise error
+        return await append(conversation_id, user_id, entry)
+
+    monkeypatch.setattr(rt.log, "append", refusing_append)
+    return seen
+
+
+def unreachable() -> ConversationStoreError:
+    return ConversationStoreError(message="conversation store log append failed")
+
+
+def too_large() -> ConversationStoreError:
+    return ConversationStoreError(message="conversation store log append failed", too_large=True)
+
+
+async def finish(report: WorkReport) -> None:
+    await record_work_finished(CONVERSATION, USER, "t1", WorkOutcome.DONE, report)
+
+
+async def test_a_finish_the_store_refused_while_unreachable_is_retried_and_saved_whole(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    seen = refuse(
+        live, monkeypatch, fake_redis, lambda _, attempt: unreachable() if attempt <= 3 else None
     )
+
+    async with captured_wide_event() as event:
+        await finish(WorkReport("done it", [CARD], image=IMAGE))
+
+    saved = (await live.entries())[-1].entry
+    assert saved == WorkFinished(
+        id="work:t1:finished",
+        task_id="t1",
+        outcome=WorkOutcome.DONE,
+        report="done it",
+        tool_data=(CARD,),
+        image=IMAGE,
+    )
+    assert seen.asked == [saved] * 4
+    # Marked ended from the first refusal on, so no sweep in between takes the work for lost.
+    assert seen.marked_ended == [False, True, True, True]
+    assert not await fake_redis.exists(ENDED_KEY)
+    assert event["errors"] == [
+        {
+            "msg": "work finish refused by the conversation store",
+            "conversation_id": CONVERSATION,
+            "task_id": "t1",
+            "error_type": "ConversationStoreError",
+            "too_large": False,
+            "cards": 1,
+        }
+    ]
+    assert CARDS_DROPPED not in [warning["msg"] for warning in event["warnings"]]
+
+
+async def test_a_finish_too_large_for_the_store_is_saved_once_more_without_its_cards(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    seen = refuse(
+        live, monkeypatch, fake_redis, lambda entry, _: too_large() if entry.tool_data else None
+    )
+
+    async with captured_wide_event() as event:
+        await finish(WorkReport("done it", [CARD], note="checked", image=IMAGE))
+
+    saved = (await live.entries())[-1].entry
+    assert saved == WorkFinished(
+        id="work:t1:finished",
+        task_id="t1",
+        outcome=WorkOutcome.DONE,
+        report="done it",
+        note="checked",
+        image=IMAGE,
+    )
+    assert [len(entry.tool_data) for entry in seen.asked] == [1, 0]
+    assert not await fake_redis.exists(ENDED_KEY)
+    assert event["errors"][0]["too_large"] is True
+    assert event["warnings"][-1] == {
+        "msg": CARDS_DROPPED,
+        "conversation_id": CONVERSATION,
+        "task_id": "t1",
+        "error_type": "ConversationStoreError",
+        "error": "conversation store log append failed",
+    }
+
+
+async def test_a_finish_refused_through_every_retry_is_saved_without_its_cards(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    seen = refuse(
+        live, monkeypatch, fake_redis, lambda entry, _: unreachable() if entry.tool_data else None
+    )
+
+    await finish(WorkReport("done it", [CARD]))
+
+    assert (await live.entries())[-1].entry == WorkFinished(
+        id="work:t1:finished", task_id="t1", outcome=WorkOutcome.DONE, report="done it"
+    )
+    assert [len(entry.tool_data) for entry in seen.asked] == [
+        1,
+        *[1] * MONGO_TRANSIENT_RETRY_ATTEMPTS,
+        0,
+    ]
+
+
+async def test_a_retry_that_turns_out_too_large_stops_retrying_and_drops_the_cards(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    def refusing(entry: WorkFinished, attempt: int) -> Exception | None:
+        if not entry.tool_data:
+            return None
+        return unreachable() if attempt == 1 else too_large()
+
+    seen = refuse(live, monkeypatch, fake_redis, refusing)
+
+    await finish(WorkReport("done it", [CARD]))
+
+    assert [len(entry.tool_data) for entry in seen.asked] == [1, 1, 0]
+
+
+async def test_a_finish_never_saved_raises_and_stays_marked_ended_for_the_sweep(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    refused = unreachable()
+    seen = refuse(live, monkeypatch, fake_redis, lambda *_: refused)
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await finish(WorkReport("done it", [CARD]))
+
+    assert raised.value is refused
+    assert len(seen.asked) == 1 + MONGO_TRANSIENT_RETRY_ATTEMPTS + 1
+    assert not any(isinstance(logged.entry, WorkFinished) for logged in await live.entries())
+    assert await fake_redis.get(ENDED_KEY) == "1"
+    assert await fake_redis.ttl(ENDED_KEY) == WORK_ENDED_TTL_SECONDS
+
+
+@pytest.mark.parametrize(
+    ("refusal", "attempts"),
+    [(unreachable, 1 + MONGO_TRANSIENT_RETRY_ATTEMPTS), (too_large, 1)],
+)
+async def test_a_refused_finish_with_no_cards_to_drop_raises_what_the_store_said(
+    live: Runtime,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    refusal: Callable[[], ConversationStoreError],
+    attempts: int,
+) -> None:
+    refused = refusal()
+    seen = refuse(live, monkeypatch, fake_redis, lambda *_: refused)
+
+    with pytest.raises(ConversationStoreError) as raised:
+        await finish(WorkReport("done it", image=IMAGE))
+
+    assert raised.value is refused
+    assert len(seen.asked) == attempts
+    assert await fake_redis.exists(ENDED_KEY)
+
+
+async def test_a_finish_that_fails_outside_the_store_is_neither_retried_nor_marked_ended(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    seen = refuse(live, monkeypatch, fake_redis, lambda *_: RuntimeError("frames down"))
+
+    with pytest.raises(RuntimeError):
+        await finish(WorkReport("done it", [CARD]))
+
+    assert len(seen.asked) == 1
+    assert not await fake_redis.exists(ENDED_KEY)
+
+
+async def test_work_no_process_runs_is_lost_under_its_own_id_so_a_late_result_is_never_its_duplicate(
+    live: Runtime, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    # Another task's unsaved finish, and this task's in another conversation, say nothing about t1.
+    await fake_redis.set(f"{WORK_ENDED_KEY_PREFIX}{CONVERSATION}:t2", "1")
+    await fake_redis.set(f"{WORK_ENDED_KEY_PREFIX}c2:t1", "1")
+
+    assert await record_work_lost(CONVERSATION, USER, "t1") is WorkOutcome.LOST
+
+    assert (await live.entries())[-1].entry == WorkFinished(
+        id="work:t1:lost", task_id="t1", outcome=WorkOutcome.LOST, report=WORK_LOST_REPORT
+    )
+
+
+async def test_work_whose_own_process_ended_it_unsaved_is_failed_as_unsaved_never_lost(
+    live: Runtime, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    await fake_redis.set(ENDED_KEY, "1")
+
+    assert await record_work_lost(CONVERSATION, USER, "t1") is WorkOutcome.FAILED
+
+    assert (await live.entries())[-1].entry == WorkFinished(
+        id="work:t1:lost",
+        task_id="t1",
+        outcome=WorkOutcome.FAILED,
+        report="The background work ran to its end, but its result could not be saved, "
+        "so it cannot be shown.",
+    )
+
+
+async def test_work_ended_by_the_sweep_gets_the_cards_of_files_it_left_behind(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    left: ToolDataEntry = {"tool_name": "artifact", "data": {"path": "report.csv"}}
+    reconcile = AsyncMock(return_value=(left,))
+    monkeypatch.setattr(work_log, "reconcile_artifacts", reconcile)
+
+    await record_work_lost(CONVERSATION, USER, "t1")
+
+    reconcile.assert_awaited_once_with(USER, CONVERSATION, ())
+    saved = (await live.entries())[-1].entry
+    assert isinstance(saved, WorkFinished)
+    assert saved.tool_data == (left,)
 
 
 async def test_work_that_carries_on_ended_work_names_it_and_answers_nothing_new(

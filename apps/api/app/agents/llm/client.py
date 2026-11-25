@@ -1,6 +1,6 @@
 import asyncio
-from collections.abc import Mapping
-from contextlib import suppress
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from functools import cache
 import math
@@ -1054,6 +1054,43 @@ def _is_openai_wire(runnable: Runnable) -> bool:
     return _is_default_or_host(base, "api.openai.com")
 
 
+def _primary_leg(
+    label: str, provider: LLMProviderName | None, primary: Runnable
+) -> dict[str, object]:
+    """Return the llm log fields naming a call, and the provider and model it asked first."""
+    return {
+        "label": label,
+        "provider": provider.value if provider else UNKNOWN_PROVIDER,
+        "model": _requested_model(primary),
+    }
+
+
+@contextmanager
+def _fallback_attempt(
+    leg: dict[str, object], fallback: Runnable, primary_error: BaseException
+) -> Iterator[None]:
+    """Count the fallback call inside the block; when it fails too, log both legs and both failures on one line."""
+    try:
+        with fallback_leg():
+            yield
+    except Exception as fallback_error:
+        fallback_provider = _call_provider(fallback, None)
+        log.warning(
+            f"{LogTag.AGENT} llm call failed on the fallback too",
+            llm={
+                **leg,
+                "fell_back": True,
+                "fallback_provider": fallback_provider.value
+                if fallback_provider
+                else UNKNOWN_PROVIDER,
+                "fallback_model": _requested_model(fallback),
+            },
+            primary_failure=failed_call_fields(primary_error),
+            **failed_call_fields(fallback_error),
+        )
+        raise
+
+
 def _resolve_fallback(
     fallback: LLMFallback,
     label: str,
@@ -1071,17 +1108,18 @@ def _resolve_fallback(
     # the wire, while a bind survives bind_tools. Only onto an OpenRouter-wire fallback --
     # Google's client rejects unknown kwargs and would raise on the outage path itself.
     resolved = _materialize_fallback(fallback)
+    leg = _primary_leg(label, provider, primary)
     if resolved is None:
         observe_llm_fallback(LLMFallbackOutcome.EXHAUSTED)
+        log.warning(
+            f"{LogTag.AGENT} llm call failed with no fallback to try",
+            llm={**leg, "fell_back": False},
+            **failed_call_fields(primary_error),
+        )
         raise primary_error
     log.warning(
         f"{LogTag.AGENT} llm call failed; falling back to the default model",
-        llm={
-            "label": label,
-            "provider": provider.value if provider else UNKNOWN_PROVIDER,
-            "model": _requested_model(primary),
-            "fell_back": True,
-        },
+        llm={**leg, "fell_back": True},
         **failed_call_fields(primary_error),
     )
     requested = _requested_model(resolved)
@@ -1286,7 +1324,9 @@ async def ainvoke_llm(
                         session_id=opts.sticky_session_id
                         or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     )
-                    with fallback_leg():
+                    with _fallback_attempt(
+                        _primary_leg(label, provider, primary), fallback_runnable, primary_error
+                    ):
                         fallback_reply = await fallback_runnable.ainvoke(
                             messages,
                             config=_with_usage_handler(
@@ -1376,7 +1416,9 @@ def invoke_llm(
             # on whatever provider the router picked.
             session_id=opts.sticky_session_id or _sticky_session_id(config),
         )
-        with fallback_leg():
+        with _fallback_attempt(
+            _primary_leg(label, provider, primary), fallback_runnable, primary_error
+        ):
             fallback_reply = fallback_runnable.invoke(
                 messages,
                 config=_with_call_label(opts.fallback_config, label)
