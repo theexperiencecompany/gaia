@@ -117,29 +117,31 @@ async def record_work_finished(
 ) -> None:
     """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply.
 
-    A finish the store does not take within WORK_FINISH_SAVE_SECONDS raises, marked ended so
-    the sweep reports it unsaved, never lost with its server.
+    A finish not built and saved within WORK_FINISH_SAVE_SECONDS, or failing any other way,
+    raises marked ended, so the sweep reports it unsaved, never lost with its server.
     """
     ports = runtime_ports()
-    entry = WorkFinished(
-        id=f"work:{task_id}:finished",
-        task_id=task_id,
-        outcome=outcome,
-        report=report.text,
-        tool_data=(
-            *report.tool_data,
-            *await reconcile_artifacts(user_id, conversation_id, report.tool_data),
-        ),
-        note=report.note,
-        nothing_for_user=report.nothing_for_user,
-        image=report.image,
-        continued_by_decision=continued_by_decision,
-        awaits_decision=report.awaits_decision,
-    )
     try:
         async with asyncio.timeout(WORK_FINISH_SAVE_SECONDS):
+            entry = WorkFinished(
+                id=f"work:{task_id}:finished",
+                task_id=task_id,
+                outcome=outcome,
+                report=report.text,
+                tool_data=(
+                    *report.tool_data,
+                    *await reconcile_artifacts(user_id, conversation_id, report.tool_data),
+                ),
+                note=report.note,
+                nothing_for_user=report.nothing_for_user,
+                image=report.image,
+                continued_by_decision=continued_by_decision,
+                awaits_decision=report.awaits_decision,
+            )
             await _save_finish(ports, conversation_id, user_id, entry)
-    except (ConversationStoreError, TimeoutError) as unsaved:
+    except (
+        Exception
+    ) as unsaved:  # whatever stopped it, this process ended the work: say so, then fail
         await _mark_ended_unsaved(conversation_id, task_id, unsaved)
         raise
 

@@ -1,11 +1,12 @@
 """work_log: background work's entries on the conversation log, and what each write hands back."""
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
+from pymongo.errors import PyMongoError, ServerSelectionTimeoutError
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -409,6 +410,8 @@ async def test_a_finish_the_store_never_answers_is_given_up_on_at_its_deadline(
         raise AssertionError("unreachable")
 
     monkeypatch.setattr(live.log, "append", never_answers)
+    # Nothing to wait for before the append, so the deadline is spent on the store alone.
+    monkeypatch.setattr(work_log, "reconcile_artifacts", AsyncMock(return_value=()))
     monkeypatch.setattr(work_log, "WORK_FINISH_SAVE_SECONDS", 0)
 
     async with captured_wide_event() as event:
@@ -449,7 +452,7 @@ async def test_a_finish_never_saved_raises_what_the_store_said_when_it_cannot_be
     }
 
 
-async def test_a_finish_that_fails_outside_the_store_is_neither_retried_nor_marked_ended(
+async def test_a_finish_that_fails_outside_the_store_is_not_retried_and_is_marked_ended(
     live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:
     seen = refuse(live, monkeypatch, fake_redis, lambda *_: RuntimeError("frames down"))
@@ -458,7 +461,67 @@ async def test_a_finish_that_fails_outside_the_store_is_neither_retried_nor_mark
         await finish(WorkReport("done it", [CARD]))
 
     assert len(seen.asked) == 1
-    assert not await fake_redis.exists(ENDED_KEY)
+    assert await fake_redis.exists(ENDED_KEY)
+
+
+async def _never() -> tuple[ToolDataEntry, ...]:
+    await asyncio.Event().wait()
+    return ()
+
+
+@pytest.mark.parametrize(
+    ("reconcile", "raised"),
+    [
+        (AsyncMock(side_effect=ServerSelectionTimeoutError("no primary")), PyMongoError),
+        (lambda *_: _never(), TimeoutError),
+    ],
+    ids=["driver_error", "hangs_past_the_deadline"],
+)
+async def test_a_finish_whose_file_cards_cannot_be_read_is_unsaved_never_lost_with_its_server(
+    live: Runtime,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    reconcile: Callable[..., Awaitable[tuple[ToolDataEntry, ...]]],
+    raised: type[Exception],
+) -> None:
+    """Regression for #1947 review: the registry read ran before the deadline and the mark, so its failure read as a dead server."""
+    with monkeypatch.context() as during_the_finish:
+        during_the_finish.setattr(work_log, "reconcile_artifacts", reconcile)
+        during_the_finish.setattr(work_log, "WORK_FINISH_SAVE_SECONDS", 0)
+        with pytest.raises(raised):
+            await finish(WorkReport("done it", [CARD]))
+
+    assert await record_work_lost(CONVERSATION, USER, "t1") is WorkOutcome.FAILED
+    ended = (await live.entries())[-1].entry
+    assert isinstance(ended, WorkFinished)
+    assert ended.report != WORK_LOST_REPORT
+
+
+async def test_a_finish_that_lands_after_its_deadline_is_the_works_one_ending(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    """Motor runs the driver call in a thread, which a cancelled await does not stop: the write can still land."""
+    append = live.log.append
+    landing: list[asyncio.Task[Appended]] = []
+
+    async def lands_late(conversation_id: str, user_id: str, entry: Entry) -> Appended:
+        landing.append(asyncio.ensure_future(append(conversation_id, user_id, entry)))
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(live.log, "append", lands_late)
+    # Nothing to wait for before the append, so the deadline is spent on the store alone.
+    monkeypatch.setattr(work_log, "reconcile_artifacts", AsyncMock(return_value=()))
+    monkeypatch.setattr(work_log, "WORK_FINISH_SAVE_SECONDS", 0)
+
+    with pytest.raises(TimeoutError):
+        await finish(WorkReport("done it", [CARD]))
+    await asyncio.gather(*landing)
+
+    finished = [e.entry for e in await live.entries() if isinstance(e.entry, WorkFinished)]
+    assert [(f.id, f.outcome) for f in finished] == [("work:t1:finished", WorkOutcome.DONE)]
+    # No longer live, so the sweep has nothing of it to end a second time.
+    assert (await live.log.state(CONVERSATION, USER)).work == ()
 
 
 async def test_work_no_process_runs_is_lost_under_its_own_id_so_a_late_result_is_never_its_duplicate(
