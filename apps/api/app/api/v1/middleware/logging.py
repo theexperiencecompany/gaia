@@ -13,6 +13,9 @@ Environment characteristics (env, service, commit) are injected into every
 event at the middleware level — no per-file boilerplate required.
 """
 
+from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from http import HTTPStatus
 import time
 
@@ -20,6 +23,7 @@ from fastapi import Request
 from pydantic import BaseModel, ConfigDict
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
+from starlette.types import Message, Receive, Scope, Send
 
 from app.api.v1.middleware.auth import get_current_user
 from app.api.v1.middleware.internal_caller_metrics import observe_internal_caller_response
@@ -49,8 +53,49 @@ class _WideEventFields(BaseModel):
     user: _WideEventUser = _WideEventUser()
 
 
+@dataclass(frozen=True)
+class _Served:
+    """What the middleware knows of a request once its response has started."""
+
+    status_code: int
+    status_phrase: str
+    duration_ms: float
+    request_size_bytes: int
+    started: float
+
+
+class _CountedResponse(Response):
+    """Send a response, and report the body bytes written once the last is sent or the client has gone.
+
+    Only its call is used: the status and headers the client gets are the wrapped response's.
+    """
+
+    def __init__(self, response: Response, written: Callable[[int], None]) -> None:
+        super().__init__()
+        self._response = response
+        self._written = written
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        size = 0
+
+        async def counting(message: Message) -> None:
+            nonlocal size
+            await send(message)
+            match message:
+                case {"type": "http.response.body", "body": bytes() as body}:
+                    size += len(body)
+
+        try:
+            await self._response(scope, receive, counting)  # pragma: no mutate — unread args
+        finally:
+            self._written(size)
+
+
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware that emits one structured wide event per HTTP request.
+
+    The event is emitted when the response's last byte is written, so a streamed
+    response carries its real size and whatever its stream set while it ran.
 
     Every scalar field is available for LogQL filtering in Grafana without any
     pre-processing — just add | json to any query. The errors/warnings arrays
@@ -144,6 +189,16 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         if carries_internal_token(request):
             observe_internal_caller_response(status_code)
 
+        trace_id = wide_log.get_trace_id()
+        if trace_id:
+            response.headers["x-trace-id"] = trace_id  # pragma: no mutate — names ignore case
+
+        served = _Served(status_code, status_phrase, duration_ms, request_size_bytes, start)
+        return _CountedResponse(response, partial(self._emit, request, served))
+
+    def _emit(self, request: Request, served: _Served, response_size_bytes: int) -> None:
+        """Emit the request's event once its response is written, with whatever its stream set."""
+        status_code = served.status_code
         client_ip = (
             request.client.host
             if request.client
@@ -175,19 +230,15 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "method": request.method,
             "path": loggable_request_path(request),
             "status_code": status_code,
-            "status_phrase": status_phrase,
-            "duration_ms": duration_ms,
+            "status_phrase": served.status_phrase,
+            # Until the response started; response_duration_ms runs to its last byte.
+            "duration_ms": served.duration_ms,
+            "response_duration_ms": round((time.time() - served.started) * 1000, 2),
             "client_ip": client_ip,
             "request_id": request.headers.get("x-request-id"),
             "user_agent": request.headers.get("user-agent"),
-            "request_size_bytes": request_size_bytes,
-            "response_size_bytes": int(response.headers.get("content-length", 0) or 0),
+            "request_size_bytes": served.request_size_bytes,
+            "response_size_bytes": response_size_bytes,
         }
 
         request_logger.bind(**context).log(level, "http_request")
-
-        trace_id = wide_log.get_trace_id()
-        if trace_id:
-            response.headers["x-trace-id"] = trace_id
-
-        return response

@@ -301,16 +301,22 @@ jobs:
             echo "scheme=develop" >> $GITHUB_OUTPUT
           fi
 
-      # Publish API image tags when API-related scope changed.
+      # Publish API image tags when API-related scope changed. GIT_COMMIT_SHA is
+      # the commit every docker:build stamps on its image: nx release commits
+      # "chore(release): publish" locally, so HEAD is no longer it for the next group.
       - name: Release apps Docker images
         id: release-apps
         if: needs.affected.outputs.api_image == 'true'
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
         run: pnpm exec nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
         id: release-bots
         if: needs.affected.outputs.bots_image == 'true'
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
         run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Captured right after the push steps, before Discord command sync —

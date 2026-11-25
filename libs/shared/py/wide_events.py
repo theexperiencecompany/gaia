@@ -62,7 +62,7 @@ import contextvars
 from enum import StrEnum
 import sys
 import time
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 import uuid
 
 from loguru import logger as _loguru
@@ -217,6 +217,21 @@ class ConversationOperation(StrEnum):
     UPDATE_DESCRIPTION = "update_description"
 
 
+class EventsResume(StrEnum):
+    """How an events stream's opening screen answered the head its client named."""
+
+    # The client named no head, so it was sent the whole screen.
+    FRESH = "fresh"
+    # The head was honoured: the client was sent only what it lacked.
+    RESUMED = "resumed"
+    # The whole screen: the stream no longer holds the head's frame.
+    FULL_NOT_HELD = "full_not_held"
+    # The whole screen: an entry at or below the head changed since.
+    FULL_AMENDED = "full_amended"
+    # The whole screen: a frame another deploy wrote stands where the head's would.
+    FULL_UNREADABLE = "full_unreadable"
+
+
 class ConversationContext(TypedDict, total=False):
     """Conversation CRUD/operation context (create, list, delete, star, …)."""
 
@@ -228,6 +243,12 @@ class ConversationContext(TypedDict, total=False):
     is_new: bool
     is_starred: bool
     message_count: int
+    # The events stream: the wire it wrote, how it answered the client's head,
+    # its opening frame's bytes and the frames it wrote before it closed.
+    wire: Literal[1, 2]
+    resume: EventsResume
+    opening_frame_bytes: int
+    frames: int
 
 
 class TodoContext(TypedDict, total=False):
