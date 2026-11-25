@@ -6,7 +6,6 @@ import {
 } from "@shared/conversation";
 import { useDeferredValue } from "react";
 import { BASE_MESSAGE_SCHEMA } from "@/config/registries/baseMessageRegistry";
-import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { type RowActions, type RowLayout, STOPPED_WORK } from "./rows";
@@ -26,9 +25,6 @@ type GaiaContent = Partial<
   retryFrom: string | null;
 };
 
-// The bubble's registry narrows tool entries by name at render.
-const cards = (entries: readonly unknown[]) => entries as TypedToolDataEntry[];
-
 /** A GAIA bubble's text as one copy or search reads it: its bubbles, a blank line apart. */
 const copyText = (bubbles: readonly string[]) => bubbles.join("\n\n");
 
@@ -40,7 +36,6 @@ function itemContent(item: GaiaItem, draft: StreamDraft | null): GaiaContent {
         message_id: item.id,
         date: item.at,
         bubbles: streamed?.bubbles ?? item.bubbles,
-        tool_data: cards(streamed?.tool_data ?? item.tool_data),
         timeline: streamed?.timeline ?? item.timeline,
         follow_up_actions: [
           ...(streamed?.follow_up_actions ?? item.follow_up_actions),
@@ -61,11 +56,6 @@ function itemContent(item: GaiaItem, draft: StreamDraft | null): GaiaContent {
       return {
         message_id: item.id,
         bubbles: [],
-        tool_data: cards([
-          ...(item.handoff ? [item.handoff] : []),
-          ...item.tool_data,
-          ...item.approvals,
-        ]),
         timeline: item.timeline,
         image_data: item.image ?? undefined,
         stopped: STOPPED_WORK.has(item.status),
@@ -76,7 +66,6 @@ function itemContent(item: GaiaItem, draft: StreamDraft | null): GaiaContent {
         message_id: item.id,
         date: item.at,
         bubbles: item.bubbles,
-        tool_data: cards(item.tool_data),
         timeline: item.timeline,
         follow_up_actions: [...item.follow_up_actions],
         retryFrom: null,
@@ -91,7 +80,6 @@ function itemContent(item: GaiaItem, draft: StreamDraft | null): GaiaContent {
 const draftContent = (draft: StreamDraft): GaiaContent => ({
   message_id: draft.replyId ?? `draft:${draft.attemptId}`,
   bubbles: draft.content.bubbles,
-  tool_data: cards(draft.content.tool_data),
   timeline: draft.content.timeline,
   follow_up_actions: [...draft.content.follow_up_actions],
   retryFrom: null,

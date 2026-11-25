@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ScreenItemSchema, ToolTimelineSchema } from "./entries";
+import wire2Run from "./fixtures/wire2-run.frames.json";
+import { parseConversationEvent } from "./frames";
 import { screenRows } from "./selectors";
 import {
   founderConversationFrames,
   insertFrame,
+  patchFrame,
   replyDelta,
   replyItem,
   screenFrame,
   stateFrame,
+  timelineDelta,
+  toolCallCard,
   updateFrame,
   userItem,
+  workItem,
 } from "./testing";
 import type { ConversationFrame, ConversationView } from "./types";
 import {
@@ -170,6 +177,265 @@ describe("a client's copy of the server's screen", () => {
     );
     expect(view.drafts).toEqual([]);
     expect(apply(view, replyDelta("a1", "r1", 2, "!"))).toEqual(view);
+  });
+
+  it("patches an item it holds, keeping its place and every step the patch did not touch", () => {
+    const first = { kind: "tool" as const, key: "tc-a", data: { id: "a" } };
+    const running = {
+      ...workItem("t1", 2, "running"),
+      timeline: { steps: [first], cards: [], progress: null },
+    };
+    const opened = apply(
+      EMPTY_CONVERSATION_VIEW,
+      screenFrame([userItem("u1", 1), running, userItem("u3", 3)]),
+    );
+    const view = apply(
+      opened,
+      patchFrame(
+        "work:t1",
+        [
+          {
+            op: "set",
+            path: ["timeline", "steps", 0, "data", "output"],
+            value: "out",
+          },
+          {
+            op: "set",
+            path: ["timeline", "steps", 1],
+            value: { kind: "tool", key: "tc-b", data: { id: "b" } },
+          },
+          { op: "set", path: ["status"], value: "done" },
+        ],
+        4,
+      ),
+    );
+
+    expect(ids(view)).toEqual(["u1", "work:t1", "u3"]);
+    const work = view.items[1];
+    expect(work.kind === "work" && work.status).toBe("done");
+    expect(work.kind === "work" && work.timeline.steps).toEqual([
+      { kind: "tool", key: "tc-a", data: { id: "a", output: "out" } },
+      { kind: "tool", key: "tc-b", data: { id: "b" } },
+    ]);
+    expect(view.screenHead).toBe(4);
+    expect(view.items[0]).toBe(opened.items[0]);
+  });
+
+  it("applies each patch only to the copy it was written against, counting them from the whole item", () => {
+    const step = (key: string) => ({ kind: "tool" as const, key, data: {} });
+    const grow = (index: number) => [
+      {
+        op: "set" as const,
+        path: ["timeline", "steps", index],
+        value: step(`tc-${index}`),
+      },
+    ];
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      insertFrame(workItem("t1", 1, "running")),
+    );
+    view = apply(view, patchFrame("work:t1", grow(0), 1, 0));
+    view = apply(view, patchFrame("work:t1", grow(1), 1, 1));
+
+    expect(applyFrame(view, patchFrame("work:t1", grow(2), 1, 1)).status).toBe(
+      "stale_copy",
+    );
+    const whole = apply(view, updateFrame(workItem("t1", 1, "running")));
+    expect(applyFrame(whole, patchFrame("work:t1", grow(0), 1, 0)).status).toBe(
+      "applied",
+    );
+  });
+
+  it("refuses a patch once a page read replaced the item, instead of doubling its text or leaving a card out", () => {
+    const thinking = (text: string) => ({
+      ...workItem("t1", 2, "running"),
+      timeline: {
+        steps: [
+          { kind: "tool" as const, key: "head#0", data: { reasoning: text } },
+        ],
+        cards: [],
+        progress: null,
+      },
+    });
+    const streamed = apply(
+      apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u1", 1))),
+      insertFrame(thinking("I should")),
+    );
+    const grown = patchFrame(
+      "work:t1",
+      [
+        {
+          op: "append",
+          path: ["timeline", "steps", 0, "data", "reasoning"],
+          value: " look.",
+        },
+      ],
+      2,
+    );
+    const working = {
+      kind: "state" as const,
+      head: 3,
+      display: "working" as const,
+      work: [],
+    };
+
+    // The page read already holds the text the patch adds.
+    const ahead = applyPage(streamed, [thinking("I should look.")], working);
+    expect(applyFrame(ahead, grown)).toEqual({
+      status: "stale_copy",
+      view: ahead,
+    });
+
+    // The page read is the log's projection, which has none of the running work's cards.
+    const behind = applyPage(streamed, [workItem("t1", 2, "running")], working);
+    expect(applyFrame(behind, grown)).toEqual({
+      status: "stale_copy",
+      view: behind,
+    });
+
+    // The whole screen the reopened stream sends makes the item patchable again.
+    const healed = apply(behind, screenFrame([thinking("I should look.")], 3));
+    const next = apply(
+      healed,
+      patchFrame(
+        "work:t1",
+        [
+          {
+            op: "append",
+            path: ["timeline", "steps", 0, "data", "reasoning"],
+            value: " Now.",
+          },
+        ],
+        3,
+      ),
+    );
+    expect(next.items[1]).toMatchObject({
+      timeline: { steps: [{ data: { reasoning: "I should look. Now." } }] },
+    });
+  });
+
+  it("reaches the server's own screen from the frames its wire 2 encoder wrote for a whole run", () => {
+    let view = EMPTY_CONVERSATION_VIEW;
+    let replyTimeline: unknown = null;
+    for (const sent of wire2Run.frames) {
+      const parsed = parseConversationEvent(JSON.stringify(sent));
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.error));
+      view = apply(view, parsed.frame);
+      replyTimeline = view.drafts[0]?.content.timeline ?? replyTimeline;
+    }
+
+    expect(view.items).toEqual(
+      wire2Run.items.map((item) => ScreenItemSchema.parse(item)),
+    );
+    expect(replyTimeline).toEqual(
+      ToolTimelineSchema.parse(wire2Run.reply_timeline),
+    );
+    expect(
+      wire2Run.frames.filter(({ frame }) => frame.kind === "screen_patch")
+        .length,
+    ).toBeGreaterThan(8);
+  });
+
+  it("closes finished work's stream when a patch ends it", () => {
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      insertFrame(workItem("t1", 1, "running")),
+    );
+    view = apply(
+      view,
+      patchFrame(
+        "work:t1",
+        [{ op: "set", path: ["status"], value: "done" }],
+        2,
+      ),
+    );
+    expect(view.closed).toEqual({ t1: true });
+  });
+
+  it("ignores a patch for an item it does not hold", () => {
+    const view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u5", 5)));
+    const patch = patchFrame(
+      "work:old",
+      [{ op: "set", path: ["status"], value: "done" }],
+      6,
+    );
+    expect(apply(view, patch)).toBe(view);
+  });
+
+  it("reports a patch that has no place in the item it holds, so the client reopens on the whole screen", () => {
+    const view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      insertFrame(workItem("t1", 1, "running")),
+    );
+    const outcome = applyFrame(
+      view,
+      patchFrame(
+        "work:t1",
+        [
+          {
+            op: "set",
+            path: ["timeline", "steps", 3, "data", "output"],
+            value: "x",
+          },
+        ],
+        1,
+      ),
+    );
+    expect(outcome.status).toBe("stale_copy");
+    expect(outcome.view).toBe(view);
+  });
+
+  it("folds a reply's cards from the changes to its timeline, starting from none", () => {
+    const card = { key: "search-c1", card: toolCallCard("c1", "Searching") };
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      timelineDelta("a1", "r1", 0, [
+        { op: "set", path: ["cards", 0], value: card },
+      ]),
+    );
+    view = apply(
+      view,
+      timelineDelta("a1", "r1", 1, [
+        {
+          op: "set",
+          path: ["cards", 0, "card", "data", "output"],
+          value: "found",
+        },
+      ]),
+    );
+
+    expect(view.drafts[0].content.timeline.cards).toEqual([
+      {
+        key: "search-c1",
+        card: { ...card.card, data: { ...card.card.data, output: "found" } },
+      },
+    ]);
+  });
+
+  it("still takes a reply's cards whole, as a server older than wire 2 sends them", () => {
+    const timeline = {
+      steps: [],
+      cards: [{ key: "search-c1", card: toolCallCard("c1", "Searching") }],
+      progress: null,
+    };
+    const view = apply(EMPTY_CONVERSATION_VIEW, {
+      kind: "reply_delta",
+      attempt_id: "a1",
+      reply_id: "r1",
+      index: 0,
+      payload: { type: "cards", tool_data: [], timeline },
+    });
+    expect(view.drafts[0].content.timeline).toEqual(timeline);
+  });
+
+  it("reports timeline changes that have no place in the reply's draft", () => {
+    const outcome = applyFrame(
+      EMPTY_CONVERSATION_VIEW,
+      timelineDelta("a1", "r1", 0, [
+        { op: "set", path: ["cards", 2, "card", "data"], value: 1 },
+      ]),
+    );
+    expect(outcome.status).toBe("stale_copy");
   });
 
   it("reports a gap in a stream's deltas so the client reopens for a fresh screen", () => {

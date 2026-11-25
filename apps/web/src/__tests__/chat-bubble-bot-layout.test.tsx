@@ -59,13 +59,42 @@ describe("ChatBubbleBot visibility", () => {
 
   it("renders a tool-only turn without the text chrome", () => {
     renderBubble({
-      tool_data: [
-        { tool_name: "weather_data", tool_category: "weather", data: {} },
-      ] as unknown as ChatBubbleBotProps["tool_data"],
+      timeline: {
+        steps: [],
+        cards: [
+          {
+            key: "weather_data-c1",
+            card: {
+              tool_name: "weather_data",
+              tool_category: "weather",
+              data: {},
+            },
+          },
+        ],
+        progress: null,
+      },
     });
     expect(screen.getByTestId("text-bubble")).toBeDefined();
     expect(screen.queryByTestId("bot-avatar")).toBeNull();
     expect(screen.queryByTestId("bot-footer")).toBeNull();
+  });
+
+  it("renders a turn whose timeline holds only its tool thread", () => {
+    renderBubble({
+      timeline: {
+        steps: [{ kind: "tool", key: "tc-c1", data: { tool_call_id: "c1" } }],
+        cards: [],
+        progress: null,
+      },
+    });
+    expect(screen.getByTestId("text-bubble")).toBeDefined();
+  });
+
+  it("renders nothing for a turn with an empty timeline and no text", () => {
+    const { container } = renderBubble({
+      timeline: { steps: [], cards: [], progress: null },
+    });
+    expect(container.innerHTML).toBe("");
   });
 
   it("renders a stopped turn that streamed nothing, so its Stopped line shows", () => {

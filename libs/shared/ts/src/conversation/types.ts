@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { DisplayState, LiveTask, ReplyItem } from "../api/generated";
+import type { DisplayState, LiveTask } from "../api/generated";
 import type { ScreenItemSchema } from "./entries";
 
 export type {
@@ -15,7 +15,10 @@ export type ScreenItem = z.infer<typeof ScreenItemSchema>;
 
 /** What a reply has streamed so far, as the server split and folded it: its item's content. */
 export type ReplyDraft = Readonly<
-  Pick<ReplyItem, "bubbles" | "tool_data" | "timeline" | "follow_up_actions">
+  Pick<
+    Extract<ScreenItem, { kind: "reply" }>,
+    "bubbles" | "tool_data" | "timeline" | "follow_up_actions"
+  >
 >;
 
 /** What one reply attempt has streamed and its item does not show yet; work's cards come on its item. */
@@ -37,6 +40,11 @@ export interface PendingSend {
 export interface ConversationView {
   /** Ascending by seq; the server's items, never reordered here. */
   items: readonly ScreenItem[];
+  /**
+   * By item id, how many patches the stream has applied to the copy held since it sent
+   * that item whole. An item a page read put here has none, so no patch applies to it.
+   */
+  patched: Readonly<Record<string, number>>;
   /** In the order their first delta arrived. */
   drafts: readonly StreamDraft[];
   /** Attempts, replies and work whose streams ended: a late reply delta is dropped. */
@@ -53,7 +61,9 @@ export interface ConversationView {
 
 export type FrameOutcome =
   | { status: "applied"; view: ConversationView }
-  | { status: "index_gap"; expected: number; view: ConversationView };
+  | { status: "index_gap"; expected: number; view: ConversationView }
+  /** A patch was written against another copy of its item than the view holds, or had no place in it. */
+  | { status: "stale_copy"; view: ConversationView };
 
 /** A frame the view could not apply, after which the stream must be reopened for a fresh screen. */
 export type FrameGap = Exclude<FrameOutcome, { status: "applied" }>;

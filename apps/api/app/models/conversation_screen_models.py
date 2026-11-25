@@ -18,8 +18,10 @@ from shared.py.conversation_wire import (
     ReplyItem,
     ScreenItemBase,
     ScreenItemKind,
+    ScreenPatchFrame,
     ToolDataEntry,
     ToolTimeline,
+    UnfoldedCards,
 )
 
 
@@ -54,7 +56,7 @@ class WorkItem(ScreenItemBase):
     # Every approval the work asked for, as its card shows now: pending, or how it ended.
     approvals: tuple[ApprovalRequestEntry, ...]
     handoff: ToolDataEntry | None
-    tool_data: tuple[ToolDataEntry, ...]
+    tool_data: UnfoldedCards = ()
     # The hand-off's card and the work's cards, as the thread shows them.
     timeline: ToolTimeline
     image: ImageData | None
@@ -67,7 +69,7 @@ class NoticeItem(ScreenItemBase):
 
     kind: Literal[ScreenItemKind.NOTICE] = ScreenItemKind.NOTICE
     bubbles: tuple[str, ...]
-    tool_data: tuple[ToolDataEntry, ...]
+    tool_data: UnfoldedCards = ()
     timeline: ToolTimeline
     follow_up_actions: tuple[str, ...]
     # Shown as a photo on a chat platform, captioned with the first bubble.
@@ -98,7 +100,7 @@ TextItem = Annotated[UserItem | ReplyItem | NoticeItem, Field(discriminator="kin
 
 
 class ScreenFrame(wire.ScreenFrame[ScreenItem]):
-    """The newest page of the screen; a client replaces what it holds from the first item's seq on."""
+    """The screen a connection opens on: its newest page, or only what is new or changed since the client's after."""
 
 
 class ScreenInsertFrame(wire.ScreenInsertFrame[ScreenItem]):
@@ -116,6 +118,7 @@ ScreenStreamFrame = Annotated[
     ScreenFrame
     | ScreenInsertFrame
     | ScreenUpdateFrame
+    | ScreenPatchFrame
     | ReplyDeltaFrame
     | RetractFrame
     | StateFrame

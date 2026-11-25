@@ -4567,12 +4567,14 @@
       },
       "CardsDelta": {
         "additionalProperties": false,
-        "description": "The reply's cards as they now stand, with the timeline they fold to.",
+        "description": "The reply's cards as they now stand, as the timeline they fold to; wire 2 sends a TimelineDelta instead.",
         "properties": {
           "timeline": {
             "$ref": "#/components/schemas/ToolTimeline"
           },
           "tool_data": {
+            "default": [],
+            "deprecated": true,
             "items": {
               "$ref": "#/components/schemas/ToolDataEntry"
             },
@@ -4588,11 +4590,20 @@
         },
         "required": [
           "type",
-          "tool_data",
           "timeline"
         ],
         "title": "CardsDelta",
         "type": "object"
+      },
+      "ChangeOp": {
+        "description": "How one change alters the JSON at its path.",
+        "enum": [
+          "set",
+          "append",
+          "remove"
+        ],
+        "title": "ChangeOp",
+        "type": "string"
       },
       "ChangePasswordRequest": {
         "additionalProperties": false,
@@ -5736,6 +5747,7 @@
                 "retract": "#/components/schemas/RetractFrame",
                 "screen": "#/components/schemas/ScreenFrame",
                 "screen_insert": "#/components/schemas/ScreenInsertFrame",
+                "screen_patch": "#/components/schemas/ScreenPatchFrame",
                 "screen_update": "#/components/schemas/ScreenUpdateFrame",
                 "state": "#/components/schemas/StateFrame"
               },
@@ -5750,6 +5762,9 @@
               },
               {
                 "$ref": "#/components/schemas/ScreenUpdateFrame"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenPatchFrame"
               },
               {
                 "$ref": "#/components/schemas/ReplyDeltaFrame"
@@ -8671,6 +8686,15 @@
         "title": "EventUpdateRequest",
         "type": "object"
       },
+      "EventsWire": {
+        "description": "How the events stream writes its frames for one connection; a client names the newest it reads.",
+        "enum": [
+          1,
+          2
+        ],
+        "title": "EventsWire",
+        "type": "integer"
+      },
       "FailureReason": {
         "description": "Why a reply failed; a client words the line it shows under the reply from it.",
         "enum": [
@@ -11385,6 +11409,39 @@
           "expires_at"
         ],
         "title": "InviteResponse",
+        "type": "object"
+      },
+      "ItemChange": {
+        "additionalProperties": false,
+        "description": "One change to the JSON a client already holds; path walks keys and list indices from its root.",
+        "properties": {
+          "op": {
+            "$ref": "#/components/schemas/ChangeOp"
+          },
+          "path": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          }
+        },
+        "required": [
+          "op",
+          "path",
+          "value"
+        ],
+        "title": "ItemChange",
         "type": "object"
       },
       "ItemState": {
@@ -14314,6 +14371,8 @@
             "$ref": "#/components/schemas/ToolTimeline"
           },
           "tool_data": {
+            "default": [],
+            "deprecated": true,
             "items": {
               "$ref": "#/components/schemas/ToolDataEntry"
             },
@@ -14326,7 +14385,6 @@
           "seq",
           "at",
           "bubbles",
-          "tool_data",
           "timeline",
           "follow_up_actions",
           "image_url"
@@ -18878,7 +18936,8 @@
               "mapping": {
                 "bubble_text": "#/components/schemas/BubbleTextDelta",
                 "cards": "#/components/schemas/CardsDelta",
-                "follow_up_actions": "#/components/schemas/FollowUpsDelta"
+                "follow_up_actions": "#/components/schemas/FollowUpsDelta",
+                "timeline": "#/components/schemas/TimelineDelta"
               },
               "propertyName": "type"
             },
@@ -18888,6 +18947,9 @@
               },
               {
                 "$ref": "#/components/schemas/CardsDelta"
+              },
+              {
+                "$ref": "#/components/schemas/TimelineDelta"
               },
               {
                 "$ref": "#/components/schemas/FollowUpsDelta"
@@ -19083,6 +19145,8 @@
             "$ref": "#/components/schemas/ToolTimeline"
           },
           "tool_data": {
+            "default": [],
+            "deprecated": true,
             "items": {
               "$ref": "#/components/schemas/ToolDataEntry"
             },
@@ -19095,7 +19159,6 @@
           "seq",
           "at",
           "bubbles",
-          "tool_data",
           "timeline",
           "follow_up_actions",
           "image",
@@ -19408,7 +19471,7 @@
       },
       "ScreenFrame": {
         "additionalProperties": false,
-        "description": "The newest page of the screen; a client replaces what it holds from the first item's seq on.",
+        "description": "The screen a connection opens on: its newest page, or only what is new or changed since the client's after.",
         "properties": {
           "head": {
             "minimum": 0.0,
@@ -19523,6 +19586,49 @@
           "head"
         ],
         "title": "ScreenInsertFrame",
+        "type": "object"
+      },
+      "ScreenPatchFrame": {
+        "additionalProperties": false,
+        "description": "What changed in an item this connection already sent; the item keeps its position.",
+        "properties": {
+          "base": {
+            "minimum": 0.0,
+            "title": "Base",
+            "type": "integer"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ItemChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "screen_patch",
+            "default": "screen_patch",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "base",
+          "changes",
+          "head"
+        ],
+        "title": "ScreenPatchFrame",
         "type": "object"
       },
       "ScreenUpdateFrame": {
@@ -22162,6 +22268,31 @@
           "card"
         ],
         "title": "TimelineCard",
+        "type": "object"
+      },
+      "TimelineDelta": {
+        "additionalProperties": false,
+        "description": "What changed in the reply's timeline since the attempt's last one; the first is against an empty timeline.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ItemChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "type": {
+            "const": "timeline",
+            "default": "timeline",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "changes"
+        ],
+        "title": "TimelineDelta",
         "type": "object"
       },
       "TimelineStep": {
@@ -26098,6 +26229,8 @@
             "$ref": "#/components/schemas/ToolTimeline"
           },
           "tool_data": {
+            "default": [],
+            "deprecated": true,
             "items": {
               "$ref": "#/components/schemas/ToolDataEntry"
             },
@@ -26115,7 +26248,6 @@
           "asked_seq",
           "approvals",
           "handoff",
-          "tool_data",
           "timeline",
           "image",
           "retry_target"
@@ -31942,7 +32074,7 @@
     },
     "/api/v1/conversations/{conversation_id}/events": {
       "get": {
-        "description": "Stream the conversation's screen as SSE: the newest page, then patches and live deltas.",
+        "description": "Stream the conversation's screen as SSE: what a client at entry after lacks, then patches and live deltas.\n\nafter is the log head of the last item frame the client applied from this stream, 0 when it\nholds nothing. wire names the newest frame shapes the client reads.",
         "operationId": "conversations_conversation_events_endpoint",
         "parameters": [
           {
@@ -31952,6 +32084,30 @@
             "schema": {
               "title": "Conversation Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "The log head the client's copy of the screen reached",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "The log head the client's copy of the screen reached",
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The newest frame shapes the client reads",
+            "in": "query",
+            "name": "wire",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/EventsWire",
+              "default": 1,
+              "description": "The newest frame shapes the client reads"
             }
           }
         ],

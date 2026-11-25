@@ -15,7 +15,12 @@ export type {
   FrameParseError,
   FrameParseResult,
 } from "./frames";
-export { DISPLAY_STATE, FRAME_KIND, parseConversationEvent } from "./frames";
+export {
+  DISPLAY_STATE,
+  EVENTS_WIRE,
+  FRAME_KIND,
+  parseConversationEvent,
+} from "./frames";
 export type { ConversationPage, OlderHistorySource } from "./history";
 export {
   ConversationPageSchema,
@@ -26,11 +31,13 @@ export {
 export { CONVERSATION_ID_TAKEN, isConversationIdTaken } from "./idTaken";
 export type { LoadingRow, ScreenRow } from "./selectors";
 export {
+  cardData,
   itemText,
   loadingRow,
   retryTarget,
   screenRows,
   sendingLoadingRow,
+  timelineShows,
 } from "./selectors";
 export type {
   ConversationView,

@@ -125,7 +125,10 @@ const follower = createConversationFollower({
   onReopen: (conversationId, gap) => {
     streamLog("sse", "conversation-reopen-on-gap", {
       conversationId,
-      detail: { status: gap.status, at: gap.expected },
+      detail: {
+        status: gap.status,
+        at: gap.status === "index_gap" ? gap.expected : undefined,
+      },
     });
   },
   onDrop: (_conversationId, error) => {

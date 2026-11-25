@@ -88,6 +88,7 @@ describe("a conversation events subscription", () => {
       "conv-1",
       vi.fn(),
       new AbortController().signal,
+      null,
     );
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];

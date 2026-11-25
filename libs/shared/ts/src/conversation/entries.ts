@@ -260,6 +260,9 @@ export const LIVE_WORK_STATUS: ReadonlySet<string> = new Set([
 
 const itemPlace = { id, seq: z.number().int().min(1), at: z.string() };
 
+/** An item's cards before folding. Wire 1 only: wire 2 sends none, and nothing on it reads them. */
+export const UnfoldedCardsSchema = z.array(ToolDataEntrySchema).default([]);
+
 /** The tool thread and stand-alone cards the server folded an item's cards into. */
 export const ToolTimelineSchema = z.object({
   steps: z.array(
@@ -292,7 +295,7 @@ const ReplyItemSchema = z.object({
   kind: z.literal(SCREEN_ITEM_KIND.REPLY),
   ...itemPlace,
   bubbles: z.array(z.string()),
-  tool_data: z.array(ToolDataEntrySchema),
+  tool_data: UnfoldedCardsSchema,
   timeline: ToolTimelineSchema,
   follow_up_actions: z.array(z.string()),
   image: ImageDataSchema.nullable(),
@@ -344,7 +347,7 @@ const WorkItemSchema = z.object({
   asked_seq: z.number().int().min(0),
   approvals: z.array(ApprovalCardSchema),
   handoff: ToolDataEntrySchema.nullable(),
-  tool_data: z.array(ToolDataEntrySchema),
+  tool_data: UnfoldedCardsSchema,
   timeline: ToolTimelineSchema,
   image: ImageDataSchema.nullable(),
   retry_target: z.string().nullable(),
@@ -354,7 +357,7 @@ const NoticeItemSchema = z.object({
   kind: z.literal(SCREEN_ITEM_KIND.NOTICE),
   ...itemPlace,
   bubbles: z.array(z.string()),
-  tool_data: z.array(ToolDataEntrySchema),
+  tool_data: UnfoldedCardsSchema,
   timeline: ToolTimelineSchema,
   follow_up_actions: z.array(z.string()),
   image_url: z.string().nullable(),

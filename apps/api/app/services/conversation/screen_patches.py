@@ -149,12 +149,21 @@ class ScreenTracker:
         return self._repatch()
 
     def take(self, frame: EntryFrame | EntryUpdatedFrame) -> list[ScreenPatch]:
-        """Take a logged or amended entry and return the patches it makes to the screen."""
+        """Take a logged or amended entry and return the patches it makes to the screen.
+
+        Only the last names the new head, the rest the head before: a patch's head is where its
+        client resumes from, and until the last is applied its screen is not the screen at that entry.
+        """
         at = frame.at if isinstance(frame, EntryFrame) else self._entries[frame.seq].at
+        before = self.head
         self._entries[frame.seq] = LoggedEntry(seq=frame.seq, at=at, entry=frame.entry)
         if isinstance(frame.entry, WorkStarted):
             self._started[frame.entry.task_id] = frame.entry
-        return self._repatch()
+        patches = self._repatch()
+        return [
+            *(patch.model_copy(update={"head": before}) for patch in patches[:-1]),
+            *patches[-1:],
+        ]
 
     def _repatch(self) -> list[ScreenPatch]:
         screen = self._project()

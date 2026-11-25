@@ -1,4 +1,8 @@
-import type { ConversationMessageHit, ToolProgress } from "../api/generated";
+import type {
+  ConversationMessageHit,
+  ToolProgress,
+  ToolTimeline,
+} from "../api/generated";
 import { LIVE_WORK_STATUS, SCREEN_ITEM_KIND } from "./entries";
 import { DISPLAY_STATE } from "./frames";
 import type {
@@ -112,6 +116,18 @@ export function retryTarget(
     default:
       return null;
   }
+}
+
+/** Whether a timeline draws anything: a row in its tool thread, or a card of its own. */
+export const timelineShows = (timeline: ToolTimeline): boolean =>
+  timeline.steps.length > 0 || timeline.cards.length > 0;
+
+/** The data of every call of one tool among a timeline's cards, in the order they were made; a grouped tool's calls arrive as one card. */
+export function cardData(timeline: ToolTimeline, toolName: string): unknown[] {
+  return timeline.cards.flatMap(({ card }) => {
+    if (card.tool_name !== toolName) return [];
+    return Array.isArray(card.data) ? card.data : [card.data];
+  });
 }
 
 /** The words a pinned or searched item shows: the user's message, or a reply's or notice's bubbles. */

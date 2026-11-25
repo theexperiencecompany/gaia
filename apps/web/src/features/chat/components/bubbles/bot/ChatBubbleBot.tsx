@@ -1,4 +1,5 @@
 // ChatBubbleBot.tsx
+import { timelineShows } from "@shared/conversation";
 import { type ReactNode, useMemo, useRef } from "react";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
@@ -89,7 +90,7 @@ export default function ChatBubbleBot(
     imageData: image_data,
     isConvoSystemGenerated,
     systemPurpose,
-    toolDataLength: props.tool_data?.length,
+    showsTools: !!props.timeline && timelineShows(props.timeline),
     stopped: props.stopped,
     emailProcessingPurpose: SystemPurpose.EMAIL_PROCESSING,
   });
