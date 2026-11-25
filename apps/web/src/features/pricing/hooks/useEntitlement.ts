@@ -13,7 +13,7 @@ import { useUserSubscriptionStatus } from "./usePricing";
  *
  * - entitled: on Pro, or billing is off on this deployment.
  * - lapsed: subscribed before, not now; the app's 402s raise the UpgradeModal.
- * - never_subscribed: belongs on the onboarding paywall; the guard sends it there.
+ * - never_subscribed: finishes onboarding on its paywall; in the app, the same UpgradeModal.
  * - unknown: the plan has not been read yet.
  */
 export type Entitlement =
@@ -38,7 +38,7 @@ export function useEntitlement(): Entitlement {
 /**
  * Whether the app session (sidebar data, sync, realtime, notifications) may run.
  * A signed-in account gets it at once, so the plan read never holds the app
- * back; the onboarding guard moves a never-paid account on once it is read.
+ * back; an unpaid account's 402s raise the UpgradeModal.
  * The exception is the routes an unpaid account lives on (the wizard's
  * paywall): there it mounts only for a plan known to allow it, so nothing
  * 402s behind the paywall.
