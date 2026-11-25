@@ -1,6 +1,6 @@
 import asyncio
-from collections.abc import Mapping
-from contextlib import suppress
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from functools import cache
 import math
@@ -1054,6 +1054,52 @@ def _is_openai_wire(runnable: Runnable) -> bool:
     return _is_default_or_host(base, "api.openai.com")
 
 
+def _primary_leg(
+    label: str, provider: LLMProviderName | None, primary: Runnable
+) -> dict[str, object]:
+    """Return the llm log fields naming a call, and the provider and model it asked first."""
+    return {
+        "label": label,
+        "provider": provider.value if provider else UNKNOWN_PROVIDER,
+        "model": _requested_model(primary),
+    }
+
+
+@contextmanager
+def _fallback_attempt(
+    leg: dict[str, object],
+    primary_error: BaseException,
+    *,
+    fallback: Runnable,
+    config: RunnableConfig | None,
+    model: str,
+) -> Iterator[None]:
+    """Count the fallback call inside the block; when it fails too, log both legs and both failures on one line.
+
+    fallback is the runnable before its retry wrapper, which hides the client the provider is read off.
+    config is the fallback's own, never the primary's, which names the provider that just failed.
+    """
+    try:
+        with fallback_leg():
+            yield
+    except Exception as fallback_error:
+        fallback_provider = _call_provider(fallback, config)
+        log.warning(
+            f"{LogTag.AGENT} llm call failed on the fallback too",
+            llm={
+                **leg,
+                "fell_back": True,
+                "fallback_provider": fallback_provider.value
+                if fallback_provider
+                else UNKNOWN_PROVIDER,
+                "fallback_model": model,
+            },
+            primary_failure=failed_call_fields(primary_error),
+            **failed_call_fields(fallback_error),
+        )
+        raise
+
+
 def _resolve_fallback(
     fallback: LLMFallback,
     label: str,
@@ -1062,8 +1108,8 @@ def _resolve_fallback(
     primary: Runnable,
     provider: LLMProviderName | None,
     session_id: str | None = None,
-) -> tuple[Runnable, str]:
-    """Materialize the fallback, log the downgrade, and return the retry-wrapped runnable and the model it asks for.
+) -> tuple[Runnable, str, Runnable]:
+    """Materialize the fallback, log the downgrade, and return it retry-wrapped, the model it asks for, and unwrapped.
 
     Re-raises primary_error when no fallback is available.
     """
@@ -1071,23 +1117,24 @@ def _resolve_fallback(
     # the wire, while a bind survives bind_tools. Only onto an OpenRouter-wire fallback --
     # Google's client rejects unknown kwargs and would raise on the outage path itself.
     resolved = _materialize_fallback(fallback)
+    leg = _primary_leg(label, provider, primary)
     if resolved is None:
         observe_llm_fallback(LLMFallbackOutcome.EXHAUSTED)
+        log.warning(
+            f"{LogTag.AGENT} llm call failed with no fallback to try",
+            llm={**leg, "fell_back": False},
+            **failed_call_fields(primary_error),
+        )
         raise primary_error
     log.warning(
         f"{LogTag.AGENT} llm call failed; falling back to the default model",
-        llm={
-            "label": label,
-            "provider": provider.value if provider else UNKNOWN_PROVIDER,
-            "model": _requested_model(primary),
-            "fell_back": True,
-        },
+        llm={**leg, "fell_back": True},
         **failed_call_fields(primary_error),
     )
     requested = _requested_model(resolved)
     if session_id and _is_openrouter_wire(resolved):
         resolved = resolved.bind(session_id=session_id)
-    return with_llm_retry(resolved), requested
+    return with_llm_retry(resolved), requested, resolved
 
 
 def _retries_rate_limits(provider: LLMProviderName | None, fallback: LLMFallback) -> bool:
@@ -1277,7 +1324,7 @@ async def ainvoke_llm(
                     # Runs under ``fallback_config``: reusing ``config`` made failover
                     # a no-op, since LangChain merges a passed config OVER a
                     # ``with_config`` one, putting the just-failed provider back.
-                    fallback_runnable, fallback_requested = _resolve_fallback(
+                    fallback_runnable, fallback_requested, fallback_asked = _resolve_fallback(
                         fallback,
                         label,
                         primary_error,
@@ -1286,7 +1333,14 @@ async def ainvoke_llm(
                         session_id=opts.sticky_session_id
                         or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     )
-                    with fallback_leg():
+                    fallback_model = opts.fallback_model or fallback_requested
+                    with _fallback_attempt(
+                        _primary_leg(label, provider, primary),
+                        primary_error,
+                        fallback=fallback_asked,
+                        config=fallback_config,
+                        model=fallback_model,
+                    ):
                         fallback_reply = await fallback_runnable.ainvoke(
                             messages,
                             config=_with_usage_handler(
@@ -1294,9 +1348,7 @@ async def ainvoke_llm(
                                 generation_handler,
                             ),
                         )
-                    return _stamp_fallback(
-                        fallback_reply, opts.fallback_model or fallback_requested
-                    )
+                    return _stamp_fallback(fallback_reply, fallback_model)
         except Exception as call_error:
             failure = failed_call_fields(call_error)
             # One row per failed CALL, not per attempt. ``except Exception``
@@ -1365,7 +1417,7 @@ def invoke_llm(
         return reply
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         observe_llm_call_failed(provider, primary_error)
-        fallback_runnable, fallback_requested = _resolve_fallback(
+        fallback_runnable, fallback_requested, fallback_asked = _resolve_fallback(
             fallback,
             label,
             primary_error,
@@ -1376,14 +1428,21 @@ def invoke_llm(
             # on whatever provider the router picked.
             session_id=opts.sticky_session_id or _sticky_session_id(config),
         )
-        with fallback_leg():
+        fallback_model = opts.fallback_model or fallback_requested
+        with _fallback_attempt(
+            _primary_leg(label, provider, primary),
+            primary_error,
+            fallback=fallback_asked,
+            config=opts.fallback_config,
+            model=fallback_model,
+        ):
             fallback_reply = fallback_runnable.invoke(
                 messages,
                 config=_with_call_label(opts.fallback_config, label)
                 if opts.fallback_config
                 else config,
             )
-        return _stamp_fallback(fallback_reply, opts.fallback_model or fallback_requested)
+        return _stamp_fallback(fallback_reply, fallback_model)
 
 
 # Marks an internal one-shot LLM call so the chat stream drops its output instead of rendering

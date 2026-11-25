@@ -26,5 +26,9 @@ MONGO_TRANSIENT_RETRY_ATTEMPTS = 5
 MONGO_TRANSIENT_RETRY_INITIAL_SECONDS = 1.0
 MONGO_TRANSIENT_RETRY_MAX_SECONDS = 8.0
 
+# The server's codes for a write that would pass the 16 MB document cap: BSONObjectTooLarge,
+# and the two an update or upsert that grows a document past it has carried.
+MONGO_TOO_LARGE_CODES = frozenset({10334, 17419, 17420})
+
 # arq's own 1s default is overrun by a booting worker's busy event loop on a loaded box.
 ARQ_REDIS_CONNECT_TIMEOUT_SECONDS = 10

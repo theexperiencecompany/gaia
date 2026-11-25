@@ -4,6 +4,7 @@ from collections.abc import Sequence
 import time
 
 from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo.errors import DocumentTooLarge
 import pytest
 
 from app.constants.conversation import HintField
@@ -17,6 +18,8 @@ from app.models.conversation_log_models import (
     KickStep,
     LoggedEntry,
     RejectReason,
+    WorkFinished,
+    WorkOutcome,
 )
 from app.services.conversation import mongo_log_append
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -27,6 +30,7 @@ from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.utils.errors import ConversationNotFoundError, ConversationStoreError
 from shared.py.conversation_wire import ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
     asked,
@@ -396,3 +400,62 @@ async def test_settling_a_reply_in_a_conversation_the_user_lacks_is_not_found(
 ) -> None:
     with pytest.raises(ConversationNotFoundError):
         await appends.append("c-missing", UID, settled("s1", ["m1"], through=1))
+
+
+MEGABYTE = 1024 * 1024
+MONGO_DOCUMENT_CAP = 16 * MEGABYTE
+BSON_OBJECT_TOO_LARGE = 10334
+
+
+def _finished(task_id: str, megabytes: int) -> WorkFinished:
+    return WorkFinished(
+        id=f"work:{task_id}:finished",
+        task_id=task_id,
+        outcome=WorkOutcome.DONE,
+        report="r" * megabytes * MEGABYTE,
+    )
+
+
+async def test_an_append_that_would_grow_the_head_past_mongos_cap_logs_its_size_and_code(
+    appends: LogAppends, conversation: str
+) -> None:
+    await appends.append(conversation, UID, user("m1"))
+    await appends.append(conversation, UID, started("w1", "t1", 1))
+    await appends.append(conversation, UID, started("w2", "t2", 1))
+    # The step this finish kicks never runs here, so it still waits in the head.
+    await appends.append(conversation, UID, _finished("t1", 9))
+
+    async with captured_wide_event() as event:
+        with pytest.raises(ConversationStoreError) as raised:
+            await appends.append(conversation, UID, _finished("t2", 9))
+
+    (refused,) = event["errors"]
+    assert 9 * MEGABYTE < refused.pop("entry_bytes") < MONGO_DOCUMENT_CAP
+    assert refused == {
+        "msg": "conversation store call failed",
+        "operation": "log append",
+        "error_type": "WriteError",
+        "mongo_code": BSON_OBJECT_TOO_LARGE,
+        "too_large": True,
+    }
+    assert raised.value.message == "conversation store log append failed"
+    assert raised.value.meta["mongo_code"] == BSON_OBJECT_TOO_LARGE
+
+
+async def test_an_entry_the_driver_will_not_send_is_logged_and_raised_as_the_drivers_error(
+    appends: LogAppends, conversation: str
+) -> None:
+    await appends.append(conversation, UID, user("m1"))
+    await appends.append(conversation, UID, started("w1", "t1", 1))
+
+    async with captured_wide_event() as event:
+        with pytest.raises(DocumentTooLarge):
+            await appends.append(conversation, UID, _finished("t1", 17))
+
+    (refused,) = event["errors"]
+    assert refused["entry_bytes"] > MONGO_DOCUMENT_CAP
+    assert (refused["error_type"], refused["mongo_code"], refused["too_large"]) == (
+        "DocumentTooLarge",
+        None,
+        True,
+    )
