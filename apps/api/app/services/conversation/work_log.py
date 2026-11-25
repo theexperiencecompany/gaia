@@ -4,6 +4,7 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from redis.exceptions import RedisError
 from tenacity import retry_if_exception
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
@@ -146,7 +147,18 @@ async def _save_refused_finish(
     The work is marked ended meanwhile, so the sweep never takes it for work a dead server left.
     """
     ended_key = _ended_key(conversation_id, entry.task_id)
-    await redis_cache.client.set(ended_key, "1", ex=WORK_ENDED_TTL_SECONDS)
+    marked = True
+    try:
+        await redis_cache.client.set(ended_key, "1", ex=WORK_ENDED_TTL_SECONDS)
+    except RedisError as unmarked:
+        # The save below can still land, and matters more than the mark.
+        marked = False
+        log.error(
+            "work finish not marked ended; unsaved, the sweep would call it lost",
+            conversation_id=conversation_id,
+            task_id=entry.task_id,
+            error_type=type(unmarked).__name__,
+        )
     log.error(
         "work finish refused by the conversation store",
         conversation_id=conversation_id,
@@ -170,7 +182,8 @@ async def _save_refused_finish(
             conversation_id=conversation_id,
             task_id=entry.task_id,
         )
-    await redis_cache.client.delete(ended_key)
+    if marked:
+        await redis_cache.client.delete(ended_key)
 
 
 async def record_work_lost(conversation_id: str, user_id: str, task_id: str) -> WorkOutcome:

@@ -1509,6 +1509,73 @@ class TestFallbackHandover:
         assert exhausted["extra"]["primary_failure"]["error_type"] == "ConnectionError"
         assert USER_TEXT not in json.dumps(records)
 
+    async def test_the_exhausted_line_names_a_fallback_behind_the_real_retry_wrapper(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for #1947 review: the retry wrapper hid the fallback's client, so both read unknown."""
+        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+        monkeypatch.setattr(
+            ChatOpenRouter, "ainvoke", AsyncMock(side_effect=ConnectionError("also down"))
+        )
+        fallback = ChatOpenRouter(model="fallback-model", api_key=SecretStr("k"))
+
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                TestAinvokeLlm._runnable(side_effect=_provider_400()),
+                [HumanMessage(content="hi")],
+                fallback=fallback,
+                options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        named = exhausted["extra"]["llm"]
+        assert (named["fallback_provider"], named["fallback_model"]) == (
+            "openrouter",
+            "fallback-model",
+        )
+
+    async def test_the_exhausted_line_names_the_lane_and_model_the_fallback_ran_as(self) -> None:
+        """The fallback runs under its own config and is stamped with its lane's model: the line says the same."""
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                TestAinvokeLlm._runnable(side_effect=_provider_400()),
+                [HumanMessage(content="hi")],
+                fallback=self._failing_fallback(ConnectionError("also down")),
+                options=LLMInvokeOptions(
+                    max_attempts=1,
+                    meter_auxiliary=False,
+                    fallback_config=RunnableConfig(configurable={"provider": "gemini"}),
+                    fallback_model="gemini-lane-model",
+                ),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        named = exhausted["extra"]["llm"]
+        assert (named["fallback_provider"], named["fallback_model"]) == (
+            "gemini",
+            "gemini-lane-model",
+        )
+
+    def test_the_sync_exhausted_line_names_the_lane_and_model_the_fallback_ran_as(self) -> None:
+        with emitted_log_records() as records, pytest.raises(ConnectionError):
+            invoke_llm(
+                TestTheSyncFallback._failing_primary(),
+                "hi",
+                fallback=self._failing_fallback(ConnectionError("also down")),
+                options=LLMInvokeOptions(
+                    max_attempts=1,
+                    fallback_config=RunnableConfig(configurable={"provider": "gemini"}),
+                    fallback_model="gemini-lane-model",
+                ),
+            )
+
+        (exhausted,) = [r for r in records if "failed on the fallback too" in r["message"]]
+        named = exhausted["extra"]["llm"]
+        assert (named["fallback_provider"], named["fallback_model"]) == (
+            "gemini",
+            "gemini-lane-model",
+        )
+
     async def test_a_fallback_that_recovers_the_call_logs_no_exhausted_line(self) -> None:
         primary = TestAinvokeLlm._runnable(side_effect=_provider_400())
 

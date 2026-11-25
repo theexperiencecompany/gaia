@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.core.background.executor_queue import build_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
@@ -360,6 +361,34 @@ async def test_a_refused_finish_with_no_cards_to_drop_raises_what_the_store_said
     assert raised.value is refused
     assert len(seen.asked) == attempts
     assert await fake_redis.exists(ENDED_KEY)
+
+
+async def test_a_refused_finish_is_still_saved_when_it_cannot_be_marked_ended(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    """Regression for #1947 review: a Redis failure on the mark skipped the save that could still land."""
+    seen = refuse(
+        live, monkeypatch, fake_redis, lambda entry, _: too_large() if entry.tool_data else None
+    )
+    monkeypatch.setattr(fake_redis, "set", AsyncMock(side_effect=RedisConnectionError("down")))
+    unmarked = AsyncMock(side_effect=RedisConnectionError("down"))
+    monkeypatch.setattr(fake_redis, "delete", unmarked)
+
+    async with captured_wide_event() as event:
+        await finish(WorkReport("done it", [CARD]))
+
+    assert (await live.entries())[-1].entry == WorkFinished(
+        id="work:t1:finished", task_id="t1", outcome=WorkOutcome.DONE, report="done it"
+    )
+    assert [len(entry.tool_data) for entry in seen.asked] == [1, 0]
+    # Nothing was marked, so nothing is unmarked.
+    unmarked.assert_not_awaited()
+    assert event["errors"][0] == {
+        "msg": "work finish not marked ended; unsaved, the sweep would call it lost",
+        "conversation_id": CONVERSATION,
+        "task_id": "t1",
+        "error_type": "ConnectionError",
+    }
 
 
 async def test_a_finish_that_fails_outside_the_store_is_neither_retried_nor_marked_ended(
