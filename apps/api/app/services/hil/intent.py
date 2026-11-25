@@ -332,6 +332,8 @@ def ungrounded_targets(
 
 
 _ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+#: What may sit between the addresses of a recipients column.
+_RECIPIENT_SEPARATORS = re.compile(r"[\s,;]+")
 #: Quoted text in a plain-text list line: content, never the entry's own fields.
 _QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”")
 
@@ -371,18 +373,15 @@ def _entry_addresses(output: str, target: str) -> list[list[str]]:
 def _line_recipients(line: str) -> list[str]:
     """Return the addresses a plain-text list line names as its own recipients.
 
-    A columned line ("id | to | subject | gist") holds them in its first column with an
-    address; later columns are content ("Forwarded from simonne@x.com"). A line without
-    columns naming more than one address can't say which is its own, so it names none.
+    Only a column holding nothing but addresses is a recipients column ("id | to |
+    subject | gist"); the first column with an address must be one, or the line is
+    ambiguous ("d-1 | Bob | Forwarded from simonne@x.com") and names none. A line
+    without columns can't part recipients from prose, so it names none either.
     """
-    cells = line.split("|")
-    if len(cells) > 1:
-        for cell in cells:
-            if found := _ADDRESS.findall(cell):
-                return found
-        return []
-    found = _ADDRESS.findall(line)
-    return found if len(found) <= 1 else []
+    for cell in line.split("|")[1:]:
+        if found := _ADDRESS.findall(cell):
+            return found if not _RECIPIENT_SEPARATORS.sub("", _ADDRESS.sub("", cell)) else []
+    return []
 
 
 def _own_fields(record: dict[str, object]) -> str:

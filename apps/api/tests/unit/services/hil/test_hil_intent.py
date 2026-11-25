@@ -237,20 +237,29 @@ class TestAPickFromAList:
 
         assert ungrounded_targets({"draft_id": "d-1"}, ["send lisa@x.com's"], listed) == []
 
-    def test_a_two_column_line_reads_its_recipients_from_the_column_holding_them(self) -> None:
+    def test_addresses_sharing_a_column_with_the_id_are_ambiguous(self) -> None:
         listed = [PriorCall(name="LIST", args={}, output="d-1 bob@x.com, simonne@x.com | note")]
 
-        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == []
+        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == ["d-1"]
 
     def test_a_columned_line_with_no_address_grounds_nothing(self) -> None:
         listed = [PriorCall(name="LIST", args={}, output="d-1 | invoice | october")]
 
         assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == ["d-1"]
 
-    def test_a_line_without_columns_naming_one_address_grounds_it(self) -> None:
+    def test_a_line_without_columns_naming_one_address_still_grounds_nothing(self) -> None:
+        """Without columns, 'd-1 Bob, forwarded from simonne@x.com' reads the same as a recipient."""
         listed = [PriorCall(name="LIST", args={}, output="d-1 to simonne@x.com")]
 
-        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == []
+        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == ["d-1"]
+
+    def test_a_recipients_column_without_an_address_leaves_prose_ungrounding(self) -> None:
+        """'Bob' names no address, so 'Forwarded from simonne@x.com' must not stand in for it."""
+        listed = [
+            PriorCall(name="LIST", args={}, output="d-1 | Bob | Forwarded from simonne@x.com")
+        ]
+
+        assert ungrounded_targets({"draft_id": "d-1"}, ["send simonne@x.com's"], listed) == ["d-1"]
 
     def test_an_id_is_matched_whole_never_as_part_of_a_longer_one(self) -> None:
         listed = [
