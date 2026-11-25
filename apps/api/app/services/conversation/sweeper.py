@@ -123,6 +123,11 @@ async def _sweep_one(ports: RuntimePorts, head: SweepHead, report: SweepReport) 
         await record_work_finished(
             conversation_id, user_id, work.task_id, WorkOutcome.LOST, WorkReport(WORK_LOST_REPORT)
         )
+        log.warning(
+            "work with no live run ended as lost",
+            conversation_id=conversation_id,
+            task_id=work.task_id,
+        )
         report.lost_work += 1
     if head.state.unsettled_waking:
         await ports.effects.kick(conversation_id, user_id)

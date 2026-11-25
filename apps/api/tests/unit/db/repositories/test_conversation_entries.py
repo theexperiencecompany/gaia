@@ -2,15 +2,25 @@
 
 from datetime import UTC, datetime
 
+import bson
+from pymongo.errors import (
+    AutoReconnect,
+    DocumentTooLarge,
+    DuplicateKeyError,
+    OperationFailure,
+    WriteError,
+)
 import pytest
 
 from app.constants.chat import ConversationSource
 from app.db.repositories.conversation_entries import (
     EMPTY_LOG_STATE,
     current_state,
+    is_too_large,
     log_document,
     newest,
     openers_outside,
+    store_errors,
     stored_at,
     stored_row,
 )
@@ -26,8 +36,10 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_models import ConversationHead, StoredEntry
+from app.utils.errors import ConversationStoreError
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ReplyOutcome
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import asked
 
 
@@ -137,3 +149,92 @@ def test_a_read_with_nothing_stored_returns_the_staged_copy() -> None:
 def test_a_stored_time_keeps_whole_milliseconds() -> None:
     at = datetime(2026, 1, 2, 3, 4, 5, 999_500, tzinfo=UTC)
     assert stored_at(at) == datetime(2026, 1, 2, 3, 4, 5, 999_000, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("failure", "too_large"),
+    [
+        (DocumentTooLarge("update command document too large"), True),
+        (WriteError("BSONObj size is invalid", 10334), True),
+        (WriteError("Resulting document after update is larger than 16777216", 17419), True),
+        (OperationFailure("Document to upsert is larger than 16777216", 17420), True),
+        (DuplicateKeyError("E11000 duplicate key", 11000), False),
+        (OperationFailure("no code"), False),
+        (AutoReconnect("connection reset by peer"), False),
+        (ValueError("10334"), False),
+    ],
+)
+def test_only_a_write_past_the_document_size_cap_is_too_large(
+    failure: Exception, too_large: bool
+) -> None:
+    assert is_too_large(failure) is too_large
+
+
+async def test_a_failed_store_call_logs_its_cause_and_the_size_of_what_it_wrote_never_the_content() -> (
+    None
+):
+    document = {"id": "work:t1:finished", "report": "the user's private result"}
+    failure = WriteError("Resulting document after update is larger than 16777216", 17419)
+
+    async with captured_wide_event() as event:
+        with (
+            pytest.raises(ConversationStoreError) as raised,
+            store_errors("log append", entry=document),
+        ):
+            raise failure
+
+    cause = {
+        "operation": "log append",
+        "error_type": "WriteError",
+        "mongo_code": 17419,
+        "too_large": True,
+        "entry_bytes": len(bson.encode(document)),
+    }
+    assert event["errors"] == [{"msg": "conversation store call failed", **cause}]
+    assert raised.value.message == "conversation store log append failed"
+    assert raised.value.meta == cause
+    assert raised.value.__cause__ is failure
+
+
+async def test_a_store_call_that_wrote_no_entry_logs_no_size_and_a_driver_error_no_code() -> None:
+    async with captured_wide_event() as event:
+        with pytest.raises(ConversationStoreError) as raised, store_errors("log claim"):
+            raise AutoReconnect("connection reset by peer")
+
+    assert event["errors"] == [
+        {
+            "msg": "conversation store call failed",
+            "operation": "log claim",
+            "error_type": "AutoReconnect",
+            "mongo_code": None,
+            "too_large": False,
+            "entry_bytes": None,
+        }
+    ]
+    assert raised.value.why == "connection reset by peer"
+
+
+def test_an_error_that_is_not_the_stores_passes_through_unchanged() -> None:
+    with pytest.raises(ValueError, match="not mongo"), store_errors("log append"):
+        raise ValueError("not mongo")
+
+
+async def test_a_write_the_driver_will_not_send_is_logged_and_raised_as_it_came() -> None:
+    document = {"id": "work:t1:finished", "report": "the user's private result"}
+    refused = DocumentTooLarge("update command document too large")
+
+    async with captured_wide_event() as event:
+        with pytest.raises(DocumentTooLarge) as raised, store_errors("log append", entry=document):
+            raise refused
+
+    assert raised.value is refused
+    assert event["errors"] == [
+        {
+            "msg": "conversation store call failed",
+            "operation": "log append",
+            "error_type": "DocumentTooLarge",
+            "mongo_code": None,
+            "too_large": True,
+            "entry_bytes": len(bson.encode(document)),
+        }
+    ]

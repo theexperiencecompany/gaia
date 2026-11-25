@@ -149,6 +149,10 @@ async def test_it_flushes_ends_lost_work_and_kicks_unsettled_inputs(seams: Seams
     seams.finished.assert_awaited_once_with(
         "c-a", "u-a", "dead", WorkOutcome.LOST, WorkReport(WORK_LOST_REPORT)
     )
+    # Named by task, so the line joins the run's own event, where a failed finish save is logged.
+    seams.log.warning.assert_called_once_with(
+        "work with no live run ended as lost", conversation_id="c-a", task_id="dead"
+    )
     seams.kick.assert_awaited_once_with("c-a", "u-a")
     assert report == SweepReport(flushed=1, lost_work=1, kicked=1)
     assert _report(seams) == {
