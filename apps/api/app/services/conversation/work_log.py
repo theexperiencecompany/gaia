@@ -183,7 +183,16 @@ async def _save_refused_finish(
             task_id=entry.task_id,
         )
     if marked:
-        await redis_cache.client.delete(ended_key)
+        try:
+            await redis_cache.client.delete(ended_key)
+        except RedisError as uncleared:
+            # The finish is saved: a mark left behind lapses on its own and changes nothing for ended work.
+            log.error(
+                "work finish saved but its ended mark not cleared",
+                conversation_id=conversation_id,
+                task_id=entry.task_id,
+                error_type=type(uncleared).__name__,
+            )
 
 
 async def record_work_lost(conversation_id: str, user_id: str, task_id: str) -> WorkOutcome:

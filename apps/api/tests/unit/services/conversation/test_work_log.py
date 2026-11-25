@@ -391,6 +391,33 @@ async def test_a_refused_finish_is_still_saved_when_it_cannot_be_marked_ended(
     }
 
 
+async def test_a_finish_saved_on_retry_stands_when_its_ended_mark_cannot_be_cleared(
+    live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    """Regression for #1947 review: a Redis failure clearing the mark raised out of a finish already saved."""
+    refuse(
+        live, monkeypatch, fake_redis, lambda _, attempt: unreachable() if attempt == 1 else None
+    )
+    monkeypatch.setattr(fake_redis, "delete", AsyncMock(side_effect=RedisConnectionError("down")))
+
+    async with captured_wide_event() as event:
+        await finish(WorkReport("done it", [CARD]))
+
+    assert (await live.entries())[-1].entry == WorkFinished(
+        id="work:t1:finished",
+        task_id="t1",
+        outcome=WorkOutcome.DONE,
+        report="done it",
+        tool_data=(CARD,),
+    )
+    assert event["errors"][-1] == {
+        "msg": "work finish saved but its ended mark not cleared",
+        "conversation_id": CONVERSATION,
+        "task_id": "t1",
+        "error_type": "ConnectionError",
+    }
+
+
 async def test_a_finish_that_fails_outside_the_store_is_neither_retried_nor_marked_ended(
     live: Runtime, monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:

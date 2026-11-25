@@ -1896,8 +1896,11 @@ async def execute_workflow_as_playbook(
         )
         return conversation_id, result
     finally:
-        alive.cancel()
-        await _finish_replay_work(conversation_id, user_id, task_id, playbook, result)
+        # Alive through the finish: a store retry can outlast what liveness is left once the beat stops.
+        try:
+            await _finish_replay_work(conversation_id, user_id, task_id, playbook, result)
+        finally:
+            alive.cancel()
 
 
 async def _finish_replay_work(

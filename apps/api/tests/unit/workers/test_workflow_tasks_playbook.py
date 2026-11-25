@@ -71,6 +71,7 @@ from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.metrics import REPLAY_STATUSES
 from app.services.workflow.playbook.runner import FALLBACK_LINE_MAX_CHARS, PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
+from app.utils.errors import ConversationStoreError
 from app.utils.timezone import Timezone
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
@@ -87,6 +88,7 @@ from app.workers.tasks.workflow_tasks import (
     _in_run_timezone,
     _notify_run_finished,
     execute_workflow_as_chat,
+    execute_workflow_as_playbook,
     execute_workflow_by_id,
 )
 from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
@@ -332,6 +334,41 @@ async def _fire(harness: _Harness) -> str:
         for patcher in harness.patches():
             stack.enter_context(patcher)
         return await execute_workflow_by_id({}, harness.workflow.id or "")
+
+
+@pytest.mark.parametrize("finish_fails", [False, True])
+async def test_a_replay_stays_alive_until_its_finish_is_saved_or_refused(
+    finish_fails: bool,
+) -> None:
+    """Regression for #1947 review: liveness ended before the finish save, which a store retry can outlast."""
+    workflow = _workflow()
+    alive = MagicMock()
+    held_during_finish: list[bool] = []
+
+    async def finish(*_: object) -> None:
+        held_during_finish.append(not alive.cancel.called)
+        if finish_fails:
+            raise ConversationStoreError(message="conversation store log append failed")
+
+    replayed = PlaybookRunResult(ok=True, text="Agenda sent.", trace=[], llm_calls=0)
+    with (
+        patch(f"{MODULE}.get_or_create_workflow_conversation", AsyncMock(return_value="conv_1")),
+        patch(f"{MODULE}.record_work_carried", AsyncMock(return_value=True)),
+        patch(f"{MODULE}.keep_alive", AsyncMock(return_value=alive)),
+        patch(f"{MODULE}.run_playbook", AsyncMock(return_value=replayed)),
+        patch(f"{MODULE}._finish_replay_work", finish),
+    ):
+        replay = execute_workflow_as_playbook(
+            workflow, AuthenticatedUser(user_id=USER_ID), {}, _playbook(workflow)
+        )
+        if finish_fails:
+            with pytest.raises(ConversationStoreError):
+                await replay
+        else:
+            assert await replay == ("conv_1", replayed)
+
+    assert held_during_finish == [True]
+    alive.cancel.assert_called_once_with()
 
 
 async def test_replay_runs_when_the_workflow_hash_matches() -> None:
