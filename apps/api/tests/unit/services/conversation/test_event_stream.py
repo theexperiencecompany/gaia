@@ -10,7 +10,13 @@ from pydantic import JsonValue
 import pytest
 
 from app.constants.chat import ARTIFACT_CARD
-from app.constants.conversation import EVENTS_KEY_PREFIX, EVENTS_STREAM_START, EventsWire
+from app.constants.conversation import (
+    EVENTS_KEY_PREFIX,
+    EVENTS_RESUME_PAGE,
+    EVENTS_RESUME_PAGE_GROWTH,
+    EVENTS_STREAM_START,
+    EventsWire,
+)
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -415,10 +421,87 @@ async def test_a_stream_entry_that_is_no_frame_vouches_for_nothing_and_is_logged
 ) -> None:
     runtime = Runtime()
     await _said(runtime, fake_redis, "u1", "u2", "u3")
-    await fake_redis.xadd(f"{EVENTS_KEY_PREFIX}{CONVERSATION}", {"frame": stored})
+    stream_id = await fake_redis.xadd(f"{EVENTS_KEY_PREFIX}{CONVERSATION}", {"frame": stored})
 
     async with captured_wide_event() as event:
         assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
     [warning] = event["warnings"]
     assert warning["msg"] == "conversation stream frame unreadable, so it vouches for no head"
-    assert warning["conversation_id"] == CONVERSATION
+    assert (warning["conversation_id"], warning["stream_id"]) == (CONVERSATION, stream_id)
+
+
+def _reply_text(index: int) -> ReplyDeltaFrame:
+    return ReplyDeltaFrame(
+        attempt_id="a1", reply_id="r1", index=index, payload=BubbleTextDelta(bubble=0, text="x")
+    )
+
+
+@pytest.fixture
+def pages_read(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> list[int | None]:
+    """Record how many frames each read of the stream's newest end asked for."""
+    asked: list[int | None] = []
+    read = fake_redis.xrevrange
+
+    async def counted(name: str, *, count: int | None = None) -> object:
+        asked.append(count)
+        return await read(name, count=count)
+
+    monkeypatch.setattr(fake_redis, "xrevrange", counted)
+    return asked
+
+
+async def test_the_head_check_reads_one_page_when_the_head_is_among_the_newest_frames(
+    fake_redis: fakeredis.aioredis.FakeRedis, pages_read: list[int | None]
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2")
+    await _publish(fake_redis, *(_reply_text(index) for index in range(5 * EVENTS_RESUME_PAGE)))
+    await _said(runtime, fake_redis, "u3")
+    pages_read.clear()
+
+    assert await _opening(runtime, 3) == []
+    # The opening also reads the newest id once, to follow from it.
+    assert [count for count in pages_read if count != 1] == [EVENTS_RESUME_PAGE]
+
+
+async def test_the_head_check_reads_further_back_until_it_meets_the_head(
+    fake_redis: fakeredis.aioredis.FakeRedis, pages_read: list[int | None]
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2")
+    await _publish(fake_redis, *(_reply_text(index) for index in range(EVENTS_RESUME_PAGE + 5)))
+    await _said(runtime, fake_redis, "u3")
+    pages_read.clear()
+
+    assert await _opening(runtime, 2) == ["u3"]
+    grown = EVENTS_RESUME_PAGE * EVENTS_RESUME_PAGE_GROWTH
+    assert [count for count in pages_read if count != 1] == [EVENTS_RESUME_PAGE, grown]
+
+
+async def test_an_amendment_past_the_first_page_still_opens_on_the_whole_screen(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1", "u2")
+    await _publish(fake_redis, EntryUpdatedFrame(seq=1, entry=user("u1")))
+    await _publish(fake_redis, *(_reply_text(index) for index in range(EVENTS_RESUME_PAGE + 5)))
+    await _said(runtime, fake_redis, "u3")
+
+    assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+
+
+async def test_a_head_older_than_everything_a_long_stream_holds_opens_on_the_whole_screen(
+    fake_redis: fakeredis.aioredis.FakeRedis, pages_read: list[int | None]
+) -> None:
+    runtime = Runtime()
+    for message_id in ("u1", "u2"):
+        await runtime.log.append(CONVERSATION, USER, user(message_id))
+    await _publish(fake_redis, *(_reply_text(index) for index in range(EVENTS_RESUME_PAGE)))
+    await _said(runtime, fake_redis, "u3")
+    pages_read.clear()
+
+    assert await _opening(runtime, 2) == ["u1", "u2", "u3"]
+    grown = EVENTS_RESUME_PAGE * EVENTS_RESUME_PAGE_GROWTH
+    assert [count for count in pages_read if count != 1] == [EVENTS_RESUME_PAGE, grown]

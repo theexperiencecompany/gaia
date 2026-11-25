@@ -16,6 +16,8 @@ from app.constants.conversation import (
     EVENTS_BLOCK_MS,
     EVENTS_KEY_PREFIX,
     EVENTS_OPEN_REPLY_KEY_PREFIX,
+    EVENTS_RESUME_PAGE,
+    EVENTS_RESUME_PAGE_GROWTH,
     EVENTS_STREAM_MAXLEN,
     EVENTS_STREAM_START,
     EVENTS_STREAM_TTL_SECONDS,
@@ -341,25 +343,42 @@ class _Positioned(BaseModel):
     seq: int | None = None
 
 
+def _vouches(conversation_id: str, stream_id: str, fields: object, after: int) -> bool | None:
+    """Return what one stream entry says of a client at entry after: None when it is newer and says nothing."""
+    try:
+        frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
+    except ValidationError as error:
+        # It may be the amendment or the entry looked for: the whole screen is the safe answer.
+        wide_log.warning(
+            "conversation stream frame unreadable, so it vouches for no head",
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            error=str(error)[:300],
+        )
+        return False
+    if frame.seq is None or frame.seq > after:
+        return None
+    # The newest frame of an entry the client held: its own, or an amendment it may have missed.
+    return frame.kind == FrameKind.ENTRY and frame.seq == after
+
+
 async def _vouched(conversation_id: str, after: int) -> bool:
-    """Return whether the stream still holds entry after's frame with no amendment since to an entry at or below it."""
-    # Newest first: everything read before the entry's own frame came after it.
-    for stream_id, fields in await redis_cache.client.xrevrange(_key(conversation_id)):
-        try:
-            frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
-        except ValidationError as error:
-            # It may be the amendment or the entry looked for: the whole screen is the safe answer.
-            wide_log.warning(
-                "conversation stream frame unreadable, so it vouches for no head",
-                conversation_id=conversation_id,
-                stream_id=stream_id,
-                error=str(error)[:300],
-            )
+    """Return whether the stream still holds entry after's frame with no amendment since to an entry at or below it.
+
+    Read newest first, a page at a time: everything before the entry's own frame came after it,
+    and a reply's deltas can put hundreds of frames past a head a page would otherwise reach.
+    """
+    count, read = EVENTS_RESUME_PAGE, 0
+    while True:
+        page = await redis_cache.client.xrevrange(_key(conversation_id), count=count)
+        # Frames published since the last read sit at the front, so none past read is new.
+        for stream_id, fields in page[read:]:
+            verdict = _vouches(conversation_id, stream_id, fields, after)
+            if verdict is not None:
+                return verdict
+        if len(page) < count:
             return False
-        if frame.seq is not None and frame.seq <= after:
-            # The newest frame of an entry the client held: its own, or an amendment it may have missed.
-            return frame.kind == FrameKind.ENTRY and frame.seq == after
-    return False
+        count, read = count * EVENTS_RESUME_PAGE_GROWTH, len(page)
 
 
 async def _held_at(

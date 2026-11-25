@@ -128,6 +128,10 @@ EVENTS_STREAM_TTL_SECONDS = ONE_DAY_TTL
 EVENTS_BLOCK_MS = 15_000
 #: The cursor that reads a stream from its oldest retained frame.
 EVENTS_STREAM_START = "0-0"
+# A client's head is nearly always among the newest frames; a reply's deltas are a few hundred.
+EVENTS_RESUME_PAGE = 64
+# Each read further back asks for this many times more of the stream's newest end.
+EVENTS_RESUME_PAGE_GROWTH = 4
 
 
 class EventsWire(IntEnum):
