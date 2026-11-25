@@ -11,14 +11,12 @@ import pytest
 from app.constants.conversation import (
     APPROVAL_EXPIRY_GRACE,
     APPROVAL_REGISTER_GRACE,
-    WORK_LOST_REPORT,
 )
 from app.constants.hil import DECISION_HANDOFF_LEASE
 from app.db.repositories.conversation_sweep import SweepHead
 from app.models.conversation_log_models import ApprovalRequested, LiveWork, LoggedEntry, WorkOutcome
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.conversation.sweeper import SweepReport, sweep_conversations
-from app.services.conversation.work_log import WorkReport
 from shared.py.approvals import ApprovalOutcome
 from tests.unit.services.conversation.log_helpers import EMPTY, T0, described, logged
 
@@ -86,7 +84,7 @@ def seams() -> Iterator[Seams]:
         patch(f"{MODULE}.runtime_ports", return_value=ports),
         patch(f"{MODULE}.conversation_sweep_repository") as repo,
         patch(f"{MODULE}.run_is_lost", AsyncMock(return_value=False)) as lost,
-        patch(f"{MODULE}.record_work_finished", AsyncMock()) as finished,
+        patch(f"{MODULE}.record_work_lost", AsyncMock(return_value=WorkOutcome.LOST)) as finished,
         patch(f"{MODULE}.approval_ledger_repository") as ledger_repo,
         patch(f"{MODULE}.expire_ledger_approval", AsyncMock(return_value=False)) as expire,
         patch(f"{MODULE}.end_unledgered_approval", AsyncMock(return_value=True)) as unledgered,
@@ -146,19 +144,26 @@ async def test_it_flushes_ends_lost_work_and_kicks_unsettled_inputs(seams: Seams
 
     seams.repo.flush_outbox.assert_awaited_once_with("c-a", user_id="u-a")
     assert seams.lost.await_args_list == [call("c-a", "live"), call("c-a", "dead")]
-    seams.finished.assert_awaited_once_with(
-        "c-a", "u-a", "dead", WorkOutcome.LOST, WorkReport(WORK_LOST_REPORT)
-    )
+    seams.finished.assert_awaited_once_with("c-a", "u-a", "dead")
     seams.kick.assert_awaited_once_with("c-a", "u-a")
     assert report == SweepReport(flushed=1, lost_work=1, kicked=1)
     assert _report(seams) == {
         "flushed": 1,
         "lost_work": 1,
+        "unsaved_work": 0,
         "undecidable_approvals": 0,
         "kicked": 1,
         "handed_off": 0,
         "failed": 0,
     }
+
+
+async def test_every_piece_of_lost_work_on_a_head_is_counted(seams: Seams) -> None:
+    head = _head("a", work=(_work("dead-1"), _work("dead-2")))
+    seams.repo.list_heads_to_sweep.side_effect = [[head]]
+    seams.lost.return_value = True
+
+    assert await sweep_conversations() == SweepReport(lost_work=2)
 
 
 async def test_a_quiet_head_is_left_alone(seams: Seams) -> None:
@@ -361,6 +366,10 @@ async def test_counts_add_up_across_heads_pages_and_work(seams: Seams) -> None:
     seams.repo.flush_outbox.side_effect = _flush_fails_for("c-x", "c-y")
     seams.repo.read_log.side_effect = _each_requested
     seams.lost.return_value = True
+    # The work of b and c was ended by its own process, which could not save that.
+    seams.finished.side_effect = lambda _conversation, _user, task_id: (
+        WorkOutcome.LOST if task_id == "a-dead" else WorkOutcome.FAILED
+    )
 
     with patch(f"{MODULE}.SWEEP_BATCH", 3):
         report = await sweep_conversations()
@@ -373,8 +382,9 @@ async def test_counts_add_up_across_heads_pages_and_work(seams: Seams) -> None:
         "c-ap",
     ]
     assert report == SweepReport(
-        flushed=3, lost_work=3, undecidable_approvals=3, kicked=3, failed=2
+        flushed=3, lost_work=1, unsaved_work=2, undecidable_approvals=3, kicked=3, failed=2
     )
+    assert _report(seams)["unsaved_work"] == 2
 
 
 def _handing_off(approval_id: str, since: datetime) -> ApprovalLedgerDocument:

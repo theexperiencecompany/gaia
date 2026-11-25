@@ -1,10 +1,24 @@
 """Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
+import asyncio
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from redis.exceptions import RedisError
+from tenacity import retry_if_exception
+
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
+from app.constants.chat import ARTIFACT_CARD
+from app.constants.conversation import (
+    WORK_ENDED_KEY_PREFIX,
+    WORK_ENDED_TTL_SECONDS,
+    WORK_FINISH_SAVE_SECONDS,
+    WORK_LOST_REPORT,
+    WORK_UNRECORDED_REPORT,
+)
+from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
+from app.db.redis import redis_cache
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.agent_config import StepTurnRef
 from app.models.conversation_log_models import (
@@ -21,14 +35,20 @@ from app.models.conversation_log_models import (
 )
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.log import accept, publish_appended
-from app.services.conversation.ports import ClaimLost, EntryRejected
+from app.services.conversation.ports import ClaimLost, EntryRejected, RuntimePorts
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.screen import approval_status
 from app.services.conversation.work_artifacts import reconcile_artifacts
+from app.utils.errors import ConversationStoreError
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, ApprovalStatus
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log
+
+#: A write over the size cap fails the same way every time; any other store failure may pass.
+_UNLESS_TOO_LARGE = retry_if_exception(
+    lambda error: isinstance(error, ConversationStoreError) and not error.too_large
+)
 
 
 class WorkNotCancelled(Exception):
@@ -95,25 +115,108 @@ async def record_work_finished(
     *,
     continued_by_decision: bool = False,
 ) -> None:
-    """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply."""
-    # A lost marker never shares the real result's id, so that result can never be dropped as its duplicate.
-    ending = "lost" if outcome is WorkOutcome.LOST else "finished"
+    """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply.
+
+    A finish not built and saved within WORK_FINISH_SAVE_SECONDS, or failing any other way,
+    raises marked ended, so the sweep reports it unsaved, never lost with its server.
+    """
+    ports = runtime_ports()
+    try:
+        async with asyncio.timeout(WORK_FINISH_SAVE_SECONDS):
+            entry = WorkFinished(
+                id=f"work:{task_id}:finished",
+                task_id=task_id,
+                outcome=outcome,
+                report=report.text,
+                tool_data=(
+                    *report.tool_data,
+                    *await reconcile_artifacts(user_id, conversation_id, report.tool_data),
+                ),
+                note=report.note,
+                nothing_for_user=report.nothing_for_user,
+                image=report.image,
+                continued_by_decision=continued_by_decision,
+                awaits_decision=report.awaits_decision,
+            )
+            await _save_finish(ports, conversation_id, user_id, entry)
+    except (
+        Exception
+    ) as unsaved:  # whatever stopped it, this process ended the work: say so, then fail
+        await _mark_ended_unsaved(conversation_id, task_id, unsaved)
+        raise
+
+
+async def _save_finish(
+    ports: RuntimePorts, conversation_id: str, user_id: str, entry: WorkFinished
+) -> None:
+    """Append the finish, waiting out a store that is briefly unreachable; one the store calls too large is appended with only its file cards."""
+    async for attempt in TRANSIENT_MONGO_RETRY.copy(retry=_UNLESS_TOO_LARGE):
+        with attempt:
+            try:
+                await accept(ports, conversation_id, user_id, entry)
+            except ConversationStoreError as refused:
+                files = tuple(
+                    card for card in entry.tool_data if card["tool_name"] == ARTIFACT_CARD
+                )
+                if not refused.too_large or len(files) == len(entry.tool_data):
+                    raise
+                lean = entry.model_copy(update={"tool_data": files})
+                await accept(ports, conversation_id, user_id, lean)
+                log.warning(
+                    "work finish too large; saved with only its file cards",
+                    conversation_id=conversation_id,
+                    task_id=entry.task_id,
+                    cards_dropped=len(entry.tool_data) - len(files),
+                    error_type=type(refused).__name__,
+                )
+
+
+async def _mark_ended_unsaved(conversation_id: str, task_id: str, unsaved: Exception) -> None:
+    """Leave the proof that the work's own process ended it, which the sweep reads once its liveness lapses."""
+    log.error(
+        "work finish not saved",
+        conversation_id=conversation_id,
+        task_id=task_id,
+        error_type=type(unsaved).__name__,
+        too_large=isinstance(unsaved, ConversationStoreError) and unsaved.too_large,
+    )
+    try:
+        await redis_cache.client.set(
+            _ended_key(conversation_id, task_id), "1", ex=WORK_ENDED_TTL_SECONDS
+        )
+    except RedisError as unmarked:
+        log.error(
+            "work finish not marked ended; the sweep will call it lost",
+            conversation_id=conversation_id,
+            task_id=task_id,
+            error_type=type(unmarked).__name__,
+        )
+
+
+async def record_work_lost(conversation_id: str, user_id: str, task_id: str) -> WorkOutcome:
+    """End live work no process runs any more, and return how: lost with its server, or failed when its own process ended it unsaved.
+
+    Never under the real result's id, so that result can never be dropped as this entry's duplicate.
+    """
+    unsaved = await redis_cache.client.exists(_ended_key(conversation_id, task_id))
+    outcome, report = (
+        (WorkOutcome.FAILED, WORK_UNRECORDED_REPORT)
+        if unsaved
+        else (WorkOutcome.LOST, WORK_LOST_REPORT)
+    )
     entry = WorkFinished(
-        id=f"work:{task_id}:{ending}",
+        id=f"work:{task_id}:lost",
         task_id=task_id,
         outcome=outcome,
-        report=report.text,
-        tool_data=(
-            *report.tool_data,
-            *await reconcile_artifacts(user_id, conversation_id, report.tool_data),
-        ),
-        note=report.note,
-        nothing_for_user=report.nothing_for_user,
-        image=report.image,
-        continued_by_decision=continued_by_decision,
-        awaits_decision=report.awaits_decision,
+        report=report,
+        tool_data=await reconcile_artifacts(user_id, conversation_id, ()),
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
+    return outcome
+
+
+def _ended_key(conversation_id: str, task_id: str) -> str:
+    return f"{WORK_ENDED_KEY_PREFIX}{conversation_id}:{task_id}"
 
 
 async def work_of_run(conversation_id: str, user_id: str, stream_id: str) -> str:

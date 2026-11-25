@@ -157,6 +157,9 @@ class UnmigratedConversationError(AppError):
 class ConversationStoreError(AppError):
     """The conversation store failed or kept losing a conditional write; the operation did not happen."""
 
+    # The write would pass Mongo's document size cap: the same write fails the same way every time.
+    too_large: bool = False
+
 
 @dataclass
 class ShownReplyRetriedError(AppError):

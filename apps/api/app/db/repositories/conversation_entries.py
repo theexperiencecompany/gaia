@@ -13,9 +13,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
+import bson
 from pydantic import TypeAdapter
-from pymongo.errors import PyMongoError
+from pymongo.errors import DocumentTooLarge, OperationFailure, PyMongoError
 
+from app.constants.db import MONGO_TOO_LARGE_CODES
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -36,6 +38,7 @@ from app.models.conversation_models import (
     StoredEntry,
 )
 from app.utils.errors import ConversationStoreError
+from shared.py.wide_events import log
 
 LOG_HEAD_FIELD = "log_head"
 OUTBOX_FIELD = "outbox"
@@ -390,16 +393,37 @@ def is_same_entry(stored: Mapping[str, object] | None, entry: StoredEntry) -> bo
     return stored is not None and EntryKey.model_validate(stored).id == entry.id
 
 
+def is_too_large(exc: Exception) -> bool:
+    """Return whether the write was refused for passing Mongo's document size cap, by the driver or the server."""
+    return isinstance(exc, DocumentTooLarge) or (
+        isinstance(exc, OperationFailure) and exc.code in MONGO_TOO_LARGE_CODES
+    )
+
+
 @contextmanager
-def store_errors(operation: str) -> Iterator[None]:
-    """Raise the repository's error instead of the driver's for a failed conversation-store call."""
+def store_errors(operation: str, *, entry: Mapping[str, object] | None = None) -> Iterator[None]:
+    """Raise the repository's error instead of the driver's for a failed conversation-store call, and log its cause.
+
+    entry is the document the call writes: its size is logged, never its content.
+    """
     try:
         yield
-    except PyMongoError as exc:
+    # DocumentTooLarge is the driver refusing before it sends, and is no PyMongoError.
+    except (PyMongoError, DocumentTooLarge) as exc:
+        too_large = is_too_large(exc)
+        cause: dict[str, object] = {
+            "operation": operation,
+            "error_type": type(exc).__name__,
+            "mongo_code": exc.code if isinstance(exc, OperationFailure) else None,
+            "too_large": too_large,
+            "entry_bytes": None if entry is None else len(bson.encode(entry)),
+        }
+        log.error("conversation store call failed", **cause)
         raise ConversationStoreError(
             message=f"conversation store {operation} failed",
             why=str(exc),
-            meta={"error_type": type(exc).__name__},
+            too_large=too_large,
+            meta=cause,
         ) from exc
 
 

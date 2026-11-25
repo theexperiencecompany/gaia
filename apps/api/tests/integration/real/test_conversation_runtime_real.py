@@ -6,7 +6,7 @@ context slots, and the instant reaction, which is never asked for.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -31,7 +31,8 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatGenerationChunk
 from langgraph.config import get_config
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+from pymongo.errors import AutoReconnect
 import pytest
 from redis.asyncio import Redis
 from redis.asyncio.client import Pipeline
@@ -39,6 +40,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
 from app.agents.core.background import (
+    executor_queue,
     executor_runner,
     todo_run,
     todo_run_delivery,
@@ -48,6 +50,7 @@ from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
     keep_alive,
+    run_is_lost,
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import (
@@ -68,18 +71,24 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.config.settings import settings
+from app.constants import conversation as conversation_constants
 from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import EXECUTOR_ALIVE_PREFIX, EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
-from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
+from app.constants.conversation import (
+    EVENTS_STREAM_MAXLEN,
+    STEP_TICK_SECONDS,
+    WORK_LOST_REPORT,
+)
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.todos import TodoWakeKind
 from app.constants.workflows import WorkflowDelivery
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
+from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository, new_approval_id
 from app.db.repositories.bot_sessions import bot_session_repository
@@ -104,6 +113,7 @@ from app.models.conversation_log_models import (
     CancelWork,
     DisplayState,
     Entry,
+    EntryKind,
     IntegrationConnected,
     LoggedEntry,
     Notice,
@@ -221,7 +231,7 @@ from app.services.workflow.playbook.runner import PlaybookNarration
 from app.services.workflow.playbook.scripted_model import ScriptedCall
 from app.services.workflow.service import WorkflowService
 from app.utils.artifact_utils import FILE_LINKS
-from app.utils.errors import ConversationIdTakenError
+from app.utils.errors import ConversationIdTakenError, ConversationStoreError
 from app.utils.notification.channels.conversation import (
     ConversationChannelAdapter,
     ConversationPayload,
@@ -280,6 +290,8 @@ from tests.unit.services.hil.conftest import make_request
 
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
+# A beat every 10 ms renews a live run's key long before this; only a stopped beat waits it out.
+_BEAT_AGAIN_SECONDS = 5.0
 _CONFIRM_SECONDS = 0.05
 _SHORT_TTL_SECONDS = 1
 _TRICKLE_SECONDS = 0.02
@@ -1250,7 +1262,137 @@ async def test_the_sweep_reports_work_whose_executor_died_in_a_reply_narrating_i
     await sweep_conversations()
     await rig.settle()
     finished = await rig.of(WorkFinished)
-    assert [(f.task_id, f.outcome) for f in finished] == [("t9", WorkOutcome.LOST)]
+    assert [(f.task_id, f.outcome, f.report) for f in finished] == [
+        ("t9", WorkOutcome.LOST, WORK_LOST_REPORT)
+    ]
+    assert (await rig.of(Reply))[-1].narrates == ("t9",)
+
+
+@pytest.mark.service
+@pytest.mark.regression
+async def test_an_executor_run_stays_alive_while_its_finish_is_still_being_saved(
+    rig_for: RigFactory, real_redis: Redis
+) -> None:
+    """The beat stopped before the finish save, so a save that outlasted the liveness left read as a dead run."""
+    rig = await _rig_with_work_running(rig_for, "your inbox is clean")
+    alive_key = f"{EXECUTOR_ALIVE_PREFIX}{rig.conversation_id}:t9"
+    saving, may_save, beat = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    save = executor_runner.record_work_finished
+    hold = executor_queue.hold_run_alive
+
+    async def held_save(*args: Any, **kwargs: Any) -> None:
+        saving.set()
+        await may_save.wait()
+        await save(*args, **kwargs)
+
+    async def beating(*args: Any, **kwargs: Any) -> None:
+        await hold(*args, **kwargs)
+        beat.set()
+
+    ran = executor_runner._ExecutorResult("inbox cleaned", "final")
+    with (
+        patch.object(executor_runner, "_execute_executor", AsyncMock(return_value=ran)),
+        patch.object(executor_runner, "record_work_finished", held_save),
+        patch.object(executor_queue, "hold_run_alive", beating),
+        patch.object(executor_queue, "EXECUTOR_ALIVE_BEAT_SECONDS", 0.01),
+    ):
+        running = asyncio.ensure_future(
+            executor_runner.run_executor_background(
+                run=_executor_run(rig, "t9"), task="clean my inbox", configurable={}
+            )
+        )
+        try:
+            async with asyncio.timeout(_SETTLE_SECONDS):
+                await saving.wait()
+            # The liveness the run had left runs out while its finish is still being saved.
+            await real_redis.delete(alive_key)
+            beat.clear()
+            async with asyncio.timeout(_BEAT_AGAIN_SECONDS):
+                await beat.wait()
+            lost = await run_is_lost(rig.conversation_id, "t9")
+        finally:
+            may_save.set()
+            await running
+        await rig.settle()
+
+    assert lost is False
+    assert [(f.task_id, f.outcome) for f in await rig.of(WorkFinished)] == [
+        ("t9", WorkOutcome.DONE)
+    ]
+
+
+@contextmanager
+def _store_refusing_finishes(times: int | None = None) -> Iterator[None]:
+    """Drop the connection under the commit of a WorkFinished: the first times of them, or every one."""
+    commit = AsyncIOMotorCollection.update_one
+    left = [times]
+
+    async def update_one(
+        collection: Any, expected: Mapping[str, object], update: Mapping[str, Any], **options: Any
+    ) -> Any:
+        staged = update.get("$set", {}).values()
+        finishing = any(
+            isinstance(document, dict) and document.get("kind") == EntryKind.WORK_FINISHED
+            for document in staged
+        )
+        if finishing and left[0] != 0:
+            left[0] = None if left[0] is None else left[0] - 1
+            raise AutoReconnect("connection reset by peer")
+        return await commit(collection, expected, update, **options)
+
+    with (
+        patch.object(AsyncIOMotorCollection, "update_one", update_one),
+        patch.object(TRANSIENT_MONGO_RETRY, "sleep", AsyncMock()),
+    ):
+        yield
+
+
+async def _rig_with_work_running(rig_for: RigFactory, narration: str) -> Rig:
+    model = gated("working on it", narration)
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t9"))
+    await rig.send("m1", "clean my inbox")
+    await rig.settle()
+    return rig
+
+
+@pytest.mark.service
+@pytest.mark.regression
+async def test_work_whose_finish_the_store_refused_once_is_saved_and_never_reported_lost(
+    rig_for: RigFactory,
+) -> None:
+    rig = await _rig_with_work_running(rig_for, "your inbox is clean")
+    with _store_refusing_finishes(times=1):
+        await record_work_finished(
+            rig.conversation_id, rig.user_id, "t9", WorkOutcome.DONE, WorkReport("inbox cleaned")
+        )
+    await rig.settle()
+    # Its executor has stopped beating by now, so a sweep would call unfinished work lost.
+    await sweep_conversations()
+    await rig.settle()
+    finished = await rig.of(WorkFinished)
+    assert [(f.task_id, f.outcome, f.report) for f in finished] == [
+        ("t9", WorkOutcome.DONE, "inbox cleaned")
+    ]
+    assert (await rig.of(Reply))[-1].text == "your inbox is clean"
+
+
+@pytest.mark.service
+@pytest.mark.regression
+async def test_work_whose_finish_was_never_saved_is_reported_unsaved_not_lost_with_its_server(
+    rig_for: RigFactory,
+) -> None:
+    rig = await _rig_with_work_running(rig_for, "that ran, but I could not save its result")
+    with _store_refusing_finishes(), pytest.raises(ConversationStoreError):
+        await record_work_finished(
+            rig.conversation_id, rig.user_id, "t9", WorkOutcome.DONE, WorkReport("inbox cleaned")
+        )
+    assert await rig.of(WorkFinished) == []
+    await sweep_conversations()
+    await rig.settle()
+    finished = await rig.of(WorkFinished)
+    assert [(f.task_id, f.outcome) for f in finished] == [("t9", WorkOutcome.FAILED)]
+    assert finished[0].report == conversation_constants.WORK_UNRECORDED_REPORT
     assert (await rig.of(Reply))[-1].narrates == ("t9",)
 
 

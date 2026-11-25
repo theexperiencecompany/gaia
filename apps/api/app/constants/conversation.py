@@ -162,6 +162,17 @@ WORK_LOST_REPORT = (
     "The background work stopped unexpectedly when the server running it went down, "
     "so it did not finish."
 )
+#: What work reports when its own process ended it and the store never took that ending.
+WORK_UNRECORDED_REPORT = (
+    "The background work ended, but its result could not be saved, so it cannot be shown."
+)
+# The finish save's whole budget, retries included: under the 20 s a shutdown drains steps for and
+# the 60 s a timed-out job has to clean up, with no single store call left to wait its own 30 s.
+WORK_FINISH_SAVE_SECONDS = 15.0
+#: conv:work_ended:{conversation_id}:{task_id} exists once a finish its own process could not save was given up on.
+WORK_ENDED_KEY_PREFIX = "conv:work_ended:"
+# Outlives a store outage: the sweep reads it once the store takes writes again.
+WORK_ENDED_TTL_SECONDS = ONE_DAY_TTL
 # Past its expiry by this much, an approval the HIL sweep has not timed out is the conversation sweep's to settle.
 APPROVAL_EXPIRY_GRACE = timedelta(minutes=5)
 # The gate asks in the log, then registers the row: a request older than this with no row never will have one.

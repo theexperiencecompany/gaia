@@ -2,9 +2,9 @@
 
 It carries out approval decisions whose hand-off to their work failed, flushes entries a
 crashed append left in a head's outbox, logs live work whose executor
-died as lost (which wakes the step to tell the user), settles work paused on an approval
-that can no longer be decided, and starts a step for any conversation with unsettled
-inputs; the step's claim refuses while a live holder still runs it. One pass pages through
+died as lost and work whose own finish was never saved as failed (either wakes the step
+to tell the user), settles work paused on an approval that can no longer be decided, and
+starts a step for any conversation with unsettled inputs; the step's claim refuses while a live holder still runs it. One pass pages through
 every due head, and one conversation that fails is logged and passed over.
 
 The log is what says an approval is pending and when it lapses. The ledger is read only to
@@ -20,7 +20,6 @@ from app.constants.conversation import (
     APPROVAL_EXPIRY_GRACE,
     APPROVAL_REGISTER_GRACE,
     SWEEP_BATCH,
-    WORK_LOST_REPORT,
 )
 from app.constants.hil import DECISION_HANDOFF_LEASE
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -33,10 +32,7 @@ from app.models.conversation_log_models import (
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.screen import approval_status
-from app.services.conversation.work_log import (
-    WorkReport,
-    record_work_finished,
-)
+from app.services.conversation.work_log import record_work_lost
 from app.services.hil.ledger_decide import (
     end_unledgered_approval,
     expire_ledger_approval,
@@ -52,6 +48,7 @@ class SweepReport:
 
     flushed: int = 0
     lost_work: int = 0
+    unsaved_work: int = 0
     undecidable_approvals: int = 0
     kicked: int = 0
     handed_off: int = 0
@@ -83,6 +80,7 @@ async def sweep_conversations() -> SweepReport:
         conversation_sweep={
             "flushed": report.flushed,
             "lost_work": report.lost_work,
+            "unsaved_work": report.unsaved_work,
             "undecidable_approvals": report.undecidable_approvals,
             "kicked": report.kicked,
             "handed_off": report.handed_off,
@@ -120,10 +118,10 @@ async def _sweep_one(ports: RuntimePorts, head: SweepHead, report: SweepReport) 
             continue
         if not await run_is_lost(conversation_id, work.task_id):
             continue
-        await record_work_finished(
-            conversation_id, user_id, work.task_id, WorkOutcome.LOST, WorkReport(WORK_LOST_REPORT)
-        )
-        report.lost_work += 1
+        if await record_work_lost(conversation_id, user_id, work.task_id) is WorkOutcome.LOST:
+            report.lost_work += 1
+        else:
+            report.unsaved_work += 1
     if head.state.unsettled_waking:
         await ports.effects.kick(conversation_id, user_id)
         report.kicked += 1

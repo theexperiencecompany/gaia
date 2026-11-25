@@ -12,6 +12,7 @@ Preparing is this module's job, spawning the runner's — the one-way dependency
 """
 
 import asyncio
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -217,6 +218,31 @@ async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None
         what="executor",
         context={"conversation_id": conversation_id, "holder": lock_value},
     )
+
+
+async def finish_while_alive(alive: asyncio.Task[None], finish: Awaitable[None]) -> None:
+    """Await a run's finish with its liveness still held, and end the liveness only once it returns or raises.
+
+    Saving a finish can outlast the liveness left once the beat stops, and work that is
+    still live with no liveness is what the sweep calls lost. A beat that gives up proving
+    liveness during the finish cancels its holder: the finish takes that one cancel and still ends
+    on its own. Every other cancel, a deadline or a shutdown, stops it.
+    """
+    beating = not alive.done()
+    saving = asyncio.ensure_future(finish)
+    try:
+        try:
+            await asyncio.shield(saving)
+        except asyncio.CancelledError:
+            # A beat that gave up has returned. One that had already stopped cancelled nothing here.
+            if not (beating and alive.done() and not alive.cancelled()):
+                saving.cancel()
+                raise
+            running = cast("asyncio.Task[object]", asyncio.current_task())  # pragma: no mutate
+            running.uncancel()
+            await saving
+    finally:
+        alive.cancel()
 
 
 async def _holder_is_dead(conversation_id: str, holder: str) -> bool:

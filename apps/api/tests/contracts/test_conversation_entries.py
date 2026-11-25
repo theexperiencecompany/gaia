@@ -560,7 +560,14 @@ async def test_a_driver_failure_surfaces_as_the_stores_error_naming_the_operatio
 
     assert raised.value.message == "conversation store head read failed"
     assert raised.value.why == "no primary"
-    assert raised.value.meta == {"error_type": "ServerSelectionTimeoutError"}
+    assert raised.value.meta == {
+        "operation": "head read",
+        "error_type": "ServerSelectionTimeoutError",
+        "mongo_code": None,
+        "too_large": False,
+        "entry_bytes": None,
+    }
+    assert raised.value.too_large is False
     assert raised.value.__cause__ is failure
 
 

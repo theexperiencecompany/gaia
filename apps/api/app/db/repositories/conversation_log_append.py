@@ -86,7 +86,7 @@ class LogAppendRepository(ConversationRepository):
             expected[f"{RUNNER_FIELD}.epoch"] = epoch
         document = log_document(head.conversation_id, head.user_id, logged)
         advances_sync = unread or logged.entry.kind in SYNCED_KINDS
-        with store_errors("log append"):  # pragma: no mutate — error label
+        with store_errors("log append", entry=document):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 expected,
                 {
