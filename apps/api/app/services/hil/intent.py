@@ -37,9 +37,6 @@ _JUDGE_FAILED_REASON = "The approval check could not run."
 #: Shown when a call ran on containment rather than on the user's explicit words.
 CONTAINED_RUN_REASON = "Auto mode ran this: it stays in your account and can be undone"
 GO_AHEAD_RUN_REASON = "Auto mode ran this: your reply was the go-ahead for it"
-STANDING_RULE_REASON = (
-    "One of your saved instructions asks for your go-ahead before this {tool} call."
-)
 
 
 @dataclass(frozen=True)
@@ -168,32 +165,6 @@ class AssistantTurns:
         return list(self.run[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
 
 
-class IntentJudge(Protocol):
-    """Decide one auto-mode call.
-
-    LLM-backed today; a JEV-backed judge implements this Protocol later (JEV
-    answers risk booleans, code keeps the grounding-quote and veto checks) — the
-    gate never changes.
-    """
-
-    async def decide(
-        self,
-        *,
-        user_id: str,
-        user_messages: list[str],
-        call: JudgedCall,
-        prior_calls: list[PriorCall],
-        history: AutoHistory,
-        assistant: AssistantTurns = AssistantTurns(),
-    ) -> IntentDecision: ...
-
-    async def standing_rules_hold(
-        self, *, standing_rules: tuple[str, ...], call: JudgedCall
-    ) -> bool:
-        """Whether a saved instruction forbids this call or asks to be asked first."""
-        ...
-
-
 @dataclass(frozen=True)
 class AutoContext:
     """The user's auto-mode standing for one decision: who, their record, their opt-outs."""
@@ -205,6 +176,24 @@ class AutoContext:
     # Saved instructions that reach this call (global and its integration's): they can
     # only make it ask, never authorize it.
     standing_rules: tuple[str, ...] = ()
+
+
+class IntentJudge(Protocol):
+    """Decide one auto-mode call.
+
+    JEV-backed in prod (JEV answers the questions, code keeps the grounding and history
+    checks); the gate never changes.
+    """
+
+    async def decide(
+        self,
+        *,
+        auto: AutoContext,
+        user_messages: list[str],
+        call: JudgedCall,
+        prior_calls: list[PriorCall],
+        assistant: AssistantTurns = AssistantTurns(),
+    ) -> IntentDecision: ...
 
 
 async def judge_intent(
@@ -237,20 +226,13 @@ async def judge_intent(
         )
 
     try:
-        decision = await judge.decide(
-            user_id=auto.user_id,
+        return await judge.decide(
+            auto=auto,
             user_messages=turns,
             call=call,
             prior_calls=prior_calls,
-            history=auto.history,
             assistant=assistant,
         )
-        if (
-            decision.outcome == "accept"
-            and auto.standing_rules
-            and await judge.standing_rules_hold(standing_rules=auto.standing_rules, call=call)
-        ):
-            return IntentDecision("ask", STANDING_RULE_REASON.format(tool=call.tool_name))
     except Exception as e:  # the one classifier failed: the call waits on the user instead
         log.error(
             f"{LogTag.HIL} intent judge failed; asking",
@@ -259,7 +241,6 @@ async def judge_intent(
             error_type=type(e).__name__,
         )
         return IntentDecision("ask", _JUDGE_FAILED_REASON)
-    return decision
 
 
 def _history_blocks(history: AutoHistory) -> bool:

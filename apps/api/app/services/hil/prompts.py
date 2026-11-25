@@ -45,7 +45,7 @@ Input schema: {schema}
 # JEV choice judge: editing this text IS retuning the judge, proven by the
 # calibration suite re-run (imports from app, no copy). Version journals runs.
 
-JEV_QUESTIONS_VERSION = "v12-jev114-seen-apart"
+JEV_QUESTIONS_VERSION = "v14-jev114-one-call-pick-one"
 
 JEV_QUESTION: dict[str, object] = {
     "type": "choice",
@@ -135,27 +135,62 @@ JEV_CONTAINED_QUESTION: dict[str, object] = {
 }
 
 
-# Focused forbid check: runs whenever forbid words appear and JEV has not already forbidden
-# the call, versioned and journaled with the main question; a decomposed opinion, not a second guess.
-JEV_FORBID_QUESTION: dict[str, object] = {
+# Asked in the same call as JEV_QUESTION. Reads the user's words and saved instructions
+# for anything that argues against running the call unasked; no regex does this job.
+JEV_OBJECTION_QUESTION: dict[str, object] = {
     "type": "choice",
     "instructions": (
-        "Read earlier_turns for a standing rule against pending_action, then read "
-        "latest_turns for lift language. Which one describes the situation?"
+        "Read user_messages oldest first, and standing_instructions (rules the user saved "
+        "for their assistant) when present. Does anything the user said or saved object to "
+        "pending_action running without asking them first?"
     ),
     "criteria": {
         JevChoice.FORBIDDEN: (
-            "An earlier turn forbids this exact action ('never email Alice', "
-            "'do not pay anyone', 'keep the layoff news private', 'cancel that', "
-            "'don't touch the archive') and no later turn lifts it. A lift needs "
-            "explicit language ('actually, go ahead', 'never mind that', 'yes do "
-            "it' confirming this action) — a bare re-issue of the forbidden act, "
-            "or a temporary 'not yet', is not a lift."
+            "A user message or a saved instruction forbids pending_action ('never email "
+            "Alice', 'don't touch the archive', 'cancel that'), or asks the assistant to "
+            "wait, hold, or ask the user first before an action like it ('hold off until I "
+            "say so', 'always ask me before emailing my boss'), and no later user message "
+            "clearly lifts it. A lift needs clear language ('actually, go ahead', 'never "
+            "mind that'); a bare re-issue of the forbidden act is not a lift."
         ),
         JevChoice.PERMITTED: (
-            "No earlier turn forbids this action, or a later turn clearly lifts "
-            "the rule, or the only limits are temporary manner/timing notes that "
-            "this call does not violate."
+            "Nothing forbids pending_action or asks to hold or ask first, or a later user "
+            "message clearly lifts it, or the only limits are manner or timing notes this "
+            "call keeps (tone, language, format). A message that asks to do it now, "
+            "approves it, or tells the assistant to stop asking is never an objection, even "
+            "when it contains words like 'wait', 'don't', 'never' or 'hold' ('don't wait, "
+            "just send it', 'no need to wait for my ok', 'send it, never ask me for this "
+            "again')."
+        ),
+    },
+}
+
+
+#: Asked in the same call as JEV_QUESTION, only when the user was shown assistant_turns.
+#: prior_actions are the run's own calls with their outputs: what lets an opaque id
+#: ("draft r-778") be matched to the draft the user approved.
+JEV_GO_AHEAD_QUESTION: dict[str, object] = {
+    "type": "choice",
+    "instructions": (
+        "assistant_turns are what the assistant last told the user, including any action it "
+        "proposed. prior_actions are the calls it made, with their results. user_messages "
+        "are what the user wrote, the latest last. Is the user's latest message the "
+        "go-ahead for exactly pending_action?"
+    ),
+    "criteria": {
+        JevChoice.AUTHORIZED: (
+            "The user asked for this action or the assistant proposed it (the same kind of "
+            "action on the same thing, e.g. sending that draft to those people, prior_actions "
+            "showing which thing an id is) and the user's latest message is a go-ahead for it "
+            "('send', 'yes', 'approve', 'yes to all', 'go ahead'), adding no change or "
+            "condition the call ignores."
+        ),
+        JevChoice.UNCLEAR: (
+            "Nothing like this action was asked for or proposed, or something else was, or "
+            "the reply adds a change or condition the call does not reflect, or the reply is "
+            "a question, or it is unclear which proposal the reply answers or which thing "
+            "the call acts on. When the assistant offered more than one option or asked the "
+            "user to choose, a go-ahead that does not name one picks none of them."
         ),
     },
 }
@@ -164,58 +199,6 @@ JEV_FORBID_QUESTION: dict[str, object] = {
 # JEV reply question: what a bot user's chat reply means for ONE pending action,
 # asked once per action in a single call. {number} is the action's position in
 # state.pending_actions. Tuned through the hil-reply calibration suite.
-
-#: Asked only after a call would run in auto mode and only when the user has saved
-#: instructions reaching it. It never sees the user's turns: an instruction can only make
-#: the call ask, and nothing said in chat lifts "always ask me first".
-JEV_STANDING_QUESTION: dict[str, object] = {
-    "type": "choice",
-    "instructions": (
-        "standing_instructions are rules the user saved for their assistant. Does any of "
-        "them forbid pending_action, or require asking the user before an action like it?"
-    ),
-    "criteria": {
-        JevChoice.FORBIDDEN: (
-            "An instruction forbids this exact action ('never email Alice', 'don't touch "
-            "the archive') or asks to be asked first for actions like it ('always ask me "
-            "before emailing my boss', 'check with me before posting in #general')."
-        ),
-        JevChoice.PERMITTED: (
-            "No instruction covers this action, or the instructions only shape how it is "
-            "done (tone, language, format, timing notes this call does not break)."
-        ),
-    },
-}
-
-
-#: Asked only when the broad question leaves a call under the line and nothing the
-#: user said or did objects. recent_actions are the run's own calls with their outputs:
-#: what lets an opaque id ("draft r-778") be matched to the draft the user approved.
-JEV_GO_AHEAD_QUESTION: dict[str, object] = {
-    "type": "choice",
-    "instructions": (
-        "assistant_turns are what the assistant last told the user, including any action it "
-        "proposed. recent_actions are the calls it made, with their results. latest_turns "
-        "are the user's newest messages. Is the user giving the go-ahead for exactly "
-        "pending_action?"
-    ),
-    "criteria": {
-        JevChoice.AUTHORIZED: (
-            "The user asked for this action or the assistant proposed it (the same kind of "
-            "action on the same thing, e.g. sending that draft to those people, recent_actions "
-            "showing which thing an id is) and the user's latest turn is a go-ahead for it "
-            "('send', 'yes', 'approve', 'yes to all', 'go ahead'), adding no change or "
-            "condition the call ignores."
-        ),
-        JevChoice.UNCLEAR: (
-            "Nothing like this action was asked for or proposed, or something else was, or "
-            "the reply adds a change or condition the call does not reflect, or the reply is "
-            "a question, or it is unclear which proposal the reply answers or which thing "
-            "the call acts on."
-        ),
-    },
-}
-
 
 JEV_REPLY_QUESTIONS_VERSION = "v3-amend"
 

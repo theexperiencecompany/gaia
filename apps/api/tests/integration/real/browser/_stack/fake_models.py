@@ -26,7 +26,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from app.constants.hil import JEV_CONTAINED_QUESTION_KEY, JEV_DECISION_QUESTION_KEY, JevChoice
+from app.constants.hil import (
+    JEV_CONTAINED_QUESTION_KEY,
+    JEV_DECISION_QUESTION_KEY,
+    JEV_GO_AHEAD_QUESTION_KEY,
+    JEV_OBJECTION_QUESTION_KEY,
+    JevChoice,
+)
 from app.constants.reactions import (
     REACTION_EMOJI_QUESTION_KEY,
     REACTION_KIND_QUESTION_KEY,
@@ -142,17 +148,27 @@ def _answered(answers: dict[str, Any]) -> JSONResponse:
     )
 
 
-def _approval_judge_answer() -> dict[str, Any]:
-    """Authorize every gated call: the user's scripted message names the run it starts."""
+def _approval_judge_answer(questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Authorize every gated call, with nothing objecting: the user's scripted message names the run it starts."""
     choices = [c.value for c in (JevChoice.AUTHORIZED, JevChoice.FORBIDDEN, JevChoice.UNCLEAR)]
-    return {
+    answers: dict[str, Any] = {
         JEV_DECISION_QUESTION_KEY: {
             **_choice(choices, JevChoice.AUTHORIZED),
             "confidence": 1.0,
         },
         # Asked in the same call; an authorized call runs on its words, not on containment.
         JEV_CONTAINED_QUESTION_KEY: {"type": "noul", "noul": 0.0},
+        JEV_OBJECTION_QUESTION_KEY: {
+            **_choice([JevChoice.FORBIDDEN, JevChoice.PERMITTED], JevChoice.PERMITTED),
+            "confidence": 1.0,
+        },
     }
+    if JEV_GO_AHEAD_QUESTION_KEY in questions:
+        answers[JEV_GO_AHEAD_QUESTION_KEY] = {
+            **_choice([JevChoice.AUTHORIZED, JevChoice.UNCLEAR], JevChoice.AUTHORIZED),
+            "confidence": 1.0,
+        }
+    return answers
 
 
 def _no_reaction_answer(questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -452,7 +468,7 @@ class FakeModels:
         body = await request.json()
         questions: dict[str, dict[str, Any]] = body.get("questions") or {}
         if JEV_DECISION_QUESTION_KEY in questions:
-            return _answered(_approval_judge_answer())
+            return _answered(_approval_judge_answer(questions))
         if REACTION_KIND_QUESTION_KEY in questions:
             return _answered(_no_reaction_answer(questions))
         goals = " ".join(

@@ -34,7 +34,6 @@ from app.models.agent_models import AgentUserContext, run_analytics_context
 from app.models.message_models import MessageDict
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
-from app.services.hil.jev_judge import forbid_tripwire
 from app.utils.general_utils import clip_text
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
@@ -1301,12 +1300,12 @@ class TestRecentUserMessages:
         assert turns[-2] == "turn 8 " + "x" * 2000
         assert turns[-1] == "send it"
 
-    def test_a_restriction_at_the_end_of_a_long_turn_still_reaches_the_forbid_check(self):
+    def test_a_restriction_at_the_end_of_a_long_turn_still_reaches_the_judge(self):
         long_turn = "Here is the whole thread: " + "x" * 2000 + " Do not send anything."
 
         turns = agent_helpers.recent_user_messages([], [long_turn])
 
-        assert forbid_tripwire(turns) is True
+        assert turns == [long_turn]
 
 
 class TestRecentAssistantReplies:

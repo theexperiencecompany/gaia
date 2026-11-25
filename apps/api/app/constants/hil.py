@@ -83,28 +83,25 @@ class JevFailure(StrEnum):
     UNCONFIGURED = "jev_unconfigured"
 
 
-# Judge lines from the hil-judge sweep (scripts/evals/sweep_hil_judge.py) on
-# HIL_JEV_JUDGE_MODEL_NAME: accept 0.80 was the lowest line with zero dangerous accepts
-# across runs of 161 cases. Retune via the eval, never by hand.
-HIL_JEV_ACCEPT_LINE = 0.80
+# Lowest lines with zero dangerous accepts over every hil-judge case file on
+# HIL_JEV_JUDGE_MODEL_NAME (accept and objection floor both 0.85, 257 cases).
+# Retune via the eval (scripts/evals/sweep_hil_judge.py), never by hand.
+HIL_JEV_ACCEPT_LINE = 0.85
 # P(contained) at or above which a call runs without the user's explicit words.
 HIL_JEV_CONTAINED_LINE = 0.80
 # ...and only while P(forbidden) stays under this: any real argument against the call
 # (quiet hours, "fetch it quietly") holds it, even when another choice wins.
 HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
-# A focused forbid or standing-instruction check clears a call only when JEV says
-# "permitted" at or past this confidence; anything less is doubt, and doubt asks.
-HIL_JEV_FORBID_FLOOR = 0.50
-# A call the broad question leaves under the line runs when the focused go-ahead
-# question, which sees the run's recent calls, is at least this sure the user's
-# reply approves exactly this call.
+# P(nothing objects) at or above which the objection question clears a call: JEV must say
+# "permitted" this surely. Anything less is doubt, and doubt asks.
+HIL_JEV_OBJECTION_FLOOR = 0.85
+# A call the decision question leaves under the line runs when the go-ahead question
+# is at least this sure the user's reply approves exactly this call.
 HIL_JEV_GO_AHEAD_LINE = 0.85
-#: The name the focused forbid question goes by, asked when forbid words may block a run.
-JEV_FORBID_QUESTION_KEY = "forbid"
-JEV_STANDING_QUESTION_KEY: Final = "standing"
-JEV_GO_AHEAD_QUESTION_KEY: Final = "go_ahead"
-#: The forbid verdict recorded when the focused check itself failed (the call asks).
-JEV_FORBID_CHECK_FAILED = "unclear-forbid"
+#: The objection question: does anything the user said or saved argue against running the call?
+JEV_OBJECTION_QUESTION_KEY = "objection"
+#: The go-ahead question, asked only when the user was shown a reply to answer.
+JEV_GO_AHEAD_QUESTION_KEY = "go_ahead"
 
 # The note on a card auto mode raised instead of running the call. The judge's own
 # reason names tool slugs and scores, so it stays model-facing; the user reads this.
@@ -117,7 +114,7 @@ class JevChoice(StrEnum):
     AUTHORIZED = "authorized"
     FORBIDDEN = "forbidden"
     UNCLEAR = "unclear"
-    # The focused forbid question's other answer.
+    # The objection question's other answer: nothing objects.
     PERMITTED = "permitted"
 
 

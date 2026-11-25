@@ -1,9 +1,9 @@
 """hil-judge suite — calibrate the auto-mode judge before it ships.
 
 Drives the JEV choice judge directly (no chat stream, no dev user) through the
-Decisions API. Each run journals choice + confidence + probabilities + containment
-+ the focused forbid answer per case, so threshold tuning is a free offline sweep
-over the journal — not another model-spending run.
+Decisions API, one request per case. Each run journals choice + confidence +
+probabilities + containment + objection + go-ahead per case, so threshold tuning is a
+free offline sweep over the journal — not another model-spending run.
 
 Run:  uv run --group backend python -m scripts.evals run --suite hil-judge
   HIL_JUDGE_EVAL_TRANSPORT=jev|openai (default jev): who answers the questions.
@@ -17,13 +17,12 @@ case), stable across runs (see flaky).
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import replace
 from enum import StrEnum
 import json
 import os
 from pathlib import Path
 import time
-from typing import Any, NotRequired, TypedDict
+from typing import Any, TypedDict
 
 import httpx
 
@@ -31,14 +30,18 @@ from app.constants.hil import (
     HIL_JEV_ACCEPT_LINE,
     HIL_JEV_CONTAINED_LINE,
     HIL_JEV_JUDGE_MODEL_NAME,
-    JEV_FORBID_CHECK_FAILED,
-    JevChoice,
 )
 
 # Canonical question + mapping live in app (prompts.py, jev_judge.py) — the
 # suite imports them so editing the judge text IS retuning, and every run
 # journals the questions version it graded.
-from app.services.hil.intent import AssistantTurns, AutoHistory, JudgedCall, history_line
+from app.services.hil.intent import (
+    AssistantTurns,
+    AutoContext,
+    AutoHistory,
+    JudgedCall,
+    history_line,
+)
 from app.services.hil.jev_client import JevUnconfiguredError
 from app.services.hil.jev_judge import (
     JUDGE_TRANSPORT,
@@ -46,13 +49,7 @@ from app.services.hil.jev_judge import (
     JevCase,
     JevVerdict,
     ask_jev,
-    ask_jev_forbid,
-    ask_jev_go_ahead,
-    carries_forbid_language,
     decide_from_verdict,
-    needs_forbid_check,
-    needs_go_ahead_check,
-    settle_forbid,
 )
 from app.services.hil.prompts import JEV_QUESTIONS_VERSION
 from app.services.hil.utils import PriorCall
@@ -70,9 +67,12 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "hil-judge"
 
-#: A sweep row its journal can't grade at a candidate line: the focused forbid answer or
-#: the containment score that line needs was never recorded.
+#: A sweep row its journal can't grade at a candidate line: it predates the containment or
+#: objection question, so an "ask" may have been a run had they been asked.
 UNRESOLVED = "unresolved"
+
+#: The user id the eval's AutoContext carries; the judge reads only its history and instructions.
+EVAL_USER_ID = "hil-judge-eval"
 
 
 class DecisionsProvider(StrEnum):
@@ -97,11 +97,12 @@ class JevJournalFields(TypedDict):
     choice: str
     confidence: float
     probabilities: dict[str, float]
-    forbid_choice: str | None
-    forbid_conf: float
+    # None on rows journaled before the question existed.
     contained: float | None
-    # P(the reply is the go-ahead for this call); absent on rows journaled before it.
-    go_ahead: NotRequired[float | None]
+    # P(nothing the user said or saved objects).
+    objection: float | None
+    # P(the reply is the go-ahead for this call); None when no reply was shown.
+    go_ahead: float | None
 
 
 # Canonical question text + mapping live in app (prompts.py, jev_judge.py) —
@@ -123,6 +124,11 @@ def _eval_history(setup: Mapping[str, Any]) -> AutoHistory:
         denied_recent=int(raw.get("denied_recent", 0)),
         known_targets=tuple(raw.get("known_targets") or ()),
     )
+
+
+def _eval_standing_instructions(setup: Mapping[str, Any]) -> tuple[str, ...]:
+    """Saved instructions reaching the call, when the case models them. Absent = none."""
+    return tuple(str(rule) for rule in setup.get("standing_instructions") or ())
 
 
 def _eval_priors(setup: Mapping[str, Any]) -> list[PriorCall]:
@@ -176,37 +182,18 @@ def _graded_outcome(
     accept_line: float = HIL_JEV_ACCEPT_LINE,
     contained_line: float = HIL_JEV_CONTAINED_LINE,
 ) -> str:
-    """The outcome prod reaches at these lines, or UNRESOLVED when the journal can't say.
-
-    Prod asks the focused forbid and go-ahead questions only where they can change the
-    outcome, so their answers count only there; a row without one can't grade a line
-    that needs it.
-    """
+    """The outcome prod reaches at these lines: the journaled verdict through decide_from_verdict."""
     verdict = JevVerdict(
         choice=fields["choice"],
         confidence=fields["confidence"],
         probabilities=fields["probabilities"],
         contained=fields["contained"],
+        objection=fields["objection"],
+        go_ahead=fields["go_ahead"],
     )
-    if needs_forbid_check(case.user_messages, verdict):
-        if fields["forbid_choice"] is None:
-            return UNRESOLVED
-        verdict = replace(
-            verdict, forbid=_settled_forbid(fields["forbid_choice"], fields["forbid_conf"])
-        )
-    lines = {"accept_line": accept_line, "contained_line": contained_line}
-    if needs_go_ahead_check(verdict, case, **lines):
-        if fields.get("go_ahead") is None:
-            return UNRESOLVED
-        verdict = replace(verdict, go_ahead=fields.get("go_ahead"))
-    return decide_from_verdict(verdict, case, **lines).outcome
-
-
-def _settled_forbid(forbid: str | None, forbid_conf: float) -> str | None:
-    """The verdict's forbid for a journaled check: none run and a failed check pass through."""
-    if forbid is None or forbid == JEV_FORBID_CHECK_FAILED:
-        return forbid
-    return settle_forbid(forbid, forbid_conf)
+    return decide_from_verdict(
+        verdict, case, accept_line=accept_line, contained_line=contained_line
+    ).outcome
 
 
 class JudgeTransport:
@@ -266,101 +253,40 @@ class JudgeTransport:
         self, setup: Mapping[str, Any], provider: ProviderConfig
     ) -> tuple[str, str, tuple[int, int], JevJournalFields]:
         case = _eval_case(setup)
-        turns, call, history = case.user_messages, case.call, case.history
+        auto = AutoContext(
+            user_id=EVAL_USER_ID,
+            history=case.history,
+            standing_rules=_eval_standing_instructions(setup),
+        )
         try:
             asked, tokens_in, tokens_out = await ask_jev(
-                user_messages=turns,
-                call=call,
+                user_messages=case.user_messages,
+                call=case.call,
                 prior_calls=case.prior_calls,
-                history=history,
+                auto=auto,
                 assistant=AssistantTurns(shown=case.shown_turns),
                 transport=self._decisions,
             )
         except (httpx.HTTPError, JevUnconfiguredError, OpenAIDecisionsUnconfiguredError) as e:
             raise ProviderError(provider.name, f"decisions API failed: {e}") from e
-        forbid, forbid_conf, forbid_usage = await self._forbid(
-            case, provider, prod_asks_it=needs_forbid_check(turns, asked)
-        )
-        go_ahead, go_ahead_usage = await self._go_ahead(case, setup, asked, provider)
         verdict = JevJournalFields(
             choice=asked.choice,
             confidence=asked.confidence,
             probabilities=dict(asked.probabilities or {}),
-            forbid_choice=forbid,
-            forbid_conf=forbid_conf,
             contained=asked.contained,
-            go_ahead=go_ahead,
+            objection=asked.objection,
+            go_ahead=asked.go_ahead,
         )
         # Grade the PROD path (mapping + grounding vetoes), not just the choice.
         outcome = _graded_outcome(verdict, case)
-        history_text = history_line(history, str(setup.get("tool")))
+        history_text = history_line(case.history, str(setup.get("tool")))
         detail = (
             f"{asked.choice} conf={asked.confidence:.2f} "
-            f"probs={json.dumps(verdict['probabilities'])} forbid={forbid}:{forbid_conf:.2f} "
-            f"contained={asked.contained} go_ahead={go_ahead} "
-            f"-> {outcome} [{history_text[:80]}]"
+            f"probs={json.dumps(verdict['probabilities'])} "
+            f"contained={asked.contained} objection={asked.objection} "
+            f"go_ahead={asked.go_ahead} -> {outcome} [{history_text[:80]}]"
         )
-        return (
-            outcome,
-            detail,
-            (
-                tokens_in + forbid_usage[0] + go_ahead_usage[0],
-                tokens_out + forbid_usage[1] + go_ahead_usage[1],
-            ),
-            verdict,
-        )
-
-    async def _go_ahead(
-        self, case: JevCase, setup: Mapping[str, Any], asked: JevVerdict, provider: ProviderConfig
-    ) -> tuple[float | None, tuple[int, int]]:
-        """Ask the focused go-ahead question for any call JEV does not forbid: (P, usage).
-
-        Asked whatever the broad score, so the sweep can regrade every candidate line;
-        _graded_outcome drops the answer where prod would not have asked.
-        """
-        if asked.choice == JevChoice.FORBIDDEN:
-            return None, (0, 0)
-        try:
-            go_ahead, tokens_in, tokens_out = await ask_jev_go_ahead(
-                user_messages=case.user_messages,
-                call=case.call,
-                prior_calls=case.prior_calls,
-                assistant_turns=_eval_assistant_turns(setup),
-                transport=self._decisions,
-            )
-        except httpx.HTTPError as e:
-            raise ProviderError(provider.name, f"go-ahead check failed: {e}") from e
-        return go_ahead, (tokens_in, tokens_out)
-
-    async def _forbid(
-        self, case: JevCase, provider: ProviderConfig, *, prod_asks_it: bool
-    ) -> tuple[str | None, float, tuple[int, int]]:
-        """Ask the focused forbid question whenever forbid words appear: (choice, conf, usage).
-
-        Asked at ANY containment score so the sweep can regrade every candidate line;
-        _graded_outcome drops the answer where prod would not have asked. A failed
-        request prod would not have made leaves no answer rather than losing the verdict.
-        """
-        if not carries_forbid_language(case.user_messages):
-            return None, 0.0, (0, 0)
-        try:
-            choice, confidence, tokens_in, tokens_out = await ask_jev_forbid(
-                user_messages=case.user_messages, call=case.call, transport=self._decisions
-            )
-        except httpx.HTTPError as e:
-            if prod_asks_it:
-                raise ProviderError(provider.name, f"forbid check failed: {e}") from e
-            _report_focused_failure(e)
-            return None, 0.0, (0, 0)
-        except Exception as e:  # optional here: report it, never lose the primary verdict
-            _report_focused_failure(e)
-            return (JEV_FORBID_CHECK_FAILED if prod_asks_it else None), 0.0, (0, 0)
-        return choice, confidence, (tokens_in, tokens_out)
-
-
-def _report_focused_failure(error: Exception) -> None:
-    """Print a failed focused forbid request, so a fallback never hides it."""
-    print(f"[hil-judge] focused forbid check failed: {type(error).__name__}: {error}")
+        return outcome, detail, (tokens_in, tokens_out), verdict
 
 
 def sweep_journal(run_dir: Path) -> str:
@@ -385,8 +311,8 @@ def sweep_journal(run_dir: Path) -> str:
     def _regrade(row: dict[str, Any], accept: float, contained: float) -> str:
         """Full pipeline outcome for one journaled case: mapping + vetoes.
 
-        A row journaled before containment was asked can't say whether an "ask"
-        would have run on containment, so it is unresolved rather than graded.
+        A row journaled before containment or the objection question was asked can't say
+        whether an "ask" would have run, so it is unresolved rather than graded.
         """
         es = row["end_state"]
         outcome = _graded_outcome(
@@ -394,16 +320,16 @@ def sweep_journal(run_dir: Path) -> str:
                 choice=str(es["choice"]),
                 confidence=float(es["confidence"]),
                 probabilities=dict(es.get("probabilities") or {}),
-                forbid_choice=es.get("forbid_choice"),
-                forbid_conf=float(es.get("forbid_conf") or 0.0),
                 contained=es.get("contained"),
+                objection=es.get("objection"),
                 go_ahead=es.get("go_ahead"),
             ),
             _eval_case(es.get("setup") or {}),
             accept_line=accept,
             contained_line=contained,
         )
-        return UNRESOLVED if outcome == "ask" and es.get("contained") is None else outcome
+        predates_questions = es.get("contained") is None or es.get("objection") is None
+        return UNRESOLVED if outcome == "ask" and predates_questions else outcome
 
     graded = sum(
         1

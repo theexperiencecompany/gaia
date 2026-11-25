@@ -22,6 +22,7 @@ from app.services.hil.intent import (
     JudgedCall,
     judge_intent,
 )
+from app.services.hil.jev_judge import JevVerdict
 from app.services.hil.utils import PriorCall, unpack_tool_call
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool
@@ -39,36 +40,25 @@ def _no_saved_instructions() -> Iterator[None]:
 class FakeJudge(IntentJudge):
     """A future JEV-backed judge stands here: same Protocol, no LLM."""
 
-    def __init__(self, decision: IntentDecision, *, standing: bool | Exception = False) -> None:
+    def __init__(self, decision: IntentDecision) -> None:
         self._decision = decision
-        self._standing = standing
         self.calls = 0
         self.assistants: list[intent.AssistantTurns] = []
-        self.standing_asked: list[tuple[str, ...]] = []
-        self.standing_calls: list[JudgedCall] = []
+        self.autos: list[AutoContext] = []
 
     async def decide(
         self,
         *,
-        user_id: str,
+        auto: AutoContext,
         user_messages: list[str],
         call: JudgedCall,
         prior_calls: list[PriorCall],
-        history: AutoHistory,
         assistant: intent.AssistantTurns = intent.AssistantTurns(),
     ) -> IntentDecision:
         self.calls += 1
         self.assistants.append(assistant)
+        self.autos.append(auto)
         return self._decision
-
-    async def standing_rules_hold(
-        self, *, standing_rules: tuple[str, ...], call: JudgedCall
-    ) -> bool:
-        self.standing_asked.append(standing_rules)
-        self.standing_calls.append(call)
-        if isinstance(self._standing, Exception):
-            raise self._standing
-        return self._standing
 
 
 def _call() -> JudgedCall:
@@ -124,53 +114,25 @@ async def test_never_auto_tool_asks_without_calling_the_llm() -> None:
     assert fake.calls == 0
 
 
-class TestStandingInstructionsOnlyEverAsk:
-    """A saved instruction can stop a call auto mode would run; it never lets one run."""
+async def test_the_judge_is_handed_the_users_saved_instructions_and_history() -> None:
+    """The judge itself weighs saved instructions (one question, one request): judge_intent only passes them."""
+    fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"))
+    auto = AutoContext(
+        user_id="u",
+        history=AutoHistory(approved_recent=2),
+        standing_rules=("Always ask me before emailing my boss.",),
+    )
 
-    RULES = ("Always ask me before emailing my boss.",)
+    d = await judge_intent(
+        auto,
+        user_messages=["send the deck to bob"],
+        call=_call(),
+        prior_calls=[],
+        judge=fake,
+    )
 
-    async def _judged(self, fake: FakeJudge, rules: tuple[str, ...] = RULES) -> IntentDecision:
-        return await judge_intent(
-            AutoContext(user_id="u", standing_rules=rules),
-            user_messages=["send the deck to bob"],
-            call=_call(),
-            prior_calls=[],
-            judge=fake,
-        )
-
-    async def test_a_rule_that_covers_the_call_makes_it_ask(self) -> None:
-        fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"), standing=True)
-        d = await self._judged(fake)
-        assert d.outcome == "ask"
-        assert d.reason == intent.STANDING_RULE_REASON.format(tool="send_email")
-        assert fake.standing_asked == [self.RULES]
-
-    async def test_the_rules_are_checked_against_the_call_being_judged(self) -> None:
-        fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"))
-        await self._judged(fake)
-        assert fake.standing_calls == [_call()]
-
-    async def test_a_rule_that_does_not_cover_it_lets_it_run(self) -> None:
-        fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"), standing=False)
-        assert (await self._judged(fake)).outcome == "accept"
-
-    async def test_a_failed_check_asks(self) -> None:
-        fake = FakeJudge(
-            IntentDecision(outcome="accept", reason="asked"), standing=RuntimeError("down")
-        )
-        d = await self._judged(fake)
-        assert d.outcome == "ask"
-
-    async def test_no_rules_spends_no_check(self) -> None:
-        fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"), standing=True)
-        assert (await self._judged(fake, rules=())).outcome == "accept"
-        assert fake.standing_asked == []
-
-    async def test_a_call_that_already_asks_spends_no_check(self) -> None:
-        fake = FakeJudge(IntentDecision(outcome="ask", reason="unclear"), standing=False)
-        d = await self._judged(fake)
-        assert d.reason == "unclear"
-        assert fake.standing_asked == []
+    assert d.outcome == "accept"
+    assert fake.autos == [auto]
 
 
 async def test_gate_threads_never_auto_prefs_into_the_judge() -> None:
@@ -271,7 +233,14 @@ def _auto_ledger() -> MagicMock:
 async def test_a_forbidden_verdict_asks_the_user_instead_of_refusing() -> None:
     # Auto mode never refuses on its own: a forbidden JEV verdict is a card with a plain note.
     ledger = _auto_ledger()
-    jev = AsyncMock(return_value=(JevChoice.FORBIDDEN, 0.95, {JevChoice.FORBIDDEN: 0.95}, 0, 0))
+    verdict = JevVerdict(
+        choice=JevChoice.FORBIDDEN,
+        confidence=0.95,
+        probabilities={JevChoice.FORBIDDEN: 0.95},
+        contained=0.0,
+        objection=0.0,
+    )
+    jev = AsyncMock(return_value=(verdict, 0, 0))
     with (
         patch("app.services.hil.gate.resolve_policy", new=AsyncMock(return_value="auto")),
         patch("app.services.hil.gate.approval_ledger_repository", new=ledger),
@@ -304,9 +273,6 @@ async def test_a_throwing_judge_fails_closed_to_ask() -> None:
 
     class _Boom:
         async def decide(self, **kwargs: Any) -> IntentDecision:
-            raise RuntimeError("judge exploded")
-
-        async def standing_rules_hold(self, **kwargs: Any) -> bool:
             raise RuntimeError("judge exploded")
 
     with patch("app.services.hil.intent.log") as log:
