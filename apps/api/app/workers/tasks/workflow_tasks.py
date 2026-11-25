@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agents.core.background.executor_queue import (
     build_lock_value,
     decode_raw_item,
+    finish_while_alive,
     keep_alive,
 )
 from app.agents.prompts.playbook_prompts import (
@@ -1896,11 +1897,9 @@ async def execute_workflow_as_playbook(
         )
         return conversation_id, result
     finally:
-        # Alive through the finish: a store retry can outlast what liveness is left once the beat stops.
-        try:
-            await _finish_replay_work(conversation_id, user_id, task_id, playbook, result)
-        finally:
-            alive.cancel()
+        await finish_while_alive(
+            alive, _finish_replay_work(conversation_id, user_id, task_id, playbook, result)
+        )
 
 
 async def _finish_replay_work(

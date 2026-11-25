@@ -40,6 +40,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
 from app.agents.core.background import (
+    executor_queue,
     executor_runner,
     todo_run,
     todo_run_delivery,
@@ -49,6 +50,7 @@ from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
     keep_alive,
+    run_is_lost,
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import (
@@ -72,7 +74,7 @@ from app.config.settings import settings
 from app.constants import conversation as conversation_constants
 from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import EXECUTOR_ALIVE_PREFIX, EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import (
@@ -288,6 +290,8 @@ from tests.unit.services.hil.conftest import make_request
 
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
+# A beat every 10 ms renews a live run's key long before this; only a stopped beat waits it out.
+_BEAT_AGAIN_SECONDS = 5.0
 _CONFIRM_SECONDS = 0.05
 _SHORT_TTL_SECONDS = 1
 _TRICKLE_SECONDS = 0.02
@@ -1262,6 +1266,59 @@ async def test_the_sweep_reports_work_whose_executor_died_in_a_reply_narrating_i
         ("t9", WorkOutcome.LOST, WORK_LOST_REPORT)
     ]
     assert (await rig.of(Reply))[-1].narrates == ("t9",)
+
+
+@pytest.mark.service
+@pytest.mark.regression
+async def test_an_executor_run_stays_alive_while_its_finish_is_still_being_saved(
+    rig_for: RigFactory, real_redis: Redis
+) -> None:
+    """The beat stopped before the finish save, so a save that outlasted the liveness left read as a dead run."""
+    rig = await _rig_with_work_running(rig_for, "your inbox is clean")
+    alive_key = f"{EXECUTOR_ALIVE_PREFIX}{rig.conversation_id}:t9"
+    saving, may_save, beat = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    save = executor_runner.record_work_finished
+    hold = executor_queue.hold_run_alive
+
+    async def held_save(*args: Any, **kwargs: Any) -> None:
+        saving.set()
+        await may_save.wait()
+        await save(*args, **kwargs)
+
+    async def beating(*args: Any, **kwargs: Any) -> None:
+        await hold(*args, **kwargs)
+        beat.set()
+
+    ran = executor_runner._ExecutorResult("inbox cleaned", "final")
+    with (
+        patch.object(executor_runner, "_execute_executor", AsyncMock(return_value=ran)),
+        patch.object(executor_runner, "record_work_finished", held_save),
+        patch.object(executor_queue, "hold_run_alive", beating),
+        patch.object(executor_queue, "EXECUTOR_ALIVE_BEAT_SECONDS", 0.01),
+    ):
+        running = asyncio.ensure_future(
+            executor_runner.run_executor_background(
+                run=_executor_run(rig, "t9"), task="clean my inbox", configurable={}
+            )
+        )
+        try:
+            async with asyncio.timeout(_SETTLE_SECONDS):
+                await saving.wait()
+            # The liveness the run had left runs out while its finish is still being saved.
+            await real_redis.delete(alive_key)
+            beat.clear()
+            async with asyncio.timeout(_BEAT_AGAIN_SECONDS):
+                await beat.wait()
+            lost = await run_is_lost(rig.conversation_id, "t9")
+        finally:
+            may_save.set()
+            await running
+        await rig.settle()
+
+    assert lost is False
+    assert [(f.task_id, f.outcome) for f in await rig.of(WorkFinished)] == [
+        ("t9", WorkOutcome.DONE)
+    ]
 
 
 @contextmanager

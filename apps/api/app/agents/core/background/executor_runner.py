@@ -32,6 +32,7 @@ from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
     build_run_item,
+    finish_while_alive,
     keep_alive,
     prepare_run_from_item,
     reclaim_dead_lock,
@@ -199,9 +200,9 @@ async def _run_executor(
                 if result_type == "error":
                     lifecycle.failure_reason = error_type
             finally:
-                alive.cancel()
-                await _finalize_executor_run(
-                    run, result_text, result_type, run_ctx, stopped=stopped
+                await finish_while_alive(
+                    alive,
+                    _finalize_executor_run(run, result_text, result_type, run_ctx, stopped=stopped),
                 )
 
 

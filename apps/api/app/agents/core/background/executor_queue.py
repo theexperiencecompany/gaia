@@ -12,6 +12,7 @@ Preparing is this module's job, spawning the runner's — the one-way dependency
 """
 
 import asyncio
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -217,6 +218,18 @@ async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None
         what="executor",
         context={"conversation_id": conversation_id, "holder": lock_value},
     )
+
+
+async def finish_while_alive(alive: asyncio.Task[None], finish: Awaitable[None]) -> None:
+    """Await a run's finish with its liveness still held, and end the liveness only once it returns or raises.
+
+    Saving a finish can outlast the liveness left once the beat stops, and work that is
+    still live with no liveness is what the sweep calls lost.
+    """
+    try:
+        await finish
+    finally:
+        alive.cancel()
 
 
 async def _holder_is_dead(conversation_id: str, holder: str) -> bool:
