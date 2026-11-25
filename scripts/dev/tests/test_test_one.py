@@ -11,7 +11,19 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "scripts" / "dev" / "test-one.sh"
 API_DIR = REPO_ROOT / "apps" / "api"
-PYTEST_PREFIX = ["run", "--group", "backend", "--group", "dev", "pytest", "-p", "no:xdist", "-q"]
+PYTEST_PREFIX = [
+    "run",
+    "--group",
+    "backend",
+    "--group",
+    "dev",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "-p",
+    "no:xdist",
+    "-q",
+]
 
 
 def run_test_one(
@@ -66,3 +78,21 @@ def test_flags_and_unresolvable_args_pass_through_unchanged(
     args = ["tests/conftest.py", "-k", "not slow", "/abs/missing.py"]
     _, argv = run_test_one(REPO_ROOT, args, tmp_path_factory)
     assert argv == [*PYTEST_PREFIX, *args]
+
+
+def test_a_path_outside_apps_api_still_runs_under_its_pytest_config(tmp_path: Path) -> None:
+    """Regression: a scripts/ path moved pytest's rootdir off apps/api, so asyncio_mode=auto was lost."""
+    probe = tmp_path / "test_probe.py"
+    # An unmarked async test is only run in apps/api/pytest.ini's asyncio_mode=auto.
+    probe.write_text("async def test_runs_under_auto_mode() -> None:\n    assert True\n")
+    env = {**os.environ, "MISE_ORIGINAL_CWD": str(REPO_ROOT)}
+    done = subprocess.run(
+        ["bash", str(SCRIPT), str(probe), "-p", "no:cacheprovider"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "1 passed" in done.stdout

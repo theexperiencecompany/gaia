@@ -94,8 +94,7 @@ const pageErrors = new WeakMap<Page, string[]>();
 /**
  * Console errors from what the sim stack does not run, not from the chat failing:
  * PostHog, the :4747 desktop bridge, the notifications socket, a new chat's early
- * events stream, the dev stream recorder, the GitHub desktop-release lookup, and the
- * image optimizer timing out on a release-notes image from docs.heygaia.io.
+ * events stream, the dev stream recorder and the GitHub desktop-release lookup.
  */
 const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^Failed to load resource: .*\((?:https?:\/\/[^/]+\/ingest\/|http:\/\/localhost:4747\/)/,
@@ -108,13 +107,25 @@ const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^Failed to load resource: the server responded with a status of 502 .*\/api\/v1\/desktop\/releases\/latest\)$/,
   /^GET \/api\/v1\/desktop\/releases\/latest failed: ApiError: Could not reach GitHub/,
   /^Failed to resolve latest desktop release ApiError: Could not reach GitHub/,
-  /^Failed to load resource: the server responded with a status of 504 .*\/_next\/image\?url=https%3A%2F%2Fdocs\.heygaia\.io%2F/,
 ];
+
+/** A 1x1 transparent PNG, served in place of every image the optimizer would fetch from the internet. */
+const BLANK_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/** The optimizer's route for an image hosted on another site: a favicon, a release-notes image. */
+const REMOTE_OPTIMIZED_IMAGE = /\/_next\/image\?url=https?%3A%2F%2F/;
 
 /** Record every screen change on this page, across navigations and reloads (each document starts a fresh timeline), and every error the page raises. */
 export async function recordScreen(page: Page): Promise<void> {
   const errors: string[] = [];
   pageErrors.set(page, errors);
+  // the run must not depend on another site answering: a slow favicon host reads as a page error
+  await page.route(REMOTE_OPTIMIZED_IMAGE, (route) =>
+    route.fulfill({ contentType: "image/png", body: BLANK_PNG }),
+  );
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
     if (message.type() !== "error") return;

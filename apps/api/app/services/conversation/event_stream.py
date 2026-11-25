@@ -52,7 +52,7 @@ from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation.shown_links import shown_frame
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame
-from shared.py.wide_events import log as wide_log
+from shared.py.wide_events import EventsResume, log as wide_log
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
 
@@ -297,6 +297,8 @@ async def follow_screen(
     after is 0 for a client that holds nothing. A live frame another deploy wrote, which this
     code can't read, reopens on the full screen: that is how a client heals any gap.
     """
+    if not after:
+        wide_log.set_ns("conversation", resume=EventsResume.FRESH)
     while True:
         try:
             async for frame in _screen_from_the_head(log, conversation_id, user_id, after):
@@ -343,7 +345,9 @@ class _Positioned(BaseModel):
     seq: int | None = None
 
 
-def _vouches(conversation_id: str, stream_id: str, fields: object, after: int) -> bool | None:
+def _vouches(
+    conversation_id: str, stream_id: str, fields: object, after: int
+) -> EventsResume | None:
     """Return what one stream entry says of a client at entry after: None when it is newer and says nothing."""
     try:
         frame = _Positioned.model_validate_json(_StreamFields.model_validate(fields).frame)
@@ -355,15 +359,17 @@ def _vouches(conversation_id: str, stream_id: str, fields: object, after: int) -
             stream_id=stream_id,
             error=str(error)[:300],
         )
-        return False
+        return EventsResume.FULL_UNREADABLE
     if frame.seq is None or frame.seq > after:
         return None
     # The newest frame of an entry the client held: its own, or an amendment it may have missed.
-    return frame.kind == FrameKind.ENTRY and frame.seq == after
+    if frame.kind != FrameKind.ENTRY:
+        return EventsResume.FULL_AMENDED
+    return EventsResume.RESUMED if frame.seq == after else EventsResume.FULL_NOT_HELD
 
 
-async def _vouched(conversation_id: str, after: int) -> bool:
-    """Return whether the stream still holds entry after's frame with no amendment since to an entry at or below it.
+async def _vouched(conversation_id: str, after: int) -> EventsResume:
+    """Return RESUMED when the stream still holds entry after's frame with no amendment since to an entry at or below it.
 
     Read newest first, a page at a time: everything before the entry's own frame came after it,
     and a reply's deltas can put hundreds of frames past a head a page would otherwise reach.
@@ -377,7 +383,7 @@ async def _vouched(conversation_id: str, after: int) -> bool:
             if verdict is not None:
                 return verdict
         if len(page) < count:
-            return False
+            return EventsResume.FULL_NOT_HELD
         count, read = count * EVENTS_RESUME_PAGE_GROWTH, len(page)
 
 
@@ -389,7 +395,11 @@ async def _held_at(
     Empty unless the stream vouches for it: it must still hold that entry's frame, with no
     amendment to an entry at or below it since, which the log read after it cannot show.
     """
-    if after <= 0 or not await _vouched(conversation_id, after):
+    if after <= 0:
+        return {}
+    resume = await _vouched(conversation_id, after)
+    wide_log.set_ns("conversation", resume=resume)
+    if resume is not EventsResume.RESUMED:
         return {}
     seen = [logged for logged in entries if logged.seq <= after]
     return {item.id: item for item in project_screen(conversation_id, seen, FILE_LINKS)}
