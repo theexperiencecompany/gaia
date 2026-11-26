@@ -66,6 +66,7 @@ import type {
   PrivateSurface,
   StreamingOptions,
 } from "./follower.types";
+import { OwedReactions } from "./owed-reactions";
 import { RATE_LIMIT_TOOL, rateLimitNotices } from "./rate-limit-notice";
 import { ReplyDelivery } from "./reply-delivery";
 
@@ -124,10 +125,7 @@ export class ConversationFollower {
   private readonly deliveredReplies = new Set<string>();
   /** The emoji GAIA has on each user message, by entry id. */
   private readonly placed = new Map<string, string>();
-  /** Reactions the server owes until a report names them, by entry id: logged, and not placed yet. */
-  private readonly owedReactions = new Map<string, MessageReaction[]>();
-  /** Reactions placed since the last record, for the next report. */
-  private placedSince: MessageReaction[] = [];
+  private readonly owedReactions: OwedReactions;
   /** Work items whose usage limit was told: a limit ends the work, so it is told once. */
   private readonly limitTold = new Set<string>();
   /** Each work item's browser run, by item id. */
@@ -168,7 +166,7 @@ export class ConversationFollower {
       delivered_seq: start.floor,
       partial_reply: start.partialReply,
     };
-    for (const reaction of start.owedReactions) this.owe(reaction);
+    this.owedReactions = new OwedReactions(start.owedReactions);
     for (const { message_id, emoji } of start.placedReactions)
       this.placed.set(message_id, emoji);
   }
@@ -185,7 +183,7 @@ export class ConversationFollower {
   get delivered(): DeliveryCursor {
     return {
       ...this.recorded,
-      owed_reactions: [...this.owedReactions.values()].flat(),
+      owed_reactions: this.owedReactions.all,
     };
   }
 
@@ -412,16 +410,12 @@ export class ConversationFollower {
     if (!reaction) return;
     const replaces = this.placed.get(id) ?? null;
     if (replaces !== reaction.emoji) {
-      this.owe({ message_id: id, emoji: reaction.emoji });
+      this.owedReactions.owe({ message_id: id, emoji: reaction.emoji });
       this.placed.set(id, reaction.emoji);
       // A message with no platform id (one typed on the web) has nowhere to take it.
       if (target) await this.placeReaction(target, reaction, replaces);
     }
-    const owed = this.owedReactions.get(id);
-    if (!owed) return;
-    this.owedReactions.delete(id);
-    // Every emoji owed on the message is settled: what it shows now replaced the rest.
-    this.placedSince.push(...owed);
+    this.owedReactions.settle(id);
   }
 
   private async placeReaction(
@@ -438,13 +432,6 @@ export class ConversationFollower {
     if (reaction.by === "chat_model") {
       await this.surface.send(reaction.emoji, null);
     }
-  }
-
-  /** Hold a reaction as owed until it is placed, so a follow that ends before then hands it on. */
-  private owe(reaction: MessageReaction): void {
-    const owed = this.owedReactions.get(reaction.message_id) ?? [];
-    if (!owed.some(({ emoji }) => emoji === reaction.emoji))
-      this.owedReactions.set(reaction.message_id, [...owed, reaction]);
   }
 
   private async sendNotice(notice: NoticeItem): Promise<void> {
@@ -676,7 +663,7 @@ export class ConversationFollower {
     const report: DeliveryReport = {
       delivered_seq: this.deliveredThrough(),
       partial_reply: this.progress,
-      placed_reactions: this.placedSince,
+      placed_reactions: [...this.owedReactions.unreported],
     };
     const { recorded } = this;
     if (
@@ -689,7 +676,7 @@ export class ConversationFollower {
       delivered_seq: report.delivered_seq,
       partial_reply: report.partial_reply,
     };
-    this.placedSince = [];
+    this.owedReactions.takeUnreported();
     await this.start.record(report);
   }
 

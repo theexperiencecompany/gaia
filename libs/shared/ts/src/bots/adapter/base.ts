@@ -43,7 +43,7 @@ import {
   platformIdentity,
 } from "../../analytics";
 import type { ActiveBotConversation } from "../../api/generated";
-import { RETRY_POLICY, withRetry } from "../../retry";
+import { RETRY_POLICY } from "../../retry";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
@@ -52,7 +52,6 @@ import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
 import type {
   AwaitedDecision,
   ConversationSurface,
-  DeliveryReport,
   FollowSurface,
 } from "../conversation/follower.types";
 import { ConversationFollowers } from "../conversation/followers";
@@ -79,8 +78,6 @@ import { retryTransientPlatformCall } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
   type BotFailureReason,
-  classifyBotFailure,
-  isTransientBotFailure,
   recordBotFailure,
 } from "../utils/failure-reasons";
 import {
@@ -107,6 +104,7 @@ import { withTimeout } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
+import { recordDeliveryReport } from "./delivery-report";
 import { resolveIncomingMedia } from "./incoming-media";
 import { listActiveUntilAnswered } from "./resume-list";
 
@@ -997,43 +995,10 @@ export abstract class BaseBotAdapter {
       (ctx, conversationId, signal, after) =>
         this.gaia.conversationEvents(ctx, conversationId, signal, after),
       STREAMING_DEFAULTS[this.platform],
-      (_ctx, conversationId, cursor) =>
-        this.recordDelivered(conversationId, cursor),
+      (_ctx, conversationId, report) =>
+        recordDeliveryReport(this.gaia, this.platform, conversationId, report),
     );
     return this._followers;
-  }
-
-  /**
-   * Keeps the follower's cursor on the server, retrying a transient failure: a report is
-   * idempotent, and one lost leaves a placed reaction owed, placed again by the next follow.
-   * A write that still fails only means a restart could resend from the last cursor kept,
-   * so delivery goes on and the miss is logged.
-   */
-  private async recordDelivered(
-    conversationId: string,
-    report: DeliveryReport,
-  ): Promise<void> {
-    try {
-      await withRetry(
-        RETRY_POLICY.OWN_API,
-        () =>
-          this.gaia.recordDelivered(conversationId, {
-            platform: this.platform,
-            ...report,
-          }),
-        // No shutdown signal: a stopping bot's last report is what its successor resumes from.
-        {
-          transient: (error) =>
-            isTransientBotFailure(classifyBotFailure(error)),
-        },
-      );
-    } catch (error) {
-      wideLog.warning("delivery_cursor_not_recorded", {
-        ...sanitizeErrorForLog(error),
-        conversation_id: conversationId,
-        delivered_seq: report.delivered_seq,
-      });
-    }
   }
 
   /** Settles once every conversation followed so far is idle with its replies shown. */
