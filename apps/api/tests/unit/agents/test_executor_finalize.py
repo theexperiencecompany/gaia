@@ -55,7 +55,7 @@ from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, 
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import AgentTag, OutcomeState
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.constants.conversation import WORK_STOPPED_REPORT
+from app.constants.conversation import WORK_INTERRUPTED_REPORT, WORK_STOPPED_REPORT
 from app.constants.executor import (
     EXECUTOR_CARRY_TASK,
     EXECUTOR_CRASH_MESSAGE,
@@ -309,7 +309,9 @@ class TestCancelStillCarriesHandedOverWork:
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final", stopped=True)
+            await er._finalize_executor_run(
+                _run(RunKind.QUEUED), "partial", "final", cut=er.RunCut.STOPPED
+            )
             await asyncio.sleep(0)
 
         boundaries.inbox_cls.assert_called_with("conv-1")
@@ -319,7 +321,7 @@ class TestCancelStillCarriesHandedOverWork:
         assert boundaries.prepare.await_args.args[1]["task"] == EXECUTOR_CARRY_TASK
         boundaries.inbox_cls.return_value.retire.assert_not_awaited()
         spawn.assert_awaited_once()
-        assert boundaries.logged.await_args.kwargs == {"stopped": True}
+        assert boundaries.logged.await_args.kwargs == {"cut": er.RunCut.STOPPED}
 
     async def test_a_run_that_failed_setup_does_not_restart_itself_for_its_pending_work(
         self, boundaries
@@ -783,7 +785,7 @@ class TestTerminalRunMetrics:
         success_before = _counter("executor_run_total", {"status": "success", "queued": "true"})
 
         with patch.object(time, "perf_counter", return_value=1234.5):
-            await er._finalize_executor_run(run, "partial text", "final", stopped=True)
+            await er._finalize_executor_run(run, "partial text", "final", cut=er.RunCut.STOPPED)
 
         assert (
             _counter("executor_run_total", {"status": "cancelled", "queued": "true"}) == before + 1
@@ -944,7 +946,15 @@ class TestARunHandsFinalizeWhatItProduced:
         assert h.spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
 
 
-async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
+@pytest.mark.parametrize(
+    ("cut", "said"),
+    [
+        (er.RunCut.STOPPED, WORK_STOPPED_REPORT),
+        (None, WORK_STOPPED_REPORT),
+        (er.RunCut.INTERRUPTED, WORK_INTERRUPTED_REPORT),
+    ],
+)
+async def test_a_stopped_run_reports_who_stopped_it(cut: er.RunCut | None, said: str) -> None:
     """Regression (live test): a user Stop reported "The executor_agent run ended without reporting a result"."""
     stopped = er.TerminalOutcome(
         result_text="The executor_agent run ended without reporting a result, so nothing confirms any of it happened.",
@@ -955,10 +965,10 @@ async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
         patch.object(er, "record_work_finished", new_callable=AsyncMock) as record,
         patch.object(er, "work_cards", new=AsyncMock(return_value=FoldedCards())),
     ):
-        await er._log_work_finished(_run(RunKind.LIVE), stopped, stopped=True)
+        await er._log_work_finished(_run(RunKind.LIVE), stopped, cut=cut)
     report = record.await_args.args[4]
     assert record.await_args.args[3] is WorkOutcome.CANCELLED
-    assert report.text == WORK_STOPPED_REPORT
+    assert report.text == said
 
 
 @pytest.mark.parametrize(
@@ -978,7 +988,7 @@ async def test_only_a_run_that_ended_asking_leaves_its_work_awaiting_the_users_d
         patch.object(er, "record_work_finished", new_callable=AsyncMock) as record,
         patch.object(er, "work_cards", new=AsyncMock(return_value=FoldedCards())),
     ):
-        await er._log_work_finished(_run(RunKind.LIVE), finished, stopped=False)
+        await er._log_work_finished(_run(RunKind.LIVE), finished, cut=None)
     assert record.await_args.args[4].awaits_decision is awaits
 
 
@@ -997,7 +1007,9 @@ class TestWhatAStopCancels:
         boundaries.stop_requested.return_value = True
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(_run(RunKind.LIVE), "partial", "final", stopped=True)
+        await er._finalize_executor_run(
+            _run(RunKind.LIVE), "partial", "final", cut=er.RunCut.STOPPED
+        )
 
         assert boundaries.logged.await_args.args[1].was_cancelled is True
         boundaries.stop_requested.assert_awaited_once_with("s1")
@@ -1031,7 +1043,7 @@ class TestARunsEndIsLoggedAsItEnded:
         run: ExecutorRun,
         outcome: er.TerminalOutcome | None,
         *,
-        stopped: bool = False,
+        cut: er.RunCut | None = None,
         published: FoldedCards | None = None,
     ) -> SimpleNamespace:
         with (
@@ -1040,7 +1052,7 @@ class TestARunsEndIsLoggedAsItEnded:
                 er, "work_cards", new=AsyncMock(return_value=published or FoldedCards())
             ) as cards,
         ):
-            await er._log_work_finished(run, outcome, stopped=stopped)
+            await er._log_work_finished(run, outcome, cut=cut)
         return SimpleNamespace(record=record, cards=cards)
 
     async def test_a_finished_run_logs_its_report_cards_review_and_image(self) -> None:
@@ -1100,22 +1112,23 @@ class TestARunsEndIsLoggedAsItEnded:
         assert logged.record.await_args.kwargs == {"continued_by_decision": False}
 
     @pytest.mark.parametrize(
-        ("result_type", "cancelled", "stopped", "ended_as"),
+        ("result_type", "cancelled", "cut", "ended_as"),
         [
-            ("final", False, False, WorkOutcome.DONE),
-            ("error", False, False, WorkOutcome.FAILED),
-            ("error", True, False, WorkOutcome.CANCELLED),
-            ("final", False, True, WorkOutcome.CANCELLED),
+            ("final", False, None, WorkOutcome.DONE),
+            ("error", False, None, WorkOutcome.FAILED),
+            ("error", True, None, WorkOutcome.CANCELLED),
+            ("final", False, er.RunCut.STOPPED, WorkOutcome.CANCELLED),
+            ("final", False, er.RunCut.INTERRUPTED, WorkOutcome.CANCELLED),
         ],
     )
     async def test_the_outcome_names_how_the_run_ended(
-        self, result_type: str, cancelled: bool, stopped: bool, ended_as: WorkOutcome
+        self, result_type: str, cancelled: bool, cut: er.RunCut | None, ended_as: WorkOutcome
     ) -> None:
         outcome = er.TerminalOutcome(
             result_text="r", result_type=result_type, was_cancelled=cancelled
         )
 
-        logged = await self._log(_run(RunKind.LIVE), outcome, stopped=stopped)
+        logged = await self._log(_run(RunKind.LIVE), outcome, cut=cut)
 
         assert logged.record.await_args.args[3] is ended_as
 

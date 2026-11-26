@@ -221,7 +221,7 @@ async def test_a_run_cancelled_mid_run_is_finalized_stopped_never_done() -> None
         await er.run_executor_background(run=run, task="do the thing", configurable={})
 
     assert finalize.await_args.args == (run, "", "final", None)
-    assert finalize.await_args.kwargs == {"stopped": True}
+    assert finalize.await_args.kwargs == {"cut": er.RunCut.INTERRUPTED}
 
 
 @pytest.mark.unit

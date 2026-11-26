@@ -7,7 +7,7 @@ absorbs it (see executor_channel). There is no queue of pending runs.
 
 What remains here is the lock itself and prepare_run_from_item, which
 materializes a DETACHED run that owns its own stream rather than sharing a comms
-turn's. HIL approval resume and deliver_to_executor are its consumers.
+turn's. deliver_to_executor and the inbox wake are its consumers.
 Preparing is this module's job, spawning the runner's — the one-way dependency (runner -> queue) that keeps the import graph acyclic.
 """
 
@@ -65,23 +65,6 @@ class PreparedQueuedTask:
 
 
 # ── Busy lock ────────────────────────────────────────────────────────
-
-
-class LockClaim(StrEnum):
-    """How a new run takes the per-conversation busy lock.
-
-    SEIZE   — take it from whoever holds it. Only a HIL approval resume, whose
-              paused run deliberately holds the lock while it waits and whose
-              process is long gone.
-    ACQUIRE — start only on a conversation no live run holds (claim_conversation).
-              Everything else: an unconditional SET let two detached runs start
-              on one LangGraph thread, and the second one's write made the
-              first's ownership-checked release a no-op, leaking the lock for
-              its full TTL.
-    """
-
-    SEIZE = "seize"
-    ACQUIRE = "acquire"
 
 
 class LockState(StrEnum):
@@ -346,13 +329,12 @@ def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
 
 
 async def prepare_run_from_item(
-    conversation_id: str, item: ExecutorRunItem, *, claim: LockClaim
+    conversation_id: str, item: ExecutorRunItem
 ) -> PreparedQueuedTask | None:
     """Claim the busy lock and prepare a fresh run+stream from a stored item.
 
     Every detached run starts here, so this is the single place the conversation
-    is claimed and the run's stream is minted. claim picks which claim
-    applies (see LockClaim); None means the conversation is already taken.
+    is claimed and the run's stream is minted. None means a live run holds the conversation.
     """
     if not redis_cache.client:
         return None
@@ -365,20 +347,13 @@ async def prepare_run_from_item(
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
 
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(queued_stream_id, task_id or "")
-    if claim is LockClaim.ACQUIRE:
-        if not await claim_conversation(conversation_id, lock_value):
-            log.info(
-                f"{LogTag.AGENT} Conversation already has a running executor; no run started",
-                conversation_id=conversation_id,
-            )
-            return None
-    else:
-        # Seize with the RAW client: redis_cache.set() JSON-encodes (quotes) the
-        # value, which get_lock_state's raw read never matches, so the resumed run
-        # would see its own lock as FOREIGN and wedge it until TTL.
-        await redis_cache.client.set(lock_key, lock_value, ex=EXECUTOR_BUSY_TTL)
+    if not await claim_conversation(conversation_id, lock_value):
+        log.info(
+            f"{LogTag.AGENT} Conversation already has a running executor; no run started",
+            conversation_id=conversation_id,
+        )
+        return None
 
     # Equivalent under mutation: session.kind is only read as `is RunKind.LIVE` (hil/bridge).
     session = create_session(queued_stream_id, RunKind.QUEUED)  # pragma: no mutate

@@ -496,7 +496,7 @@ class TestBackgroundRunExactWiring:
             await run_executor_background(run=run, task="the task", configurable={})
             finalize = cast(AsyncMock, er._finalize_executor_run)
 
-        assert finalize.await_args.kwargs == {"stopped": stopped}
+        assert finalize.await_args.kwargs == {"cut": er.RunCut.STOPPED if stopped else None}
 
     async def test_execute_executor_receives_the_run_arguments(self) -> None:
         run = _run("exec-args")

@@ -82,7 +82,11 @@ from app.constants.cache import (
 )
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
-from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
+from app.constants.conversation import (
+    EVENTS_STREAM_MAXLEN,
+    STEP_TICK_SECONDS,
+    WORK_INTERRUPTED_REPORT,
+)
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.todos import TodoWakeKind
@@ -2342,7 +2346,10 @@ async def test_a_cancelled_todo_job_stops_its_run_and_its_retry_takes_the_chat_a
                 await job
         assert await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}") is None
         [stopped] = await rig.of(WorkFinished)
-        assert stopped.outcome is WorkOutcome.CANCELLED
+        assert (stopped.outcome, stopped.report) == (
+            WorkOutcome.CANCELLED,
+            WORK_INTERRUPTED_REPORT,
+        )
         with patch.object(todo_run, "run_executor_background", _fake_executor("quote accepted")):
             await run_todo_on_executor(_todo_request(rig, todo))
         await rig.settle()
@@ -3709,7 +3716,7 @@ async def _finish_work(rig: Rig, task_id: str, text: str) -> None:
     outcome = executor_runner.TerminalOutcome(
         result_text=text, result_type="final", was_cancelled=False
     )
-    await executor_runner._log_work_finished(_executor_run(rig, task_id), outcome, stopped=False)
+    await executor_runner._log_work_finished(_executor_run(rig, task_id), outcome, cut=None)
     await rig.settle()
 
 

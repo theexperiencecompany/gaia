@@ -5,7 +5,7 @@ tests/integration/real/test_conversation_runtime_real.py.
 """
 
 import asyncio
-from collections.abc import Coroutine, Iterator
+from collections.abc import Awaitable, Coroutine, Iterator
 from contextlib import ExitStack
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -241,9 +241,7 @@ async def test_a_run_that_never_finishes_is_stopped_before_the_attempt_fails(
 class TestACancelledJob:
     """A worker shutting down cancels the job: its shielded run must not outlive it holding the chat."""
 
-    async def _cancel_mid_run(
-        self, finalize: Coroutine[object, object, None]
-    ) -> tuple[AsyncMock, list[str]]:
+    async def _cancel_mid_run(self, finalize: Awaitable[object]) -> tuple[AsyncMock, list[str]]:
         mid_run = asyncio.Event()
         ended: list[str] = []
 
