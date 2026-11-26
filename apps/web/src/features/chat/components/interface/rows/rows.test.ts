@@ -61,6 +61,8 @@ describe("whether a GAIA row draws anything, read from its timeline", () => {
 
 describe("which rows open a new calendar day", () => {
   const NOW = new Date(2026, 10, 26, 18, 0);
+  const opens = (rows: ChatRow[]) =>
+    dayStarts(rows, NOW).map((day) => day !== null);
   const at = (id: string, day: number, hour: number): ChatRow =>
     row({
       ...replyItem(id, 2, "hi"),
@@ -74,7 +76,7 @@ describe("which rows open a new calendar day", () => {
       at("c", 25, 0),
       at("d", 26, 8),
     ];
-    expect(dayStarts(rows, NOW)).toEqual([true, false, true, true]);
+    expect(opens(rows)).toEqual([true, false, true, true]);
   });
 
   it("reads a row not logged yet as now, so it joins today's rows", () => {
@@ -87,7 +89,8 @@ describe("which rows open a new calendar day", () => {
         content: replyItem("r", 2, ""),
       },
     };
-    expect(dayStarts([at("a", 26, 8), draft], NOW)).toEqual([true, false]);
-    expect(dayStarts([at("a", 25, 8), draft], NOW)).toEqual([true, true]);
+    expect(opens([at("a", 26, 8), draft])).toEqual([true, false]);
+    expect(opens([at("a", 25, 8), draft])).toEqual([true, true]);
+    expect(dayStarts([at("a", 25, 8), draft], NOW)[1]).toBe(NOW);
   });
 });

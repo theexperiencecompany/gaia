@@ -57,15 +57,19 @@ export const isUserSide = (row: ChatRow): boolean =>
   USER_SIDE.has(rowKind(row));
 
 /** When the row happened: its server item's time, or now for one not logged yet. */
-export const rowAt = (row: ChatRow, now: Date): Date =>
+const rowAt = (row: ChatRow, now: Date): Date =>
   row.kind === "item" ? new Date(row.item.at) : now;
 
-/** Per row, whether it is the first of its calendar day, so the day is named above it. */
-export function dayStarts(rows: readonly ChatRow[], now: Date): boolean[] {
-  return rows.map(
-    (row, index) =>
-      index === 0 || !isSameDay(rowAt(row, now), rowAt(rows[index - 1], now)),
-  );
+/** Per row, the day it opens when it is the first of its calendar day, so the day is named above it. */
+export function dayStarts(
+  rows: readonly ChatRow[],
+  now: Date,
+): (Date | null)[] {
+  return rows.map((row, index) => {
+    const at = rowAt(row, now);
+    const opens = index === 0 || !isSameDay(at, rowAt(rows[index - 1], now));
+    return opens ? at : null;
+  });
 }
 
 const hasText = (bubbles: readonly string[]) =>
