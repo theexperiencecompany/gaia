@@ -1170,7 +1170,7 @@ jobs:
       - uses: ./.github/actions/setup-python-test-env
       - name: Install Chromium for Playwright
         if: env.SUITE == 'web:e2e-screen'
-        run: pnpm --filter ./apps/web exec playwright install --with-deps chromium
+        run: bash scripts/ci/browser.sh install-playwright
       - name: Boot the sim stack
         env:
           OUT_DIR: ${{ env.SIM_STACK_LOGS }}
