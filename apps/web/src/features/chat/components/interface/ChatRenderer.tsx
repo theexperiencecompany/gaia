@@ -34,12 +34,15 @@ import {
 import { useActiveLiveLoading } from "@/features/chat/live/useLiveChat";
 import { useChatStore } from "@/stores/chatStore";
 import type { SetImageDataType } from "@/types/features/chatBubbleTypes";
+import { DayDivider } from "./rows/DayDivider";
 import { GaiaRow } from "./rows/GaiaRow";
 import {
   type ChatRow,
+  dayStarts,
   isUserSide,
   type RowActions,
   type RowLayout,
+  rowAt,
   rowId,
   rowKind,
   rowShows,
@@ -342,6 +345,10 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
     () => rows.filter((row) => rowShows(row, alwaysShowsGaia)),
     [rows, alwaysShowsGaia],
   );
+  const startsDay = useMemo(
+    () => dayStarts(shownRows, new Date()),
+    [shownRows],
+  );
 
   // Scroll to (and highlight) a deep-linked message once it exists.
   const scrolledToMessageRef = useRef<string | null>(null);
@@ -383,11 +390,15 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
         const userSide = isUserSide(row);
         // Consecutive bubbles from one side group (iMessage-style): only the
         // LAST shows the avatar/actions/timestamp; others sit tight with no gap.
+        // A new day breaks the group, so the day before ends on its timestamp.
         const isGroupedWithNext =
           index + 1 < shownRows.length &&
+          !startsDay[index + 1] &&
           isUserSide(shownRows[index + 1]) === userSide;
         const isGroupedWithPrev =
-          index > 0 && isUserSide(shownRows[index - 1]) === userSide;
+          index > 0 &&
+          !startsDay[index] &&
+          isUserSide(shownRows[index - 1]) === userSide;
         // Only the active turn's bubble (the last one) is suppressed while
         // the conversation is busy — finished turns keep their actions.
         const suppressForBusy =
@@ -403,6 +414,9 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
             data-screen-item-id={id}
             data-screen-item-kind={rowKind(row)}
           >
+            {startsDay[index] && !compact && (
+              <DayDivider at={rowAt(row, new Date())} />
+            )}
             <ChatRowItem
               row={row}
               sends={sends}
