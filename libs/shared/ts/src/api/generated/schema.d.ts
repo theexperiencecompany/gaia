@@ -2583,10 +2583,10 @@ export interface paths {
         };
         /**
          * Mcp Oauth Callback
-         * @description Handle OAuth callback from MCP server.
+         * @description Handle OAuth callback from MCP server, for the user its state was minted for.
          *
-         *     The browser may carry no GAIA session (a link opened from a chat app), so the
-         *     single-use state token, resolved to the user it was minted for, is the credential.
+         *     The flow must come back to a browser that started it: one signed in as that user, or,
+         *     with no session (a chat app's connect link), the browser the connect link was opened in.
          *     Handles both success (with code) and error responses from OAuth server.
          */
         get: operations["mcp_mcp_oauth_callback"];
@@ -27108,7 +27108,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                gaia_mcp_oauth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {

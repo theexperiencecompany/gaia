@@ -8,6 +8,10 @@ Centralized constants for MCP services.
 # Defined here so the redirect URI, its OAuth client metadata, and the
 # entitlement allowlist all name the same path.
 MCP_OAUTH_CALLBACK_PATH = "/api/v1/mcp/oauth/callback"
+# Ties an OAuth flow opened from a chat app's connect link to the browser that opened it.
+MCP_OAUTH_BROWSER_COOKIE = "gaia_mcp_oauth"
+# The browser binding nonce: 256 bits, unguessable.
+OAUTH_BROWSER_NONCE_BYTES = 32
 
 # Host of Composio's hosted MCP gateway. These servers authenticate the calling
 # platform via an `x-api-key` header (GAIA's COMPOSIO_KEY) rather than per-user

@@ -29,7 +29,6 @@ from app.constants.auth import (
 )
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 from app.core.lazy_loader import providers
 from app.core.request_context import set_authenticated_user
 from app.db.repositories.users import user_repository
@@ -207,9 +206,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # Login-free connect link — self-authenticates via a single-use,
             # server-bound connect code (see connect_link_service).
             "/api/v1/integrations/connect-link",
-            # MCP provider callback — opened from a chat app with no session; the
-            # single-use, server-bound OAuth state token authenticates it.
-            MCP_OAUTH_CALLBACK_PATH,
             # Device bridge: the daemon isn't logged in, so these self-authenticate
             # (pairing code / refresh credential / device JWT). /device/pair/approve
             # needs a session, so subroutes are listed explicitly, not by prefix.
@@ -254,7 +250,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/login",
             "/api/v1/setup/status",
             "/api/v1/setup/catalog",
-            MCP_OAUTH_CALLBACK_PATH,
         }
         self._exclude_exact: set[str] = _exact_candidates.intersection(self.exclude_paths)
         # Everything else in exclude_paths is an intentional prefix (docs covers

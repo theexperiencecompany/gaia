@@ -9,11 +9,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager, nullcontext
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.api.v1.endpoints.mcp import mcp_oauth_callback
+from app.constants import mcp as mcp_constants
 from app.constants.log_tags import LogTag
+from app.services.mcp import mcp_token_store
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
@@ -98,10 +102,13 @@ class TestMCPOAuthCallbackWithoutASession:
 
     @pytest.mark.regression
     @pytest.mark.usefixtures("fake_redis")
-    async def test_state_minted_for_a_user_completes_the_flow_for_that_user(
+    async def test_the_browser_that_opened_the_connect_link_completes_the_flow(
         self, unauthed_client: AsyncClient
     ) -> None:
         state = await MCPTokenStore(USER_ID).create_oauth_state("github", "verifier")
+        # read at call time: the regression lane imports this file against master
+        nonce = await mcp_token_store.bind_oauth_state_to_browser(state)
+        unauthed_client.cookies.set(mcp_constants.MCP_OAUTH_BROWSER_COOKIE, nonce)
         mcp_client = _mcp_client()
 
         with (
@@ -157,8 +164,74 @@ class TestMCPOAuthCallbackWithoutASession:
         seams["exchange"].assert_not_awaited()
 
 
+class TestMCPOAuthCallbackFromAnotherBrowser:
+    """A provider link someone else started cannot attach the clicker's account to theirs."""
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_browser_with_neither_session_nor_binding_is_refused(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        state = await MCPTokenStore(USER_ID).create_oauth_state("github", "verifier")
+
+        with _callback_seams(_mcp_client(), real_owner_lookup=True) as seams:
+            resp = await unauthed_client.get(
+                CALLBACK_URL,
+                params={"state": f"{state}:github:/integrations", "code": "code1"},
+                follow_redirects=False,
+            )
+
+        assert resp.headers["location"] == (
+            "http://frontend/integrations?id=github&status=failed&error=wrong_browser"
+        )
+        seams["exchange"].assert_not_awaited()
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_browser_bound_to_another_state_is_refused(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        store = MCPTokenStore(USER_ID)
+        state = await store.create_oauth_state("github", "verifier")
+        other = await MCPTokenStore("other-user").create_oauth_state("github", "verifier")
+        nonce = await mcp_token_store.bind_oauth_state_to_browser(other)
+        unauthed_client.cookies.set(mcp_constants.MCP_OAUTH_BROWSER_COOKIE, nonce)
+
+        with _callback_seams(_mcp_client(), real_owner_lookup=True) as seams:
+            resp = await unauthed_client.get(
+                CALLBACK_URL,
+                params={"state": f"{state}:github:/integrations", "code": "code1"},
+                follow_redirects=False,
+            )
+
+        assert "error=wrong_browser" in resp.headers["location"]
+        seams["exchange"].assert_not_awaited()
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_browser_signed_in_as_someone_else_is_refused(
+        self, client: AsyncClient, test_app: FastAPI
+    ) -> None:
+        test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+        state = await MCPTokenStore("someone-else").create_oauth_state("github", "verifier")
+
+        with _callback_seams(_mcp_client(), real_owner_lookup=True) as seams:
+            resp = await client.get(
+                CALLBACK_URL,
+                params={"state": f"{state}:github:/integrations", "code": "code1"},
+                follow_redirects=False,
+            )
+
+        test_app.dependency_overrides.pop(get_optional_user, None)
+        assert "error=wrong_browser" in resp.headers["location"]
+        seams["exchange"].assert_not_awaited()
+
+
 class TestMCPOAuthCallback:
     """GET /api/v1/mcp/oauth/callback."""
+
+    @pytest.fixture(autouse=True)
+    def signed_in(self, test_app: FastAPI) -> Iterator[None]:
+        test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+        yield
+        test_app.dependency_overrides.pop(get_optional_user, None)
 
     async def test_success_redirects_to_the_frontend_with_the_quoted_name(
         self, client: AsyncClient
@@ -232,6 +305,8 @@ class TestMCPOAuthCallback:
                     code="code1",
                     error=None,
                     error_description=None,
+                    user=FAKE_USER,
+                    browser_nonce=None,
                 )
                 # The boundary stamps its own outcome on exit; the route's is
                 # only readable before that.
@@ -413,6 +488,8 @@ class TestMCPOAuthCallback:
                     code="code1",
                     error=None,
                     error_description=None,
+                    user=FAKE_USER,
+                    browser_nonce=None,
                 )
                 outcome = event["outcome"]
 

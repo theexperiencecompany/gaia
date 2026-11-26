@@ -7,6 +7,8 @@ Follows same patterns as Composio for parity.
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+import hashlib
+import hmac
 import json
 import secrets
 from typing import cast
@@ -24,6 +26,7 @@ from app.constants.cache import (
     OAUTH_STATE_TTL,
 )
 from app.constants.log_tags import LogTag
+from app.constants.mcp import OAUTH_BROWSER_NONCE_BYTES
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
@@ -42,12 +45,59 @@ _DCR_CLIENT_REGISTRATION: TypeAdapter[DCRClientRegistration] = TypeAdapter(DCRCl
 class OAuthStateStoreError(RuntimeError):
     """The OAuth state could not be stored, so its callback could never complete."""
 
-    def __init__(self, integration_id: str) -> None:
-        super().__init__(f"could not store the OAuth state for {integration_id}")
+    def __init__(self, what: str) -> None:
+        super().__init__(f"could not store the OAuth state ({what}) in Redis")
 
 
 def _oauth_owner_key(state: str) -> str:
     return f"{OAUTH_STATE_PREFIX}:owner:{state}"
+
+
+def _pending_state(stored: object) -> OAuthPendingState | None:
+    """Read a pending state as create_oauth_state wrote it; None when nothing is pending."""
+    if not stored:
+        return None
+    try:
+        # set_cache may hand it back already deserialized or still as JSON text
+        return (
+            OAuthPendingState.model_validate(stored)
+            if isinstance(stored, dict)
+            else OAuthPendingState.model_validate_json(str(stored))
+        )
+    except ValidationError:
+        # legacy format: the state string alone
+        return OAuthPendingState(state=str(stored))
+
+
+def _oauth_browser_key(state: str) -> str:
+    return f"{OAUTH_STATE_PREFIX}:browser:{state}"
+
+
+def _digest(nonce: str) -> str:
+    return hashlib.sha256(nonce.encode()).hexdigest()
+
+
+async def _forget_state(state: str) -> None:
+    await delete_cache(_oauth_owner_key(state))
+    await delete_cache(_oauth_browser_key(state))
+
+
+async def bind_oauth_state_to_browser(state: str) -> str:
+    """Bind a state to the browser that is about to open it; return the nonce that browser keeps as a cookie."""
+    nonce = secrets.token_urlsafe(
+        OAUTH_BROWSER_NONCE_BYTES
+    )  # pragma: no mutate — None is the same 32-byte default
+    if not await set_cache(_oauth_browser_key(state), _digest(nonce), ttl=OAUTH_STATE_TTL):
+        raise OAuthStateStoreError("browser binding")
+    return nonce
+
+
+async def oauth_state_bound_to_browser(state: str, nonce: str | None) -> bool:
+    """Whether nonce is the one the state was bound to when its browser opened it."""
+    if not nonce:
+        return False
+    stored = await get_cache(_oauth_browser_key(state))
+    return isinstance(stored, str) and hmac.compare_digest(stored, _digest(nonce))
 
 
 async def resolve_oauth_state_owner(state: str, integration_id: str) -> str | None:
@@ -317,6 +367,9 @@ class MCPTokenStore:
         # Pre-serializing with json.dumps() causes double-encoding, breaking code_verifier retrieval.
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
         state_data: dict[str, str] = {"state": state, "code_verifier": code_verifier}
+        # A new flow replaces the pending one, so the replaced state must stop resolving too.
+        if (replaced := _pending_state(await get_cache(cache_key))) is not None:
+            await _forget_state(replaced.state)
         # The callback arrives from a browser with no GAIA session (a link opened from a
         # chat app), so the state token itself has to say whose flow it belongs to.
         stored = await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL) and await set_cache(
@@ -340,22 +393,11 @@ class MCPTokenStore:
         # Atomic get-and-delete prevents race condition where two callbacks
         # could both validate before either deletes the state
         stored_data = await get_and_delete_cache(cache_key)
-        await delete_cache(_oauth_owner_key(state))
+        await _forget_state(state)
 
-        if not stored_data:
+        pending = _pending_state(stored_data)
+        if pending is None:
             return False, None
-
-        try:
-            # Written by create_oauth_state as {"state": ..., "code_verifier": ...};
-            # set_cache may hand it back already deserialized or still as JSON text.
-            pending = (
-                OAuthPendingState.model_validate(stored_data)
-                if isinstance(stored_data, dict)
-                else OAuthPendingState.model_validate_json(str(stored_data))
-            )
-        except ValidationError:
-            # Legacy format - just state string (backwards compat)
-            pending = OAuthPendingState(state=str(stored_data))
 
         if pending.state and pending.state == state:
             return True, pending.code_verifier

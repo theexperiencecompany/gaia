@@ -8,11 +8,12 @@ Connection/disconnection is handled by the unified /integrations endpoints.
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_optional_user
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE
 from app.helpers.mcp_helpers import (
     get_frontend_url,
     get_mcp_oauth_redirect_uri,
@@ -25,7 +26,10 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
-from app.services.mcp.mcp_token_store import resolve_oauth_state_owner
+from app.services.mcp.mcp_token_store import (
+    oauth_state_bound_to_browser,
+    resolve_oauth_state_owner,
+)
 from app.services.mcp.oauth_callback import (
     ProviderError,
     ScopeRetry,
@@ -163,11 +167,13 @@ async def mcp_oauth_callback(
     code: str | None = Query(None),  # Optional - may be missing if error
     error: str | None = Query(None),  # OAuth error code
     error_description: str | None = Query(None),  # OAuth error description
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+    browser_nonce: str | None = Cookie(None, alias=MCP_OAUTH_BROWSER_COOKIE),
 ) -> RedirectResponse:
-    """Handle OAuth callback from MCP server.
+    """Handle OAuth callback from MCP server, for the user its state was minted for.
 
-    The browser may carry no GAIA session (a link opened from a chat app), so the
-    single-use state token, resolved to the user it was minted for, is the credential.
+    The flow must come back to a browser that started it: one signed in as that user, or,
+    with no session (a chat app's connect link), the browser the connect link was opened in.
     Handles both success (with code) and error responses from OAuth server.
     """
     log.set(operation="mcp_oauth_callback")
@@ -198,6 +204,19 @@ async def mcp_oauth_callback(
             integration_id=integration_id,
         )
         return RedirectResponse(url=callback.failure("expired_state"))
+    # Without this, a provider link someone else started would attach the clicker's account to theirs.
+    started_here = (
+        user.user_id == user_id
+        if user is not None
+        else await oauth_state_bound_to_browser(state_token, browser_nonce)
+    )
+    if not started_here:
+        log.warning(
+            f"{LogTag.MCP} OAuth callback reached a browser that did not start the flow",
+            integration_id=integration_id,
+            signed_in=user is not None,
+        )
+        return RedirectResponse(url=callback.failure("wrong_browser"))
     log.set(user={"id": user_id})
 
     client = await get_mcp_client(user_id=user_id)

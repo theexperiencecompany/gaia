@@ -10,11 +10,12 @@ import httpx
 import pytest
 
 from app.config.settings import settings
+from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
 from app.models.auth_models import LocalCredentialDocument
 from app.models.user_models import UserDocument
-from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.services.mcp.mcp_token_store import MCPTokenStore, bind_oauth_state_to_browser
 from app.utils import local_auth_utils
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, issue_session_token
 from tests.conftest import FAKE_USER
@@ -738,10 +739,10 @@ _SESSION_TOKEN_VERSION = 2
 
 @pytest.mark.integration
 class TestMcpOAuthCallbackStateAuth:
-    """The callback acts for the user its state was minted for, whoever the browser is signed in as.
+    """The callback acts for the user its state was minted for, and only in a browser that started it.
 
-    A link opened from a chat app arrives with no GAIA session, so the single-use state is the
-    credential. Every other callback test stubs the owner lookup; these mint a real state.
+    That is the owner's own session, or with no session (a chat app's connect link) the browser the
+    link bound. Every other callback test stubs the owner lookup; these mint a real state.
     """
 
     @pytest.fixture
@@ -802,12 +803,18 @@ class TestMcpOAuthCallbackStateAuth:
             yield get_client, exchange
 
     async def _callback(
-        self, app: FastAPI, state: str, session_token: str | None = None
+        self,
+        app: FastAPI,
+        state: str,
+        session_token: str | None = None,
+        browser_nonce: str | None = None,
     ) -> httpx.Response:
         transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             if session_token is not None:
                 client.cookies.set(LOCAL_SESSION_COOKIE, session_token)
+            if browser_nonce is not None:
+                client.cookies.set(MCP_OAUTH_BROWSER_COOKIE, browser_nonce)
             return await client.get(
                 "/api/v1/mcp/oauth/callback",
                 params={"code": "auth-code", "state": f"{state}:test-integration:/integrations"},
@@ -815,13 +822,14 @@ class TestMcpOAuthCallbackStateAuth:
             )
 
     @pytest.mark.usefixtures("fake_redis")
-    async def test_a_minted_state_completes_the_callback_with_no_session(
+    async def test_the_browser_bound_to_a_state_completes_it_with_no_session(
         self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock]
     ) -> None:
         get_client, exchange = callback_seams
         state = await MCPTokenStore(_SESSION_USER_ID).create_oauth_state("test-integration", "v")
+        nonce = await bind_oauth_state_to_browser(state)
 
-        response = await self._callback(session_app, state)
+        response = await self._callback(session_app, state, browser_nonce=nonce)
 
         assert response.status_code == 307, response.text
         assert response.headers["location"].startswith(
@@ -831,18 +839,47 @@ class TestMcpOAuthCallbackStateAuth:
         assert exchange.await_args.kwargs["state"] == state
 
     @pytest.mark.usefixtures("fake_redis")
-    async def test_a_signed_in_browser_cannot_take_over_another_users_state(
+    async def test_the_owners_own_session_completes_it(
         self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock]
     ) -> None:
         get_client, _ = callback_seams
-        owner = str(ObjectId())
-        state = await MCPTokenStore(owner).create_oauth_state("test-integration", "v")
+        state = await MCPTokenStore(_SESSION_USER_ID).create_oauth_state("test-integration", "v")
         session = await issue_session_token(_SESSION_USER_ID, _SESSION_TOKEN_VERSION)
 
         response = await self._callback(session_app, state, session)
 
         assert response.status_code == 307, response.text
-        get_client.assert_awaited_once_with(user_id=owner)
+        assert "status=connected" in response.headers["location"]
+        get_client.assert_awaited_once_with(user_id=_SESSION_USER_ID)
+
+    @pytest.mark.usefixtures("fake_redis")
+    @pytest.mark.parametrize("bound", [False, True], ids=["unbound", "bound_to_the_state"])
+    async def test_a_browser_signed_in_as_someone_else_is_refused(
+        self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock], bound: bool
+    ) -> None:
+        """The phishing case: someone else's provider link, opened by a signed-in victim."""
+        get_client, exchange = callback_seams
+        state = await MCPTokenStore(str(ObjectId())).create_oauth_state("test-integration", "v")
+        nonce = await bind_oauth_state_to_browser(state) if bound else None
+        session = await issue_session_token(_SESSION_USER_ID, _SESSION_TOKEN_VERSION)
+
+        response = await self._callback(session_app, state, session, nonce)
+
+        assert "error=wrong_browser" in response.headers["location"]
+        get_client.assert_not_awaited()
+        exchange.assert_not_awaited()
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_browser_with_no_session_and_no_binding_is_refused(
+        self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        get_client, exchange = callback_seams
+        state = await MCPTokenStore(str(ObjectId())).create_oauth_state("test-integration", "v")
+
+        response = await self._callback(session_app, state)
+
+        assert "error=wrong_browser" in response.headers["location"]
+        exchange.assert_not_awaited()
 
     @pytest.mark.usefixtures("fake_redis")
     @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "no_session"])

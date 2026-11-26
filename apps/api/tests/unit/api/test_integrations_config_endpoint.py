@@ -13,9 +13,11 @@ import pytest
 
 from app.constants.integrations import NOT_SET_UP_ON_INSTANCE
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE, MCP_OAUTH_CALLBACK_PATH
 from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.composio.error_detail import AuthConfigNotFoundError
 from app.services.connect_link_service import ConnectLinkBinding
+from app.services.mcp.mcp_token_store import oauth_state_bound_to_browser
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnected,
@@ -576,6 +578,55 @@ class TestConnectLinkEndpoint:
             UserId(_VALID_UID),
             IntegrationConnectInitiated(integration_id="notion", source="connect_link"),
         )
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_an_mcp_flow_is_bound_to_the_browser_that_opened_the_link(
+        self, client: AsyncClient
+    ) -> None:
+        """Only this browser may finish it: a provider link sent elsewhere is refused at the callback."""
+        state = "statetoken123"
+        result = MagicMock(
+            status="redirect",
+            redirect_url=f"https://auth.resend.example/authorize?state={state}%3Aresend%3A%2Fintegrations",
+            error=None,
+        )
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="resend", account_id=None
+                ),
+            ),
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=_resolved("resend", managed_by="mcp"),
+            ),
+            patch(
+                f"{_MODULE}.initiate_integration_connection",
+                new_callable=AsyncMock,
+                return_value=result,
+            ),
+            patch(f"{_MODULE}.capture"),
+        ):
+            resp = await client.post(
+                f"{API}/connect-link",
+                data={"code": "somecode"},
+                headers={"x-forwarded-proto": "https"},
+                follow_redirects=False,
+            )
+
+        assert resp.status_code == 303
+        cookie = resp.cookies.get(MCP_OAUTH_BROWSER_COOKIE)
+        assert cookie
+        assert await oauth_state_bound_to_browser(state, cookie)
+        set_cookie = resp.headers["set-cookie"].lower()
+        assert "httponly" in set_cookie
+        assert "samesite=lax" in set_cookie
+        assert "secure" in set_cookie
+        assert "max-age=600" in set_cookie
+        assert f"path={MCP_OAUTH_CALLBACK_PATH}" in set_cookie
 
     async def test_a_reconnect_link_signs_its_account_back_in(self, client: AsyncClient) -> None:
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)

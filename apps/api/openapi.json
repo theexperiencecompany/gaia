@@ -36931,7 +36931,7 @@
     },
     "/api/v1/mcp/oauth/callback": {
       "get": {
-        "description": "Handle OAuth callback from MCP server.\n\nThe browser may carry no GAIA session (a link opened from a chat app), so the\nsingle-use state token, resolved to the user it was minted for, is the credential.\nHandles both success (with code) and error responses from OAuth server.",
+        "description": "Handle OAuth callback from MCP server, for the user its state was minted for.\n\nThe flow must come back to a browser that started it: one signed in as that user, or,\nwith no session (a chat app's connect link), the browser the connect link was opened in.\nHandles both success (with code) and error responses from OAuth server.",
         "operationId": "mcp_mcp_oauth_callback",
         "parameters": [
           {
@@ -36989,6 +36989,22 @@
                 }
               ],
               "title": "Error Description"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "gaia_mcp_oauth",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gaia Mcp Oauth"
             }
           }
         ],
