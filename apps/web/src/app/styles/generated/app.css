@@ -788,6 +788,7 @@
 @source "../../../features/settings/components/BriefsOffBlockedModal.tsx";
 @source "../../../features/settings/components/BrowserSettings.tsx";
 @source "../../../features/settings/components/CancelSubscriptionAction.tsx";
+@source "../../../features/settings/components/ChatChannelSelect.tsx";
 @source "../../../features/settings/components/ComposioAuthConfigRow.tsx";
 @source "../../../features/settings/components/ComposioSetupSettings.tsx";
 @source "../../../features/settings/components/CustomResponseStyleInput.tsx";
