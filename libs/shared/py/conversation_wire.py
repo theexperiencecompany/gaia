@@ -335,6 +335,9 @@ class ScreenFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN] = FrameKind.SCREEN
     items: tuple[ItemT, ...]
+    # On wire 2, for a work item sent here whose work was not running at the client's head: the
+    # cards it showed then, by item id. A reader that never held it takes those as delivered.
+    held_cards: dict[str, tuple[TimelineCard, ...]] = {}
     # The log's head this screen projects: a page read at or below it is no newer than what it shows.
     head: int = Field(ge=0)
 

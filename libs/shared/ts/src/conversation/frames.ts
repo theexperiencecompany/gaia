@@ -77,6 +77,8 @@ const head = z.number().int().min(0);
 const ScreenFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.SCREEN),
   items: z.array(ScreenItemSchema),
+  // Sent only when it names some: the cards work that was not running showed at the client's head.
+  held_cards: z.record(z.string(), ToolTimelineSchema.shape.cards).default({}),
   head,
 }) satisfies z.ZodType<ScreenFrame>;
 

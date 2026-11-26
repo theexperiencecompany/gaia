@@ -19,7 +19,9 @@
  * The follow opens after its floor (the seq an earlier follow delivered through), so
  * the server sends only what is new or changed since. An item at or below the floor
  * is history the first time it is seen, whenever that is: what it shows then was
- * delivered by an earlier follow, and only what it gains later is rendered. A reply
+ * delivered by an earlier follow, and only what it gains later is rendered (for work
+ * that was not running at that head the server names the cards it showed then, so the
+ * cards a re-run published while the bot was away are rendered too). A reply
  * that follow sent only its first bubbles of sends the rest. After each platform step
  * the follower records how far it delivered, so a restart resumes exactly there.
  */
@@ -258,7 +260,7 @@ export class ConversationFollower {
     switch (frame.kind) {
       case FRAME_KIND.SCREEN:
         this.opened = true;
-        await this.renderItems(this.pastHistory(frame.items));
+        await this.renderItems(this.pastHistory(frame.items, frame.held_cards));
         return;
       case FRAME_KIND.SCREEN_INSERT:
       case FRAME_KIND.SCREEN_UPDATE:
@@ -292,21 +294,15 @@ export class ConversationFollower {
    * Take as delivered what each item at or below the floor shows the first time it is
    * seen; return the items left to render: the rest, and work asking past the floor.
    */
-  private pastHistory(items: readonly ScreenItem[]): readonly ScreenItem[] {
+  private pastHistory(
+    items: readonly ScreenItem[],
+    heldCards: Readonly<Record<string, ToolTimeline["cards"]>> = {},
+  ): readonly ScreenItem[] {
     return items.filter((item) => {
       if (item.seq > this.floor || this.history.has(item.id)) return true;
       this.history.add(item.id);
-      if (item.kind === SCREEN_ITEM_KIND.WORK) {
-        // Work started before the floor may ask an approval logged after it.
-        if (item.asked_seq <= this.floor)
-          for (const request of item.asking)
-            this.asked.add(request.approval_id);
-        this.browserRun(item.id).skip(browserCards(item.timeline));
-        // Work that never hit a limit may still hit one when it runs again.
-        if (rateLimitNotices(item.timeline, this.surface.links).length > 0)
-          this.limitTold.add(item.id);
-        return item.asked_seq > this.floor;
-      }
+      if (item.kind === SCREEN_ITEM_KIND.WORK)
+        return this.workPastHistory(item, heldCards[item.id]);
       if (item.kind === SCREEN_ITEM_KIND.USER && item.message.reaction)
         this.placed.set(item.id, item.message.reaction.emoji);
       if (item.kind === SCREEN_ITEM_KIND.REPLY && item.outcome !== null)
@@ -314,6 +310,26 @@ export class ConversationFollower {
       if (item.kind === SCREEN_ITEM_KIND.NOTICE) this.noticed.add(item.id);
       return false;
     });
+  }
+
+  /**
+   * Take as delivered what work at or below the floor showed, and return whether it has more to
+   * render. held is what the server says finished work showed at the head this follow opened
+   * after, so what it gained since is rendered; without it, everything it shows now is history.
+   */
+  private workPastHistory(
+    item: Extract<ScreenItem, { kind: "work" }>,
+    held: ToolTimeline["cards"] | undefined,
+  ): boolean {
+    // Work started before the floor may ask an approval logged after it.
+    if (item.asked_seq <= this.floor)
+      for (const request of item.asking) this.asked.add(request.approval_id);
+    const shown = held ? { ...item.timeline, cards: held } : item.timeline;
+    this.browserRun(item.id).skip(browserCards(shown));
+    // Work that never hit a limit may still hit one when it runs again.
+    if (rateLimitNotices(shown, this.surface.links).length > 0)
+      this.limitTold.add(item.id);
+    return held !== undefined || item.asked_seq > this.floor;
   }
 
   private async renderItems(items: readonly ScreenItem[]): Promise<void> {

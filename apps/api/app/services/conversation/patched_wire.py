@@ -53,7 +53,11 @@ class PatchedWire:
             case ScreenFrame(items=items):
                 for item in items:
                     self._take(item)
-                exclude = {"frame": {"items": {"__all__": _UNFOLDED}}}
+                # Named only when it names something: a reader built before it reads no such key.
+                unnamed = set() if frame.held_cards else {"held_cards"}
+                exclude = {
+                    "frame": {"items": {"__all__": _UNFOLDED}} | dict.fromkeys(unnamed, True)
+                }
                 return ConversationEvent(frame=frame).model_dump_json(exclude=exclude)
             case ScreenInsertFrame(item=item):
                 self._take(item)

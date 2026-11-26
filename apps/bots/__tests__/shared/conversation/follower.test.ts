@@ -803,6 +803,51 @@ describe("history the follow started after", () => {
     ]);
   });
 
+  it("delivers what finished work published when it ran again while the bot was disconnected", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(6),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    const step = (at: number) => ({
+      key: `browser_task_data-${at}`,
+      card: {
+        tool_name: "browser_task_data",
+        data: { kind: "step", url: "about:blank", goal: `Step goal ${at}` },
+      },
+    });
+    const limit = {
+      key: "grouped-rate_limit_data",
+      card: {
+        tool_name: "rate_limit_data",
+        data: { feature: "web_search", current_plan: "pro" },
+      },
+    };
+    const rerun = {
+      ...workItem("t1", 2, "running", [], 0),
+      timeline: {
+        steps: [],
+        progress: null,
+        cards: [step(0), step(1), limit],
+      },
+    };
+    await feed(follower, [
+      screenFrame([], 6),
+      // The reconnect's screen is the first to show the work: it names what the work showed before.
+      screenFrame([rerun], 7, { "work:t1": [step(0)] }),
+      screenFrame([rerun], 7, { "work:t1": [step(0)] }),
+    ]);
+
+    expect(
+      calls.flatMap((call) => (call.op === "notice" ? call.bubbles : [])),
+    ).toEqual([
+      "Step 1 · Step goal 1",
+      "⏳ You've reached your web search limit. Please try again later.",
+    ]);
+  });
+
   it("answers the message a reply names natively when that message is not on the screen held", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(

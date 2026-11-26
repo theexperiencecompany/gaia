@@ -19489,6 +19489,17 @@
             "title": "Head",
             "type": "integer"
           },
+          "held_cards": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/TimelineCard"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "Held Cards",
+            "type": "object"
+          },
           "items": {
             "items": {
               "discriminator": {
@@ -19536,6 +19547,7 @@
         "required": [
           "kind",
           "items",
+          "held_cards",
           "head"
         ],
         "title": "ScreenFrame",

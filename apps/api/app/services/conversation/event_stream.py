@@ -6,7 +6,7 @@ capped, and anything older than what it retains is replayed from the log.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -44,15 +44,16 @@ from app.models.conversation_screen_models import (
     ScreenItem,
     ScreenStreamFrame,
     UserItem,
+    WorkItem,
 )
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.patched_wire import PatchedWire
 from app.services.conversation.ports import ConversationLog
-from app.services.conversation.screen import project_screen
+from app.services.conversation.screen import LIVE_WORK, project_screen
 from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation.shown_links import shown_frame
 from app.utils.artifact_utils import FILE_LINKS
-from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame
+from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame, TimelineCard
 from shared.py.wide_events import EventsResume, log as wide_log
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
@@ -320,15 +321,13 @@ async def _screen_from_the_head(
     page = tracker.items[-CONVERSATION_READ_LIMIT:]
     # Long work can put more than a page of items after the message it answers.
     before_page = [] if answering is None or answering in page else [answering]
-    yield ScreenFrame(
-        items=tuple(
-            item
-            for item in (*before_page, *page)
-            # Running work's cards are in no entry, so its item never equals the one held at after.
-            if held.get(item.id) != item or item is answering
-        ),
-        head=head,
+    items = tuple(
+        item
+        for item in (*before_page, *page)
+        # Running work's cards are in no entry, so its item never equals the one held at after.
+        if held.get(item.id) != item or item is answering
     )
+    yield ScreenFrame(items=items, head=head, held_cards=_held_cards(items, held))
     async for streamed in follow(log, conversation_id, user_id, head):
         if streamed is None:
             yield None
@@ -411,6 +410,26 @@ async def _held_at(
     return {item.id: item for item in project_screen(conversation_id, seen, FILE_LINKS)}
 
 
+#: What only a wire 2 frame carries: a reader built before wire 2 refuses a key it does not know.
+_WIRE_2_ONLY = {"frame": {"held_cards": True}}
+
+
+def _held_cards(
+    sent: Sequence[ScreenItem], held: Mapping[str, ScreenItem]
+) -> dict[str, tuple[TimelineCard, ...]]:
+    """Return the cards each sent work item showed at the client's head, for work that was not running then.
+
+    Running work's cards are in no entry, so what a client was shown of it by that head is not known.
+    """
+    return {
+        item.id: was.timeline.cards
+        for item in sent
+        if isinstance(item, WorkItem)
+        and isinstance(was := held.get(item.id), WorkItem)
+        and was.status not in LIVE_WORK
+    }
+
+
 async def event_lines(
     frames: AsyncGenerator[ScreenStreamFrame | None],
     user_id: str,
@@ -432,7 +451,7 @@ async def event_lines(
             continue
         shown = await shown_frame(user_id, frame)
         line = (
-            ConversationEvent(frame=shown).model_dump_json()
+            ConversationEvent(frame=shown).model_dump_json(exclude=_WIRE_2_ONLY)
             if patched is None
             else patched.line(shown)
         )

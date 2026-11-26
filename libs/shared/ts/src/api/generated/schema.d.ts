@@ -15290,6 +15290,13 @@ export interface components {
         ScreenFrame: {
             /** Head */
             head: number;
+            /**
+             * Held Cards
+             * @default {}
+             */
+            held_cards: {
+                [key: string]: components["schemas"]["TimelineCard"][];
+            };
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
             /**

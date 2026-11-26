@@ -26,8 +26,18 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
     WorkDeltaFrame,
 )
-from app.models.conversation_log_models import DisplayState, WorkStarted
-from app.models.conversation_screen_models import ScreenFrame, ScreenUpdateFrame, WorkItem
+from app.models.conversation_log_models import (
+    DisplayState,
+    Entry,
+    WorkFinished,
+    WorkOutcome,
+    WorkStarted,
+)
+from app.models.conversation_screen_models import (
+    ScreenFrame,
+    ScreenUpdateFrame,
+    WorkItem,
+)
 from app.services.conversation import event_stream, screen_patches
 from app.services.conversation.event_stream import (
     StreamedFrame,
@@ -39,9 +49,14 @@ from app.services.conversation.event_stream import (
 )
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen import TOOL_CALL_CARD
-from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ToolDataEntry
+from shared.py.conversation_wire import (
+    BubbleTextDelta,
+    ReplyDeltaFrame,
+    TimelineCard,
+    ToolDataEntry,
+)
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import opened, settled, user
+from tests.unit.services.conversation.log_helpers import asked, opened, settled, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
@@ -343,6 +358,86 @@ async def test_a_reply_the_client_held_is_projected_with_its_conversation_s_link
         )
 
     assert await _opening(runtime, 3) == ["u1"]
+
+
+async def _logged(runtime: Runtime, redis: fakeredis.aioredis.FakeRedis, *entries: Entry) -> None:
+    """Log each entry and publish its frame."""
+    for entry in entries:
+        appended = await runtime.log.append(CONVERSATION, USER, entry)
+        await _publish(
+            redis, EntryFrame(seq=appended.logged.seq, at=appended.logged.at, entry=entry)
+        )
+
+
+async def _resumed(runtime: Runtime, after: int) -> ScreenFrame:
+    frames = follow_screen(runtime.log, CONVERSATION, USER, after)
+    opening = await anext(frames)
+    await frames.aclose()
+    assert isinstance(opening, ScreenFrame)
+    return opening
+
+
+async def test_a_resumed_screen_names_the_cards_finished_work_showed_before_it_ran_again(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    runtime = Runtime()
+    shown: ToolDataEntry = {"tool_name": "browser_task_data", "data": {"kind": "step"}}
+    finished = WorkFinished(
+        id="work:t1:finished",
+        task_id="t1",
+        outcome=WorkOutcome.DONE,
+        report="done",
+        tool_data=(shown,),
+    )
+    await _said(runtime, fake_redis, "u1")
+    await _logged(
+        runtime, fake_redis, WorkStarted(id="work:t1", task_id="t1", cause_through=1), finished
+    )
+    again = WorkStarted(id="work:t2", task_id="t2", cause_through=3, cause_from=3, continues="t1")
+    await _logged(runtime, fake_redis, again)
+
+    whole, resumed = await _resumed(runtime, 0), await _resumed(runtime, 3)
+
+    assert whole.held_cards == {}
+    assert [item.id for item in resumed.items] == ["u1", "work:t1"]
+    # A browser run's cards are grouped: one card holding each step.
+    assert {
+        item: [held.card["data"] for held in cards] for item, cards in resumed.held_cards.items()
+    } == {"work:t1": [[shown["data"]]]}
+
+
+async def test_a_resumed_screen_names_no_cards_for_work_that_was_running_at_the_client_s_head(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1")
+    await _logged(runtime, fake_redis, WorkStarted(id="work:t1", task_id="t1", cause_through=1))
+    await _logged(runtime, fake_redis, asked("ask:a1", "t1", "a1"))
+
+    resumed = await _resumed(runtime, 2)
+
+    assert "work:t1" in [item.id for item in resumed.items]
+    assert resumed.held_cards == {}
+
+
+async def test_only_a_wire_2_screen_carries_held_cards_and_only_when_it_names_some() -> None:
+    card: ToolDataEntry = {"tool_name": "browser_task_data", "data": {"kind": "step"}}
+    held: dict[str, tuple[TimelineCard, ...]] = {"work:t1": (TimelineCard(key="k", card=card),)}
+    naming = ScreenFrame(items=(), head=3, held_cards=held)
+    plain = ScreenFrame(items=(), head=3)
+
+    async def sent(frame: ScreenFrame, wire: EventsWire) -> dict[str, JsonValue]:
+        async def frames() -> AsyncGenerator[ScreenFrame | None]:
+            yield frame
+
+        lines = event_lines(frames(), USER, _never_disconnected, asyncio.Event(), wire)
+        (line,) = [line async for line in lines]
+        parsed: dict[str, JsonValue] = json.loads(line.removeprefix("data: "))["frame"]
+        return parsed
+
+    assert "held_cards" in await sent(naming, EventsWire.PATCHES)
+    assert "held_cards" not in await sent(plain, EventsWire.PATCHES)
+    assert "held_cards" not in await sent(naming, EventsWire.ITEMS)
 
 
 async def test_the_newest_user_message_opens_the_screen_even_when_the_page_no_longer_reaches_it(
