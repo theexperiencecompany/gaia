@@ -1370,6 +1370,19 @@ class TestSaveOnboardingAnswers:
         assert capture.call_args.args[1].heard_from is HeardFrom.REDDIT
         identify.assert_called_once_with(UserId(sample_user_id), {"heard_from": "reddit"})
 
+    async def test_a_save_without_where_they_heard_of_gaia_keeps_the_stored_answer(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """Regression: a page cached from before Q3 saving late must not null the stored answer."""
+        mock_repo.update_onboarding_preferences.return_value = UserDocument(id=sample_user_id)
+        answers = OnboardingAnswers(profession="founder", needs=[OnboardingNeed.INBOX])
+
+        with patch(f"{SERVICE}.spawn_background_task"), patch(f"{SERVICE}.capture"):
+            await save_onboarding_answers(sample_user_id, answers)
+
+        stored = mock_repo.update_onboarding_preferences.await_args.args[1]
+        assert "heard_from" not in stored.model_dump(exclude_unset=True)
+
     async def test_no_answer_to_where_they_heard_of_gaia_sets_no_person_property(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:

@@ -276,12 +276,14 @@ async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> O
     Written long before completion: the platform-link opener and the seeded
     first conversation are composed from these stored answers.
     """
+    # Unsent stays unset: a page cached from before Q3 must not null a stored answer.
+    heard_from = answers.model_dump(include={"heard_from"}, exclude_unset=True)
     preferences = OnboardingPreferences(
         profession=answers.profession,
         needs=answers.needs,
         other_need=answers.other_need,
         language=answers.language,
-        heard_from=answers.heard_from,
+        **heard_from,
     )
     updated_user = await user_repository.update_onboarding_preferences(user_id, preferences)
     if updated_user is None:
