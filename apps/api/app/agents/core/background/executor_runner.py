@@ -12,8 +12,10 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 import time
 from typing import NamedTuple
 from uuid import uuid4
@@ -28,13 +30,11 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
 from app.agents.core.background.executor_progress import ProgressRecorder, StreamWriter
 from app.agents.core.background.executor_queue import (
-    LockClaim,
     PreparedQueuedTask,
     build_lock_value,
     build_run_item,
     keep_alive,
     prepare_run_from_item,
-    reclaim_dead_lock,
     release_lock_if_owned,
 )
 from app.agents.core.background.run_stop import stop_requested
@@ -56,7 +56,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import NON_WAKING_TAGS, AgentTag, OutcomeState
-from app.constants.conversation import WORK_STOPPED_REPORT
+from app.constants.conversation import WORK_INTERRUPTED_REPORT, WORK_STOPPED_REPORT
 from app.constants.executor import (
     EXECUTOR_CARRY_TASK,
     EXECUTOR_CRASH_MESSAGE,
@@ -101,6 +101,16 @@ from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 #: Task name for a queued executor run. Tests drain by this name to wait out
 #: exactly the runs a turn handed off, not every background task in the process.
 DETACHED_EXECUTOR_TASK_NAME = "detached-executor-run"
+
+
+class RunCut(StrEnum):
+    """Why a run ended before it finished: a Stop told it to, or it was cancelled mid-run (its process going down)."""
+
+    STOPPED = "stopped"
+    INTERRUPTED = "interrupted"
+
+
+_CUT_REPORTS = {RunCut.STOPPED: WORK_STOPPED_REPORT, RunCut.INTERRUPTED: WORK_INTERRUPTED_REPORT}
 
 
 @traceable(name="executor_background", run_type="chain")
@@ -155,7 +165,7 @@ async def _run_executor(
         result_type = "final"
         # Equivalent under mutation: read only if execute raised, when result_text is
         # still empty and finalize has nothing to deliver either way.
-        stopped = False  # pragma: no mutate
+        cut: RunCut | None = None  # pragma: no mutate
         # Equivalent under mutation: read only if execute raised, when result_type is still
         # "final" and finalize's `if ctx` treats any falsy placeholder alike.
         run_ctx: SubagentExecutionContext | None = None  # pragma: no mutate
@@ -171,11 +181,16 @@ async def _run_executor(
                 run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
             )
             try:
-                with span() as elapsed_active:
-                    result = await _execute_executor(task, configurable, run)
+                try:
+                    with span() as elapsed_active:
+                        result = await _execute_executor(task, configurable, run)
+                except asyncio.CancelledError:
+                    # Cut off mid-run: its work ends interrupted, never done with an empty result.
+                    cut = RunCut.INTERRUPTED
+                    raise
                 active_ms = round(elapsed_active() * 1000.0, 2)
                 result_text, result_type, run_ctx = result.text, result.type, result.ctx
-                stopped = result.stopped
+                cut = RunCut.STOPPED if result.stopped else None
                 error_type = result.error_type
                 ttft_ms = _executor_ttft_ms(run, run_start)
                 if ttft_ms is not None:
@@ -200,9 +215,7 @@ async def _run_executor(
                     lifecycle.failure_reason = error_type
             finally:
                 alive.cancel()
-                await _finalize_executor_run(
-                    run, result_text, result_type, run_ctx, stopped=stopped
-                )
+                await _finalize_executor_run(run, result_text, result_type, run_ctx, cut=cut)
 
 
 def _run_props(run: ExecutorRun) -> AgentRunStarted:
@@ -409,14 +422,14 @@ async def _finalize_executor_run(
     result_type: str,
     ctx: SubagentExecutionContext | None = None,
     *,
-    stopped: bool = False,
+    cut: RunCut | None = None,
 ) -> None:
     """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on.
 
     A Stop discards only what it cut short: a run that finished its answer before
-    the cancel landed (stopped False, a final result) is delivered whatever the flag says.
+    the cancel landed (no cut, a final result) is delivered whatever the flag says.
     """
-    finished = result_type == "final" and not stopped
+    finished = result_type == "final" and cut is None
     was_cancelled = bool(run.stream_id) and not finished and await stop_requested(run.stream_id)
 
     # Snapshot the approval cards BEFORE signalling done: a waiting todo run tears the
@@ -472,7 +485,7 @@ async def _finalize_executor_run(
             error=str(e),
         )
 
-    await _log_work_finished(run, outcome, stopped=stopped)
+    await _log_work_finished(run, outcome, cut=cut)
 
     end_status = (
         "error" if result_type == "error" else ("cancelled" if was_cancelled else "success")
@@ -533,9 +546,9 @@ class TerminalOutcome:
     review: OutcomeReview = NOT_REVIEWED
 
 
-def _work_outcome(outcome: TerminalOutcome, *, stopped: bool) -> WorkOutcome:
+def _work_outcome(outcome: TerminalOutcome, *, cut: RunCut | None) -> WorkOutcome:
     """Name how the run ended for the conversation log."""
-    if outcome.was_cancelled or stopped:
+    if outcome.was_cancelled or cut is not None:
         return WorkOutcome.CANCELLED
     if outcome.result_type == "error":
         return WorkOutcome.FAILED
@@ -543,13 +556,13 @@ def _work_outcome(outcome: TerminalOutcome, *, stopped: bool) -> WorkOutcome:
 
 
 async def _log_work_finished(
-    run: ExecutorRun, outcome: TerminalOutcome | None, *, stopped: bool
+    run: ExecutorRun, outcome: TerminalOutcome | None, *, cut: RunCut | None
 ) -> None:
     """Log the run's end once its busy lock is free; the step narrates it in the task's reply."""
     if outcome is None or not run.task_id:
         return
     review = outcome.review
-    ended_as = _work_outcome(outcome, stopped=stopped)
+    ended_as = _work_outcome(outcome, cut=cut)
     # The work's own record, so a run resumed in another process keeps every card it showed.
     published = await work_cards(run.conversation_id, [run.task_id])
     cards = fold_cards(
@@ -563,7 +576,9 @@ async def _log_work_finished(
             run.task_id,
             ended_as,
             WorkReport(
-                WORK_STOPPED_REPORT if ended_as is WorkOutcome.CANCELLED else outcome.result_text,
+                _CUT_REPORTS[cut or RunCut.STOPPED]
+                if ended_as is WorkOutcome.CANCELLED
+                else outcome.result_text,
                 cards.tool_data,
                 note=outcome_delivery_note(review.declared, review.problem),
                 nothing_for_user=review.nothing_for_user,
@@ -613,19 +628,15 @@ async def deliver_to_executor(
 
     A live run absorbs the task through its inbox, an idle one gets a run started
     to carry it; never a second parallel answer. Tagged work (a subagent result)
-    always travels through the inbox so it arrives framed. A free (or freed) lock is
-    a fast path — the claim inside _start_executor_run is the atomic decision; a run it starts shows as continues' work.
+    always travels through the inbox so it arrives framed. The claim inside
+    _start_executor_run decides, a dead holder's lock reclaimed; a run it starts shows as continues' work.
     """
-    if (
-        tag is None
-        and await reclaim_dead_lock(conversation_id)
-        and await _start_executor_run(
-            conversation_id,
-            user,
-            task,
-            workflow_execution_id=workflow_execution_id,
-            continues=continues,
-        )
+    if tag is None and await _start_executor_run(
+        conversation_id,
+        user,
+        task,
+        workflow_execution_id=workflow_execution_id,
+        continues=continues,
     ):
         return
     await ExecutorInbox(conversation_id).append(str(uuid4()), task, tag)
@@ -648,10 +659,9 @@ async def wake_executor_for_inbox(
 
     Checked after the append: only a free lock needs a rescue, and the rescue
     carries EXECUTOR_CARRY_TASK because the entry already holds the real work.
-    A lock whose run died with its process is reclaimed first, or it would hold
-    the work back for the lock's whole TTL.
+    The claim reclaims a lock whose run died with its process.
     """
-    if await reclaim_dead_lock(conversation_id) and await _start_executor_run(
+    if await _start_executor_run(
         conversation_id,
         user,
         EXECUTOR_CARRY_TASK,
@@ -699,7 +709,6 @@ async def _prepare_executor_run(
             identity=identity,
             workflow_execution_id=workflow_execution_id,
         ),
-        claim=LockClaim.ACQUIRE,
     )
 
 

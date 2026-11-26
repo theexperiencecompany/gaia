@@ -19,7 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
-from app.agents.core.background import running_registry, work_cancel
+from app.agents.core.background import executor_queue, running_registry, work_cancel
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import release_lock_if_owned, try_acquire_lock
@@ -365,15 +365,22 @@ def release_lock_on_attempt(
     deterministic by construction, replacing real-time releaser tasks.
     """
 
-    real_acquire = try_acquire_lock
     state = {"attempt": 0, "release": -1}
 
-    async def wrapped_acquire(lock_key: str, lock_value: str) -> bool:
+    async def attempt(lock_key: str) -> None:
         state["attempt"] += 1
         if state["attempt"] == state["release"]:
             await fake_redis.delete(lock_key)
-        return await real_acquire(lock_key, lock_value)
 
+    async def wrapped_claim(conversation_id: str, lock_value: str) -> bool:
+        await attempt(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+        return await executor_queue.claim_conversation(conversation_id, lock_value)
+
+    async def wrapped_acquire(lock_key: str, lock_value: str) -> bool:
+        await attempt(lock_key)
+        return await try_acquire_lock(lock_key, lock_value)
+
+    monkeypatch.setattr(executor_tool, "claim_conversation", wrapped_claim)
     monkeypatch.setattr(executor_tool, "try_acquire_lock", wrapped_acquire)
 
     def schedule(release_attempt: int) -> None:
@@ -748,8 +755,8 @@ class TestCallExecutorLockContention:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Freed by a cancel and taken by another dispatch before the retry: no holder is known."""
+        monkeypatch.setattr(executor_tool, "claim_conversation", AsyncMock(return_value=False))
         monkeypatch.setattr(executor_tool, "try_acquire_lock", AsyncMock(return_value=False))
-        monkeypatch.setattr(executor_tool, "reclaim_dead_lock", AsyncMock(return_value=False))
         record = AsyncMock(wraps=record_work_started)
         monkeypatch.setattr(executor_tool, "record_work_started", record)
 

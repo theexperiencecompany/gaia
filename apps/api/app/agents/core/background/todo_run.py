@@ -21,10 +21,11 @@ from langgraph.constants import CONF
 
 from app.agents.core.background.executor_queue import (
     build_lock_value,
+    claim_conversation,
     release_lock_if_owned,
-    try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.running_registry import stop_stream
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -38,7 +39,11 @@ from app.agents.core.background.todo_run_delivery import (
     hand_unfinished_run_to_job,
 )
 from app.agents.llm.lane import AgentRole
-from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT, EXECUTOR_BUSY_PREFIX
+from app.constants.cache import (
+    BACKGROUND_EXECUTOR_WAIT_TIMEOUT,
+    TODO_RUN_STOP_FINALIZE_SECONDS,
+    TODO_RUN_STOP_REQUEST_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -104,8 +109,7 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
     user_id = request.user.user_id
     configurable = await _todo_run_configurable(request, stream_id)
 
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    if not await try_acquire_lock(lock_key, build_lock_value(stream_id, task_id)):
+    if not await claim_conversation(conversation_id, build_lock_value(stream_id, task_id)):
         raise ExecutorBusyError(
             f"the executor is already running in conversation {conversation_id}"
         )
@@ -139,8 +143,13 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
         name=TODO_EXECUTOR_TASK_NAME,
     )
     try:
-        # Shielded so it is marked abandoned before it is cancelled.
+        # Shielded so it is marked abandoned, or stopped, before it is cancelled.
         await asyncio.wait_for(asyncio.shield(run_task), BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
+    except asyncio.CancelledError:
+        # The job was cancelled (a worker shutting down): a run left going would hold the
+        # chat past this process, so the job's retry finds it busy.
+        await _stop_with_the_job(conversation_id, stream_id, run_task)
+        raise
     except TimeoutError:
         reason = f"the executor did not finish within {BACKGROUND_EXECUTOR_WAIT_TIMEOUT}s"
         # Abandoned, so the finalize the cancel triggers logs no result.
@@ -167,6 +176,31 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
     finished = _finished_run(request, task_id, outcome)
     if (undone := await finish_todo_run(finished)) is not None:
         await hand_unfinished_run_to_job(undone)
+
+
+async def _stop_with_the_job(
+    conversation_id: str, stream_id: str, run_task: asyncio.Task[None]
+) -> None:
+    """Stop the run as a Stop would and wait, bounded, for its finalize to free the chat and log its work.
+
+    The run is cut off even when the stop request fails or stalls. That failure is logged, never
+    raised: it would replace the job's cancel, and a shutdown would read as a failed attempt.
+    """
+    try:
+        await asyncio.wait_for(
+            stop_stream(conversation_id, stream_id), TODO_RUN_STOP_REQUEST_SECONDS
+        )
+    except Exception as e:  # the cancel this runs under is the job's real ending
+        log.error(
+            f"{LogTag.TODO} Could not stop a cancelled todo job's run; cancelling it anyway",
+            conversation_id=conversation_id,
+            error_type=type(e).__name__,
+        )
+    finally:
+        # Also on a second cancel landing mid-stop.
+        run_task.cancel()
+        _, still_running = await asyncio.wait({run_task}, timeout=TODO_RUN_STOP_FINALIZE_SECONDS)
+        log.set_ns("tracked_todo", stopped_with_job=True, finalize_cut_off=bool(still_running))
 
 
 async def _log_the_wake(request: TodoRunRequest, task_id: str) -> LoggedEntry:

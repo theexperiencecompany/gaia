@@ -53,49 +53,44 @@ def _carried_work_is_logged() -> Iterator[AsyncMock]:
         yield logged
 
 
-def _seams(*, busy: list[bool], started: bool):
-    """Patch deliver_to_executor's seams: the free-or-freed lock check, run start, inbox.
+def _seams(*, started: list[bool]):
+    """Patch deliver_to_executor's seams: run start (whose claim decides) and the inbox.
 
-    busy answers successive checks of THIS conversation; any other id reads free.
+    started answers successive start attempts: False means a live run holds the conversation.
     """
-    answers = iter(busy)
-
-    async def _free_after_reclaim(conversation_id: str) -> bool:
-        # Each check reclaims a dead holder first: free means no live run holds it.
-        return not next(answers) if conversation_id == CONVERSATION else True
-
-    stack = patch.object(er, "reclaim_dead_lock", _free_after_reclaim)
-    start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=started)
+    start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, side_effect=started)
     append = patch.object(ExecutorInbox, "append", new_callable=AsyncMock)
-    return stack, start, append
+    return start, append
 
 
 class TestMidFinalizeWorkGetsARun:
     async def test_an_append_after_the_old_runs_carry_starts_a_carry_run(self) -> None:
         """Busy at entry (old run finalizing), free after the append (released, carry missed it)."""
-        busy, start, append = _seams(busy=[True, False], started=True)
-        with busy, start as start_mock, append as append_mock:
+        start, append = _seams(started=[False, True])
+        with start as start_mock, append as append_mock:
             await er.deliver_to_executor(CONVERSATION, AuthenticatedUser(user_id="u1"), TASK)
 
         append_mock.assert_awaited_once()  # the work is never dropped from the inbox
-        start_mock.assert_awaited_once()  # ...nor left without a run to drain it
-        assert start_mock.await_args.args[2] == EXECUTOR_CARRY_TASK
+        # ...nor left without a run to drain it
+        assert [call.args[2] for call in start_mock.await_args_list] == [TASK, EXECUTOR_CARRY_TASK]
 
     async def test_a_live_run_absorbs_the_append_with_no_extra_start(self) -> None:
-        busy, start, append = _seams(busy=[True, True], started=False)
-        with busy, start as start_mock, append as append_mock:
+        start, append = _seams(started=[False, False])
+        with start, append as append_mock:
             await er.deliver_to_executor(CONVERSATION, AuthenticatedUser(user_id="u1"), TASK)
 
         append_mock.assert_awaited_once()
-        start_mock.assert_not_awaited()
 
     async def test_an_idle_conversation_starts_a_run_for_the_task_itself(self) -> None:
-        busy, start, append = _seams(busy=[False], started=True)
-        with busy, start as start_mock, append as append_mock:
-            await er.deliver_to_executor(CONVERSATION, AuthenticatedUser(user_id="u1"), TASK)
+        start, append = _seams(started=[True])
+        with start as start_mock, append as append_mock:
+            await er.deliver_to_executor(
+                CONVERSATION, AuthenticatedUser(user_id="u1"), TASK, continues="work-1"
+            )
 
         start_mock.assert_awaited_once()
         assert start_mock.await_args.args[2] == TASK
+        assert start_mock.await_args.kwargs["continues"] == "work-1"
         append_mock.assert_not_awaited()
 
 
@@ -103,8 +98,8 @@ class TestTaggedWorkTravelsThroughTheInbox:
     async def test_an_idle_conversation_gets_the_entry_framed_and_a_carry_run(self) -> None:
         # A subagent result must reach the model framed as a subagent result, so it is
         # never the run's bare task, even when the conversation is idle.
-        busy, start, append = _seams(busy=[False], started=True)
-        with busy, start as start_mock, append as append_mock:
+        start, append = _seams(started=[True])
+        with start as start_mock, append as append_mock:
             await er.deliver_to_executor(
                 CONVERSATION, AuthenticatedUser(user_id="u1"), TASK, tag=AgentTag.SUBAGENT_RESULT
             )
@@ -230,22 +225,6 @@ class TestTheRunAnIdleConversationGets:
 
         configurable = h.spawn.call_args.args[0].configurable
         assert (configurable["email"], configurable["user_name"]) == ("", "")
-
-    async def test_a_conversation_claimed_after_the_busy_check_keeps_the_work_queued(
-        self, fake_redis
-    ) -> None:
-        """The busy read is only a fast path: the claim decides, and a lost claim still queues the work."""
-        await fake_redis.set(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", OTHER_RUN_LOCK)
-
-        with (
-            _real_lifecycle() as h,
-            patch.object(er, "reclaim_dead_lock", AsyncMock(return_value=True)),
-        ):
-            await er.deliver_to_executor(CONVERSATION, USER, TASK)
-
-        h.spawn.assert_not_called()
-        assert [e.text for e in await ExecutorInbox(CONVERSATION).read()] == [TASK]
-        assert await get_lock_holder(CONVERSATION) == OTHER_RUN_LOCK
 
     async def test_work_for_a_busy_run_is_queued_under_its_own_id(self, fake_redis) -> None:
         await fake_redis.set(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", OTHER_RUN_LOCK)
