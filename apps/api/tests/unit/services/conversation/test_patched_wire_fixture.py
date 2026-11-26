@@ -40,6 +40,7 @@ from app.services.conversation.patched_wire import PatchedWire
 from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.tool_timeline import tool_timeline
+from shared.py.conversation_patch import with_changes
 from shared.py.conversation_wire import (
     CardsDelta,
     ChangeOp,
@@ -48,7 +49,6 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
 )
 from tests.helpers import REPO_ROOT
-from tests.unit.services.conversation.change_helpers import with_changes
 from tests.unit.services.conversation.log_helpers import at, logged, opened, settled, user
 
 pytestmark = pytest.mark.unit

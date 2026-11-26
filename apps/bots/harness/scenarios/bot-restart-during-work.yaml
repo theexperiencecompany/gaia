@@ -1,0 +1,26 @@
+# The bot process restarts while background work runs and no reply is open. The
+# fresh bot resumes the conversation after what the stopped one delivered: the
+# earlier turn's reply and the side answer are not sent again, the work's result
+# arrives once and still quotes the message that asked for it, and typing is
+# still shown on a message.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/bot-restart-during-work.yaml
+name: bot restart during work
+emulate: telegram
+user: bot-restart-work-scenario@gaia.local
+turns:
+  - send: "an earlier turn [[say:Earlier answer.]]"
+    expect:
+      - bubbles: ["Earlier answer."]
+  - burst:
+      - send: 'research it [[tool:create_todo {"title":"rw-1"}]] [[wait:18000]] [[tool:create_todo {"title":"rw-2"}]] [[say:Research finished.]]'
+      - send: "quick side question: what's 15% of 240? [[say:36.]]"
+        afterMs: 4000
+    restartAfterMs: 5000
+    settleMs: 30000
+    expect:
+      - bubbles: ["36.", "Research finished."]
+      - quotes: { "Research finished.": 1, "36.": null }
+      - typingOnAMessage: true
+      - noTakeBacks: true

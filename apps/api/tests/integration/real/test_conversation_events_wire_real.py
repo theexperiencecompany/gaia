@@ -48,11 +48,11 @@ from app.services.conversation.work_log import (
     record_work_finished,
 )
 from app.utils.artifact_utils import FILE_LINKS
+from shared.py.conversation_patch import with_changes
 from shared.py.conversation_wire import ItemChange
 from shared.py.wide_events import EventsResume
 from tests.conftest import FAKE_USER
 from tests.helpers import serve_asgi
-from tests.unit.services.conversation.change_helpers import with_changes
 from tests.unit.services.conversation.log_helpers import SEND_EMAIL
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
@@ -329,7 +329,7 @@ async def test_a_reconnect_after_the_head_it_reached_is_sent_only_what_is_new(
     assert first.items == await conversation.screen()
 
 
-async def test_a_reconnect_mid_run_is_sent_the_live_work_again_and_nothing_older(
+async def test_a_reconnect_mid_run_is_sent_the_live_work_again_and_the_message_it_answers(
     api: str, conversation: Conversation
 ) -> None:
     await conversation.start_work("t1", await conversation.say("m1"))
@@ -339,7 +339,18 @@ async def test_a_reconnect_mid_run_is_sent_the_live_work_again_and_nothing_older
     await conversation.run_tools("t2", iter(range(5, 8)))
     first = await _read(api, conversation.id, wire=2)
     resumed = await _read(api, conversation.id, wire=2, after=first.head)
-    assert [item["id"] for item in _items(resumed.frames[0]["items"])] == ["work:t2"]
+    assert [item["id"] for item in _items(resumed.frames[0]["items"])] == ["m2", "work:t2"]
+
+
+async def test_a_reconnect_is_sent_the_newest_user_message_even_when_nothing_changed(
+    api: str, conversation: Conversation
+) -> None:
+    await conversation.say("m1")
+    await conversation.start_work("t1", await conversation.say("m2"))
+    await conversation.finish_work("t1")
+    first = await _read(api, conversation.id, wire=2)
+    resumed = await _read(api, conversation.id, wire=2, after=first.head)
+    assert resumed.frames[0]["items"] == [first.items["m2"]]
 
 
 async def test_a_reconnect_is_sent_the_whole_screen_when_an_entry_it_held_was_amended(

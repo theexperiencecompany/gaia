@@ -514,6 +514,7 @@ def _reply_item(
         quote=None
         if quoted is None
         else ReplyToMessageData(id=quoted.id, content=quoted.text, role="user"),
+        quote_platform_message_id=None if quoted is None else quoted.platform_message_id,
         outcome=None if settle is None else settle.outcome,
         failure=failure,
         failure_line=None if failure is None else REPLY_FAILURE_LINE[failure],

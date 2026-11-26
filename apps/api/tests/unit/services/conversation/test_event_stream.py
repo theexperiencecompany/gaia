@@ -237,7 +237,7 @@ async def _opening(runtime: Runtime, after: int) -> list[str]:
     return [item.id for item in opening.items]
 
 
-async def test_a_follow_after_a_head_the_stream_holds_opens_on_only_what_is_newer(
+async def test_a_follow_after_a_head_the_stream_holds_opens_on_what_is_newer_and_the_newest_user_message(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
     runtime = Runtime()
@@ -247,7 +247,8 @@ async def test_a_follow_after_a_head_the_stream_holds_opens_on_only_what_is_newe
     assert await _opening(runtime, 0) == ["u1", "u2", "u3"]
     assert await _opening(runtime, 1) == ["u2", "u3"]
     assert await _opening(runtime, 2) == ["u3"]
-    assert await _opening(runtime, 3) == []
+    # Nothing is newer: only the message a chat platform shows typing on.
+    assert await _opening(runtime, 3) == ["u3"]
 
 
 async def test_a_follow_after_a_head_the_stream_does_not_hold_opens_on_the_whole_screen(
@@ -341,7 +342,7 @@ async def test_a_reply_the_client_held_is_projected_with_its_conversation_s_link
             fake_redis, EntryFrame(seq=appended.logged.seq, at=appended.logged.at, entry=entry)
         )
 
-    assert await _opening(runtime, 3) == []
+    assert await _opening(runtime, 3) == ["u1"]
 
 
 async def test_a_follow_that_met_an_unreadable_frame_reopens_on_the_whole_screen(
@@ -461,7 +462,7 @@ async def test_the_head_check_reads_one_page_when_the_head_is_among_the_newest_f
     await _said(runtime, fake_redis, "u3")
     pages_read.clear()
 
-    assert await _opening(runtime, 3) == []
+    assert await _opening(runtime, 3) == ["u3"]
     # The opening also reads the newest id once, to follow from it.
     assert [count for count in pages_read if count != 1] == [EVENTS_RESUME_PAGE]
 

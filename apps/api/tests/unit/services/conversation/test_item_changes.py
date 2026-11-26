@@ -7,8 +7,8 @@ from pydantic import JsonValue
 import pytest
 
 from app.services.conversation.item_changes import changes_between
+from shared.py.conversation_patch import ChangeNotApplicable, with_changes
 from shared.py.conversation_wire import ChangeOp, ItemChange
-from tests.unit.services.conversation.change_helpers import ChangeNotApplicable, with_changes
 
 pytestmark = pytest.mark.unit
 

@@ -410,8 +410,12 @@ export class HarnessAdapter extends BaseBotAdapter {
           false,
           replaces,
         ),
-      startTyping: () => {
-        this.transcript.record({ type: "typing", state: "start" });
+      startTyping: (answering) => {
+        this.transcript.record({
+          type: "typing",
+          state: "start",
+          ...(answering ? { answering } : {}),
+        });
         return () => this.transcript.record({ type: "typing", state: "stop" });
       },
     };

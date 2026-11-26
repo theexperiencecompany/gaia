@@ -15115,6 +15115,8 @@ export interface components {
             /** Pinned */
             pinned: boolean;
             quote: components["schemas"]["ReplyToMessageData"] | null;
+            /** Quote Platform Message Id */
+            quote_platform_message_id?: string | null;
             /** Retry Target */
             retry_target: string | null;
             /** Seq */

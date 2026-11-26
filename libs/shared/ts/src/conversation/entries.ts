@@ -301,6 +301,8 @@ const ReplyItemSchema = z.object({
   image: ImageDataSchema.nullable(),
   pinned: z.boolean(),
   quote: ReplyToMessageSchema.nullable(),
+  // An API from before the field omits it.
+  quote_platform_message_id: z.string().nullable().optional(),
   outcome: z
     .enum([
       REPLY_OUTCOME.ANSWERED,

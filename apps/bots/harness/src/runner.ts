@@ -334,6 +334,12 @@ export async function runScenario(
         restartedAt = transcript.getEvents().length;
         adapter = await bootAdapter(platform, apiUrl, transcript);
       }
+      const { restartAfterMs } = turn;
+      if (restartAfterMs !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, restartAfterMs));
+        await adapter.shutdown("restart");
+        adapter = await bootAdapter(platform, apiUrl, transcript);
+      }
       await adapter.settleTurn();
       if (restartedAt !== undefined) {
         const resumed = restartResumedABubble(
@@ -547,6 +553,21 @@ function shownTextFailures(
           `the bubble "${text}" quotes inbound ${bubble.quotes}, expected ${wanted}`,
         );
       }
+    }
+  }
+  if (assertion.typingOnAMessage) {
+    const inbound = events.flatMap((e) =>
+      e.type === "inbound" ? [e.messageId] : [],
+    );
+    const shownOn = events.flatMap((e) =>
+      e.type === "typing" && e.state === "start"
+        ? [e.answering === undefined ? 0 : inbound.indexOf(e.answering) + 1]
+        : [],
+    );
+    if (shownOn.length === 0 || shownOn.includes(0)) {
+      failures.push(
+        `typing was shown on inbound ${JSON.stringify(shownOn)} (0 is no message), expected each on one of the turn's`,
+      );
     }
   }
   if (assertion.noTakeBacks) {

@@ -76,6 +76,8 @@ export interface DeleteEvent extends TranscriptEventBase {
 export interface TypingEvent extends TranscriptEventBase {
   type: "typing";
   state: "start" | "stop";
+  /** On a start: the platform message being answered, where the follower named one. */
+  answering?: string;
 }
 
 /** An ephemeral (invoker-only) message, e.g. an auth link in a public channel. */

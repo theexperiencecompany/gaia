@@ -43,6 +43,7 @@ from app.models.conversation_screen_models import (
     ScreenFrame,
     ScreenItem,
     ScreenStreamFrame,
+    UserItem,
 )
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.patched_wire import PatchedWire
@@ -314,12 +315,14 @@ async def _screen_from_the_head(
     tracker = await ScreenTracker.load(conversation_id, entries)
     head = entries[-1].seq if entries else 0
     held = await _held_at(conversation_id, entries, after)
+    # A chat platform shows typing on the newest user message, which a bot resuming after it never held.
+    answering = next((item for item in reversed(tracker.items) if isinstance(item, UserItem)), None)
     yield ScreenFrame(
         items=tuple(
             item
             for item in tracker.items[-CONVERSATION_READ_LIMIT:]
             # Running work's cards are in no entry, so its item never equals the one held at after.
-            if held.get(item.id) != item
+            if held.get(item.id) != item or item is answering
         ),
         head=head,
     )

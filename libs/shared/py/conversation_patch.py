@@ -1,4 +1,8 @@
-"""Apply the changes a wire 2 stream sends, as a client does (libs/shared/ts/src/conversation/patch.ts)."""
+"""Apply the changes a wire 2 conversation stream sends to the JSON a reader holds.
+
+The Python twin of libs/shared/ts/src/conversation/patch.ts: voice applies a screen_patch
+with it, and the API's tests check the patches it writes against it.
+"""
 
 from collections.abc import Iterable, Sequence
 

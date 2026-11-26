@@ -19125,6 +19125,17 @@
               }
             ]
           },
+          "quote_platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Platform Message Id"
+          },
           "retry_target": {
             "anyOf": [
               {

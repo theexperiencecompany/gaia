@@ -240,6 +240,8 @@ class ReplyItem(ScreenItemBase):
     image: ImageData | None
     pinned: bool
     quote: ReplyToMessageData | None
+    # The platform message the quoted one arrived as; a chat platform answers it natively.
+    quote_platform_message_id: str | None = None
     outcome: ReplyOutcome | None
     failure: FailureReason | None
     # What a chat platform says under a failed reply, worded by the server; None unless it failed.
