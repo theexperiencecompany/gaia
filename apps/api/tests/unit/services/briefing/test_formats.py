@@ -46,3 +46,21 @@ def test_a_moment_is_its_day_then_its_time() -> None:
 )
 def test_a_texts_opening_line_is_its_first_non_blank_line(text: str, first: str) -> None:
     assert formats.opening_line(text) == first
+
+
+@pytest.mark.parametrize(
+    ("names", "show", "said"),
+    [
+        (["Notion"], None, "Notion"),
+        (["Notion", "Linear"], None, "Notion and Linear"),
+        (["Notion", "Linear", "Slack"], None, "Notion, Linear and Slack"),
+        (["Notion", "Linear", "Slack"], 2, "Notion, Linear and Slack"),
+        (["Notion", "Linear", "Slack", "Gmail"], 2, "Notion, Linear and 2 others"),
+        (["Notion", "Linear"], 2, "Notion and Linear"),
+    ],
+    ids=["one", "two", "three", "one-past-show-is-named", "two-past-show-are-counted", "at-show"],
+)
+def test_names_are_listed_as_a_sentence_lists_them(
+    names: list[str], show: int | None, said: str
+) -> None:
+    assert formats.listed(names, show) == said

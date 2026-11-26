@@ -3,8 +3,15 @@
 import pytest
 from tests.briefing_factories import make_briefing_payload
 
+from app.constants.briefing import BriefingKind
 from app.models.brief_payload_models import NewStamp
-from app.services.briefing.message import brief_message, chat_text, delivered_message, preheader
+from app.services.briefing.message import (
+    brief_message,
+    chat_text,
+    delivered_message,
+    email_subject,
+    preheader,
+)
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
@@ -27,6 +34,23 @@ class TestChatText:
         text = chat_text(_BRIEF, _LINK)
 
         assert text.split(NEW_MESSAGE_BREAKER)[1].startswith(_MESSAGE)
+
+
+@pytest.mark.unit
+class TestEmailSubject:
+    @pytest.mark.parametrize(
+        ("kind", "subject"),
+        [
+            (BriefingKind.DAILY, "Daily brief, Wed Oct 14: The deck, then Sequoia"),
+            (BriefingKind.WEEKLY, "Weekly digest, Wed Oct 14: The deck, then Sequoia"),
+        ],
+    )
+    def test_every_subject_opens_on_its_kind_and_day_then_says_the_headline(
+        self, kind: BriefingKind, subject: str
+    ) -> None:
+        brief = make_briefing_payload(date="2026-10-14", headline="The deck, then Sequoia")
+
+        assert email_subject(kind, brief) == subject
 
 
 @pytest.mark.unit

@@ -57,10 +57,13 @@ class PlainEmail:
 
     title: str
     body: str
+    #: The subject when it is not the title.
+    subject: str | None = None
 
     def render(self, unsubscribe_url: str) -> tuple[str, str]:
-        subject = self.title or _DEFAULT_SUBJECT
-        return subject, render_plain_notification_email(subject, self.body, unsubscribe_url)
+        title = self.title or _DEFAULT_SUBJECT
+        html = render_plain_notification_email(title, self.body, unsubscribe_url)
+        return self.subject or title, html
 
 
 class EmailChannelAdapter(ChannelAdapter[RenderableEmail]):
@@ -84,7 +87,8 @@ class EmailChannelAdapter(ChannelAdapter[RenderableEmail]):
         details = notification.details
         renderer = self._renderers.get(details.kind) if details is not None else None
         if renderer is None:
-            return PlainEmail(title=notification.content.title, body=notification.content.body)
+            content = notification.content
+            return PlainEmail(title=content.title, body=content.body, subject=content.email_subject)
         return await renderer(notification)
 
     async def deliver(self, content: RenderableEmail, user_id: str) -> ChannelDeliveryStatus:

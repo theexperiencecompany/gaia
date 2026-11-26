@@ -5,11 +5,18 @@ headline, then the message ending on the full-brief link; the email and the in-a
 notification carry the message as it is.
 """
 
+from datetime import date
 import re
 
 from app.config.settings import settings
-from app.constants.briefing import POSTMARKS_PATH
+from app.constants.briefing import (
+    BRIEF_EMAIL_SUBJECT,
+    BRIEF_EMAIL_SUBJECT_LABELS,
+    POSTMARKS_PATH,
+    BriefingKind,
+)
 from app.models.brief_payload_models import BriefingPayload
+from app.services.briefing.formats import day
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # A linked phrase in the message, as markdown: every bot renders it natively, the
@@ -50,6 +57,15 @@ def chat_text(payload: BriefingPayload, link: str) -> str:
     """Return the chat post: the headline bubble (the image's caption), then the message and link."""
     return (
         f"{payload.headline}{NEW_MESSAGE_BREAKER}{delivered_message(payload)}\n\nFull brief: {link}"
+    )
+
+
+def email_subject(kind: BriefingKind, payload: BriefingPayload) -> str:
+    """Return the brief's email subject: its kind and day, then its headline."""
+    return BRIEF_EMAIL_SUBJECT.format(
+        label=BRIEF_EMAIL_SUBJECT_LABELS[kind],
+        day=day(date.fromisoformat(payload.date)),
+        headline=payload.headline,
     )
 
 
