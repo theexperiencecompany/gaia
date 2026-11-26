@@ -698,6 +698,8 @@ export interface ToolCallEntry
   tool_call_id?: string;
   inputs?: Record<string, unknown>;
   output?: string;
+  /** Set when the server cut output: how many characters the tool returned. */
+  output_original_length?: number;
   icon_url?: string;
   integration_name?: string;
   // When set, this entry is the model's thinking for the step (not a tool call).

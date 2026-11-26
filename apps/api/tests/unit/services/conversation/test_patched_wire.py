@@ -6,7 +6,8 @@ from typing import cast
 from pydantic import JsonValue, TypeAdapter
 import pytest
 
-from app.models.conversation_frame_models import RetractFrame
+from app.constants.summarization import MAX_OUTPUT_CHARS
+from app.models.conversation_frame_models import RetractFrame, ToolDataEvent, ToolOutputEvent
 from app.models.conversation_log_models import WorkStarted
 from app.models.conversation_screen_models import (
     ScreenFrame,
@@ -16,14 +17,17 @@ from app.models.conversation_screen_models import (
     ScreenUpdateFrame,
     WorkItem,
 )
+from app.models.stream_events import ToolOutputPayload
 from app.services.conversation.patched_wire import PatchedWire
 from app.services.conversation.screen import project_screen
+from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.tool_timeline import tool_timeline
 from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_patch import with_changes
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     CardsDelta,
+    ChangeOp,
     ItemChange,
     ReplyDeltaFrame,
     ReplyOutcome,
@@ -174,6 +178,48 @@ def test_an_item_sent_whole_again_starts_its_patches_over() -> None:
     _sent(wire, ScreenFrame(items=(_work(_call("a", "one")),), head=1))
     again = _sent(wire, ScreenUpdateFrame(item=_work(_call("a", "two")), head=1))
     assert again["base"] == 0
+
+
+def _run(output: str) -> tuple[ToolDataEntry, ...]:
+    """Return the cards a live run folds to once its one call's output stands at output."""
+    payload = ToolOutputPayload(tool_call_id="a", output=output)
+    return fold_cards(
+        [ToolDataEvent(tool_data=_call("a")), ToolOutputEvent(tool_output=payload)]
+    ).tool_data
+
+
+def test_an_output_that_grows_past_the_limit_is_appended_up_to_it_then_only_its_length_changes() -> (
+    None
+):
+    near = "x" * (MAX_OUTPUT_CHARS - 10)
+    wire = PatchedWire()
+    held = _sent(wire, ScreenInsertFrame(item=_work(*_run(near)), head=1))["item"]
+    patches: list[list[ItemChange]] = []
+    for grown in (near + "y" * 50, near + "y" * 50 + "z" * 5000):
+        item = _work(*_run(grown))
+        patch = _sent(wire, ScreenUpdateFrame(item=item, head=1))
+        patches.append(_CHANGES.validate_python(patch["changes"]))
+        held = with_changes(held, patches[-1])
+        assert held == item.model_dump(mode="json", exclude={"tool_data"})
+
+    call = ("timeline", "steps", 0, "data")
+    length = (*call, "output_original_length")
+    assert patches == [
+        [
+            ItemChange(op=ChangeOp.APPEND, path=(*call, "output"), value="y" * 10),
+            ItemChange(op=ChangeOp.SET, path=length, value=MAX_OUTPUT_CHARS + 40),
+        ],
+        [ItemChange(op=ChangeOp.SET, path=length, value=MAX_OUTPUT_CHARS + 5040)],
+    ]
+
+
+def test_a_reply_s_output_past_the_limit_reaches_the_client_cut_as_the_timeline_has_it() -> None:
+    wire = PatchedWire()
+    held = _applied(_EMPTY, _sent(wire, _cards("a1", 0, _call("a"))))
+    cut = _run("o" * (MAX_OUTPUT_CHARS * 3))
+    grown = _sent(wire, _cards("a1", 1, *cut))
+    assert _applied(held, grown) == _timeline(*cut)
+    assert len(json.dumps(grown)) < 1.01 * MAX_OUTPUT_CHARS
 
 
 def test_cards_that_did_not_change_since_the_attempt_s_last_delta_carry_no_changes() -> None:

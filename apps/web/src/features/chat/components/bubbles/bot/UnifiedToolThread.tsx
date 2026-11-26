@@ -23,6 +23,8 @@ export interface EnrichedSubagentGroup extends SubagentGroupData {
   handoff_input?: string;
   /** Result from the handoff tool call's output */
   handoff_output?: string;
+  /** Set when the server cut handoff_output: how many characters the result was. */
+  handoff_output_original_length?: number;
   /** One stable React key per entry of tool_calls, in order. */
   step_keys: string[];
   nested_subagents: EnrichedSubagentGroup[];

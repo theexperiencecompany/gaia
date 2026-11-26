@@ -16684,7 +16684,8 @@ export interface components {
          * @description One row of the tool thread, keyed stably across the stream.
          *
          *     data is the tool-call entry, or the subagent group with its handoff_input, handoff_output and
-         *     step_keys (one per tool call, in order) filled in.
+         *     step_keys (one per tool call, in order) filled in. An output or handoff_output the server cut
+         *     names its full length beside it, as output_original_length or handoff_output_original_length.
          */
         TimelineStep: {
             data: components["schemas"]["JsonValue"];

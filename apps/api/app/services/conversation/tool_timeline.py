@@ -19,7 +19,11 @@ from app.constants.chat import (
     GROUPED_TOOL_CARDS,
     SUBAGENT_GROUP_TOOL_NAME,
 )
-from app.services.conversation.tool_cards import TOOL_CALLS_CARD, merged_thinking
+from app.services.conversation.tool_cards import (
+    OUTPUT_ORIGINAL_LENGTH,
+    TOOL_CALLS_CARD,
+    merged_thinking,
+)
 from shared.py.conversation_wire import (
     TimelineCard,
     TimelineStep,
@@ -177,6 +181,8 @@ def _attach(group: _Json, call: _Json) -> None:
         group["handoff_input"] = task
     if output := _text(call.get("output")):
         group["handoff_output"] = output
+    if (whole := call.get(OUTPUT_ORIGINAL_LENGTH)) is not None:
+        group["handoff_output_original_length"] = whole
 
 
 def _is_handoff(call: _Json) -> bool:

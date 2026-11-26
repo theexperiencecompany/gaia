@@ -51,7 +51,7 @@ from app.models.conversation_screen_models import (
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.conversation.reply_files import reply_files
 from app.services.conversation.reply_text import screen_bubbles
-from app.services.conversation.tool_cards import coalesced_thinking
+from app.services.conversation.tool_cards import capped_outputs, coalesced_thinking
 from app.services.conversation.tool_timeline import tool_timeline
 from app.utils.file_links import FileLinks
 from shared.py.approvals import ApprovalOutcome, ApprovalStatus
@@ -442,7 +442,8 @@ def work_timeline(
 def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkItem:
     started = read.started[task_id]
     ended = read.ended_runs(task_id)
-    cards = coalesced_thinking(card for run in ended for card in run.tool_data)
+    # Entries stored before the fold cut outputs still hold them whole.
+    cards = capped_outputs(coalesced_thinking(card for run in ended for card in run.tool_data))
     handoff = None if started.handoff is None else read.handoffs.get(started.handoff)
     approvals = read.approvals(task_id)
     return WorkItem(
@@ -499,7 +500,7 @@ def _reply_item(
         seq, at = settled_at.seq, settled_at.at
     target = reply.quote_target if settle is None else settle.quote_target
     quoted = None if target is None else read.users.get(read.original(target))
-    shown = coalesced_thinking(own)
+    shown = capped_outputs(coalesced_thinking(own))
     failure = None if settle is None else settle.failure
     return ReplyItem(
         id=reply.reply_id,

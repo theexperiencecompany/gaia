@@ -20,6 +20,7 @@ COMMS_SUMMARIZATION_KEEP_TOKENS = 12_000
 COMPACTION_THRESHOLD = 0.40
 # Single tool output > ~30k tokens → compact to a workspace file immediately.
 # (~4 chars/token, the same estimate this middleware uses for context usage.)
+# Also the most of an output a tool card keeps (conversation/tool_cards.py).
 MAX_OUTPUT_CHARS = 120000
 
 # Floor for the context-pressure trigger: over the compaction threshold, outputs
