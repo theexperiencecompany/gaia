@@ -11,6 +11,7 @@ import { ChevronDown, ShieldAlertIcon } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
+import { OutputTruncatedNote } from "./OutputTruncatedNote";
 import {
   deriveToolCallDisplay,
   displayToolOutput,
@@ -188,6 +189,11 @@ function ToolCallDetails({
               <div className="flex flex-col">
                 <span className="text-zinc-500 font-medium mb-1">Output</span>
                 <CompactMarkdown content={displayToolOutput(call)} />
+                {call.output_original_length != null && (
+                  <OutputTruncatedNote
+                    originalLength={call.output_original_length}
+                  />
+                )}
               </div>
             )}
           </div>

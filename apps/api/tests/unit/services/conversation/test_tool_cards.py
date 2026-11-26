@@ -2,9 +2,12 @@
 
 from typing import cast
 
+import pytest
+
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
+from app.constants.summarization import MAX_OUTPUT_CHARS
 from app.models.conversation_frame_models import (
     ArtifactDeltaEvent,
     ImageEvent,
@@ -409,3 +412,92 @@ def test_thinking_after_a_subagent_group_is_kept_and_merged() -> None:
     (kept, merged) = coalesced_thinking([group, thought("a"), thought("b")])
     assert kept["tool_name"] == SUBAGENT_GROUP_TOOL_NAME
     assert merged == thought("ab")
+
+
+def _called(text: str) -> dict[str, object]:
+    """Return the call a top-level tool call folds to once its output is text."""
+    (shown,) = fold_cards(
+        [ToolDataEvent(tool_data=card(TOOL_CALLS_CARD, {"tool_call_id": "c1"})), output("c1", text)]
+    ).tool_data
+    return cast(dict[str, object], shown["data"])
+
+
+def test_an_output_at_the_models_limit_is_kept_whole() -> None:
+    whole = "x" * MAX_OUTPUT_CHARS
+    assert _called(whole) == {"tool_call_id": "c1", "output": whole}
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("past", [1, 4_000_000])
+def test_an_output_past_the_models_limit_is_cut_to_it_and_names_its_full_length(past: int) -> None:
+    text = "head" + "x" * (MAX_OUTPUT_CHARS - 4) + "t" * past
+    assert _called(text) == {
+        "tool_call_id": "c1",
+        "output": text[:MAX_OUTPUT_CHARS],
+        "output_original_length": MAX_OUTPUT_CHARS + past,
+    }
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("glyph", ["é", "語", "🙂"])
+def test_the_limit_counts_characters_and_never_splits_one(glyph: str) -> None:
+    call = _called(glyph * (MAX_OUTPUT_CHARS + 5))
+    assert call["output"] == glyph * MAX_OUTPUT_CHARS
+    assert call["output_original_length"] == MAX_OUTPUT_CHARS + 5
+
+
+@pytest.mark.regression
+def test_a_subagents_output_is_cut_wherever_its_group_nests() -> None:
+    long = "o" * (MAX_OUTPUT_CHARS + 7)
+    folded = fold_cards(
+        [
+            start("s1"),
+            start("s2", parent="s1"),
+            ToolDataEvent(
+                tool_data=card(TOOL_CALLS_CARD, {"tool_call_id": "c1"}, subagent_id="s1")
+            ),
+            ToolDataEvent(
+                tool_data=card(TOOL_CALLS_CARD, {"tool_call_id": "c2"}, subagent_id="s2")
+            ),
+            output("c1", long, subagent_id="s1"),
+            output("c2", long, subagent_id="s2"),
+        ]
+    )
+    cut = {"output": "o" * MAX_OUTPUT_CHARS, "output_original_length": MAX_OUTPUT_CHARS + 7}
+    inner = group("s2", tool_calls=[{"tool_call_id": "c2", **cut}])
+    assert folded.tool_data == (
+        group_card(
+            group("s1", tool_calls=[{"tool_call_id": "c1", **cut}], nested_subagents=[inner])
+        ),
+    )
+
+
+@pytest.mark.regression
+def test_a_seed_card_stored_before_the_limit_is_cut_by_the_next_fold() -> None:
+    stored = card(TOOL_CALLS_CARD, [{"tool_call_id": "c1", "output": "s" * (MAX_OUTPUT_CHARS + 1)}])
+    (shown,) = fold_cards([], seed=[stored]).tool_data
+    assert shown["data"] == [
+        {
+            "tool_call_id": "c1",
+            "output": "s" * MAX_OUTPUT_CHARS,
+            "output_original_length": MAX_OUTPUT_CHARS + 1,
+        }
+    ]
+
+
+def test_folding_a_cut_card_again_changes_nothing() -> None:
+    once = fold_cards(
+        [
+            ToolDataEvent(tool_data=card(TOOL_CALLS_CARD, {"tool_call_id": "c1"})),
+            output("c1", "x" * (MAX_OUTPUT_CHARS + 9)),
+        ]
+    ).tool_data
+    assert fold_cards([], seed=once).tool_data == once
+
+
+def test_an_mcp_apps_tool_result_is_never_cut() -> None:
+    result = "{" + "r" * (MAX_OUTPUT_CHARS + 1)
+    (shown,) = fold_cards(
+        [ToolDataEvent(tool_data=card(MCP_APP_CARD, {"tool_call_id": "c1"})), output("c1", result)]
+    ).tool_data
+    assert shown["data"] == {"tool_call_id": "c1", "tool_result": result}

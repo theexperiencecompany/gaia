@@ -424,6 +424,27 @@ def test_a_streamed_group_takes_the_place_of_the_handoff_that_opened_it() -> Non
     ]
 
 
+def test_a_group_whose_result_was_cut_names_the_results_full_length() -> None:
+    spawned = _group("s1", "Task Agent", "spawned")
+    spawn = _call("c1", "spawn_subagent", output="cut", output_original_length=500_000)
+
+    ((_, _, row),) = _rows([_calls(spawn), _group_card(spawned)])
+
+    assert isinstance(row, dict)
+    assert (row["handoff_output"], row["handoff_output_original_length"]) == ("cut", 500_000)
+
+
+def test_a_group_whose_result_is_whole_names_no_length() -> None:
+    spawned = _group("s1", "Task Agent", "spawned")
+
+    ((_, _, row),) = _rows(
+        [_calls(_call("c1", "spawn_subagent", output="all")), _group_card(spawned)]
+    )
+
+    assert isinstance(row, dict)
+    assert "handoff_output_original_length" not in row
+
+
 def test_unanswered_handoffs_drop_and_groups_never_opened_trail() -> None:
     namesake = _group("s1", "Gmail", "spawned")
     gmail, notion = _group("g1", "Gmail", "handoff"), _group("g2", "Notion", "handoff")
