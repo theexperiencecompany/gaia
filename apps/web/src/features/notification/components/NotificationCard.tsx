@@ -1,5 +1,6 @@
 "use client";
 
+import { Tooltip } from "@heroui/react";
 import {
   ArrowRight01Icon,
   CheckmarkCircle02Icon,
@@ -134,6 +135,23 @@ export const NotificationCard = ({
               addSuffix: true,
             })}
           </span>
+          {isUnread && onMarkAsRead && (
+            <Tooltip delay={300}>
+              <GaiaButton
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                tone="faint"
+                hoverTone="accent"
+                aria-label="Mark as read"
+                className="-my-1 -mr-1.5 shrink-0"
+                onPress={handleMarkAsRead}
+              >
+                <CheckmarkCircle02Icon className="size-4" />
+              </GaiaButton>
+              <Tooltip.Content>Mark as read</Tooltip.Content>
+            </Tooltip>
+          )}
         </div>
         {card ? (
           <div className="mt-3 w-full max-w-56">
@@ -163,7 +181,7 @@ export const NotificationCard = ({
         )}
       </div>
 
-      {(actions.length > 0 || (isUnread && onMarkAsRead)) && (
+      {actions.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {actions.map((action) => {
             const isExecuted = Boolean(action.executed);
@@ -186,18 +204,6 @@ export const NotificationCard = ({
               </GaiaButton>
             );
           })}
-          {isUnread && onMarkAsRead && (
-            <GaiaButton
-              size="sm"
-              variant="ghost"
-              shape="md"
-              tone="faint"
-              onPress={handleMarkAsRead}
-            >
-              <CheckmarkCircle02Icon className="size-4" />
-              Mark as read
-            </GaiaButton>
-          )}
         </div>
       )}
 

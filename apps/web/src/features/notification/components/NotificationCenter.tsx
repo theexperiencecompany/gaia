@@ -123,7 +123,7 @@ export function NotificationCenter({
             <Tabs
               selectedKey={activeTab}
               onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
-              variant="secondary"
+              variant="primary"
             >
               <Tabs.List>
                 <Tabs.Tab id="unread">
