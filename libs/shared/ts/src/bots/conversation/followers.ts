@@ -39,6 +39,7 @@ import { ConversationFollower } from "./follower";
 import type {
   AwaitedDecision,
   DeliveryCursor,
+  DeliveryReport,
   FollowSurface,
   StreamingOptions,
 } from "./follower.types";
@@ -55,7 +56,7 @@ export type ConversationEventSource = (
 export type DeliveryRecorder = (
   ctx: BotUserContext,
   conversationId: string,
-  cursor: DeliveryCursor,
+  report: DeliveryReport,
 ) => Promise<void>;
 
 interface Followed {
@@ -186,13 +187,14 @@ export class ConversationFollowers {
     const start =
       reached && reached.delivered_seq > from.delivered_seq ? reached : from;
     this.reach(conversationId, start);
-    const follower = new ConversationFollower(
+    const follower: ConversationFollower = new ConversationFollower(
       {
         floor: start.delivered_seq,
         partialReply: start.partial_reply,
-        record: async (cursor) => {
-          this.reach(conversationId, cursor);
-          await this.record(ctx, conversationId, cursor);
+        owedReactions: start.owed_reactions,
+        record: async (report) => {
+          this.reach(conversationId, follower.delivered);
+          await this.record(ctx, conversationId, report);
         },
       },
       this.options,
@@ -269,6 +271,8 @@ export class ConversationFollowers {
           if (this.active.get(conversationId) === followed)
             this.active.delete(conversationId);
           followed.follower.close();
+          // The next follow here takes on the reactions this one saw and did not place.
+          this.reach(conversationId, followed.follower.delivered);
           const { summary } = followed.follower;
           wideLog.set({
             replies_delivered: summary.repliesDelivered,

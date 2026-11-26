@@ -5,8 +5,15 @@ get-or-create: the conversation_id is minted exactly once via $setOnInsert
 under the unique index, so two racing first-messages can never fork a session.
 """
 
+from collections.abc import Sequence
+
 from app.db.repositories.base import MongoRepository
-from app.models.bot_models import BotSessionDocument, BotSessionUpdate, PartialReply
+from app.models.bot_models import (
+    BotSessionDocument,
+    BotSessionUpdate,
+    MessageReaction,
+    PartialReply,
+)
 from app.utils.errors import AppError
 
 #: Suffix a retired key derivation gave channel-less sessions; only pre-fix rows carry it.
@@ -127,6 +134,22 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
             {"$max": {"delivery.owed_seq": last_seq}},
         )
 
+    async def owe_reaction(
+        self, conversation_id: str, *, seq: int, reaction: MessageReaction
+    ) -> BotSessionDocument | None:
+        """Record a reaction put on the user message at seq for the bot to place; None for a non-bot conversation.
+
+        A first owed thing starts the bot's cursor just before the message, like a first entry.
+        """
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "delivery": {"$exists": False}},
+            {"$set": {"delivery": {"delivered_seq": seq - 1, "owed_seq": 0}}},
+        )
+        return await self._apply_raw_update(
+            {"conversation_id": conversation_id},
+            {"$push": {"delivery.owed_reactions": reaction.model_dump()}},
+        )
+
     async def record_delivered(
         self,
         conversation_id: str,
@@ -134,8 +157,20 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         platform: str,
         delivered_seq: int,
         partial_reply: PartialReply | None,
+        placed_reactions: Sequence[MessageReaction] = (),
     ) -> bool:
-        """Move the bot's cursor to what it delivered; False for a report behind the recorded one."""
+        """Move the bot's cursor to what it delivered, settling the reactions it placed; False for a report behind the recorded one."""
+        settled = (
+            {
+                "$pull": {
+                    "delivery.owed_reactions": {
+                        "$or": [placed.model_dump() for placed in placed_reactions]
+                    }
+                }
+            }
+            if placed_reactions
+            else {}
+        )
         matched = await self._apply_raw_update_unfetched(
             {
                 "conversation_id": conversation_id,
@@ -151,7 +186,8 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
                     "delivery.partial_reply": (
                         None if partial_reply is None else partial_reply.model_dump()
                     ),
-                }
+                },
+                **settled,
             },
         )
         return matched > 0
@@ -161,7 +197,10 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         return await self._find(
             {
                 "platform": platform,
-                "$expr": {"$gt": ["$delivery.owed_seq", "$delivery.delivered_seq"]},
+                "$or": [
+                    {"$expr": {"$gt": ["$delivery.owed_seq", "$delivery.delivered_seq"]}},
+                    {"delivery.owed_reactions.0": {"$exists": True}},
+                ],
             },
             limit=limit,
         )

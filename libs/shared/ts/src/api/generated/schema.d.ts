@@ -6377,7 +6377,8 @@ export interface components {
          * @description A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.
          *
          *     partial_reply names the reply just past it that the bot had sent only its first bubbles of, so a
-         *     restarted follower sends the rest and repeats none.
+         *     restarted follower sends the rest and repeats none; owed_reactions are the reactions it has
+         *     not placed yet, on messages at or below after_seq too.
          */
         ActiveBotConversation: {
             /** After Seq */
@@ -6388,6 +6389,8 @@ export interface components {
             conversation_id: string;
             /** Is Dm */
             is_dm: boolean;
+            /** Owed Reactions */
+            owed_reactions: components["schemas"]["MessageReaction"][];
             partial_reply: components["schemas"]["PartialReply"] | null;
             /** Platform User Id */
             platform_user_id: string;
@@ -7286,19 +7289,23 @@ export interface components {
         /**
          * BotDeliveryReport
          * @description What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.
+         *
+         *     placed_reactions are the reactions it placed (or sent as text) since its last report.
          */
         BotDeliveryReport: {
             /** Delivered Seq */
             delivered_seq: number;
             partial_reply?: components["schemas"]["PartialReply"] | null;
+            /** Placed Reactions */
+            placed_reactions?: components["schemas"]["MessageReaction"][];
             platform: components["schemas"]["ConversationSource"];
         };
         /**
          * BotMessageAccepted
          * @description A bot message accepted, with the token the bot follows the events stream with.
          *
-         *     after_seq and partial_reply are where the follow starts: the session's delivery cursor while
-         *     it still owes anything, else just before the message.
+         *     after_seq, partial_reply and owed_reactions are where the follow starts: the session's delivery
+         *     cursor while it still owes anything, else just before the message.
          */
         BotMessageAccepted: {
             /** After Seq */
@@ -7307,6 +7314,8 @@ export interface components {
             conversation_id: string;
             /** Message Id */
             message_id: string;
+            /** Owed Reactions */
+            owed_reactions: components["schemas"]["MessageReaction"][];
             partial_reply: components["schemas"]["PartialReply"] | null;
             /** Seq */
             seq: number;
@@ -12662,6 +12671,16 @@ export interface components {
             status?: string;
             /** Trace Id */
             trace_id?: string | null;
+        };
+        /**
+         * MessageReaction
+         * @description GAIA's emoji on one user message, by the message's id.
+         */
+        MessageReaction: {
+            /** Emoji */
+            emoji: string;
+            /** Message Id */
+            message_id: string;
         };
         /**
          * MessageRequest
@@ -19436,6 +19455,7 @@ export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
 export type MessageAccepted = components['schemas']['MessageAccepted'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
+export type MessageReaction = components['schemas']['MessageReaction'];
 export type MessageRequest = components['schemas']['MessageRequest'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];

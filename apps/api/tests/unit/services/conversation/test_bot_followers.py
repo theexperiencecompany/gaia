@@ -8,7 +8,7 @@ import pytest
 
 from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT
 from app.db.repositories.conversation_sweep import SweepHead
-from app.models.bot_models import BotDelivery, BotSessionDocument, PartialReply
+from app.models.bot_models import BotDelivery, BotSessionDocument, MessageReaction, PartialReply
 from app.services.conversation.bot_followers import follow_start, list_active_bot_conversations
 from app.services.conversation.runtime import install_runtime_ports
 from tests.unit.services.conversation.log_helpers import fold, replied, user
@@ -159,6 +159,19 @@ async def test_a_follow_starts_at_the_cursor_of_a_session_that_still_owes(store:
     store.sessions["conv-owed"] = _session("conv-owed", "telegram", cut)
 
     assert await follow_start("conv-owed", 9) == cut
+
+
+async def test_a_follow_starts_at_the_cursor_of_a_session_owing_only_a_reaction(
+    store: Store,
+) -> None:
+    reacted = BotDelivery(
+        delivered_seq=5,
+        owed_seq=5,
+        owed_reactions=[MessageReaction(message_id="u4", emoji="👍")],
+    )
+    store.sessions["conv-reacted"] = _session("conv-reacted", "telegram", reacted)
+
+    assert await follow_start("conv-reacted", 9) == reacted
 
 
 @pytest.mark.parametrize(

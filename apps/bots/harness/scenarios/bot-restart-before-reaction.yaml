@@ -1,0 +1,17 @@
+# GAIA answers a thank-you with a reaction alone, and the bot process dies inside
+# the react call, before the reaction is placed. The fresh bot resumes the
+# conversation and places the reaction once, though its cursor already passed
+# the message: a reaction amends its message at no seq, so the server owes it.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/bot-restart-before-reaction.yaml
+name: bot restart before reaction
+emulate: telegram
+user: bot-restart-reaction-scenario@gaia.local
+turns:
+  - send: "thanks! [[react:❤]]"
+    restartOnReact: true
+    expect:
+      - reactedTo: [1]
+      - noRepeatedReactions: true
+      - bubbles: []

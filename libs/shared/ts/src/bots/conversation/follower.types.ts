@@ -3,6 +3,7 @@
 import type {
   ApprovalRequested,
   BotDeliveryReport,
+  MessageReaction,
   PartialReply,
   ReplyFile,
 } from "../../api/generated";
@@ -87,8 +88,18 @@ export interface FollowSummary {
   filesDelivered: number;
 }
 
-/** How far a follower put its conversation on the platform: every item through delivered_seq, plus partial_reply. */
-export type DeliveryCursor = Required<Omit<BotDeliveryReport, "platform">>;
+/**
+ * How far a follower put its conversation on the platform: every item through delivered_seq,
+ * plus partial_reply, except owed_reactions: a reaction amends its message at no seq of its own.
+ */
+export interface DeliveryCursor {
+  delivered_seq: number;
+  partial_reply: PartialReply | null;
+  owed_reactions: MessageReaction[];
+}
+
+/** One step of what a follower delivered, for the server's copy of its cursor. */
+export type DeliveryReport = Required<Omit<BotDeliveryReport, "platform">>;
 
 /** Where a follow starts, and where it reports each step of what it delivers. */
 export interface FollowStart {
@@ -96,7 +107,9 @@ export interface FollowStart {
   floor: number;
   /** The reply just past the floor that an earlier follow sent only its first bubbles of. */
   partialReply: PartialReply | null;
-  record: (cursor: DeliveryCursor) => Promise<void>;
+  /** Reactions logged that no follow has placed yet, on messages at or below the floor too. */
+  owedReactions: readonly MessageReaction[];
+  record: (report: DeliveryReport) => Promise<void>;
 }
 
 /** A followed conversation parked on approvals its follow asked the user about. */

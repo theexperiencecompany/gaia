@@ -14,6 +14,7 @@ import {
   ConversationFollowers,
   type DeliveryCursor,
   type DeliveryRecorder,
+  type DeliveryReport,
   type FollowStart,
   type FollowSurface,
   REACTION_OUTCOME,
@@ -151,12 +152,19 @@ const SLACK: StreamingOptions = {
 const startAfter = (floor: number): FollowStart => ({
   floor,
   partialReply: null,
+  owedReactions: [],
   record: async () => undefined,
 });
 const NOT_KEPT: DeliveryRecorder = async () => undefined;
 const cursorAt = (seq: number): DeliveryCursor => ({
   delivered_seq: seq,
   partial_reply: null,
+  owed_reactions: [],
+});
+const reportAt = (seq: number): DeliveryReport => ({
+  delivered_seq: seq,
+  partial_reply: null,
+  placed_reactions: [],
 });
 
 const sent = (calls: Call[]) =>
@@ -858,6 +866,7 @@ describe("history the follow started after", () => {
       {
         floor: 0,
         partialReply: null,
+        owedReactions: [],
         record: async (cursor) => {
           recorded.push(cursor.delivered_seq);
         },
@@ -871,6 +880,129 @@ describe("history the follow started after", () => {
     ]);
 
     expect(recorded.at(-1)).toBe(3);
+  });
+});
+
+describe("a reaction the bot had not placed", () => {
+  const THUMBS: Reaction = { emoji: "👍", by: "chat_model" };
+  const OWED = { message_id: "u1", emoji: "👍" };
+  const reacts = (calls: Call[]) => calls.filter((call) => call.op === "react");
+  /** A follow after floor owing reactions, keeping every report it makes. */
+  const following = (
+    floor: number,
+    owedReactions: FollowStart["owedReactions"],
+    surface: FollowSurface,
+  ) => {
+    const reports: DeliveryReport[] = [];
+    const follower = new ConversationFollower(
+      {
+        floor,
+        partialReply: null,
+        owedReactions,
+        record: async (report) => {
+          reports.push(report);
+        },
+      },
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    return { follower, reports };
+  };
+
+  it("is placed once after a restart between its logging and its placing, and reported placed", async () => {
+    // The bot dies inside the react call: nothing after it runs.
+    const before = recorder();
+    const dying: FollowSurface = {
+      ...before.surface,
+      react: () => new Promise(() => undefined),
+    };
+    const first = following(0, [], dying);
+    await feed(first.follower, [screenFrame([inbound("u1", 1, "11")])]);
+    void first.follower.apply(updateFrame(inbound("u1", 1, "11", THUMBS)));
+    const floor = first.reports.at(-1)?.delivered_seq ?? 0;
+
+    // The server owes the reaction apart from the cursor, which already passed its message.
+    const after = recorder();
+    const restarted = following(floor, [OWED], after.surface);
+    const screen = screenFrame([inbound("u1", 1, "11", THUMBS)]);
+    await feed(restarted.follower, [screen, screen]);
+
+    expect(floor).toBe(1);
+    expect(reacts(after.calls)).toEqual([
+      { op: "react", target: "11", emoji: "👍", replaces: null },
+    ]);
+    expect(restarted.reports.flatMap((r) => r.placed_reactions)).toEqual([
+      OWED,
+    ]);
+    expect(restarted.follower.delivered.owed_reactions).toEqual([]);
+  });
+
+  it("is not placed again by the next follow once a follow reported it placed", async () => {
+    const live = recorder();
+    const first = following(0, [], live.surface);
+    await feed(first.follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      updateFrame(inbound("u1", 1, "11", THUMBS)),
+    ]);
+    const next = recorder();
+    const restarted = following(
+      first.reports.at(-1)?.delivered_seq ?? 0,
+      [],
+      next.surface,
+    );
+    await feed(restarted.follower, [
+      screenFrame([inbound("u1", 1, "11", THUMBS)]),
+    ]);
+
+    expect(reacts(live.calls)).toHaveLength(1);
+    expect(first.reports.flatMap((r) => r.placed_reactions)).toEqual([OWED]);
+    expect(next.calls.filter((call) => call.op !== "typing")).toEqual([]);
+  });
+
+  it("is placed when it lands on a message at or below the floor during the follow", async () => {
+    const { surface, calls } = recorder();
+    const { follower, reports } = following(6, [], surface);
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")], 6),
+      updateFrame(inbound("u1", 1, "11", THUMBS), 6),
+    ]);
+
+    expect(reacts(calls)).toEqual([
+      { op: "react", target: "11", emoji: "👍", replaces: null },
+    ]);
+    expect(reports.flatMap((r) => r.placed_reactions)).toEqual([OWED]);
+  });
+
+  it("goes as text once when the platform refuses it for good, and is settled", async () => {
+    const { surface, calls } = recorder();
+    const refusing: FollowSurface = {
+      ...surface,
+      react: async () => REACTION_OUTCOME.ATTACH_FAILED,
+    };
+    const { follower, reports } = following(1, [OWED], refusing);
+    const screen = screenFrame([inbound("u1", 1, "11", THUMBS)]);
+    await feed(follower, [screen, screen]);
+
+    expect(sent(calls)).toEqual([{ text: "👍", replyTo: null }]);
+    expect(reports.flatMap((r) => r.placed_reactions)).toEqual([OWED]);
+    expect(follower.delivered.owed_reactions).toEqual([]);
+  });
+
+  it("settles the emoji it replaced along with the one the message shows", async () => {
+    const { surface, calls } = recorder();
+    const { follower, reports } = following(
+      1,
+      [{ message_id: "u1", emoji: "👀" }, OWED],
+      surface,
+    );
+    await feed(follower, [screenFrame([inbound("u1", 1, "11", THUMBS)])]);
+
+    expect(reacts(calls)).toHaveLength(1);
+    expect(reports.flatMap((r) => r.placed_reactions)).toEqual([
+      { message_id: "u1", emoji: "👀" },
+      OWED,
+    ]);
   });
 });
 
@@ -1220,8 +1352,8 @@ describe.each([
 ])("a %s bot that crashes between a reply's bubbles", (_family, options) => {
   it("sends the remaining bubbles once after the restart, and repeats nothing", async () => {
     // The server's copy of the cursor: what the last record left.
-    let kept: DeliveryCursor = cursorAt(1);
-    const keep = async (cursor: DeliveryCursor) => {
+    let kept: DeliveryReport = reportAt(1);
+    const keep = async (cursor: DeliveryReport) => {
       kept = cursor;
     };
     const reply = replyItem("r1", 2, ["One.", "Two.", "Three."], "answered");
@@ -1236,7 +1368,7 @@ describe.each([
       },
     };
     const first = new ConversationFollower(
-      { floor: 1, partialReply: null, record: keep },
+      { floor: 1, partialReply: null, owedReactions: [], record: keep },
       options,
       crashing,
       "c1",
@@ -1254,6 +1386,7 @@ describe.each([
       {
         floor: kept.delivered_seq,
         partialReply: kept.partial_reply,
+        owedReactions: [],
         record: keep,
       },
       options,
@@ -1270,7 +1403,7 @@ describe.each([
       "Two.",
     ]);
     expect(sent(resumed.calls)).toEqual([{ text: "Three.", replyTo: null }]);
-    expect(kept).toEqual(cursorAt(2));
+    expect(kept).toEqual(reportAt(2));
   });
 });
 
@@ -1280,13 +1413,13 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
 
   /** The first follow previews the bubble's first words, then the process dies. */
   async function crashMidBubble() {
-    let kept: DeliveryCursor = cursorAt(1);
-    const keep = async (cursor: DeliveryCursor) => {
+    let kept: DeliveryReport = reportAt(1);
+    const keep = async (cursor: DeliveryReport) => {
       kept = cursor;
     };
     const chat = recorder();
     const first = new ConversationFollower(
-      { floor: 1, partialReply: null, record: keep },
+      { floor: 1, partialReply: null, owedReactions: [], record: keep },
       EDITING,
       chat.surface,
       "c1",
@@ -1305,6 +1438,7 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
         {
           floor: kept.delivered_seq,
           partialReply: kept.partial_reply,
+          owedReactions: [],
           record: keep,
         },
         EDITING,
@@ -1327,7 +1461,7 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
 
     expect(screen(chat.calls)).toEqual([GUIDE]);
     expect(sent(chat.calls)).toHaveLength(sendsBefore);
-    expect(kept()).toEqual(cursorAt(2));
+    expect(kept()).toEqual(reportAt(2));
   });
 
   it("deletes the half-written bubble and sends the reply when the platform refuses the edit", async () => {
@@ -1345,17 +1479,17 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
     await feed(restartWith(refusing), settledWhileDown);
 
     expect(screen(chat.calls)).toEqual([GUIDE]);
-    expect(kept()).toEqual(cursorAt(2));
+    expect(kept()).toEqual(reportAt(2));
   });
 
   it("never edits the half-written bubble back to less than it showed while the reply still streams", async () => {
-    let kept: DeliveryCursor = cursorAt(1);
-    const keep = async (cursor: DeliveryCursor) => {
+    let kept: DeliveryReport = reportAt(1);
+    const keep = async (cursor: DeliveryReport) => {
       kept = cursor;
     };
     const chat = recorder();
     const first = new ConversationFollower(
-      { floor: 1, partialReply: null, record: keep },
+      { floor: 1, partialReply: null, owedReactions: [], record: keep },
       EDITING,
       chat.surface,
       "c1",
@@ -1374,6 +1508,7 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
       {
         floor: kept.delivered_seq,
         partialReply: kept.partial_reply,
+        owedReactions: [],
         record: keep,
       },
       EDITING,
@@ -1392,7 +1527,7 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
 
     expect(takenBack(chat.calls)).toEqual([]);
     expect(screen(chat.calls)).toEqual([GUIDE]);
-    expect(kept).toEqual(cursorAt(2));
+    expect(kept).toEqual(reportAt(2));
   });
 });
 

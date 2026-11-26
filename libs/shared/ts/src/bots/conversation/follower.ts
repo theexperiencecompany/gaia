@@ -9,7 +9,7 @@
  * - a reply item streams its deltas into edited messages on live platforms
  *   (Telegram, Slack); the others send its text once it settles. Its quote makes
  *   its first message a native reply to that user message's platform message;
- * - a user item's reaction becomes a native reaction on it;
+ * - a user item's reaction becomes a native reaction on it, or text where the platform refuses it;
  * - a work item's open approvals are asked in chat once each, numbered among every open one,
  *   and its browser run's cards are shown to the requester as they arrive (browser-progress.ts);
  * - a usage limit the run hit is one line with the upgrade link (rate-limit-notice.ts);
@@ -22,12 +22,15 @@
  * delivered by an earlier follow, and only what it gains later is rendered (for work
  * that was not running at that head the server names the cards it showed then, so the
  * cards a re-run published while the bot was away are rendered too). A reply
- * that follow sent only its first bubbles of sends the rest. After each platform step
- * the follower records how far it delivered, so a restart resumes exactly there.
+ * that follow sent only its first bubbles of sends the rest. A reaction amends its message
+ * at no seq of its own, so the server owes it apart from the floor until a follow reports
+ * it placed. After each platform step the follower records how far it delivered, so a
+ * restart resumes exactly there.
  */
 
 import type {
   ApprovalRequested,
+  MessageReaction,
   NoticeItem,
   PartialReply,
   ReplyFile,
@@ -56,6 +59,7 @@ import {
 } from "./browser-progress";
 import type {
   DeliveryCursor,
+  DeliveryReport,
   FollowStart,
   FollowSummary,
   FollowSurface,
@@ -120,6 +124,10 @@ export class ConversationFollower {
   private readonly deliveredReplies = new Set<string>();
   /** The emoji GAIA has on each user message, by entry id. */
   private readonly placed = new Map<string, string>();
+  /** Reactions the server owes until a report names them, by entry id: logged, and not placed yet. */
+  private readonly owedReactions = new Map<string, MessageReaction[]>();
+  /** Reactions placed since the last record, for the next report. */
+  private placedSince: MessageReaction[] = [];
   /** Work items whose usage limit was told: a limit ends the work, so it is told once. */
   private readonly limitTold = new Set<string>();
   /** Each work item's browser run, by item id. */
@@ -144,7 +152,7 @@ export class ConversationFollower {
 
   private readonly floor: number;
   /** The cursor last recorded. */
-  private recorded: DeliveryCursor;
+  private recorded: Omit<DeliveryCursor, "owed_reactions">;
   /** The reply past the cursor, as far as its bubbles are final on the platform. */
   private progress: PartialReply | null;
 
@@ -160,11 +168,15 @@ export class ConversationFollower {
       delivered_seq: start.floor,
       partial_reply: start.partialReply,
     };
+    for (const reaction of start.owedReactions) this.owe(reaction);
   }
 
   /** How far this follow has put the conversation on the platform. */
   get delivered(): DeliveryCursor {
-    return this.recorded;
+    return {
+      ...this.recorded,
+      owed_reactions: [...this.owedReactions.values()].flat(),
+    };
   }
 
   /**
@@ -307,6 +319,12 @@ export class ConversationFollower {
       this.history.add(item.id);
       if (item.kind === SCREEN_ITEM_KIND.WORK)
         return this.workPastHistory(item, heldCards[item.id]);
+      // A reaction still owed was never placed, however old its message.
+      if (
+        item.kind === SCREEN_ITEM_KIND.USER &&
+        this.owedReactions.has(item.id)
+      )
+        return true;
       if (item.kind === SCREEN_ITEM_KIND.USER && item.message.reaction)
         this.placed.set(item.id, item.message.reaction.emoji);
       if (item.kind === SCREEN_ITEM_KIND.REPLY && item.outcome !== null)
@@ -347,7 +365,7 @@ export class ConversationFollower {
       switch (item.kind) {
         case SCREEN_ITEM_KIND.USER:
           // react-doctor-disable-next-line async-await-in-loop -- screen items render to the platform in log order
-          if (item.seq > this.floor) await this.renderReaction(item);
+          await this.renderReaction(item);
           break;
         case SCREEN_ITEM_KIND.REPLY:
           if (item.outcome !== null) await this.finishReply(item);
@@ -375,12 +393,32 @@ export class ConversationFollower {
     }
   }
 
+  /**
+   * Put a user message's reaction on the platform once, then settle it as placed: one the platform
+   * refuses for good is settled too, like a refused file, so it never holds the follow.
+   */
   private async renderReaction({ id, message }: UserItem): Promise<void> {
     const { reaction, platform_message_id: target } = message;
-    if (!reaction || !target) return;
+    if (!reaction) return;
     const replaces = this.placed.get(id) ?? null;
-    if (replaces === reaction.emoji) return;
-    this.placed.set(id, reaction.emoji);
+    if (replaces !== reaction.emoji) {
+      this.owe({ message_id: id, emoji: reaction.emoji });
+      this.placed.set(id, reaction.emoji);
+      // A message with no platform id (one typed on the web) has nowhere to take it.
+      if (target) await this.placeReaction(target, reaction, replaces);
+    }
+    const owed = this.owedReactions.get(id);
+    if (!owed) return;
+    this.owedReactions.delete(id);
+    // Every emoji owed on the message is settled: what it shows now replaced the rest.
+    this.placedSince.push(...owed);
+  }
+
+  private async placeReaction(
+    target: string,
+    reaction: NonNullable<UserItem["message"]["reaction"]>,
+    replaces: string | null,
+  ): Promise<void> {
     const outcome = await this.surface.react(target, reaction.emoji, replaces);
     if (outcome === REACTION_OUTCOME.ATTACHED) {
       this.summary.reactionsPlaced += 1;
@@ -390,6 +428,13 @@ export class ConversationFollower {
     if (reaction.by === "chat_model") {
       await this.surface.send(reaction.emoji, null);
     }
+  }
+
+  /** Hold a reaction as owed until it is placed, so a follow that ends before then hands it on. */
+  private owe(reaction: MessageReaction): void {
+    const owed = this.owedReactions.get(reaction.message_id) ?? [];
+    if (!owed.some(({ emoji }) => emoji === reaction.emoji))
+      this.owedReactions.set(reaction.message_id, [...owed, reaction]);
   }
 
   private async sendNotice(notice: NoticeItem): Promise<void> {
@@ -616,20 +661,26 @@ export class ConversationFollower {
     );
   }
 
-  /** Record how far the platform has the conversation, when that moved since the last record. */
+  /** Record how far the platform has the conversation, when that moved or a reaction was placed since the last record. */
   private async recordDelivered(): Promise<void> {
-    const cursor: DeliveryCursor = {
+    const report: DeliveryReport = {
       delivered_seq: this.deliveredThrough(),
       partial_reply: this.progress,
+      placed_reactions: this.placedSince,
     };
     const { recorded } = this;
     if (
-      cursor.delivered_seq === recorded.delivered_seq &&
-      samePartial(cursor.partial_reply, recorded.partial_reply)
+      report.delivered_seq === recorded.delivered_seq &&
+      samePartial(report.partial_reply, recorded.partial_reply) &&
+      report.placed_reactions.length === 0
     )
       return;
-    this.recorded = cursor;
-    await this.start.record(cursor);
+    this.recorded = {
+      delivered_seq: report.delivered_seq,
+      partial_reply: report.partial_reply,
+    };
+    this.placedSince = [];
+    await this.start.record(report);
   }
 
   /**

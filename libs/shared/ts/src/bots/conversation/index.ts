@@ -4,6 +4,7 @@ export type {
   AwaitedDecision,
   ConversationSurface,
   DeliveryCursor,
+  DeliveryReport,
   FollowStart,
   FollowSurface,
   ReopenedBubble,

@@ -18,13 +18,14 @@ from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.models.bot_models import BotChatRequest, PartialReply
-from app.models.chat_models import ConversationSource
-from app.models.conversation_frame_models import StateFrame
+from app.models.bot_models import BotChatRequest, MessageReaction, PartialReply
+from app.models.chat_models import ConversationSource, ReactionBy
+from app.models.conversation_frame_models import EntryUpdatedFrame, StateFrame
 from app.models.conversation_log_models import (
     BargeIn,
     DisplayState,
     Notice,
+    Reaction,
     Reply,
     ReplySettled,
     UserMessage,
@@ -417,6 +418,72 @@ async def test_a_bot_message_follows_from_what_its_session_still_owes(sends: Sen
 
     assert later.seq > notice.seq
     assert (later.after_seq, later.partial_reply) == (first.seq, None)
+
+
+async def test_a_reaction_the_bot_has_not_placed_stays_owed_past_its_cursor_until_reported(
+    sends: Sends,
+) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    platform_user_id = f"tg-{uuid4().hex[:8]}"
+    bot_chat = await BotService.get_or_create_session(
+        "telegram", platform_user_id, None, user, is_dm=True
+    )
+    body = BotChatRequest(
+        message="thanks!",
+        platform="telegram",
+        platform_user_id=platform_user_id,
+        platform_message_id="905",
+        is_dm=True,
+    )
+    with patch("app.services.conversation.send.charge_bot_turn", new_callable=AsyncMock):
+        sent = await submit_bot_message(body, user)
+    assert await bot_session_repository.record_delivered(
+        bot_chat, platform="telegram", delivered_seq=sent.seq, partial_reply=None
+    )
+
+    # The chat model answers with a reaction alone, and the bot dies before placing it.
+    install_runtime_ports(replace(runtime_ports(), frames=BotWakingFrames(RedisStreamFrames())))
+    reacted = await runtime_ports().log.react_once(
+        bot_chat, user.user_id, sent.message_id, Reaction(emoji="👍", by=ReactionBy.CHAT_MODEL)
+    )
+    assert reacted is not None
+    with patch(
+        "app.services.outbound_delivery.get_rabbitmq_publisher", AsyncMock(return_value=AsyncMock())
+    ):
+        await runtime_ports().frames.publish(
+            bot_chat, EntryUpdatedFrame(seq=reacted.seq, entry=reacted.entry)
+        )
+
+    async def following() -> list[ActiveBotConversation]:
+        active = await list_active_bot_conversations("telegram")
+        return [a for a in active if a.conversation_id == bot_chat]
+
+    owed = MessageReaction(message_id=sent.message_id, emoji="👍")
+    [resumed] = await following()
+    assert (resumed.after_seq, resumed.owed_reactions) == (sent.seq, [owed])
+
+    # A report of an emoji the message no longer shows settles nothing; placing the owed one does.
+    stale = MessageReaction(message_id=sent.message_id, emoji="👀")
+    assert await bot_session_repository.record_delivered(
+        bot_chat,
+        platform="telegram",
+        delivered_seq=sent.seq,
+        partial_reply=None,
+        placed_reactions=[stale],
+    )
+    [still] = await following()
+    assert still.owed_reactions == [owed]
+    assert await bot_session_repository.record_delivered(
+        bot_chat,
+        platform="telegram",
+        delivered_seq=sent.seq,
+        partial_reply=None,
+        placed_reactions=[owed],
+    )
+    session = await bot_session_repository.get_by_conversation_id(bot_chat)
+    assert session is not None
+    assert session.delivery is not None
+    assert (session.delivery.owed_reactions, session.delivery.owes) == ([], False)
 
 
 async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(

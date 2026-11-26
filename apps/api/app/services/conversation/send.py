@@ -273,6 +273,7 @@ async def submit_bot_message(body: BotChatRequest, user: AuthenticatedUser) -> B
         session_token=token,
         after_seq=start.delivered_seq,
         partial_reply=start.partial_reply,
+        owed_reactions=start.owed_reactions,
     )
 
 

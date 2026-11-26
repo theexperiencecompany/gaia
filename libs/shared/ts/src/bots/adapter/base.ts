@@ -52,7 +52,7 @@ import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
 import type {
   AwaitedDecision,
   ConversationSurface,
-  DeliveryCursor,
+  DeliveryReport,
   FollowSurface,
 } from "../conversation/follower.types";
 import { ConversationFollowers } from "../conversation/followers";
@@ -815,6 +815,7 @@ export abstract class BaseBotAdapter {
           {
             delivered_seq: accepted.after_seq,
             partial_reply: accepted.partial_reply ?? null,
+            owed_reactions: accepted.owed_reactions ?? [],
           },
           this.followSurface(
             surface,
@@ -868,6 +869,7 @@ export abstract class BaseBotAdapter {
       {
         delivered_seq: target.after_seq,
         partial_reply: target.partial_reply,
+        owed_reactions: target.owed_reactions ?? [],
       },
       this.followSurface(
         surface,
@@ -1005,18 +1007,18 @@ export abstract class BaseBotAdapter {
    */
   private async recordDelivered(
     conversationId: string,
-    cursor: DeliveryCursor,
+    report: DeliveryReport,
   ): Promise<void> {
     try {
       await this.gaia.recordDelivered(conversationId, {
         platform: this.platform,
-        ...cursor,
+        ...report,
       });
     } catch (error) {
       wideLog.warning("delivery_cursor_not_recorded", {
         ...sanitizeErrorForLog(error),
         conversation_id: conversationId,
-        delivered_seq: cursor.delivered_seq,
+        delivered_seq: report.delivered_seq,
       });
     }
   }
