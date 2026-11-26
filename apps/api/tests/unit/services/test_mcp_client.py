@@ -1471,8 +1471,9 @@ class TestMCPTokenStoreOAuthState:
 
         async def fake_set_cache(
             key: str, data: Any, ttl: int = 0, model: type[object] | None = None
-        ) -> None:
+        ) -> bool:
             stored_data[key] = data
+            return True
 
         async def fake_get_and_delete(key: str) -> Any:
             return stored_data.pop(key, None)

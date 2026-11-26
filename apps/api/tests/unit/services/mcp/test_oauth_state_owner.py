@@ -4,7 +4,11 @@ import fakeredis.aioredis
 import pytest
 
 from app.models.mcp_config import OAuthStateOwner
-from app.services.mcp.mcp_token_store import MCPTokenStore, resolve_oauth_state_owner
+from app.services.mcp.mcp_token_store import (
+    MCPTokenStore,
+    OAuthStateStoreError,
+    resolve_oauth_state_owner,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -39,3 +43,18 @@ class TestOAuthStateOwner:
         ttl = await fake_redis.ttl(f"mcp_oauth_state:owner:{state}")
 
         assert 0 < ttl <= 600
+
+
+async def test_a_state_whose_owner_cannot_be_stored_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A state handed out without its owner record would only ever fail at the callback."""
+    writes = iter([True, False])
+
+    async def set_cache(*_args: object, **_kwargs: object) -> bool:
+        return next(writes)
+
+    monkeypatch.setattr("app.services.mcp.mcp_token_store.set_cache", set_cache)
+
+    with pytest.raises(OAuthStateStoreError, match="github"):
+        await MCPTokenStore("user-1").create_oauth_state("github", "verifier")

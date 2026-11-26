@@ -39,6 +39,13 @@ from shared.py.wide_events import log
 _DCR_CLIENT_REGISTRATION: TypeAdapter[DCRClientRegistration] = TypeAdapter(DCRClientRegistration)
 
 
+class OAuthStateStoreError(RuntimeError):
+    """The OAuth state could not be stored, so its callback could never complete."""
+
+    def __init__(self, integration_id: str) -> None:
+        super().__init__(f"could not store the OAuth state for {integration_id}")
+
+
 def _oauth_owner_key(state: str) -> str:
     return f"{OAUTH_STATE_PREFIX}:owner:{state}"
 
@@ -309,16 +316,16 @@ class MCPTokenStore:
         # Pre-serializing with json.dumps() causes double-encoding, breaking code_verifier retrieval.
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
         state_data: dict[str, str] = {"state": state, "code_verifier": code_verifier}
-        await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL)
         # The callback arrives from a browser with no GAIA session (a link opened from a
         # chat app), so the state token itself has to say whose flow it belongs to.
-        await set_cache(
+        stored = await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL) and await set_cache(
             _oauth_owner_key(state),
             OAuthStateOwner(user_id=self.user_id, integration_id=integration_id),
             ttl=OAUTH_STATE_TTL,
             model=OAuthStateOwner,
         )
-
+        if not stored:
+            raise OAuthStateStoreError(integration_id)
         return state
 
     async def verify_oauth_state(self, integration_id: str, state: str) -> tuple[bool, str | None]:
