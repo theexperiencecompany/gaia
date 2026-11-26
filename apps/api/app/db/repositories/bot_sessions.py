@@ -5,8 +5,17 @@ get-or-create: the conversation_id is minted exactly once via $setOnInsert
 under the unique index, so two racing first-messages can never fork a session.
 """
 
+from collections.abc import Sequence
+from datetime import datetime
+
 from app.db.repositories.base import MongoRepository
-from app.models.bot_models import BotSessionDocument, BotSessionUpdate, PartialReply
+from app.models.bot_models import (
+    BotSessionDocument,
+    BotSessionUpdate,
+    MessageReaction,
+    OwedReaction,
+    PartialReply,
+)
 from app.utils.errors import AppError
 
 #: Suffix a retired key derivation gave channel-less sessions; only pre-fix rows carry it.
@@ -127,6 +136,22 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
             {"$max": {"delivery.owed_seq": last_seq}},
         )
 
+    async def owe_reaction(
+        self, conversation_id: str, *, seq: int, reaction: OwedReaction
+    ) -> BotSessionDocument | None:
+        """Record a reaction put on the user message at seq for the bot to place; None for a non-bot conversation.
+
+        A first owed thing starts the bot's cursor just before the message, like a first entry.
+        """
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "delivery": {"$exists": False}},
+            {"$set": {"delivery": {"delivered_seq": seq - 1, "owed_seq": 0}}},
+        )
+        return await self._apply_raw_update(
+            {"conversation_id": conversation_id},
+            {"$push": {"delivery.owed_reactions": reaction.model_dump()}},
+        )
+
     async def record_delivered(
         self,
         conversation_id: str,
@@ -134,8 +159,24 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         platform: str,
         delivered_seq: int,
         partial_reply: PartialReply | None,
+        placed_reactions: Sequence[MessageReaction] = (),
     ) -> bool:
-        """Move the bot's cursor to what it delivered; False for a report behind the recorded one."""
+        """Settle the reactions the bot placed, then move its cursor to what it delivered; False for a cursor behind.
+
+        A placed reaction is settled even by a report behind the cursor: a second bot overlapping
+        a deploy may report late, and what it placed is on the platform all the same.
+        """
+        if placed_reactions:
+            await self._apply_raw_update_unfetched(
+                {"conversation_id": conversation_id, "platform": platform},
+                {
+                    "$pull": {
+                        "delivery.owed_reactions": {
+                            "$or": [placed.model_dump() for placed in placed_reactions]
+                        }
+                    }
+                },
+            )
         matched = await self._apply_raw_update_unfetched(
             {
                 "conversation_id": conversation_id,
@@ -156,12 +197,29 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         )
         return matched > 0
 
+    async def drop_owed_reactions_before(self, platform: str, before: datetime) -> int:
+        """Drop the platform's reactions owed since before; return how many sessions held one."""
+        result = await self._raw_collection().update_many(
+            {"platform": platform, "delivery.owed_reactions.owed_at": {"$lt": before}},
+            {"$pull": {"delivery.owed_reactions": {"owed_at": {"$lt": before}}}},
+        )
+        return result.modified_count
+
+    async def forget_delivery(self, conversation_id: str) -> None:
+        """Drop the bot's cursor on a deleted conversation: nothing in it is owed any more."""
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id}, {"$unset": {"delivery": ""}}
+        )
+
     async def list_owed(self, platform: str, limit: int) -> list[BotSessionDocument]:
         """Return the platform's sessions whose bot has not delivered everything logged for it."""
         return await self._find(
             {
                 "platform": platform,
-                "$expr": {"$gt": ["$delivery.owed_seq", "$delivery.delivered_seq"]},
+                "$or": [
+                    {"$expr": {"$gt": ["$delivery.owed_seq", "$delivery.delivered_seq"]}},
+                    {"delivery.owed_reactions.0": {"$exists": True}},
+                ],
             },
             limit=limit,
         )

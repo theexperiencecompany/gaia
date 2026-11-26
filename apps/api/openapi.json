@@ -101,7 +101,7 @@
         "type": "string"
       },
       "ActiveBotConversation": {
-        "description": "A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.\n\npartial_reply names the reply just past it that the bot had sent only its first bubbles of, so a\nrestarted follower sends the rest and repeats none.",
+        "description": "A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.\n\npartial_reply names the reply just past it that the bot had sent only its first bubbles of, so a\nrestarted follower sends the rest and repeats none; owed_reactions are the reactions it has\nnot placed yet, on messages at or below after_seq too.",
         "properties": {
           "after_seq": {
             "minimum": 0.0,
@@ -127,6 +127,13 @@
             "title": "Is Dm",
             "type": "boolean"
           },
+          "owed_reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReaction"
+            },
+            "title": "Owed Reactions",
+            "type": "array"
+          },
           "partial_reply": {
             "anyOf": [
               {
@@ -148,7 +155,8 @@
           "channel_id",
           "is_dm",
           "after_seq",
-          "partial_reply"
+          "partial_reply",
+          "owed_reactions"
         ],
         "title": "ActiveBotConversation",
         "type": "object"
@@ -2334,7 +2342,7 @@
         "type": "object"
       },
       "BotDeliveryReport": {
-        "description": "What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.",
+        "description": "What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.\n\nplaced_reactions are the reactions it placed (or sent as text) since its last report.",
         "properties": {
           "delivered_seq": {
             "minimum": 0.0,
@@ -2351,6 +2359,13 @@
               }
             ]
           },
+          "placed_reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReaction"
+            },
+            "title": "Placed Reactions",
+            "type": "array"
+          },
           "platform": {
             "$ref": "#/components/schemas/ConversationSource"
           }
@@ -2363,7 +2378,7 @@
         "type": "object"
       },
       "BotMessageAccepted": {
-        "description": "A bot message accepted, with the token the bot follows the events stream with.\n\nafter_seq and partial_reply are where the follow starts: the session's delivery cursor while\nit still owes anything, else just before the message.",
+        "description": "A bot message accepted, with the token the bot follows the events stream with.\n\nafter_seq, partial_reply and owed_reactions are where the follow starts: the session's delivery\ncursor while it still owes anything, else just before the message.",
         "properties": {
           "after_seq": {
             "minimum": 0.0,
@@ -2377,6 +2392,13 @@
           "message_id": {
             "title": "Message Id",
             "type": "string"
+          },
+          "owed_reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReaction"
+            },
+            "title": "Owed Reactions",
+            "type": "array"
           },
           "partial_reply": {
             "anyOf": [
@@ -2403,7 +2425,8 @@
           "seq",
           "session_token",
           "after_seq",
-          "partial_reply"
+          "partial_reply",
+          "owed_reactions"
         ],
         "title": "BotMessageAccepted",
         "type": "object"
@@ -13772,6 +13795,27 @@
           "scored"
         ],
         "title": "MessageFeedbackResponse",
+        "type": "object"
+      },
+      "MessageReaction": {
+        "description": "GAIA's emoji on one user message, by the message's id.",
+        "properties": {
+          "emoji": {
+            "minLength": 1,
+            "title": "Emoji",
+            "type": "string"
+          },
+          "message_id": {
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "emoji"
+        ],
+        "title": "MessageReaction",
         "type": "object"
       },
       "MessageRequest": {

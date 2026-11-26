@@ -6,7 +6,7 @@ context slots, and the instant reaction, which is never asked for.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -32,6 +32,7 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGenerationChunk
 from langgraph.config import get_config
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import PrivateAttr
 import pytest
 from redis.asyncio import Redis
 from redis.asyncio.client import Pipeline
@@ -47,6 +48,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
+    hold_run_alive,
     keep_alive,
     try_acquire_lock,
 )
@@ -55,7 +57,11 @@ from app.agents.core.background.executor_runner import (
     wake_executor_for_inbox,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind
-from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
+from app.agents.core.background.todo_run import (
+    ExecutorBusyError,
+    TodoRunRequest,
+    run_todo_on_executor,
+)
 from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
@@ -68,12 +74,22 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.config.settings import settings
+from app.constants import conversation as conversation_constants
 from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import (
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
-from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
+from app.constants.conversation import (
+    EVENTS_STREAM_MAXLEN,
+    RUNNER_ALIVE_BEATS_PER_TTL,
+    RUNNER_ALIVE_TTL_SECONDS,
+    STEP_TICK_SECONDS,
+)
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.todos import TodoWakeKind
@@ -281,8 +297,6 @@ from tests.unit.services.hil.conftest import make_request
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
 _CONFIRM_SECONDS = 0.05
-_SHORT_TTL_SECONDS = 1
-_TRICKLE_SECONDS = 0.02
 # Later than the approval register grace and a decision hand-off lease: what a sweep that late finds stuck is stuck.
 _PAST_EVERY_SWEEP_GRACE = timedelta(minutes=3)
 
@@ -2259,6 +2273,92 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     assert await _unread(rig) is False
 
 
+#: A run's lock from a worker that exited mid-run: old enough to judge, its liveness lapsed.
+_DEAD_RUN_LOCK = build_lock_value("stream-dead", "t-dead")
+
+
+async def _lock_left_by_a_run_that_died(conversation_id: str) -> None:
+    await redis_cache.client.set(
+        f"{EXECUTOR_BUSY_PREFIX}{conversation_id}",
+        _DEAD_RUN_LOCK,
+        ex=EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+    )
+
+
+@pytest.mark.service
+@pytest.mark.regression
+async def test_a_todo_run_takes_a_chat_whose_executor_died_with_its_worker(
+    rig_for: RigFactory,
+) -> None:
+    """Regression: a deploy killed a todo run's executor, and its retry waited out the 30-minute lock."""
+    model = gated("Acme accepted the quote")
+    todo = _todo_doc("owner")
+    async with _todo_rig(rig_for, model, todo, _fake_executor("quote accepted")) as (
+        rig,
+        delivery,
+    ):
+        await _lock_left_by_a_run_that_died(rig.conversation_id)
+        await run_todo_on_executor(_todo_request(rig, todo))
+        await rig.settle()
+    [woke] = await rig.of(TodoWoke)
+    assert woke.run.run_id == "run_acme"
+    delivery.sent.assert_awaited_once()
+
+
+@pytest.mark.service
+async def test_a_todo_run_waits_for_a_chat_whose_executor_is_alive(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("unused")
+    todo = _todo_doc("owner")
+    async with _todo_rig(rig_for, model, todo, _fake_executor("unused")) as (rig, delivery):
+        await _lock_left_by_a_run_that_died(rig.conversation_id)
+        await hold_run_alive(rig.conversation_id, _DEAD_RUN_LOCK)
+        with pytest.raises(ExecutorBusyError):
+            await run_todo_on_executor(_todo_request(rig, todo))
+    assert await rig.of(TodoWoke) == []
+    delivery.sent.assert_not_awaited()
+    assert await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}") == (
+        _DEAD_RUN_LOCK
+    )
+
+
+@pytest.mark.service
+@pytest.mark.regression
+async def test_a_cancelled_todo_job_stops_its_run_and_its_retry_takes_the_chat_at_once(
+    rig_for: RigFactory,
+) -> None:
+    """Regression: a deploy cancelled the todo job, its shielded run kept the chat, and the retry waited 30 minutes."""
+    model = gated("Acme accepted the quote")
+    todo = _todo_doc("owner")
+    mid_run = asyncio.Event()
+
+    async def a_long_executor_call(*_: object) -> None:
+        mid_run.set()
+        await asyncio.Event().wait()
+
+    async with _todo_rig(rig_for, model, todo, executor_runner.run_executor_background) as (
+        rig,
+        delivery,
+    ):
+        with patch.object(executor_runner, "_execute_executor", a_long_executor_call):
+            job = asyncio.create_task(run_todo_on_executor(_todo_request(rig, todo)))
+            await asyncio.wait_for(mid_run.wait(), 5)
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+        assert await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}") is None
+        [stopped] = await rig.of(WorkFinished)
+        assert (stopped.outcome, stopped.report) == (
+            WorkOutcome.CANCELLED,
+            conversation_constants.WORK_INTERRUPTED_REPORT,
+        )
+        with patch.object(todo_run, "run_executor_background", _fake_executor("quote accepted")):
+            await run_todo_on_executor(_todo_request(rig, todo))
+        await rig.settle()
+    delivery.sent.assert_awaited_once()
+
+
 @pytest.mark.service
 async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sends_nothing(
     rig_for: RigFactory,
@@ -2774,8 +2874,69 @@ async def test_a_reply_to_the_users_own_message_leaves_the_conversation_read(
     assert await _unread(rig) is False
 
 
+class _ClaimClock:
+    """The step claim's clock, driven by the test: advancing it ages the live key and fires the beat due."""
+
+    def __init__(self, redis: Redis) -> None:
+        self._redis = redis
+        self._prove: Callable[[], Awaitable[bool]] | None = None
+        self._context: Mapping[str, str] = {}
+        self.every = 0.0
+        self.user_id = ""
+
+    def keep_proving(
+        self,
+        prove: Callable[[], Awaitable[bool]],
+        *,
+        every: float,
+        give_up_after: float,
+        name: str,
+        what: str,
+        context: Mapping[str, str],
+    ) -> asyncio.Task[None]:
+        """Take the step's beat instead of timing it on the wall clock; advance fires it."""
+        self._prove, self._context, self.every = prove, context, every
+        return asyncio.create_task(self._until_cancelled(), name=name)
+
+    @staticmethod
+    async def _until_cancelled() -> None:
+        await asyncio.Event().wait()
+
+    async def advance_one_beat(self) -> None:
+        """Let one beat interval pass on the live key, then beat as the step's own task would."""
+        assert self._prove is not None
+        key = mongo_log_claim.alive_key(
+            self._context["conversation_id"], self.user_id, int(self._context["epoch"])
+        )
+        left_ms = await self._redis.pttl(key) - round(self.every * 1000)
+        if left_ms > 0:
+            await self._redis.pexpire(key, left_ms)
+        else:
+            await self._redis.delete(key)
+        assert await self._prove()
+
+
 class _TrickleModel(GatedModel):
-    """Streams its reply a character every _TRICKLE_SECONDS, faster than the step's tick."""
+    """Streams its reply a character per beat of the claim's clock, pausing for the test at midway."""
+
+    _clock: _ClaimClock = PrivateAttr()
+    _midway: int = PrivateAttr()
+    _paused: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
+    _resume: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
+
+    @classmethod
+    def streaming(cls, reply: AIMessage, clock: _ClaimClock, midway: int) -> "_TrickleModel":
+        model = cls(responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6})
+        model._replies = [reply]
+        model._clock, model._midway = clock, midway
+        return model
+
+    async def wait_paused(self) -> None:
+        async with asyncio.timeout(_SETTLE_SECONDS):
+            await self._paused.wait()
+
+    def resume(self) -> None:
+        self._resume.set()
 
     async def _astream(
         self,
@@ -2787,8 +2948,11 @@ class _TrickleModel(GatedModel):
         self._prompts.append(list(messages))
         reply = self._replies[len(self._prompts) - 1]
         assert isinstance(reply, AIMessage)
-        for char in str(reply.content):
-            await asyncio.sleep(_TRICKLE_SECONDS)
+        for index, char in enumerate(str(reply.content)):
+            if index == self._midway:
+                self._paused.set()
+                await self._resume.wait()
+            await self._clock.advance_one_beat()
             chunk = ChatGenerationChunk(message=AIMessageChunk(content=char))
             if run_manager is not None:
                 await run_manager.on_llm_new_token(char, chunk=chunk)
@@ -2808,22 +2972,24 @@ async def _production_tick() -> None:
 @pytest.mark.service
 async def test_a_reply_streaming_longer_than_the_claims_ttl_is_answered_once(
     rig_for: RigFactory,
+    real_redis: Redis,
 ) -> None:
-    text = "x" * int(3 * _SHORT_TTL_SECONDS / _TRICKLE_SECONDS)
-    model = _TrickleModel(
-        responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6}
-    )
+    clock = _ClaimClock(real_redis)
+    # One character per beat: the reply streams for three TTLs, and the sweep comes after two.
+    text = "x" * (3 * RUNNER_ALIVE_BEATS_PER_TTL)
     named = {"name": ANSWERED_TOOL_NAME, "args": {"message_ids": [1]}, "id": "named"}
-    model._replies = [AIMessage(content=text, tool_calls=[named])]
+    model = _TrickleModel.streaming(
+        AIMessage(content=text, tool_calls=[named]), clock, midway=2 * RUNNER_ALIVE_BEATS_PER_TTL
+    )
     rig = await rig_for(model, tick=_production_tick)
-    with (
-        patch.object(mongo_log_claim, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
-        patch.object(step_module, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
-    ):
+    clock.user_id = rig.user_id
+    with patch.object(step_module, "keep_proving", clock.keep_proving):
         await rig.send("m1", "tell me a long story")
-        # Mid-stream, well past the TTL, the sweep looks for a dead holder.
-        await asyncio.sleep(2 * _SHORT_TTL_SECONDS)
+        await model.wait_paused()
+        assert clock.every == RUNNER_ALIVE_TTL_SECONDS / RUNNER_ALIVE_BEATS_PER_TTL
+        # Two TTLs into the stream, the sweep looks for a dead holder.
         await sweep_conversations()
+        model.resume()
         await rig.settle()
     assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
     assert [reply.text for reply in await rig.of(Reply)] == [text]
@@ -3448,7 +3614,7 @@ async def test_an_approve_whose_hand_off_failed_is_carried_out_once_by_the_sweep
 
     with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
         with (
-            patch.object(executor_runner, "reclaim_dead_lock", blip),
+            patch.object(executor_runner, "_start_executor_run", blip),
             pytest.raises(RedisConnectionError),
         ):
             await ledger_decide.decide_ledger(
@@ -3619,7 +3785,7 @@ async def _finish_work(rig: Rig, task_id: str, text: str) -> None:
     outcome = executor_runner.TerminalOutcome(
         result_text=text, result_type="final", was_cancelled=False
     )
-    await executor_runner._log_work_finished(_executor_run(rig, task_id), outcome, stopped=False)
+    await executor_runner._log_work_finished(_executor_run(rig, task_id), outcome, cut=None)
     await rig.settle()
 
 

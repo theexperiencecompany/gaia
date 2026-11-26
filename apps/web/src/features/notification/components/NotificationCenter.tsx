@@ -6,6 +6,7 @@ import { formatDay } from "@shared/utils";
 import { useMemo, useState } from "react";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { track } from "@/lib/analytics";
@@ -18,6 +19,13 @@ import { UnreadCountChip } from "./UnreadCountChip";
 interface NotificationCenterProps {
   className?: string;
 }
+
+const PANEL_TABS = tabsVariants({
+  variant: "solid",
+  color: "accent",
+  shape: "pill",
+  size: "sm",
+});
 
 export function NotificationCenter({
   className = "",
@@ -121,23 +129,29 @@ export function NotificationCenter({
         >
           <div className="flex w-full items-center justify-between gap-2 px-3 pt-2">
             <Tabs
+              className={PANEL_TABS.base()}
               selectedKey={activeTab}
               onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
-              variant="secondary"
+              variant="primary"
             >
-              <Tabs.List>
-                <Tabs.Tab id="unread">
-                  <div className="flex items-center gap-1.5">
-                    <span>Unread</span>
-                    <UnreadCountChip count={unreadCount} />
-                  </div>
-                  <Tabs.Indicator />
-                </Tabs.Tab>
-                <Tabs.Tab id="all">
-                  All
-                  <Tabs.Indicator />
-                </Tabs.Tab>
-              </Tabs.List>
+              <Tabs.ListContainer>
+                <Tabs.List
+                  aria-label="Notifications"
+                  className={PANEL_TABS.tabList()}
+                >
+                  <Tabs.Tab id="unread" className={PANEL_TABS.tab()}>
+                    <span className="flex items-center gap-1.5">
+                      Unread
+                      <UnreadCountChip count={unreadCount} />
+                    </span>
+                    <Tabs.Indicator className={PANEL_TABS.tabIndicator()} />
+                  </Tabs.Tab>
+                  <Tabs.Tab id="all" className={PANEL_TABS.tab()}>
+                    All
+                    <Tabs.Indicator className={PANEL_TABS.tabIndicator()} />
+                  </Tabs.Tab>
+                </Tabs.List>
+              </Tabs.ListContainer>
             </Tabs>
 
             {canMarkAllAsRead && (

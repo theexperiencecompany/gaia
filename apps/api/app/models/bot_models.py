@@ -3,6 +3,8 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.integrations import IntegrationStatus
@@ -277,11 +279,27 @@ class PartialReply(BaseModel):
         return self
 
 
+class MessageReaction(BaseModel):
+    """GAIA's emoji on one user message, by the message's id."""
+
+    model_config = ConfigDict(frozen=True)
+
+    message_id: str = Field(min_length=1)
+    emoji: str = Field(min_length=1)
+
+
+class OwedReaction(MessageReaction):
+    """A reaction the bot has not placed yet, and when it was logged: one owed too long is dropped."""
+
+    owed_at: datetime
+
+
 class BotDelivery(BaseModel):
     """How far a session's bot delivered its conversation: every item through delivered_seq, plus partial_reply.
 
     owed_seq is the newest entry logged for the bot to render; a session whose delivered_seq is
-    behind it has something a restarted bot must still send.
+    behind it has something a restarted bot must still send. A reaction amends its message in
+    place, at no seq of its own, so the ones the bot has not placed yet are owed_reactions.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -289,11 +307,24 @@ class BotDelivery(BaseModel):
     delivered_seq: int = Field(ge=0)
     partial_reply: PartialReply | None = None
     owed_seq: int = Field(default=0, ge=0)
+    owed_reactions: list[OwedReaction] = Field(default_factory=list)
+
+    @property
+    def reactions_to_place(self) -> list[MessageReaction]:
+        """The owed reactions as a follow takes them: which emoji goes on which message."""
+        return [
+            MessageReaction(message_id=owed.message_id, emoji=owed.emoji)
+            for owed in self.owed_reactions
+        ]
 
     @property
     def owes(self) -> bool:
-        """Whether the bot has something logged for it, or a cut reply, still to put on the platform."""
-        return self.owed_seq > self.delivered_seq or self.partial_reply is not None
+        """Whether the bot has something logged for it, a cut reply or a reaction, still to put on the platform."""
+        return (
+            self.owed_seq > self.delivered_seq
+            or self.partial_reply is not None
+            or bool(self.owed_reactions)
+        )
 
 
 class BotSessionDocument(MongoDocument):

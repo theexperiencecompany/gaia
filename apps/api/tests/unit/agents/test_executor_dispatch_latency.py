@@ -109,7 +109,7 @@ class TestDispatchLatency:
             return run
 
         with (
-            patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(et, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(et, "record_work_started", AsyncMock(return_value=True)),
             patch.object(ExecutorRun, "from_configurable", new=classmethod(_capture_from_config)),
             patch.object(et, "spawn_background_task"),
@@ -132,6 +132,7 @@ class TestDispatchLatency:
     async def test_same_turn_duplicate_dispatch_emits_nothing(self) -> None:
         stream_id = "dispatch-dup"
         with (
+            patch.object(et, "claim_conversation", AsyncMock(return_value=False)),
             patch.object(et, "try_acquire_lock", AsyncMock(return_value=False)),
             patch.object(et, "redis_cache", _mock_redis(f"{stream_id}:task-first")),
             patch.object(et, "spawn_background_task") as mock_spawn,
@@ -154,7 +155,7 @@ class TestDispatchLatency:
         stream_id = "dispatch-redirect"
         attempts = {"n": 0}
 
-        async def _flaky_acquire(lock_key: str, lock_value: str) -> bool:
+        async def _flaky_acquire(_key: str, _value: str) -> bool:
             attempts["n"] += 1
             return attempts["n"] >= 3
 
@@ -164,6 +165,7 @@ class TestDispatchLatency:
         fake_time.perf_counter.side_effect = [10.0, 20.0, 20.1234567]
 
         with (
+            patch.object(et, "claim_conversation", side_effect=_flaky_acquire),
             patch.object(et, "try_acquire_lock", side_effect=_flaky_acquire),
             patch.object(et, "redis_cache", _mock_redis("dying-stream:old-task")),
             patch.object(et, "stop_requested", AsyncMock(return_value=True)),
@@ -494,7 +496,7 @@ class TestBackgroundRunExactWiring:
             await run_executor_background(run=run, task="the task", configurable={})
             finalize = cast(AsyncMock, er._finalize_executor_run)
 
-        assert finalize.await_args.kwargs == {"stopped": stopped}
+        assert finalize.await_args.kwargs == {"cut": er.RunCut.STOPPED if stopped else None}
 
     async def test_execute_executor_receives_the_run_arguments(self) -> None:
         run = _run("exec-args")

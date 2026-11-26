@@ -200,6 +200,59 @@ class TestALivenessFailureIsAFailedRun:
 
 
 @pytest.mark.unit
+@pytest.mark.regression
+async def test_a_run_cancelled_mid_run_is_finalized_stopped_never_done() -> None:
+    run = ExecutorRun(
+        stream_id="stream-1",
+        conversation_id="conv-1",
+        user=AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc"),
+        kind=RunKind.LIVE,
+        task_id="task-1",
+        user_message_id=None,
+        bot_message_id=None,
+    )
+    finalize = AsyncMock()
+    with (
+        patch.object(er, "keep_alive", AsyncMock(return_value=MagicMock())),
+        patch.object(er, "_execute_executor", AsyncMock(side_effect=asyncio.CancelledError)),
+        patch.object(er, "_finalize_executor_run", finalize),
+        patch("app.services.analytics_service.capture"),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await er.run_executor_background(run=run, task="do the thing", configurable={})
+
+    assert finalize.await_args.args == (run, "", "final", None)
+    assert finalize.await_args.kwargs == {"cut": er.RunCut.INTERRUPTED}
+
+
+@pytest.mark.unit
+async def test_a_cancel_after_the_run_answered_keeps_its_answer() -> None:
+    run = ExecutorRun(
+        stream_id="stream-1",
+        conversation_id="conv-1",
+        user=AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc"),
+        kind=RunKind.LIVE,
+        task_id="task-1",
+        user_message_id=None,
+        bot_message_id=None,
+    )
+    finalize = AsyncMock()
+    answered = er._ExecutorResult("the answer", "final")
+    with (
+        patch.object(er, "keep_alive", AsyncMock(return_value=MagicMock())),
+        patch.object(er, "_execute_executor", AsyncMock(return_value=answered)),
+        patch.object(er, "stop_requested", AsyncMock(side_effect=asyncio.CancelledError)),
+        patch.object(er, "_finalize_executor_run", finalize),
+        patch("app.services.analytics_service.capture"),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await er.run_executor_background(run=run, task="do the thing", configurable={})
+
+    assert finalize.await_args.args == (run, "the answer", "final", None)
+    assert finalize.await_args.kwargs == {"cut": None}
+
+
+@pytest.mark.unit
 class TestOrphanedBrowserJob:
     """A failed run's message is the turn's only ending, so the job it left running must not speak.
 

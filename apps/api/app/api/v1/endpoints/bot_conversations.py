@@ -49,12 +49,14 @@ async def record_delivered(
         platform=report.platform.value,
         delivered_seq=report.delivered_seq,
         partial_reply=report.partial_reply,
+        placed_reactions=report.placed_reactions,
     )
     log.set(
         operation="record_bot_delivery",
         platform=report.platform.value,
         conversation_id=conversation_id,
         delivered_seq=report.delivered_seq,
+        reactions_placed=len(report.placed_reactions),
         recorded=recorded,
     )
     return BotDeliveryRecorded(recorded=recorded)

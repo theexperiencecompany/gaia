@@ -34,6 +34,8 @@ export interface ScenarioAssertion {
    * 1-based position in the turn (a burst's order). `[]` asserts none did.
    */
   reactedTo?: number[];
+  /** No emoji was placed twice on one message: a resumed bot repeats no reaction. */
+  noRepeatedReactions?: true;
   /**
    * Which inbound message each bubble quotes, by the bubble's text: a key is a
    * substring of one bubble's final text, its value the 1-based position (in
@@ -96,6 +98,11 @@ export interface ScenarioTurn {
    * is open.
    */
   restartAfterMs?: number;
+  /**
+   * The bot process dies inside its first react call of the turn, before the reaction is
+   * placed, and a fresh one boots and resumes.
+   */
+  restartOnReact?: boolean;
   /** Assertions on the transcript this turn generated. */
   expect?: ScenarioAssertion[];
   /**

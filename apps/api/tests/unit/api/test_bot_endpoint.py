@@ -280,6 +280,7 @@ class TestBotSendMessage:
             "session_token": "tok",
             "after_seq": 6,
             "partial_reply": None,
+            "owed_reactions": [],
         }
         mock_limit.assert_awaited_once_with("discord", "u1")
         body, user = mock_submit.await_args.args

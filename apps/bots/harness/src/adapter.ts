@@ -66,6 +66,11 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly adapterLogger: BotLogger;
   /** What is left of a scripted outage: the platform refuses this many more sends and edits. */
   private outage: PlatformOutage | null = null;
+  /** A react call held open, as a bot dies inside it: a restart turn kills the bot there. */
+  private reactionHold: {
+    started: () => void;
+    die: ((error: Error) => void) | null;
+  } | null = null;
   /** The boot's resume of conversations still answering; settled before boot starts one. */
   private resumed: Promise<void> = Promise.resolve();
   // Platform message ids are deduplicated per conversation, so each run names its own.
@@ -170,6 +175,13 @@ export class HarnessAdapter extends BaseBotAdapter {
     _isChannel: boolean,
     replaces: string | null,
   ): Promise<ReactionOutcome> {
+    const hold = this.reactionHold;
+    if (hold && !hold.die) {
+      return new Promise((_resolve, reject) => {
+        hold.die = reject;
+        hold.started();
+      });
+    }
     this.transcript.record({
       type: "reaction",
       destinationId,
@@ -213,6 +225,20 @@ export class HarnessAdapter extends BaseBotAdapter {
   protected override resumeFollows(): Promise<void> {
     this.resumed = super.resumeFollows();
     return this.resumed;
+  }
+
+  /** Hold the next react call open, placing nothing; resolves once one is held. */
+  holdNextReaction(): Promise<void> {
+    return new Promise((started) => {
+      this.reactionHold = { started, die: null };
+    });
+  }
+
+  /** End the held react call as the bot process dying inside it would: nothing after it runs. */
+  dieInHeldReaction(): void {
+    this.reactionHold?.die?.(
+      new Error("bot process died inside the react call"),
+    );
   }
 
   /** From now, the platform refuses the next `outage.failures` sends and edits with `outage.status`. */

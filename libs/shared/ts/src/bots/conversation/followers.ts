@@ -15,6 +15,7 @@
  * keeps, so a restarted bot resumes from that cursor.
  */
 
+import type { MessageReaction } from "../../api/generated";
 import type { ConversationFrame } from "../../conversation/types";
 import {
   isRetryableStatus,
@@ -39,6 +40,7 @@ import { ConversationFollower } from "./follower";
 import type {
   AwaitedDecision,
   DeliveryCursor,
+  DeliveryReport,
   FollowSurface,
   StreamingOptions,
 } from "./follower.types";
@@ -55,7 +57,7 @@ export type ConversationEventSource = (
 export type DeliveryRecorder = (
   ctx: BotUserContext,
   conversationId: string,
-  cursor: DeliveryCursor,
+  report: DeliveryReport,
 ) => Promise<void>;
 
 interface Followed {
@@ -75,6 +77,11 @@ export class ConversationFollowers {
   private readonly active = new Map<string, Followed>();
   /** The cursor a follow of each conversation started from or delivered to, so a late wake repeats nothing. */
   private readonly reached = new Map<string, DeliveryCursor>();
+  /**
+   * The reactions a follow of each conversation put on the platform: a wake carries the
+   * cursor from when a reaction was owed, which may already be placed here.
+   */
+  private readonly placed = new Map<string, MessageReaction[]>();
   private readonly runs = new Set<Promise<void>>();
   /** Waiters woken after a follow renders a frame, so settled re-checks what the follows wait on. */
   private readonly changes = new Set<() => void>();
@@ -186,13 +193,16 @@ export class ConversationFollowers {
     const start =
       reached && reached.delivered_seq > from.delivered_seq ? reached : from;
     this.reach(conversationId, start);
-    const follower = new ConversationFollower(
+    const follower: ConversationFollower = new ConversationFollower(
       {
         floor: start.delivered_seq,
         partialReply: start.partial_reply,
-        record: async (cursor) => {
-          this.reach(conversationId, cursor);
-          await this.record(ctx, conversationId, cursor);
+        owedReactions: start.owed_reactions,
+        placedReactions: this.placed.get(conversationId) ?? [],
+        record: async (report) => {
+          this.reach(conversationId, follower.delivered);
+          this.placed.set(conversationId, follower.placedReactions);
+          await this.record(ctx, conversationId, report);
         },
       },
       this.options,
@@ -269,6 +279,9 @@ export class ConversationFollowers {
           if (this.active.get(conversationId) === followed)
             this.active.delete(conversationId);
           followed.follower.close();
+          // The next follow here takes on the reactions this one saw, placed or not.
+          this.reach(conversationId, followed.follower.delivered);
+          this.placed.set(conversationId, followed.follower.placedReactions);
           const { summary } = followed.follower;
           wideLog.set({
             replies_delivered: summary.repliesDelivered,
