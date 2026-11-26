@@ -15117,6 +15117,8 @@ export interface components {
             /** Pinned */
             pinned: boolean;
             quote: components["schemas"]["ReplyToMessageData"] | null;
+            /** Quote Platform Message Id */
+            quote_platform_message_id?: string | null;
             /** Retry Target */
             retry_target: string | null;
             /** Seq */
@@ -15290,6 +15292,15 @@ export interface components {
         ScreenFrame: {
             /** Head */
             head: number;
+            /**
+             * Held Cards
+             * @default {}
+             */
+            held_cards?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
             /**

@@ -6,10 +6,11 @@ capped, and anything older than what it retains is replayed from the log.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
+from collections import Counter
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
 from app.constants.chat import CONVERSATION_READ_LIMIT
 from app.constants.conversation import (
@@ -43,15 +44,17 @@ from app.models.conversation_screen_models import (
     ScreenFrame,
     ScreenItem,
     ScreenStreamFrame,
+    UserItem,
+    WorkItem,
 )
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.patched_wire import PatchedWire
 from app.services.conversation.ports import ConversationLog
-from app.services.conversation.screen import project_screen
+from app.services.conversation.screen import LIVE_WORK, project_screen
 from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation.shown_links import shown_frame
 from app.utils.artifact_utils import FILE_LINKS
-from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame
+from shared.py.conversation_wire import FrameKind, ReplyDeltaFrame, TimelineCard
 from shared.py.wide_events import EventsResume, log as wide_log
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
@@ -313,16 +316,18 @@ async def _screen_from_the_head(
     entries = await log.read_after(conversation_id, user_id, 0)
     tracker = await ScreenTracker.load(conversation_id, entries)
     head = entries[-1].seq if entries else 0
-    held = await _held_at(conversation_id, entries, after)
-    yield ScreenFrame(
-        items=tuple(
-            item
-            for item in tracker.items[-CONVERSATION_READ_LIMIT:]
-            # Running work's cards are in no entry, so its item never equals the one held at after.
-            if held.get(item.id) != item
-        ),
-        head=head,
+    logged_at = _logged_at(conversation_id, entries, after)
+    # A client that names no head holds nothing, and its open is logged as fresh.
+    held = logged_at if after and await _vouched_for(conversation_id, after) else {}
+    # A chat platform shows typing on the newest user message, which a bot resuming after it never held.
+    answering = next((item for item in reversed(tracker.items) if isinstance(item, UserItem)), None)
+    items = tuple(
+        item
+        for item in tracker.items[-CONVERSATION_READ_LIMIT:]
+        # Running work's cards are in no entry, so its item never equals the one held at after.
+        if held.get(item.id) != item or item is answering
     )
+    yield ScreenFrame(items=items, head=head, held_cards=_held_cards(items, logged_at))
     async for streamed in follow(log, conversation_id, user_id, head):
         if streamed is None:
             yield None
@@ -387,22 +392,63 @@ async def _vouched(conversation_id: str, after: int) -> EventsResume:
         count, read = count * EVENTS_RESUME_PAGE_GROWTH, len(page)
 
 
-async def _held_at(
+def _logged_at(
     conversation_id: str, entries: Sequence[LoggedEntry], after: int
 ) -> dict[str, ScreenItem]:
-    """Return the items a client that followed through entry after still holds as they stand, by id.
-
-    Empty unless the stream vouches for it: it must still hold that entry's frame, with no
-    amendment to an entry at or below it since, which the log read after it cannot show.
-    """
-    if after <= 0:
-        return {}
-    resume = await _vouched(conversation_id, after)
-    wide_log.set_ns("conversation", resume=resume)
-    if resume is not EventsResume.RESUMED:
-        return {}
+    """Return the items the log projects through entry after, by id; none for a client that names no head."""
     seen = [logged for logged in entries if logged.seq <= after]
     return {item.id: item for item in project_screen(conversation_id, seen, FILE_LINKS)}
+
+
+async def _vouched_for(conversation_id: str, after: int) -> bool:
+    """Return whether a client that followed through entry after still holds its items as the log has them.
+
+    The stream must still hold that entry's frame, with no amendment to an entry at or below
+    it since, which the log read after it cannot show.
+    """
+    resume = await _vouched(conversation_id, after)
+    wide_log.set_ns("conversation", resume=resume)
+    return resume is EventsResume.RESUMED
+
+
+#: What only a wire 2 frame carries: a reader built before wire 2 refuses a key it does not know.
+_WIRE_2_ONLY = {"frame": {"held_cards": True}}
+
+
+def _held_cards(
+    sent: Sequence[ScreenItem], logged_at: Mapping[str, ScreenItem]
+) -> dict[str, dict[str, int]]:
+    """Return how many entries of each card each sent work item showed at the client's head, for work not running then.
+
+    Read from the log, so it holds whether or not the stream vouches for that head: finished
+    work's cards are in entries nothing amends. Running work's cards are in no entry, so what
+    a client was shown of it by that head is not known.
+    """
+    return {
+        item.id: _card_counts(was.timeline.cards)
+        for item in sent
+        if isinstance(item, WorkItem)
+        and isinstance(was := logged_at.get(item.id), WorkItem)
+        and was.status not in LIVE_WORK
+    }
+
+
+class _Card(BaseModel):
+    """A card read for its tool and how many entries it holds."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_name: str
+    data: JsonValue
+
+
+def _card_counts(cards: Sequence[TimelineCard]) -> dict[str, int]:
+    """Return how many entries each tool's cards hold: a grouped card holds one per call."""
+    counts: Counter[str] = Counter()
+    for shown in cards:
+        card = _Card.model_validate(shown.card)
+        counts[card.tool_name] += len(card.data) if isinstance(card.data, list) else 1
+    return dict(counts)
 
 
 async def event_lines(
@@ -426,7 +472,7 @@ async def event_lines(
             continue
         shown = await shown_frame(user_id, frame)
         line = (
-            ConversationEvent(frame=shown).model_dump_json()
+            ConversationEvent(frame=shown).model_dump_json(exclude=_WIRE_2_ONLY)
             if patched is None
             else patched.line(shown)
         )

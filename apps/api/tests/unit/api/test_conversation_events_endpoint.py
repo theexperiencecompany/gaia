@@ -84,9 +84,11 @@ async def test_a_client_that_names_nothing_opens_on_the_whole_screen(client: Asy
 
 
 @pytest.mark.usefixtures("said")
-async def test_after_opens_on_only_what_the_client_lacks(client: AsyncClient) -> None:
+async def test_after_opens_on_what_the_client_lacks_and_the_newest_user_message(
+    client: AsyncClient,
+) -> None:
     assert [item["id"] for item in await _screen(client, after=1)] == ["u2"]
-    assert await _screen(client, after=2) == []
+    assert [item["id"] for item in await _screen(client, after=2)] == ["u2"]
 
 
 @pytest.mark.usefixtures("said")

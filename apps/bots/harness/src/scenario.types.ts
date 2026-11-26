@@ -41,6 +41,11 @@ export interface ScenarioAssertion {
    * bubble that quotes nothing.
    */
   quotes?: Record<string, number | null>;
+  /**
+   * True: typing was shown in the turn, and every time on one of the turn's
+   * inbound messages, never on none.
+   */
+  typingOnAMessage?: boolean;
   /** True: no bubble was deleted or edited to shorter text — nothing shown was taken back. */
   noTakeBacks?: boolean;
   /** No delivered message's final text contains any of these substrings. */
@@ -85,6 +90,12 @@ export interface ScenarioTurn {
    * slower start to the reply cannot move the restart outside a bubble.
    */
   restartAfterSends?: number;
+  /**
+   * The bot process restarts this many milliseconds after the turn's messages
+   * were posted, whatever it has sent: a restart while work runs and no reply
+   * is open.
+   */
+  restartAfterMs?: number;
   /** Assertions on the transcript this turn generated. */
   expect?: ScenarioAssertion[];
   /**

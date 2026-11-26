@@ -3,12 +3,13 @@
 import json
 
 from hypothesis import given, strategies as st
-from pydantic import JsonValue
+from pydantic import BaseModel, JsonValue
 import pytest
 
 from app.services.conversation.item_changes import changes_between
+from shared.py.conversation_patch import ChangeNotApplicable, with_changes
 from shared.py.conversation_wire import ChangeOp, ItemChange
-from tests.unit.services.conversation.change_helpers import ChangeNotApplicable, with_changes
+from tests.helpers import REPO_ROOT
 
 pytestmark = pytest.mark.unit
 
@@ -94,19 +95,24 @@ def test_a_changed_path_is_copied_and_everything_off_it_is_shared() -> None:
     assert changed["steps"][1] == {"data": {"id": 1, "output": "out"}}
 
 
-@pytest.mark.parametrize(
-    "change",
-    [
-        ItemChange(op=ChangeOp.SET, path=("steps", 5, "data"), value=1),
-        ItemChange(op=ChangeOp.SET, path=("steps", 3), value=1),
-        ItemChange(op=ChangeOp.SET, path=("missing", "key"), value=1),
-        ItemChange(op=ChangeOp.APPEND, path=("steps",), value="x"),
-        ItemChange(op=ChangeOp.APPEND, path=("missing",), value="x"),
-        ItemChange(op=ChangeOp.REMOVE, path=("steps", 0)),
-        ItemChange(op=ChangeOp.SET, path=("steps", "key"), value=1),
-        ItemChange(op=ChangeOp.REMOVE, path=()),
-    ],
+class _Refusal(BaseModel):
+    name: str
+    change: ItemChange
+
+
+class _Refusals(BaseModel):
+    """The changes both appliers must refuse, which the TypeScript one reads too (patch.test.ts)."""
+
+    held: JsonValue
+    refused: list[_Refusal]
+
+
+_REFUSALS = _Refusals.model_validate_json(
+    (REPO_ROOT / "libs/shared/ts/src/conversation/fixtures/patch-refusals.json").read_text()
 )
-def test_a_change_the_held_value_has_no_place_for_is_refused(change: ItemChange) -> None:
+
+
+@pytest.mark.parametrize("refusal", _REFUSALS.refused, ids=lambda refusal: refusal.name)
+def test_a_change_the_held_value_has_no_place_for_is_refused(refusal: _Refusal) -> None:
     with pytest.raises(ChangeNotApplicable):
-        with_changes({"steps": [{"data": 0}, {"data": 1}]}, [change])
+        with_changes(_REFUSALS.held, [refusal.change])

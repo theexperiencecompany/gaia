@@ -19136,6 +19136,17 @@
               }
             ]
           },
+          "quote_platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Platform Message Id"
+          },
           "retry_target": {
             "anyOf": [
               {
@@ -19488,6 +19499,17 @@
             "minimum": 0.0,
             "title": "Head",
             "type": "integer"
+          },
+          "held_cards": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Held Cards",
+            "type": "object"
           },
           "items": {
             "items": {

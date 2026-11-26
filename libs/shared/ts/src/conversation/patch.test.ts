@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ItemChange } from "../api/generated";
+import refusals from "./fixtures/patch-refusals.json";
 import { applyChanges } from "./patch";
 
 const held = {
@@ -67,22 +68,11 @@ describe("applying the changes a wire 2 stream sends", () => {
     });
   });
 
-  it.each([
-    ["an index past the end", set(["timeline", "steps", 5, "data"], 1)],
-    ["a set two past the end", set(["timeline", "steps", 3], 1)],
-    ["an append to a list", append(["timeline", "steps"], "x")],
-    [
-      "a removal that is not the last element",
-      remove(["timeline", "steps", 0]),
-    ],
-    ["a key into a list", set(["timeline", "steps", "key", "x"], 1)],
-    ["an index into a record", set(["timeline", 0, "x"], 1)],
-    ["a change under a key it lacks", set(["added_later", "inner"], 1)],
-    ["an append to a key it lacks", append(["added_later"], "text")],
-  ])(
+  // The Python applier refuses the same cases (apps/api/tests/unit/services/conversation/test_item_changes.py).
+  it.each(refusals.refused.map(({ name, change }) => [name, change]))(
     "refuses %s: the copy is not the one it was written against",
     (_name, change) => {
-      expect(applyChanges(held, [change])).toBeNull();
+      expect(applyChanges(refusals.held, [change as ItemChange])).toBeNull();
     },
   );
 });

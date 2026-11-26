@@ -241,6 +241,8 @@ class ReplyItem(ScreenItemBase):
     image: ImageData | None
     pinned: bool
     quote: ReplyToMessageData | None
+    # The platform message the quoted one arrived as; a chat platform answers it natively.
+    quote_platform_message_id: str | None = None
     outcome: ReplyOutcome | None
     failure: FailureReason | None
     # What a chat platform says under a failed reply, worded by the server; None unless it failed.
@@ -326,13 +328,24 @@ class ScreenItemHeader(ScreenItemBase):
 ItemT = TypeVar("ItemT")
 
 
+def _held_cards_optional(schema: JsonDict) -> None:
+    """Leave held_cards out of the required keys: a screen that names none omits it."""
+    required = schema.get("required")
+    if isinstance(required, list):
+        schema["required"] = [key for key in required if key != "held_cards"]
+
+
 class ScreenFrame(BaseModel, Generic[ItemT]):
     """The screen a connection opens on: its newest page, or only what is new or changed since the client's after."""
 
-    model_config = WIRE_CONFIG
+    model_config = ConfigDict(**WIRE_CONFIG, json_schema_extra=_held_cards_optional)
 
     kind: Literal[FrameKind.SCREEN] = FrameKind.SCREEN
     items: tuple[ItemT, ...]
+    # On wire 2, for a work item sent here whose work was not running at the client's head: how
+    # many entries of each card (by tool_name) it showed then, by item id. A reader that never
+    # held the item takes those as delivered.
+    held_cards: dict[str, dict[str, int]] = {}
     # The log's head this screen projects: a page read at or below it is no newer than what it shows.
     head: int = Field(ge=0)
 

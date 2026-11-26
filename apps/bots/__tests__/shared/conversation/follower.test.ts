@@ -686,6 +686,192 @@ describe("history the follow started after", () => {
 
     expect(calls.filter((call) => call.op !== "typing")).toEqual([]);
   });
+
+  it("opens after its floor, then after the head its screen reached", async () => {
+    const { surface } = recorder();
+    const fresh = new ConversationFollower(startAfter(0), NON_EDITING, surface);
+    const resumed = new ConversationFollower(
+      startAfter(6),
+      NON_EDITING,
+      surface,
+    );
+    expect([fresh.resumeAfter, resumed.resumeAfter]).toEqual([null, 6]);
+
+    await feed(resumed, [screenFrame([inbound("u4", 8, "14")], 9)]);
+
+    expect(resumed.resumeAfter).toBe(9);
+  });
+
+  it("sends nothing for a reply at or below the floor that first arrives after the opening screen", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(6),
+      NON_EDITING,
+      surface,
+    );
+    const old = replyItem("r1", 2, "Old answer", "answered");
+    await feed(follower, [
+      // Opened after the floor: the server sent only what changed since.
+      screenFrame([], 6),
+      // Pinned from the web: the item changes, and is sent whole for the first time.
+      updateFrame({ ...old, pinned: true }, 7),
+      // A change with no place reopens on the whole screen.
+      screenFrame([inbound("u1", 1, "11"), { ...old, pinned: true }], 7),
+    ]);
+
+    expect(sent(calls)).toEqual([]);
+  });
+
+  describe("work at or below the floor", () => {
+    const step = (at: number) => ({
+      key: `browser_task_data-${at}`,
+      card: {
+        tool_name: "browser_task_data",
+        data: { kind: "step", url: "about:blank", goal: `Step goal ${at}` },
+      },
+    });
+    const limit = {
+      key: "grouped-rate_limit_data",
+      card: {
+        tool_name: "rate_limit_data",
+        data: { feature: "web_search", current_plan: "pro" },
+      },
+    };
+    const LIMIT_LINE =
+      "⏳ You've reached your web search limit. Please try again later.";
+    const work = (
+      status: "done" | "running",
+      cards: (ReturnType<typeof step> | typeof limit)[],
+    ) => ({
+      ...workItem("t1", 2, status, [], 0),
+      timeline: { steps: [], progress: null, cards },
+    });
+    const rerun = work("running", [step(0), step(1), limit]);
+    const ONE_STEP_HELD = { "work:t1": { browser_task_data: 1 } };
+    const history = [
+      inbound("u1", 1, "11"),
+      replyItem("r1", 3, "Old answer", "answered"),
+    ];
+    /** Follow after seq 6 through frames; return what reached the chat. */
+    const followed = async (frames: ConversationFrame[]) => {
+      const { surface, calls } = recorder();
+      await feed(
+        new ConversationFollower(startAfter(6), NON_EDITING, surface, "c1"),
+        frames,
+      );
+      return {
+        calls,
+        notices: calls.flatMap((call) =>
+          call.op === "notice" ? call.bubbles : [],
+        ),
+      };
+    };
+
+    it("renders only the browser steps it gains after it is first seen", async () => {
+      const { notices } = await followed([
+        screenFrame([], 6),
+        updateFrame(work("running", [step(0), step(1)]), 7),
+        updateFrame(work("running", [step(0), step(1), step(2)]), 7),
+      ]);
+
+      expect(notices).toEqual(["Step 1 · Step goal 2"]);
+    });
+
+    it("delivers once the browser step and the usage limit of finished work that runs again", async () => {
+      const { notices } = await followed([
+        // The finished work is unchanged since the floor, so the opening screen leaves it out.
+        screenFrame([], 6),
+        // It runs again: its first frame is its restart, showing what its earlier run showed.
+        updateFrame(work("running", [step(0)]), 7),
+        updateFrame(rerun, 7),
+        // A reconnect's screen shows the same item again.
+        screenFrame([rerun], 7),
+      ]);
+
+      expect(notices).toEqual(["Step 1 · Step goal 1", LIMIT_LINE]);
+    });
+
+    it.each([
+      ["only what changed", [rerun]],
+      [
+        "the whole page, the stream no longer holding its head",
+        [...history, rerun],
+      ],
+    ])(
+      "delivers what finished work published when it ran again while the bot was away, on a screen of %s",
+      async (_name, screen) => {
+        const { calls, notices } = await followed([
+          screenFrame([], 6),
+          // The first screen to show the work names what it showed before.
+          screenFrame(screen, 7, ONE_STEP_HELD),
+          screenFrame(screen, 7, ONE_STEP_HELD),
+        ]);
+
+        expect(sent(calls)).toEqual([]);
+        expect(notices).toEqual(["Step 1 · Step goal 1", LIMIT_LINE]);
+      },
+    );
+
+    it.each([
+      [
+        "named by the server",
+        { "work:t1": { browser_task_data: 1, rate_limit_data: 1 } },
+      ],
+      ["not named, by an API from before held cards", {}],
+    ])(
+      "sends nothing on a whole screen when nothing changed since the floor, its old cards %s",
+      async (_name, held) => {
+        const screen = [...history, work("done", [step(0), limit])];
+        const { calls } = await followed([
+          screenFrame(screen, 6, held),
+          screenFrame(screen, 6, held),
+        ]);
+
+        expect(calls.filter((call) => call.op !== "typing")).toEqual([]);
+      },
+    );
+  });
+
+  it("answers the message a reply names natively when that message is not on the screen held", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(6),
+      NON_EDITING,
+      surface,
+    );
+    const quoting = {
+      ...replyItem("r2", 7, "About the first one.", "answered"),
+      quote: { id: "u1", content: "", role: "user" as const },
+      quote_platform_message_id: "11",
+    };
+    await feed(follower, [screenFrame([], 6), insertFrame(quoting)]);
+
+    expect(sent(calls)).toEqual([
+      { text: "About the first one.", replyTo: "11" },
+    ]);
+  });
+
+  it("records the log head its screen reached once nothing is owed, so the next follow opens after it", async () => {
+    const { surface } = recorder();
+    const recorded: number[] = [];
+    const follower = new ConversationFollower(
+      {
+        floor: 0,
+        partialReply: null,
+        record: async (cursor) => {
+          recorded.push(cursor.delivered_seq);
+        },
+      },
+      NON_EDITING,
+      surface,
+    );
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(replyItem("r1", 2, "Done.", "answered"), 3),
+    ]);
+
+    expect(recorded.at(-1)).toBe(3);
+  });
 });
 
 describe("an approval logged after the follow's floor on work started before it", () => {

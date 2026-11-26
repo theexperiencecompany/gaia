@@ -17,10 +17,13 @@ from src.conversation import ConversationEvent, VoiceConversation, parse_event
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
     BubbleTextDelta,
+    ChangeOp,
     FailureReason,
+    ItemChange,
     ReplyDeltaFrame,
     ReplyItem,
     ReplyOutcome,
+    ScreenPatchFrame,
     ToolTimeline,
 )
 
@@ -70,12 +73,18 @@ class RecordingApi(VoiceConversation):
         self.posts: list[tuple[str, dict[str, object]]] = []
         self.scripted = events or []
         self.drained = asyncio.Event()
+        # The log head each connection opened after.
+        self.opened_after: list[int] = []
+        self.reopened = asyncio.Event()
 
     async def _post(self, path: str, body: dict[str, object]) -> dict[str, object]:
         self.posts.append((path, body))
         return {"seq": 1}
 
-    async def _events(self, conversation_id: str) -> AsyncIterator[ConversationEvent]:
+    async def _events(self, conversation_id: str, after: int) -> AsyncIterator[ConversationEvent]:
+        self.opened_after.append(after)
+        if len(self.opened_after) > 1:
+            self.reopened.set()
         for data in self.scripted:
             yield parse_event(data)
         self.drained.set()
@@ -109,6 +118,19 @@ def entry(seq: int, kind: str, reply_id: str, outcome: ReplyOutcome = ReplyOutco
     )
     patch = "screen_insert" if opened else "screen_update"
     return json.dumps({"frame": {"kind": patch, "item": item.model_dump(mode="json"), "head": seq}})
+
+
+def patched(reply_id: str, base: int, head: int, **fields: str) -> str:
+    """Return a wire 2 patch that sets fields on a reply the connection already sent."""
+    frame = ScreenPatchFrame(
+        id=reply_id,
+        base=base,
+        head=head,
+        changes=tuple(
+            ItemChange(op=ChangeOp.SET, path=(name,), value=value) for name, value in fields.items()
+        ),
+    )
+    return json.dumps({"frame": frame.model_dump(mode="json")})
 
 
 def delta(reply_id: str, index: int, text: str, bubble: int = 0) -> str:
@@ -304,7 +326,7 @@ class RefusedApi(RecordingApi):
         self.statuses = statuses
         self.opens = 0
 
-    async def _events(self, conversation_id: str) -> AsyncIterator[ConversationEvent]:
+    async def _events(self, conversation_id: str, after: int) -> AsyncIterator[ConversationEvent]:
         self.opens += 1
         if self.statuses:
             raise aiohttp.ClientResponseError(
@@ -312,8 +334,66 @@ class RefusedApi(RecordingApi):
                 (),
                 status=self.statuses.pop(0),
             )
-        async for event in super()._events(conversation_id):
+        async for event in super()._events(conversation_id, after):
             yield event
+
+
+def test_a_reply_that_settles_in_a_patch_is_finished_and_a_failed_one_apologised_for() -> None:
+    async def scenario() -> None:
+        conversation = RecordingApi()
+        await follow(
+            conversation,
+            entry(2, "reply", "r1"),
+            delta("r1", 0, FIRST),
+            patched("r1", 0, 3, outcome="answered"),
+            entry(5, "reply", "r2"),
+            patched(
+                "r2",
+                0,
+                6,
+                outcome="failed",
+                failure="model_error",
+                failure_line=SERVER_FAILURE_LINE,
+            ),
+        )
+        first, apology = spoken(conversation).speeches
+        assert [chunk async for chunk in first.text] == [FIRST]
+        assert [chunk async for chunk in apology.text] == [SERVER_FAILURE_LINE]
+
+    asyncio.run(scenario())
+
+
+def test_a_patch_to_an_item_that_is_no_reply_of_this_connection_changes_nothing() -> None:
+    async def scenario() -> None:
+        conversation = RecordingApi()
+        await follow(conversation, patched("work:t1", 4, 3, status="done"))
+        assert spoken(conversation).speeches == []
+
+    asyncio.run(scenario())
+
+
+def test_the_stream_opens_after_the_first_turn_then_after_the_head_it_reached() -> None:
+    async def scenario() -> None:
+        conversation = RecordingApi([entry(8, "reply", "r1")])
+        follow_task = asyncio.create_task(conversation._follow(CONVERSATION, 7))
+        await asyncio.wait_for(conversation.reopened.wait(), timeout=5)
+        follow_task.cancel()
+        assert conversation.opened_after[:2] == [7, 8]
+
+    asyncio.run(scenario())
+
+
+def test_a_patch_written_against_another_copy_reopens_on_the_whole_screen() -> None:
+    async def scenario() -> None:
+        conversation = RecordingApi(
+            [entry(8, "reply", "r1"), patched("r1", 3, 9, outcome="answered")]
+        )
+        follow_task = asyncio.create_task(conversation._follow(CONVERSATION, 7))
+        await asyncio.wait_for(conversation.reopened.wait(), timeout=5)
+        follow_task.cancel()
+        assert conversation.opened_after[:2] == [7, 0]
+
+    asyncio.run(scenario())
 
 
 def test_a_refused_events_stream_is_raised_at_once_not_retried_forever() -> None:

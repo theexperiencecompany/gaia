@@ -16,10 +16,14 @@
  * - notices, and replies the platform's message window has closed on, go through sendNotice;
  * - the typing indicator runs while GAIA is thinking or working.
  *
- * Items at or below the floor (the seq the follow started after) in the screen the
- * follow opens on are history, delivered by an earlier follow; a reply that follow
- * sent only its first bubbles of sends the rest. After each platform step the
- * follower records how far it delivered, so a restart resumes exactly there.
+ * The follow opens after its floor (the seq an earlier follow delivered through), so
+ * the server sends only what is new or changed since. An item at or below the floor
+ * is history the first time it is seen, whenever that is: what it shows then was
+ * delivered by an earlier follow, and only what it gains later is rendered (for work
+ * that was not running at that head the server names the cards it showed then, so the
+ * cards a re-run published while the bot was away are rendered too). A reply
+ * that follow sent only its first bubbles of sends the rest. After each platform step
+ * the follower records how far it delivered, so a restart resumes exactly there.
  */
 
 import type {
@@ -45,7 +49,11 @@ import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
 import { REACTION_OUTCOME } from "../utils/reaction-outcome";
 import { chunkResponse } from "../utils/text";
 import { formatApprovalPrompt } from "./approval-prompt";
-import { BrowserProgress, browserCards } from "./browser-progress";
+import {
+  BROWSER_CARD_TOOL,
+  BrowserProgress,
+  browserCards,
+} from "./browser-progress";
 import type {
   DeliveryCursor,
   FollowStart,
@@ -54,7 +62,7 @@ import type {
   PrivateSurface,
   StreamingOptions,
 } from "./follower.types";
-import { rateLimitNotices } from "./rate-limit-notice";
+import { RATE_LIMIT_TOOL, rateLimitNotices } from "./rate-limit-notice";
 import { ReplyDelivery } from "./reply-delivery";
 
 const logger = createBotLogger("shared", "conversation-follower");
@@ -116,6 +124,8 @@ export class ConversationFollower {
   private readonly limitTold = new Set<string>();
   /** Each work item's browser run, by item id. */
   private readonly browserRuns = new Map<string, BrowserProgress>();
+  /** Items at or below the floor already taken as history. */
+  private readonly history = new Set<string>();
   private stopTyping: (() => void) | null = null;
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPreviewAt = 0;
@@ -157,9 +167,14 @@ export class ConversationFollower {
     return this.recorded;
   }
 
-  /** The log head a reconnect resumes after; null while the follower holds no screen it can trust. */
+  /**
+   * The log head a connection opens after: the floor until a screen arrived, then the
+   * head that screen reached. Null asks for the whole screen, once a change had no place.
+   */
   get resumeAfter(): number | null {
-    return this.opened && !this.stale ? this.view.screenHead : null;
+    if (this.stale) return null;
+    const head = this.opened ? this.view.screenHead : this.floor;
+    return head > 0 ? head : null;
   }
 
   /** A message posted into this conversation: the follow stays until it is answered. */
@@ -248,11 +263,12 @@ export class ConversationFollower {
   private async renderFrame(frame: ConversationFrame): Promise<void> {
     switch (frame.kind) {
       case FRAME_KIND.SCREEN:
-        await this.renderItems(this.opening(frame.items));
+        this.opened = true;
+        await this.renderItems(this.pastHistory(frame.items, frame.held_cards));
         return;
       case FRAME_KIND.SCREEN_INSERT:
       case FRAME_KIND.SCREEN_UPDATE:
-        await this.renderItems([frame.item]);
+        await this.renderItems(this.pastHistory([frame.item]));
         return;
       case FRAME_KIND.SCREEN_PATCH:
         await this.renderItems(
@@ -278,30 +294,52 @@ export class ConversationFollower {
     }
   }
 
-  /** Take the first screen's history as delivered; return the items left to render. */
-  private opening(items: readonly ScreenItem[]): readonly ScreenItem[] {
-    if (this.opened) return items;
-    this.opened = true;
-    for (const item of items) {
-      // Work started before the floor may ask an approval logged after it.
-      if (item.kind === SCREEN_ITEM_KIND.WORK && item.asked_seq <= this.floor)
-        for (const request of item.asking) this.asked.add(request.approval_id);
-      if (item.seq > this.floor) continue;
-      if (item.kind === SCREEN_ITEM_KIND.WORK) {
-        this.browserRun(item.id).skip(browserCards(item.timeline));
-        this.limitTold.add(item.id);
-      }
+  /**
+   * Take as delivered what each item at or below the floor shows the first time it is
+   * seen; return the items left to render: the rest, and work asking past the floor.
+   */
+  private pastHistory(
+    items: readonly ScreenItem[],
+    heldCards: Readonly<Record<string, Record<string, number>>> = {},
+  ): readonly ScreenItem[] {
+    return items.filter((item) => {
+      if (item.seq > this.floor || this.history.has(item.id)) return true;
+      this.history.add(item.id);
+      if (item.kind === SCREEN_ITEM_KIND.WORK)
+        return this.workPastHistory(item, heldCards[item.id]);
       if (item.kind === SCREEN_ITEM_KIND.USER && item.message.reaction)
         this.placed.set(item.id, item.message.reaction.emoji);
       if (item.kind === SCREEN_ITEM_KIND.REPLY && item.outcome !== null)
         this.finishedReplies.add(item.id);
       if (item.kind === SCREEN_ITEM_KIND.NOTICE) this.noticed.add(item.id);
-    }
-    return items.filter(
-      (item) =>
-        item.seq > this.floor ||
-        (item.kind === SCREEN_ITEM_KIND.WORK && item.asked_seq > this.floor),
-    );
+      return false;
+    });
+  }
+
+  /**
+   * Take as delivered what work at or below the floor showed, and return whether it has more to
+   * render. held is how many entries of each card the server says finished work showed at the
+   * head this follow opened after, so what it gained since is rendered; without it, everything
+   * it shows now is history.
+   */
+  private workPastHistory(
+    item: Extract<ScreenItem, { kind: "work" }>,
+    held: Readonly<Record<string, number>> | undefined,
+  ): boolean {
+    // Work started before the floor may ask an approval logged after it.
+    if (item.asked_seq <= this.floor)
+      for (const request of item.asking) this.asked.add(request.approval_id);
+    const { links } = this.surface;
+    const steps = held
+      ? (held[BROWSER_CARD_TOOL] ?? 0)
+      : browserCards(item.timeline).length;
+    const limits = held
+      ? (held[RATE_LIMIT_TOOL] ?? 0)
+      : rateLimitNotices(item.timeline, links).length;
+    this.browserRun(item.id).skip(steps);
+    // Work that never hit a limit may still hit one when it runs again.
+    if (limits > 0) this.limitTold.add(item.id);
+    return held !== undefined || item.asked_seq > this.floor;
   }
 
   private async renderItems(items: readonly ScreenItem[]): Promise<void> {
@@ -532,12 +570,18 @@ export class ConversationFollower {
       : null;
   }
 
-  /** The platform message of the user message a reply quotes, when this follow holds it. */
-  private quoteTarget(messageId: string | null): string | null {
-    if (!messageId) return null;
-    const found = this.view.items.find((item) => item.id === messageId);
+  /**
+   * The platform message of the user message a reply quotes, which the reply names. An API
+   * from before it did sends no name: the message is then read off the screen, when held.
+   */
+  private quoteTarget(reply: ReplyItem): string | null {
+    if (!reply.quote) return null;
+    if (reply.quote_platform_message_id !== undefined)
+      return reply.quote_platform_message_id;
+    const { id } = reply.quote;
+    const found = this.view.items.find((item) => item.id === id);
     if (found?.kind !== SCREEN_ITEM_KIND.USER) {
-      logger.info("reply_quote_unknown", { message_id: messageId });
+      logger.info("reply_quote_unknown", { message_id: id });
       return null;
     }
     return found.message.platform_message_id;
@@ -556,7 +600,7 @@ export class ConversationFollower {
     return new ReplyDelivery(
       { live: streaming, platform, render: PLATFORM_MARKDOWN[platform] },
       this.surface,
-      this.quoteTarget(reply.quote?.id ?? null),
+      this.quoteTarget(reply),
       earlier,
       async (bubbles, openMessageIds) => {
         this.progress =
@@ -588,7 +632,11 @@ export class ConversationFollower {
     await this.start.record(cursor);
   }
 
-  /** The newest seq at or below which every item is on the platform; never behind the last record. */
+  /**
+   * The newest seq at or below which every item is on the platform, never behind the last
+   * record. With nothing owed it is the log head the screen reached: the next follow opens
+   * after it, and the stream vouches for a head, not for an item whose entry was amended.
+   */
   private deliveredThrough(): number {
     const { items } = this.view;
     const owed = items.flatMap((item) =>
@@ -597,7 +645,7 @@ export class ConversationFollower {
     const through =
       owed.length > 0
         ? Math.min(...owed) - 1
-        : Math.max(0, ...items.map(deliverySeq));
+        : Math.max(this.view.screenHead, ...items.map(deliverySeq));
     return Math.max(this.recorded.delivered_seq, through);
   }
 

@@ -21,6 +21,8 @@ class LogTag:
 
 
 SSE_DATA_PREFIX = "data:"
+# The frame shapes this worker reads, sent as the events route's wire parameter.
+EVENTS_WIRE = 2
 # The frontend's data-channel topics: display events, and the session's conversation id and title.
 FRONTEND_STREAM_TOPIC = "backend-stream-event"
 CONVERSATION_ID_TOPIC = "conversation-id"
@@ -71,6 +73,7 @@ VOICE_SYSTEM_PROMPT = (
 __all__ = [
     "LogTag",
     "SSE_DATA_PREFIX",
+    "EVENTS_WIRE",
     "FRONTEND_STREAM_TOPIC",
     "CONVERSATION_ID_TOPIC",
     "CONVERSATION_DESCRIPTION_TOPIC",

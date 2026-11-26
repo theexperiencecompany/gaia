@@ -280,6 +280,7 @@
         "image": null,
         "pinned": false,
         "quote": null,
+        "quote_platform_message_id": null,
         "outcome": null,
         "failure": null,
         "failure_line": null,
@@ -313,6 +314,7 @@
           "content": "text of u2",
           "role": "user"
         },
+        "quote_platform_message_id": null,
         "outcome": "answered",
         "failure": null,
         "failure_line": null,

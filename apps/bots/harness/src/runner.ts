@@ -334,7 +334,26 @@ export async function runScenario(
         restartedAt = transcript.getEvents().length;
         adapter = await bootAdapter(platform, apiUrl, transcript);
       }
+      const { restartAfterMs } = turn;
+      let restartedOnTimerAt: number | undefined;
+      if (restartAfterMs !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, restartAfterMs));
+        await adapter.shutdown("restart");
+        restartedOnTimerAt = transcript.getEvents().length;
+        adapter = await bootAdapter(platform, apiUrl, transcript);
+      }
       await adapter.settleTurn();
+      if (
+        restartedOnTimerAt !== undefined &&
+        !transcript
+          .getEvents()
+          .slice(restartedOnTimerAt)
+          .some((e) => e.type === "send")
+      ) {
+        failures.push(
+          `turn ${index + 1} (${turnLabel(turn)}): the restart came after everything was sent: the fresh bot sent nothing, so the resume was not exercised`,
+        );
+      }
       if (restartedAt !== undefined) {
         const resumed = restartResumedABubble(
           transcript.getEvents().slice(before),
@@ -547,6 +566,21 @@ function shownTextFailures(
           `the bubble "${text}" quotes inbound ${bubble.quotes}, expected ${wanted}`,
         );
       }
+    }
+  }
+  if (assertion.typingOnAMessage) {
+    const inbound = events.flatMap((e) =>
+      e.type === "inbound" ? [e.messageId] : [],
+    );
+    const shownOn = events.flatMap((e) =>
+      e.type === "typing" && e.state === "start"
+        ? [e.answering === undefined ? 0 : inbound.indexOf(e.answering) + 1]
+        : [],
+    );
+    if (shownOn.length === 0 || shownOn.includes(0)) {
+      failures.push(
+        `typing was shown on inbound ${JSON.stringify(shownOn)} (0 is no message), expected each on one of the turn's`,
+      );
     }
   }
   if (assertion.noTakeBacks) {

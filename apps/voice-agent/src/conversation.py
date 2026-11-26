@@ -16,9 +16,10 @@ from livekit import rtc
 from livekit.agents import Agent
 from livekit.agents.llm import ChatContext, ChatItem, ChatMessage
 from livekit.agents.voice import SpeechHandle
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 from typing_extensions import override
 
+from shared.py.conversation_patch import ChangeNotApplicable, with_changes
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
     BubbleTextDelta,
@@ -30,6 +31,7 @@ from shared.py.conversation_wire import (
     ScreenFrame,
     ScreenInsertFrame,
     ScreenItemHeader,
+    ScreenPatchFrame,
     ScreenUpdateFrame,
 )
 from shared.py.retry import STREAM_RECONNECT, is_retryable_status, retrying
@@ -37,6 +39,7 @@ from shared.py.wide_events import VoiceContext, log, log_context, wide_task
 from src.constants import (
     CONVERSATION_DESCRIPTION_TOPIC,
     CONVERSATION_ID_TOPIC,
+    EVENTS_WIRE,
     FOLLOW_RECONNECT_DELAY_S,
     FRONTEND_STREAM_TOPIC,
     SSE_DATA_PREFIX,
@@ -71,6 +74,7 @@ _Frame = (
     ScreenFrame[_Item]
     | ScreenInsertFrame[_Item]
     | ScreenUpdateFrame[_Item]
+    | ScreenPatchFrame
     | ReplyDeltaFrame
     | ConversationUpdatedFrame
     | _OtherFrame
@@ -91,6 +95,10 @@ _EVENT: TypeAdapter[ConversationEvent] = TypeAdapter(ConversationEvent)
 def parse_event(data: str) -> ConversationEvent:
     """Parse one SSE data payload of the events stream."""
     return _EVENT.validate_json(data)
+
+
+class StaleScreen(Exception):
+    """A patch was written against a copy of a reply this session does not hold."""
 
 
 class Speaker(Protocol):
@@ -116,6 +124,10 @@ class VoiceConversation:
         # How many bubbles each reply has opened, so a new one is spoken after a break.
         self._bubbles: dict[str, int] = {}
         self._speaking: set[str] = set()
+        # Each reply this connection was sent, as JSON, and how many patches it took since.
+        self._held: dict[str, tuple[JsonValue, int]] = {}
+        # The log head the connection's screen reached; 0 opens on the whole screen.
+        self._head = 0
         self._tasks: set[asyncio.Task[None]] = set()
 
     def set_backend_url(self, url: str) -> None:
@@ -161,6 +173,8 @@ class VoiceConversation:
         A stream that cannot be opened is retried under STREAM_RECONNECT and then raised; a refusal
         (a 4xx other than 408 and 429) is raised at once.
         """
+        # The first turn's own entry: the stream then opens on what came after it.
+        self._head = after_seq
         while True:
             async for attempt in retrying(STREAM_RECONNECT, _reconnectable, _log_drop):
                 with attempt:
@@ -170,36 +184,63 @@ class VoiceConversation:
     async def _follow_once(self, conversation_id: str, after_seq: int) -> None:
         """Read one connection; a drop after it delivered ends it like a close, so the retries start over."""
         delivered = False
+        # Patches are written against what a connection itself sent.
+        self._held.clear()
         async with log_context(
             "voice_follow", user_id=self.user_id, conversation_id=conversation_id
         ):
             log.set(voice=VoiceContext(operation="follow", room=self.room_name))
             try:
-                async for event in self._events(conversation_id):
+                async for event in self._events(conversation_id, self._head):
                     delivered = True
                     await self.apply(event.frame, after_seq)
             except (aiohttp.ClientError, TimeoutError) as error:
                 if not delivered:
                     raise
                 log.warning(f"{LogTag.VOICE} events stream dropped", error=str(error))
+            except StaleScreen as stale:
+                # The whole screen heals it: a reply already spoken is not spoken again.
+                self._head = 0
+                log.warning(f"{LogTag.VOICE} events stream reopened whole", error=str(stale))
 
     async def apply(self, frame: _Frame, after_seq: int) -> None:
         """Speak and display one frame; replies at or before after_seq were never this session's."""
         match frame:
-            case ScreenFrame(items=items):
+            case ScreenFrame(items=items, head=head):
                 for item in items:
-                    self._reply(item, after_seq)
-            case ScreenInsertFrame(item=item) | ScreenUpdateFrame(item=item):
-                self._reply(item, after_seq)
+                    self._take(item, after_seq)
+                self._head = head
+            case ScreenInsertFrame(item=item, head=head) | ScreenUpdateFrame(item=item, head=head):
+                self._take(item, after_seq)
+                self._head = head
+            case ScreenPatchFrame(id=item_id, head=head) if item_id in self._held:
+                self._reply(self._patched(frame), after_seq)
+                self._head = head
             case ReplyDeltaFrame(reply_id=str(reply_id), index=index, payload=payload):
                 self._delta(reply_id, index, payload)
             case ConversationUpdatedFrame(description=description):
                 await self._send_room_text(description, CONVERSATION_DESCRIPTION_TOPIC)
 
-    def _reply(self, item: ReplyItem | ScreenItemHeader, after_seq: int) -> None:
+    def _take(self, item: ReplyItem | ScreenItemHeader, after_seq: int) -> None:
+        """Hold a reply the connection sent whole, so its patches apply, and speak it."""
+        if isinstance(item, ReplyItem):
+            self._held[item.id] = (item.model_dump(mode="json"), 0)
+            self._reply(item, after_seq)
+
+    def _patched(self, patch: ScreenPatchFrame) -> ReplyItem:
+        """Return the held reply with the patch applied; StaleScreen when it was written against another copy."""
+        held, taken = self._held[patch.id]
+        if patch.base != taken:
+            raise StaleScreen(f"patch {patch.base} of {patch.id}, holding {taken}")
+        try:
+            changed = with_changes(held, patch.changes)
+        except ChangeNotApplicable as error:
+            raise StaleScreen(str(error)) from error
+        self._held[patch.id] = (changed, taken + 1)
+        return ReplyItem.model_validate(changed)
+
+    def _reply(self, item: ReplyItem, after_seq: int) -> None:
         """Open a speech for a reply item of this session's, and finish it once the reply settles."""
-        if not isinstance(item, ReplyItem):
-            return
         if item.seq > after_seq and item.id not in self._speeches:
             self._speeches[item.id] = ReplySpeech(item.id)
         speech = self._speeches.get(item.id)
@@ -280,9 +321,12 @@ class VoiceConversation:
                 {"reply_id": reply_id, "heard_through": heard_through},
             )
 
-    async def _events(self, conversation_id: str) -> AsyncIterator[ConversationEvent]:
+    async def _events(self, conversation_id: str, after: int) -> AsyncIterator[ConversationEvent]:
+        """Open the events stream on wire 2: what is new or changed since log head after, the whole screen at 0."""
+        params = {"wire": EVENTS_WIRE} | ({"after": after} if after else {})
         async with self._session().get(
             f"{self.base_url}/api/v1/conversations/{conversation_id}/events",
+            params=params,
             headers=self._headers(),
             timeout=aiohttp.ClientTimeout(total=None, sock_read=None),
         ) as resp:

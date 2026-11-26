@@ -23,6 +23,7 @@ from app.services.conversation.screen import project_screen
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.tool_timeline import tool_timeline
 from app.utils.artifact_utils import FILE_LINKS
+from shared.py.conversation_patch import with_changes
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     CardsDelta,
@@ -33,7 +34,6 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
     ToolTimeline,
 )
-from tests.unit.services.conversation.change_helpers import with_changes
 from tests.unit.services.conversation.log_helpers import logged, opened, settled, user
 
 pytestmark = pytest.mark.unit

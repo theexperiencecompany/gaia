@@ -163,10 +163,19 @@ export const timelineDelta = (
   payload: { type: "timeline", changes },
 });
 
+type HeldCards = Extract<ConversationFrame, { kind: "screen" }>["held_cards"];
+
+/** A screen at the log head given; heldCards as a resumed screen names them for work it sends. */
 export const screenFrame = (
   items: ScreenItem[],
   head = Math.max(0, ...items.map((item) => item.seq)),
-): ConversationFrame => ({ kind: "screen", items, head });
+  heldCards: HeldCards = {},
+): ConversationFrame => ({
+  kind: "screen",
+  items,
+  held_cards: heldCards,
+  head,
+});
 
 export const replyDelta = (
   attemptId: string,

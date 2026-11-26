@@ -26,6 +26,7 @@ from app.models.conversation_log_models import (
     Notice,
     Reply,
     ReplySettled,
+    UserMessage,
     WorkFinished,
     WorkOutcome,
     WorkStarted,
@@ -784,6 +785,29 @@ def test_a_reply_and_its_work_name_the_newest_user_message_they_answer_as_the_re
         if isinstance(item, WorkItem | ReplyItem)
     }
     assert targets == {"work:t1": "u2", "r": "u2"}
+
+
+def _quoting(quoted: UserMessage) -> ReplyItem:
+    """Return the reply that quotes a user message, as the screen shows it."""
+    reply = Reply(id="r:reply", reply_id="r", attempt_id="1", text="done")
+    settle = ReplySettled(
+        id="r:settled",
+        reply_id="r",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=(quoted.id,),
+        through=1,
+        quote_target=quoted.id,
+    )
+    log = [logged(1, quoted), logged(2, reply), logged(3, settle)]
+    (_, item) = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
+    assert isinstance(item, ReplyItem)
+    return item
+
+
+def test_a_reply_names_the_platform_message_it_quotes_so_a_chat_platform_can_answer_it() -> None:
+    from_telegram = user("u1").model_copy(update={"platform_message_id": "tg-41"})
+    assert _quoting(from_telegram).quote_platform_message_id == "tg-41"
+    assert _quoting(user("u1")).quote_platform_message_id is None
 
 
 def test_a_reply_quoting_a_newer_message_than_it_answers_retries_the_quoted_one() -> None:

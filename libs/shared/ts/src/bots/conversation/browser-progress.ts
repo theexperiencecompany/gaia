@@ -20,7 +20,8 @@ import type { PrivateSurface } from "./follower.types";
 
 const logger = createBotLogger("shared", "browser-progress");
 
-const BROWSER_CARD_TOOL = "browser_task_data";
+/** The tool_name of a browser run's cards. */
+export const BROWSER_CARD_TOOL = "browser_task_data";
 const CARD_KINDS: ReadonlySet<string> = new Set([
   "session",
   "step",
@@ -70,9 +71,9 @@ export class BrowserProgress {
     private readonly notify: (bubbles: string[]) => Promise<void>,
   ) {}
 
-  /** Take every card the run has now as already delivered. */
-  skip(cards: readonly BrowserTaskSnapshot[]): void {
-    this.seen = cards.length;
+  /** Take the run's first count cards as already delivered. */
+  skip(count: number): void {
+    this.seen = count;
   }
 
   /** Render the cards past the ones already shown. */

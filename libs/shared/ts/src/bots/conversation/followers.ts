@@ -3,10 +3,11 @@
  * when none does, and keep its events stream connected until the
  * conversation is idle with every posted message answered.
  *
- * A dropped connection reconnects after the log head the follower's screen reached,
- * so the server sends only what changed since; a new follower holds no screen and
- * opens on the whole one (the follower is idempotent, so an item it already rendered
- * renders nothing). A server
+ * A new follower opens after its delivery cursor, and a dropped connection reconnects
+ * after the log head the follower's screen reached, so the server sends only what is
+ * new or changed since; a change with no place in the screen held reopens on the whole
+ * one (an item the follower already rendered, or one from before its cursor, renders
+ * nothing). A server
  * that refuses the stream (4xx) ends the follow; anything else is retried. A follow
  * a transient failure ended (a platform outage, a stream that would not reopen)
  * starts again from its delivery cursor under UNTIL_IT_LANDS, so no reply is dropped.
@@ -42,7 +43,7 @@ import type {
   StreamingOptions,
 } from "./follower.types";
 
-/** Opens one connection to a conversation's events stream; after is the log head the follower's screen reached, null for the whole screen. */
+/** Opens one connection to a conversation's events stream; after is the log head the follower opens after, null for the whole screen. */
 export type ConversationEventSource = (
   ctx: BotUserContext,
   conversationId: string,
