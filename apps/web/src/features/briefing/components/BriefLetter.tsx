@@ -19,7 +19,7 @@ import type { FoldedBriefSummary } from "../utils/briefCard";
 
 import { holdEdition, type PreparedEdition } from "../utils/preparedEdition";
 import { BriefTrigger } from "./BriefTrigger";
-import { Panel } from "./EditionUnfold";
+import { Panel } from "./LetterPanel";
 
 /** Start preparing a little before the letter scrolls into view. */
 const PREPARE_MARGIN = "240px";

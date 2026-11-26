@@ -467,6 +467,7 @@
 @source "../../../features/briefing/components/BriefTrigger.tsx";
 @source "../../../features/briefing/components/EditionUnfold.tsx";
 @source "../../../features/briefing/components/FoldedBriefCard.tsx";
+@source "../../../features/briefing/components/LetterPanel.tsx";
 @source "../../../features/briefing/components/StandaloneBriefing.tsx";
 @source "../../../features/briefing/hooks/useBriefingsQuery.ts";
 @source "../../../features/briefing/hooks/useGlobeSpin.ts";
