@@ -8,10 +8,10 @@ Connection/disconnection is handled by the unified /integrations endpoints.
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_optional_user
 from app.constants.log_tags import LogTag
 from app.helpers.mcp_helpers import (
     get_frontend_url,
@@ -25,6 +25,11 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
+from app.services.mcp.mcp_token_store import (
+    oauth_browser_cookie,
+    oauth_state_bound_to_browser,
+    resolve_oauth_state_owner,
+)
 from app.services.mcp.oauth_callback import (
     ProviderError,
     ScopeRetry,
@@ -158,20 +163,20 @@ class _McpCallback:
 
 @router.get("/oauth/callback", response_class=RedirectResponse)
 async def mcp_oauth_callback(
+    request: Request,
     state: str = Query(...),
     code: str | None = Query(None),  # Optional - may be missing if error
     error: str | None = Query(None),  # OAuth error code
     error_description: str | None = Query(None),  # OAuth error description
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser | None = Depends(get_optional_user),
 ) -> RedirectResponse:
-    """Handle OAuth callback from MCP server.
+    """Handle OAuth callback from MCP server, for the user its state was minted for.
 
+    The flow must come back to a browser that started it: one signed in as that user, or,
+    with no session (a chat app's connect link), the browser the connect link was opened in.
     Handles both success (with code) and error responses from OAuth server.
     """
-    user_id = user.user_id
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
-    log.set(user={"id": user_id}, operation="mcp_oauth_callback")
+    log.set(operation="mcp_oauth_callback")
 
     frontend_url = get_frontend_url()
 
@@ -187,14 +192,38 @@ async def mcp_oauth_callback(
     redirect_path = parts[2] if len(parts) > 2 else "/integrations"
     log.set(mcp=McpContext(operation="connect", server_id=integration_id))
 
-    client = await get_mcp_client(user_id=str(user_id))
-    redirect_uri = get_mcp_oauth_redirect_uri()
-
     callback = _McpCallback(
         integration_id=integration_id,
         redirect_path=redirect_path,
         frontend_url=frontend_url,
     )
+    user_id = await resolve_oauth_state_owner(state_token, integration_id)
+    if user_id is None:
+        log.warning(
+            f"{LogTag.MCP} OAuth callback state has no owner for this integration",
+            integration_id=integration_id,
+        )
+        return RedirectResponse(url=callback.failure("expired_state"))
+    # Without this, a provider link someone else started would attach the clicker's account to theirs.
+    started_here = (
+        user.user_id == user_id
+        if user is not None
+        else await oauth_state_bound_to_browser(
+            state_token, request.cookies.get(oauth_browser_cookie(integration_id))
+        )
+    )
+    if not started_here:
+        log.warning(
+            f"{LogTag.MCP} OAuth callback reached a browser that did not start the flow",
+            integration_id=integration_id,
+            signed_in=user is not None,
+        )
+        return RedirectResponse(url=callback.failure("wrong_browser"))
+    log.set(user={"id": user_id})
+
+    client = await get_mcp_client(user_id=user_id)
+    redirect_uri = get_mcp_oauth_redirect_uri()
+
     if error:
         outcome = await resolve_provider_error(
             client,
@@ -228,7 +257,7 @@ async def mcp_oauth_callback(
     try:
         await complete_oauth(
             client,
-            user_id=str(user_id),
+            user_id=user_id,
             integration_id=integration_id,
             code=code,
             state_token=state_token,

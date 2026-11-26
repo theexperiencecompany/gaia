@@ -14,8 +14,14 @@ from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
 from app.models.auth_models import LocalCredentialDocument
 from app.models.user_models import UserDocument
+from app.services.mcp.mcp_token_store import (
+    MCPTokenStore,
+    bind_oauth_state_to_browser,
+    oauth_browser_cookie,
+)
 from app.utils import local_auth_utils
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, issue_session_token
+from tests.conftest import FAKE_USER
 from tests.helpers import hostile_jwts
 
 # ---------------------------------------------------------------------------
@@ -285,6 +291,15 @@ class TestMCPOAuthCallbackEndpoint:
     """Tests for GET /api/v1/mcp/oauth/callback."""
 
     @pytest.fixture(autouse=True)
+    def state_owner(self):
+        with patch(
+            "app.api.v1.endpoints.mcp.resolve_oauth_state_owner",
+            new_callable=AsyncMock,
+            return_value=FAKE_USER.user_id,
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
     def first_connection(self):
         with patch(
             "app.services.mcp.oauth_callback.user_integration_repository.has_connected_before",
@@ -432,14 +447,6 @@ class TestMCPOAuthCallbackEndpoint:
         assert response.status_code in (302, 307)
         location = response.headers.get("location", "")
         assert "missing_code" in location
-
-    async def test_mcp_oauth_callback_requires_auth(self, unauthenticated_client):
-        """GET /api/v1/mcp/oauth/callback without auth must return 401."""
-        response = await unauthenticated_client.get(
-            "/api/v1/mcp/oauth/callback",
-            params={"state": "token:integration:/integrations", "code": "abc"},
-        )
-        assert response.status_code == 401
 
     async def test_mcp_oauth_callback_missing_state_returns_422(self, test_client):
         """GET /api/v1/mcp/oauth/callback without required 'state' param returns 422."""
@@ -734,11 +741,11 @@ _SESSION_TOKEN_VERSION = 2
 
 
 @pytest.mark.integration
-class TestMcpOAuthCallbackSessionAuth:
-    """The callback acts for the user the gaia_session JWT names, and for nobody on a bad one.
+class TestMcpOAuthCallbackStateAuth:
+    """The callback acts for the user its state was minted for, and only in a browser that started it.
 
-    Every other callback test swaps in MockAuthMiddleware, so a session
-    decoder that refused real tokens or accepted forged ones would pass them.
+    That is the owner's own session, or with no session (a chat app's connect link) the browser the
+    link bound. Every other callback test stubs the owner lookup; these mint a real state.
     """
 
     @pytest.fixture
@@ -798,33 +805,88 @@ class TestMcpOAuthCallbackSessionAuth:
         ):
             yield get_client, exchange
 
-    async def _callback(self, app: FastAPI, session_token: str) -> httpx.Response:
+    async def _callback(
+        self,
+        app: FastAPI,
+        state: str,
+        session_token: str | None = None,
+        browser_nonce: str | None = None,
+    ) -> httpx.Response:
         transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            client.cookies.set(LOCAL_SESSION_COOKIE, session_token)
+            if session_token is not None:
+                client.cookies.set(LOCAL_SESSION_COOKIE, session_token)
+            if browser_nonce is not None:
+                client.cookies.set(oauth_browser_cookie("test-integration"), browser_nonce)
             return await client.get(
                 "/api/v1/mcp/oauth/callback",
-                params={"code": "auth-code", "state": "csrf-state:test-integration:/integrations"},
+                params={"code": "auth-code", "state": f"{state}:test-integration:/integrations"},
                 follow_redirects=False,
             )
 
-    async def test_an_issued_session_completes_the_callback_as_its_user(
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_the_browser_bound_to_a_state_completes_it_with_no_session(
         self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock]
     ) -> None:
         get_client, exchange = callback_seams
-        token = await issue_session_token(_SESSION_USER_ID, _SESSION_TOKEN_VERSION)
+        state = await MCPTokenStore(_SESSION_USER_ID).create_oauth_state("test-integration", "v")
+        nonce = await bind_oauth_state_to_browser(state)
 
-        response = await self._callback(session_app, token)
+        response = await self._callback(session_app, state, browser_nonce=nonce)
 
         assert response.status_code == 307, response.text
         assert response.headers["location"].startswith(
             "http://frontend.test/integrations?id=test-integration&status=connected"
         )
         get_client.assert_awaited_once_with(user_id=_SESSION_USER_ID)
-        assert exchange.await_args.kwargs["state"] == "csrf-state"
+        assert exchange.await_args.kwargs["state"] == state
 
-    @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "revoked_version"])
-    async def test_a_bad_session_is_401_and_never_exchanges_the_code(
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_the_owners_own_session_completes_it(
+        self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        get_client, _ = callback_seams
+        state = await MCPTokenStore(_SESSION_USER_ID).create_oauth_state("test-integration", "v")
+        session = await issue_session_token(_SESSION_USER_ID, _SESSION_TOKEN_VERSION)
+
+        response = await self._callback(session_app, state, session)
+
+        assert response.status_code == 307, response.text
+        assert "status=connected" in response.headers["location"]
+        get_client.assert_awaited_once_with(user_id=_SESSION_USER_ID)
+
+    @pytest.mark.usefixtures("fake_redis")
+    @pytest.mark.parametrize("bound", [False, True], ids=["unbound", "bound_to_the_state"])
+    async def test_a_browser_signed_in_as_someone_else_is_refused(
+        self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock], bound: bool
+    ) -> None:
+        """The phishing case: someone else's provider link, opened by a signed-in victim."""
+        get_client, exchange = callback_seams
+        state = await MCPTokenStore(str(ObjectId())).create_oauth_state("test-integration", "v")
+        nonce = await bind_oauth_state_to_browser(state) if bound else None
+        session = await issue_session_token(_SESSION_USER_ID, _SESSION_TOKEN_VERSION)
+
+        response = await self._callback(session_app, state, session, nonce)
+
+        assert "error=wrong_browser" in response.headers["location"]
+        get_client.assert_not_awaited()
+        exchange.assert_not_awaited()
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_browser_with_no_session_and_no_binding_is_refused(
+        self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        get_client, exchange = callback_seams
+        state = await MCPTokenStore(str(ObjectId())).create_oauth_state("test-integration", "v")
+
+        response = await self._callback(session_app, state)
+
+        assert "error=wrong_browser" in response.headers["location"]
+        exchange.assert_not_awaited()
+
+    @pytest.mark.usefixtures("fake_redis")
+    @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "no_session"])
+    async def test_an_unknown_state_never_exchanges_the_code(
         self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock], kind: str
     ) -> None:
         get_client, exchange = callback_seams
@@ -833,15 +895,11 @@ class TestMcpOAuthCallbackSessionAuth:
             "ver": _SESSION_TOKEN_VERSION,
             "exp": int(time.time()) + 3600,
         }
-        tokens = {
-            **hostile_jwts(claims, _SESSION_SECRET),
-            "revoked_version": await issue_session_token(
-                _SESSION_USER_ID, _SESSION_TOKEN_VERSION - 1
-            ),
-        }
+        session = None if kind == "no_session" else hostile_jwts(claims, _SESSION_SECRET)[kind]
 
-        response = await self._callback(session_app, tokens[kind])
+        response = await self._callback(session_app, "never-minted", session)
 
-        assert response.status_code == 401, response.text
+        assert response.status_code == 307, response.text
+        assert "error=expired_state" in response.headers["location"]
         get_client.assert_not_awaited()
         exchange.assert_not_awaited()
