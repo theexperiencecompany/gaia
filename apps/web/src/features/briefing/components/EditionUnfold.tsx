@@ -24,6 +24,7 @@ import {
   LETTER_FOLD_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   LETTER_TILT_PERSPECTIVE_PX,
+  RESTING_OPEN,
 } from "../letterTokens";
 import type { PreparedEdition } from "../utils/preparedEdition";
 import { CORNER_RADIUS_PX, Panel, PanelFace } from "./LetterPanel";
@@ -76,7 +77,7 @@ export function EditionUnfold({
   /** 0 while the letter is open, 1 once it has left. */
   const leave = useMotionValue(0);
   const [creases] = useState(() =>
-    panels.map((_, index) => motionValue(index === 0 ? 1 : 0)),
+    panels.map((_, index) => motionValue(index === 0 ? 1 : RESTING_OPEN)),
   );
   const letterRef = useRef<HTMLDivElement>(null);
   const fromX = useMotionValue(0);

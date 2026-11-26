@@ -14,6 +14,7 @@ import {
   LETTER_FOLD_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   LETTER_TILT_PERSPECTIVE_PX,
+  RESTING_OPEN,
 } from "../letterTokens";
 import type { FoldedBriefSummary } from "../utils/briefCard";
 
@@ -39,8 +40,6 @@ interface BriefLetterProps {
   trigger: BriefTriggerState;
 }
 
-/** How far each crease of a letter at rest has sprung open, as paper does once folded: the front flat, the rest nearly shut. */
-const RESTING_OPEN = 0.15;
 /** The room the sprung panels take below the front, as a share of the letter's width. */
 const RESTING_SPRING_ROOM = 0.06;
 
