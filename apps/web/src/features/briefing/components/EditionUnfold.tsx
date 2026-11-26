@@ -111,7 +111,7 @@ interface PanelProps {
 }
 
 /** One slice of the edition, hinged on the bottom edge of the panel above and carrying the panels below. */
-function Panel({ index, edition, creases }: PanelProps) {
+export function Panel({ index, edition, creases }: PanelProps) {
   const count = edition.panels.length;
   const isFirst = index === 0;
   const isLast = index === count - 1;

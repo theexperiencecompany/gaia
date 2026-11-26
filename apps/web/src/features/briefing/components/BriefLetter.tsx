@@ -1,8 +1,8 @@
 "use client";
 
 import { Skeleton } from "@heroui/react";
-import { useInView } from "motion/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type MotionValue, motionValue, useInView } from "motion/react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LETTER_HOVER_EASE } from "@/components/shared/letterMotion";
@@ -11,35 +11,20 @@ import { cn } from "@/lib/utils";
 import type { BriefTriggerState } from "../hooks/useOpenBrief";
 import {
   CHAT_LETTER_MAX_WIDTH_PX,
+  LETTER_FOLD_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   LETTER_TILT_PERSPECTIVE_PX,
 } from "../letterTokens";
-import {
-  creaseFalloff,
-  edgeLight,
-  foldedReverse,
-  PAPER_GRAIN,
-  rolledEdge,
-  underFoldShadow,
-} from "../paperMaterial";
 import type { FoldedBriefSummary } from "../utils/briefCard";
 
 import { holdEdition, type PreparedEdition } from "../utils/preparedEdition";
 import { BriefTrigger } from "./BriefTrigger";
-import { PanelFace } from "./EditionUnfold";
+import { Panel } from "./EditionUnfold";
 
 /** Start preparing a little before the letter scrolls into view. */
 const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
 const PLACEHOLDER_ASPECT = 2.4;
-const CREASE_PX = 5;
-/**
- * The panels folded under lie flush with the face, as a real sheet does: only a
- * hair of the next panel shows past the crease, set a touch askew.
- */
-const FOLDED_LAYERS = [
-  { heightPx: 3, tint: 86, nudgeXPx: 0.5, turnDeg: 0.25, inset: 0.4 },
-] as const;
 
 /** An edition handed to the letter, with the hold that keeps its bitmaps open until the face is drawn. */
 interface EditionDelivery {
@@ -54,57 +39,21 @@ interface BriefLetterProps {
   trigger: BriefTriggerState;
 }
 
-/** The front's bottom edge rolling under onto the folded panels. */
-function RolledEdge({ edition }: { edition: PreparedEdition }) {
-  return (
-    <span
-      aria-hidden
-      className="relative z-10 block rounded-b-[5px]"
-      style={{
-        height: CREASE_PX,
-        background: rolledEdge(edition.paper, edition.isDarkPaper),
-      }}
-    />
-  );
-}
+/** How far each crease of a letter at rest has sprung open, as paper does once folded: the front flat, the rest nearly shut. */
+const RESTING_OPEN = 0.15;
+/** The room the sprung panels take below the front, as a share of the letter's width. */
+const RESTING_SPRING_ROOM = 0.06;
 
-/**
- * The folded-under panels: the sheet's reverse, same paper and grain without the
- * print, in the front's shadow just under the crease, the back one set a hair askew.
- */
-function FoldedPanels({ edition }: { edition: PreparedEdition }) {
-  const { paper, isDarkPaper } = edition;
-  return (
-    <>
-      {FOLDED_LAYERS.map((layer, depth) => (
-        <span
-          key={layer.heightPx}
-          aria-hidden
-          className="relative block overflow-hidden rounded-b-[4px]"
-          style={{
-            height: layer.heightPx,
-            marginInline: `${layer.inset}%`,
-            marginTop: depth === 0 ? -2 : -1,
-            zIndex: -depth,
-            transform: `translateX(${layer.nudgeXPx}px) rotate(${layer.turnDeg}deg)`,
-            background: foldedReverse(paper, layer.tint),
-          }}
-        >
-          <span
-            className="absolute inset-0 opacity-30 mix-blend-multiply"
-            style={{ backgroundImage: PAPER_GRAIN }}
-          />
-          <span
-            className="absolute inset-0"
-            style={{ background: underFoldShadow(isDarkPaper) }}
-          />
-          <span
-            className="absolute inset-x-0 bottom-0 h-px"
-            style={{ background: edgeLight("fold", isDarkPaper) }}
-          />
-        </span>
-      ))}
-    </>
+function useRestingCreases(
+  edition: PreparedEdition | null,
+): MotionValue<number>[] {
+  const count = edition?.panels.length ?? 0;
+  return useMemo(
+    () =>
+      Array.from({ length: count }, (_, index) =>
+        motionValue(index === 0 ? 1 : RESTING_OPEN),
+      ),
+    [count],
   );
 }
 
@@ -122,6 +71,7 @@ export function BriefLetter({ brief, trigger }: BriefLetterProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const isFailed = imageUrl !== null && failedUrl === imageUrl;
   const edition = delivery?.edition ?? null;
+  const restingCreases = useRestingCreases(edition);
 
   // Each approach readies the edition again, so a press opens it at once; leaving lets it go.
   useEffect(() => {
@@ -197,36 +147,24 @@ export function BriefLetter({ brief, trigger }: BriefLetterProps) {
           >
             <span
               ref={faceRef}
-              className="relative z-10 block overflow-hidden rounded-t-[3px]"
+              className="relative z-10 block"
               style={{
                 aspectRatio: `${1 / (edition.aspect * edition.shares[0])}`,
-                background: edition.paper,
-                // A hairline of the paper's own colour keeps the tilted edge from picking up the page.
-                boxShadow: `0 0 0 0.5px ${edition.paper}`,
-                outline: "1px solid transparent",
+                marginBottom: `${RESTING_SPRING_ROOM * 100}%`,
               }}
             >
-              <PanelFace bitmap={edition.panels[0]} />
               <span
-                aria-hidden
-                className="absolute inset-0 opacity-30 mix-blend-multiply"
-                style={{ backgroundImage: PAPER_GRAIN }}
-              />
-              <span
-                aria-hidden
-                className="absolute inset-0"
-                style={{ background: creaseFalloff(edition.isDarkPaper) }}
-              />
-              <span
-                aria-hidden
-                className="absolute inset-x-0 top-0 h-px"
+                className="absolute inset-x-0 top-0 block"
                 style={{
-                  background: edgeLight("face", edition.isDarkPaper),
+                  height: `${100 / edition.shares[0]}%`,
+                  perspective: LETTER_FOLD_PERSPECTIVE_PX,
+                  perspectiveOrigin: "50% 0%",
+                  transformStyle: "preserve-3d",
                 }}
-              />
+              >
+                <Panel index={0} edition={edition} creases={restingCreases} />
+              </span>
             </span>
-            <RolledEdge edition={edition} />
-            <FoldedPanels edition={edition} />
           </span>
         </BriefTrigger>
       ) : !imageUrl || isFailed ? (
