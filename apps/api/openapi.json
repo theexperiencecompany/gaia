@@ -19491,10 +19491,10 @@
           },
           "held_cards": {
             "additionalProperties": {
-              "items": {
-                "$ref": "#/components/schemas/TimelineCard"
+              "additionalProperties": {
+                "type": "integer"
               },
-              "type": "array"
+              "type": "object"
             },
             "default": {},
             "title": "Held Cards",

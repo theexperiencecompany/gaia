@@ -836,8 +836,8 @@ describe("history the follow started after", () => {
     await feed(follower, [
       screenFrame([], 6),
       // The reconnect's screen is the first to show the work: it names what the work showed before.
-      screenFrame([rerun], 7, { "work:t1": [step(0)] }),
-      screenFrame([rerun], 7, { "work:t1": [step(0)] }),
+      screenFrame([rerun], 7, { "work:t1": { browser_task_data: 1 } }),
+      screenFrame([rerun], 7, { "work:t1": { browser_task_data: 1 } }),
     ]);
 
     expect(
@@ -846,6 +846,87 @@ describe("history the follow started after", () => {
       "Step 1 · Step goal 1",
       "⏳ You've reached your web search limit. Please try again later.",
     ]);
+  });
+
+  describe("a whole screen the stream could not resume", () => {
+    const step = (at: number) => ({
+      key: `browser_task_data-${at}`,
+      card: {
+        tool_name: "browser_task_data",
+        data: { kind: "step", url: "about:blank", goal: `Step goal ${at}` },
+      },
+    });
+    const limit = {
+      key: "grouped-rate_limit_data",
+      card: {
+        tool_name: "rate_limit_data",
+        data: { feature: "web_search", current_plan: "pro" },
+      },
+    };
+    const work = (
+      status: "done" | "running",
+      cards: (ReturnType<typeof step> | typeof limit)[],
+    ) => ({
+      ...workItem("t1", 2, status, [], 0),
+      timeline: { steps: [], progress: null, cards },
+    });
+    const history = [
+      inbound("u1", 1, "11"),
+      replyItem("r1", 3, "Old answer", "answered"),
+    ];
+    const notices = (calls: Call[]) =>
+      calls.flatMap((call) => (call.op === "notice" ? call.bubbles : []));
+
+    it.each([
+      [
+        "named by the server",
+        { "work:t1": { browser_task_data: 1, rate_limit_data: 1 } },
+      ],
+      ["not named, by an API from before held cards", {}],
+    ])(
+      "sends nothing when nothing changed since the floor, its old cards %s",
+      async (_name, held) => {
+        const { surface, calls } = recorder();
+        const follower = new ConversationFollower(
+          startAfter(6),
+          NON_EDITING,
+          surface,
+          "c1",
+        );
+        const screen = [...history, work("done", [step(0), limit])];
+        await feed(follower, [
+          screenFrame(screen, 6, held),
+          screenFrame(screen, 6, held),
+        ]);
+
+        expect(calls.filter((call) => call.op !== "typing")).toEqual([]);
+      },
+    );
+
+    it("delivers only what finished work published when it ran again while the bot was away", async () => {
+      const { surface, calls } = recorder();
+      const follower = new ConversationFollower(
+        startAfter(6),
+        NON_EDITING,
+        surface,
+        "c1",
+      );
+      await feed(follower, [
+        screenFrame([], 6),
+        // The stream no longer holds the follower's head: the whole page comes back.
+        screenFrame(
+          [...history, work("running", [step(0), step(1), limit])],
+          7,
+          { "work:t1": { browser_task_data: 1 } },
+        ),
+      ]);
+
+      expect(sent(calls)).toEqual([]);
+      expect(notices(calls)).toEqual([
+        "Step 1 · Step goal 1",
+        "⏳ You've reached your web search limit. Please try again later.",
+      ]);
+    });
   });
 
   it("answers the message a reply names natively when that message is not on the screen held", async () => {

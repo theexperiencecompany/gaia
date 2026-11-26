@@ -15295,7 +15295,9 @@ export interface components {
              * @default {}
              */
             held_cards: {
-                [key: string]: components["schemas"]["TimelineCard"][];
+                [key: string]: {
+                    [key: string]: number;
+                };
             };
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];

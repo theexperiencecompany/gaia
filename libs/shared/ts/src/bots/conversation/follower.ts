@@ -49,7 +49,11 @@ import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
 import { REACTION_OUTCOME } from "../utils/reaction-outcome";
 import { chunkResponse } from "../utils/text";
 import { formatApprovalPrompt } from "./approval-prompt";
-import { BrowserProgress, browserCards } from "./browser-progress";
+import {
+  BROWSER_CARD_TOOL,
+  BrowserProgress,
+  browserCards,
+} from "./browser-progress";
 import type {
   DeliveryCursor,
   FollowStart,
@@ -58,7 +62,7 @@ import type {
   PrivateSurface,
   StreamingOptions,
 } from "./follower.types";
-import { rateLimitNotices } from "./rate-limit-notice";
+import { RATE_LIMIT_TOOL, rateLimitNotices } from "./rate-limit-notice";
 import { ReplyDelivery } from "./reply-delivery";
 
 const logger = createBotLogger("shared", "conversation-follower");
@@ -296,7 +300,7 @@ export class ConversationFollower {
    */
   private pastHistory(
     items: readonly ScreenItem[],
-    heldCards: Readonly<Record<string, ToolTimeline["cards"]>> = {},
+    heldCards: Readonly<Record<string, Record<string, number>>> = {},
   ): readonly ScreenItem[] {
     return items.filter((item) => {
       if (item.seq > this.floor || this.history.has(item.id)) return true;
@@ -314,21 +318,27 @@ export class ConversationFollower {
 
   /**
    * Take as delivered what work at or below the floor showed, and return whether it has more to
-   * render. held is what the server says finished work showed at the head this follow opened
-   * after, so what it gained since is rendered; without it, everything it shows now is history.
+   * render. held is how many entries of each card the server says finished work showed at the
+   * head this follow opened after, so what it gained since is rendered; without it, everything
+   * it shows now is history.
    */
   private workPastHistory(
     item: Extract<ScreenItem, { kind: "work" }>,
-    held: ToolTimeline["cards"] | undefined,
+    held: Readonly<Record<string, number>> | undefined,
   ): boolean {
     // Work started before the floor may ask an approval logged after it.
     if (item.asked_seq <= this.floor)
       for (const request of item.asking) this.asked.add(request.approval_id);
-    const shown = held ? { ...item.timeline, cards: held } : item.timeline;
-    this.browserRun(item.id).skip(browserCards(shown));
+    const { links } = this.surface;
+    const steps = held
+      ? (held[BROWSER_CARD_TOOL] ?? 0)
+      : browserCards(item.timeline).length;
+    const limits = held
+      ? (held[RATE_LIMIT_TOOL] ?? 0)
+      : rateLimitNotices(item.timeline, links).length;
+    this.browserRun(item.id).skip(steps);
     // Work that never hit a limit may still hit one when it runs again.
-    if (rateLimitNotices(shown, this.surface.links).length > 0)
-      this.limitTold.add(item.id);
+    if (limits > 0) this.limitTold.add(item.id);
     return held !== undefined || item.asked_seq > this.floor;
   }
 

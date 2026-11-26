@@ -8,7 +8,8 @@ import type { ToolTimeline } from "../../api/generated";
 import { cardData } from "../../conversation/selectors";
 import type { FollowLinks } from "./follower.types";
 
-const RATE_LIMIT_TOOL = "rate_limit_data";
+/** The tool_name of a usage limit's card. */
+export const RATE_LIMIT_TOOL = "rate_limit_data";
 const TOP_PLAN = "pro";
 
 /** The card's data, as build_rate_limit_card writes it. */

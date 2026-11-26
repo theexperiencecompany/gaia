@@ -52,7 +52,6 @@ from app.services.conversation.screen import TOOL_CALL_CARD
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     ReplyDeltaFrame,
-    TimelineCard,
     ToolDataEntry,
 )
 from tests.helpers import captured_wide_event
@@ -369,6 +368,11 @@ async def _logged(runtime: Runtime, redis: fakeredis.aioredis.FakeRedis, *entrie
         )
 
 
+def _plain(n: int) -> ToolDataEntry:
+    """Return a card shown on its own, one per call."""
+    return {"tool_name": "plain_card", "data": {"n": n}, "timestamp": f"t{n}"}
+
+
 async def _resumed(runtime: Runtime, after: int) -> ScreenFrame:
     frames = follow_screen(runtime.log, CONVERSATION, USER, after)
     opening = await anext(frames)
@@ -387,7 +391,8 @@ async def test_a_resumed_screen_names_the_cards_finished_work_showed_before_it_r
         task_id="t1",
         outcome=WorkOutcome.DONE,
         report="done",
-        tool_data=(shown,),
+        # A browser run's steps fold into one grouped card: each is counted.
+        tool_data=(shown, shown, _plain(1), _plain(2)),
     )
     await _said(runtime, fake_redis, "u1")
     await _logged(
@@ -400,10 +405,13 @@ async def test_a_resumed_screen_names_the_cards_finished_work_showed_before_it_r
 
     assert whole.held_cards == {}
     assert [item.id for item in resumed.items] == ["u1", "work:t1"]
-    # A browser run's cards are grouped: one card holding each step.
-    assert {
-        item: [held.card["data"] for held in cards] for item, cards in resumed.held_cards.items()
-    } == {"work:t1": [[shown["data"]]]}
+    assert resumed.held_cards == {"work:t1": {"browser_task_data": 2, "plain_card": 2}}
+
+    # The stream no longer holds the client's head: the whole screen, and still what the log says it held.
+    await fake_redis.delete(f"{EVENTS_KEY_PREFIX}{CONVERSATION}")
+    unvouched = await _resumed(runtime, 3)
+    assert [item.id for item in unvouched.items] == ["u1", "work:t1"]
+    assert unvouched.held_cards == {"work:t1": {"browser_task_data": 2, "plain_card": 2}}
 
 
 async def test_a_resumed_screen_names_no_cards_for_work_that_was_running_at_the_client_s_head(
@@ -421,9 +429,7 @@ async def test_a_resumed_screen_names_no_cards_for_work_that_was_running_at_the_
 
 
 async def test_only_a_wire_2_screen_carries_held_cards_and_only_when_it_names_some() -> None:
-    card: ToolDataEntry = {"tool_name": "browser_task_data", "data": {"kind": "step"}}
-    held: dict[str, tuple[TimelineCard, ...]] = {"work:t1": (TimelineCard(key="k", card=card),)}
-    naming = ScreenFrame(items=(), head=3, held_cards=held)
+    naming = ScreenFrame(items=(), head=3, held_cards={"work:t1": {"browser_task_data": 1}})
     plain = ScreenFrame(items=(), head=3)
 
     async def sent(frame: ScreenFrame, wire: EventsWire) -> dict[str, JsonValue]:
@@ -440,20 +446,18 @@ async def test_only_a_wire_2_screen_carries_held_cards_and_only_when_it_names_so
     assert "held_cards" not in await sent(naming, EventsWire.ITEMS)
 
 
-async def test_the_newest_user_message_opens_the_screen_even_when_the_page_no_longer_reaches_it(
+async def test_the_newest_user_message_is_sent_only_from_inside_the_page(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """An item sent from above the page would leave a hole a client pages older history across."""
     monkeypatch.setattr(event_stream, "CONVERSATION_READ_LIMIT", 1)
     runtime = Runtime()
     await _said(runtime, fake_redis, "u1")
-    reply = opened("r1").model_copy(update={"text": "here"})
-    for entry in (reply, settled("s3", ["u1"], 1)):
-        appended = await runtime.log.append(CONVERSATION, USER, entry)
-        await _publish(
-            fake_redis, EntryFrame(seq=appended.logged.seq, at=appended.logged.at, entry=entry)
-        )
+    await _logged(runtime, fake_redis, opened("r1").model_copy(update={"text": "here"}))
+    await _logged(runtime, fake_redis, settled("s3", ["u1"], 1))
 
-    assert await _opening(runtime, 0) == ["u1", "r1"]
+    assert await _opening(runtime, 0) == ["r1"]
+    assert await _opening(runtime, 3) == []
 
 
 async def test_a_follow_that_met_an_unreadable_frame_reopens_on_the_whole_screen(
