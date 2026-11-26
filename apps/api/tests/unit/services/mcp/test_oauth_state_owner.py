@@ -35,14 +35,16 @@ class TestOAuthStateOwner:
 
         assert await resolve_oauth_state_owner(state) is None
 
-    async def test_owner_expires_with_the_state(
+    async def test_the_state_and_its_owner_expire_together(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
         state = await MCPTokenStore(USER_ID).create_oauth_state("resend", "verifier")
 
-        ttl = await fake_redis.ttl(f"mcp_oauth_state:owner:{state}")
+        owner_ttl = await fake_redis.ttl(f"mcp_oauth_state:owner:{state}")
+        pending_ttl = await fake_redis.ttl(f"mcp_oauth_state:{USER_ID}:resend")
 
-        assert 0 < ttl <= 600
+        assert 0 < owner_ttl <= 600
+        assert 0 < pending_ttl <= 600
 
 
 async def test_a_state_whose_owner_cannot_be_stored_is_refused(
