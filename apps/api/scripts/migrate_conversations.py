@@ -29,6 +29,7 @@ from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 from app.db.repositories.conversation_migration_guard import first_refusal
 from scripts import migrate_approval_vocabulary as vocabulary
 from scripts.migrate_conversation_entries import __main__ as entries
+from scripts.migrate_conversation_entries.contract import contract as drop_embedded_arrays
 
 #: The exit status of --check while a catch-up has work to do; deploy.sh migrate reads the same value.
 CATCH_UP_NEEDED_EXIT = 3
@@ -47,7 +48,8 @@ async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
     """Run the entries migration, then the vocabulary rewrite in db, each only when needed and verified; 0 only when the build will boot."""
     failed = 0
     refusal = await first_refusal()
-    if refusal is not None and refusal.script == CONVERSATION_ENTRIES_MIGRATION_SCRIPT:
+    caught_up = refusal is not None and refusal.script == CONVERSATION_ENTRIES_MIGRATION_SCRIPT
+    if caught_up:
         print("Moving conversations into the conversation log...")
         failed = await entries.catch_up()
     if not failed and (await vocabulary.verify(db)).left:
@@ -59,6 +61,9 @@ async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
         return 1
     if failed:
         return failed
+    if caught_up:
+        # The release step's contract ran before this catch-up, so it kept the arrays just migrated.
+        await drop_embedded_arrays(apply=True)
     print("Every conversation is in this build's shape.")
     return 0
 
