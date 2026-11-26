@@ -5,7 +5,7 @@ import {
   CheckmarkCircle02Icon,
   LinkSquare02Icon,
 } from "@icons";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelativeDate } from "@shared/utils";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   GaiaButton,
@@ -106,34 +106,35 @@ export const NotificationCard = ({
     <div
       className={surfaceVariants({
         tone,
-        faded: !isUnread,
-        className: "w-full rounded-2xl p-4 transition-colors",
+        className: "w-full rounded-2xl p-4",
       })}
     >
       <div className="min-w-0">
         <div className="flex min-h-6 items-center gap-2">
           <h3
             className={cn(
-              "truncate text-sm font-medium",
+              "min-w-0 truncate text-sm font-medium",
               isUnread ? "text-zinc-100" : "text-zinc-400",
             )}
           >
             {card ? BRIEF_LABEL : title}
           </h3>
           {isUnread && (
-            <span className="size-1.5 shrink-0 rounded-full bg-accent" />
+            <span
+              role="img"
+              aria-label="Unread"
+              className="size-1.5 shrink-0 rounded-full bg-accent"
+            />
           )}
           <span
-            className="shrink-0 text-xs whitespace-nowrap text-zinc-500"
+            className="ml-auto shrink-0 text-xs whitespace-nowrap text-zinc-500 tabular-nums"
             suppressHydrationWarning
           >
-            {formatDistanceToNow(new Date(notification.created_at), {
-              addSuffix: true,
-            })}
+            {formatRelativeDate(notification.created_at)}
           </span>
         </div>
         {card ? (
-          <div className="mt-2 w-full max-w-56">
+          <div className="mt-3 w-full max-w-56">
             <BriefingFold
               brief={foldedBrief(card)}
               briefingId={card.briefing_id}
@@ -151,7 +152,7 @@ export const NotificationCard = ({
           <MarkdownRenderer
             content={body}
             className={cn(
-              "mt-0.5 text-sm",
+              "mt-1 text-sm",
               clampBody && "line-clamp-2",
               isUnread ? "text-zinc-400" : "text-zinc-500",
             )}
@@ -161,12 +162,7 @@ export const NotificationCard = ({
       </div>
 
       {(actions.length > 0 || (isUnread && onMarkAsRead)) && (
-        <div
-          className={cn(
-            "mt-3 flex flex-wrap items-center gap-2",
-            !isUnread && "opacity-70",
-          )}
-        >
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {actions.map((action) => {
             const isExecuted = Boolean(action.executed);
             const isLoading = loading === action.id;

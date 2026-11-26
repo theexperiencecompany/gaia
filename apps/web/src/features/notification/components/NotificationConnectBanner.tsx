@@ -60,7 +60,7 @@ export function NotificationConnectBanner({
   if (variant === "compact") {
     return (
       <div className="w-full px-3">
-        <div className="flex w-full items-center justify-between gap-3 rounded-xl bg-zinc-800/60 px-3 py-2">
+        <div className="flex w-full items-center justify-between gap-3 rounded-2xl bg-zinc-900 px-3 py-2">
           <div className="flex min-w-0 items-center gap-3">
             {platformIconStack(26)}
             <span className="min-w-0 text-xs text-zinc-400">
