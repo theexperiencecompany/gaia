@@ -2585,6 +2585,8 @@ export interface paths {
          * Mcp Oauth Callback
          * @description Handle OAuth callback from MCP server.
          *
+         *     The browser may carry no GAIA session (a link opened from a chat app), so the
+         *     single-use state token, resolved to the user it was minted for, is the credential.
          *     Handles both success (with code) and error responses from OAuth server.
          */
         get: operations["mcp_mcp_oauth_callback"];

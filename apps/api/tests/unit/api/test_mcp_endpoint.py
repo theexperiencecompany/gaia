@@ -6,7 +6,7 @@ are the seam; the oauth_callback service runs for real.
 """
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
@@ -14,6 +14,8 @@ import pytest
 
 from app.api.v1.endpoints.mcp import mcp_oauth_callback
 from app.constants.log_tags import LogTag
+from app.models.mcp_config import OAuthStateOwner
+from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
 from tests.conftest import FAKE_USER
@@ -49,8 +51,18 @@ def _callback_seams(
     *,
     retry_url: str | None = None,
     exchange_error: Exception | None = None,
+    owner: OAuthStateOwner | None = OAuthStateOwner(user_id=USER_ID, integration_id="github"),
+    real_owner_lookup: bool = False,
 ) -> Iterator[dict[str, MagicMock]]:
+    owner_lookup = (
+        nullcontext()
+        if real_owner_lookup
+        else patch(
+            f"{_MODULE}.resolve_oauth_state_owner", new_callable=AsyncMock, return_value=owner
+        )
+    )
     with (
+        owner_lookup,
         patch(
             f"{_CALLBACK}.handle_oauth_callback", new_callable=AsyncMock, side_effect=exchange_error
         ) as exchange,
@@ -79,6 +91,70 @@ def _callback_seams(
             "exchange": exchange,
             "scope_retry": scope_retry,
         }
+
+
+class TestMCPOAuthCallbackWithoutASession:
+    """A link opened from a chat app reaches the callback with no GAIA session."""
+
+    @pytest.mark.regression
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_state_minted_for_a_user_completes_the_flow_for_that_user(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        state = await MCPTokenStore(USER_ID).create_oauth_state("github", "verifier")
+        mcp_client = _mcp_client()
+
+        with (
+            _callback_seams(mcp_client, _resolved("GitHub"), real_owner_lookup=True) as seams,
+            patch(f"{_MODULE}.get_mcp_client", new_callable=AsyncMock) as get_client,
+        ):
+            get_client.return_value = mcp_client
+            resp = await unauthed_client.get(
+                CALLBACK_URL,
+                params={"state": f"{state}:github:/integrations", "code": "code1"},
+                follow_redirects=False,
+            )
+
+        assert resp.headers["location"] == (
+            "http://frontend/integrations?id=github&status=connected&name=GitHub"
+        )
+        get_client.assert_awaited_once_with(user_id=USER_ID)
+        seams["capture"].assert_called_once()
+        assert seams["capture"].call_args.args[0] == UserId(USER_ID)
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_unknown_state_redirects_with_expired_state(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        with _callback_seams(_mcp_client(), real_owner_lookup=True) as seams:
+            resp = await unauthed_client.get(
+                CALLBACK_URL,
+                params={"state": "never-minted:github:/integrations", "code": "code1"},
+                follow_redirects=False,
+            )
+
+        assert resp.headers["location"] == (
+            "http://frontend/integrations?id=github&status=failed&error=expired_state"
+        )
+        seams["exchange"].assert_not_awaited()
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_state_for_another_integration_redirects_with_expired_state(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        state = await MCPTokenStore(USER_ID).create_oauth_state("resend", "verifier")
+
+        with _callback_seams(_mcp_client(), real_owner_lookup=True) as seams:
+            resp = await unauthed_client.get(
+                CALLBACK_URL,
+                params={"state": f"{state}:github:/integrations", "code": "code1"},
+                follow_redirects=False,
+            )
+
+        assert resp.headers["location"] == (
+            "http://frontend/integrations?id=github&status=failed&error=expired_state"
+        )
+        seams["exchange"].assert_not_awaited()
 
 
 class TestMCPOAuthCallback:
@@ -156,7 +232,6 @@ class TestMCPOAuthCallback:
                     code="code1",
                     error=None,
                     error_description=None,
-                    user=FAKE_USER,
                 )
                 # The boundary stamps its own outcome on exit; the route's is
                 # only readable before that.
@@ -338,7 +413,6 @@ class TestMCPOAuthCallback:
                     code="code1",
                     error=None,
                     error_description=None,
-                    user=FAKE_USER,
                 )
                 outcome = event["outcome"]
 
@@ -382,13 +456,6 @@ class TestMCPOAuthCallback:
             == "http://frontend/integrations?id=github&status=connected&name=GitHub"
         )
         seams["invalidate"].assert_awaited_once_with(USER_ID)
-
-    async def test_requires_auth(self, unauthed_client: AsyncClient) -> None:
-        resp = await unauthed_client.get(
-            CALLBACK_URL, params={"state": "tok:github:/integrations", "code": "code1"}
-        )
-
-        assert resp.status_code == 401
 
     async def test_requires_state(self, client: AsyncClient) -> None:
         resp = await client.get(CALLBACK_URL, params={"code": "code1"})

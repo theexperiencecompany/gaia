@@ -84,6 +84,13 @@ class OAuthPendingState(BaseModel):
     code_verifier: str | None = None
 
 
+class OAuthStateOwner(BaseModel):
+    """Who an MCP OAuth state token was minted for; the callback's only credential."""
+
+    user_id: str
+    integration_id: str
+
+
 class MCPUseServerConfig(TypedDict, total=False):
     """One entry under ``mcpServers`` in the config handed to ``mcp_use``.
 

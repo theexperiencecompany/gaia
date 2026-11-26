@@ -25,6 +25,7 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
+from app.services.mcp.mcp_token_store import resolve_oauth_state_owner
 from app.services.mcp.oauth_callback import (
     ProviderError,
     ScopeRetry,
@@ -162,16 +163,14 @@ async def mcp_oauth_callback(
     code: str | None = Query(None),  # Optional - may be missing if error
     error: str | None = Query(None),  # OAuth error code
     error_description: str | None = Query(None),  # OAuth error description
-    user: AuthenticatedUser = Depends(get_current_user),
 ) -> RedirectResponse:
     """Handle OAuth callback from MCP server.
 
+    The browser may carry no GAIA session (a link opened from a chat app), so the
+    single-use state token, resolved to the user it was minted for, is the credential.
     Handles both success (with code) and error responses from OAuth server.
     """
-    user_id = user.user_id
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
-    log.set(user={"id": user_id}, operation="mcp_oauth_callback")
+    log.set(operation="mcp_oauth_callback")
 
     frontend_url = get_frontend_url()
 
@@ -187,14 +186,25 @@ async def mcp_oauth_callback(
     redirect_path = parts[2] if len(parts) > 2 else "/integrations"
     log.set(mcp=McpContext(operation="connect", server_id=integration_id))
 
-    client = await get_mcp_client(user_id=str(user_id))
-    redirect_uri = get_mcp_oauth_redirect_uri()
-
     callback = _McpCallback(
         integration_id=integration_id,
         redirect_path=redirect_path,
         frontend_url=frontend_url,
     )
+    owner = await resolve_oauth_state_owner(state_token)
+    if owner is None or owner.integration_id != integration_id:
+        log.warning(
+            f"{LogTag.MCP} OAuth callback state has no matching owner",
+            integration_id=integration_id,
+            state_known=owner is not None,
+        )
+        return RedirectResponse(url=callback.failure("expired_state"))
+    user_id = owner.user_id
+    log.set(user={"id": user_id})
+
+    client = await get_mcp_client(user_id=user_id)
+    redirect_uri = get_mcp_oauth_redirect_uri()
+
     if error:
         outcome = await resolve_provider_error(
             client,
@@ -228,7 +238,7 @@ async def mcp_oauth_callback(
     try:
         await complete_oauth(
             client,
-            user_id=str(user_id),
+            user_id=user_id,
             integration_id=integration_id,
             code=code,
             state_token=state_token,

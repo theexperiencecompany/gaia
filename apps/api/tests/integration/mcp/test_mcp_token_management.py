@@ -57,7 +57,15 @@ def _make_db_session_context(mock_session: AsyncMock) -> AsyncMock:
     return context
 
 
+@pytest.fixture
+def owner_key_delete():
+    """Stand in for the Redis delete that clears the state's owner key."""
+    with patch("app.services.mcp.mcp_token_store.delete_cache", new_callable=AsyncMock) as delete:
+        yield delete
+
+
 @pytest.mark.integration
+@pytest.mark.usefixtures("owner_key_delete")
 class TestMCPTokenManagement:
     """Test token store encrypt/decrypt and credential lifecycle."""
 
@@ -225,9 +233,8 @@ class TestMCPTokenManagement:
 
         assert isinstance(state_token, str)
         assert len(state_token) > 0
-        mock_set_cache.assert_awaited_once()
-        call_args = mock_set_cache.call_args
-        assert "verifier-abc" in str(call_args)
+        assert mock_set_cache.await_count == 2
+        assert "verifier-abc" in str(mock_set_cache.await_args_list[0])
 
     @patch(
         "app.services.mcp.mcp_token_store.get_and_delete_cache",

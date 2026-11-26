@@ -18,7 +18,6 @@ from langgraph.config import get_config
 
 from app.agents.tools.run_record import block_integration
 from app.config.settings import settings
-from app.constants.cache import OAUTH_STATE_TTL
 from app.constants.integrations import (
     ACCOUNT_NEEDS_RECONNECT_HINT,
     MANAGED_BY_MCP,
@@ -251,15 +250,8 @@ def _ui_message(prompt: _Prompt) -> str:
 
 
 async def _text_only_message(prompt: _Prompt) -> str:
-    """Inline what a bot user needs: a standalone URL or the integrations page."""
+    """Inline what a bot user needs: the login-free connect link or the integrations page."""
     ask = prompt.ask
-    if prompt.auth.kind == "oauth" and prompt.auth.url:
-        return (
-            f"{ask.lead} The user is on a text-only platform (no UI). Include this standalone "
-            "authorization URL verbatim in your result so the comms agent can relay it to the "
-            "user, and tell them to open it soon because it expires after about "
-            f"{OAUTH_STATE_TTL // 60} minutes: {prompt.auth.url}"
-        )
     if prompt.auth.kind == "token_only":
         return (
             f"{ask.lead} This integration authenticates with an API key, so no standalone "

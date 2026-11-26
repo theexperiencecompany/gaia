@@ -25,13 +25,27 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
-from app.db.redis import get_and_delete_cache, get_cache, set_cache
+from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
-from app.models.mcp_config import DCRClientRegistration, OAuthDiscovery, OAuthPendingState
+from app.models.mcp_config import (
+    DCRClientRegistration,
+    OAuthDiscovery,
+    OAuthPendingState,
+    OAuthStateOwner,
+)
 from app.utils.mcp_oauth_utils import TokenIntrospectionResponse, introspect_token as do_introspect
 from shared.py.wide_events import log
 
 _DCR_CLIENT_REGISTRATION: TypeAdapter[DCRClientRegistration] = TypeAdapter(DCRClientRegistration)
+
+
+def _oauth_owner_key(state: str) -> str:
+    return f"{OAUTH_STATE_PREFIX}:owner:{state}"
+
+
+async def resolve_oauth_state_owner(state: str) -> OAuthStateOwner | None:
+    """Return who a state token was minted for; None when unknown, expired or already spent."""
+    return await get_cache(_oauth_owner_key(state), OAuthStateOwner)
 
 
 def _is_credential_usable(cred: MCPCredential | None) -> bool:
@@ -296,6 +310,14 @@ class MCPTokenStore:
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
         state_data: dict[str, str] = {"state": state, "code_verifier": code_verifier}
         await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL)
+        # The callback arrives from a browser with no GAIA session (a link opened from a
+        # chat app), so the state token itself has to say whose flow it belongs to.
+        await set_cache(
+            _oauth_owner_key(state),
+            OAuthStateOwner(user_id=self.user_id, integration_id=integration_id),
+            ttl=OAUTH_STATE_TTL,
+            model=OAuthStateOwner,
+        )
 
         return state
 
@@ -310,6 +332,7 @@ class MCPTokenStore:
         # Atomic get-and-delete prevents race condition where two callbacks
         # could both validate before either deletes the state
         stored_data = await get_and_delete_cache(cache_key)
+        await delete_cache(_oauth_owner_key(state))
 
         if not stored_data:
             return False, None

@@ -337,8 +337,8 @@ class TestExpiredConnectionPrompt:
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
-        assert _MCP_AUTH_URL in bot_message
-        assert _MAGIC_LINK not in bot_message
+        assert _MAGIC_LINK in bot_message
+        assert _MCP_AUTH_URL not in bot_message
         assert "reconnect" in bot_message.lower()
 
     @pytest.mark.regression
@@ -366,9 +366,9 @@ class TestExpiredConnectionPrompt:
 
 
 class TestStandaloneMcpAuthorization:
-    """OAuth MCP servers hand out their provider URL; token-only servers say there is none."""
+    """OAuth MCP servers give bots the connect link; token-only servers say there is no URL."""
 
-    async def test_oauth_mcp_url_is_relayed_verbatim_on_ui_and_bots(self) -> None:
+    async def test_oauth_mcp_url_is_relayed_on_ui_and_bots_get_the_connect_link(self) -> None:
         build_url = _known_auth_url()
         with _graph_run("ui"), _mcp_oauth(build_url) as client:
             ui_message = await request_integration_connection(
@@ -389,10 +389,9 @@ class TestStandaloneMcpAuthorization:
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
-        assert _MCP_AUTH_URL in bot_message
-        assert "expires after about 10 minutes" in bot_message
-        assert "1 hour" not in bot_message
-        assert _MAGIC_LINK not in bot_message
+        assert _MAGIC_LINK in bot_message
+        assert "valid for 1 hour" in bot_message
+        assert _MCP_AUTH_URL not in bot_message
 
     async def test_token_only_mcp_says_so_and_never_mints_a_connect_link(self) -> None:
         with (
@@ -548,10 +547,9 @@ class TestExactCopyPerBranch:
             )
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
-            "to refresh access. The user is on a text-only platform (no UI). Include this "
-            "standalone authorization URL verbatim in your result so the comms agent can relay "
-            "it to the user, and tell them to open it soon because it expires after about 10 "
-            f"minutes: {_MCP_AUTH_URL}"
+            "to refresh access. The user is on a text-only platform (no UI). Include this URL "
+            "verbatim in your result so the comms agent can relay it to the user, and tell "
+            f"them it is valid for 1 hour: {_MAGIC_LINK}"
         )
 
     async def test_bot_token_only(self) -> None:
