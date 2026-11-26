@@ -2,8 +2,7 @@
 
 The expand migrations (migrate_todo_delivery, migrate_notification_details) copy and leave the
 old fields, because the previous release keeps serving while the release step runs. This drops
-them, and so belongs to the release AFTER the one that ran the expands, once no serving code reads the old fields: that
-release adds ("contract_moved_fields", contract) to the end of POST_DEPLOY_STEPS. Each contract
+them, so it runs as the last of POST_DEPLOY_STEPS, a release after the expands. Each contract
 first re-runs its expand, so whatever the previous release wrote in the old shape meanwhile is
 copied, not lost.
 
