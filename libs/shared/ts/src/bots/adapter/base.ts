@@ -91,7 +91,11 @@ import {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "../utils/logger";
-import { OUTBOUND_FILE_LIMITS } from "../utils/media";
+import {
+  OUTBOUND_FILE_LIMITS,
+  urlFilename,
+  withMimeExtension,
+} from "../utils/media";
 import type {
   IncomingAttachment,
   MediaBatchOutcome,
@@ -433,10 +437,11 @@ export abstract class BaseBotAdapter {
       isChannel,
     );
     if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    const mime = attachment.content_type ?? artifact.contentType;
     const file: OutboundFile = {
       data: artifact.data,
-      mime: attachment.content_type ?? artifact.contentType,
-      filename: attachment.filename,
+      mime,
+      filename: withMimeExtension(attachment.filename, mime),
       caption: attachment.caption ?? undefined,
     };
     await runUpload(() =>
@@ -927,7 +932,7 @@ export abstract class BaseBotAdapter {
           platformUserId,
           {
             url,
-            filename: url.split("/").pop() ?? url,
+            filename: urlFilename(url),
             content_type: null,
             caption,
           },
@@ -967,7 +972,7 @@ export abstract class BaseBotAdapter {
           destination,
           {
             url,
-            filename: url.split("/").pop() ?? url,
+            filename: urlFilename(url),
             content_type: null,
             caption,
           },

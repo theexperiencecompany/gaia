@@ -110,6 +110,21 @@ class TestAdapter extends BaseBotAdapter {
       short_url: shortUrl,
     });
   }
+
+  /** Sends a notice's image the way a follow does, through the adapter's real follow surface. */
+  sendFollowPhoto(url: string): Promise<void> {
+    const surface = (
+      this as unknown as {
+        followSurface: (
+          surface: ConversationSurface,
+          conversationId: string,
+          platformUserId: string,
+          channelId: string | null,
+        ) => FollowSurface;
+      }
+    ).followSurface({} as ConversationSurface, "conv-1", DESTINATION_ID, null);
+    return surface.sendPhoto(url, "Two GitHub threads are on you");
+  }
 }
 
 /**
@@ -288,5 +303,35 @@ describe("a follow's file the API cannot serve", () => {
 
     expect(axiosGet).toHaveBeenCalledTimes(1);
     expect(adapter.sentFile?.filename).toBe("report.pdf");
+  });
+});
+
+describe("the file name a notice's image arrives under", () => {
+  beforeEach(() => {
+    axiosGet.mockReset();
+    axiosGet.mockResolvedValue({
+      data: new Uint8Array(PNG).buffer,
+      headers: { "content-type": "image/jpeg" },
+    });
+  });
+
+  it("names a brief's edition by its type, not by the signed URL's last segment", async () => {
+    // Regression: Telegram showed a tall brief as a download named "jpg?t=<token>",
+    // and with no image extension it never rendered a preview.
+    const adapter = setup();
+
+    await adapter.sendFollowPhoto(
+      `${API_BASE}/briefings/editions/k1/jpg?t=WyJrMSIsImpwZyJd`,
+    );
+
+    expect(adapter.sentFile?.filename).toBe("image.jpg");
+  });
+
+  it("keeps a URL's own file name when it has an extension", async () => {
+    const adapter = setup();
+
+    await adapter.sendFollowPhoto(`${API_BASE}/shots/c0de/step-3.png?sig=x`);
+
+    expect(adapter.sentFile?.filename).toBe("step-3.png");
   });
 });
