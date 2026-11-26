@@ -18,6 +18,11 @@
 #                   its healthz. Used by the on-demand browser eval.
 #   eval [ids]      Run the browser quality eval suite, all cases or the
 #                   comma-separated ids given.
+#   install-playwright
+#                   Install Playwright's Chromium and its apt dependencies, up to
+#                   INSTALL_ATTEMPTS times, INSTALL_RETRY_SECONDS apart: an Ubuntu
+#                   mirror that 404s a package its index still names clears itself
+#                   within seconds. The last attempt's error fails the lane.
 #
 # Env contract:
 #   locate        RUNNER_TEMP, GITHUB_ENV; CADDY_RELEASE_URL / CADDY_SHA512 and
@@ -38,6 +43,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # How long a host gets to launch its engine and answer healthz.
 HOST_READY_SECONDS=120
+# The Ubuntu mirror 404ed a package its own index named (run 139875169011, web-e2e-screen 2/2).
+INSTALL_ATTEMPTS=3
+INSTALL_RETRY_SECONDS="${INSTALL_RETRY_SECONDS:-5}"
 # The Caddy self-host runs (caddy:2.10.2-alpine in docker-compose.selfhost.yml),
 # and the sha512 of its linux_amd64 release from caddy_2.10.2_checksums.txt.
 CADDY_VERSION=2.10.2
@@ -136,8 +144,21 @@ cmd_eval() {
   uv run --frozen --group backend python -m scripts.evals "${args[@]}"
 }
 
+cmd_install_playwright() {
+  local attempt
+  for ((attempt = 1; attempt <= INSTALL_ATTEMPTS; attempt++)); do
+    if pnpm --filter ./apps/web exec playwright install --with-deps chromium; then
+      return 0
+    fi
+    [ "$attempt" -lt "$INSTALL_ATTEMPTS" ] || break
+    ci_warn "playwright install ${attempt}/${INSTALL_ATTEMPTS} failed, retrying in ${INSTALL_RETRY_SECONDS}s"
+    sleep "$INSTALL_RETRY_SECONDS"
+  done
+  ci_die "playwright install failed after ${INSTALL_ATTEMPTS} attempts"
+}
+
 usage() {
-  sed -n '2,27p' "$0" >&2
+  sed -n '2,32p' "$0" >&2
 }
 
 main() {
@@ -147,6 +168,7 @@ main() {
     locate) cmd_locate "$@" ;;
     chrome-host) cmd_chrome_host "$@" ;;
     eval) cmd_eval "$@" ;;
+    install-playwright) cmd_install_playwright "$@" ;;
     *)
       echo "browser.sh: unknown subcommand '${sub}'" >&2
       usage

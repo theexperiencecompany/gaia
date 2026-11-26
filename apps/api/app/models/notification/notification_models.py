@@ -147,6 +147,8 @@ class NotificationContent(BaseModel):
 
     title: str
     body: str
+    #: The email's subject when it is not the title.
+    email_subject: str | None = None
     actions: list[NotificationAction] | None = None
     rich_content: dict[str, Any] | None = None
 

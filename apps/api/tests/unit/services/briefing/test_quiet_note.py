@@ -119,35 +119,51 @@ class TestTheQuietNote:
         assert note.headline == "Nothing new in what I could read"
         assert note.message.splitlines() == [
             "Nothing new in what I could read, and your calendar is clear.",
-            "I couldn't read Notion or Linear this time, so I can't say what they hold.",
+            "I couldn't read Notion and Linear this time, so I can't say what they hold.",
             _WATCH,
         ]
         assert note.sources_unavailable == unread
 
-    def test_a_signed_out_app_is_asked_to_reconnect_after_the_unread_line(
+    def test_a_signed_out_app_is_asked_to_reconnect_and_left_out_of_the_unread_line(
         self, clock: UserClock
     ) -> None:
         unread = _unread(("GitHub", ScoutSkipReason.SIGNED_OUT), ("Notion", ScoutSkipReason.FAILED))
 
         note = quiet_note(clock, _DAILY, QuietFacts(calendar=None, unread=unread))
 
-        assert note.message.splitlines()[1:3] == [
-            "I couldn't read GitHub or Notion this time, so I can't say what they hold.",
+        assert note.message.splitlines()[1:] == [
+            "I couldn't read Notion this time, so I can't say what they hold.",
             "Your GitHub sign-in expired: reconnect it in Settings, Integrations and I'll read "
             "it again.",
+            _WATCH,
         ]
+
+    def test_past_three_unread_apps_the_rest_are_counted_not_named(self, clock: UserClock) -> None:
+        """Prod 2026-11-24: a note chained 17 app names with "or" in one sentence."""
+        apps = ("YouTube", "PumpGTM", "Context7", "Whoop", "Twitter")
+        unread = _unread(*((app, ScoutSkipReason.BUDGET) for app in apps))
+
+        note = quiet_note(clock, _DAILY, QuietFacts(calendar=None, unread=unread))
+
+        assert note.message.splitlines()[1] == (
+            "I couldn't read YouTube, PumpGTM, Context7 and 2 others this time, so I can't say "
+            "what they hold."
+        )
 
     def test_every_signed_out_app_is_asked_to_reconnect_in_one_line(self, clock: UserClock) -> None:
         unread = _unread(
-            ("GitHub", ScoutSkipReason.SIGNED_OUT), ("Linear", ScoutSkipReason.SIGNED_OUT)
+            ("GitHub", ScoutSkipReason.SIGNED_OUT),
+            ("Linear", ScoutSkipReason.SIGNED_OUT),
+            ("Granola", ScoutSkipReason.SIGNED_OUT),
         )
 
         note = quiet_note(clock, _DAILY, QuietFacts(calendar=None, unread=unread))
 
-        assert note.message.splitlines()[2] == (
-            "Your GitHub and Linear sign-ins expired: reconnect them in Settings, Integrations "
-            "and I'll read them again."
-        )
+        assert note.message.splitlines()[1:] == [
+            "Your GitHub, Linear and Granola sign-ins expired: reconnect them in Settings, "
+            "Integrations and I'll read them again.",
+            _WATCH,
+        ]
 
     def test_the_users_overdue_todos_are_counted_before_the_watch_line(
         self, clock: UserClock

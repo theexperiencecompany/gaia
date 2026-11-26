@@ -14,6 +14,7 @@ from app.constants.briefing import (
     QUIET_NOTE_STILL_SINCE,
     QUIET_NOTE_UNREAD,
     QUIET_NOTE_UNREAD_HEADLINE,
+    QUIET_NOTE_UNREAD_SHOWN,
     QUIET_NOTE_WATCH,
     BriefForm,
     BriefingKind,
@@ -24,6 +25,7 @@ from app.models.brief_payload_models import BriefingMood, BriefingPayload, Unrea
 from app.models.scout_models import ScoutSkipReason
 from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.clock import UserClock, when_sent
+from app.services.briefing.formats import listed
 from app.services.briefing.kinds import BriefKindSpec
 
 
@@ -85,11 +87,13 @@ def quiet_note(clock: UserClock, spec: BriefKindSpec, facts: QuietFacts) -> Brie
         CalendarGap.UNAVAILABLE: QUIET_NOTE_CALENDAR_UNREAD,
     }[facts.calendar]
     lines = [f"{_quiet_news(spec, facts, clock)}{calendar}"]
-    if facts.unread:
-        lines.append(QUIET_NOTE_UNREAD.format(apps=" or ".join(facts.apps_unread())))
-    if signed_out := facts.apps_unread(ScoutSkipReason.SIGNED_OUT):
+    signed_out = facts.apps_unread(ScoutSkipReason.SIGNED_OUT)
+    # A signed-out app has its own line, so the unread line names only the rest.
+    if others := [app for app in facts.apps_unread() if app not in signed_out]:
+        lines.append(QUIET_NOTE_UNREAD.format(apps=listed(others, QUIET_NOTE_UNREAD_SHOWN)))
+    if signed_out:
         reconnect = QUIET_NOTE_SIGNED_OUT_MANY if len(signed_out) > 1 else QUIET_NOTE_SIGNED_OUT
-        lines.append(reconnect.format(apps=" and ".join(signed_out)))
+        lines.append(reconnect.format(apps=listed(signed_out)))
     if facts.overdue:
         lines.append(QUIET_NOTE_OVERDUE.format(count=facts.overdue))
     lines.append(QUIET_NOTE_WATCH)

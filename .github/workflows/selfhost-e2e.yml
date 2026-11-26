@@ -56,7 +56,7 @@ jobs:
         run: bash scripts/ci/selfhost.sh up
 
       - name: Install Chromium for Playwright
-        run: pnpm --filter ./apps/web exec playwright install --with-deps chromium
+        run: bash scripts/ci/browser.sh install-playwright
 
       - name: Drive the self-host journey
         id: journey

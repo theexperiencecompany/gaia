@@ -131,6 +131,8 @@ async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_
         assert (jpg.format, jpg.mode) == ("JPEG", "RGB")
         assert isinstance(jpg, JpegImagePlugin.JpegImageFile)
         assert jpg.quantization == _quantization_at(EDITION_JPG_QUALITY)
+        # a mail client paints a progressive image as it arrives
+        assert jpg.info.get("progressive") == 1
         desk = jpg.getpixel((0, 0))
     assert isinstance(desk, tuple)
     assert all(abs(c - b) <= 2 for c, b in zip(desk, EDITION_JPG_BACKGROUND, strict=True))

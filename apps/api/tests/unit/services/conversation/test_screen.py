@@ -11,6 +11,7 @@ import pytest
 from app.constants.conversation import REPLY_FAILURE_LINE
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.constants.summarization import MAX_OUTPUT_CHARS
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -523,6 +524,43 @@ async def test_a_handed_over_tasks_cards_show_on_the_work_item_it_joined() -> No
     assert isinstance(patch.item, WorkItem)
     assert (patch.item.task_id, patch.item.tool_data) == ("t1", (_card("x"),))
     assert [item.id for item in tracker.items] == ["u1", "work:t1"]
+
+
+def _long_call(call_id: str) -> ToolDataEntry:
+    data = {"tool_name": "read", "tool_call_id": call_id, "output": "o" * (MAX_OUTPUT_CHARS + 3)}
+    return {"tool_name": TOOL_CALL_CARD, "data": data}
+
+
+@pytest.mark.regression
+def test_work_and_a_reply_stored_with_an_output_past_the_limit_show_it_cut_on_both_wires() -> None:
+    work = WorkFinished(
+        id="work:t1:finished",
+        task_id="t1",
+        outcome=WorkOutcome.DONE,
+        report="done",
+        tool_data=(_long_call("c1"),),
+    )
+    reply = Reply(id="r:reply", reply_id="r", attempt_id="1", tool_data=(_long_call("c2"),))
+    entries = [
+        logged(1, user("u1")),
+        logged(2, WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))),
+        logged(3, work),
+        logged(4, reply),
+    ]
+
+    _, work_item, reply_item = project_screen("c1", entries, FILE_LINKS)
+
+    assert isinstance(work_item, WorkItem)
+    assert isinstance(reply_item, ReplyItem)
+    for item, call_id in ((work_item, "c1"), (reply_item, "c2")):
+        cut = {
+            "tool_name": "read",
+            "tool_call_id": call_id,
+            "output": "o" * MAX_OUTPUT_CHARS,
+            "output_original_length": MAX_OUTPUT_CHARS + 3,
+        }
+        assert [card["data"] for card in item.tool_data] == [cut]
+        assert [step.data for step in item.timeline.steps] == [cut]
 
 
 # The clients' tests replay these frames: the server's own serialization of the founder's conversation.

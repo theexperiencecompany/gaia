@@ -61,6 +61,7 @@ from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights
 from app.services.briefing.editions.stamps import stamp_weights
+from app.services.briefing.message import email_subject
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.prose import reader_block
 from app.utils.message_breaks import split_message_bubbles
@@ -116,6 +117,7 @@ class TestADailyBrief:
         assert card.edition is not None and card.edition.image_url.startswith(EDITION_URL)
         assert request.details.card == card
         assert request.content.body == message
+        assert request.content.email_subject == email_subject(BriefingKind.DAILY, payload)
         assert request.content.rich_content is None
         world.render.assert_awaited_once()
         post = world.post.await_args.kwargs

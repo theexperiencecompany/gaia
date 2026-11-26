@@ -52,6 +52,7 @@ from app.services.briefing.message import (
     brief_path,
     chat_text,
     delivered_message,
+    email_subject,
 )
 from app.services.briefing.view import briefing_card
 from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
@@ -96,6 +97,7 @@ async def _notify(
             channels=[ChannelConfig(channel_type=c) for c in channels],
             content=NotificationContent(
                 title=payload.headline,
+                email_subject=email_subject(brief.kind, payload),
                 body=delivered_message(payload),
                 actions=[
                     NotificationAction(

@@ -198,3 +198,57 @@ def test_a_fortress_download_corrupt_every_time_fails_after_three_tries(tmp_path
         r"fortress \S+ does not match its pinned sha256", result.stdout + result.stderr
     )
     assert "FORTRESS_BIN" not in github_env.read_text()
+
+
+PNPM_STUB = """\
+#!/usr/bin/env bash
+echo "$*" >> "$PNPM_CALLS"
+if [ "$(wc -l < "$PNPM_CALLS")" -le "$PNPM_FAILURES" ]; then
+  echo "E: Failed to fetch libasound2t64 404 Not Found (call $(wc -l < "$PNPM_CALLS" | tr -d ' '))" >&2
+  exit 100
+fi
+"""
+
+
+def _install_playwright(
+    tmp_path: Path, *, failures: int
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in ("bash", "dirname", "sed", "wc", "tr", "sleep"):
+        found = shutil.which(tool)
+        assert found is not None
+        (bin_dir / tool).symlink_to(found)
+    _executable(bin_dir / "pnpm", PNPM_STUB)
+    calls = tmp_path / "pnpm-calls"
+    env = {
+        "PATH": str(bin_dir),
+        "PNPM_CALLS": str(calls),
+        "PNPM_FAILURES": str(failures),
+        "INSTALL_RETRY_SECONDS": "0",
+    }
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "install-playwright"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result, calls.read_text().splitlines() if calls.exists() else []
+
+
+def test_a_playwright_install_that_fails_once_is_run_again(tmp_path: Path) -> None:
+    # The Ubuntu mirror 404ed a package its index still named (run 139875169011).
+    result, calls = _install_playwright(tmp_path, failures=1)
+
+    assert result.returncode == 0, result.stderr
+    assert calls == ["--filter ./apps/web exec playwright install --with-deps chromium"] * 2
+    assert "::warning::" in result.stderr
+
+
+def test_a_playwright_install_that_always_fails_fails_after_three_tries(tmp_path: Path) -> None:
+    result, calls = _install_playwright(tmp_path, failures=99)
+
+    assert result.returncode != 0
+    assert len(calls) == 3
+    assert "404 Not Found (call 3)" in result.stdout + result.stderr
