@@ -345,6 +345,22 @@ async def test_a_reply_the_client_held_is_projected_with_its_conversation_s_link
     assert await _opening(runtime, 3) == ["u1"]
 
 
+async def test_the_newest_user_message_opens_the_screen_even_when_the_page_no_longer_reaches_it(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(event_stream, "CONVERSATION_READ_LIMIT", 1)
+    runtime = Runtime()
+    await _said(runtime, fake_redis, "u1")
+    reply = opened("r1").model_copy(update={"text": "here"})
+    for entry in (reply, settled("s3", ["u1"], 1)):
+        appended = await runtime.log.append(CONVERSATION, USER, entry)
+        await _publish(
+            fake_redis, EntryFrame(seq=appended.logged.seq, at=appended.logged.at, entry=entry)
+        )
+
+    assert await _opening(runtime, 0) == ["u1", "r1"]
+
+
 async def test_a_follow_that_met_an_unreadable_frame_reopens_on_the_whole_screen(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:

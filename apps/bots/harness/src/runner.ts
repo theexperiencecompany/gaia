@@ -335,12 +335,25 @@ export async function runScenario(
         adapter = await bootAdapter(platform, apiUrl, transcript);
       }
       const { restartAfterMs } = turn;
+      let restartedOnTimerAt: number | undefined;
       if (restartAfterMs !== undefined) {
         await new Promise((resolve) => setTimeout(resolve, restartAfterMs));
         await adapter.shutdown("restart");
+        restartedOnTimerAt = transcript.getEvents().length;
         adapter = await bootAdapter(platform, apiUrl, transcript);
       }
       await adapter.settleTurn();
+      if (
+        restartedOnTimerAt !== undefined &&
+        !transcript
+          .getEvents()
+          .slice(restartedOnTimerAt)
+          .some((e) => e.type === "send")
+      ) {
+        failures.push(
+          `turn ${index + 1} (${turnLabel(turn)}): the restart came after everything was sent: the fresh bot sent nothing, so the resume was not exercised`,
+        );
+      }
       if (restartedAt !== undefined) {
         const resumed = restartResumedABubble(
           transcript.getEvents().slice(before),

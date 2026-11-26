@@ -317,10 +317,13 @@ async def _screen_from_the_head(
     held = await _held_at(conversation_id, entries, after)
     # A chat platform shows typing on the newest user message, which a bot resuming after it never held.
     answering = next((item for item in reversed(tracker.items) if isinstance(item, UserItem)), None)
+    page = tracker.items[-CONVERSATION_READ_LIMIT:]
+    # Long work can put more than a page of items after the message it answers.
+    before_page = [] if answering is None or answering in page else [answering]
     yield ScreenFrame(
         items=tuple(
             item
-            for item in tracker.items[-CONVERSATION_READ_LIMIT:]
+            for item in (*before_page, *page)
             # Running work's cards are in no entry, so its item never equals the one held at after.
             if held.get(item.id) != item or item is answering
         ),

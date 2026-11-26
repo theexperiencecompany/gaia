@@ -755,6 +755,54 @@ describe("history the follow started after", () => {
     ).toEqual(["Step 1 · Step goal 2"]);
   });
 
+  it("delivers once the browser step and the usage limit of finished work that runs again after the floor", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(6),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    const step = (at: number) => ({
+      key: `browser_task_data-${at}`,
+      card: {
+        tool_name: "browser_task_data",
+        data: { kind: "step", url: "about:blank", goal: `Step goal ${at}` },
+      },
+    });
+    const limit = {
+      key: "grouped-rate_limit_data",
+      card: {
+        tool_name: "rate_limit_data",
+        data: { feature: "web_search", current_plan: "pro" },
+      },
+    };
+    const work = (
+      status: "done" | "running",
+      cards: (ReturnType<typeof step> | typeof limit)[],
+    ) => ({
+      ...workItem("t1", 2, status, [], 0),
+      timeline: { steps: [], progress: null, cards },
+    });
+    const rerun = work("running", [step(0), step(1), limit]);
+    await feed(follower, [
+      // The finished work is unchanged since the floor, so the opening screen leaves it out.
+      screenFrame([], 6),
+      // It runs again: its first frame is its restart, showing what its earlier run showed.
+      updateFrame(work("running", [step(0)]), 7),
+      updateFrame(rerun, 7),
+      // A reconnect's screen shows the same item again.
+      screenFrame([rerun], 7),
+    ]);
+
+    expect(
+      calls.flatMap((call) => (call.op === "notice" ? call.bubbles : [])),
+    ).toEqual([
+      "Step 1 · Step goal 1",
+      "⏳ You've reached your web search limit. Please try again later.",
+    ]);
+  });
+
   it("answers the message a reply names natively when that message is not on the screen held", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(

@@ -302,7 +302,9 @@ export class ConversationFollower {
           for (const request of item.asking)
             this.asked.add(request.approval_id);
         this.browserRun(item.id).skip(browserCards(item.timeline));
-        this.limitTold.add(item.id);
+        // Work that never hit a limit may still hit one when it runs again.
+        if (rateLimitNotices(item.timeline, this.surface.links).length > 0)
+          this.limitTold.add(item.id);
         return item.asked_seq > this.floor;
       }
       if (item.kind === SCREEN_ITEM_KIND.USER && item.message.reaction)
