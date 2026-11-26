@@ -2583,8 +2583,10 @@ export interface paths {
         };
         /**
          * Mcp Oauth Callback
-         * @description Handle OAuth callback from MCP server.
+         * @description Handle OAuth callback from MCP server, for the user its state was minted for.
          *
+         *     The flow must come back to a browser that started it: one signed in as that user, or,
+         *     with no session (a chat app's connect link), the browser the connect link was opened in.
          *     Handles both success (with code) and error responses from OAuth server.
          */
         get: operations["mcp_mcp_oauth_callback"];

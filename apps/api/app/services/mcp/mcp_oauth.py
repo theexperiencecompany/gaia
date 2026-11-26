@@ -229,6 +229,15 @@ def _build_oauth_scope_string(
     return " ".join(scope_parts)
 
 
+def oauth_state_token(auth_url: str) -> str:
+    """Return the state token a provider authorization URL built by build_oauth_auth_url carries."""
+    query = urllib.parse.parse_qsl(urllib.parse.urlsplit(auth_url).query)
+    state = next((value for name, value in query if name == "state"), None)
+    if not state:
+        raise ValueError("an MCP authorization URL carries no state")
+    return state.partition(":")[0]
+
+
 async def build_oauth_auth_url(
     token_store: MCPTokenStore,
     integration_id: str,
