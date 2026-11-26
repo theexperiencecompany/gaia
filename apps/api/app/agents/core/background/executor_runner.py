@@ -12,6 +12,7 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import time
@@ -34,7 +35,6 @@ from app.agents.core.background.executor_queue import (
     build_run_item,
     keep_alive,
     prepare_run_from_item,
-    reclaim_dead_lock,
     release_lock_if_owned,
 )
 from app.agents.core.background.run_stop import stop_requested
@@ -198,6 +198,10 @@ async def _run_executor(
                 lifecycle.executor_active_ms = active_ms
                 if result_type == "error":
                     lifecycle.failure_reason = error_type
+            except asyncio.CancelledError:
+                # Cut off mid-run: its work ends stopped, never done with an empty result.
+                stopped = True
+                raise
             finally:
                 alive.cancel()
                 await _finalize_executor_run(
@@ -613,19 +617,15 @@ async def deliver_to_executor(
 
     A live run absorbs the task through its inbox, an idle one gets a run started
     to carry it; never a second parallel answer. Tagged work (a subagent result)
-    always travels through the inbox so it arrives framed. A free (or freed) lock is
-    a fast path — the claim inside _start_executor_run is the atomic decision; a run it starts shows as continues' work.
+    always travels through the inbox so it arrives framed. The claim inside
+    _start_executor_run decides, a dead holder's lock reclaimed; a run it starts shows as continues' work.
     """
-    if (
-        tag is None
-        and await reclaim_dead_lock(conversation_id)
-        and await _start_executor_run(
-            conversation_id,
-            user,
-            task,
-            workflow_execution_id=workflow_execution_id,
-            continues=continues,
-        )
+    if tag is None and await _start_executor_run(
+        conversation_id,
+        user,
+        task,
+        workflow_execution_id=workflow_execution_id,
+        continues=continues,
     ):
         return
     await ExecutorInbox(conversation_id).append(str(uuid4()), task, tag)
@@ -648,10 +648,9 @@ async def wake_executor_for_inbox(
 
     Checked after the append: only a free lock needs a rescue, and the rescue
     carries EXECUTOR_CARRY_TASK because the entry already holds the real work.
-    A lock whose run died with its process is reclaimed first, or it would hold
-    the work back for the lock's whole TTL.
+    The claim reclaims a lock whose run died with its process.
     """
-    if await reclaim_dead_lock(conversation_id) and await _start_executor_run(
+    if await _start_executor_run(
         conversation_id,
         user,
         EXECUTOR_CARRY_TASK,

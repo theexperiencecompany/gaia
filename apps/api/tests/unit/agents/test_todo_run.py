@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.background import session as sess, todo_run
+from app.agents.core.background.executor_queue import build_lock_value
 from app.agents.core.background.session import RunKind, executor_abandoned
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
@@ -138,7 +139,7 @@ async def test_a_conversation_already_running_the_executor_is_refused_before_spa
 ) -> None:
     spawned = AsyncMock()
     with (
-        patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=False)),
+        patch.object(todo_run, "claim_conversation", AsyncMock(return_value=False)),
         patch.object(todo_run, "run_executor_background", spawned),
         pytest.raises(ExecutorBusyError, match="already running in conversation run-conv"),
     ):
@@ -153,8 +154,9 @@ async def test_a_conversation_already_running_the_executor_is_refused_before_spa
 async def test_the_run_is_logged_as_started_only_once_the_chat_is_its_own(seams: _Seams) -> None:
     started = AsyncMock(side_effect=lambda: seams.order.append("started"))
     run = _recording_run(seams.order)
+    claim = AsyncMock(return_value=True)
     with (
-        patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(todo_run, "claim_conversation", claim),
         patch.object(todo_run, "run_executor_background", run),
     ):
         await run_todo_on_executor(replace(REQUEST, on_started=started))
@@ -162,6 +164,9 @@ async def test_the_run_is_logged_as_started_only_once_the_chat_is_its_own(seams:
     assert seams.order == ["started", "wake", "run"]
     dispatched = run.await_args.kwargs["run"]
     assert dispatched.task_id == seams.task_ids[0]
+    claim.assert_awaited_once_with(
+        "run-conv", build_lock_value(dispatched.stream_id, dispatched.task_id)
+    )
     (finished,) = seams.finish.await_args.args
     assert (finished.run_id, finished.write_up, finished.result_text) == (
         "run_1",
@@ -175,7 +180,7 @@ async def test_a_wake_the_log_refuses_frees_the_lock_and_runs_nothing(seams: _Se
     seams.wake.side_effect = TodoRunCancelledError("a Stop came first")
     spawned = AsyncMock()
     with (
-        patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
         patch.object(todo_run, "run_executor_background", spawned),
         pytest.raises(TodoRunCancelledError, match="a Stop came first"),
     ):
@@ -199,7 +204,7 @@ async def test_a_run_parked_on_an_approval_delivers_nothing_yet(seams: _Seams) -
 
     seams.state.side_effect = parked
     with (
-        patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
         patch.object(todo_run, "run_executor_background", AsyncMock()),
     ):
         await run_todo_on_executor(REQUEST)
@@ -221,7 +226,7 @@ async def test_a_run_that_never_finishes_is_stopped_before_the_attempt_fails(
             abandoned_when_stopped.append(executor_abandoned(run.stream_id))
 
     with (
-        patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
         patch.object(todo_run, "run_executor_background", stall),
         patch.object(todo_run, "BACKGROUND_EXECUTOR_WAIT_TIMEOUT", 0.01),
         pytest.raises(TodoRunFailedError, match="did not finish"),
@@ -231,6 +236,58 @@ async def test_a_run_that_never_finishes_is_stopped_before_the_attempt_fails(
     # Stopped before the attempt failed, and marked abandoned first so its finalize logs nothing.
     assert abandoned_when_stopped == [True]
     seams.finish.assert_not_awaited()
+
+
+class TestACancelledJob:
+    """A worker shutting down cancels the job: its shielded run must not outlive it holding the chat."""
+
+    async def _cancel_mid_run(
+        self, finalize: Coroutine[object, object, None]
+    ) -> tuple[AsyncMock, list[str]]:
+        mid_run = asyncio.Event()
+        ended: list[str] = []
+
+        async def long_call(*, run, task, configurable) -> None:
+            ended.append(run.stream_id)
+            mid_run.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                await finalize
+                ended.append("finalized")
+
+        stop = AsyncMock(return_value=[])
+        with (
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
+            patch.object(todo_run, "run_executor_background", long_call),
+            patch.object(todo_run, "stop_stream", stop),
+            patch.object(todo_run, "TODO_RUN_STOP_FINALIZE_SECONDS", 0.05),
+        ):
+            job = asyncio.create_task(run_todo_on_executor(REQUEST))
+            await mid_run.wait()
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+        return stop, ended
+
+    async def test_the_run_is_stopped_and_its_finalize_awaited_before_the_job_ends(
+        self, seams: _Seams
+    ) -> None:
+        stop, ended = await self._cancel_mid_run(asyncio.sleep(0.01))
+
+        stream_id = ended[0]
+        stop.assert_awaited_once_with("run-conv", stream_id)
+        assert ended == [stream_id, "finalized"]
+        seams.finish.assert_not_awaited()
+
+    async def test_a_finalize_that_hangs_does_not_hold_the_job_past_its_bound(
+        self, seams: _Seams
+    ) -> None:
+        async with captured_wide_event() as event:
+            _, ended = await self._cancel_mid_run(asyncio.Event().wait())
+
+        assert "finalized" not in ended
+        assert event.get("tracked_todo") == {"stopped_with_job": True, "finalize_cut_off": True}
 
 
 class TestWhatTheRunsReplySettledTo:
@@ -282,7 +339,7 @@ class TestTheExecutorThreadReset:
     ) -> None:
         run = _recording_run(seams.order)
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", run),
             patch.object(todo_run, "log") as log,
         ):
@@ -298,7 +355,7 @@ class TestTheExecutorThreadReset:
         seams.reset.side_effect = None
         seams.reset.return_value = None
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", AsyncMock()),
             patch.object(todo_run, "log") as log,
         ):
@@ -311,7 +368,7 @@ class TestTheExecutorThreadReset:
 
     async def test_an_approval_resume_continues_the_thread_it_parked(self, seams: _Seams) -> None:
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", AsyncMock()),
         ):
             await run_todo_on_executor(REQUEST)
@@ -325,7 +382,7 @@ class TestTheExecutorThreadReset:
         seams.reset.side_effect = RuntimeError("postgres is down")
         run = AsyncMock()
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", run),
             pytest.raises(RuntimeError, match="postgres is down"),
         ):
@@ -389,7 +446,7 @@ class TestARunThatFinishedHandsItsResultOn:
 
         run_executor = AsyncMock(side_effect=_run)
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", run_executor),
             patch.object(todo_run, "spawn_background_task", spawn),
             patch.object(todo_run, "hand_unfinished_run_to_job", AsyncMock()) as handed,
@@ -421,7 +478,7 @@ class TestARunThatFinishedHandsItsResultOn:
         undone = object()
         seams.finish.return_value = undone
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", AsyncMock()),
             patch.object(todo_run, "hand_unfinished_run_to_job", AsyncMock()) as handed,
         ):
@@ -432,7 +489,7 @@ class TestARunThatFinishedHandsItsResultOn:
     async def test_a_run_whose_chat_was_deleted_delivers_nothing(self, seams: _Seams) -> None:
         seams.state.side_effect = ConversationNotFoundError("gone")
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", AsyncMock()),
         ):
             async with captured_wide_event() as event:
@@ -455,7 +512,7 @@ class TestARunThatFinishedHandsItsResultOn:
 
         seams.state.side_effect = parked
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", AsyncMock()),
         ):
             async with captured_wide_event() as event:
@@ -467,7 +524,7 @@ class TestARunThatFinishedHandsItsResultOn:
         other = LiveWork(task_id="someone-else", cause_through=3, answers=(), pending_approvals=())
         seams.state.return_value = EMPTY_LOG_STATE.model_copy(update={"work": (other,)})
         with (
-            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", AsyncMock()),
         ):
             await run_todo_on_executor(REQUEST)

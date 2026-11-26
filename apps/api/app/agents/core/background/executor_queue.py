@@ -73,7 +73,7 @@ class LockClaim(StrEnum):
     SEIZE   — take it from whoever holds it. Only a HIL approval resume, whose
               paused run deliberately holds the lock while it waits and whose
               process is long gone.
-    ACQUIRE — start only on a conversation nobody holds, atomically (SET NX).
+    ACQUIRE — start only on a conversation no live run holds (claim_conversation).
               Everything else: an unconditional SET let two detached runs start
               on one LangGraph thread, and the second one's write made the
               first's ownership-checked release a no-op, leaking the lock for
@@ -257,6 +257,14 @@ async def reclaim_dead_lock(conversation_id: str) -> bool:
     return await break_holder_lock(conversation_id, holder)
 
 
+async def claim_conversation(conversation_id: str, lock_value: str) -> bool:
+    """Take the busy lock for lock_value unless a live run holds it; a dead holder's lock is reclaimed first."""
+    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+    if await try_acquire_lock(lock_key, lock_value):
+        return True
+    return await reclaim_dead_lock(conversation_id) and await try_acquire_lock(lock_key, lock_value)
+
+
 async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: str | None) -> None:
     """Delete the busy lock only while this run still owns it.
 
@@ -360,7 +368,7 @@ async def prepare_run_from_item(
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(queued_stream_id, task_id or "")
     if claim is LockClaim.ACQUIRE:
-        if not await try_acquire_lock(lock_key, lock_value):
+        if not await claim_conversation(conversation_id, lock_value):
             log.info(
                 f"{LogTag.AGENT} Conversation already has a running executor; no run started",
                 conversation_id=conversation_id,

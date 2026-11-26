@@ -47,6 +47,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
+    hold_run_alive,
     keep_alive,
     try_acquire_lock,
 )
@@ -55,7 +56,11 @@ from app.agents.core.background.executor_runner import (
     wake_executor_for_inbox,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind
-from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
+from app.agents.core.background.todo_run import (
+    ExecutorBusyError,
+    TodoRunRequest,
+    run_todo_on_executor,
+)
 from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
@@ -70,7 +75,11 @@ from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededExceptio
 from app.config.settings import settings
 from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import (
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
@@ -2259,6 +2268,87 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     assert await _unread(rig) is False
 
 
+#: A run's lock from a worker that exited mid-run: old enough to judge, its liveness lapsed.
+_DEAD_RUN_LOCK = build_lock_value("stream-dead", "t-dead")
+
+
+async def _lock_left_by_a_run_that_died(conversation_id: str) -> None:
+    await redis_cache.client.set(
+        f"{EXECUTOR_BUSY_PREFIX}{conversation_id}",
+        _DEAD_RUN_LOCK,
+        ex=EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+    )
+
+
+@pytest.mark.service
+async def test_a_todo_run_takes_a_chat_whose_executor_died_with_its_worker(
+    rig_for: RigFactory,
+) -> None:
+    """Regression: a deploy killed a todo run's executor, and its retry waited out the 30-minute lock."""
+    model = gated("Acme accepted the quote")
+    todo = _todo_doc("owner")
+    async with _todo_rig(rig_for, model, todo, _fake_executor("quote accepted")) as (
+        rig,
+        delivery,
+    ):
+        await _lock_left_by_a_run_that_died(rig.conversation_id)
+        await run_todo_on_executor(_todo_request(rig, todo))
+        await rig.settle()
+    [woke] = await rig.of(TodoWoke)
+    assert woke.run.run_id == "run_acme"
+    delivery.sent.assert_awaited_once()
+
+
+@pytest.mark.service
+async def test_a_todo_run_waits_for_a_chat_whose_executor_is_alive(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("unused")
+    todo = _todo_doc("owner")
+    async with _todo_rig(rig_for, model, todo, _fake_executor("unused")) as (rig, delivery):
+        await _lock_left_by_a_run_that_died(rig.conversation_id)
+        await hold_run_alive(rig.conversation_id, _DEAD_RUN_LOCK)
+        with pytest.raises(ExecutorBusyError):
+            await run_todo_on_executor(_todo_request(rig, todo))
+    assert await rig.of(TodoWoke) == []
+    delivery.sent.assert_not_awaited()
+    assert await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}") == (
+        _DEAD_RUN_LOCK
+    )
+
+
+@pytest.mark.service
+async def test_a_cancelled_todo_job_stops_its_run_and_its_retry_takes_the_chat_at_once(
+    rig_for: RigFactory,
+) -> None:
+    """Regression: a deploy cancelled the todo job, its shielded run kept the chat, and the retry waited 30 minutes."""
+    model = gated("Acme accepted the quote")
+    todo = _todo_doc("owner")
+    mid_run = asyncio.Event()
+
+    async def a_long_executor_call(*_: object) -> None:
+        mid_run.set()
+        await asyncio.Event().wait()
+
+    async with _todo_rig(rig_for, model, todo, executor_runner.run_executor_background) as (
+        rig,
+        delivery,
+    ):
+        with patch.object(executor_runner, "_execute_executor", a_long_executor_call):
+            job = asyncio.create_task(run_todo_on_executor(_todo_request(rig, todo)))
+            await asyncio.wait_for(mid_run.wait(), 5)
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+        assert await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}") is None
+        [stopped] = await rig.of(WorkFinished)
+        assert stopped.outcome is WorkOutcome.CANCELLED
+        with patch.object(todo_run, "run_executor_background", _fake_executor("quote accepted")):
+            await run_todo_on_executor(_todo_request(rig, todo))
+        await rig.settle()
+    delivery.sent.assert_awaited_once()
+
+
 @pytest.mark.service
 async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sends_nothing(
     rig_for: RigFactory,
@@ -3448,7 +3538,7 @@ async def test_an_approve_whose_hand_off_failed_is_carried_out_once_by_the_sweep
 
     with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
         with (
-            patch.object(executor_runner, "reclaim_dead_lock", blip),
+            patch.object(executor_runner, "_start_executor_run", blip),
             pytest.raises(RedisConnectionError),
         ):
             await ledger_decide.decide_ledger(

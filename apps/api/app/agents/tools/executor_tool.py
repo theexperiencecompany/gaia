@@ -18,9 +18,9 @@ from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     build_lock_value,
+    claim_conversation,
     decode_raw_item,
     parse_lock_value,
-    reclaim_dead_lock,
     release_lock_if_owned,
     try_acquire_lock,
 )
@@ -265,13 +265,7 @@ async def _dispatch_executor(
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(stream_id, task_id)
 
-    acquired = await try_acquire_lock(lock_key, lock_value)
-    # A holder whose process died (a restart mid-run) keeps the lock, but no run
-    # will ever drain the inbox: reclaim it as deliver_to_executor does, or this
-    # request is handed to nobody for the lock's whole TTL.
-    if not acquired and await reclaim_dead_lock(conversation_id):
-        acquired = await try_acquire_lock(lock_key, lock_value)
-
+    acquired = await claim_conversation(conversation_id, lock_value)
     held_value = None if acquired else await redis_cache.client.get(lock_key)
     if not acquired and held_value is None:
         # Freed between the acquire and the read (a concurrent cancel): there is no run to hand to.

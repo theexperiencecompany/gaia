@@ -100,7 +100,6 @@ def _busy(stack: ExitStack, order: list[str], joined: bool) -> AsyncMock:
 
     inbox = MagicMock()
     inbox.return_value.append = AsyncMock(side_effect=handed)
-    stack.enter_context(patch.object(et, "reclaim_dead_lock", AsyncMock(return_value=False)))
     stack.enter_context(
         patch.object(et, "_acquire_lock_through_redirect", AsyncMock(return_value=False))
     )
