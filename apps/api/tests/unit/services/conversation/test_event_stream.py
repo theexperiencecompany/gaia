@@ -446,6 +446,12 @@ async def test_only_a_wire_2_screen_carries_held_cards_and_only_when_it_names_so
     assert "held_cards" not in await sent(naming, EventsWire.ITEMS)
 
 
+def test_the_contract_marks_held_cards_optional_because_a_screen_may_omit_it() -> None:
+    required = ScreenFrame.model_json_schema(mode="serialization")["required"]
+    assert "held_cards" not in required
+    assert {"kind", "items", "head"} <= set(required)
+
+
 async def test_the_newest_user_message_is_sent_only_from_inside_the_page(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:

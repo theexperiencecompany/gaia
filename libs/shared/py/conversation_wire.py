@@ -328,10 +328,17 @@ class ScreenItemHeader(ScreenItemBase):
 ItemT = TypeVar("ItemT")
 
 
+def _held_cards_optional(schema: JsonDict) -> None:
+    """Leave held_cards out of the required keys: a screen that names none omits it."""
+    required = schema.get("required")
+    if isinstance(required, list):
+        schema["required"] = [key for key in required if key != "held_cards"]
+
+
 class ScreenFrame(BaseModel, Generic[ItemT]):
     """The screen a connection opens on: its newest page, or only what is new or changed since the client's after."""
 
-    model_config = WIRE_CONFIG
+    model_config = ConfigDict(**WIRE_CONFIG, json_schema_extra=_held_cards_optional)
 
     kind: Literal[FrameKind.SCREEN] = FrameKind.SCREEN
     items: tuple[ItemT, ...]

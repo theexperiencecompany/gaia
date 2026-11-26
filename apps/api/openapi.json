@@ -19558,7 +19558,6 @@
         "required": [
           "kind",
           "items",
-          "held_cards",
           "head"
         ],
         "title": "ScreenFrame",

@@ -15296,7 +15296,7 @@ export interface components {
              * Held Cards
              * @default {}
              */
-            held_cards: {
+            held_cards?: {
                 [key: string]: {
                     [key: string]: number;
                 };
