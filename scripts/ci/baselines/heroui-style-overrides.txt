@@ -149,7 +149,6 @@ apps/web/src/features/chat/components/code-block/CustomAnchor.tsx:Tooltip.Conten
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:border-zinc-800
 apps/web/src/features/landing/components/demo/MemoryGraphDemo.tsx:Card:border-zinc-600
 apps/web/src/features/landing/components/demo/integrations-demo/DemoIntegrationsView.tsx:InputGroup:border-zinc-700
-apps/web/src/features/notification/components/NotificationCenter.tsx:Popover.Content:border-zinc-700
 apps/web/src/features/pins/components/PinsPage.tsx:SearchField.Group:border-zinc-700
 apps/web/src/features/todo/components/TodoSidebarEditors.tsx:Checkbox:border-zinc-500
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { Tooltip } from "@heroui/react";
 import {
   ArrowRight01Icon,
   CheckmarkCircle02Icon,
@@ -111,29 +112,49 @@ export const NotificationCard = ({
     >
       <div className="min-w-0">
         <div className="flex min-h-6 items-center gap-2">
-          <h3
-            className={cn(
-              "min-w-0 truncate text-sm font-medium",
-              isUnread ? "text-zinc-100" : "text-zinc-400",
+          {/* w-0 keeps the title's length out of the panel scroller's width, so a long one truncates */}
+          <div className="flex w-0 min-w-0 flex-1 items-center gap-2">
+            <h3
+              className={cn(
+                "min-w-0 truncate text-sm font-medium",
+                isUnread ? "text-zinc-100" : "text-zinc-400",
+              )}
+            >
+              {card ? BRIEF_LABEL : title}
+            </h3>
+            {isUnread && (
+              <span
+                role="img"
+                aria-label="Unread"
+                className="size-1.5 shrink-0 rounded-full bg-accent"
+              />
             )}
-          >
-            {card ? BRIEF_LABEL : title}
-          </h3>
-          {isUnread && (
-            <span
-              role="img"
-              aria-label="Unread"
-              className="size-1.5 shrink-0 rounded-full bg-accent"
-            />
-          )}
+          </div>
           <span
-            className="ml-auto shrink-0 text-xs whitespace-nowrap text-zinc-500 tabular-nums"
+            className="shrink-0 text-xs whitespace-nowrap text-zinc-500 tabular-nums"
             suppressHydrationWarning
           >
             {formatDistanceToNow(new Date(notification.created_at), {
               addSuffix: true,
             })}
           </span>
+          {isUnread && onMarkAsRead && (
+            <Tooltip delay={300}>
+              <GaiaButton
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                tone="faint"
+                hoverTone="accent"
+                aria-label="Mark as read"
+                className="-my-1 -mr-1.5 shrink-0"
+                onPress={handleMarkAsRead}
+              >
+                <CheckmarkCircle02Icon className="size-4" />
+              </GaiaButton>
+              <Tooltip.Content>Mark as read</Tooltip.Content>
+            </Tooltip>
+          )}
         </div>
         {card ? (
           <div className="mt-3 w-full max-w-56">
@@ -163,7 +184,7 @@ export const NotificationCard = ({
         )}
       </div>
 
-      {(actions.length > 0 || (isUnread && onMarkAsRead)) && (
+      {actions.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {actions.map((action) => {
             const isExecuted = Boolean(action.executed);
@@ -186,18 +207,6 @@ export const NotificationCard = ({
               </GaiaButton>
             );
           })}
-          {isUnread && onMarkAsRead && (
-            <GaiaButton
-              size="sm"
-              variant="ghost"
-              shape="md"
-              tone="faint"
-              onPress={handleMarkAsRead}
-            >
-              <CheckmarkCircle02Icon className="size-4" />
-              Mark as read
-            </GaiaButton>
-          )}
         </div>
       )}
 
