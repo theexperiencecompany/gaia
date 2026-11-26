@@ -19,14 +19,10 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
-from app.agents.core.background import running_registry, work_cancel
+from app.agents.core.background import executor_queue, running_registry, work_cancel
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.agents.core.background.executor_queue import (
-    claim_conversation,
-    release_lock_if_owned,
-    try_acquire_lock,
-)
+from app.agents.core.background.executor_queue import release_lock_if_owned, try_acquire_lock
 from app.agents.core.background.run_stop import request_stop, stop_requested
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
@@ -378,7 +374,7 @@ def release_lock_on_attempt(
 
     async def wrapped_claim(conversation_id: str, lock_value: str) -> bool:
         await attempt(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
-        return await claim_conversation(conversation_id, lock_value)
+        return await executor_queue.claim_conversation(conversation_id, lock_value)
 
     async def wrapped_acquire(lock_key: str, lock_value: str) -> bool:
         await attempt(lock_key)

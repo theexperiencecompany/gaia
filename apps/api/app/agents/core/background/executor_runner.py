@@ -181,8 +181,13 @@ async def _run_executor(
                 run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
             )
             try:
-                with span() as elapsed_active:
-                    result = await _execute_executor(task, configurable, run)
+                try:
+                    with span() as elapsed_active:
+                        result = await _execute_executor(task, configurable, run)
+                except asyncio.CancelledError:
+                    # Cut off mid-run: its work ends interrupted, never done with an empty result.
+                    cut = RunCut.INTERRUPTED
+                    raise
                 active_ms = round(elapsed_active() * 1000.0, 2)
                 result_text, result_type, run_ctx = result.text, result.type, result.ctx
                 cut = RunCut.STOPPED if result.stopped else None
@@ -208,10 +213,6 @@ async def _run_executor(
                 lifecycle.executor_active_ms = active_ms
                 if result_type == "error":
                     lifecycle.failure_reason = error_type
-            except asyncio.CancelledError:
-                # Cut off mid-run: its work ends interrupted, never done with an empty result.
-                cut = RunCut.INTERRUPTED
-                raise
             finally:
                 alive.cancel()
                 await _finalize_executor_run(run, result_text, result_type, run_ctx, cut=cut)

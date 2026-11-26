@@ -5,7 +5,7 @@ tests/integration/real/test_conversation_runtime_real.py.
 """
 
 import asyncio
-from collections.abc import Awaitable, Coroutine, Iterator
+from collections.abc import Coroutine, Iterator
 from contextlib import ExitStack
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -238,54 +238,111 @@ async def test_a_run_that_never_finishes_is_stopped_before_the_attempt_fails(
     seams.finish.assert_not_awaited()
 
 
+class _RunMidCall:
+    """A run parked in a long call; its finalize waits for release, so a test holds the job's wait open."""
+
+    def __init__(self) -> None:
+        self.mid_call = asyncio.Event()
+        self.finalizing = asyncio.Event()
+        self.release = asyncio.Event()
+        self.ended: list[str] = []
+
+    async def __call__(self, *, run, task, configurable) -> None:
+        self.ended.append(run.stream_id)
+        self.mid_call.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            self.finalizing.set()
+            await self.release.wait()
+            self.ended.append("finalized")
+
+
 class TestACancelledJob:
     """A worker shutting down cancels the job: its shielded run must not outlive it holding the chat."""
 
-    async def _cancel_mid_run(self, finalize: Awaitable[object]) -> tuple[AsyncMock, list[str]]:
-        mid_run = asyncio.Event()
-        ended: list[str] = []
+    @staticmethod
+    async def _cancelled_mid_call(run: _RunMidCall) -> asyncio.Task[None]:
+        job = asyncio.create_task(run_todo_on_executor(REQUEST))
+        await run.mid_call.wait()
+        job.cancel()
+        return job
 
-        async def long_call(*, run, task, configurable) -> None:
-            ended.append(run.stream_id)
-            mid_run.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                await finalize
-                ended.append("finalized")
+    @staticmethod
+    def _seamed(run: _RunMidCall, stop: AsyncMock) -> ExitStack:
+        stack = ExitStack()
+        stack.enter_context(
+            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True))
+        )
+        stack.enter_context(patch.object(todo_run, "run_executor_background", run))
+        stack.enter_context(patch.object(todo_run, "stop_stream", stop))
+        return stack
 
-        stop = AsyncMock(return_value=[])
-        with (
-            patch.object(todo_run, "claim_conversation", AsyncMock(return_value=True)),
-            patch.object(todo_run, "run_executor_background", long_call),
-            patch.object(todo_run, "stop_stream", stop),
-            patch.object(todo_run, "TODO_RUN_STOP_FINALIZE_SECONDS", 0.05),
-        ):
-            job = asyncio.create_task(run_todo_on_executor(REQUEST))
-            await mid_run.wait()
-            job.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await job
-        return stop, ended
-
+    @pytest.mark.regression
     async def test_the_run_is_stopped_and_its_finalize_awaited_before_the_job_ends(
         self, seams: _Seams
     ) -> None:
-        stop, ended = await self._cancel_mid_run(asyncio.sleep(0.01))
+        run, stop = _RunMidCall(), AsyncMock(return_value=[])
+        with self._seamed(run, stop):
+            job = await self._cancelled_mid_call(run)
+            await run.finalizing.wait()
+            assert not job.done()
+            run.release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await job
 
-        stream_id = ended[0]
+        stream_id = run.ended[0]
         stop.assert_awaited_once_with("run-conv", stream_id)
-        assert ended == [stream_id, "finalized"]
+        assert run.ended == [stream_id, "finalized"]
         seams.finish.assert_not_awaited()
 
+    @pytest.mark.regression
     async def test_a_finalize_that_hangs_does_not_hold_the_job_past_its_bound(
         self, seams: _Seams
     ) -> None:
+        run = _RunMidCall()
         async with captured_wide_event() as event:
-            _, ended = await self._cancel_mid_run(asyncio.Event().wait())
+            with (
+                self._seamed(run, AsyncMock(return_value=[])),
+                patch.object(todo_run, "TODO_RUN_STOP_FINALIZE_SECONDS", 0),
+            ):
+                job = await self._cancelled_mid_call(run)
+                with pytest.raises(asyncio.CancelledError):
+                    await job
 
-        assert "finalized" not in ended
+        assert "finalized" not in run.ended
         assert event.get("tracked_todo") == {"stopped_with_job": True, "finalize_cut_off": True}
+
+    @pytest.mark.regression
+    async def test_a_stop_that_fails_still_cuts_the_run_off(self, seams: _Seams) -> None:
+        run = _RunMidCall()
+        run.release.set()
+        with self._seamed(run, AsyncMock(side_effect=ConnectionError("redis down"))):
+            job = await self._cancelled_mid_call(run)
+            with pytest.raises(ConnectionError):
+                await job
+
+        assert run.ended[-1] == "finalized"
+
+    @pytest.mark.regression
+    async def test_a_stop_that_stalls_is_bounded_and_still_cuts_the_run_off(
+        self, seams: _Seams
+    ) -> None:
+        run = _RunMidCall()
+        run.release.set()
+
+        async def stalls(*_: object) -> None:
+            await asyncio.Event().wait()
+
+        with (
+            self._seamed(run, AsyncMock(side_effect=stalls)),
+            patch.object(todo_run, "TODO_RUN_STOP_REQUEST_SECONDS", 0),
+        ):
+            job = await self._cancelled_mid_call(run)
+            with pytest.raises(TimeoutError):
+                await job
+
+        assert run.ended[-1] == "finalized"
 
 
 class TestWhatTheRunsReplySettledTo:

@@ -39,7 +39,11 @@ from app.agents.core.background.todo_run_delivery import (
     hand_unfinished_run_to_job,
 )
 from app.agents.llm.lane import AgentRole
-from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT, TODO_RUN_STOP_FINALIZE_SECONDS
+from app.constants.cache import (
+    BACKGROUND_EXECUTOR_WAIT_TIMEOUT,
+    TODO_RUN_STOP_FINALIZE_SECONDS,
+    TODO_RUN_STOP_REQUEST_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -177,11 +181,18 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
 async def _stop_with_the_job(
     conversation_id: str, stream_id: str, run_task: asyncio.Task[None]
 ) -> None:
-    """Stop the run as a Stop would and wait, bounded, for its finalize to free the chat and log its work."""
-    await stop_stream(conversation_id, stream_id)
-    run_task.cancel()
-    _, still_running = await asyncio.wait({run_task}, timeout=TODO_RUN_STOP_FINALIZE_SECONDS)
-    log.set_ns("tracked_todo", stopped_with_job=True, finalize_cut_off=bool(still_running))
+    """Stop the run as a Stop would and wait, bounded, for its finalize to free the chat and log its work.
+
+    The run is cut off even when the stop request fails or stalls; that failure still propagates.
+    """
+    try:
+        await asyncio.wait_for(
+            stop_stream(conversation_id, stream_id), TODO_RUN_STOP_REQUEST_SECONDS
+        )
+    finally:
+        run_task.cancel()
+        _, still_running = await asyncio.wait({run_task}, timeout=TODO_RUN_STOP_FINALIZE_SECONDS)
+        log.set_ns("tracked_todo", stopped_with_job=True, finalize_cut_off=bool(still_running))
 
 
 async def _log_the_wake(request: TodoRunRequest, task_id: str) -> LoggedEntry:

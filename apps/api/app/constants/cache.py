@@ -215,7 +215,8 @@ RUNNING_SUBAGENT_THREAD_PREFIX = "subagents:thread:"
 #: means the job gets cut first mid-bookkeeping. Seen live: a stopped-mid-run
 #: executor left a record stuck 'running'.
 BACKGROUND_EXECUTOR_WAIT_TIMEOUT = 25 * 60
-#: Inside the 10 s Docker stop grace: a cancelled todo job waits this long for its stopped run's finalize.
+#: Together inside the 10 s Docker stop grace: a cancelled todo job's stop request, then its run's finalize.
+TODO_RUN_STOP_REQUEST_SECONDS = 2
 TODO_RUN_STOP_FINALIZE_SECONDS = 5
 # ElevenLabs voice lists (account + shared library) cached for the voice picker.
 ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"

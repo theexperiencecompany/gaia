@@ -74,6 +74,7 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.config.settings import settings
+from app.constants import conversation as conversation_constants
 from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import (
@@ -88,7 +89,6 @@ from app.constants.conversation import (
     RUNNER_ALIVE_BEATS_PER_TTL,
     RUNNER_ALIVE_TTL_SECONDS,
     STEP_TICK_SECONDS,
-    WORK_INTERRUPTED_REPORT,
 )
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
@@ -2286,6 +2286,7 @@ async def _lock_left_by_a_run_that_died(conversation_id: str) -> None:
 
 
 @pytest.mark.service
+@pytest.mark.regression
 async def test_a_todo_run_takes_a_chat_whose_executor_died_with_its_worker(
     rig_for: RigFactory,
 ) -> None:
@@ -2323,6 +2324,7 @@ async def test_a_todo_run_waits_for_a_chat_whose_executor_is_alive(
 
 
 @pytest.mark.service
+@pytest.mark.regression
 async def test_a_cancelled_todo_job_stops_its_run_and_its_retry_takes_the_chat_at_once(
     rig_for: RigFactory,
 ) -> None:
@@ -2349,7 +2351,7 @@ async def test_a_cancelled_todo_job_stops_its_run_and_its_retry_takes_the_chat_a
         [stopped] = await rig.of(WorkFinished)
         assert (stopped.outcome, stopped.report) == (
             WorkOutcome.CANCELLED,
-            WORK_INTERRUPTED_REPORT,
+            conversation_constants.WORK_INTERRUPTED_REPORT,
         )
         with patch.object(todo_run, "run_executor_background", _fake_executor("quote accepted")):
             await run_todo_on_executor(_todo_request(rig, todo))
