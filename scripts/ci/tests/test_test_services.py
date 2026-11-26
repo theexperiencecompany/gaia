@@ -321,6 +321,69 @@ def test_perjob_prepare_publishes_endpoints_without_the_bookkeeping_list(
     assert "DATABASE_URL=postgresql://gaia:gaia@localhost:5732/gaia_test" in gh_env.read_text()
 
 
+def test_a_developer_machine_defaults_to_a_lane_clear_of_the_dev_stacks_ports(
+    tmp_path: Path,
+) -> None:
+    # Lane 0 is the canonical 5432/6379/27017 a running `mise dev` already holds.
+    env = make_env(tmp_path)
+    del env["RUNNER_INDEX"]
+    env.pop("GITHUB_ACTIONS", None)
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "prepare"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        cwd=CI.parent.parent,
+    )
+    assert proc.returncode == 0, proc.stderr
+    written = (tmp_path / "gaia-test-services-12.env").read_text()
+    assert "DATABASE_URL=postgresql://gaia:gaia@localhost:6632/gaia_test" in written
+
+
+def test_a_github_runner_without_an_index_keeps_lane_zero(tmp_path: Path) -> None:
+    env = make_env(tmp_path, GITHUB_ACTIONS="true")
+    del env["RUNNER_INDEX"]
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "prepare"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        cwd=CI.parent.parent,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "localhost:5432/gaia_test" in (tmp_path / "gaia-test-services-0.env").read_text()
+
+
+def test_exec_runs_the_command_against_this_lanes_services(tmp_path: Path) -> None:
+    # Overrides what the caller exported: a worktree's mise env points REDIS_URL at the dev stack.
+    proc = run(
+        tmp_path,
+        "exec",
+        "--",
+        "bash",
+        "-c",
+        'echo "$REDIS_URL $MONGO_DB $USE_REAL_SERVICES"',
+        REDIS_URL="redis://localhost:7003/0",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip().splitlines()[-1] == (
+        "redis://localhost:6679/0 mongodb://gaia:gaia@localhost:27317/gaia_test?authSource=admin 1"
+    )
+    assert "run -d" in docker_log(tmp_path)
+
+
+def test_exec_passes_the_commands_exit_status_through(tmp_path: Path) -> None:
+    assert run(tmp_path, "exec", "--", "bash", "-c", "exit 7").returncode == 7
+
+
+def test_exec_without_a_command_is_a_usage_error(tmp_path: Path) -> None:
+    assert run(tmp_path, "exec").returncode == 2
+
+
 # --- the RabbitMQ probe that a root exec poisons ----------------------------
 
 
