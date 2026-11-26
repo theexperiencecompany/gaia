@@ -314,15 +314,20 @@ class TestACancelledJob:
         assert event.get("tracked_todo") == {"stopped_with_job": True, "finalize_cut_off": True}
 
     @pytest.mark.regression
-    async def test_a_stop_that_fails_still_cuts_the_run_off(self, seams: _Seams) -> None:
+    async def test_a_stop_that_fails_still_cuts_the_run_off_and_the_job_ends_cancelled(
+        self, seams: _Seams
+    ) -> None:
+        """A stop error that replaced the cancel read as a failed attempt: retried, and on a recurring todo given up."""
         run = _RunMidCall()
         run.release.set()
-        with self._seamed(run, AsyncMock(side_effect=ConnectionError("redis down"))):
-            job = await self._cancelled_mid_call(run)
-            with pytest.raises(ConnectionError):
-                await job
+        async with captured_wide_event() as event:
+            with self._seamed(run, AsyncMock(side_effect=ConnectionError("redis down"))):
+                job = await self._cancelled_mid_call(run)
+                with pytest.raises(asyncio.CancelledError):
+                    await job
 
         assert run.ended[-1] == "finalized"
+        assert [e["error_type"] for e in event["errors"]] == ["ConnectionError"]
 
     @pytest.mark.regression
     async def test_a_stop_that_stalls_is_bounded_and_still_cuts_the_run_off(
@@ -339,7 +344,7 @@ class TestACancelledJob:
             patch.object(todo_run, "TODO_RUN_STOP_REQUEST_SECONDS", 0),
         ):
             job = await self._cancelled_mid_call(run)
-            with pytest.raises(TimeoutError):
+            with pytest.raises(asyncio.CancelledError):
                 await job
 
         assert run.ended[-1] == "finalized"

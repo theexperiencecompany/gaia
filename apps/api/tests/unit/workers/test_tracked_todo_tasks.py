@@ -15,6 +15,7 @@ scheduled_at now always names the next planned execution, or nothing.
 Recurrence/timezone resolution itself is covered by test_tracked_todo_recurrence.py.
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
@@ -1522,6 +1523,28 @@ class TestExecuteTodoWithRetrySuccess:
         assert payload == {"gaia_retry_count": 0, "scheduled_at": None}
         pool.enqueue_job.assert_not_awaited()
         repaired.assert_not_awaited()
+
+    async def test_a_run_cut_by_a_shutdown_is_no_failed_attempt_and_no_retry(self):
+        doc = _doc(recurrence="daily", gaia_retry_count=2)
+        pool = _pool()
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=doc)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=asyncio.CancelledError)),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
+            _serving(pool),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await _execute_todo_with_retry("todo-1")
+
+        repo.update.assert_not_awaited()
+        repo.update_if_scheduled_at.assert_not_awaited()
+        pool.enqueue_job.assert_not_awaited()
 
     async def test_a_run_the_user_stopped_is_its_own_outcome_and_the_schedule_moves_on(self):
         """Regression: a stopped run read as a success. It is never retried: the user chose to stop it."""

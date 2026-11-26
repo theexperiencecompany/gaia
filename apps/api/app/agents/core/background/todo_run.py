@@ -183,13 +183,21 @@ async def _stop_with_the_job(
 ) -> None:
     """Stop the run as a Stop would and wait, bounded, for its finalize to free the chat and log its work.
 
-    The run is cut off even when the stop request fails or stalls; that failure still propagates.
+    The run is cut off even when the stop request fails or stalls. That failure is logged, never
+    raised: it would replace the job's cancel, and a shutdown would read as a failed attempt.
     """
     try:
         await asyncio.wait_for(
             stop_stream(conversation_id, stream_id), TODO_RUN_STOP_REQUEST_SECONDS
         )
+    except Exception as e:  # the cancel this runs under is the job's real ending
+        log.error(
+            f"{LogTag.TODO} Could not stop a cancelled todo job's run; cancelling it anyway",
+            conversation_id=conversation_id,
+            error_type=type(e).__name__,
+        )
     finally:
+        # Also on a second cancel landing mid-stop.
         run_task.cancel()
         _, still_running = await asyncio.wait({run_task}, timeout=TODO_RUN_STOP_FINALIZE_SECONDS)
         log.set_ns("tracked_todo", stopped_with_job=True, finalize_cut_off=bool(still_running))
