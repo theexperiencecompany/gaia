@@ -1,6 +1,6 @@
 import { replyItem, workItem } from "@shared/conversation/testing";
 import { describe, expect, it } from "vitest";
-import { type ChatRow, rowShows } from "./rows";
+import { type ChatRow, dayStarts, rowShows } from "./rows";
 
 const NONE = { steps: [], cards: [], progress: null };
 const THREAD = {
@@ -56,5 +56,41 @@ describe("whether a GAIA row draws anything, read from its timeline", () => {
       },
     };
     expect(rowShows(streaming, false)).toBe(true);
+  });
+});
+
+describe("which rows open a new calendar day", () => {
+  const NOW = new Date(2026, 10, 26, 18, 0);
+  const opens = (rows: ChatRow[]) =>
+    dayStarts(rows, NOW).map((day) => day !== null);
+  const at = (id: string, day: number, hour: number): ChatRow =>
+    row({
+      ...replyItem(id, 2, "hi"),
+      at: new Date(2026, 10, day, hour).toISOString(),
+    });
+
+  it("names the day above the first row and above each row on a later day", () => {
+    const rows = [
+      at("a", 24, 9),
+      at("b", 24, 23),
+      at("c", 25, 0),
+      at("d", 26, 8),
+    ];
+    expect(opens(rows)).toEqual([true, false, true, true]);
+  });
+
+  it("reads a row not logged yet as now, so it joins today's rows", () => {
+    const draft: ChatRow = {
+      kind: "draft",
+      draft: {
+        attemptId: "x",
+        replyId: null,
+        nextIndex: 0,
+        content: replyItem("r", 2, ""),
+      },
+    };
+    expect(opens([at("a", 26, 8), draft])).toEqual([true, false]);
+    expect(opens([at("a", 25, 8), draft])).toEqual([true, true]);
+    expect(dayStarts([at("a", 25, 8), draft], NOW)[1]).toBe(NOW);
   });
 });

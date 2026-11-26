@@ -34,9 +34,11 @@ import {
 import { useActiveLiveLoading } from "@/features/chat/live/useLiveChat";
 import { useChatStore } from "@/stores/chatStore";
 import type { SetImageDataType } from "@/types/features/chatBubbleTypes";
+import { DayDivider } from "./rows/DayDivider";
 import { GaiaRow } from "./rows/GaiaRow";
 import {
   type ChatRow,
+  dayStarts,
   isUserSide,
   type RowActions,
   type RowLayout,
@@ -342,6 +344,11 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
     () => rows.filter((row) => rowShows(row, alwaysShowsGaia)),
     [rows, alwaysShowsGaia],
   );
+  // The popup names no days, so its rows group as they always did.
+  const startsDay = useMemo(
+    () => (compact ? [] : dayStarts(shownRows, new Date())),
+    [shownRows, compact],
+  );
 
   // Scroll to (and highlight) a deep-linked message once it exists.
   const scrolledToMessageRef = useRef<string | null>(null);
@@ -381,13 +388,16 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
       {shownRows.map((row, index) => {
         const id = rowId(row);
         const userSide = isUserSide(row);
+        const day = startsDay[index];
         // Consecutive bubbles from one side group (iMessage-style): only the
         // LAST shows the avatar/actions/timestamp; others sit tight with no gap.
+        // A new day breaks the group, so the day before ends on its timestamp.
         const isGroupedWithNext =
           index + 1 < shownRows.length &&
+          !startsDay[index + 1] &&
           isUserSide(shownRows[index + 1]) === userSide;
         const isGroupedWithPrev =
-          index > 0 && isUserSide(shownRows[index - 1]) === userSide;
+          index > 0 && !day && isUserSide(shownRows[index - 1]) === userSide;
         // Only the active turn's bubble (the last one) is suppressed while
         // the conversation is busy — finished turns keep their actions.
         const suppressForBusy =
@@ -403,6 +413,7 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
             data-screen-item-id={id}
             data-screen-item-kind={rowKind(row)}
           >
+            {day && <DayDivider at={day} />}
             <ChatRowItem
               row={row}
               sends={sends}
