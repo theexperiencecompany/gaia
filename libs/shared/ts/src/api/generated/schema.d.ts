@@ -27108,9 +27108,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                gaia_mcp_oauth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {

@@ -8,12 +8,11 @@ Connection/disconnection is handled by the unified /integrations endpoints.
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_optional_user
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE
 from app.helpers.mcp_helpers import (
     get_frontend_url,
     get_mcp_oauth_redirect_uri,
@@ -27,6 +26,7 @@ from app.services.integrations.user_integrations import invalidate_user_integrat
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import (
+    oauth_browser_cookie,
     oauth_state_bound_to_browser,
     resolve_oauth_state_owner,
 )
@@ -163,12 +163,12 @@ class _McpCallback:
 
 @router.get("/oauth/callback", response_class=RedirectResponse)
 async def mcp_oauth_callback(
+    request: Request,
     state: str = Query(...),
     code: str | None = Query(None),  # Optional - may be missing if error
     error: str | None = Query(None),  # OAuth error code
     error_description: str | None = Query(None),  # OAuth error description
     user: AuthenticatedUser | None = Depends(get_optional_user),
-    browser_nonce: str | None = Cookie(None, alias=MCP_OAUTH_BROWSER_COOKIE),
 ) -> RedirectResponse:
     """Handle OAuth callback from MCP server, for the user its state was minted for.
 
@@ -208,7 +208,9 @@ async def mcp_oauth_callback(
     started_here = (
         user.user_id == user_id
         if user is not None
-        else await oauth_state_bound_to_browser(state_token, browser_nonce)
+        else await oauth_state_bound_to_browser(
+            state_token, request.cookies.get(oauth_browser_cookie(integration_id))
+        )
     )
     if not started_here:
         log.warning(

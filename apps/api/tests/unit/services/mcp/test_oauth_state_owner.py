@@ -8,6 +8,7 @@ from app.services.mcp.mcp_token_store import (
     MCPTokenStore,
     OAuthStateStoreError,
     bind_oauth_state_to_browser,
+    oauth_browser_cookie,
     oauth_state_bound_to_browser,
     resolve_oauth_state_owner,
 )
@@ -123,3 +124,12 @@ def test_the_state_token_is_read_from_the_authorization_url(url: str, token: str
 def test_an_authorization_url_without_a_state_fails_loud() -> None:
     with pytest.raises(ValueError, match="^an MCP authorization URL carries no state$"):
         oauth_state_token("https://auth.example/authorize?client_id=x")
+
+
+def test_each_integration_gets_its_own_cookie_name() -> None:
+    names = {oauth_browser_cookie(i) for i in ("resend", "dodo", "df614419-d489-4b32")}
+
+    assert len(names) == 3
+    assert all(
+        n.startswith("gaia_mcp_oauth_") and len(n) == len("gaia_mcp_oauth_") + 16 for n in names
+    )

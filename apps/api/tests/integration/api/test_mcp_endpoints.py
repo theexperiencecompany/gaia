@@ -10,12 +10,15 @@ import httpx
 import pytest
 
 from app.config.settings import settings
-from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
 from app.models.auth_models import LocalCredentialDocument
 from app.models.user_models import UserDocument
-from app.services.mcp.mcp_token_store import MCPTokenStore, bind_oauth_state_to_browser
+from app.services.mcp.mcp_token_store import (
+    MCPTokenStore,
+    bind_oauth_state_to_browser,
+    oauth_browser_cookie,
+)
 from app.utils import local_auth_utils
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, issue_session_token
 from tests.conftest import FAKE_USER
@@ -814,7 +817,7 @@ class TestMcpOAuthCallbackStateAuth:
             if session_token is not None:
                 client.cookies.set(LOCAL_SESSION_COOKIE, session_token)
             if browser_nonce is not None:
-                client.cookies.set(MCP_OAUTH_BROWSER_COOKIE, browser_nonce)
+                client.cookies.set(oauth_browser_cookie("test-integration"), browser_nonce)
             return await client.get(
                 "/api/v1/mcp/oauth/callback",
                 params={"code": "auth-code", "state": f"{state}:test-integration:/integrations"},

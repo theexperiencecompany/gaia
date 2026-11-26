@@ -13,11 +13,11 @@ import pytest
 
 from app.constants.integrations import NOT_SET_UP_ON_INSTANCE
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE, MCP_OAUTH_CALLBACK_PATH
+from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.composio.error_detail import AuthConfigNotFoundError
 from app.services.connect_link_service import ConnectLinkBinding
-from app.services.mcp.mcp_token_store import oauth_state_bound_to_browser
+from app.services.mcp.mcp_token_store import oauth_browser_cookie, oauth_state_bound_to_browser
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnected,
@@ -618,7 +618,7 @@ class TestConnectLinkEndpoint:
             )
 
         assert resp.status_code == 303
-        cookie = resp.cookies.get(MCP_OAUTH_BROWSER_COOKIE)
+        cookie = resp.cookies.get(oauth_browser_cookie("resend"))
         assert cookie
         assert await oauth_state_bound_to_browser(state, cookie)
         set_cookie = resp.headers["set-cookie"].lower()

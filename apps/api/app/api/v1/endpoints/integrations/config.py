@@ -12,7 +12,7 @@ from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.cache import OAUTH_STATE_TTL
 from app.constants.integrations import MANAGED_BY_MCP
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE, MCP_OAUTH_CALLBACK_PATH
+from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
@@ -36,7 +36,7 @@ from app.services.integrations.my_integrations import (
     get_my_integrations,
 )
 from app.services.mcp.mcp_oauth import oauth_state_token
-from app.services.mcp.mcp_token_store import bind_oauth_state_to_browser
+from app.services.mcp.mcp_token_store import bind_oauth_state_to_browser, oauth_browser_cookie
 from app.utils.auth_utils import session_cookie_secure
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
@@ -198,12 +198,12 @@ def _connect_link_error(reason: str) -> RedirectResponse:
 
 
 async def _bind_to_this_browser(
-    request: Request, response: RedirectResponse, auth_url: str
+    request: Request, response: RedirectResponse, auth_url: str, integration_id: str
 ) -> None:
     """Tie the MCP flow this connect link starts to this browser, the only one its callback accepts."""
     # SameSite defaults to lax: the provider's redirect back is a top-level GET, which lax lets through.
     response.set_cookie(
-        key=MCP_OAUTH_BROWSER_COOKIE,
+        key=oauth_browser_cookie(integration_id),
         value=await bind_oauth_state_to_browser(oauth_state_token(auth_url)),
         max_age=OAUTH_STATE_TTL,
         path=MCP_OAUTH_CALLBACK_PATH,
@@ -290,7 +290,7 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         log.set(outcome="redirect")
         response = RedirectResponse(url=result.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
         if resolved.managed_by == MANAGED_BY_MCP:
-            await _bind_to_this_browser(request, response, result.redirect_url)
+            await _bind_to_this_browser(request, response, result.redirect_url, integration_id)
         return response
 
     log.set(outcome="error")

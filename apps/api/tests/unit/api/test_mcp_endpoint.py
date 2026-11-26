@@ -15,7 +15,6 @@ import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.api.v1.endpoints.mcp import mcp_oauth_callback
-from app.constants import mcp as mcp_constants
 from app.constants.log_tags import LogTag
 from app.services.mcp import mcp_token_store
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -108,7 +107,7 @@ class TestMCPOAuthCallbackWithoutASession:
         state = await MCPTokenStore(USER_ID).create_oauth_state("github", "verifier")
         # read at call time: the regression lane imports this file against master
         nonce = await mcp_token_store.bind_oauth_state_to_browser(state)
-        unauthed_client.cookies.set(mcp_constants.MCP_OAUTH_BROWSER_COOKIE, nonce)
+        unauthed_client.cookies.set(mcp_token_store.oauth_browser_cookie("github"), nonce)
         mcp_client = _mcp_client()
 
         with (
@@ -164,6 +163,35 @@ class TestMCPOAuthCallbackWithoutASession:
         seams["exchange"].assert_not_awaited()
 
 
+class TestMCPOAuthCallbackConcurrentFlows:
+    """Two connect links opened one after the other (Resend, then Dodo) each keep their binding."""
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_the_first_flow_still_completes_after_a_second_link_was_opened(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        resend = await MCPTokenStore(USER_ID).create_oauth_state("github", "v1")
+        dodo = await MCPTokenStore(USER_ID).create_oauth_state("dodo", "v2")
+        unauthed_client.cookies.set(
+            mcp_token_store.oauth_browser_cookie("github"),
+            await mcp_token_store.bind_oauth_state_to_browser(resend),
+        )
+        unauthed_client.cookies.set(
+            mcp_token_store.oauth_browser_cookie("dodo"),
+            await mcp_token_store.bind_oauth_state_to_browser(dodo),
+        )
+
+        with _callback_seams(_mcp_client(), _resolved("GitHub"), real_owner_lookup=True) as seams:
+            resp = await unauthed_client.get(
+                CALLBACK_URL,
+                params={"state": f"{resend}:github:/integrations", "code": "code1"},
+                follow_redirects=False,
+            )
+
+        assert "status=connected" in resp.headers["location"]
+        seams["exchange"].assert_awaited_once()
+
+
 class TestMCPOAuthCallbackFromAnotherBrowser:
     """A provider link someone else started cannot attach the clicker's account to theirs."""
 
@@ -193,7 +221,7 @@ class TestMCPOAuthCallbackFromAnotherBrowser:
         state = await store.create_oauth_state("github", "verifier")
         other = await MCPTokenStore("other-user").create_oauth_state("github", "verifier")
         nonce = await mcp_token_store.bind_oauth_state_to_browser(other)
-        unauthed_client.cookies.set(mcp_constants.MCP_OAUTH_BROWSER_COOKIE, nonce)
+        unauthed_client.cookies.set(mcp_token_store.oauth_browser_cookie("github"), nonce)
 
         with _callback_seams(_mcp_client(), real_owner_lookup=True) as seams:
             resp = await unauthed_client.get(
@@ -306,7 +334,7 @@ class TestMCPOAuthCallback:
                     error=None,
                     error_description=None,
                     user=FAKE_USER,
-                    browser_nonce=None,
+                    request=MagicMock(cookies={}),
                 )
                 # The boundary stamps its own outcome on exit; the route's is
                 # only readable before that.
@@ -489,7 +517,7 @@ class TestMCPOAuthCallback:
                     error=None,
                     error_description=None,
                     user=FAKE_USER,
-                    browser_nonce=None,
+                    request=MagicMock(cookies={}),
                 )
                 outcome = event["outcome"]
 

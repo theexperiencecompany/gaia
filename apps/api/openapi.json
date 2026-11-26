@@ -36990,22 +36990,6 @@
               ],
               "title": "Error Description"
             }
-          },
-          {
-            "in": "cookie",
-            "name": "gaia_mcp_oauth",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Gaia Mcp Oauth"
-            }
           }
         ],
         "responses": {

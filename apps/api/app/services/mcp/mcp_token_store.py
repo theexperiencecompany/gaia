@@ -26,7 +26,7 @@ from app.constants.cache import (
     OAUTH_STATE_TTL,
 )
 from app.constants.log_tags import LogTag
-from app.constants.mcp import OAUTH_BROWSER_NONCE_BYTES
+from app.constants.mcp import MCP_OAUTH_BROWSER_COOKIE, OAUTH_BROWSER_NONCE_BYTES
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
@@ -80,6 +80,11 @@ def _digest(nonce: str) -> str:
 async def _forget_state(state: str) -> None:
     await delete_cache(_oauth_owner_key(state))
     await delete_cache(_oauth_browser_key(state))
+
+
+def oauth_browser_cookie(integration_id: str) -> str:
+    """Name the cookie that binds one integration's pending flow to its browser, so two flows never share one."""
+    return f"{MCP_OAUTH_BROWSER_COOKIE}_{hashlib.sha256(integration_id.encode()).hexdigest()[:16]}"
 
 
 async def bind_oauth_state_to_browser(state: str) -> str:
