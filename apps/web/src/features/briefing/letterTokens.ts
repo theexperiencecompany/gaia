@@ -11,8 +11,6 @@ export const CHAT_LETTER_MAX_WIDTH_PX = 340;
 export const LETTER_TILT_DEG = 12;
 /** The perspective the tipped letter is seen in. */
 export const LETTER_TILT_PERSPECTIVE_PX = 1100;
-/** How far each lower crease of a letter at rest has sprung open, as paper does once folded; the unfold starts from it. */
-export const RESTING_OPEN = 0.15;
 /** The deeper perspective the panels unfold in, so a far crease never looms. */
 export const LETTER_FOLD_PERSPECTIVE_PX = 1800;
 

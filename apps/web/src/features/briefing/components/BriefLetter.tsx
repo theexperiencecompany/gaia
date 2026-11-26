@@ -1,8 +1,8 @@
 "use client";
 
 import { Skeleton } from "@heroui/react";
-import { type MotionValue, motionValue, useInView } from "motion/react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useInView } from "motion/react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LETTER_HOVER_EASE } from "@/components/shared/letterMotion";
@@ -11,21 +11,32 @@ import { cn } from "@/lib/utils";
 import type { BriefTriggerState } from "../hooks/useOpenBrief";
 import {
   CHAT_LETTER_MAX_WIDTH_PX,
-  LETTER_FOLD_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   LETTER_TILT_PERSPECTIVE_PX,
-  RESTING_OPEN,
 } from "../letterTokens";
+import {
+  edgeLight,
+  foldedReverse,
+  PAPER_GRAIN,
+  rolledEdge,
+  underFoldShadow,
+} from "../paperMaterial";
 import type { FoldedBriefSummary } from "../utils/briefCard";
 
 import { holdEdition, type PreparedEdition } from "../utils/preparedEdition";
 import { BriefTrigger } from "./BriefTrigger";
-import { Panel } from "./LetterPanel";
+import { PanelFace } from "./EditionUnfold";
 
 /** Start preparing a little before the letter scrolls into view. */
 const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
 const PLACEHOLDER_ASPECT = 2.4;
+const CREASE_PX = 6;
+/** The two folded-under panels show as the sheet's unprinted reverse, each a little deeper back. */
+const FOLDED_LAYERS = [
+  { heightPx: 8, tint: 90, nudgeXPx: 0, turnDeg: 0, inset: 0 },
+  { heightPx: 7, tint: 83, nudgeXPx: 1, turnDeg: 0.3, inset: 0.6 },
+] as const;
 
 /** An edition handed to the letter, with the hold that keeps its bitmaps open until the face is drawn. */
 interface EditionDelivery {
@@ -40,19 +51,57 @@ interface BriefLetterProps {
   trigger: BriefTriggerState;
 }
 
-/** The room the sprung panels take below the front, as a share of the letter's width. */
-const RESTING_SPRING_ROOM = 0.06;
+/** The front's bottom edge rolling under onto the folded panels. */
+function RolledEdge({ edition }: { edition: PreparedEdition }) {
+  return (
+    <span
+      aria-hidden
+      className="relative z-10 block rounded-b-[5px]"
+      style={{
+        height: CREASE_PX,
+        background: rolledEdge(edition.paper, edition.isDarkPaper),
+      }}
+    />
+  );
+}
 
-function useRestingCreases(
-  edition: PreparedEdition | null,
-): MotionValue<number>[] {
-  const count = edition?.panels.length ?? 0;
-  return useMemo(
-    () =>
-      Array.from({ length: count }, (_, index) =>
-        motionValue(index === 0 ? 1 : RESTING_OPEN),
-      ),
-    [count],
+/**
+ * The folded-under panels: the sheet's reverse, same paper and grain without the
+ * print, in the front's shadow just under the crease, the back one set a hair askew.
+ */
+function FoldedPanels({ edition }: { edition: PreparedEdition }) {
+  const { paper, isDarkPaper } = edition;
+  return (
+    <>
+      {FOLDED_LAYERS.map((layer, depth) => (
+        <span
+          key={layer.heightPx}
+          aria-hidden
+          className="relative block overflow-hidden rounded-b-[4px]"
+          style={{
+            height: layer.heightPx,
+            marginInline: `${layer.inset}%`,
+            marginTop: depth === 0 ? -2 : -1,
+            zIndex: -depth,
+            transform: `translateX(${layer.nudgeXPx}px) rotate(${layer.turnDeg}deg)`,
+            background: foldedReverse(paper, layer.tint),
+          }}
+        >
+          <span
+            className="absolute inset-0 opacity-30 mix-blend-multiply"
+            style={{ backgroundImage: PAPER_GRAIN }}
+          />
+          <span
+            className="absolute inset-0"
+            style={{ background: underFoldShadow(isDarkPaper) }}
+          />
+          <span
+            className="absolute inset-x-0 bottom-0 h-px"
+            style={{ background: edgeLight("fold", isDarkPaper) }}
+          />
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -70,7 +119,6 @@ export function BriefLetter({ brief, trigger }: BriefLetterProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const isFailed = imageUrl !== null && failedUrl === imageUrl;
   const edition = delivery?.edition ?? null;
-  const restingCreases = useRestingCreases(edition);
 
   // Each approach readies the edition again, so a press opens it at once; leaving lets it go.
   useEffect(() => {
@@ -146,24 +194,31 @@ export function BriefLetter({ brief, trigger }: BriefLetterProps) {
           >
             <span
               ref={faceRef}
-              className="relative z-10 block"
+              className="relative z-10 block overflow-hidden rounded-t-[3px]"
               style={{
                 aspectRatio: `${1 / (edition.aspect * edition.shares[0])}`,
-                marginBottom: `${RESTING_SPRING_ROOM * 100}%`,
+                background: edition.paper,
+                // A hairline of the paper's own colour keeps the tilted edge from picking up the page.
+                boxShadow: `0 0 0 0.5px ${edition.paper}`,
+                outline: "1px solid transparent",
               }}
             >
+              <PanelFace bitmap={edition.panels[0]} />
               <span
-                className="absolute inset-x-0 top-0 block"
+                aria-hidden
+                className="absolute inset-0 opacity-30 mix-blend-multiply"
+                style={{ backgroundImage: PAPER_GRAIN }}
+              />
+              <span
+                aria-hidden
+                className="absolute inset-x-0 top-0 h-px"
                 style={{
-                  height: `${100 / edition.shares[0]}%`,
-                  perspective: LETTER_FOLD_PERSPECTIVE_PX,
-                  perspectiveOrigin: "50% 0%",
-                  transformStyle: "preserve-3d",
+                  background: edgeLight("face", edition.isDarkPaper),
                 }}
-              >
-                <Panel index={0} edition={edition} creases={restingCreases} />
-              </span>
+              />
             </span>
+            <RolledEdge edition={edition} />
+            <FoldedPanels edition={edition} />
           </span>
         </BriefTrigger>
       ) : !imageUrl || isFailed ? (
