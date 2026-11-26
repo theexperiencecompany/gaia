@@ -371,10 +371,15 @@ class TestStandaloneMcpAuthorization:
     async def test_oauth_mcp_url_is_relayed_on_ui_and_bots_get_the_connect_link(self) -> None:
         build_url = _known_auth_url()
         with _graph_run("ui"), _mcp_oauth(build_url) as client:
-            ui_message = await request_integration_connection(
-                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
-            )
+            with patch(
+                "app.utils.integration_checker.get_mcp_client", AsyncMock(return_value=client)
+            ) as get_client:
+                ui_message = await request_integration_connection(
+                    "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+                )
 
+        # the OAuth state is minted in the requesting user's own token store
+        get_client.assert_awaited_once_with(user_id="user1")
         build_url.assert_awaited_once_with(
             client.token_store,
             integration_id="posthog",
