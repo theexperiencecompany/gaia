@@ -14,7 +14,7 @@ lane without grepping the workflow first.
 | Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `rescope`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `run-job`, `health` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
-| The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |
+| The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval`, `install-playwright` |
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
 | Is the suite strong enough | `mutation.py` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
