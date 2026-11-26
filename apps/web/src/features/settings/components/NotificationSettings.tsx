@@ -2,19 +2,19 @@
 
 import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import type { ChannelPlatform } from "@gaia/shared/types";
-import { ListBox, Select, Switch } from "@heroui/react";
+import { Switch } from "@heroui/react";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { inputVariants } from "@/components/shared/controlVariants";
-import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
-import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { LoadError } from "@/components/shared/LoadError";
-import { isBotPlatform } from "@/config/botPlatforms";
 import {
   NOTIFICATION_CHANNEL_ICONS,
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "@/features/notification/constants";
+import {
+  CHAT_CHANNEL_SELECT_LABEL,
+  ChatChannelSelect,
+} from "@/features/settings/components/ChatChannelSelect";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { UnlinkedPlatformsRow } from "@/features/settings/components/UnlinkedPlatformsRow";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
@@ -96,35 +96,14 @@ export default function NotificationSettings() {
           <UnlinkedPlatformsRow platforms={unlinkedPlatforms} />
           {linkedOrder.length > 1 && (
             <SettingsRow
-              label="Text me first on"
-              description="When you haven't chatted lately, GAIA starts here."
+              label={CHAT_CHANNEL_SELECT_LABEL}
+              description="GAIA texts one chat app, never all of them: the one you chatted on lately, otherwise this one."
             >
-              <Select
-                className={inputVariants({ size: "sm", className: "w-36" })}
-                aria-label="Text me first on"
-                value={linkedOrder[0]}
-                isDisabled={saving}
-                onChange={(key) => {
-                  const next = key == null ? null : String(key);
-                  if (next && isBotPlatform(next)) void putFirst(next);
-                }}
-              >
-                <Select.Trigger>
-                  <GaiaSelectValue />
-                  <Select.Indicator />
-                </Select.Trigger>
-                <Select.Popover>
-                  <ListBox>
-                    {linkedOrder.map((platform) => (
-                      <GaiaListBoxItem
-                        key={platform}
-                        id={platform}
-                        textValue={NOTIFICATION_CHANNEL_LABELS[platform]}
-                      />
-                    ))}
-                  </ListBox>
-                </Select.Popover>
-              </Select>
+              <ChatChannelSelect
+                linkedOrder={linkedOrder}
+                saving={saving}
+                putFirst={putFirst}
+              />
             </SettingsRow>
           )}
         </SettingsSection>
