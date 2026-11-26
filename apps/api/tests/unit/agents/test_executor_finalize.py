@@ -373,6 +373,29 @@ class TestLockThenInboxHandoff:
             configurable={"stream_id": "queued_next"},
         )
 
+    async def test_a_stop_check_that_fails_still_frees_the_lock_and_carries_the_work(
+        self, boundaries
+    ) -> None:
+        create_session("s1", RunKind.QUEUED)
+        boundaries.stop_requested.side_effect = ConnectionError("redis is unreachable")
+        boundaries.pending = [InboxEntry(id="e1", text="do the thing")]
+        boundaries.prepare.return_value = PreparedQueuedTask(
+            run=_run(RunKind.QUEUED, stream_id="queued_next"),
+            task="do the thing",
+            configurable={"stream_id": "queued_next"},
+        )
+
+        with (
+            patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn,
+            pytest.raises(ConnectionError),
+        ):
+            await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final", stopped=True)
+        await asyncio.sleep(0)
+
+        boundaries.release.assert_awaited_once()
+        spawn.assert_awaited_once()
+        boundaries.logged.assert_not_awaited()
+
     async def test_an_empty_inbox_starts_no_second_run(self, boundaries) -> None:
         """Nothing was handed over, so nothing is carried — otherwise every run would spawn a successor with an empty task, forever."""
         create_session("s1", RunKind.QUEUED)

@@ -403,6 +403,17 @@ def _stream_writer(run: ExecutorRun) -> tuple[StreamWriter, Callable[[], Awaitab
     return deltas.wrap(writer), deltas.drain
 
 
+@dataclass(frozen=True)
+class TerminalOutcome:
+    """The terminal facts of one executor run, as _close_executor_run snapshotted them."""
+
+    result_text: str
+    result_type: str
+    was_cancelled: bool
+    approval_cards: tuple[ToolDataEntry, ...] = ()
+    review: OutcomeReview = NOT_REVIEWED
+
+
 async def _finalize_executor_run(
     run: ExecutorRun,
     result_text: str,
@@ -411,11 +422,59 @@ async def _finalize_executor_run(
     *,
     stopped: bool = False,
 ) -> None:
-    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on.
+    """Post-run cleanup, in order: signal done → free the lock → deliver → hand it on.
+
+    The hand-on runs however the steps before it end, so a failed or cancelled save never
+    strands work that landed after the last model call; their error still propagates.
+    """
+    try:
+        await _settle_executor_run(run, result_text, result_type, ctx, stopped=stopped)
+    finally:
+        await _hand_on_pending_work(run, result_type, ctx)
+
+
+async def _settle_executor_run(
+    run: ExecutorRun,
+    result_text: str,
+    result_type: str,
+    ctx: SubagentExecutionContext | None,
+    *,
+    stopped: bool,
+) -> None:
+    """Signal the run done, free its lock, then record how it ended.
 
     A Stop discards only what it cut short: a run that finished its answer before
     the cancel landed (stopped False, a final result) is delivered whatever the flag says.
     """
+    try:
+        was_cancelled, outcome = await _close_executor_run(
+            run, result_text, result_type, ctx, stopped=stopped
+        )
+    finally:
+        await _release_executor_lock(run)
+
+    await _log_work_finished(run, outcome, stopped=stopped)
+
+    end_status = (
+        "error" if result_type == "error" else ("cancelled" if was_cancelled else "success")
+    )
+    queued = run.queued
+    if run.t_dispatch_perf is not None:
+        e2e_s = time.perf_counter() - run.t_dispatch_perf
+        if e2e_s >= 0.0:  # mixed-epoch guard, same as queue wait above
+            observe_executor_e2e(e2e_s, status=end_status, queued=queued)
+    observe_executor_run_total(status=end_status, queued=queued)
+
+
+async def _close_executor_run(
+    run: ExecutorRun,
+    result_text: str,
+    result_type: str,
+    ctx: SubagentExecutionContext | None,
+    *,
+    stopped: bool,
+) -> tuple[bool, TerminalOutcome | None]:
+    """Snapshot the run's terminal facts and signal its stream done; None when its waiter gave up."""
     finished = result_type == "final" and not stopped
     was_cancelled = bool(run.stream_id) and not finished and await stop_requested(run.stream_id)
 
@@ -443,24 +502,27 @@ async def _finalize_executor_run(
             result_type=result_type,
         )
 
-    outcome: TerminalOutcome | None = None
-    if not abandoned:
-        review = (
-            await _review_outcome(run.conversation_id, ctx)
-            if ctx is not None and result_type == "final"
-            else NOT_REVIEWED
-        )
-        outcome = TerminalOutcome(
-            result_text=result_text,
-            result_type=result_type,
-            was_cancelled=was_cancelled,
-            approval_cards=approval_cards,
-            review=review,
-        )
+    if abandoned:
+        return was_cancelled, None
+    review = (
+        await _review_outcome(run.conversation_id, ctx)
+        if ctx is not None and result_type == "final"
+        else NOT_REVIEWED
+    )
+    return was_cancelled, TerminalOutcome(
+        result_text=result_text,
+        result_type=result_type,
+        was_cancelled=was_cancelled,
+        approval_cards=approval_cards,
+        review=review,
+    )
 
-    # Release the busy lock now, not at end of finalize: held longer, comms'
-    # turn-start executor status keeps reading "still running," and a mid-finalize
-    # exception would strand it for the full 30-min TTL. Ownership-checked.
+
+async def _release_executor_lock(run: ExecutorRun) -> None:
+    """Free the busy lock before delivery, or comms keeps reading the run as still running.
+
+    Ownership-checked. A failure here is logged, not raised: the lock's TTL frees it later.
+    """
     try:
         await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
         teardown_session(run.stream_id)
@@ -472,22 +534,14 @@ async def _finalize_executor_run(
             error=str(e),
         )
 
-    await _log_work_finished(run, outcome, stopped=stopped)
 
-    end_status = (
-        "error" if result_type == "error" else ("cancelled" if was_cancelled else "success")
-    )
-    queued = run.queued
-    if run.t_dispatch_perf is not None:
-        e2e_s = time.perf_counter() - run.t_dispatch_perf
-        if e2e_s >= 0.0:  # mixed-epoch guard, same as queue wait above
-            observe_executor_e2e(e2e_s, status=end_status, queued=queued)
-    observe_executor_run_total(status=end_status, queued=queued)
+async def _hand_on_pending_work(
+    run: ExecutorRun, result_type: str, ctx: SubagentExecutionContext | None
+) -> None:
+    """Carry work that landed after the run's last model call into a fresh run, on every terminal path.
 
-    # Work landing after this run's LAST model call has no further reasoning step
-    # to absorb it, so carry it into a fresh run. Runs on EVERY terminal path,
-    # cancelled included: a Stop targets the running task, not later work.
-
+    Cancelled included: a Stop targets the running task, not later work.
+    """
     # Failed before it had a context: carried work would fail setup identically, forever.
     if result_type == "error" and ctx is None:
         log.warning(
@@ -520,17 +574,6 @@ async def _review_outcome(conversation_id: str, ctx: SubagentExecutionContext) -
     if review.problem:
         log.warning(f"{LogTag.AGENT} Executor outcome not verified", problem=review.problem)
     return review
-
-
-@dataclass(frozen=True)
-class TerminalOutcome:
-    """The terminal facts of one executor run, as _finalize_run snapshotted them."""
-
-    result_text: str
-    result_type: str
-    was_cancelled: bool
-    approval_cards: tuple[ToolDataEntry, ...] = ()
-    review: OutcomeReview = NOT_REVIEWED
 
 
 def _work_outcome(outcome: TerminalOutcome, *, stopped: bool) -> WorkOutcome:
