@@ -2,6 +2,7 @@
 
 import { Badge, Popover, Spinner, Tabs, Tooltip } from "@heroui/react";
 import { NotificationIcon } from "@icons";
+import { formatDay } from "@shared/utils";
 import { useMemo, useState } from "react";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -70,6 +71,15 @@ export function NotificationCenter({
       ? notifications.filter((n) => n.status === NotificationStatus.DELIVERED)
       : notifications;
 
+  const notificationsByDay = new Map<string, typeof filteredNotifications>();
+  for (const notification of filteredNotifications) {
+    const day = formatDay(notification.created_at);
+    notificationsByDay.set(day, [
+      ...(notificationsByDay.get(day) ?? []),
+      notification,
+    ]);
+  }
+
   return (
     <div className={`relative ${className}`}>
       <Popover>
@@ -106,10 +116,10 @@ export function NotificationCenter({
         <Popover.Content
           className={overlayVariants({
             surface: "raised",
-            className: "mr-4 w-96 border-1 border-zinc-700 shadow-xl",
+            className: "mr-4 w-96 shadow-xl",
           })}
         >
-          <div className="flex w-full items-center justify-between gap-2 px-3 pt-3">
+          <div className="flex w-full items-center justify-between gap-2 px-3 pt-2">
             <Tabs
               selectedKey={activeTab}
               onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
@@ -135,7 +145,7 @@ export function NotificationCenter({
                 size="sm"
                 variant="ghost"
                 tone="muted"
-                className="text-xs"
+                className="shrink-0 text-xs"
                 onPress={handleMarkAllAsRead}
                 isPending={isMarkingAllRead}
               >
@@ -146,11 +156,11 @@ export function NotificationCenter({
 
           <ScrollArea className="w-full" viewportClassName="max-h-[60vh]">
             {loading ? (
-              <div className="flex items-center justify-center p-10">
+              <div className="flex items-center justify-center py-12">
                 <Spinner size="sm" color="accent" />
               </div>
             ) : filteredNotifications.length === 0 ? (
-              <div className="flex items-center justify-center p-10">
+              <div className="flex items-center justify-center px-6 py-12">
                 <NotificationsEmptyState
                   title={
                     activeTab === "unread"
@@ -159,21 +169,29 @@ export function NotificationCenter({
                   }
                   description={
                     activeTab === "unread"
-                      ? "All caught up!"
-                      : "Notifications will appear here when you receive them."
+                      ? "You're all caught up."
+                      : "New notifications will show up here."
                   }
                 />
               </div>
             ) : (
-              <div className="w-full space-y-2 p-3">
-                {filteredNotifications.map((notification) => (
-                  <NotificationCard
-                    key={notification.id}
-                    notification={notification}
-                    clampBody
-                    onMarkAsRead={handleMarkAsRead}
-                    onRefresh={refetch}
-                  />
+              <div className="flex w-full flex-col gap-4 p-3">
+                {[...notificationsByDay].map(([day, group]) => (
+                  <section key={day} className="flex flex-col gap-2">
+                    <h2 className="px-1 text-xs font-medium text-zinc-500">
+                      {day}
+                    </h2>
+                    {group.map((notification) => (
+                      <NotificationCard
+                        key={notification.id}
+                        notification={notification}
+                        tone="inset"
+                        clampBody
+                        onMarkAsRead={handleMarkAsRead}
+                        onRefresh={refetch}
+                      />
+                    ))}
+                  </section>
                 ))}
               </div>
             )}

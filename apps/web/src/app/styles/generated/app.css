@@ -1323,6 +1323,7 @@
 @source "../../../features/chat/components/interface/hooks/useWorkflowAutoSend.ts";
 @source "../../../features/chat/components/interface/layouts/ChatWithMessages.tsx";
 @source "../../../features/chat/components/interface/layouts/NewChatLayout.tsx";
+@source "../../../features/chat/components/interface/rows/DayDivider.tsx";
 @source "../../../features/chat/components/interface/rows/GaiaRow.tsx";
 @source "../../../features/chat/components/interface/rows/rows.ts";
 @source "../../../features/chat/components/interface/rows/UserRow.tsx";
