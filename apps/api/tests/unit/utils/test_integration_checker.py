@@ -427,18 +427,16 @@ class TestStandaloneMcpAuthorization:
         assert "API key" in message
         assert "no standalone authorization URL exists" in message
 
-    async def test_discovery_failure_falls_back_to_the_integrations_page(self) -> None:
-        with (
-            _graph_run("bot"),
-            _mcp_oauth(_unavailable_auth_url()),
-        ):
+    async def test_a_chat_app_never_mints_a_provider_url_it_will_not_send(self) -> None:
+        """The connect link starts its own OAuth flow, so building one here only parks a dead state."""
+        build_url = _unavailable_auth_url()
+        with _graph_run("bot"), _mcp_oauth(build_url):
             message = await request_integration_connection(
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
-        assert "No standalone authorization URL is available" in message
-        assert f"{_FAKE_FRONTEND}/integrations" in message
-        assert _MAGIC_LINK not in message
+        build_url.assert_not_awaited()
+        assert _MAGIC_LINK in message
 
 
 class TestExactCopyPerBranch:
@@ -571,22 +569,7 @@ class TestExactCopyPerBranch:
             "PostHog there."
         )
 
-    async def test_bot_unavailable(self) -> None:
-        with (
-            _graph_run("bot"),
-            _mcp_oauth(_unavailable_auth_url()),
-        ):
-            msg = await request_integration_connection(
-                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
-            )
-        assert msg == (
-            "The user's PostHog connection needs fresh authorization; they need to reconnect "
-            "to refresh access. No standalone authorization URL is available for this "
-            "integration. The user is on a text-only platform (no UI); ask them to open "
-            f"{_FAKE_FRONTEND}/integrations and reconnect PostHog there."
-        )
-
-    async def test_bot_falls_back_to_a_connect_link_when_oauth_url_is_missing(self) -> None:
+    async def test_bot_gets_the_connect_link_for_an_oauth_integration(self) -> None:
         with _graph_run("bot"), _mcp_oauth(AsyncMock(return_value=None)):
             msg = await request_integration_connection(
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
