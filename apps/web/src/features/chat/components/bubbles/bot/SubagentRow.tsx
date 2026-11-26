@@ -8,6 +8,7 @@ import { BrainIcon, ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
+import { OutputTruncatedNote } from "./OutputTruncatedNote";
 import {
   type ApprovalReceipt,
   ToolCallRow,
@@ -148,13 +149,23 @@ function SubagentTextBlock({
   title,
   content,
   className,
-}: Readonly<{ title: string; content: string; className: string }>) {
+  originalLength,
+}: Readonly<{
+  title: string;
+  content: string;
+  className: string;
+  /** Set when the server cut content: how long the whole text was. */
+  originalLength?: number;
+}>) {
   return (
     <div
       className={`${className} text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit`}
     >
       <span className="text-zinc-500 font-medium mb-0.5 block">{title}</span>
       <CompactMarkdown content={content} />
+      {originalLength != null && (
+        <OutputTruncatedNote originalLength={originalLength} />
+      )}
     </div>
   );
 }
@@ -351,6 +362,7 @@ function CompletedSubagentBody({
                   title="Result"
                   content={group.handoff_output}
                   className="mt-2"
+                  originalLength={group.handoff_output_original_length}
                 />
               )}
             </div>

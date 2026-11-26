@@ -1281,6 +1281,7 @@
 @source "../../../features/chat/components/bubbles/bot/LiveScreen.tsx";
 @source "../../../features/chat/components/bubbles/bot/MemoryCard.tsx";
 @source "../../../features/chat/components/bubbles/bot/NotificationListSection.tsx";
+@source "../../../features/chat/components/bubbles/bot/OutputTruncatedNote.tsx";
 @source "../../../features/chat/components/bubbles/bot/PeopleSearchSection.tsx";
 @source "../../../features/chat/components/bubbles/bot/RateLimitCard.tsx";
 @source "../../../features/chat/components/bubbles/bot/RateLimitCardBody.tsx";

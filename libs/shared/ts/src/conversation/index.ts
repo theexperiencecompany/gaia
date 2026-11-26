@@ -1,5 +1,6 @@
 export {
   DISPLAY_STATUS_TEXT,
+  outputTruncatedNote,
   SEND_NOT_DELIVERED,
   STOPPED_NOTE,
 } from "./copy";

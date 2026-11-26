@@ -21,6 +21,7 @@ from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.api.v1.middleware.logging import LoggingMiddleware
 from app.constants.chat import ConversationSource
 from app.constants.conversation import EVENTS_KEY_PREFIX
+from app.constants.summarization import MAX_OUTPUT_CHARS
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
@@ -67,6 +68,7 @@ pytestmark = pytest.mark.service
 USER = FAKE_USER.user_id
 #: One tool call's output: large beside the frame around it, as a fetched page or a query result is.
 OUTPUT_BYTES = 20_000
+MEGABYTE = 1024 * 1024
 _CHANGES: TypeAdapter[list[ItemChange]] = TypeAdapter(list[ItemChange])
 _Json = dict[str, JsonValue]
 
@@ -201,8 +203,8 @@ def _call(index: int) -> dict[str, object]:
     }
 
 
-def _output(index: int) -> dict[str, object]:
-    return {"tool_call_id": f"call_{index}", "output": chr(97 + index % 26) * OUTPUT_BYTES}
+def _output(index: int, chars: int) -> dict[str, object]:
+    return {"tool_call_id": f"call_{index}", "output": chr(97 + index % 26) * chars}
 
 
 @dataclass
@@ -232,12 +234,14 @@ class Conversation:
         appended = await self.ports.log.append_fenced(self.claim, entry)
         await publish_appended(self.ports.frames, self.id, appended)
 
-    async def run_tools(self, task_id: str, calls: Iterator[int]) -> None:
+    async def run_tools(
+        self, task_id: str, calls: Iterator[int], output_chars: int = OUTPUT_BYTES
+    ) -> None:
         """Publish each call's card, then its output, as the executor's stream writer does."""
         deltas = WorkDeltas(self.id, task_id)
         for index in calls:
             deltas({"tool_data": _call(index)})
-            deltas({"tool_output": _output(index)})
+            deltas({"tool_output": _output(index, output_chars)})
         await deltas.drain()
 
     async def finish_work(self, task_id: str) -> None:
@@ -302,6 +306,49 @@ async def test_a_live_run_on_wire_2_sends_each_output_once_and_patches_to_the_pr
     assert "screen_patch" in live.kinds()
     assert "screen_update" not in live.kinds()
     assert live.items["work:t1"] == (await _live_screen(conversation))["work:t1"]
+
+
+def _outputs(client: Client, task_id: str) -> list[tuple[int, JsonValue]]:
+    """Return each call's kept output length and the full length it names, as the client holds the work."""
+    steps = _items(_item(client.items[f"work:{task_id}"]["timeline"])["steps"])
+    calls = [_item(step["data"]) for step in steps]
+    return [(len(str(call["output"])), call.get("output_original_length")) for call in calls]
+
+
+@pytest.mark.regression
+async def test_a_run_whose_outputs_pass_mongos_document_cap_saves_its_finish_with_each_cut(
+    api: str, conversation: Conversation
+) -> None:
+    calls = 18
+    await conversation.start_work("t1", await conversation.say("m1"))
+    await conversation.run_tools("t1", iter(range(calls)), output_chars=MEGABYTE)
+
+    await conversation.finish_work("t1")
+
+    lean = await _read(api, conversation.id, wire=2)
+    assert lean.items["work:t1"]["status"] == "done"
+    assert _outputs(lean, "t1") == [(MAX_OUTPUT_CHARS, MEGABYTE)] * calls
+    assert lean.received < 1.1 * calls * MAX_OUTPUT_CHARS
+    assert lean.items == await conversation.screen()
+
+
+async def test_a_live_output_past_the_limit_reaches_wire_2_cut_and_its_finish_resends_none_of_it(
+    api: str, conversation: Conversation
+) -> None:
+    await conversation.start_work("t1", await conversation.say("m1"))
+    async with _following(api, conversation.id, wire=2) as follow:
+        opened = (await follow.until(_opened)).received
+        await conversation.run_tools("t1", iter(range(2)), output_chars=3 * MAX_OUTPUT_CHARS)
+        live = await follow.until(lambda held: _outputs_held(held, "t1") == 2)
+        running = live.received
+        assert running - opened < 2.2 * MAX_OUTPUT_CHARS
+        assert _outputs(live, "t1") == [(MAX_OUTPUT_CHARS, 3 * MAX_OUTPUT_CHARS)] * 2
+        assert live.items["work:t1"] == (await _live_screen(conversation))["work:t1"]
+
+        await conversation.finish_work("t1")
+        done = await follow.until(lambda held: held.items["work:t1"]["status"] == "done")
+    assert done.received - running < 0.05 * MAX_OUTPUT_CHARS
+    assert done.items == await conversation.screen()
 
 
 async def _live_screen(conversation: Conversation) -> dict[str, _Json]:

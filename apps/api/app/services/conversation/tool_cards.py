@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
+from app.constants.summarization import MAX_OUTPUT_CHARS
 from app.models.conversation_frame_models import (
     ArtifactDeltaEvent,
     ImageEvent,
@@ -37,6 +38,8 @@ TODO_PROGRESS_CARD = "todo_progress"
 MCP_APP_CARD = "mcp_app"
 #: tool_name and tool_category of a thinking step riding the tool-call channel.
 REASONING_STEP = "reasoning"
+#: On a tool call whose output was cut: how many characters the tool returned.
+OUTPUT_ORIGINAL_LENGTH = "output_original_length"
 _DEFAULT_TODO_SOURCE = "executor"
 
 _Json = dict[str, object]
@@ -108,7 +111,44 @@ def fold_cards(
                 image = made
             case ArtifactDeltaEvent(artifact_delta=delta):
                 _take_artifact_delta(cards, delta)
-    return FoldedCards(tool_data=tuple(cards), image=image)
+    return FoldedCards(tool_data=capped_outputs(cards), image=image)
+
+
+def capped_outputs(cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
+    """Return cards with each tool call's output cut to its first MAX_OUTPUT_CHARS characters.
+
+    A cut call names its output's full length; an MCP App's tool_result is its app's data and stays whole.
+    """
+    return tuple(_capped_card(card) for card in cards)
+
+
+def _capped_card(card: ToolDataEntry) -> ToolDataEntry:
+    name, data = card["tool_name"], card["data"]
+    if name == TOOL_CALLS_CARD:
+        calls = data if isinstance(data, list) else None
+        capped = _capped_call(data) if calls is None else [_capped_call(call) for call in calls]
+        return cast(ToolDataEntry, {**card, "data": capped})
+    if name == SUBAGENT_GROUP_TOOL_NAME and isinstance(data, dict):
+        return cast(ToolDataEntry, {**card, "data": _capped_group(data)})
+    return card
+
+
+def _capped_group(group: _Group) -> _Group:
+    return {
+        **group,
+        "tool_calls": [_capped_call(call) for call in _calls(group)],
+        "nested_subagents": [
+            _capped_group(nested) if isinstance(nested, dict) else nested
+            for nested in _nested(group)
+        ],
+    }
+
+
+def _capped_call(call: object) -> object:
+    output = call.get("output") if isinstance(call, dict) else None
+    if not isinstance(call, dict) or not isinstance(output, str) or len(output) <= MAX_OUTPUT_CHARS:
+        return call
+    return {**call, "output": output[:MAX_OUTPUT_CHARS], OUTPUT_ORIGINAL_LENGTH: len(output)}
 
 
 def merged_thinking(calls: Iterable[dict[str, _Value]]) -> list[dict[str, _Value]]:
