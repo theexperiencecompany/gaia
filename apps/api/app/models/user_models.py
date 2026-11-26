@@ -23,7 +23,11 @@ from app.models.quiet_hours_models import HoldsQuietHours, QuietHours
 from app.schemas.common import ResponseModel
 from app.utils.email_utils import canonical_email
 from app.utils.timezone import is_valid_timezone
-from shared.py.analytics.catalog.onboarding import OnboardingStep, ReportedOnboardingStep
+from shared.py.analytics.catalog.onboarding import (
+    HeardFrom,
+    OnboardingStep,
+    ReportedOnboardingStep,
+)
 
 # Shared field doc for the `message` field on the success/message response models.
 _RESPONSE_MESSAGE_DESC = "Response message"
@@ -242,6 +246,10 @@ class OnboardingPreferences(BaseModel):
         default=None,
         description='The user\'s browser language as a primary subtag ("de", "pt"), set at onboarding',
     )
+    heard_from: HeardFrom | None = Field(
+        default=None,
+        description="Where the user says they first heard about GAIA (onboarding Q3)",
+    )
     # Removed timezone field - now only stored at user.timezone root level
 
     @field_validator("language", mode="before")
@@ -277,7 +285,7 @@ class OnboardingPreferences(BaseModel):
 
 
 class OnboardingAnswers(BaseModel):
-    """The wizard's answers — Q1 (profession) and Q2 (needs).
+    """The wizard's answers — Q1 (profession), Q2 (needs) and Q3 (where they heard of GAIA).
 
     The name is derived from the email server-side, so it is not submitted;
     nothing else is generated at onboarding, so nothing else is collected.
@@ -299,6 +307,10 @@ class OnboardingAnswers(BaseModel):
     language: str | None = Field(
         default=None,
         description='The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")',
+    )
+    heard_from: HeardFrom | None = Field(
+        default=None,
+        description="Where the user says they first heard about GAIA (onboarding Q3)",
     )
 
     @field_validator("language", mode="before")

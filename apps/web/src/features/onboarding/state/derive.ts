@@ -53,7 +53,12 @@ export function draftFromServerPreferences(
 
   const otherNeed = preferences.other_need ?? "";
   return {
-    responses: { [FIELD_NAMES.PROFESSION]: preferences.profession },
+    responses: {
+      [FIELD_NAMES.PROFESSION]: preferences.profession,
+      ...(preferences.heard_from
+        ? { [FIELD_NAMES.HEARD_FROM]: preferences.heard_from }
+        : {}),
+    },
     questionIndex: questions.length,
     // A need the API no longer accepts must not come back as a chip.
     selectedNeeds: (preferences.needs ?? []).filter(isKnownNeed),
@@ -73,15 +78,16 @@ export function getStage(s: OnboardingState, isPaid: boolean): Stage {
   return "chat";
 }
 
+// One step per question, then one per stage after them.
 const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
-  payment: 2,
-  paidReveal: 3,
-  platformPick: 4,
-  chat: 5,
+  payment: questions.length,
+  paidReveal: questions.length + 1,
+  platformPick: questions.length + 2,
+  chat: questions.length + 3,
 };
 
-export const PROGRESS_TOTAL_STEPS = 5;
+export const PROGRESS_TOTAL_STEPS = STAGE_PROGRESS.chat;
 
 export function getProgress(s: OnboardingState, stage: Stage): number {
   if (s.isRestarting) return 0;

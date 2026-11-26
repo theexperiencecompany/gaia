@@ -271,16 +271,19 @@ async def update_onboarding_preferences(
 
 
 async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> OnboardingUser:
-    """Store the wizard's Q1 and Q2 the moment they are confirmed, and stamp questions_answered.
+    """Store the wizard's answers the moment the last one is confirmed, and stamp questions_answered.
 
     Written long before completion: the platform-link opener and the seeded
     first conversation are composed from these stored answers.
     """
+    # Unsent stays unset: a page cached from before Q3 must not null a stored answer.
+    heard_from = answers.model_dump(include={"heard_from"}, exclude_unset=True)
     preferences = OnboardingPreferences(
         profession=answers.profession,
         needs=answers.needs,
         other_need=answers.other_need,
         language=answers.language,
+        **heard_from,
     )
     updated_user = await user_repository.update_onboarding_preferences(user_id, preferences)
     if updated_user is None:
@@ -295,6 +298,9 @@ async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> O
         name=f"prewarm_first_question:{user_id}",
     )
     await record_onboarding_step(user_id, OnboardingStep.QUESTIONS_ANSWERED, answers=answers)
+    # On the person, so every later event and cohort can be cut by acquisition source.
+    if answers.heard_from is not None:
+        identify_user(UserId(user_id), {"heard_from": answers.heard_from.value})
     return _onboarding_user(updated_user)
 
 
@@ -325,6 +331,7 @@ def _step_event(
         phase=step,
         needs=sorted(need.value for need in answers.needs),
         has_other_need=bool(answers.other_need),
+        heard_from=answers.heard_from,
     )
 
 

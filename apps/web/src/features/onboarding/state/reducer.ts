@@ -14,8 +14,8 @@ export function reducer(
   action: Action,
 ): OnboardingState {
   switch (action.type) {
-    case "draftProfession":
-      return { ...state, draftProfession: action.value };
+    case "draftChoice":
+      return { ...state, draftChoice: action.value };
 
     case "answer": {
       const isLast = state.questionIndex >= questions.length - 1;
@@ -23,7 +23,7 @@ export function reducer(
         ...state,
         responses: { ...state.responses, [action.field]: action.value },
         questionIndex: isLast ? questions.length : state.questionIndex + 1,
-        draftProfession: null,
+        draftChoice: null,
       };
     }
 
@@ -60,7 +60,7 @@ export function reducer(
     // what the backend contract requires, so it lives with the transition.
     case "submitNeeds":
       if (!canSubmitNeeds(state)) return state;
-      return { ...state, questionIndex: questions.length };
+      return { ...state, questionIndex: state.questionIndex + 1 };
 
     case "preferencesPersisted":
       return { ...state, preferencesPersisted: true };

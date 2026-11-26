@@ -331,6 +331,7 @@ class TestClaimReleaseDiscard:
                 "response_style": None,
                 "other_need": None,
                 "language": None,
+                "heard_from": None,
             },
         }
         stored = cast(dict[str, dict[str, list[object]]], value)

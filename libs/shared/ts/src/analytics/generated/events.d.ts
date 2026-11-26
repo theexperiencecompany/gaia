@@ -1138,6 +1138,7 @@ export interface EventProperties {
     "phase": "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
     "needs"?: (string)[];
     "has_other_need"?: boolean;
+    "heard_from"?: "friend" | "twitter" | "linkedin" | "youtube" | "tiktok" | "instagram" | "reddit" | "product_hunt" | "hacker_news" | "google" | "ai_assistant" | "newsletter" | "podcast" | "github" | "discord" | "somewhere_else";
   };
   "onboarding:reset": {
     "actor": "user" | "agent";

@@ -4,6 +4,7 @@ export type { OnboardingNeed } from "@shared/api/generated";
 
 import type { Question } from "../types";
 import {
+  heardFromOptions,
   needOptions,
   OTHER_NEED,
   professionOptions,
@@ -11,7 +12,12 @@ import {
 } from "./options";
 import type { TypedNeedOption } from "./options.types";
 
-export { needOptions, OTHER_NEED, professionOptions } from "./options";
+export {
+  heardFromOptions,
+  needOptions,
+  OTHER_NEED,
+  professionOptions,
+} from "./options";
 
 /** A Q2 need id; the API's enum, so a chip the API rejects cannot be typed. */
 
@@ -104,7 +110,18 @@ export const CHECKOUT_RETURNED_PARAM = "checkout";
 export const FIELD_NAMES = {
   PROFESSION: "profession",
   NEEDS: "needs",
+  HEARD_FROM: "heard_from",
 } as const;
+
+export function heardFromLabel(value: string): string | undefined {
+  return heardFromOptions.find((option) => option.value === value)?.label;
+}
+
+export function isHeardFrom(
+  value: string,
+): value is (typeof heardFromOptions)[number]["value"] {
+  return heardFromLabel(value) !== undefined;
+}
 
 /** "Founder, got it." for a listed job; a typed or skipped one gets a plain ack. */
 function professionAck(responses: Record<string, string>): string {
@@ -136,6 +153,14 @@ export const questions: Question[] = [
       "What do you want off your plate first? Pick up to three.",
     ],
     fieldName: FIELD_NAMES.NEEDS,
+  },
+  {
+    id: "3",
+    lines: () => [
+      "On it.",
+      "Last one, and it's just for us. Where did you hear about GAIA?",
+    ],
+    fieldName: FIELD_NAMES.HEARD_FROM,
   },
 ];
 

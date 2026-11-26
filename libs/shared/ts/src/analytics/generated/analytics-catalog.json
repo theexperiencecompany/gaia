@@ -5633,6 +5633,29 @@
       "base_properties": "Attribution",
       "properties": {
         "$defs": {
+          "HeardFrom": {
+            "description": "Where the user says they first heard about GAIA (onboarding Q3, one pick).",
+            "enum": [
+              "friend",
+              "twitter",
+              "linkedin",
+              "youtube",
+              "tiktok",
+              "instagram",
+              "reddit",
+              "product_hunt",
+              "hacker_news",
+              "google",
+              "ai_assistant",
+              "newsletter",
+              "podcast",
+              "github",
+              "discord",
+              "somewhere_else"
+            ],
+            "title": "HeardFrom",
+            "type": "string"
+          },
           "OnboardingStep": {
             "description": "A wizard milestone, stamped once per onboarding run on users.onboarding.steps_reached.",
             "enum": [
@@ -5679,6 +5702,17 @@
             ],
             "default": null,
             "title": "Has Other Need"
+          },
+          "heard_from": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HeardFrom"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [

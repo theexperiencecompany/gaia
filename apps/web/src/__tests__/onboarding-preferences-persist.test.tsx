@@ -34,6 +34,7 @@ const answered: OnboardingState = [
   { type: "toggleNeed", value: "inbox" } as const,
   { type: "toggleNeed", value: "tools" } as const,
   { type: "submitNeeds" } as const,
+  { type: "answer", field: FIELD_NAMES.HEARD_FROM, value: "reddit" } as const,
 ].reduce(reducer, initialState);
 
 const badRequest = Object.assign(new Error("422"), {
@@ -65,7 +66,7 @@ describe("useOnboardingPreferences", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE", "en-US"]);
   });
 
-  it("does not save until both questions are answered", async () => {
+  it("does not save until every question is answered", async () => {
     const afterQ1 = reducer(initialState, {
       type: "answer",
       field: FIELD_NAMES.PROFESSION,
@@ -79,7 +80,7 @@ describe("useOnboardingPreferences", () => {
     expect(saveOnboardingAnswers).not.toHaveBeenCalled();
   });
 
-  it("saves the exact profession and needs once, as soon as Q2 is confirmed", async () => {
+  it("saves the exact answers once, as soon as the last question is confirmed", async () => {
     const { dispatch } = renderPersist(answered);
 
     await waitFor(() =>
@@ -88,6 +89,7 @@ describe("useOnboardingPreferences", () => {
     expect(saveOnboardingAnswers).toHaveBeenCalledExactlyOnceWith({
       profession: "founder",
       needs: ["inbox", "tools"],
+      heard_from: "reddit",
       language: "de-DE",
     });
   });

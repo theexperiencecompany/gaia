@@ -1,4 +1,4 @@
-import { isKnownNeed } from "../constants";
+import { isKnownNeed, questions } from "../constants";
 import type { OnboardingState } from "./types";
 
 // v3 = the paid-first flow. A bumped key stops a half-finished v2 run from
@@ -48,7 +48,11 @@ export function loadPersisted(userId: string): Partial<OnboardingState> | null {
     const parsed = JSON.parse(raw) as Partial<PersistedShape>;
     return {
       responses: parsed.responses ?? {},
-      questionIndex: parsed.questionIndex ?? 0,
+      // Answers already stored on the server close the questions, even when a
+      // later build added one: the run is past them and will not save again.
+      questionIndex: parsed.preferencesPersisted
+        ? questions.length
+        : (parsed.questionIndex ?? 0),
       // A chip set from an older build must not resurrect a value the API
       // no longer accepts.
       selectedNeeds: (parsed.selectedNeeds ?? []).filter(isKnownNeed),

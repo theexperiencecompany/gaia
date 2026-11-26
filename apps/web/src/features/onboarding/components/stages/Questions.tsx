@@ -1,6 +1,6 @@
 /**
- * `questions` stage. Active until Q1 (profession) and Q2 (needs) are both
- * answered and stored. The transcript renders in `MessagesRegion`; this file
+ * `questions` stage. Active until Q1 (profession), Q2 (needs) and Q3 (where
+ * they heard of GAIA) are answered and stored. The transcript renders in `MessagesRegion`; this file
  * owns the user's reply to the active question, rendered in the thread on
  * their side, and the save that follows the last one.
  */
@@ -65,20 +65,17 @@ export function QuestionsReply({
   // The reply only shows up once GAIA has finished "typing" the question.
   const gaiaDone = usePaceDone(questionRevealKey(currentQuestion?.id ?? ""));
 
-  const handleSelectProfession = useCallback(
-    (value: string) => dispatch({ type: "draftProfession", value }),
+  const handleSelectChoice = useCallback(
+    (value: string) => dispatch({ type: "draftChoice", value }),
     [dispatch],
   );
 
-  const { draftProfession } = state;
-  const handleSubmitProfession = useCallback(() => {
-    if (!draftProfession) return;
-    dispatch({
-      type: "answer",
-      field: FIELD_NAMES.PROFESSION,
-      value: draftProfession,
-    });
-  }, [dispatch, draftProfession]);
+  const { draftChoice } = state;
+  const fieldName = currentQuestion?.fieldName;
+  const handleSubmitChoice = useCallback(() => {
+    if (!draftChoice || !fieldName) return;
+    dispatch({ type: "answer", field: fieldName, value: draftChoice });
+  }, [dispatch, draftChoice, fieldName]);
 
   const handleToggleNeed = useCallback(
     (value: string) => {
@@ -125,13 +122,26 @@ export function QuestionsReply({
     );
   }
 
+  if (currentQuestion.fieldName === FIELD_NAMES.HEARD_FROM) {
+    return (
+      <m.div {...MOTION_FADE_UP}>
+        <OnboardingInput
+          mode="heardFrom"
+          draftChoice={draftChoice}
+          onSelect={handleSelectChoice}
+          onContinue={handleSubmitChoice}
+        />
+      </m.div>
+    );
+  }
+
   return (
     <m.div {...MOTION_FADE_UP}>
       <OnboardingInput
         mode="profession"
-        draftProfession={draftProfession}
-        onSelectProfession={handleSelectProfession}
-        onContinue={handleSubmitProfession}
+        draftChoice={draftChoice}
+        onSelectProfession={handleSelectChoice}
+        onContinue={handleSubmitChoice}
       />
     </m.div>
   );
