@@ -6,7 +6,7 @@ context slots, and the instant reaction, which is never asked for.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -32,6 +32,7 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGenerationChunk
 from langgraph.config import get_config
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import PrivateAttr
 import pytest
 from redis.asyncio import Redis
 from redis.asyncio.client import Pipeline
@@ -73,7 +74,12 @@ from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
-from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
+from app.constants.conversation import (
+    EVENTS_STREAM_MAXLEN,
+    RUNNER_ALIVE_BEATS_PER_TTL,
+    RUNNER_ALIVE_TTL_SECONDS,
+    STEP_TICK_SECONDS,
+)
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.todos import TodoWakeKind
@@ -281,8 +287,6 @@ from tests.unit.services.hil.conftest import make_request
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
 _CONFIRM_SECONDS = 0.05
-_SHORT_TTL_SECONDS = 1
-_TRICKLE_SECONDS = 0.02
 # Later than the approval register grace and a decision hand-off lease: what a sweep that late finds stuck is stuck.
 _PAST_EVERY_SWEEP_GRACE = timedelta(minutes=3)
 
@@ -2774,8 +2778,69 @@ async def test_a_reply_to_the_users_own_message_leaves_the_conversation_read(
     assert await _unread(rig) is False
 
 
+class _ClaimClock:
+    """The step claim's clock, driven by the test: advancing it ages the live key and fires the beat due."""
+
+    def __init__(self, redis: Redis) -> None:
+        self._redis = redis
+        self._prove: Callable[[], Awaitable[bool]] | None = None
+        self._context: Mapping[str, str] = {}
+        self.every = 0.0
+        self.user_id = ""
+
+    def keep_proving(
+        self,
+        prove: Callable[[], Awaitable[bool]],
+        *,
+        every: float,
+        give_up_after: float,
+        name: str,
+        what: str,
+        context: Mapping[str, str],
+    ) -> asyncio.Task[None]:
+        """Take the step's beat instead of timing it on the wall clock; advance fires it."""
+        self._prove, self._context, self.every = prove, context, every
+        return asyncio.create_task(self._until_cancelled(), name=name)
+
+    @staticmethod
+    async def _until_cancelled() -> None:
+        await asyncio.Event().wait()
+
+    async def advance_one_beat(self) -> None:
+        """Let one beat interval pass on the live key, then beat as the step's own task would."""
+        assert self._prove is not None
+        key = mongo_log_claim.alive_key(
+            self._context["conversation_id"], self.user_id, int(self._context["epoch"])
+        )
+        left_ms = await self._redis.pttl(key) - round(self.every * 1000)
+        if left_ms > 0:
+            await self._redis.pexpire(key, left_ms)
+        else:
+            await self._redis.delete(key)
+        assert await self._prove()
+
+
 class _TrickleModel(GatedModel):
-    """Streams its reply a character every _TRICKLE_SECONDS, faster than the step's tick."""
+    """Streams its reply a character per beat of the claim's clock, pausing for the test at midway."""
+
+    _clock: _ClaimClock = PrivateAttr()
+    _midway: int = PrivateAttr()
+    _paused: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
+    _resume: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
+
+    @classmethod
+    def streaming(cls, reply: AIMessage, clock: _ClaimClock, midway: int) -> "_TrickleModel":
+        model = cls(responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6})
+        model._replies = [reply]
+        model._clock, model._midway = clock, midway
+        return model
+
+    async def wait_paused(self) -> None:
+        async with asyncio.timeout(_SETTLE_SECONDS):
+            await self._paused.wait()
+
+    def resume(self) -> None:
+        self._resume.set()
 
     async def _astream(
         self,
@@ -2787,8 +2852,11 @@ class _TrickleModel(GatedModel):
         self._prompts.append(list(messages))
         reply = self._replies[len(self._prompts) - 1]
         assert isinstance(reply, AIMessage)
-        for char in str(reply.content):
-            await asyncio.sleep(_TRICKLE_SECONDS)
+        for index, char in enumerate(str(reply.content)):
+            if index == self._midway:
+                self._paused.set()
+                await self._resume.wait()
+            await self._clock.advance_one_beat()
             chunk = ChatGenerationChunk(message=AIMessageChunk(content=char))
             if run_manager is not None:
                 await run_manager.on_llm_new_token(char, chunk=chunk)
@@ -2808,22 +2876,24 @@ async def _production_tick() -> None:
 @pytest.mark.service
 async def test_a_reply_streaming_longer_than_the_claims_ttl_is_answered_once(
     rig_for: RigFactory,
+    real_redis: Redis,
 ) -> None:
-    text = "x" * int(3 * _SHORT_TTL_SECONDS / _TRICKLE_SECONDS)
-    model = _TrickleModel(
-        responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6}
-    )
+    clock = _ClaimClock(real_redis)
+    # One character per beat: the reply streams for three TTLs, and the sweep comes after two.
+    text = "x" * (3 * RUNNER_ALIVE_BEATS_PER_TTL)
     named = {"name": ANSWERED_TOOL_NAME, "args": {"message_ids": [1]}, "id": "named"}
-    model._replies = [AIMessage(content=text, tool_calls=[named])]
+    model = _TrickleModel.streaming(
+        AIMessage(content=text, tool_calls=[named]), clock, midway=2 * RUNNER_ALIVE_BEATS_PER_TTL
+    )
     rig = await rig_for(model, tick=_production_tick)
-    with (
-        patch.object(mongo_log_claim, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
-        patch.object(step_module, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
-    ):
+    clock.user_id = rig.user_id
+    with patch.object(step_module, "keep_proving", clock.keep_proving):
         await rig.send("m1", "tell me a long story")
-        # Mid-stream, well past the TTL, the sweep looks for a dead holder.
-        await asyncio.sleep(2 * _SHORT_TTL_SECONDS)
+        await model.wait_paused()
+        assert clock.every == RUNNER_ALIVE_TTL_SECONDS / RUNNER_ALIVE_BEATS_PER_TTL
+        # Two TTLs into the stream, the sweep looks for a dead holder.
         await sweep_conversations()
+        model.resume()
         await rig.settle()
     assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
     assert [reply.text for reply in await rig.of(Reply)] == [text]
