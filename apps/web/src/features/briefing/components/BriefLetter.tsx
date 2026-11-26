@@ -15,6 +15,7 @@ import {
   LETTER_TILT_PERSPECTIVE_PX,
 } from "../letterTokens";
 import {
+  creaseFalloff,
   edgeLight,
   foldedReverse,
   PAPER_GRAIN,
@@ -31,11 +32,13 @@ import { PanelFace } from "./EditionUnfold";
 const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
 const PLACEHOLDER_ASPECT = 2.4;
-const CREASE_PX = 6;
-/** The two folded-under panels show as the sheet's unprinted reverse, each a little deeper back. */
+const CREASE_PX = 5;
+/**
+ * The panels folded under lie flush with the face, as a real sheet does: only a
+ * hair of the next panel shows past the crease, set a touch askew.
+ */
 const FOLDED_LAYERS = [
-  { heightPx: 8, tint: 90, nudgeXPx: 0, turnDeg: 0, inset: 0 },
-  { heightPx: 7, tint: 83, nudgeXPx: 1, turnDeg: 0.3, inset: 0.6 },
+  { heightPx: 3, tint: 86, nudgeXPx: 0.5, turnDeg: 0.25, inset: 0.4 },
 ] as const;
 
 /** An edition handed to the letter, with the hold that keeps its bitmaps open until the face is drawn. */
@@ -208,6 +211,11 @@ export function BriefLetter({ brief, trigger }: BriefLetterProps) {
                 aria-hidden
                 className="absolute inset-0 opacity-30 mix-blend-multiply"
                 style={{ backgroundImage: PAPER_GRAIN }}
+              />
+              <span
+                aria-hidden
+                className="absolute inset-0"
+                style={{ background: creaseFalloff(edition.isDarkPaper) }}
               />
               <span
                 aria-hidden

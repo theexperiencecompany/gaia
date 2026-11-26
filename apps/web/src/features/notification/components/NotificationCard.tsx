@@ -112,23 +112,26 @@ export const NotificationCard = ({
     >
       <div className="min-w-0">
         <div className="flex min-h-6 items-center gap-2">
-          <h3
-            className={cn(
-              "min-w-0 truncate text-sm font-medium",
-              isUnread ? "text-zinc-100" : "text-zinc-400",
+          {/* w-0 keeps the title's length out of the panel scroller's width, so a long one truncates */}
+          <div className="flex w-0 min-w-0 flex-1 items-center gap-2">
+            <h3
+              className={cn(
+                "min-w-0 truncate text-sm font-medium",
+                isUnread ? "text-zinc-100" : "text-zinc-400",
+              )}
+            >
+              {card ? BRIEF_LABEL : title}
+            </h3>
+            {isUnread && (
+              <span
+                role="img"
+                aria-label="Unread"
+                className="size-1.5 shrink-0 rounded-full bg-accent"
+              />
             )}
-          >
-            {card ? BRIEF_LABEL : title}
-          </h3>
-          {isUnread && (
-            <span
-              role="img"
-              aria-label="Unread"
-              className="size-1.5 shrink-0 rounded-full bg-accent"
-            />
-          )}
+          </div>
           <span
-            className="ml-auto shrink-0 text-xs whitespace-nowrap text-zinc-500 tabular-nums"
+            className="shrink-0 text-xs whitespace-nowrap text-zinc-500 tabular-nums"
             suppressHydrationWarning
           >
             {formatDistanceToNow(new Date(notification.created_at), {

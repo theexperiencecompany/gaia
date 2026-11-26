@@ -29,6 +29,11 @@ export function rolledEdge(paper: string, isDarkPaper: boolean): string {
   return `linear-gradient(180deg, ${paper} 0%, ${mix(paper, isDarkPaper ? 82 : 88, "white")} 30%, ${mix(paper, 78, "black")} 85%, ${mix(paper, 66, "black")} 100%)`;
 }
 
+/** The face bowing into its crease: the light falls off over the last stretch before the fold. */
+export function creaseFalloff(isDarkPaper: boolean): string {
+  return `linear-gradient(180deg, transparent 62%, rgba(0,0,0,${isDarkPaper ? 0.22 : 0.12}) 100%)`;
+}
+
 /** The front panel's shadow falling on the panels folded under it. */
 export function underFoldShadow(isDarkPaper: boolean): string {
   return `linear-gradient(180deg, rgba(0,0,0,${isDarkPaper ? 0.5 : 0.32}) 0%, rgba(0,0,0,0.08) 55%, transparent 100%)`;
