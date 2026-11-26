@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -18,7 +18,7 @@ from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.models.bot_models import BotChatRequest, MessageReaction, PartialReply
+from app.models.bot_models import BotChatRequest, MessageReaction, OwedReaction, PartialReply
 from app.models.chat_models import ConversationSource, ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame, StateFrame
 from app.models.conversation_log_models import (
@@ -42,6 +42,7 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
 from app.services.conversation.send import submit_bot_message
+from app.services.conversation_service import delete_conversation
 from app.utils.artifact_utils import FILE_LINKS
 from app.utils.notification.channels.conversation import (
     ConversationChannelAdapter,
@@ -443,7 +444,8 @@ async def test_a_reaction_the_bot_has_not_placed_stays_owed_past_its_cursor_unti
 
     # The chat model answers with a reaction alone, and the bot dies before placing it.
     install_runtime_ports(replace(runtime_ports(), frames=BotWakingFrames(RedisStreamFrames())))
-    reacted = await runtime_ports().log.react_once(
+    log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
+    reacted = await log.react_once(
         bot_chat, user.user_id, sent.message_id, Reaction(emoji="👍", by=ReactionBy.CHAT_MODEL)
     )
     assert reacted is not None
@@ -473,17 +475,56 @@ async def test_a_reaction_the_bot_has_not_placed_stays_owed_past_its_cursor_unti
     )
     [still] = await following()
     assert still.owed_reactions == [owed]
-    assert await bot_session_repository.record_delivered(
+    # A second bot overlapping a deploy reports from behind the cursor: the cursor stays, the reaction settles.
+    assert not await bot_session_repository.record_delivered(
         bot_chat,
         platform="telegram",
-        delivered_seq=sent.seq,
+        delivered_seq=sent.seq - 1,
         partial_reply=None,
         placed_reactions=[owed],
     )
     session = await bot_session_repository.get_by_conversation_id(bot_chat)
     assert session is not None
     assert session.delivery is not None
-    assert (session.delivery.owed_reactions, session.delivery.owes) == ([], False)
+    assert (session.delivery.delivered_seq, session.delivery.owed_reactions) == (sent.seq, [])
+    assert not session.delivery.owes
+
+
+async def test_a_reaction_owed_past_a_day_is_dropped_when_a_bot_boots(sends: Sends) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    platform_user_id = f"tg-{uuid4().hex[:8]}"
+    bot_chat = await BotService.get_or_create_session(
+        "telegram", platform_user_id, None, user, is_dm=True
+    )
+    now = datetime.now(UTC)
+    stale = OwedReaction(message_id="u-old", emoji="👍", owed_at=now - timedelta(days=2))
+    fresh = OwedReaction(message_id="u-new", emoji="❤", owed_at=now)
+    for reaction in (stale, fresh):
+        await bot_session_repository.owe_reaction(bot_chat, seq=1, reaction=reaction)
+
+    [listed] = [
+        a for a in await list_active_bot_conversations("telegram") if a.conversation_id == bot_chat
+    ]
+
+    assert listed.owed_reactions == [MessageReaction(message_id="u-new", emoji="❤")]
+
+
+async def test_deleting_a_bot_conversation_drops_what_its_bot_was_owed(sends: Sends) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    platform_user_id = f"tg-{uuid4().hex[:8]}"
+    bot_chat = await BotService.get_or_create_session(
+        "telegram", platform_user_id, None, user, is_dm=True
+    )
+    owed = OwedReaction(message_id="u1", emoji="👍", owed_at=datetime.now(UTC))
+    await bot_session_repository.owe_reaction(bot_chat, seq=1, reaction=owed)
+    await delete_conversation(bot_chat, user)
+
+    session = await bot_session_repository.get_by_conversation_id(bot_chat)
+    assert session is not None
+    assert session.delivery is None
+    assert [
+        a for a in await list_active_bot_conversations("telegram") if a.conversation_id == bot_chat
+    ] == []
 
 
 async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(

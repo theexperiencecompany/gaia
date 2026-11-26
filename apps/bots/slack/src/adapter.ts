@@ -62,6 +62,18 @@ import {
 /** What Slack shows while GAIA prepares a reply: it has no typing indicator for bots. */
 /** The reaction on the user's message while GAIA prepares its reply; Slack gives bots no typing indicator. */
 const SLACK_TYPING_REACTION = "eyes";
+/** The Web API's error when the bot already has that reaction on the message. */
+const SLACK_ALREADY_REACTED = "already_reacted";
+
+/** The error code a Slack Web API call answered with (`data.error`), if it answered one. */
+function slackErrorCode(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("data" in err))
+    return undefined;
+  const { data } = err;
+  if (typeof data !== "object" || data === null || !("error" in data))
+    return undefined;
+  return typeof data.error === "string" ? data.error : undefined;
+}
 
 /** Bolt's respond function for slash command responses. */
 type SlackRespondFn = (
@@ -414,6 +426,9 @@ export class SlackAdapter extends BaseBotAdapter {
       });
       return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
+      // A repeat (a resumed follow placing what a dead bot already had) is the reaction in place.
+      if (slackErrorCode(err) === SLACK_ALREADY_REACTED)
+        return REACTION_OUTCOME.ATTACHED;
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         channel_hash: hashLogIdentifier(channel),
         ...(err instanceof Error

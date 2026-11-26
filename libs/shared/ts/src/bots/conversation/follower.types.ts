@@ -109,6 +109,8 @@ export interface FollowStart {
   partialReply: PartialReply | null;
   /** Reactions logged that no follow has placed yet, on messages at or below the floor too. */
   owedReactions: readonly MessageReaction[];
+  /** Reactions an earlier follow in this process put on the platform, which none places again. */
+  placedReactions: readonly MessageReaction[];
   record: (report: DeliveryReport) => Promise<void>;
 }
 

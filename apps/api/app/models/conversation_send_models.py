@@ -104,7 +104,7 @@ class ActiveBotConversation(ResponseModel):
             is_dm=session.channel_id is None,
             after_seq=delivery.delivered_seq,
             partial_reply=delivery.partial_reply,
-            owed_reactions=delivery.owed_reactions,
+            owed_reactions=delivery.reactions_to_place,
         )
 
 

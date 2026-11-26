@@ -6,12 +6,14 @@ under the unique index, so two racing first-messages can never fork a session.
 """
 
 from collections.abc import Sequence
+from datetime import datetime
 
 from app.db.repositories.base import MongoRepository
 from app.models.bot_models import (
     BotSessionDocument,
     BotSessionUpdate,
     MessageReaction,
+    OwedReaction,
     PartialReply,
 )
 from app.utils.errors import AppError
@@ -135,7 +137,7 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         )
 
     async def owe_reaction(
-        self, conversation_id: str, *, seq: int, reaction: MessageReaction
+        self, conversation_id: str, *, seq: int, reaction: OwedReaction
     ) -> BotSessionDocument | None:
         """Record a reaction put on the user message at seq for the bot to place; None for a non-bot conversation.
 
@@ -159,18 +161,22 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         partial_reply: PartialReply | None,
         placed_reactions: Sequence[MessageReaction] = (),
     ) -> bool:
-        """Move the bot's cursor to what it delivered, settling the reactions it placed; False for a report behind the recorded one."""
-        settled = (
-            {
-                "$pull": {
-                    "delivery.owed_reactions": {
-                        "$or": [placed.model_dump() for placed in placed_reactions]
+        """Settle the reactions the bot placed, then move its cursor to what it delivered; False for a cursor behind.
+
+        A placed reaction is settled even by a report behind the cursor: a second bot overlapping
+        a deploy may report late, and what it placed is on the platform all the same.
+        """
+        if placed_reactions:
+            await self._apply_raw_update_unfetched(
+                {"conversation_id": conversation_id, "platform": platform},
+                {
+                    "$pull": {
+                        "delivery.owed_reactions": {
+                            "$or": [placed.model_dump() for placed in placed_reactions]
+                        }
                     }
-                }
-            }
-            if placed_reactions
-            else {}
-        )
+                },
+            )
         matched = await self._apply_raw_update_unfetched(
             {
                 "conversation_id": conversation_id,
@@ -186,11 +192,24 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
                     "delivery.partial_reply": (
                         None if partial_reply is None else partial_reply.model_dump()
                     ),
-                },
-                **settled,
+                }
             },
         )
         return matched > 0
+
+    async def drop_owed_reactions_before(self, platform: str, before: datetime) -> int:
+        """Drop the platform's reactions owed since before; return how many sessions held one."""
+        result = await self._raw_collection().update_many(
+            {"platform": platform, "delivery.owed_reactions.owed_at": {"$lt": before}},
+            {"$pull": {"delivery.owed_reactions": {"owed_at": {"$lt": before}}}},
+        )
+        return result.modified_count
+
+    async def forget_delivery(self, conversation_id: str) -> None:
+        """Drop the bot's cursor on a deleted conversation: nothing in it is owed any more."""
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id}, {"$unset": {"delivery": ""}}
+        )
 
     async def list_owed(self, platform: str, limit: int) -> list[BotSessionDocument]:
         """Return the platform's sessions whose bot has not delivered everything logged for it."""

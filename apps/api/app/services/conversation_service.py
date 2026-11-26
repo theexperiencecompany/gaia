@@ -10,6 +10,7 @@ from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_
 from app.constants.chat import ConversationSource
 from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
@@ -281,6 +282,7 @@ async def _cleanup_conversation_storage(user_id: str, conversation_id: str) -> N
     The links and artifacts go in Mongo and fail loud; the files and checkpoints are
     best-effort, with the ARQ prune task and the nightly checkpoint sweep as backstops."""
     await revoke_conversation_links(user_id, conversation_id)
+    await bot_session_repository.forget_delivery(conversation_id)
     await openui_artifact_repository.delete_for_conversation(user_id, conversation_id)
     if user_id:
         try:

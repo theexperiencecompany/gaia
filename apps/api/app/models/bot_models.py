@@ -3,6 +3,8 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.integrations import IntegrationStatus
@@ -286,6 +288,12 @@ class MessageReaction(BaseModel):
     emoji: str = Field(min_length=1)
 
 
+class OwedReaction(MessageReaction):
+    """A reaction the bot has not placed yet, and when it was logged: one owed too long is dropped."""
+
+    owed_at: datetime
+
+
 class BotDelivery(BaseModel):
     """How far a session's bot delivered its conversation: every item through delivered_seq, plus partial_reply.
 
@@ -299,7 +307,15 @@ class BotDelivery(BaseModel):
     delivered_seq: int = Field(ge=0)
     partial_reply: PartialReply | None = None
     owed_seq: int = Field(default=0, ge=0)
-    owed_reactions: list[MessageReaction] = Field(default_factory=list)
+    owed_reactions: list[OwedReaction] = Field(default_factory=list)
+
+    @property
+    def reactions_to_place(self) -> list[MessageReaction]:
+        """The owed reactions as a follow takes them: which emoji goes on which message."""
+        return [
+            MessageReaction(message_id=owed.message_id, emoji=owed.emoji)
+            for owed in self.owed_reactions
+        ]
 
     @property
     def owes(self) -> bool:

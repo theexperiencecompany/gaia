@@ -153,6 +153,7 @@ const startAfter = (floor: number): FollowStart => ({
   floor,
   partialReply: null,
   owedReactions: [],
+  placedReactions: [],
   record: async () => undefined,
 });
 const NOT_KEPT: DeliveryRecorder = async () => undefined;
@@ -867,6 +868,7 @@ describe("history the follow started after", () => {
         floor: 0,
         partialReply: null,
         owedReactions: [],
+        placedReactions: [],
         record: async (cursor) => {
           recorded.push(cursor.delivered_seq);
         },
@@ -892,6 +894,7 @@ describe("a reaction the bot had not placed", () => {
     floor: number,
     owedReactions: FollowStart["owedReactions"],
     surface: FollowSurface,
+    placedReactions: FollowStart["placedReactions"] = [],
   ) => {
     const reports: DeliveryReport[] = [];
     const follower = new ConversationFollower(
@@ -899,6 +902,7 @@ describe("a reaction the bot had not placed", () => {
         floor,
         partialReply: null,
         owedReactions,
+        placedReactions,
         record: async (report) => {
           reports.push(report);
         },
@@ -987,6 +991,42 @@ describe("a reaction the bot had not placed", () => {
     expect(sent(calls)).toEqual([{ text: "👍", replyTo: null }]);
     expect(reports.flatMap((r) => r.placed_reactions)).toEqual([OWED]);
     expect(follower.delivered.owed_reactions).toEqual([]);
+  });
+
+  it("is settled without placing it again when an earlier follow here placed it", async () => {
+    const { surface, calls } = recorder();
+    const { follower, reports } = following(1, [OWED], surface, [OWED]);
+    await feed(follower, [screenFrame([inbound("u1", 1, "11", THUMBS)])]);
+
+    expect(reacts(calls)).toEqual([]);
+    expect(reports.flatMap((r) => r.placed_reactions)).toEqual([OWED]);
+  });
+
+  it("is not placed again by a late wake whose cursor still owes it", async () => {
+    const { surface, calls } = recorder();
+    const reports: DeliveryReport[] = [];
+    const record: DeliveryRecorder = async (_ctx, _id, report) => {
+      reports.push(report);
+    };
+    const source: ConversationEventSource = async function* () {
+      yield screenFrame([inbound("u1", 1, "11", THUMBS)]);
+      yield stateFrame(1, "idle");
+    };
+    const followers = new ConversationFollowers(source, NON_EDITING, record);
+    const ctx = { platform: NON_EDITING.platform, platformUserId: "7" };
+    followers.follow(ctx, "c1", 1, cursorAt(0), surface);
+    await followers.idle();
+    // The wake was published when the reaction was owed: its cursor has not moved since.
+    followers.resume(
+      ctx,
+      "c1",
+      { ...cursorAt(1), owed_reactions: [OWED] },
+      surface,
+    );
+    await followers.idle();
+
+    expect(reacts(calls)).toHaveLength(1);
+    expect(reports.flatMap((r) => r.placed_reactions)).toEqual([OWED, OWED]);
   });
 
   it("settles the emoji it replaced along with the one the message shows", async () => {
@@ -1368,7 +1408,13 @@ describe.each([
       },
     };
     const first = new ConversationFollower(
-      { floor: 1, partialReply: null, owedReactions: [], record: keep },
+      {
+        floor: 1,
+        partialReply: null,
+        owedReactions: [],
+        placedReactions: [],
+        record: keep,
+      },
       options,
       crashing,
       "c1",
@@ -1387,6 +1433,7 @@ describe.each([
         floor: kept.delivered_seq,
         partialReply: kept.partial_reply,
         owedReactions: [],
+        placedReactions: [],
         record: keep,
       },
       options,
@@ -1419,7 +1466,13 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
     };
     const chat = recorder();
     const first = new ConversationFollower(
-      { floor: 1, partialReply: null, owedReactions: [], record: keep },
+      {
+        floor: 1,
+        partialReply: null,
+        owedReactions: [],
+        placedReactions: [],
+        record: keep,
+      },
       EDITING,
       chat.surface,
       "c1",
@@ -1439,6 +1492,7 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
           floor: kept.delivered_seq,
           partialReply: kept.partial_reply,
           owedReactions: [],
+          placedReactions: [],
           record: keep,
         },
         EDITING,
@@ -1489,7 +1543,13 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
     };
     const chat = recorder();
     const first = new ConversationFollower(
-      { floor: 1, partialReply: null, owedReactions: [], record: keep },
+      {
+        floor: 1,
+        partialReply: null,
+        owedReactions: [],
+        placedReactions: [],
+        record: keep,
+      },
       EDITING,
       chat.surface,
       "c1",
@@ -1509,6 +1569,7 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
         floor: kept.delivered_seq,
         partialReply: kept.partial_reply,
         owedReactions: [],
+        placedReactions: [],
         record: keep,
       },
       EDITING,

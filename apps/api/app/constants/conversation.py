@@ -155,6 +155,8 @@ STEP_TICK_SECONDS = 0.25
 SWEEP_BATCH = 200
 # Conversations one active-conversations read returns to a restarting bot.
 ACTIVE_BOT_CONVERSATIONS_LIMIT = 500
+# A reaction no follow placed in a day is dropped: its message is past the bot's screen, or old news.
+OWED_REACTION_MAX_AGE = timedelta(hours=24)
 SWEEP_SECONDS = frozenset({0, 15, 30, 45})
 #: What a user's Stop leaves as the work's report, in the user's words, not the runner's.
 WORK_STOPPED_REPORT = "You stopped this before it finished."

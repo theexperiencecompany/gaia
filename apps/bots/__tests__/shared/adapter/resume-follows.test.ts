@@ -262,3 +262,34 @@ describe("a platform send during a follow", () => {
     expect(adapter.sent).toEqual([]);
   });
 });
+
+describe("a delivery report the API did not take", () => {
+  it("is sent again until the API takes it, so nothing delivered is delivered twice", async () => {
+    const { adapter, listActiveConversations, opened } = restarted([target(3)]);
+    const recordDelivered = vi
+      .fn()
+      .mockRejectedValueOnce(refused())
+      .mockResolvedValue({ recorded: true });
+    Object.assign(adapter, {
+      gaia: {
+        listActiveConversations,
+        conversationEvents: opened,
+        recordDelivered,
+      },
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await adapter.resume();
+      const idle = adapter.conversationsIdle();
+      await vi.advanceTimersByTimeAsync(RETRY_POLICY.OWN_API.maxTimeout * 2);
+      await idle;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const [first, second] = recordDelivered.mock.calls;
+    expect(recordDelivered.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(second).toEqual(first);
+    expect(adapter.sent).toEqual(["Your flight is booked."]);
+  });
+});

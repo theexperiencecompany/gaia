@@ -169,6 +169,16 @@ export class ConversationFollower {
       partial_reply: start.partialReply,
     };
     for (const reaction of start.owedReactions) this.owe(reaction);
+    for (const { message_id, emoji } of start.placedReactions)
+      this.placed.set(message_id, emoji);
+  }
+
+  /** The emoji this follow has on each user message, for the next follow here. */
+  get placedReactions(): MessageReaction[] {
+    return [...this.placed].map(([message_id, emoji]) => ({
+      message_id,
+      emoji,
+    }));
   }
 
   /** How far this follow has put the conversation on the platform. */

@@ -5,8 +5,10 @@ runs while a message posted there is answered; this wakes one for what lands out
 Notice, an approval, a reply to work that finished later, a reaction put on a message.
 """
 
+from datetime import UTC, datetime
+
 from app.db.repositories.bot_sessions import bot_session_repository
-from app.models.bot_models import BotSessionDocument, MessageReaction
+from app.models.bot_models import BotSessionDocument, OwedReaction
 from app.models.conversation_frame_models import EntryFrame, EntryUpdatedFrame, OutputFrame
 from app.models.conversation_log_models import ApprovalRequested, Notice, Reply, UserMessage
 from app.services.conversation.ports import Frames
@@ -38,8 +40,10 @@ class BotWakingFrames:
                 session = await bot_session_repository.owe_reaction(
                     conversation_id,
                     seq=frame.seq,
-                    reaction=MessageReaction(
-                        message_id=frame.entry.id, emoji=frame.entry.reaction.emoji
+                    reaction=OwedReaction(
+                        message_id=frame.entry.id,
+                        emoji=frame.entry.reaction.emoji,
+                        owed_at=datetime.now(UTC),
                     ),
                 )
         await self._frames.publish(conversation_id, *frames)

@@ -1,11 +1,10 @@
 """BotWakingFrames: the conversation's bot is owed and woken for exactly the entries it renders."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.bot_models import MessageReaction
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryFrame, EntryUpdatedFrame
 from app.models.conversation_log_models import Entry, Reaction
@@ -79,9 +78,13 @@ async def test_a_reaction_is_owed_to_the_bot_before_its_frame_goes_out_and_wakes
     ):
         await BotWakingFrames(frames).publish("conv-1", EntryUpdatedFrame(seq=4, entry=reacted))
 
-    owed.assert_awaited_once_with(
-        "conv-1", seq=4, reaction=MessageReaction(message_id="u1", emoji="👍")
-    )
+    [call] = owed.await_args_list
+    reaction = call.kwargs["reaction"]
+    assert (call.args, call.kwargs["seq"]) == (("conv-1",), 4)
+    assert (reaction.message_id, reaction.emoji) == ("u1", "👍")
+    # Stored against the UTC cutoff the boot's prune compares with.
+    assert reaction.owed_at.tzinfo is UTC
+    assert abs(datetime.now(UTC) - reaction.owed_at) < timedelta(seconds=5)
     assert (published_when_owed, len(frames.published)) == ([0], 1)
     delivery.assert_not_awaited()
     wake.assert_awaited_once_with(session)

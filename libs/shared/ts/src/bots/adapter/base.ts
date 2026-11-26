@@ -43,7 +43,7 @@ import {
   platformIdentity,
 } from "../../analytics";
 import type { ActiveBotConversation } from "../../api/generated";
-import { RETRY_POLICY } from "../../retry";
+import { RETRY_POLICY, withRetry } from "../../retry";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
@@ -79,6 +79,8 @@ import { retryTransientPlatformCall } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
   type BotFailureReason,
+  classifyBotFailure,
+  isTransientBotFailure,
   recordBotFailure,
 } from "../utils/failure-reasons";
 import {
@@ -1002,18 +1004,29 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Keeps the follower's cursor on the server. A failed write only means a restart
-   * could resend from the last cursor kept, so delivery goes on and the miss is logged.
+   * Keeps the follower's cursor on the server, retrying a transient failure: a report is
+   * idempotent, and one lost leaves a placed reaction owed, placed again by the next follow.
+   * A write that still fails only means a restart could resend from the last cursor kept,
+   * so delivery goes on and the miss is logged.
    */
   private async recordDelivered(
     conversationId: string,
     report: DeliveryReport,
   ): Promise<void> {
     try {
-      await this.gaia.recordDelivered(conversationId, {
-        platform: this.platform,
-        ...report,
-      });
+      await withRetry(
+        RETRY_POLICY.OWN_API,
+        () =>
+          this.gaia.recordDelivered(conversationId, {
+            platform: this.platform,
+            ...report,
+          }),
+        // No shutdown signal: a stopping bot's last report is what its successor resumes from.
+        {
+          transient: (error) =>
+            isTransientBotFailure(classifyBotFailure(error)),
+        },
+      );
     } catch (error) {
       wideLog.warning("delivery_cursor_not_recorded", {
         ...sanitizeErrorForLog(error),
