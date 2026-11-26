@@ -649,8 +649,8 @@ def services_precondition(work: Sequence[ModuleWork]) -> str | None:
                 f"this shard maps {SERVICES_TIER} tests but USE_REAL_SERVICES is not 1 — every "
                 "contract test would skip and its mutants would be reported as uncovered rather "
                 "than surviving. On CI the job must run with pool=services "
-                "(setup-python-test-env); locally, start the services and export "
-                "USE_REAL_SERVICES=1."
+                "(setup-python-test-env); locally, run it as `mise mutation:one <module>`, which "
+                "starts this machine's test-services lane and points the run at it."
             )
         problem = unreachable_service()
         if problem:

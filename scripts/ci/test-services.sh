@@ -12,6 +12,10 @@
 #                 remove this job's containers on a GitHub-hosted runner.
 #   janitor       reset every lane whose env file is older than STALE_HOURS
 #                 (the box only; any other runner is thrown away).
+#   exec -- cmd   up + prepare, then run cmd with this lane's endpoints and
+#                 USE_REAL_SERVICES=1 exported over whatever the caller had.
+#                 Wrap the real binary, never `mise …`: mise re-applies a
+#                 worktree's .env.worktree over the caller's env.
 #
 # The script decides for itself which topology it is on — callers never choose:
 #
@@ -38,7 +42,8 @@
 # Env contract:
 #   RUNNER_NAME             a box runner name (gaia-home-<n>, lib/runner-host.sh)
 #                           selects the shared topology.
-#   RUNNER_INDEX            lane number / port offset (default 0).
+#   RUNNER_INDEX            lane number / port offset (default 0 on a GitHub
+#                           runner, LOCAL_LANE on a developer machine).
 #   GAIA_CI_RUNDIR,
 #   RUNNER_LOCAL_CACHE      where the per-lane env file and the lock live.
 #   GAIA_TEST_SERVICES_ENV  override the env file path (per-job mode).
@@ -108,6 +113,13 @@ LOCK_FILE="${RUNDIR}/gaia-shared-test-services.lock"
 LOCK_WAIT_SECS=600
 
 env_file_for() { echo "${RUNDIR}/gaia-test-services-$1.env"; }
+
+# A developer machine runs the dev stack's own services on the canonical ports
+# lane 0 would bind, so off CI the default lane is the last one.
+LOCAL_LANE=12
+if [ -z "${RUNNER_INDEX:-}" ]; then
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then RUNNER_INDEX=0; else RUNNER_INDEX=$LOCAL_LANE; fi
+fi
 
 # ── which topology are we on? ─────────────────────────────────────────────
 # ci_on_the_box (lib/runner-host.sh) reads the runner name; RUNNER_INDEX comes
@@ -704,6 +716,24 @@ _down_perjob() {
 
 cmd_down() { cmd_reset "${1:-}"; }
 
+cmd_exec() {
+  [ "${1:-}" = "--" ] && shift
+  if [ "$#" -eq 0 ]; then
+    usage
+    exit 2
+  fi
+  cmd_up
+  cmd_prepare
+  local env_file
+  env_file="${GAIA_TEST_SERVICES_ENV:-$(env_file_for "$RUNNER_INDEX")}"
+  set -a
+  # shellcheck source=/dev/null
+  source "$env_file"
+  set +a
+  export USE_REAL_SERVICES=1
+  exec "$@"
+}
+
 # ── janitor ───────────────────────────────────────────────────────────────
 
 # A cancelled job never runs its own reset, so its namespaces would accumulate
@@ -738,12 +768,14 @@ cmd_janitor() {
 usage() {
   cat >&2 <<'USAGE'
 Usage: test-services.sh <up|prepare|reset|down|janitor> [lane]
+       test-services.sh exec -- <command> [args…]
 
   up            make the services exist and be ready (idempotent)
   prepare [r]   claim lane r's namespace, clean it, export its env contract
   reset [r]     release lane r's namespace (never fails a green lane)
   down          teardown for an `if: always()` step
   janitor       reset every lane whose env file is stale (the box only)
+  exec -- cmd   run cmd against this lane's services (up + prepare first)
 
 The topology (shared set on the box vs per-job containers) is decided from
 RUNNER_NAME (lib/runner-host.sh) and RUNNER_INDEX; callers do not choose.
@@ -759,6 +791,7 @@ main() {
     reset)   cmd_reset "$@" ;;
     down)    cmd_down "$@" ;;
     janitor) cmd_janitor "$@" ;;
+    exec)    cmd_exec "$@" ;;
     *)
       echo "test-services.sh: unknown subcommand '${sub}'" >&2
       usage
