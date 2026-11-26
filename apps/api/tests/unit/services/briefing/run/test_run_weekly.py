@@ -59,6 +59,7 @@ from app.models.scout_models import (
 )
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.briefing.facts import WEEK_AHEAD
+from app.services.briefing.message import email_subject
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.prose import reader_block
 from app.services.briefing.wind_down import ladder_state
@@ -91,6 +92,7 @@ class TestAWeeklyDigest:
         request = world.notify.await_args.args[0]
         assert request.details.kind == NotificationKind.BRIEFING_WEEKLY
         assert request.content.body == payload.message == "Gym"
+        assert request.content.email_subject == email_subject(BriefingKind.WEEKLY, payload)
         # The recap is always pushed: it reaches the chat app, not only the in-app page.
         assert world.post.await_args.kwargs["message"].origin == "weekly brief"
         assert world.pending.consumed == []

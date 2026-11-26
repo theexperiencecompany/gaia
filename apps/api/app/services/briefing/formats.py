@@ -4,6 +4,7 @@ Every date a brief's models read is a day: "Sat Nov 14". The user-facing quiet n
 its weekday whole ("on Saturday Nov 14").
 """
 
+from collections.abc import Sequence
 from datetime import date, datetime, time
 
 
@@ -46,6 +47,14 @@ def clock_time(at: datetime | time) -> str:
 def moment(at: datetime) -> str:
     """Say a moment on the user's clock: "Sat Nov 14, 8:00 AM"."""
     return f"{day(at.date())}, {clock_time(at)}"
+
+
+def listed(names: Sequence[str], show: int | None = None) -> str:
+    """Say names as a sentence lists them: "A, B and C"; two or more past show are counted ("A, B and 4 others")."""
+    if show is not None and len(names) > show + 1:
+        names = [*names[:show], f"{len(names) - show} others"]
+    *first, last = names
+    return f"{', '.join(first)} and {last}" if first else last
 
 
 def opening_line(text: str) -> str:

@@ -272,6 +272,8 @@ export class ConversationFollowers {
           wideLog.set({
             replies_delivered: summary.repliesDelivered,
             reactions_placed: summary.reactionsPlaced,
+            notices_delivered: summary.noticesDelivered,
+            files_delivered: summary.filesDelivered,
           });
         }
       },

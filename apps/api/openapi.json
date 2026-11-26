@@ -14611,6 +14611,17 @@
             "title": "Body",
             "type": "string"
           },
+          "email_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Subject"
+          },
           "rich_content": {
             "anyOf": [
               {

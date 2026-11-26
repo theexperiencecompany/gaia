@@ -9,18 +9,21 @@ store are replaced with fakes that fail the test if the email path ever calls th
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from itsdangerous import URLSafeSerializer
 from pydantic import ValidationError
 import pytest
+import time_machine
 
 from app.config.settings import settings
+from app.constants.briefing import EditionVariant
 from app.constants.notifications import NotificationChannel, NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
-from app.models.brief_document_models import BriefingModel
+from app.models.brief_document_models import BriefingModel, EditionRender
 from app.models.brief_payload_models import BriefingPayload
 from app.models.notification.notification_models import (
     ChannelConfig,
@@ -31,7 +34,7 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.user_models import UserDocument
-from app.services.briefing import edition_email, edition_image
+from app.services.briefing import edition_email, edition_image, notification_email
 from app.services.briefing.notification_email import EditionEmail, edition_email as edition_email_of
 from app.services.email.models import EmailMessage
 from app.services.notification_service import EMAIL_RENDERERS
@@ -92,7 +95,7 @@ _EDITION_EMAIL = EditionEmail(
     payload=_BRIEF,
     brief_url=_BRIEF_URL,
     edition_image_url=_EDITION_IMAGE_URL,
-    title="Reminder",
+    subject="Reminder",
 )
 _EDITION = {"image_url": _EDITION_IMAGE_URL, "fold": None, "paper": None}
 _BRIEF_ID = "brief_42"
@@ -107,7 +110,18 @@ _CARD: dict[str, Any] = {
     "needs_you_count": 1,
 }
 _BRIEFING_DETAILS: dict[str, object] = {"brief_url": _BRIEF_URL, "card": _CARD}
-_NO_EDITION = f"^a {NotificationKind.BRIEFING_DAILY} notification's card carries no edition$"
+_EDITION_KEY = "k" * 32
+_NOW = datetime(2026, 10, 14, 7, 0, tzinfo=UTC)
+_STORED_BRIEF = BriefingModel(
+    id=_BRIEF_ID,
+    user_id=_USER_ID,
+    date="2026-10-14",
+    payload=_BRIEF,
+    edition=EditionRender(key=_EDITION_KEY),
+)
+_NO_EDITION = (
+    f"^brief {_BRIEF_ID} of a {NotificationKind.BRIEFING_DAILY} notification has no edition$"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -134,13 +148,16 @@ def user_on_file(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 @pytest.fixture(autouse=True)
 def stored_brief(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    getter = AsyncMock(
-        return_value=BriefingModel(
-            id=_BRIEF_ID, user_id=_USER_ID, date="2026-10-14", payload=_BRIEF
-        )
-    )
+    getter = AsyncMock(return_value=_STORED_BRIEF)
     monkeypatch.setattr(briefing_repository, "get", getter)
     return getter
+
+
+@pytest.fixture(autouse=True)
+def signed_edition_url(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    signer = AsyncMock(return_value=_EDITION_IMAGE_URL)
+    monkeypatch.setattr(notification_email, "edition_url", signer)
+    return signer
 
 
 @pytest.fixture(autouse=True)
@@ -218,6 +235,42 @@ class TestEmailChannelAdapterContract:
         stored_brief.assert_awaited_once_with(_BRIEF_ID, user_id=_USER_ID)
 
     @pytest.mark.asyncio
+    @time_machine.travel(_NOW, tick=False)
+    async def test_a_briefing_email_loads_the_compact_image_not_the_lossless_one(
+        self, signed_edition_url: AsyncMock
+    ) -> None:
+        notification = _make_request(
+            kind=NotificationKind.BRIEFING_DAILY, details=_BRIEFING_DETAILS
+        )
+
+        await _adapter().transform(notification)
+
+        signed_edition_url.assert_awaited_once_with(_EDITION_KEY, EditionVariant.JPG, _NOW)
+
+    @pytest.mark.asyncio
+    async def test_an_email_subject_replaces_the_title_as_a_briefings_subject(self) -> None:
+        notification = _make_request(
+            kind=NotificationKind.BRIEFING_DAILY,
+            details=_BRIEFING_DETAILS,
+            email_subject="Daily brief, Wed Oct 14: Three things today",
+        )
+
+        email = await _adapter().transform(notification)
+
+        assert email.render(_UNSUB_URL)[0] == "Daily brief, Wed Oct 14: Three things today"
+
+    @pytest.mark.asyncio
+    async def test_an_email_subject_leaves_a_plain_emails_heading_its_title(self) -> None:
+        notification = _make_request(email_subject="Daily brief, Wed Oct 14: Reminder")
+
+        subject, html = (await _adapter().transform(notification)).render(_UNSUB_URL)
+
+        assert subject == "Daily brief, Wed Oct 14: Reminder"
+        assert html == email_templates.render_plain_notification_email(
+            "Reminder", "Stand-up in 10 minutes", _UNSUB_URL
+        )
+
+    @pytest.mark.asyncio
     async def test_transform_without_kind_or_rich_content(self) -> None:
         assert await _adapter().transform(_make_request()) == _content()
 
@@ -289,23 +342,23 @@ class TestEmailChannelAdapterContract:
             await edition_email_of(_make_request())
 
     @pytest.mark.asyncio
-    async def test_transform_fails_loud_on_a_card_without_its_hosted_edition(
+    async def test_transform_fails_loud_on_a_brief_stored_without_its_edition(
         self, stored_brief: AsyncMock
     ) -> None:
+        stored_brief.return_value = _STORED_BRIEF.model_copy(update={"edition": None})
         notification = _make_request(
-            kind=NotificationKind.BRIEFING_DAILY,
-            details={"brief_url": _BRIEF_URL, "card": {**_CARD, "edition": None}},
+            kind=NotificationKind.BRIEFING_DAILY, details=_BRIEFING_DETAILS
         )
 
         with pytest.raises(ValueError, match=_NO_EDITION):
             await _adapter().transform(notification)
-        stored_brief.assert_not_awaited()
 
 
 def _make_request(
     kind: str | None = None,
     rich_content: dict[str, Any] | None = None,
     details: dict[str, object] | None = None,
+    email_subject: str | None = None,
 ) -> NotificationRequest:
     """Build the request from raw fields, as a stored or sent one arrives, so its details are validated."""
     return NotificationRequest.model_validate(
@@ -319,6 +372,7 @@ def _make_request(
             "content": NotificationContent(
                 title="Reminder",
                 body="Stand-up in 10 minutes",
+                email_subject=email_subject,
                 rich_content=rich_content,
             ),
             "details": {"kind": kind, **(details or {})} if kind else None,
@@ -498,7 +552,7 @@ class TestDeliverBriefings:
 
         body = _sent_body(route)
         assert f'<img src="{_EDITION_IMAGE_URL}"' in body["html"]
-        assert body["subject"] == "Three things today"
+        assert body["subject"] == "Reminder"
         assert status.status == NotificationStatus.DELIVERED
         rasterizer, upload = edition_rendering
         rasterizer.assert_not_awaited()
@@ -535,23 +589,18 @@ class TestDeliverBriefings:
         assert f'href="{_UNSUB_URL}"' in body["html"]
         assert body["headers"] == _UNSUB_HEADERS
 
-    @pytest.mark.parametrize(
-        ("title", "subject"), [("Morning", "Morning"), ("", "Your GAIA brief")]
-    )
-    async def test_a_briefing_without_a_headline_falls_back_to_the_title_then_a_default(
-        self, title: str, subject: str
-    ) -> None:
+    async def test_a_briefing_without_a_subject_falls_back_to_a_default(self) -> None:
         route = _mock_send()
         untitled = EditionEmail(
-            payload=_BRIEF.model_copy(update={"headline": ""}),
+            payload=_BRIEF,
             brief_url=_BRIEF_URL,
             edition_image_url=_EDITION_IMAGE_URL,
-            title=title,
+            subject="",
         )
 
         await _adapter().deliver(untitled, _USER_ID)
 
-        assert _sent_body(route)["subject"] == subject
+        assert _sent_body(route)["subject"] == "Your GAIA brief"
 
     async def test_transform_then_deliver_sends_the_stored_image(self) -> None:
         route = _mock_send()
