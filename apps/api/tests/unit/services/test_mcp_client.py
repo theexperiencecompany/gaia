@@ -1463,12 +1463,15 @@ class TestMCPTokenStoreStoreBearerToken:
         assert existing.status == MCPCredentialStatus.CONNECTED
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestMCPTokenStoreOAuthState:
     async def test_create_and_verify_state(self):
         store = MCPTokenStore(user_id=USER_ID)
         stored_data: dict[str, Any] = {}
 
-        async def fake_set_cache(key: str, data: Any, ttl: int = 0) -> None:
+        async def fake_set_cache(
+            key: str, data: Any, ttl: int = 0, model: type[object] | None = None
+        ) -> None:
             stored_data[key] = data
 
         async def fake_get_and_delete(key: str) -> Any:

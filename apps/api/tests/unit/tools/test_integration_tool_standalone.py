@@ -528,12 +528,13 @@ class TestConnectIntegration:
         return_value=False,
     )
     @pytest.mark.regression
-    async def test_mcp_reconnect_returns_the_standalone_authorization_url(
+    async def test_mcp_reconnect_on_a_chat_app_returns_the_login_free_connect_link(
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
-        """The tool result must carry the provider URL so the model can relay it as plain text."""
+        """A chat-app user gets the one-hour connect link to relay, never the 10-minute provider URL."""
         mock_gsw.return_value = _writer()
         auth_url = "https://mcp.example.com/authorize?state=xyz"
+        connect_url = "https://heygaia.io/connect/abc123"
 
         with (
             patch(
@@ -549,12 +550,17 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.build_oauth_auth_url",
                 new=AsyncMock(return_value=auth_url),
             ),
+            patch(
+                "app.utils.integration_checker.build_connect_link_url",
+                new=AsyncMock(return_value=connect_url),
+            ),
         ):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
                 config=_cfg(), integration_ids=["posthog"], mode=ConnectMode.RECONNECT
             )
 
-        assert auth_url in result
+        assert connect_url in result
+        assert auth_url not in result
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
