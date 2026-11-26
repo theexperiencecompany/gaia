@@ -32,11 +32,9 @@ const PREPARE_MARGIN = "240px";
 /** A typical folded edition's width over height, held while the real one decodes. */
 const PLACEHOLDER_ASPECT = 2.4;
 const CREASE_PX = 6;
-/** The two folded-under panels show as the sheet's unprinted reverse, each a little deeper back. */
-const FOLDED_LAYERS = [
-  { heightPx: 8, tint: 90, nudgeXPx: 0, turnDeg: 0, inset: 0 },
-  { heightPx: 7, tint: 83, nudgeXPx: 1, turnDeg: 0.3, inset: 0.6 },
-] as const;
+/** The folded-under pages, seen edge on: this many sheets, each this many px thick. */
+const PAGE_COUNT = 5;
+const PAGE_EDGE_PX = 1.5;
 
 /** An edition handed to the letter, with the hold that keeps its bitmaps open until the face is drawn. */
 interface EditionDelivery {
@@ -66,42 +64,36 @@ function RolledEdge({ edition }: { edition: PreparedEdition }) {
 }
 
 /**
- * The folded-under panels: the sheet's reverse, same paper and grain without the
- * print, in the front's shadow just under the crease, the back one set a hair askew.
+ * The pages folded under the front, as a newspaper's: their edges stacked flush
+ * under the crease, alternately catching the light and falling into shade, in the
+ * front's shadow at the top and darkening toward the desk.
  */
-function FoldedPanels({ edition }: { edition: PreparedEdition }) {
+function FoldedPages({ edition }: { edition: PreparedEdition }) {
   const { paper, isDarkPaper } = edition;
   return (
-    <>
-      {FOLDED_LAYERS.map((layer, depth) => (
+    <span
+      aria-hidden
+      className="relative mx-[0.4%] block"
+      style={{ marginTop: -1 }}
+    >
+      {Array.from({ length: PAGE_COUNT }, (_, depth) => (
         <span
-          key={layer.heightPx}
-          aria-hidden
-          className="relative block overflow-hidden rounded-b-[4px]"
+          // biome-ignore lint/suspicious/noArrayIndexKey: the pages are a fixed, ordered stack
+          key={depth}
+          className="relative block last:rounded-b-[2px]"
           style={{
-            height: layer.heightPx,
-            marginInline: `${layer.inset}%`,
-            marginTop: depth === 0 ? -2 : -1,
-            zIndex: -depth,
-            transform: `translateX(${layer.nudgeXPx}px) rotate(${layer.turnDeg}deg)`,
-            background: foldedReverse(paper, layer.tint),
+            height: PAGE_EDGE_PX,
+            background: foldedReverse(paper, depth % 2 === 0 ? 94 : 82),
+            // the hairline gap between two sheets
+            boxShadow: "inset 0 -0.5px 0 rgba(0,0,0,0.35)",
           }}
-        >
-          <span
-            className="absolute inset-0 opacity-30 mix-blend-multiply"
-            style={{ backgroundImage: PAPER_GRAIN }}
-          />
-          <span
-            className="absolute inset-0"
-            style={{ background: underFoldShadow(isDarkPaper) }}
-          />
-          <span
-            className="absolute inset-x-0 bottom-0 h-px"
-            style={{ background: edgeLight("fold", isDarkPaper) }}
-          />
-        </span>
+        />
       ))}
-    </>
+      <span
+        className="pointer-events-none absolute inset-0"
+        style={{ background: underFoldShadow(isDarkPaper) }}
+      />
+    </span>
   );
 }
 
@@ -218,7 +210,7 @@ export function BriefLetter({ brief, trigger }: BriefLetterProps) {
               />
             </span>
             <RolledEdge edition={edition} />
-            <FoldedPanels edition={edition} />
+            <FoldedPages edition={edition} />
           </span>
         </BriefTrigger>
       ) : !imageUrl || isFailed ? (
