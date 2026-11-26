@@ -13028,6 +13028,8 @@ export interface components {
             actions?: components["schemas"]["NotificationAction"][] | null;
             /** Body */
             body: string;
+            /** Email Subject */
+            email_subject?: string | null;
             /** Rich Content */
             rich_content?: {
                 [key: string]: unknown;

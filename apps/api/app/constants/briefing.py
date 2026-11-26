@@ -240,6 +240,8 @@ QUIET_NOTE_OVERDUE: Final[str] = "{count} of your own todos are past due."
 #: A quiet brief that could not read every app: its quiet is only of what it read.
 QUIET_NOTE_UNREAD_HEADLINE: Final[str] = "Nothing new in what I could read"
 QUIET_NOTE_UNREAD: Final[str] = "I couldn't read {apps} this time, so I can't say what they hold."
+# The unread apps a quiet note names before it counts the rest: a line, never a roll call.
+QUIET_NOTE_UNREAD_SHOWN: Final[int] = 3
 QUIET_NOTE_SIGNED_OUT: Final[str] = (
     "Your {apps} sign-in expired: reconnect it in Settings, Integrations and I'll read it again."
 )
@@ -442,6 +444,12 @@ STAMP_ART_CONTENT_TYPE: Final[str] = "image/webp"
 # A brief's notification ranks just below an urgent one (1 is highest).
 BRIEF_NOTIFICATION_PRIORITY: Final[int] = 2
 BRIEF_NOTIFICATION_ACTION_LABEL: Final[str] = "Open briefing"
+# Every brief email opens on its kind and day, so an inbox lists them as one series.
+BRIEF_EMAIL_SUBJECT_LABELS: Final[dict[BriefingKind, str]] = {
+    BriefingKind.DAILY: "Daily brief",
+    BriefingKind.WEEKLY: "Weekly digest",
+}
+BRIEF_EMAIL_SUBJECT: Final[str] = "{label}, {day}: {headline}"
 
 # An edition key's length in hex characters: 128 bits, unguessable.
 EDITION_KEY_CHARS: Final[int] = 32
@@ -452,9 +460,10 @@ EDITION_URL_SALT: Final[str] = "brief-edition-url"
 class EditionVariant(StrEnum):
     """One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide."""
 
-    #: The app and the email: lossless, keeping a desk family's transparency.
+    #: The app: lossless, keeping a desk family's transparency.
     PNG = "png"
-    #: Chat platforms, which pick photo vs document by size: compact, flattened on the desk base.
+    #: The email and chat platforms, which load it over the network or pick photo vs document
+    #: by size: compact, flattened on the desk base.
     JPG = "jpg"
 
 

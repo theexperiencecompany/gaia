@@ -71,6 +71,8 @@ def _encoded(png: bytes) -> dict[EditionVariant, bytes]:
         compact,
         format="JPEG",  # pragma: no mutate — Pillow upper-cases format
         quality=EDITION_JPG_QUALITY,
+        # a mail client paints a progressive image as it arrives, not once it has all landed
+        progressive=True,
     )
     return {EditionVariant.PNG: lossless.getvalue(), EditionVariant.JPG: compact.getvalue()}
 

@@ -30,12 +30,14 @@ code diff.
    mkdir -p <pr-number>-<topic>
    cp -f /path/to/images/*.png <pr-number>-<topic>/
    git add <pr-number>-<topic>/
-   git commit -m "Assets for PR #<pr-number> (<topic>), not intended to be merged"
-   git push origin HEAD:pr-assets
+   # pr-assets holds images only and has no hook config, so prek refuses without this
+   PREK_ALLOW_NO_CONFIG=1 git commit -m "Assets for PR #<pr-number> (<topic>), not intended to be merged"
+   PREK_ALLOW_NO_CONFIG=1 git push origin HEAD:pr-assets
    cd - && git worktree remove --force /tmp/pr-assets
    ```
 
-4. **Check each URL serves an image** before you embed it:
+4. **Check each URL serves an image** before you embed it. Check only after the
+   push: a URL fetched too early caches its 404 for about five minutes.
 
    ```bash
    /usr/bin/curl -s -o /dev/null -w "%{http_code} %{content_type}\n" \
