@@ -5,7 +5,7 @@ import {
   CheckmarkCircle02Icon,
   LinkSquare02Icon,
 } from "@icons";
-import { formatRelativeDate } from "@shared/utils";
+import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   GaiaButton,
@@ -130,7 +130,9 @@ export const NotificationCard = ({
             className="ml-auto shrink-0 text-xs whitespace-nowrap text-zinc-500 tabular-nums"
             suppressHydrationWarning
           >
-            {formatRelativeDate(notification.created_at)}
+            {formatDistanceToNow(new Date(notification.created_at), {
+              addSuffix: true,
+            })}
           </span>
         </div>
         {card ? (

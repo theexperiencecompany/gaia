@@ -344,9 +344,10 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
     () => rows.filter((row) => rowShows(row, alwaysShowsGaia)),
     [rows, alwaysShowsGaia],
   );
+  // The popup names no days, so its rows group as they always did.
   const startsDay = useMemo(
-    () => dayStarts(shownRows, new Date()),
-    [shownRows],
+    () => (compact ? [] : dayStarts(shownRows, new Date())),
+    [shownRows, compact],
   );
 
   // Scroll to (and highlight) a deep-linked message once it exists.
@@ -412,7 +413,7 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
             data-screen-item-id={id}
             data-screen-item-kind={rowKind(row)}
           >
-            {day && !compact && <DayDivider at={day} />}
+            {day && <DayDivider at={day} />}
             <ChatRowItem
               row={row}
               sends={sends}
