@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field, model_validator
 
 from app.constants.chat import ConversationSource
-from app.models.bot_models import BotDelivery, BotSessionDocument, PartialReply
+from app.models.bot_models import BotDelivery, BotSessionDocument, MessageReaction, PartialReply
 from app.models.conversation_screen_models import ScreenStreamFrame
 from app.models.message_models import SelectedCalendarEventData, SelectedWorkflowData
 from app.schemas.common import ResponseModel
@@ -68,20 +68,22 @@ class MessageAccepted(ResponseModel):
 class BotMessageAccepted(MessageAccepted):
     """A bot message accepted, with the token the bot follows the events stream with.
 
-    after_seq and partial_reply are where the follow starts: the session's delivery cursor while
-    it still owes anything, else just before the message.
+    after_seq, partial_reply and owed_reactions are where the follow starts: the session's delivery
+    cursor while it still owes anything, else just before the message.
     """
 
     session_token: str
     after_seq: int = Field(ge=0)
     partial_reply: PartialReply | None = None
+    owed_reactions: list[MessageReaction] = Field(default_factory=list)
 
 
 class ActiveBotConversation(ResponseModel):
     """A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.
 
     partial_reply names the reply just past it that the bot had sent only its first bubbles of, so a
-    restarted follower sends the rest and repeats none.
+    restarted follower sends the rest and repeats none; owed_reactions are the reactions it has
+    not placed yet, on messages at or below after_seq too.
     """
 
     conversation_id: str
@@ -90,6 +92,7 @@ class ActiveBotConversation(ResponseModel):
     is_dm: bool
     after_seq: int = Field(ge=0)
     partial_reply: PartialReply | None = None
+    owed_reactions: list[MessageReaction] = Field(default_factory=list)
 
     @classmethod
     def of(cls, session: BotSessionDocument, delivery: BotDelivery) -> "ActiveBotConversation":
@@ -101,15 +104,20 @@ class ActiveBotConversation(ResponseModel):
             is_dm=session.channel_id is None,
             after_seq=delivery.delivered_seq,
             partial_reply=delivery.partial_reply,
+            owed_reactions=delivery.reactions_to_place,
         )
 
 
 class BotDeliveryReport(BaseModel):
-    """What a bot follower put on the platform: every item through delivered_seq, plus partial_reply."""
+    """What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.
+
+    placed_reactions are the reactions it placed (or sent as text) since its last report.
+    """
 
     platform: ConversationSource
     delivered_seq: int = Field(ge=0)
     partial_reply: PartialReply | None = None
+    placed_reactions: list[MessageReaction] = Field(default_factory=list)
 
 
 class BotDeliveryRecorded(ResponseModel):

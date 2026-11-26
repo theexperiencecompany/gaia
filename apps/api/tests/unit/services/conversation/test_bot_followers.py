@@ -1,14 +1,15 @@
 """list_active_bot_conversations: what a restarted bot follows again, from where it got to."""
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT
+from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT, OWED_REACTION_MAX_AGE
 from app.db.repositories.conversation_sweep import SweepHead
-from app.models.bot_models import BotDelivery, BotSessionDocument, PartialReply
+from app.models.bot_models import BotDelivery, BotSessionDocument, OwedReaction, PartialReply
 from app.services.conversation.bot_followers import follow_start, list_active_bot_conversations
 from app.services.conversation.runtime import install_runtime_ports
 from tests.unit.services.conversation.log_helpers import fold, replied, user
@@ -38,6 +39,11 @@ class Store:
     heads: list[SweepHead]
     sessions: dict[str, BotSessionDocument]
     asked: list[tuple[str, str, int]]
+    dropped_before: list[tuple[str, datetime]] = field(default_factory=list)
+
+    def drop_owed_reactions_before(self, platform: str, before: datetime) -> int:
+        self.dropped_before.append((platform, before))
+        return 2
 
     def list_owed(self, platform: str, limit: int) -> list[BotSessionDocument]:
         self.asked.append(("owed", platform, limit))
@@ -55,6 +61,10 @@ def store() -> Iterator[Store]:
         patch(
             f"{FOLLOWERS}.bot_session_repository.list_owed",
             new=AsyncMock(side_effect=store.list_owed),
+        ),
+        patch(
+            f"{FOLLOWERS}.bot_session_repository.drop_owed_reactions_before",
+            new=AsyncMock(side_effect=store.drop_owed_reactions_before),
         ),
         patch(
             f"{FOLLOWERS}.bot_session_repository.get_by_conversation_id",
@@ -161,6 +171,19 @@ async def test_a_follow_starts_at_the_cursor_of_a_session_that_still_owes(store:
     assert await follow_start("conv-owed", 9) == cut
 
 
+async def test_a_follow_starts_at_the_cursor_of_a_session_owing_only_a_reaction(
+    store: Store,
+) -> None:
+    reacted = BotDelivery(
+        delivered_seq=5,
+        owed_seq=5,
+        owed_reactions=[OwedReaction(message_id="u4", emoji="👍", owed_at=datetime.now(UTC))],
+    )
+    store.sessions["conv-reacted"] = _session("conv-reacted", "telegram", reacted)
+
+    assert await follow_start("conv-reacted", 9) == reacted
+
+
 @pytest.mark.parametrize(
     "delivery", [None, BotDelivery(delivered_seq=5, owed_seq=5)], ids=["no-cursor", "all-sent"]
 )
@@ -170,3 +193,25 @@ async def test_a_follow_of_a_session_owing_nothing_starts_just_before_the_messag
     store.sessions["conv-done"] = _session("conv-done", "telegram", delivery)
 
     assert await follow_start("conv-done", 9) == BotDelivery(delivered_seq=8)
+
+
+async def test_a_boot_drops_the_reactions_owed_longer_than_a_day_before_it_lists(
+    store: Store,
+) -> None:
+    before = datetime.now(UTC)
+    with patch(f"{FOLLOWERS}.log") as logger:
+        await list_active_bot_conversations("telegram")
+
+    [(platform, cutoff)] = store.dropped_before
+    assert platform == "telegram"
+    assert (
+        before - OWED_REACTION_MAX_AGE - timedelta(seconds=5)
+        < cutoff
+        <= before - OWED_REACTION_MAX_AGE + timedelta(seconds=5)
+    )
+    logger.warning.assert_called_once_with(
+        "owed bot reactions dropped after a day unplaced",
+        platform="telegram",
+        sessions=2,
+        max_age_hours=24.0,
+    )

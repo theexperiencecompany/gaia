@@ -185,6 +185,10 @@ class TestConversationDeletionCleanup:
                 "app.services.conversation_service._cleanup_checkpoint_threads",
                 AsyncMock(),
             ),
+            patch(
+                "app.services.conversation_service.bot_session_repository.forget_delivery",
+                AsyncMock(),
+            ),
         ):
             result = await delete_conversation(conv_id, FAKE_USER)
 
@@ -226,6 +230,10 @@ class TestConversationDeletionCleanup:
             ),
             patch(
                 "app.services.conversation_service._cleanup_checkpoint_threads",
+                AsyncMock(),
+            ),
+            patch(
+                "app.services.conversation_service.bot_session_repository.forget_delivery",
                 AsyncMock(),
             ),
         ):

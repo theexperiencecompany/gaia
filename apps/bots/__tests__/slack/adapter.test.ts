@@ -1463,6 +1463,29 @@ describe("SlackAdapter - reactToMessage", () => {
     expect(add).toHaveBeenCalledOnce();
   });
 
+  it("takes Slack's already_reacted as the reaction in place, so a repeat never goes out as text", async () => {
+    const add = vi.fn().mockRejectedValue(
+      Object.assign(new Error("An API error occurred: already_reacted"), {
+        code: "slack_webapi_platform_error",
+        data: { ok: false, error: "already_reacted" },
+      }),
+    );
+    const adapter = makeReactor(add);
+
+    await expect(
+      adapter.reactToMessage("C-group", "123.456", "👍", true, null),
+    ).resolves.toBe("attached");
+    await expect(
+      makeReactor(
+        vi.fn().mockRejectedValue(
+          Object.assign(new Error("An API error occurred: message_not_found"), {
+            data: { ok: false, error: "message_not_found" },
+          }),
+        ),
+      ).reactToMessage("C-group", "123.456", "👍", true, null),
+    ).resolves.toBe("attach_failed");
+  });
+
   it("attaches via reactions.add with the shortcode in a channel", async () => {
     const add = vi.fn().mockResolvedValue({});
     const adapter = makeReactor(add);

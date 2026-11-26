@@ -359,18 +359,19 @@ class Leftovers:
     artifacts: AsyncMock
     sessions: AsyncMock
     threads: AsyncMock
+    bot_delivery: AsyncMock
 
     def cleaned(self) -> list[tuple[object, ...]]:
         """Return the conversations each cleanup ran for, one row per cleanup."""
         return [
             tuple(c.args for c in mock.await_args_list)
-            for mock in (self.links, self.artifacts, self.sessions, self.threads)
+            for mock in (self.links, self.artifacts, self.sessions, self.threads, self.bot_delivery)
         ]
 
 
 @pytest.fixture
 def leftovers():
-    found = Leftovers(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    found = Leftovers(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
     with (
         patch.object(conversation_service, "revoke_conversation_links", new=found.links),
         patch.object(
@@ -380,6 +381,11 @@ def leftovers():
         ),
         patch.object(conversation_service, "delete_session_dir", new=found.sessions),
         patch.object(conversation_service, "_cleanup_checkpoint_threads", new=found.threads),
+        patch.object(
+            conversation_service.bot_session_repository,
+            "forget_delivery",
+            new=found.bot_delivery,
+        ),
     ):
         yield found
 
@@ -398,6 +404,7 @@ class TestDeleteConversation:
             ((USER_ID, "conv_abc"),),
             ((USER_ID, "conv_abc"),),
             ((USER_ID, "conv_abc"),),
+            (("conv_abc",),),
             (("conv_abc",),),
         ]
         mock_capture.assert_called_once_with(
@@ -419,7 +426,8 @@ class TestDeleteConversation:
         assert result.message == "All conversations deleted successfully"
         mock_repo.delete_all_chats_for_user.assert_awaited_once_with(USER_ID)
         owned = ((USER_ID, "conv_1"), (USER_ID, "conv_2"))
-        assert leftovers.cleaned() == [owned, owned, owned, (("conv_1",), ("conv_2",))]
+        unowned = (("conv_1",), ("conv_2",))
+        assert leftovers.cleaned() == [owned, owned, owned, unowned, unowned]
         mock_capture.assert_called_once_with(UserId(USER_ID), ChatConversationDeleted(count=2))
 
     async def test_delete_all_raises_404_when_none(self, mock_repo, test_user):
@@ -753,7 +761,8 @@ class TestTrackedTodoChat:
 
         mock_repo.delete_for_todos.assert_awaited_once_with(USER_ID, ["todo-1", "todo-2"])
         owned = ((USER_ID, "conv-1"), (USER_ID, "conv-2"))
-        assert leftovers.cleaned() == [owned, owned, owned, (("conv-1",), ("conv-2",))]
+        unowned = (("conv-1",), ("conv-2",))
+        assert leftovers.cleaned() == [owned, owned, owned, unowned, unowned]
         # Not a conversation the user deleted: no chat analytics for it.
         mock_capture.assert_not_called()
 

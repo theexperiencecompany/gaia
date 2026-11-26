@@ -1,16 +1,20 @@
 """The bot conversations a restarted bot must follow again: those still answering, working or not yet delivered."""
 
-from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT
+from datetime import UTC, datetime
+
+from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT, OWED_REACTION_MAX_AGE
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_sweep import SweepHead, conversation_sweep_repository
 from app.models.bot_models import BotDelivery
 from app.models.conversation_log_models import ReplySettled
 from app.models.conversation_send_models import ActiveBotConversation
 from app.services.conversation.runtime import runtime_ports
+from shared.py.wide_events import log
 
 
 async def list_active_bot_conversations(platform: str) -> list[ActiveBotConversation]:
     """Return the platform's session conversations with live work, unanswered inputs, or entries not yet delivered."""
+    await _drop_stale_reactions(platform)
     active: dict[str, ActiveBotConversation] = {}
     for session in await bot_session_repository.list_owed(platform, ACTIVE_BOT_CONVERSATIONS_LIMIT):
         if session.delivery is not None:
@@ -28,6 +32,19 @@ async def list_active_bot_conversations(platform: str) -> list[ActiveBotConversa
             session, session.delivery or await _undelivered_from(head)
         )
     return list(active.values())
+
+
+async def _drop_stale_reactions(platform: str) -> None:
+    """Drop reactions owed past OWED_REACTION_MAX_AGE, so one no follow can place is not retried on every boot."""
+    before = datetime.now(UTC) - OWED_REACTION_MAX_AGE
+    dropped = await bot_session_repository.drop_owed_reactions_before(platform, before)
+    if dropped:
+        log.warning(
+            "owed bot reactions dropped after a day unplaced",
+            platform=platform,
+            sessions=dropped,
+            max_age_hours=OWED_REACTION_MAX_AGE.total_seconds() / 3600,
+        )
 
 
 async def _undelivered_from(head: SweepHead) -> BotDelivery:

@@ -50,6 +50,7 @@ export type {
   ConversationSurface,
   DeliveryCursor,
   DeliveryRecorder,
+  DeliveryReport,
   FollowStart,
   FollowSurface,
   ReopenedBubble,

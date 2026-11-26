@@ -316,52 +316,25 @@ export async function runScenario(
     for (const [index, turn] of scenario.turns.entries()) {
       const before = transcript.getEvents().length;
       if (turn.outage) adapter.startOutage(turn.outage);
+      const held = turn.restartOnReact ? adapter.holdNextReaction() : null;
       await deliverTurnMessages(adapter, user.platformUserId, turn);
-      let restartedAt: number | undefined;
-      const { restartAfterSends } = turn;
-      if (restartAfterSends !== undefined) {
-        await withTimeout(
-          transcript.until(
-            (events) =>
-              events.slice(before).filter((e) => e.type === "send").length >=
-              restartAfterSends,
-          ),
-          RESTART_TRIGGER_TIMEOUT_MS,
-          `the reply never sent ${restartAfterSends} messages to restart after`,
-        );
+      const restart = scriptedRestart(turn, transcript, before, held);
+      let restartedAt = 0;
+      if (restart) {
+        await restart.trigger;
+        adapter.dieInHeldReaction();
         // As the bot process does on Ctrl-C: its follows stop where they are.
         await adapter.shutdown("restart");
         restartedAt = transcript.getEvents().length;
         adapter = await bootAdapter(platform, apiUrl, transcript);
       }
-      const { restartAfterMs } = turn;
-      let restartedOnTimerAt: number | undefined;
-      if (restartAfterMs !== undefined) {
-        await new Promise((resolve) => setTimeout(resolve, restartAfterMs));
-        await adapter.shutdown("restart");
-        restartedOnTimerAt = transcript.getEvents().length;
-        adapter = await bootAdapter(platform, apiUrl, transcript);
-      }
       await adapter.settleTurn();
-      if (
-        restartedOnTimerAt !== undefined &&
-        !transcript
-          .getEvents()
-          .slice(restartedOnTimerAt)
-          .some((e) => e.type === "send")
-      ) {
-        failures.push(
-          `turn ${index + 1} (${turnLabel(turn)}): the restart came after everything was sent: the fresh bot sent nothing, so the resume was not exercised`,
-        );
-      }
-      if (restartedAt !== undefined) {
-        const resumed = restartResumedABubble(
-          transcript.getEvents().slice(before),
-          restartedAt - before,
-        );
-        if (resumed !== null) {
-          failures.push(`turn ${index + 1} (${turnLabel(turn)}): ${resumed}`);
-        }
+      const notResumed = restart?.resumed(
+        transcript.getEvents().slice(before),
+        restartedAt - before,
+      );
+      if (notResumed) {
+        failures.push(`turn ${index + 1} (${turnLabel(turn)}): ${notResumed}`);
       }
       // Settle BEFORE slicing: a late outbound delivery belongs to the turn
       // that caused it, and its assertions must be able to see it.
@@ -389,6 +362,73 @@ export async function runScenario(
     failures,
     transcript,
   };
+}
+
+/** A turn's scripted bot restart: what it waits for, and what the fresh bot must have done after it. */
+interface TurnRestart {
+  trigger: Promise<void>;
+  /** Why the turn's events show no resume past restartedAt, or null when they do. */
+  resumed: (
+    events: readonly TranscriptEvent[],
+    restartedAt: number,
+  ) => string | null;
+}
+
+/** Whether the turn's events after restartedAt hold one of type. */
+const happenedSince =
+  (type: TranscriptEvent["type"], missing: string) =>
+  (events: readonly TranscriptEvent[], restartedAt: number): string | null =>
+    events.slice(restartedAt).some((e) => e.type === type) ? null : missing;
+
+/** The restart a turn scripts, if any; held is its react call held open, for restartOnReact. */
+function scriptedRestart(
+  turn: ScenarioTurn,
+  transcript: TranscriptRecorder,
+  before: number,
+  held: Promise<void> | null,
+): TurnRestart | null {
+  const { restartAfterSends, restartAfterMs } = turn;
+  const scripted = [restartAfterSends, restartAfterMs, held ?? undefined];
+  if (scripted.filter((trigger) => trigger !== undefined).length > 1) {
+    throw new Error("a scenario turn scripts at most one bot restart");
+  }
+  if (restartAfterSends !== undefined) {
+    return {
+      trigger: withTimeout(
+        transcript.until(
+          (events) =>
+            events.slice(before).filter((e) => e.type === "send").length >=
+            restartAfterSends,
+        ),
+        RESTART_TRIGGER_TIMEOUT_MS,
+        `the reply never sent ${restartAfterSends} messages to restart after`,
+      ),
+      resumed: restartResumedABubble,
+    };
+  }
+  if (restartAfterMs !== undefined) {
+    return {
+      trigger: new Promise((resolve) => setTimeout(resolve, restartAfterMs)),
+      resumed: happenedSince(
+        "send",
+        "the restart came after everything was sent: the fresh bot sent nothing, so the resume was not exercised",
+      ),
+    };
+  }
+  if (held) {
+    return {
+      trigger: withTimeout(
+        held,
+        RESTART_TRIGGER_TIMEOUT_MS,
+        "the turn never reacted to restart inside",
+      ),
+      resumed: happenedSince(
+        "reaction",
+        "the fresh bot placed no reaction, so the reaction the dead one held was lost",
+      ),
+    };
+  }
+  return null;
 }
 
 /** A turn's messages: its single `send`, or its burst. */
@@ -480,6 +520,14 @@ function deliveredTexts(
 }
 
 /** 1-based positions of the inbound messages that received a reaction. */
+/** Each emoji placed on one message more than once, as "<message> <emoji>". */
+function repeatedReactions(events: readonly TranscriptEvent[]): string[] {
+  const placed = events.flatMap((e) =>
+    e.type === "reaction" ? [`${e.targetMessageId} ${e.emoji}`] : [],
+  );
+  return [...new Set(placed.filter((key, at) => placed.indexOf(key) !== at))];
+}
+
 function reactedPositions(events: readonly TranscriptEvent[]): number[] {
   const reacted = new Set(
     events.flatMap((e) => (e.type === "reaction" ? [e.targetMessageId] : [])),
@@ -704,6 +752,24 @@ export function evaluateAssertion(
     }
   }
   failures.push(...shownTextFailures(events, assertion));
+  failures.push(...reactionFailures(events, assertion));
+  return failures;
+}
+
+/** The reaction assertions: which inbound messages were reacted to, and that none twice. */
+function reactionFailures(
+  events: readonly TranscriptEvent[],
+  assertion: ScenarioAssertion,
+): string[] {
+  const failures: string[] = [];
+  if (assertion.noRepeatedReactions) {
+    const repeated = repeatedReactions(events);
+    if (repeated.length > 0) {
+      failures.push(
+        `expected no reaction placed twice, got ${JSON.stringify(repeated)}`,
+      );
+    }
+  }
   if (assertion.reactedTo !== undefined) {
     const actual = reactedPositions(events);
     const wanted = [...assertion.reactedTo].sort((a, b) => a - b);

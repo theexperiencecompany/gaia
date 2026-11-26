@@ -15,7 +15,11 @@
  */
 
 import { z } from "zod";
-import type { ActiveBotConversation, PartialReply } from "../../api/generated";
+import type {
+  ActiveBotConversation,
+  MessageReaction,
+  PartialReply,
+} from "../../api/generated";
 import { isOwnApiUrl } from "../utils/own-api";
 
 /**
@@ -85,6 +89,11 @@ const partialReplySchema = z
     message: "a partial reply has a final bubble or an open message",
   }) satisfies z.ZodType<PartialReply>;
 
+const messageReactionSchema = z.object({
+  message_id: z.string().min(1),
+  emoji: z.string().min(1),
+}) satisfies z.ZodType<MessageReaction>;
+
 /** A wake: the bot conversation to follow, from the delivered-through cursor its follower recorded. */
 const conversationFollowSchema = z.object({
   conversation_id: z.string().min(1),
@@ -93,6 +102,7 @@ const conversationFollowSchema = z.object({
   is_dm: z.boolean(),
   after_seq: z.number().int().min(0),
   partial_reply: partialReplySchema.nullable().default(null),
+  owed_reactions: z.array(messageReactionSchema).default([]),
 }) satisfies z.ZodType<ActiveBotConversation>;
 
 /** Shape of a bot-facing message on the delivery bus, bound to this bot's API origin. */

@@ -52,7 +52,6 @@ import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
 import type {
   AwaitedDecision,
   ConversationSurface,
-  DeliveryCursor,
   FollowSurface,
 } from "../conversation/follower.types";
 import { ConversationFollowers } from "../conversation/followers";
@@ -105,6 +104,7 @@ import { withTimeout } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
+import { recordDeliveryReport } from "./delivery-report";
 import { resolveIncomingMedia } from "./incoming-media";
 import { listActiveUntilAnswered } from "./resume-list";
 
@@ -815,6 +815,7 @@ export abstract class BaseBotAdapter {
           {
             delivered_seq: accepted.after_seq,
             partial_reply: accepted.partial_reply ?? null,
+            owed_reactions: accepted.owed_reactions ?? [],
           },
           this.followSurface(
             surface,
@@ -868,6 +869,7 @@ export abstract class BaseBotAdapter {
       {
         delivered_seq: target.after_seq,
         partial_reply: target.partial_reply,
+        owed_reactions: target.owed_reactions ?? [],
       },
       this.followSurface(
         surface,
@@ -993,32 +995,10 @@ export abstract class BaseBotAdapter {
       (ctx, conversationId, signal, after) =>
         this.gaia.conversationEvents(ctx, conversationId, signal, after),
       STREAMING_DEFAULTS[this.platform],
-      (_ctx, conversationId, cursor) =>
-        this.recordDelivered(conversationId, cursor),
+      (_ctx, conversationId, report) =>
+        recordDeliveryReport(this.gaia, this.platform, conversationId, report),
     );
     return this._followers;
-  }
-
-  /**
-   * Keeps the follower's cursor on the server. A failed write only means a restart
-   * could resend from the last cursor kept, so delivery goes on and the miss is logged.
-   */
-  private async recordDelivered(
-    conversationId: string,
-    cursor: DeliveryCursor,
-  ): Promise<void> {
-    try {
-      await this.gaia.recordDelivered(conversationId, {
-        platform: this.platform,
-        ...cursor,
-      });
-    } catch (error) {
-      wideLog.warning("delivery_cursor_not_recorded", {
-        ...sanitizeErrorForLog(error),
-        conversation_id: conversationId,
-        delivered_seq: cursor.delivered_seq,
-      });
-    }
   }
 
   /** Settles once every conversation followed so far is idle with its replies shown. */

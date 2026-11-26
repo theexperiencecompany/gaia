@@ -133,14 +133,14 @@ describe("a send to a chat that no longer exists", () => {
       { platform: "telegram", platformUserId: "1" },
       "stale",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       surface(staleSent, chatNotFound),
     );
     followers.follow(
       { platform: "telegram", platformUserId: "2" },
       "live",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       surface(liveSent, null),
     );
     await followers.idle();
@@ -163,7 +163,7 @@ describe("a send to a chat that no longer exists", () => {
       { platform: "telegram", platformUserId: "1" },
       "stale",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       surface([], () => grammyError(400, "Bad Request: message is too long")),
     );
     const ended = await Promise.race([
@@ -208,7 +208,7 @@ describe("a platform outage mid-reply", () => {
       { platform: "telegram", platformUserId: "1" },
       "c1",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       {
         ...platform,
         send,
@@ -264,7 +264,7 @@ describe("an edit during a platform outage", () => {
       { platform: "telegram", platformUserId: "1" },
       "c1",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       {
         ...platform,
         send,
@@ -310,7 +310,7 @@ describe("an events stream the API answers with a 4xx", () => {
       { platform: "telegram", platformUserId: "1" },
       "c1",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       surface(sent, null),
     );
     let ended = false;
@@ -361,7 +361,7 @@ describe("an events stream the API answers with a 4xx", () => {
       { platform: "telegram", platformUserId: "1" },
       "c1",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       surface(sent, null),
     );
     let ended = false;
@@ -412,7 +412,7 @@ describe("a platform outage longer than one send's retries", () => {
       { platform: "telegram", platformUserId: "1" },
       "c1",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       { ...platform, send },
     );
     let ended = false;
@@ -448,7 +448,7 @@ describe("a platform outage longer than one send's retries", () => {
       { platform: "telegram", platformUserId: "1" },
       "c1",
       1,
-      { delivered_seq: 0, partial_reply: null },
+      { delivered_seq: 0, partial_reply: null, owed_reactions: [] },
       { ...platform, send },
     );
     let ended = false;
