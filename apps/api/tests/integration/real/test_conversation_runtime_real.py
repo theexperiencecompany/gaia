@@ -2800,7 +2800,11 @@ class _ClaimClock:
     ) -> asyncio.Task[None]:
         """Take the step's beat instead of timing it on the wall clock; advance fires it."""
         self._prove, self._context, self.every = prove, context, every
-        return asyncio.create_task(asyncio.Event().wait(), name=name)
+        return asyncio.create_task(self._until_cancelled(), name=name)
+
+    @staticmethod
+    async def _until_cancelled() -> None:
+        await asyncio.Event().wait()
 
     async def advance_one_beat(self) -> None:
         """Let one beat interval pass on the live key, then beat as the step's own task would."""
