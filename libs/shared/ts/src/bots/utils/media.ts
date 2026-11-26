@@ -207,6 +207,19 @@ export function extensionForMime(mimeType: string, fallback: string): string {
   return lookup[mime] ?? fallback;
 }
 
+/** The file name a URL serves, without its query; "image" when its last segment carries no extension. */
+export function urlFilename(url: string): string {
+  const name = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "");
+  return name.includes(".") ? name : "image";
+}
+
+/** Gives a name with no extension the one its mime type implies, so platforms preview it. */
+export function withMimeExtension(filename: string, mimeType: string): string {
+  return filename.includes(".")
+    ? filename
+    : `${filename}${extensionForMime(mimeType, "")}`;
+}
+
 function rejectOversizeMedia(
   kind: MediaKind,
   bytes: number,
