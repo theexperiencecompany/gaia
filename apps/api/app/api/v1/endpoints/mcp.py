@@ -191,15 +191,13 @@ async def mcp_oauth_callback(
         redirect_path=redirect_path,
         frontend_url=frontend_url,
     )
-    owner = await resolve_oauth_state_owner(state_token)
-    if owner is None or owner.integration_id != integration_id:
+    user_id = await resolve_oauth_state_owner(state_token, integration_id)
+    if user_id is None:
         log.warning(
-            f"{LogTag.MCP} OAuth callback state has no matching owner",
+            f"{LogTag.MCP} OAuth callback state has no owner for this integration",
             integration_id=integration_id,
-            state_known=owner is not None,
         )
         return RedirectResponse(url=callback.failure("expired_state"))
-    user_id = owner.user_id
     log.set(user={"id": user_id})
 
     client = await get_mcp_client(user_id=user_id)

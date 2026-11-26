@@ -14,7 +14,6 @@ import pytest
 
 from app.api.v1.endpoints.mcp import mcp_oauth_callback
 from app.constants.log_tags import LogTag
-from app.models import mcp_config
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
@@ -59,8 +58,7 @@ def _callback_seams(
         else patch(
             f"{_MODULE}.resolve_oauth_state_owner",
             new_callable=AsyncMock,
-            # read at call time: the regression lane imports this file against master
-            return_value=mcp_config.OAuthStateOwner(user_id=USER_ID, integration_id="github"),
+            return_value=USER_ID,
         )
     )
     with (

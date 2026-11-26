@@ -50,9 +50,10 @@ def _oauth_owner_key(state: str) -> str:
     return f"{OAUTH_STATE_PREFIX}:owner:{state}"
 
 
-async def resolve_oauth_state_owner(state: str) -> OAuthStateOwner | None:
-    """Return who a state token was minted for; None when unknown, expired or already spent."""
-    return await get_cache(_oauth_owner_key(state), OAuthStateOwner)
+async def resolve_oauth_state_owner(state: str, integration_id: str) -> str | None:
+    """Return the user a state token was minted for, when it was minted for this integration; None otherwise."""
+    owner = await get_cache(_oauth_owner_key(state), OAuthStateOwner)
+    return owner.user_id if owner is not None and owner.integration_id == integration_id else None
 
 
 def _is_credential_usable(cred: MCPCredential | None) -> bool:

@@ -3,7 +3,6 @@
 import fakeredis.aioredis
 import pytest
 
-from app.models.mcp_config import OAuthStateOwner
 from app.services.mcp.mcp_token_store import (
     MCPTokenStore,
     OAuthStateStoreError,
@@ -20,12 +19,15 @@ class TestOAuthStateOwner:
     async def test_create_stores_the_owner_and_resolve_returns_it(self) -> None:
         state = await MCPTokenStore(USER_ID).create_oauth_state("resend", "verifier")
 
-        assert await resolve_oauth_state_owner(state) == OAuthStateOwner(
-            user_id=USER_ID, integration_id="resend"
-        )
+        assert await resolve_oauth_state_owner(state, "resend") == USER_ID
+
+    async def test_a_state_minted_for_another_integration_resolves_to_none(self) -> None:
+        state = await MCPTokenStore(USER_ID).create_oauth_state("resend", "verifier")
+
+        assert await resolve_oauth_state_owner(state, "dodo") is None
 
     async def test_unknown_state_resolves_to_none(self) -> None:
-        assert await resolve_oauth_state_owner("never-minted") is None
+        assert await resolve_oauth_state_owner("never-minted", "resend") is None
 
     async def test_owner_is_gone_once_the_state_is_verified(self) -> None:
         store = MCPTokenStore(USER_ID)
@@ -33,7 +35,7 @@ class TestOAuthStateOwner:
 
         assert await store.verify_oauth_state("resend", state) == (True, "verifier")
 
-        assert await resolve_oauth_state_owner(state) is None
+        assert await resolve_oauth_state_owner(state, "resend") is None
 
     async def test_the_state_and_its_owner_expire_together(
         self, fake_redis: fakeredis.aioredis.FakeRedis
