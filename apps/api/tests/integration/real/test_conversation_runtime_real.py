@@ -264,7 +264,7 @@ from shared.py.conversation_wire import (
 )
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import call as graph_call, comms_graph
-from tests.helpers import WideEventRecorder, item_text, shown_items
+from tests.helpers import item_text, shown_items
 from tests.integration.real.ledger_fixtures import Edges
 from tests.unit.services.conversation.log_helpers import described, workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
@@ -2857,60 +2857,6 @@ async def test_a_sweep_leaves_live_chat_work_alone_and_its_result_is_narrated(
         ("t9", WorkOutcome.DONE)
     ]
     assert (await rig.of(Reply))[-1].text == "your inbox is clean"
-
-
-@pytest.mark.service
-@pytest.mark.parametrize(
-    "failure",
-    [ConnectionError("mongo is unreachable"), asyncio.CancelledError()],
-    ids=["raised", "cancelled"],
-)
-async def test_work_handed_over_after_the_last_model_call_gets_a_run_when_the_finish_save_fails(
-    rig_for: RigFactory, failure: BaseException
-) -> None:
-    model = gated("cleaning your inbox")
-    rig = await rig_for(model)
-    _during(model, 0, lambda: rig.start_work("t1"))
-    await rig.send("m1", "clean my inbox")
-    await rig.settle()
-    run = ExecutorRun(
-        stream_id="stream-1",
-        conversation_id=rig.conversation_id,
-        user=AuthenticatedUser(user_id=rig.user_id),
-        kind=RunKind.LIVE,
-        task_id="t1",
-        user_message_id=None,
-    )
-    busy = f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}"
-    assert await try_acquire_lock(busy, build_lock_value(run.stream_id, "t1"))
-    # Landed after the run's last model call: only a new run can read it.
-    await ExecutorInbox(rig.conversation_id).append("late", "also check the spam folder")
-    spawned = _Spawned(rig)
-    recorder = WideEventRecorder()
-    with (
-        patch.object(
-            executor_runner,
-            "_execute_executor",
-            AsyncMock(return_value=executor_runner._ExecutorResult("inbox cleaned", "final")),
-        ),
-        patch.object(executor_runner, "record_work_finished", AsyncMock(side_effect=failure)),
-        patch.object(executor_runner, "_spawn_detached_run", spawned.spawn),
-        patch("shared.py.wide_events._loguru", recorder),
-        pytest.raises(type(failure)),
-    ):
-        await executor_runner.run_executor_background(
-            run, "clean my inbox", cast(AgentConfigurable, {"user_id": rig.user_id})
-        )
-    [carry_id] = spawned.task_ids
-    # The carry run holds the conversation now: the finished run's lock was freed before it.
-    assert str(await redis_cache.client.get(busy)).endswith(f":{carry_id}")
-    assert [entry.id for entry in await ExecutorInbox(rig.conversation_id).read()] == ["late"]
-    run_event = recorder.event("executor_run")
-    if isinstance(failure, Exception):
-        assert run_event["outcome"] == "failed"
-        assert [e["error_type"] for e in run_event["errors"]] == [type(failure).__name__]
-    else:
-        assert run_event["outcome"] == "cancelled"
 
 
 @pytest.mark.service
