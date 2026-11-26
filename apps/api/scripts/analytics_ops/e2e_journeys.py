@@ -54,7 +54,7 @@ from app.models.workflow_models import (
 )
 from scripts.evals.core.live_chat import TurnReader
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.onboarding import OnboardingStep
+from shared.py.analytics.catalog.onboarding import HeardFrom, OnboardingStep
 from shared.py.conversation_wire import ReplyOutcome
 
 from .posthog_api import REPO_ROOT
@@ -142,9 +142,15 @@ ONBOARDING_PHASES = (
 )
 
 
+#: The Q3 answer the walk gives; its questions_answered event must carry it.
+ONBOARDING_HEARD_FROM = HeardFrom.REDDIT
+
+
 def onboarding(stack: Stack) -> None:
     """Walk the wizard as the browser does, reporting the start twice as a reload would."""
-    answers = OnboardingAnswers(profession="engineer", needs=[OnboardingNeed.INBOX])
+    answers = OnboardingAnswers(
+        profession="engineer", needs=[OnboardingNeed.INBOX], heard_from=ONBOARDING_HEARD_FROM
+    )
     request = OnboardingRequest(**answers.model_dump(), timezone="UTC")
     with stack.client() as api:
 

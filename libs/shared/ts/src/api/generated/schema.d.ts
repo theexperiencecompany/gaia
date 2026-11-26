@@ -10958,6 +10958,12 @@ export interface components {
             version: string;
         };
         /**
+         * HeardFrom
+         * @description Where the user says they first heard about GAIA (onboarding Q3, one pick).
+         * @enum {string}
+         */
+        HeardFrom: "friend" | "twitter" | "linkedin" | "youtube" | "tiktok" | "instagram" | "reddit" | "product_hunt" | "hacker_news" | "google" | "ai_assistant" | "newsletter" | "podcast" | "github" | "discord" | "somewhere_else";
+        /**
          * HILPreferencesResponse
          * @description A user's HIL preferences as returned by the preferences endpoints.
          */
@@ -13320,12 +13326,14 @@ export interface components {
         };
         /**
          * OnboardingAnswers
-         * @description The wizard's answers — Q1 (profession) and Q2 (needs).
+         * @description The wizard's answers — Q1 (profession), Q2 (needs) and Q3 (where they heard of GAIA).
          *
          *     The name is derived from the email server-side, so it is not submitted;
          *     nothing else is generated at onboarding, so nothing else is collected.
          */
         OnboardingAnswers: {
+            /** @description Where the user says they first heard about GAIA (onboarding Q3) */
+            heard_from?: components["schemas"]["HeardFrom"] | null;
             /**
              * Language
              * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
@@ -13381,6 +13389,8 @@ export interface components {
         };
         /** OnboardingPreferences */
         OnboardingPreferences: {
+            /** @description Where the user says they first heard about GAIA (onboarding Q3) */
+            heard_from?: components["schemas"]["HeardFrom"] | null;
             /**
              * Language
              * @description The user's browser language as a primary subtag ("de", "pt"), set at onboarding
@@ -13412,6 +13422,8 @@ export interface components {
          * @description The onboarding submission: the answers again, plus the browser's timezone.
          */
         OnboardingRequest: {
+            /** @description Where the user says they first heard about GAIA (onboarding Q3) */
+            heard_from?: components["schemas"]["HeardFrom"] | null;
             /**
              * Language
              * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
@@ -19354,6 +19366,7 @@ export type HandoffDecisionRequest = components['schemas']['HandoffDecisionReque
 export type HandoffDecisionResponse = components['schemas']['HandoffDecisionResponse'];
 export type HandoffStatus = components['schemas']['HandoffStatus'];
 export type HealthResponse = components['schemas']['HealthResponse'];
+export type HeardFrom = components['schemas']['HeardFrom'];
 export type HILPreferencesResponse = components['schemas']['HILPreferencesResponse'];
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];

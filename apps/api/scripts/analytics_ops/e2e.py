@@ -54,6 +54,7 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingCompleted,
     OnboardingPhaseCompleted,
     OnboardingStarted,
+    OnboardingStep,
 )
 from shared.py.analytics.catalog.settings import (
     SettingsBriefingScheduleUpdated,
@@ -221,6 +222,16 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 *(
                     Expect(OnboardingPhaseCompleted.event, BROWSER, True, (("phase", step.value),))
                     for step in journeys.ONBOARDING_PHASES
+                    if step is not OnboardingStep.QUESTIONS_ANSWERED
+                ),
+                Expect(
+                    OnboardingPhaseCompleted.event,
+                    BROWSER,
+                    True,
+                    (
+                        ("phase", OnboardingStep.QUESTIONS_ANSWERED.value),
+                        ("heard_from", journeys.ONBOARDING_HEARD_FROM.value),
+                    ),
                 ),
                 Expect(OnboardingCompleted.event, BROWSER, True),
                 Expect(UserActive.event, BROWSER, True),

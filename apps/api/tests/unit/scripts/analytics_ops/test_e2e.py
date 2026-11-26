@@ -84,7 +84,13 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ("onboarding:started", WEB),
     (
         "onboarding:phase_completed",
-        {**WEB, "phase": "questions_answered", "needs": ["inbox"], "has_other_need": False},
+        {
+            **WEB,
+            "phase": "questions_answered",
+            "needs": ["inbox"],
+            "has_other_need": False,
+            "heard_from": "reddit",
+        },
     ),
     ("onboarding:phase_completed", {**WEB, "phase": "paywall_reached"}),
     ("onboarding:phase_completed", {**WEB, "phase": "paid_reveal_seen"}),
@@ -333,6 +339,12 @@ def test_an_event_arriving_twice_fails() -> None:
     failures = _judge([*CLEAN, CLEAN[_index("paywall:blocked")]])
 
     assert failures == ["paywall: paywall:blocked: arrived 2x, expected 1x"]
+
+
+def test_questions_answered_without_where_they_heard_of_gaia_fails() -> None:
+    failures = _judge(_with(_index("onboarding:phase_completed"), heard_from=None))
+
+    assert any("onboarding:phase_completed" in failure for failure in failures)
 
 
 def test_a_missing_event_fails() -> None:

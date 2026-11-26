@@ -28,6 +28,7 @@ const answeredQuestions = apply(
   { type: "answer", field: FIELD_NAMES.PROFESSION, value: "founder" },
   { type: "toggleNeed", value: "inbox" },
   { type: "submitNeeds" },
+  { type: "answer", field: FIELD_NAMES.HEARD_FROM, value: "friend" },
   { type: "preferencesPersisted" },
 );
 
@@ -45,6 +46,13 @@ describe("onboarding stage machine", () => {
 
     state = apply(state, { type: "toggleNeed", value: "inbox" });
     state = apply(state, { type: "submitNeeds" });
+    expect(getStage(state, paid)).toBe("questions");
+
+    state = apply(state, {
+      type: "answer",
+      field: FIELD_NAMES.HEARD_FROM,
+      value: "friend",
+    });
     expect(getStage(state, paid)).toBe("questions");
 
     state = apply(state, { type: "preferencesPersisted" });

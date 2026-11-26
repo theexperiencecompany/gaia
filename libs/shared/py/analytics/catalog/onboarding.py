@@ -9,6 +9,7 @@ from shared.py.analytics.catalog.properties import Identifier
 __all__ = [
     "FirstStepsCollapsed",
     "FirstStepsStepClicked",
+    "HeardFrom",
     "NurtureEmailSent",
     "OnboardingCheckoutRetried",
     "OnboardingCompleted",
@@ -33,6 +34,27 @@ class OnboardingStep(StrEnum):
     PAYWALL_REACHED = "paywall_reached"
     PAID_REVEAL_SEEN = "paid_reveal_seen"
     FIRST_CHAT_OPENED = "first_chat_opened"
+
+
+class HeardFrom(StrEnum):
+    """Where the user says they first heard about GAIA (onboarding Q3, one pick)."""
+
+    FRIEND = "friend"
+    TWITTER = "twitter"
+    LINKEDIN = "linkedin"
+    YOUTUBE = "youtube"
+    TIKTOK = "tiktok"
+    INSTAGRAM = "instagram"
+    REDDIT = "reddit"
+    PRODUCT_HUNT = "product_hunt"
+    HACKER_NEWS = "hacker_news"
+    GOOGLE = "google"
+    AI_ASSISTANT = "ai_assistant"
+    NEWSLETTER = "newsletter"
+    PODCAST = "podcast"
+    GITHUB = "github"
+    DISCORD = "discord"
+    SOMEWHERE_ELSE = "somewhere_else"
 
 
 #: The steps only the browser sees; questions_answered is stamped by the answers save itself.
@@ -87,6 +109,7 @@ class OnboardingPhaseCompleted(ServerEvent):
     phase: OnboardingStep
     needs: list[Identifier] | None = None
     has_other_need: bool | None = None
+    heard_from: HeardFrom | None = None
 
 
 class OnboardingCompleted(ServerEvent):

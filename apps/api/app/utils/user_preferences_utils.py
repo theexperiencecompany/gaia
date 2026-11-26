@@ -50,6 +50,7 @@ class OnboardingPreferencesRecord(TypedDict, total=False):
     response_style: str
     other_need: object
     language: str
+    heard_from: str
 
 
 def onboarding_preferences(

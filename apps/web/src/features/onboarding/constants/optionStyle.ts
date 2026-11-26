@@ -1,12 +1,14 @@
 /**
  * Icon and pastel tint for each onboarding option chip, keyed by the option
- * `value` in `professionOptions` / `needOptions`. Tints are whole class
+ * `value` in `professionOptions` / `needOptions` / `heardFromOptions`. Tints are whole class
  * strings so Tailwind can see them; a chip lifts to the solid tint when picked.
  */
 
 import {
+  AiChat02Icon,
   AlarmClockIcon,
   Analytics01Icon,
+  Award01Icon,
   BookOpen01Icon,
   Briefcase01Icon,
   Calendar01Icon,
@@ -15,20 +17,29 @@ import {
   CheckListIcon,
   CodeIcon,
   Comment01Icon,
+  DiscordIcon,
   File01Icon,
   Flag01Icon,
+  GithubIcon,
   GitPullRequestIcon,
+  GoogleIcon,
   HourglassIcon,
   InboxIcon,
+  InstagramIcon,
   Layers01Icon,
+  Linkedin01Icon,
   Megaphone01Icon,
   Message01Icon,
   Mortarboard01Icon,
+  News01Icon,
+  NewTwitterIcon,
   Notification01Icon,
   PaintBoardIcon,
   PencilEdit01Icon,
   PencilEdit02Icon,
+  PodcastIcon,
   PuzzleIcon,
+  RedditIcon,
   Rocket01Icon,
   Search01Icon,
   SparklesIcon,
@@ -36,10 +47,13 @@ import {
   Target01Icon,
   TaskEdit01Icon,
   TelescopeIcon,
+  TiktokIcon,
   UserCheck01Icon,
   UserGroupIcon,
+  UserLove01Icon,
   UserMultipleIcon,
   WorkflowSquare01Icon,
+  YoutubeIcon,
 } from "@icons";
 import type { ComponentType, SVGProps } from "react";
 
@@ -141,4 +155,22 @@ export const OPTION_STYLE: Record<OptionValue, OptionStyle> = {
   creative_deadlines: { icon: HourglassIcon, tint: TINTS.orange },
   student_assignments: { icon: CheckListIcon, tint: TINTS.indigo },
   student_exams: { icon: BookOpen01Icon, tint: TINTS.violet },
+
+  // where they heard about GAIA
+  friend: { icon: UserLove01Icon, tint: TINTS.rose },
+  twitter: { icon: NewTwitterIcon, tint: TINTS.sky },
+  linkedin: { icon: Linkedin01Icon, tint: TINTS.indigo },
+  youtube: { icon: YoutubeIcon, tint: TINTS.rose },
+  tiktok: { icon: TiktokIcon, tint: TINTS.fuchsia },
+  instagram: { icon: InstagramIcon, tint: TINTS.pink },
+  reddit: { icon: RedditIcon, tint: TINTS.orange },
+  product_hunt: { icon: Award01Icon, tint: TINTS.amber },
+  hacker_news: { icon: Comment01Icon, tint: TINTS.orange },
+  google: { icon: GoogleIcon, tint: TINTS.emerald },
+  ai_assistant: { icon: AiChat02Icon, tint: TINTS.teal },
+  newsletter: { icon: News01Icon, tint: TINTS.violet },
+  podcast: { icon: PodcastIcon, tint: TINTS.amber },
+  github: { icon: GithubIcon, tint: TINTS.sky },
+  discord: { icon: DiscordIcon, tint: TINTS.indigo },
+  somewhere_else: { icon: SparklesIcon, tint: TINTS.fuchsia },
 };

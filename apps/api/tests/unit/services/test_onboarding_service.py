@@ -61,6 +61,7 @@ from app.services.onboarding.onboarding_service import (
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.onboarding import (
+    HeardFrom,
     OnboardingCompleted,
     OnboardingPhaseCompleted,
     OnboardingStarted,
@@ -1348,6 +1349,41 @@ class TestSaveOnboardingAnswers:
             needs=["inbox", "reminders"],
             has_other_need=True,
         )
+
+    async def test_where_they_heard_of_gaia_reaches_the_event_the_person_and_the_record(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.update_onboarding_preferences.return_value = UserDocument(id=sample_user_id)
+        answers = OnboardingAnswers(
+            profession="founder", needs=[OnboardingNeed.INBOX], heard_from=HeardFrom.REDDIT
+        )
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task"),
+            patch(f"{SERVICE}.capture") as capture,
+            patch(f"{SERVICE}.identify_user") as identify,
+        ):
+            await save_onboarding_answers(sample_user_id, answers)
+
+        stored = mock_repo.update_onboarding_preferences.await_args.args[1]
+        assert stored.heard_from is HeardFrom.REDDIT
+        assert capture.call_args.args[1].heard_from is HeardFrom.REDDIT
+        identify.assert_called_once_with(UserId(sample_user_id), {"heard_from": "reddit"})
+
+    async def test_no_answer_to_where_they_heard_of_gaia_sets_no_person_property(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.update_onboarding_preferences.return_value = UserDocument(id=sample_user_id)
+        answers = OnboardingAnswers(profession="founder", needs=[OnboardingNeed.INBOX])
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task"),
+            patch(f"{SERVICE}.capture"),
+            patch(f"{SERVICE}.identify_user") as identify,
+        ):
+            await save_onboarding_answers(sample_user_id, answers)
+
+        identify.assert_not_called()
 
     async def test_writes_every_answer_for_this_user_and_stamps_them_for_this_user(
         self, mock_repo: MagicMock, sample_user_id: str

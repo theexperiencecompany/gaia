@@ -8,7 +8,7 @@ import { authApi } from "@/features/auth/api/authApi";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { getBrowserTimezone } from "@/lib/timezone";
 
-import { FIELD_NAMES } from "../constants";
+import { FIELD_NAMES, isHeardFrom } from "../constants";
 import type { OnboardingState } from "../state/types";
 
 export interface OnboardingSubmission {
@@ -40,12 +40,14 @@ export function useOnboardingSubmission(
 
   const profession = state.responses[FIELD_NAMES.PROFESSION] ?? "";
   const otherNeed = state.otherNeed.trim();
+  const heardFrom = state.responses[FIELD_NAMES.HEARD_FROM] ?? "";
   const submit = useCallback(() => {
     if (alreadyCompleted || state.isRestarting || status === "pending") return;
     mutate({
       profession,
       needs: state.selectedNeeds,
       ...(otherNeed ? { other_need: otherNeed } : {}),
+      ...(isHeardFrom(heardFrom) ? { heard_from: heardFrom } : {}),
       timezone: getBrowserTimezone(),
     });
   }, [
@@ -56,6 +58,7 @@ export function useOnboardingSubmission(
     mutate,
     profession,
     otherNeed,
+    heardFrom,
   ]);
 
   return { submit, status };

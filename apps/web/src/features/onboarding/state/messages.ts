@@ -5,6 +5,7 @@
 
 import {
   FIELD_NAMES,
+  heardFromLabel,
   needLabel,
   type OnboardingNeed,
   professionOptions,
@@ -25,9 +26,13 @@ export interface TranscriptInputs {
   firstName?: string;
 }
 
+const NEEDS_QUESTION_INDEX = questions.findIndex(
+  (q) => q.fieldName === FIELD_NAMES.NEEDS,
+);
+
 function answerFor(fieldName: string, state: TranscriptInputs): string | null {
   if (fieldName === FIELD_NAMES.NEEDS) {
-    if (state.questionIndex < questions.length) return null;
+    if (state.questionIndex <= NEEDS_QUESTION_INDEX) return null;
     const labels = state.selectedNeeds
       .map((need) => needLabel(need))
       .filter((label): label is string => !!label);
@@ -40,6 +45,7 @@ function answerFor(fieldName: string, state: TranscriptInputs): string | null {
   if (fieldName === FIELD_NAMES.PROFESSION) {
     return professionOptions.find((p) => p.value === raw)?.label ?? raw;
   }
+  if (fieldName === FIELD_NAMES.HEARD_FROM) return heardFromLabel(raw) ?? null;
   return raw;
 }
 
