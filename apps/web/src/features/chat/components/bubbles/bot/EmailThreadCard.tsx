@@ -93,7 +93,7 @@ export default function EmailThreadCard({
             <div className={accordionStyles.content()}>
               <ScrollShadow className="max-h-[50vh]">
                 <div className="space-y-3">
-                  {(emailThreadData.messages ?? []).map((message) => {
+                  {emailThreadData.messages.map((message) => {
                     const { name: senderName, email: senderEmail } = parseEmail(
                       message.from ?? undefined,
                     );

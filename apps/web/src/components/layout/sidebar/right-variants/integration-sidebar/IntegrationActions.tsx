@@ -18,6 +18,15 @@ import { toast } from "@/lib/toast";
 import { ConnectedActions } from "./ConnectedActions";
 import { NotConnectedActions } from "./NotConnectedActions";
 
+async function shareMarketplaceLink(slug: string): Promise<void> {
+  try {
+    await copyText(`${window.location.origin}${marketplacePath(slug)}`);
+    toast.success("Link copied to clipboard!");
+  } catch {
+    toast.error("Failed to copy link to clipboard");
+  }
+}
+
 /** Title / message / confirm-label copy for a confirmation dialog. */
 interface DialogCopy {
   title: string;
@@ -280,15 +289,6 @@ export function IntegrationActions({
     setShowPublishDialog(true);
   };
 
-  const handleShare = async (slug: string) => {
-    try {
-      await copyText(`${window.location.origin}${marketplacePath(slug)}`);
-      toast.success("Link copied to clipboard!");
-    } catch {
-      toast.error("Failed to copy link to clipboard");
-    }
-  };
-
   const confirmPublish = async () => {
     // Dismiss the dialog immediately — progress is conveyed by the loading
     // toast, and publishing navigates away on success.
@@ -347,7 +347,7 @@ export function IntegrationActions({
               : null
           }
           publish={{ isPending: isPublishing, onPublish: handlePublish }}
-          onShare={handleShare}
+          onShare={shareMarketplaceLink}
         />
       )}
 

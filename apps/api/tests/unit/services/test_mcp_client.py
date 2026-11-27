@@ -1874,6 +1874,35 @@ class TestForgetRejectedGrant:
         assert json.loads(existing.client_registration) == {"client_id": "new_client"}
         mock_session.commit.assert_not_awaited()
 
+    async def test_it_reads_and_saves_this_users_credential_row(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = self._stored(store, "old_refresh", "old_client")
+        ctx_fn, mock_session = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh")
+        statement = mock_session.execute.call_args.args[0]
+        assert statement.column_descriptions[0]["entity"] is MCPCredential
+        mock_session.add.assert_called_once_with(existing)
+
+    async def test_no_credential_row_is_a_no_op(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        ctx_fn, mock_session = _fake_db_session(None)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh", client_id="c")
+        mock_session.commit.assert_not_awaited()
+
+    async def test_a_rejected_client_with_no_stored_registration_clears_only_the_token(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = _make_credential(
+            refresh_token=store._encrypt("old_refresh"), client_registration=None
+        )
+        ctx_fn, mock_session = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.forget_rejected_grant(INTEGRATION_ID, "old_refresh", client_id="old")
+        assert existing.refresh_token is None
+        assert existing.client_registration is None
+        mock_session.commit.assert_awaited_once()
+
     async def test_a_dead_grant_alone_keeps_the_client(self):
         store = MCPTokenStore(user_id=USER_ID)
         existing = self._stored(store, "old_refresh", "old_client")

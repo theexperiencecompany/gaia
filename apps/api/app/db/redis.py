@@ -273,7 +273,7 @@ def _new_client(redis_url: str) -> AsyncRedisCommands:
 
 def key_namespace(key: str) -> str:
     """Return the part of a key before its first ':', safe to log; what follows can be a credential."""
-    return key.split(":", 1)[0]
+    return key.partition(":")[0]
 
 
 class RedisCache:
