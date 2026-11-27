@@ -12,6 +12,7 @@ import pytest
 
 from app.constants.integrations import IntegrationStatus
 from app.core.lazy_loader import providers
+from app.core.provider_registration import boot_process
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.workflows import workflow_repository
@@ -60,6 +61,15 @@ def composio(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeComposio]:
         patch("app.services.composio.composio_service._composio_api_key", return_value="test-key"),
     ):
         yield fake
+
+
+@pytest.fixture
+def boot() -> Iterator[MagicMock]:
+    """Spy on the script's boot so a test can see whether, and as what, it booted."""
+    with patch(
+        "app.scripts.reregister_calendar_starting_soon.boot_process", wraps=boot_process
+    ) as spy:
+        yield spy
 
 
 async def _connect_calendar(user_id: str) -> None:
@@ -126,11 +136,12 @@ def _fire_threshold(config: dict[str, object]) -> int:
     return GoogleCalendarEventStartingSoonTriggerConfig.model_validate(config).minutes_before_start
 
 
-async def test_a_dry_run_counts_and_writes_nothing(raw_collection, composio, capsys) -> None:
+async def test_a_dry_run_counts_and_writes_nothing(raw_collection, composio, boot, capsys) -> None:
     user_id, workflow_id, todo_id = await _seed(raw_collection)
 
     assert await _run(apply=False) == 0
 
+    boot.assert_not_called()
     assert capsys.readouterr().out == (
         "candidates: workflow_users=1 todo_users=1\ndry run: pass --apply to re-register\n"
     )
@@ -145,7 +156,7 @@ async def test_a_dry_run_counts_and_writes_nothing(raw_collection, composio, cap
 
 
 async def test_apply_moves_each_trigger_onto_its_stored_lead_and_releases_the_old_one(
-    raw_collection, composio, capsys
+    raw_collection, composio, boot, capsys
 ) -> None:
     user_id, workflow_id, todo_id = await _seed(raw_collection)
     second_owner = make_user_id()
@@ -154,6 +165,7 @@ async def test_apply_moves_each_trigger_onto_its_stored_lead_and_releases_the_ol
 
     assert await _run(apply=True) == 0
 
+    boot.assert_called_once_with("main_app")
     assert sorted(_fire_threshold(c) for c in composio.created) == [15, 30, 60]
     assert {frozenset(c) for c in composio.created} == {
         frozenset(
@@ -200,14 +212,17 @@ async def test_an_owner_who_cannot_register_is_reported_and_fails_the_run(
     raw_collection, composio, capsys
 ) -> None:
     user_id, workflow_id, _todo_id = await _seed(raw_collection)
-    unconnected = _workflow(make_user_id(), lead=60)
-    await raw_collection.insert_one(unconnected)
+    unconnected = [_workflow(make_user_id(), lead=60) for _ in range(2)]
+    await raw_collection.insert_many(unconnected)
 
     assert await _run(apply=True) == 1
 
     out = capsys.readouterr().out.splitlines()
-    assert "workflows: moved=1 unchanged=0 failed=1" in out
-    assert f"  failed workflows: {unconnected['_id']}" in out
+    assert "workflows: moved=1 unchanged=0 failed=2" in out
+    (failed,) = [line for line in out if line.startswith("  failed workflows: ")]
+    assert sorted(failed.removeprefix("  failed workflows: ").split(" ")) == sorted(
+        str(w["_id"]) for w in unconnected
+    )
     moved = await workflow_repository.get_for_user(workflow_id, user_id)
     assert moved is not None
     assert moved.trigger_config.composio_trigger_ids != ["ti_old_workflow"]

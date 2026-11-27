@@ -2675,8 +2675,11 @@ class TestTriggerService:
         mock_get_handler.return_value = None
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
 
-        with pytest.raises(TriggerRegistrationError, match="No handler found for trigger: unknown"):
+        with pytest.raises(
+            TriggerRegistrationError, match="No handler found for trigger: unknown"
+        ) as exc_info:
             await TriggerService.register_triggers(USER_ID, WORKFLOW_ID, "unknown", trigger)
+        assert exc_info.value.trigger_name == "unknown"
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_success(self, mock_get_handler):

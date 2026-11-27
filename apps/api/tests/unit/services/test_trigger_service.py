@@ -2024,6 +2024,7 @@ class TestCalendarTriggerHandler:
         handler = CalendarTriggerHandler()
         result = await handler._fetch_user_calendars(USER_ID)
         assert result == ["primary", "work@example.com"]
+        mock_list_calendars.assert_awaited_once_with(USER_ID)
 
     @patch("app.services.calendar_service.list_calendars")
     async def test_fetch_user_calendars_no_items(self, mock_list_calendars):
