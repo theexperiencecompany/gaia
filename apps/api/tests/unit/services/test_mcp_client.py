@@ -42,7 +42,15 @@ from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.integrations import IntegrationStatus, ToolsSetup
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_RENAMED_TOOL_NOTE, MCP_UNLISTED_CONNECT_MAX
+from app.constants.mcp import (
+    MCP_OAUTH_GRANT_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_LEASE_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_MAX_HOLD_SECONDS,
+    MCP_OAUTH_GRANT_LOCK_PREFIX,
+    MCP_OAUTH_GRANT_LOCK_RENEW_SECONDS,
+    MCP_RENAMED_TOOL_NOTE,
+    MCP_UNLISTED_CONNECT_MAX,
+)
 from app.db.repositories.integrations import IntegrationsRepository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
@@ -1807,7 +1815,7 @@ class TestOAuthGrantLock:
             patch(
                 "app.services.mcp.mcp_client.discover_oauth_config",
                 AsyncMock(return_value=discovery),
-            ),
+            ) as discover,
             patch(
                 "app.services.mcp.mcp_client.try_refresh_token", AsyncMock(return_value=True)
             ) as refresh,
@@ -1815,6 +1823,7 @@ class TestOAuthGrantLock:
             refreshed = await client._try_refresh_token(INTEGRATION_ID, mcp_config)
 
         assert refreshed is True
+        discover.assert_awaited_once_with(client.token_store, INTEGRATION_ID, mcp_config)
         refresh.assert_awaited_once_with(client.token_store, INTEGRATION_ID, mcp_config, discovery)
         assert client.token_store.get_oauth_token.await_args_list == [
             call(INTEGRATION_ID),
@@ -1863,6 +1872,37 @@ class TestOAuthGrantLock:
 
         assert inside == [True]
         store.grant_lock.assert_called_once_with(INTEGRATION_ID)
+
+    def test_the_grant_lock_is_keyed_per_user_and_integration_with_the_grant_timings(self):
+        lock = MCPTokenStore("u1").grant_lock("i1")
+        assert lock._key == f"{MCP_OAUTH_GRANT_LOCK_PREFIX}u1:i1"
+        assert lock._lease_seconds == MCP_OAUTH_GRANT_LOCK_LEASE_SECONDS
+        assert lock._acquire_timeout_seconds == MCP_OAUTH_GRANT_LOCK_ACQUIRE_TIMEOUT_SECONDS
+        assert lock._renew_seconds == MCP_OAUTH_GRANT_LOCK_RENEW_SECONDS
+        assert lock._max_hold_seconds == MCP_OAUTH_GRANT_LOCK_MAX_HOLD_SECONDS
+
+    @pytest.mark.parametrize(
+        ("access_token", "refresh_token"), [("enc_access", None), (None, "enc_refresh")]
+    )
+    async def test_a_grant_with_either_token_left_is_cleared(
+        self, access_token: str | None, refresh_token: str | None
+    ):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = _make_credential(access_token=access_token, refresh_token=refresh_token)
+        ctx_fn, mock_session = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.clear_oauth_grant(INTEGRATION_ID)
+
+        assert (existing.access_token, existing.refresh_token) == (None, None)
+        mock_session.commit.assert_awaited_once()
+
+    async def test_clearing_a_grant_with_no_credential_row_writes_nothing(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        ctx_fn, mock_session = _fake_db_session(None)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.clear_oauth_grant(INTEGRATION_ID)
+
+        mock_session.commit.assert_not_awaited()
 
     async def test_clearing_a_dead_grant_drops_its_access_and_refresh_tokens(self):
         store = MCPTokenStore(user_id=USER_ID)
