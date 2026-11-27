@@ -2252,6 +2252,24 @@ class TestRecordAuxiliaryUsage:
 
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 77
 
+    async def test_the_llm_call_log_line_carries_the_calls_wall_time(self) -> None:
+        handler = _usage_handler(gemini={"input_tokens": 100, "output_tokens": 20})
+
+        with (
+            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)),
+            emitted_log_records() as records,
+        ):
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                USER_ID,
+                context=replace(_AUX_CONTEXT, duration_ms=812.34),
+                facts=ResponseFacts(),
+            )
+
+        (line,) = [record for record in records if record["message"] == "llm_call"]
+        assert line["extra"]["duration_ms"] == 812.34
+
     async def test_a_missing_count_books_zero_beside_a_present_one(self) -> None:
         """One absent token key must book 0, not a placeholder — a stand-in charges tokens that never existed."""
         handler = _usage_handler(gemini={"output_tokens": 20})
