@@ -773,7 +773,7 @@ cmd_janitor() {
 
 cmd_ports() {
   local lane
-  for lane in $(seq 0 "$MAX_LANE"); do
+  for ((lane = 0; lane <= MAX_LANE; lane++)); do
     perjob_ports "$lane"
   done | tr ' ' '\n'
   shared_ports | tr ' ' '\n'
