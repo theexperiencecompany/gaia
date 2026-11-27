@@ -60,7 +60,6 @@ class TestReregisterTriggersForReset:
             owner_id="wf-1",
             trigger_name="gmail_new_email",
             trigger_config=trigger_config,
-            raise_on_failure=False,
         )
         _patch_log.error.assert_not_called()
 

@@ -1858,6 +1858,7 @@ async def _record_auxiliary_usage(
             cached_tokens=cached_tokens,
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
+            duration_ms=context.duration_ms,
             cost_usd=cost,
         )
 

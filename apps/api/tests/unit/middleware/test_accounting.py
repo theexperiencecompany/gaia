@@ -58,6 +58,7 @@ from app.services.limit_upsell import LimitHitOrigin
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import LimitWindow
 from shared.py.wide_events import log
+from tests.helpers import emitted_log_records
 
 #: A stored lane, whole: to_configurable writes every key, so a fixture must too.
 _LANE: dict[str, object] = {
@@ -316,6 +317,17 @@ async def test_the_provider_calls_wall_time_reaches_the_ledger_in_milliseconds()
         await mw.aafter_model(_state(_ai()), None)
 
     assert record.await_args.kwargs["context"].duration_ms == 50.12
+
+
+async def test_the_llm_call_log_line_carries_the_provider_calls_wall_time() -> None:
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+
+    with _metered_env([100.0, 100.0501234]), emitted_log_records() as records:
+        await mw.awrap_model_call(_model_request(), _answering_handler)
+        await mw.aafter_model(_state(_ai()), None)
+
+    (line,) = [record for record in records if record["message"] == "llm_call"]
+    assert line["extra"]["duration_ms"] == 50.12
 
 
 async def test_the_dev_unlimited_flag_lets_the_model_call_through(
@@ -1237,6 +1249,8 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
         "cached_tokens": 40,
         "output_tokens": 20,
         "reasoning_tokens": 0,
+        # No awrap_model_call ran, so no provider call was timed.
+        "duration_ms": None,
         "cost_usd": pytest.approx(0.14),
         "cost_source": "table",
         "step_index": 1,

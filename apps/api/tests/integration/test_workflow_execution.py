@@ -506,7 +506,6 @@ class TestTriggerRegistration:
             owner_id=FAKE_WORKFLOW_ID,
             trigger_name="calendar_event_created",
             trigger_config=trigger_config,
-            raise_on_failure=True,
         )
 
     async def test_register_skips_non_integration_triggers(self):

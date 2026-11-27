@@ -200,32 +200,21 @@ class CalendarTriggerHandler(TriggerHandler):
             return []
 
     async def _fetch_user_calendars(self, user_id: str) -> list[str]:
-        """Fetch list of user's calendar IDs.
+        """Fetch the user's calendar IDs, for calendar_ids ["all"].
 
-        Used when calendar_ids is set to ["all"].
+        A failed fetch raises: registering only primary would silently drop every other calendar.
         """
-        try:
-            # Import here to avoid circular imports
-            # Deferred import: breaks circular import: calendar_service chain re-enters the trigger-handler modules
-            from app.services import calendar_service  # noqa: PLC0415 -- calendar cycle
+        # Deferred import: breaks circular import: calendar_service chain re-enters the trigger-handler modules
+        from app.services import calendar_service  # noqa: PLC0415 -- calendar cycle
 
-            calendar_list = await calendar_service.list_calendars(user_id)
+        calendar_list = await calendar_service.list_calendars(user_id)
 
-            # An `items`-less payload means Google told us nothing about the user's
-            # calendars, which is not the same as "the user has zero calendars" —
-            # only the former falls back to primary.
-            if "items" in calendar_list.model_fields_set:
-                return [cal.id for cal in calendar_list.items]
-            return ["primary"]
-
-        except Exception as e:
-            log.error(
-                f"{LogTag.TRIGGER} Failed to fetch calendars for user",
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return ["primary"]  # Fallback to primary calendar
+        # An `items`-less payload means Google told us nothing about the user's
+        # calendars, which is not the same as "the user has zero calendars" —
+        # only the former falls back to primary.
+        if "items" in calendar_list.model_fields_set:
+            return [cal.id for cal in calendar_list.items]
+        return ["primary"]
 
 
 calendar_trigger_handler = CalendarTriggerHandler()

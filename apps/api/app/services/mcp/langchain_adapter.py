@@ -34,6 +34,7 @@ from app.constants.mcp import (
 )
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
 from app.models.json_schema_models import JsonSchemaNode
+from app.services.mcp.mcp_errors import McpToolResultError
 from app.utils.image_codec import ImageCodec, InvalidImageError
 from app.utils.multimodal import (
     ContentBlock,
@@ -319,14 +320,18 @@ class SanitizingLangChainAdapter(LangChainAdapter):
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.mcp_name, arguments
                     )
-                    try:
-                        return await _tool_result_to_content(tool_result)
-                    except Exception as e:
-                        return cast(_FormattedToolError, format_error(e, tool=self.name))
                 except Exception as e:
                     if self.handle_tool_error:
                         return cast(_FormattedToolError, format_error(e, tool=self.name))
                     raise
+                try:
+                    content = await _tool_result_to_content(tool_result)
+                except Exception as e:
+                    return cast(_FormattedToolError, format_error(e, tool=self.name))
+                # A caller that handles errors itself is told the server failed the call.
+                if tool_result.isError and not self.handle_tool_error:
+                    raise McpToolResultError(content)
+                return content
 
         tool = McpToLangChainAdapter()
         if mcp_tool.annotations is not None:

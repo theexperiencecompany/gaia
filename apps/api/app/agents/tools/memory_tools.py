@@ -107,6 +107,8 @@ AddOutcome: TypeAlias = Literal["new", "updated", "extended", "duplicate"]
 
 
 class AddMemoryPayload(TypedDict):
+    """The memory card data for an add: what was saved, where, and whether it was new."""
+
     action: Literal["add"]
     memories: list[SerializedEntry]
     folder: str
@@ -115,6 +117,8 @@ class AddMemoryPayload(TypedDict):
 
 
 class SearchMemoryPayload(TypedDict):
+    """The memory card data for a search: the query and the memories it found."""
+
     action: Literal["search"]
     query: str
     folder: str | None
@@ -123,12 +127,16 @@ class SearchMemoryPayload(TypedDict):
 
 
 class UpdateMemoryPayload(TypedDict):
+    """The memory card data for an update: the memories as they now read."""
+
     action: Literal["update"]
     memories: list[SerializedEntry]
     message: str
 
 
 class ForgetMemoryPayload(TypedDict):
+    """The memory card data for a forget: which memory went, and why."""
+
     action: Literal["forget"]
     memory_id: str
     reason: str
@@ -136,6 +144,8 @@ class ForgetMemoryPayload(TypedDict):
 
 
 class JournalPayload(TypedDict):
+    """The memory card data for a journal read: the episodes that matched."""
+
     action: Literal["journal"]
     query: str | None
     episodes: list[EpisodePayload]
@@ -143,6 +153,8 @@ class JournalPayload(TypedDict):
 
 
 class DocumentEventPayload(TypedDict):
+    """The memory card data for a document write, and whether it replaced one."""
+
     action: Literal["document"]
     document: DocumentPayload
     updated: bool
