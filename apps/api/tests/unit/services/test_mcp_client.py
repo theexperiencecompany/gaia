@@ -83,6 +83,7 @@ from app.services.mcp.mcp_errors import (
     DCRNotSupportedError,
     MCPAuthorizationRequiredError,
     MCPIntegrationNotFoundError,
+    OAuthGrantLockUnavailableError,
     StepUpAuthRequiredError,
     _extract_response_signal,
     is_terminal_auth_failure,
@@ -1832,7 +1833,7 @@ class TestOAuthGrantLock:
 
     async def test_no_refresh_without_the_lease(self, monkeypatch: pytest.MonkeyPatch):
         client = MCPClient(user_id=USER_ID)
-        client.token_store.get_oauth_token = AsyncMock(return_value=None)
+        monkeypatch.setattr(client.token_store, "get_oauth_token", AsyncMock(return_value=None))
 
         @contextlib.asynccontextmanager
         async def not_held() -> AsyncIterator[bool]:
@@ -1840,13 +1841,38 @@ class TestOAuthGrantLock:
 
         lock = MagicMock()
         lock.hold = not_held
-        monkeypatch.setattr(client.token_store, "grant_lock", MagicMock(return_value=lock))
-        with patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh:
-            refreshed = await client._try_refresh_token(INTEGRATION_ID, _make_mcp_config())
+        grant_lock = MagicMock(return_value=lock)
+        monkeypatch.setattr(client.token_store, "grant_lock", grant_lock)
+        with (
+            patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh,
+            pytest.raises(OAuthGrantLockUnavailableError),
+        ):
+            await client._try_refresh_token(INTEGRATION_ID, _make_mcp_config())
 
-        assert refreshed is False
         refresh.assert_not_awaited()
-        client.token_store.grant_lock.assert_called_once_with(INTEGRATION_ID)
+        grant_lock.assert_called_once_with(INTEGRATION_ID)
+
+    async def test_a_lease_not_taken_during_401_recovery_never_tears_the_grant_down(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        client = MCPClient(user_id=USER_ID)
+        reset = AsyncMock()
+        monkeypatch.setattr(client, "_reset_to_disconnected", reset)
+        monkeypatch.setattr(
+            client,
+            "_try_refresh_token",
+            AsyncMock(side_effect=OAuthGrantLockUnavailableError(INTEGRATION_ID)),
+        )
+
+        with (
+            patch("app.services.mcp.mcp_client.log"),
+            pytest.raises(OAuthGrantLockUnavailableError),
+        ):
+            await client._handle_connect_failure(
+                _api_error(401), INTEGRATION_ID, _make_mcp_config(requires_auth=True)
+            )
+
+        reset.assert_not_awaited()
 
     async def test_a_delete_runs_inside_the_grant_lock_a_refresh_holds(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1865,13 +1891,14 @@ class TestOAuthGrantLock:
 
         lock = MagicMock()
         lock.hold = hold
-        monkeypatch.setattr(store, "grant_lock", MagicMock(return_value=lock))
+        grant_lock = MagicMock(return_value=lock)
+        monkeypatch.setattr(store, "grant_lock", grant_lock)
         mock_session.delete = AsyncMock(side_effect=lambda _cred: inside.append(holding["now"]))
         with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
             await store.delete_credentials(INTEGRATION_ID)
 
         assert inside == [True]
-        store.grant_lock.assert_called_once_with(INTEGRATION_ID)
+        grant_lock.assert_called_once_with(INTEGRATION_ID)
 
     def test_the_grant_lock_is_keyed_per_user_and_integration_with_the_grant_timings(self):
         lock = MCPTokenStore("u1").grant_lock("i1")
@@ -2203,7 +2230,8 @@ class TestTryRefreshToken:
         )
         assert result is False
         token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
-        token_store.clear_oauth_grant.assert_awaited_once_with(INTEGRATION_ID)
+        # A missing client can be a config gap, so the grant survives for when it is fixed.
+        token_store.clear_oauth_grant.assert_not_awaited()
 
     async def test_a_metadata_document_client_refreshes_as_its_document_url(
         self, monkeypatch: pytest.MonkeyPatch

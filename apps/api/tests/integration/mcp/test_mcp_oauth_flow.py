@@ -765,7 +765,7 @@ class TestTokenRefresh:
         assert result is False
 
     async def test_refresh_fails_without_client_id(self):
-        """When no client_id can be resolved, refresh fails and drops the unusable refresh token."""
+        """When no client_id can be resolved, refresh fails and keeps the grant: a config gap is fixable."""
         token_store = _make_token_store()
         token_store.get_refresh_token = AsyncMock(return_value="valid-refresh")
         token_store.get_dcr_client = AsyncMock(return_value=None)
@@ -778,7 +778,7 @@ class TestTokenRefresh:
         result = await try_refresh_token(token_store, "no-cid-int", mcp_config, oauth_config)
 
         assert result is False
-        token_store.clear_oauth_grant.assert_awaited_once_with("no-cid-int")
+        token_store.clear_oauth_grant.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

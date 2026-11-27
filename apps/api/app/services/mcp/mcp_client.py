@@ -55,6 +55,7 @@ from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_errors import (
     MCPAuthorizationRequiredError,
     MCPIntegrationNotFoundError,
+    OAuthGrantLockUnavailableError,
     StepUpAuthRequiredError,
     is_terminal_auth_failure,
 )
@@ -1140,7 +1141,7 @@ class MCPClient:
         failed = rejected or await self.token_store.get_oauth_token(integration_id)
         async with self.token_store.grant_lock(integration_id).hold() as held:
             if not held:
-                return False
+                raise OAuthGrantLockUnavailableError(integration_id)
             current = await self.token_store.get_oauth_token(integration_id)
             if current is not None and current != failed:
                 return True

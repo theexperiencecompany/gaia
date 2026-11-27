@@ -21,6 +21,14 @@ class DCRNotSupportedError(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
 
 
+class OAuthGrantLockUnavailableError(Exception):
+    """Raised when a refresh cannot take its grant's lock: transient, never proof the grant is dead."""
+
+    def __init__(self, integration_id: str) -> None:
+        super().__init__(f"OAuth grant lock for {integration_id} could not be taken")
+        self.integration_id = integration_id
+
+
 class DCRRegistrationError(ValueError):
     """Raised when an authorization server rejects our DCR (identified rejection).
 

@@ -62,14 +62,13 @@ async def try_refresh_token(
 
         client = await resolve_oauth_client(token_store, integration_id, mcp_config, oauth_config)
         if client is None:
-            log.warning(
-                f"{LogTag.MCP} try_refresh_token: no OAuth client resolves for this integration; user must re-authorize",
+            # A config gap (an unset client_id_env, a localhost HOST) can cause this, so
+            # the grant is kept for when it is fixed; the operator has to see it.
+            log.error(
+                f"{LogTag.MCP} try_refresh_token: no OAuth client resolves for this integration",
                 integration_id=integration_id,
                 user_id=token_store.user_id,
             )
-            # No client can ever present this refresh token, so drop the grant: the
-            # connect path then reports the integration signed out, not connected.
-            await token_store.clear_oauth_grant(integration_id)
             return False
         client_id, client_secret = client.client_id, client.client_secret
 

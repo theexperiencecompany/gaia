@@ -203,8 +203,7 @@ async def test_a_metadata_document_client_refreshes_as_the_client_it_connected_a
 
 
 @pytest.mark.integration
-@pytest.mark.regression
-async def test_a_refresh_no_client_can_present_drops_the_refresh_token(
+async def test_a_refresh_no_client_can_present_keeps_the_grant(
     auth_server: _FakeAuthorizationServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store = _InMemoryTokenStore()
@@ -216,7 +215,7 @@ async def test_a_refresh_no_client_can_present_drops_the_refresh_token(
     )
 
     assert refreshed is False
-    assert await store.get_refresh_token(INTEGRATION_ID) is None
+    assert await store.get_refresh_token(INTEGRATION_ID) is not None
     assert [r["grant_type"] for r in auth_server.token_requests] == ["authorization_code"]
 
 
