@@ -27,8 +27,8 @@ SCOUT_TIME_CAP: Final = timedelta(minutes=10)
 SCOUT_REFRESH_LEAD: Final = timedelta(minutes=15)
 #: The ARQ task that refreshes one brief's scouts ahead of its slot.
 REFRESH_SCOUTS_TASK: Final[str] = "refresh_scouts"
-#: Redis key holding a user's refreshed scout results until their brief takes them.
-SCOUTS_REFRESHED_KEY: Final[str] = "scouts:refreshed:{user_id}"
+#: Redis key holding a user's refreshed scout results until their brief takes them (v2: with fetched_at).
+SCOUTS_REFRESHED_KEY: Final[str] = "scouts:refreshed:v2:{user_id}"
 #: How long refreshed results wait for their brief; a brief that never came leaves them to expire.
 SCOUTS_REFRESHED_TTL: Final = timedelta(hours=1)
 #: Safety ceiling on read-only tools bound onto one learn run (provider caps sit near 128);

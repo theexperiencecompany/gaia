@@ -55,6 +55,7 @@ class TestReadingItems:
             "state": "open",
             "amount": None,
             "amount_unit": None,
+            "due_label": None,
             "text": None,
             "author": None,
             "created_at": None,
@@ -157,6 +158,16 @@ class TestReadingItems:
             "USD",
             "Can you look today?",
         )
+
+    @pytest.mark.regression
+    def test_a_dated_item_carries_what_its_sources_date_means(self) -> None:
+        """Regression: a lead's next follow-up date read as when someone replied."""
+        source = SOURCE.model_copy(update={"due_label": "next follow-up scheduled"})
+        values = {"reviews": {"items": [_pr(1, due="2026-10-30"), _pr(2)]}}
+
+        dated, undated = extract_signals(GITHUB, [source], values)
+
+        assert (dated.due_label, undated.due_label) == ("next follow-up scheduled", None)
 
     def test_an_item_without_a_figure_carries_no_unit(self) -> None:
         source = SOURCE.model_copy(

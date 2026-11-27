@@ -95,7 +95,8 @@ class TestTheDailyRunReads:
         await run_brief(USER, BriefingKind.DAILY)
 
         assert world.briefings.calls_to("get_before_date") == [
-            call(USER, kind=BriefingKind.DAILY, before_date=DATE)
+            call(USER, kind=BriefingKind.DAILY, before_date=DATE),
+            call(USER, kind=None, before_date=DATE),
         ]
         assert world.briefings.calls_to("has_daily_briefing") == [call(USER)]
         assert call(USER, limit=10, kind=BriefingKind.DAILY) in world.briefings.calls_to(

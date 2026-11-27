@@ -19,6 +19,7 @@ from app.agents.prompts.brief_fact_prompts import (
     POOL_PARTS,
     RECENT_OPENINGS,
     REPEAT_MARK,
+    SCOUT_STATE,
     SHOWN_NOT_TOTAL_SERIES,
     SIGNED_OUT_NOTE,
     UNREAD_NOTE,
@@ -50,8 +51,26 @@ def _day(iso: str, today: date) -> str:
     return f"{day(on)} (today)" if on == today else day(on)
 
 
-def item_state(item: BriefCandidate) -> str:
-    """Say how an item stands: a calendar event, backlog on their list, or its kind's state."""
+@dataclass(frozen=True)
+class Voiced:
+    """What an item's line says to the voice instead of what the composition reads.
+
+    The brief's own title for it, the slots that write its time and count, whether it has
+    something to link, and the deliverable GAIA's finished or open work holds. Whether GAIA
+    can act on it is the composition's alone: code writes the lead's offer.
+    """
+
+    fact: BriefFact
+    linkable: bool = False
+    artifact: ArtifactFact | None = None
+
+
+def item_state(item: BriefCandidate, voiced: Voiced | None = None) -> str:
+    """Say how an item stands: a calendar event, backlog on their list, or its kind's state.
+
+    A scout row reads as found by its scout until the composition places it; the voice reads it
+    as placed.
+    """
     if item.is_event:
         return "calendar event"
     if item.backlog:
@@ -60,6 +79,9 @@ def item_state(item: BriefCandidate) -> str:
         return DONE_BY[item.finished_by]
     if item.standing is not None:
         return OPEN_STATE
+    if item.signal is not None:
+        placed = voiced.fact.kind if voiced is not None else None
+        return SCOUT_STATE if placed is None else placed.label.lower()
     return item.state.label.lower()
 
 
@@ -75,20 +97,6 @@ def count_part(count: int, slot: FactSlot | None = None) -> str | None:
     if count <= 1:
         return None
     return f"{count if slot is None else f'{slot} ({count})'} {ON_ONE_SUBJECT}"
-
-
-@dataclass(frozen=True)
-class Voiced:
-    """What an item's line says to the voice instead of what the composition reads.
-
-    The brief's own title for it, the slots that write its time and count, whether it has
-    something to link, and the deliverable GAIA's finished or open work holds. Whether GAIA
-    can act on it is the composition's alone: code writes the lead's offer.
-    """
-
-    fact: BriefFact
-    linkable: bool = False
-    artifact: ArtifactFact | None = None
 
 
 def stands_part(
@@ -116,7 +124,7 @@ def item_line(
     The composition and the voice read the same line; the voice's names its slots beside
     the time and count they write, and what its deliverable holds, but not whether GAIA acts.
     """
-    head = f"{item_id}. [{item.app}] {item_state(item)}"
+    head = f"{item_id}. [{item.app}] {item_state(item, voiced)}"
     if item.importance is SignalImportance.HIGH:
         head += ", important"
     parts = [f"{head}: {item.title if voiced is None else voiced.fact.title}"]
@@ -142,15 +150,17 @@ def item_line(
 def _when(item_id: int, item: BriefCandidate, clock: UserClock, voiced: Voiced | None) -> list[str]:
     """Say when an item happens or is due; to the voice, by the slot that writes it."""
     due = due_on(item.due_at, clock) if item.due_at is not None else None
+    meaning = item.signal.due_label if item.signal is not None else None
+    means = f" ({meaning})" if meaning else ""
     if voiced is not None:
         slot = FactSlot(item_id, FactField.TIME)
         said = voiced.fact.time
         if said is None or (item.time is None and item.due_at is None):
             return []
-        return [f"at {slot} ({said})" if item.time is not None else f"due {slot} ({said})"]
+        return [f"at {slot} ({said})" if item.time is not None else f"due {slot} ({said}){means}"]
     return [
         *([f"at {item.time}"] if item.time is not None else []),
-        *([f"due {due}"] if due is not None else []),
+        *([f"due {due}{means}"] if due is not None else []),
     ]
 
 

@@ -65,6 +65,8 @@ class Signal(BaseModel):
     amount: float | None = None
     #: What the amount counts, as the app's values read ("USD", "USD cents", "points").
     amount_unit: str | None = None
+    #: What due_at is to the user when it is no plain deadline ("next follow-up scheduled").
+    due_label: str | None = None
     #: The item's own words (a message, a comment), verbatim; None when it has none.
     text: str | None = None
     #: Who wrote those words, read from the same item; None when the app does not say.
@@ -109,6 +111,10 @@ class SignalSource(BaseModel):
     amount_unit: str | None = Field(
         default=None, description="What each item's amount counts, as its values read"
     )
+    due_label: str | None = Field(
+        default=None,
+        description="What each item's due date is to the user when it is no plain deadline",
+    )
 
 
 class LearnedSignal(BaseModel):
@@ -126,6 +132,7 @@ class LearnedSignal(BaseModel):
     state: str | None = None
     amount: float | None = None
     amount_unit: str | None = None
+    due_label: str | None = None
     text: str | None = None
     author: str | None = None
     created_at: datetime | None = None
@@ -357,3 +364,5 @@ class RefreshedScouts(BaseModel):
     """One brief's scout results, refreshed ahead of its slot and kept until the brief takes them."""
 
     results: list[ScoutResult]
+    #: When the refresh started reading the apps: the rows' sighting time, not the brief's.
+    fetched_at: datetime

@@ -334,11 +334,12 @@ def _refreshed() -> AsyncRedisCommands:
 
 async def refresh_scouts(user: UserDocument) -> None:
     """Run the user's scouts ahead of their brief and keep the results for it to take."""
+    fetched_at = datetime.now(UTC)
     results = await run_scouts(user)
     await _refreshed().setex(
         SCOUTS_REFRESHED_KEY.format(user_id=user.id),
         int(SCOUTS_REFRESHED_TTL.total_seconds()),
-        RefreshedScouts(results=results).model_dump_json(),
+        RefreshedScouts(results=results, fetched_at=fetched_at).model_dump_json(),
     )
 
 
@@ -349,12 +350,10 @@ async def scout_signals(user: UserDocument, now: datetime) -> ScoutSignals:
     """
     kept = await _refreshed().getdel(SCOUTS_REFRESHED_KEY.format(user_id=user.id))
     log.set_ns("scouts", refreshed_ahead=kept is not None)
-    results = (
-        RefreshedScouts.model_validate_json(kept).results
-        if kept is not None
-        else await run_scouts(user)
-    )
-    remembered = await remember(user.id, [s for r in results for s in r.signals], now)
+    refreshed = RefreshedScouts.model_validate_json(kept) if kept is not None else None
+    results = refreshed.results if refreshed is not None else await run_scouts(user)
+    seen = refreshed.fetched_at if refreshed is not None else now
+    remembered = await remember(user.id, [s for r in results for s in r.signals], seen)
     criteria = {r.app: r.criteria.line() for r in results if r.criteria is not None}
     return ScoutSignals(remembered=remembered, criteria=criteria, results=results)
 

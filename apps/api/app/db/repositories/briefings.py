@@ -70,16 +70,17 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     # ------------------------------------------------------------------ reads
 
     async def get_before_date(
-        self, user_id: str, *, kind: BriefingKind, before_date: str
+        self, user_id: str, *, kind: BriefingKind | None, before_date: str
     ) -> BriefingModel | None:
-        """Return the latest briefing of kind strictly before before_date.
+        """Return the latest briefing of kind, or of any kind when None, strictly before before_date.
 
-        before_date is YYYY-MM-DD, compared lexically with $lt.
+        before_date is YYYY-MM-DD, compared lexically with $lt; a daily and a digest on one date
+        go newest made first.
         """
-        return await self._find_one(
-            {"user_id": user_id, "kind": kind, "date": {"$lt": before_date}},
-            sort=[("date", -1)],
-        )
+        query: dict[str, object] = {"user_id": user_id, "date": {"$lt": before_date}}
+        if kind is not None:
+            query["kind"] = kind
+        return await self._find_one(query, sort=[("date", -1), ("created_at", -1)])
 
     async def list_recent(
         self,

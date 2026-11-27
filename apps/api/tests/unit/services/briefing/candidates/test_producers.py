@@ -73,6 +73,8 @@ from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 10, 2, 30, tzinfo=UTC)
+#: When the last stored brief ran, before which every passed-over row was first read.
+SINCE = NOW - timedelta(hours=20)
 CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-11-10", day_of_year=314)
 DESK_ID = "desk-1"
 
@@ -544,7 +546,7 @@ class TestAppSignals:
         )
 
         [found] = app_signal_candidates(
-            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], CLOCK
+            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], CLOCK, SINCE
         )
 
         assert (found.app, found.source, found.importance) == (
@@ -558,7 +560,7 @@ class TestAppSignals:
         assert (found.action, found.outcome) == (None, None)
         assert (found.moved, found.is_repeat) == (True, False)
         assert found.detail == (
-            "issue assigned to you | state: In Progress | why: due tomorrow | first seen "
+            "issue assigned to you | Linear shows it as In Progress | why: due tomorrow | first seen "
             "2 days ago, mentioned 1 time(s), last yesterday, moved from Todo to In Progress"
         )
 
@@ -581,9 +583,114 @@ class TestAppSignals:
             last_state="Todo",
         )
 
-        [found] = app_signal_candidates([RememberedSignal(signal=signal, memory=memory)], CLOCK)
+        [found] = app_signal_candidates(
+            [RememberedSignal(signal=signal, memory=memory)], CLOCK, SINCE
+        )
 
         assert (found.moved, found.is_repeat) == (False, True)
+
+
+def _docs_row(
+    external_id: str,
+    *,
+    seen: SignalMemoryDocument | None,
+    due_at: datetime | None = None,
+    updated_at: datetime | None = None,
+    state: str | None = None,
+) -> RememberedSignal:
+    signal = Signal(
+        integration_id="googledocs",
+        app="Google Docs",
+        external_id=external_id,
+        kind="document shared with the user",
+        title=f"doc {external_id}",
+        due_at=due_at,
+        updated_at=updated_at,
+        state=state,
+    )
+    return RememberedSignal(signal=signal, memory=seen)
+
+
+def _seen_unshown(external_id: str, state: str | None = None) -> SignalMemoryDocument:
+    return SignalMemoryDocument(
+        user_id=USER_ID,
+        integration_id="googledocs",
+        external_id=external_id,
+        first_seen=NOW - timedelta(days=2),
+        last_seen=NOW - timedelta(days=1),
+        last_state=state,
+    )
+
+
+@pytest.mark.regression
+def test_a_row_an_earlier_brief_passed_over_unchanged_is_not_offered_again() -> None:
+    """Regression: the same 40 untouched Google Docs filled every brief from Nov 25 on."""
+    found = app_signal_candidates(
+        [
+            _docs_row("first-sighting", seen=None),
+            _docs_row("passed-over", seen=_seen_unshown("passed-over")),
+            _docs_row(
+                "edited-since",
+                seen=_seen_unshown("edited-since"),
+                updated_at=NOW - timedelta(hours=3),
+            ),
+            _docs_row(
+                "edited-as-last-seen",
+                seen=_seen_unshown("edited-as-last-seen"),
+                updated_at=NOW - timedelta(days=1),
+            ),
+            _docs_row(
+                "edited-before",
+                seen=_seen_unshown("edited-before"),
+                updated_at=NOW - timedelta(days=3),
+            ),
+            _docs_row("dated", seen=_seen_unshown("dated"), due_at=NOW + timedelta(days=1)),
+        ],
+        CLOCK,
+        SINCE,
+    )
+
+    assert sorted(c.ref.external_id for c in found if c.ref is not None) == [
+        "dated",
+        "edited-since",
+        "first-sighting",
+    ]
+
+
+def test_a_passed_over_row_whose_state_moved_is_offered_again() -> None:
+    row = _docs_row("moved", seen=_seen_unshown("moved", state="draft"), state="shared")
+    moved = RememberedSignal(signal=row.signal, memory=row.memory, previous_state="draft")
+
+    [found] = app_signal_candidates([moved], CLOCK, SINCE)
+
+    assert found.moved
+
+
+@pytest.mark.regression
+def test_a_row_whose_unknown_state_became_known_is_offered_again() -> None:
+    row = _docs_row("now-shared", seen=_seen_unshown("now-shared", state=None), state="shared")
+
+    assert len(app_signal_candidates([row], CLOCK, SINCE)) == 1
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("after", [timedelta(0), timedelta(hours=1)], ids=["as-it-ran", "after"])
+def test_a_row_first_read_by_a_brief_that_never_went_out_is_offered_again(after: timedelta) -> None:
+    """Regression: a failed composition had recorded the sighting, so the row was never shown."""
+    memory = _seen_unshown("after-the-last-brief").model_copy(
+        update={"first_seen": SINCE + after, "last_seen": SINCE + after}
+    )
+
+    assert (
+        len(app_signal_candidates([_docs_row("after-the-last-brief", seen=memory)], CLOCK, SINCE))
+        == 1
+    )
+
+
+def test_before_any_brief_no_row_counts_as_passed_over() -> None:
+    row = _docs_row("seen-by-a-failed-run", seen=_seen_unshown("seen-by-a-failed-run"))
+
+    assert len(app_signal_candidates([row], CLOCK, None)) == 1
 
 
 def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> None:
@@ -616,6 +723,7 @@ def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> No
             github("overdue", datetime(2026, 3, 1, tzinfo=UTC), SignalImportance.HIGH),
         ],
         CLOCK,
+        SINCE,
     )
 
     assert [c.ref.external_id for c in found if c.ref is not None] == [

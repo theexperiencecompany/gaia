@@ -45,7 +45,8 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
         "created_at": "<path to when the item was created, or null>",
         "updated_at": "<path to when the item last changed, or null>"
       }},
-      "amount_unit": "<what that figure counts, exactly as the values read: USD, USD cents, points; or null>"
+      "amount_unit": "<what that figure counts, exactly as the values read: USD, USD cents, points; or null>",
+      "due_label": "<what the due date is to the user, in plain words, when it is not a deadline; null when it is one>"
     }}
   ],
   "signals": [
@@ -62,6 +63,7 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
       "state": "<status or null>",
       "amount": <the figure at the amount path, as a number, or null>,
       "amount_unit": "<its unit, or null>",
+      "due_label": "<as in its source, or null>",
       "text": "<the words at the text path, verbatim, or null>",
       "author": "<who wrote them, as at the author path, or null>",
       "created_at": "<ISO 8601 or null>",
