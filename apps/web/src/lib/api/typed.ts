@@ -20,12 +20,7 @@
 import { ApiError, REQUEST_ID_HEADER } from "@shared/api";
 import type { paths } from "@shared/api/generated";
 import axios from "axios";
-import createClient, {
-  type Client,
-  type ClientPathsWithMethod,
-  type FetchResponse,
-  type MaybeOptionalInit,
-} from "openapi-fetch";
+import createClient, { type MaybeOptionalInit } from "openapi-fetch";
 import { apiauth, apiOrigin, requestOriginHeaders } from "./client";
 import {
   type ApiOptions,
@@ -35,21 +30,7 @@ import {
   reportFailure,
   toApiError,
 } from "./outcome";
-
-type Method = "get" | "post" | "put" | "patch" | "delete";
-type MediaType = `${string}/${string}`;
-
-type ApiClient = Client<paths>;
-
-/** The paths that declare `M`, as openapi-fetch itself computes them. */
-type PathsWith<M extends Method> = ClientPathsWithMethod<ApiClient, M> &
-  keyof paths;
-
-/** The 2xx body openapi-fetch resolves for the route; `undefined` for a 204. */
-type Data<P extends keyof paths, M extends Method> = Extract<
-  FetchResponse<NonNullable<paths[P][M]>, Record<never, never>, MediaType>,
-  { data: unknown }
->["data"];
+import type { Data, Method, PathsWith } from "./typed.types";
 
 /**
  * openapi-fetch's own init, with `params.path` / `params.query` lifted to the
@@ -289,28 +270,3 @@ export const FORM_URLENCODED_HEADERS = {
  */
 export const binaryField = (file: File): string =>
   file as unknown as string; /* the generator's `string` is the wire's binary */
-
-/** Who caused a request, for an API function that is called both by a user and by a poll. */
-export type RequestOrigin = Pick<ApiOptions, "background">;
-
-/** The response type of `METHOD path`, for callers that store or pass one on. */
-export type ApiResponse<M extends Method, P extends PathsWith<M>> = Data<P, M>;
-
-/** The query parameters of `METHOD path`, for an API function that forwards them. */
-export type ApiQuery<M extends Method, P extends PathsWith<M>> = NonNullable<
-  NonNullable<paths[P][M]> extends { parameters: { query?: infer Q } }
-    ? Q
-    : never
->;
-
-/**
- * The request body type of `METHOD path` — whichever media type the route
- * declares, read straight off the schema rather than through the call init,
- * which is far more expensive for the compiler to unwrap.
- */
-export type ApiBody<M extends Method, P extends PathsWith<M>> =
-  NonNullable<paths[P][M]> extends { requestBody?: infer R }
-    ? NonNullable<R> extends { content: infer C }
-      ? C[keyof C]
-      : never
-    : never;

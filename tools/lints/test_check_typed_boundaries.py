@@ -58,6 +58,19 @@ def test_string_key_reads_are_get_and_subscript_loads(
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [3, 4]
 
 
+def test_a_quoted_forward_reference_in_an_annotation_is_not_a_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "class Group:\n"
+        "    nested: list['Group'] = []\n"
+        "def f(items: dict['Group', int]) -> list['Group']:\n"
+        "    return items['key']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [4]
+
+
 def test_boundary_modules_are_not_scanned(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
     module = tmp_path / "apps" / "api" / "app" / "patches" / "vendored.py"

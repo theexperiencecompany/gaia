@@ -28,7 +28,7 @@ from app.models.notification.notification_models import (
     NotificationView,
     notification_id,
 )
-from app.models.tool_card_registry import tool_card
+from app.models.tool_card_registry import tool_card, tool_card_data
 from app.services.analytics_service import capture
 from app.services.delivery.chat_channel import (
     InApp,
@@ -109,6 +109,9 @@ class NotificationPreferencesResult(TypedDict):
     available_channels: NotRequired[list[str]]
     enabled_channels: NotRequired[list[str]]
     error: NotRequired[str]
+
+
+SENT_NOTIFICATION_CARD = "send_notification_data"
 
 
 @tool
@@ -421,8 +424,8 @@ async def send_notification(
             }
         )
 
-        card = tool_card(
-            "send_notification_data",
+        sent = tool_card_data(
+            SENT_NOTIFICATION_CARD,
             SentNotificationCard(
                 success=True,
                 notification_id=record.id,
@@ -433,9 +436,9 @@ async def send_notification(
                 delivered_channels=delivered_channels,
             ),
         )
-        current_stream_writer()(card)
+        current_stream_writer()({SENT_NOTIFICATION_CARD: sent})
 
-        return card["send_notification_data"]
+        return sent
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error sending notification", error_type=type(e).__name__)

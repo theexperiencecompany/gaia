@@ -266,7 +266,7 @@ class TestGetUsageActivity:
             total=3,
             total_tokens=1200,
             streak=1,
-            tier="free",
+            tier="bronze",
         )
 
         with patch(

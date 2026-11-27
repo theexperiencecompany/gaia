@@ -7,7 +7,8 @@ import type {
   GenerateWorkflowPromptRequest,
   UpdateWorkflowRequest,
 } from "@shared/api/generated";
-import { type ApiQuery, api } from "@/lib/api/typed";
+import { api } from "@/lib/api/typed";
+import type { ApiQuery } from "@/lib/api/typed.types";
 import type {
   CommunityWorkflow,
   CreateWorkflowRequest,

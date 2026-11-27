@@ -750,9 +750,8 @@ class TestFetchEvents:
         out, _ = self._run(tools, FetchEventsInput(), events=[])
         assert out["has_more"] is False
 
-    @pytest.mark.regression
     def test_metadata_failure_still_streams_display_rows(self, tools, writer) -> None:
-        """Regression: a raw Google event in the card threw in the web chat and took the view down."""
+        """A raw Google event in the card would throw in the web chat and take the view down."""
         events = [_timed_event("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z")]
         with patch(f"{MODULE}.log") as logged:
             out, _ = self._run(tools, FetchEventsInput(), events=events, raises_metadata=True)

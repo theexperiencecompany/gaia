@@ -1,5 +1,6 @@
 import type { CreateMemoryRequest, MemoryDocType } from "@shared/api/generated";
-import { type ApiQuery, api } from "@/lib/api/typed";
+import { api } from "@/lib/api/typed";
+import type { ApiQuery } from "@/lib/api/typed.types";
 
 export const memoryApi = {
   listMemories: (query: ApiQuery<"get", "/api/v1/memory"> = {}) =>

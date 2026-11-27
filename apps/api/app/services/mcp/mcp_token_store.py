@@ -447,7 +447,9 @@ class MCPTokenStore:
                 return
             cred.refresh_token = None
             if client_id is not None and cred.client_registration:
-                stored = _DCR_CLIENT_REGISTRATION.validate_json(cred.client_registration)
+                stored: DCRClientRegistration = _DCR_CLIENT_REGISTRATION.validate_json(
+                    cred.client_registration
+                )
                 if stored.get("client_id") == client_id:
                     cred.client_registration = None
             session.add(cred)

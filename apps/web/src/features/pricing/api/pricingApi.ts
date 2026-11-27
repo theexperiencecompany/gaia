@@ -15,7 +15,8 @@ export type {
   UserSubscriptionStatus,
 } from "@shared/api/generated";
 
-import { api, type RequestOrigin } from "@/lib/api/typed";
+import { api } from "@/lib/api/typed";
+import type { RequestOrigin } from "@/lib/api/typed.types";
 
 export type Plan = PlanResponse;
 

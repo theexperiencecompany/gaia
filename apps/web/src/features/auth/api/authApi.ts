@@ -6,11 +6,11 @@ import type {
   OnboardingStatusResponse,
 } from "@shared/api/generated";
 import {
-  type ApiBody,
   api,
   FORM_URLENCODED_HEADERS,
   formDataSerializer,
 } from "@/lib/api/typed";
+import type { ApiBody } from "@/lib/api/typed.types";
 
 /** The onboarding block as `GET /user/me` and the onboarding endpoints return it. */
 export type OnboardingData = OnboardingStatusResponse;

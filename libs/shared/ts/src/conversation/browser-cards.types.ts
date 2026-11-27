@@ -7,7 +7,6 @@ import type {
 } from "../api/generated";
 
 export type {
-  BrowserAction,
   BrowserHandoffSnapshot,
   BrowserResultSnapshot,
   BrowserSessionSnapshot,
