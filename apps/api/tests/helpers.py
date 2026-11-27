@@ -558,7 +558,7 @@ class PassthroughFakeLLM:
     """Base for hand-rolled fake LLMs that create_agent drives directly.
 
     create_agent reshapes the model before every call (with_config,
-    bind_tools, bind, with_retry); each returns a new runnable in production,
+    bind_tools, bind); each returns a new runnable in production,
     so these hand themselves back once here — subclasses write only ainvoke.
     Duck-typed rather than a BaseChatModel subclass so these answer from the
     messages they are shown, unlike FakeMessagesListChatModel's fixed list.
@@ -576,9 +576,6 @@ class PassthroughFakeLLM:
         return self
 
     def bind(self, **_kwargs: Any) -> "PassthroughFakeLLM":
-        return self
-
-    def with_retry(self, **_kwargs: Any) -> "PassthroughFakeLLM":
         return self
 
 

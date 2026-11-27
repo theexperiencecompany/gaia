@@ -43,6 +43,14 @@ class MalformedStructuredOutputError(OutputParserException):
         self.reason = reason
 
 
+class LLMStreamStallError(Exception):
+    """A streaming model call that sent no chunk within its deadline, first or next.
+
+    Not a TimeoutError, so a call with a fallback can skip the same-provider retries:
+    a provider that stalled once usually stalls again, and each retry costs a deadline.
+    """
+
+
 class LLMNotConfiguredError(RuntimeError):
     """No provider key is configured for the requested model.
 
@@ -106,6 +114,7 @@ LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     # stdlib
     ConnectionError,
     TimeoutError,
+    LLMStreamStallError,
     # A broken structured reply: re-asking samples a new one.
     MalformedStructuredOutputError,
 )
@@ -122,6 +131,7 @@ LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *_HTTPX_TRANSIENT_ERRORS,
     ConnectionError,
     TimeoutError,
+    LLMStreamStallError,
     # A reply that is not the tool call the parser needs. Another sample may obey,
     # and the fallback lane's native JSON-schema mode cannot answer in prose at
     # all, so this is the one error where switching lanes fixes the class.

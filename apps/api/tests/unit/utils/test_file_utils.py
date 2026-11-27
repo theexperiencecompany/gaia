@@ -8,12 +8,26 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
+from langchain_openrouter import ChatOpenRouter
 from PIL import Image
 import pytest
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
-from app.constants.files import IMAGE_SUMMARY_NO_VISION_PROVIDER, SUMMARY_LLM_MAX_CONCURRENCY
+from app.constants.files import (
+    CSV_MIME,
+    DOC_MIME,
+    DOCX_MIME,
+    EPUB_MIME,
+    IMAGE_SUMMARY_NO_VISION_PROVIDER,
+    ODP_MIME,
+    ODS_MIME,
+    ODT_MIME,
+    PPTX_MIME,
+    RTF_MIME,
+    SUMMARY_LLM_MAX_CONCURRENCY,
+    XLSX_MIME,
+)
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS
 from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -27,21 +41,20 @@ from tests.helpers import captured_wide_event
 
 
 def _mock_llm(invoke_return: Any = "Mock summary", batch_return: Any = None) -> AsyncMock:
-    """Return an AsyncMock LLM with configurable ainvoke/abatch responses.
+    """Return an AsyncMock LLM whose ainvoke answers invoke_return, or each batch_return item in turn.
 
-    ainvoke_llm returns the model's AIMessage and callers read .text,
-    so a plain-string invoke_return is wrapped in an AIMessage to match
-    that contract.
+    The retry wrapper batches by invoking the model once per input, so a batch
+    reply is a sequence of ainvoke replies. A plain-string invoke_return is
+    wrapped in an AIMessage, the shape ainvoke_llm returns.
     """
     llm = AsyncMock()
     ainvoke_return = (
         AIMessage(content=invoke_return) if isinstance(invoke_return, str) else invoke_return
     )
-    llm.ainvoke = AsyncMock(return_value=ainvoke_return)
-    llm.abatch = AsyncMock(return_value=batch_return or [])
-    # ainvoke_llm wraps the model in with_llm_retry(model) -> model.with_retry(...);
-    # pass through so the configured ainvoke/abatch responses are used.
-    llm.with_retry = MagicMock(return_value=llm)
+    if batch_return is None:
+        llm.ainvoke = AsyncMock(return_value=ainvoke_return)
+    else:
+        llm.ainvoke = AsyncMock(side_effect=list(batch_return))
     return llm
 
 
@@ -102,7 +115,7 @@ class TestDocumentProcessorInit:
 
         get_llm.assert_called_once_with()
         assert proc.llm is helper
-        helper.abatch.assert_awaited_once()
+        helper.ainvoke.assert_awaited_once()
         assert [r.summary for r in result] == ["Summary 1"]
 
     def test_the_processor_llm_carries_the_helper_output_cap(self) -> None:
@@ -112,6 +125,7 @@ class TestDocumentProcessorInit:
         ):
             proc = DocumentProcessor(user_id="u-test")
 
+        assert isinstance(proc.llm, ChatOpenRouter)
         assert proc.llm.max_tokens == HELPER_MAX_OUTPUT_TOKENS
         # Named explicitly so the assertion above cannot pass by coincidence if
         # the two factories' caps ever converge.
@@ -179,16 +193,16 @@ class TestProcessFileRouting:
     @pytest.mark.parametrize(
         ("content_type", "suffix"),
         [
-            (file_utils.DOCX_MIME, ".docx"),
-            (file_utils.DOC_MIME, ".doc"),
-            (file_utils.XLSX_MIME, ".xlsx"),
-            (file_utils.PPTX_MIME, ".pptx"),
-            (file_utils.CSV_MIME, ".csv"),
-            (file_utils.RTF_MIME, ".rtf"),
-            (file_utils.EPUB_MIME, ".epub"),
-            (file_utils.ODT_MIME, ".odt"),
-            (file_utils.ODS_MIME, ".ods"),
-            (file_utils.ODP_MIME, ".odp"),
+            (DOCX_MIME, ".docx"),
+            (DOC_MIME, ".doc"),
+            (XLSX_MIME, ".xlsx"),
+            (PPTX_MIME, ".pptx"),
+            (CSV_MIME, ".csv"),
+            (RTF_MIME, ".rtf"),
+            (EPUB_MIME, ".epub"),
+            (ODT_MIME, ".odt"),
+            (ODS_MIME, ".ods"),
+            (ODP_MIME, ".odp"),
         ],
     )
     async def test_office_and_csv_types_route_to_process_office_document(
@@ -511,7 +525,7 @@ class TestProcessOfficeDocument:
             result = await processor.process_office_document(b"data", suffix=".csv")
 
         assert result == []
-        processor.llm.abatch.assert_not_called()
+        processor.llm.ainvoke.assert_not_called()
 
     async def test_extraction_receives_bytes_and_suffix(self, processor: DocumentProcessor) -> None:
         """Anydoc gets the raw bytes plus the format-carrying suffix; no temp file."""
@@ -575,7 +589,7 @@ class TestSummarizeChunks:
         result = await processor._summarize_chunks(["", "   \n  "])
 
         assert result == []
-        processor.llm.abatch.assert_not_called()
+        processor.llm.ainvoke.assert_not_called()
 
     async def test_no_chunks_returns_empty_without_an_llm_call(
         self, processor: DocumentProcessor
@@ -585,7 +599,7 @@ class TestSummarizeChunks:
         result = await processor._summarize_chunks([])
 
         assert result == []
-        processor.llm.abatch.assert_not_called()
+        processor.llm.ainvoke.assert_not_called()
 
     async def test_truncates_at_max_indexed_chunks_and_appends_a_note(
         self, processor: DocumentProcessor, monkeypatch: pytest.MonkeyPatch
@@ -603,13 +617,13 @@ class TestSummarizeChunks:
         assert note.data.content == note.summary
         assert "only the first 2 of 3" in note.summary
 
-    async def test_passes_max_concurrency_to_abatch(self, processor: DocumentProcessor) -> None:
+    async def test_passes_max_concurrency_to_the_batch(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm(batch_return=[AIMessage(content="s0")])
 
         await processor._summarize_chunks(["chunk0"])
 
-        _, kwargs = processor.llm.abatch.call_args
-        assert kwargs["config"] == {"max_concurrency": SUMMARY_LLM_MAX_CONCURRENCY}
+        _, kwargs = processor.llm.ainvoke.call_args
+        assert kwargs["config"]["max_concurrency"] == SUMMARY_LLM_MAX_CONCURRENCY
 
 
 # ---------------------------------------------------------------------------

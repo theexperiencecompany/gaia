@@ -381,11 +381,6 @@ class TestAinvokeFallbackRouting:
     """End-to-end routing of ainvoke_llm from a failing primary to the default fallback."""
 
     @staticmethod
-    def _retrying(primary: MagicMock, retried: MagicMock) -> None:
-        # ainvoke_llm wraps via with_llm_retry(primary) -> primary.with_retry(...).
-        primary.with_retry = MagicMock(return_value=retried)
-
-    @staticmethod
     def _runnable() -> NonCallableMagicMock:
         # NonCallable because real Runnables aren't callable — ainvoke_llm treats
         # a callable fallback as a lazy factory.
@@ -393,17 +388,14 @@ class TestAinvokeFallbackRouting:
 
     async def test_primary_failure_routes_to_default_fallback(self) -> None:
         primary = self._runnable()
-        retried = self._runnable()
         # ChatGoogleGenerativeAIError (langchain-google-genai's wrapper around
         # Gemini 4xx) is a fallback exception but not a retryable one, so the
         # retry wrapper raises immediately into the fallback path.
-        retried.ainvoke = AsyncMock(
+        primary.ainvoke = AsyncMock(
             side_effect=ChatGoogleGenerativeAIError("primary provider down")
         )
-        self._retrying(primary, retried)
 
         fallback = self._runnable()
-        fallback.with_retry = MagicMock(return_value=fallback)
         fallback.ainvoke = AsyncMock(return_value=AIMessage(content="from default model"))
 
         result = await ainvoke_llm(
@@ -418,11 +410,9 @@ class TestAinvokeFallbackRouting:
 
     async def test_primary_failure_without_fallback_propagates(self) -> None:
         primary = self._runnable()
-        retried = self._runnable()
-        retried.ainvoke = AsyncMock(
+        primary.ainvoke = AsyncMock(
             side_effect=ChatGoogleGenerativeAIError("primary provider down")
         )
-        self._retrying(primary, retried)
 
         with pytest.raises(ChatGoogleGenerativeAIError):
             await ainvoke_llm(primary, [HumanMessage(content="hi")], label="test")
