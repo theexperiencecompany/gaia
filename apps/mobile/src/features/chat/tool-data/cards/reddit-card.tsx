@@ -296,7 +296,7 @@ function PostView({ post }: { post: RedditPostData }) {
       )}
 
       {/* External link */}
-      {!post.is_self && post.url && (
+      {!post.is_self && !!post.url && (
         <Pressable
           onPress={() => post.url && Linking.openURL(post.url)}
           className="flex-row items-center gap-1 mt-2 active:opacity-70"
@@ -407,7 +407,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
             </Text>
 
             {/* View on Reddit link */}
-            {comment.permalink && (
+            {!!comment.permalink && (
               <>
                 <InnerDivider />
                 <Pressable
@@ -482,7 +482,7 @@ function CreatedView({
       </View>
 
       {/* Message body */}
-      {itemData.message && (
+      {!!itemData.message && (
         <Text className="text-sm text-zinc-400 mb-2">{itemData.message}</Text>
       )}
 

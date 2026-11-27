@@ -337,6 +337,15 @@ class TestWebSearchTool:
         search_calls = [c for c in writer.call_args_list if "search_results" in c[0][0]]
         assert len(search_calls) == 1
         payload = search_calls[0][0][0]["search_results"]
-        assert payload["query"] == "hello"
-        assert payload["result_count"]["web"] == 1
-        assert payload["result_count"]["images"] == 1
+        assert payload == {
+            "web": [SearchResultItem(title="R1", url="https://r1.com").model_dump()],
+            "news": [],
+            "images": ["img.png"],
+            "videos": [],
+            "query": "hello",
+            "elapsed_time": payload["elapsed_time"],
+            "answer": "",
+            "response_time": 0,
+            "request_id": "",
+            "result_count": {"web": 1, "images": 1, "videos": 0},
+        }

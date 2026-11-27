@@ -430,7 +430,7 @@ export function TodoCard({ data }: { data: TodoData }) {
             />
           ))}
         </View>
-        {data.message && (
+        {!!data.message && (
           <Text className="text-xs text-zinc-500 mt-3">{data.message}</Text>
         )}
       </ToolCardShell>
@@ -444,7 +444,7 @@ export function TodoCard({ data }: { data: TodoData }) {
         <View className="items-center py-2">
           <AppIcon icon={CheckmarkCircle02Icon} size={32} color="#52525b" />
           <Text className="mt-2 text-sm text-zinc-200">No tasks found</Text>
-          {data.message && (
+          {!!data.message && (
             <Text className="text-xs text-zinc-500 mt-1">{data.message}</Text>
           )}
         </View>

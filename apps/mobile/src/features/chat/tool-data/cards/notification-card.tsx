@@ -164,7 +164,7 @@ function NotificationRow({
         </View>
 
         {/* Mark as read icon button — only visible while unread */}
-        {unread && item.id && onMarkAsRead && (
+        {unread && !!item.id && onMarkAsRead && (
           <Button
             variant="secondary"
             size="sm"
