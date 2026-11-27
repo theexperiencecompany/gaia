@@ -215,9 +215,10 @@ class TestSearchNotifications:
         """Search matches by title."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
+        meeting = _make_notification(title="Meeting reminder")
         mock_service.get_user_notifications = AsyncMock(
             return_value=[
-                _make_notification(title="Meeting reminder"),
+                meeting,
                 _make_notification(notification_id="notif-2", title="Shopping list"),
             ]
         )
@@ -230,6 +231,10 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 1
         assert result["notifications"][0]["content"]["title"] == "Meeting reminder"
+        # Only the matches reach the UI's notification card, not the whole scanned page.
+        writer.assert_called_once_with(
+            {"notification_data": {"notifications": [meeting.model_dump(mode="json")]}}
+        )
         # The search scans one page of a hundred under the caller's status filter.
         mock_service.get_user_notifications.assert_awaited_once_with(
             FAKE_USER_ID, filters=NotificationListFilters(status=NotificationStatus.READ, limit=100)
