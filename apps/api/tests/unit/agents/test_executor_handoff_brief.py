@@ -219,7 +219,7 @@ class TestVerbatimRequestComesFromTheServer:
         assert "verbatim_request" not in call_executor.args
 
     async def test_a_long_request_is_carried_unclipped(self):
-        """user_messages is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim backstop must not be."""
+        """The verbatim backstop is the whole request, however long."""
         long_request = "archive the promo from " + ", ".join(
             f"sender{n}@example.com" for n in range(200)
         )

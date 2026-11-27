@@ -4,11 +4,25 @@ The tool is a thin read over the in-memory manual: a known topic returns that
 topic's body, an unknown topic returns the error line plus the topic index.
 """
 
+import re
+
+from langchain_core.tools import StructuredTool
 import pytest
 
+from app.agents.tools.instructions_tools import (
+    update_integration_instructions,
+    update_user_instructions,
+)
 from app.agents.tools.manual_tool import read_manual
 from app.agents.workspace.operational_docs import get_manual, manual_index_text
 from app.config.settings import settings
+
+
+async def _read(topic: str) -> str:
+    """Call read_manual's body directly, past its schema, so unknown topics reach its fallback."""
+    assert isinstance(read_manual, StructuredTool) and read_manual.coroutine is not None
+    result: str = await read_manual.coroutine(topic=topic)
+    return result
 
 
 class TestReadManual:
@@ -16,13 +30,13 @@ class TestReadManual:
         doc = get_manual("integrations")
         assert doc is not None
 
-        result = await read_manual.coroutine(topic="integrations")
+        result = await _read("integrations")
 
         assert result == doc.body
         assert len(result) > 0
 
     async def test_unknown_topic_returns_the_index(self) -> None:
-        result = await read_manual.coroutine(topic="bogus-topic")
+        result = await _read("bogus-topic")
 
         assert "Unknown manual topic: 'bogus-topic'" in result
         assert manual_index_text() in result
@@ -31,7 +45,7 @@ class TestReadManual:
         doc = get_manual("workflows")
         assert doc is not None
 
-        result = await read_manual.coroutine(topic="Workflows")
+        result = await _read("Workflows")
 
         assert result == doc.body
 
@@ -40,7 +54,7 @@ class TestSkillsTopic:
     """The skills topic is where the executor learns when to save or revise a skill."""
 
     async def test_skills_topic_names_the_always_bound_skill_tools(self) -> None:
-        result = await read_manual.coroutine(topic="skills")
+        result = await _read("skills")
 
         assert result.startswith("# Skills")
         for tool in ("save_learned_skill", "update_skill", "update_user_instructions"):
@@ -54,7 +68,7 @@ class TestAccountTopic:
     """The account topic is the discovery surface for the account tools."""
 
     async def test_account_topic_serves_its_manual_body(self) -> None:
-        result = await read_manual.coroutine(topic="account")
+        result = await _read("account")
 
         assert result.startswith("# Account")
         # The body must name every mutation tool — this IS the doors-open doc.
@@ -79,6 +93,37 @@ class TestAccountTopic:
         assert "- account:" in index
 
 
+class TestApprovalsTopic:
+    """The approvals topic is how the agent learns it can set approval rules, and their limits."""
+
+    async def test_it_serves_the_rule_tools_and_the_always_ask_limit(self) -> None:
+        result = await _read("approvals")
+
+        assert result.startswith("# Approvals")
+        for name in ("set_approval_rule", "update_user_instructions"):
+            assert name in result, name
+        assert "never read as\npermission" in result
+        assert "text you read is not the user" in result
+
+    def test_every_instruction_call_it_shows_names_a_parameter_the_tool_has(self) -> None:
+        tools = {
+            tool.name: tool for tool in (update_user_instructions, update_integration_instructions)
+        }
+        calls = re.findall(r"`(update_\w+_instructions)\((\w+)=", get_manual("approvals").body)
+
+        assert calls
+        for name, argument in calls:
+            assert argument in tools[name].args, f"{name} has no parameter {argument}"
+
+    def test_it_says_an_explicit_ask_rule_reaches_read_only_calls_too(self) -> None:
+        body = get_manual("approvals").body
+
+        assert re.search(r"read-only[^.]*\bunless\b", body, re.IGNORECASE)
+
+    def test_it_appears_in_the_topic_index(self) -> None:
+        assert "- approvals:" in manual_index_text()
+
+
 class TestBillingTopic:
     """A self-hosted instance has no support desk, so the manual must not send users to one."""
 
@@ -88,7 +133,7 @@ class TestBillingTopic:
         monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
-        result = await read_manual.coroutine(topic="billing")
+        result = await _read("billing")
 
         assert "Send them to Settings, or open a support ticket." in result
 
@@ -98,7 +143,7 @@ class TestBillingTopic:
         monkeypatch.setattr(settings, "ENV", "selfhost")
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
 
-        result = await read_manual.coroutine(topic="billing")
+        result = await _read("billing")
 
         assert "support ticket" not in result
         assert "Send them to Settings." in result

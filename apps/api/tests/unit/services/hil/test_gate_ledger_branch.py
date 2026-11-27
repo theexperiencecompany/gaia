@@ -14,16 +14,22 @@ import time_machine
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.hil import AUTO_ASK_NOTE, HIL_APPROVAL_TIMEOUT_SECONDS, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_INTEGRATION_ID_METADATA_KEY, MCP_SERVER_NAME_METADATA_KEY
 from app.models.conversation_log_models import ApprovalRequested
 from app.models.hil_models import (
     ApprovalDetail,
     ApprovalLedgerDocument,
     ApprovalProposal,
 )
-from app.services.hil import gate
+from app.services.hil import gate, intent
 from app.services.hil.describe import describe_call
 from app.services.hil.fingerprint import approval_fingerprint
-from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
+from app.services.hil.intent import (
+    AutoContext,
+    IntentDecision,
+    JudgedCall,
+    summarize_history,
+)
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.prompts import GATE_ERROR_TEMPLATE
 from app.services.hil.utils import GatedApproval, GatedCall
@@ -46,6 +52,7 @@ from .conftest import (
     account_gated_request,
     gated_request,
     make_request,
+    make_tool,
 )
 
 MODULE = "app.services.hil.gate"
@@ -66,6 +73,13 @@ def _ledger(
     ledger.find_amended = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value=registered_id)
     return ledger
+
+
+_JUDGED_RUN = gate.GateContext(STREAM_ID, USER_ID, CONVERSATION_ID, ["send it"], False)
+
+
+def _call(name: str) -> GatedCall:
+    return GatedCall(name=name, id="call-1", args={})
 
 
 def _gated_request(**overrides: Any) -> ToolCallRequest:
@@ -478,13 +492,13 @@ class TestLedgerRegistration:
         self, gate_seams: GateSeams
     ) -> None:
         with (
-            patch(f"{MODULE}.asks_every_time", new=AsyncMock(return_value=True)) as asks,
+            patch(f"{MODULE}.asks_every_time", new=MagicMock(return_value=True)) as asks,
             patch(f"{MODULE}.work_of_run", new=AsyncMock(return_value="t1")) as work,
         ):
             result = await gate.decide_tool_call(gated_request())
 
         work.assert_awaited_once_with(CONVERSATION_ID, USER_ID, STREAM_ID)
-        asks.assert_awaited_once_with(GATED_TOOL, GATED_ARGS)
+        asks.assert_called_once_with(GATED_TOOL, GATED_ARGS)
         gate_seams.requested.assert_awaited_once_with(
             CONVERSATION_ID,
             USER_ID,
@@ -767,25 +781,168 @@ class TestLedgerAutoMode:
             summary=GATED_SUMMARY,
             tool_schema=gate_seams.tool.args,
         )
-        assert kwargs["assistant_turns"] == ["Your draft to b@x is ready."]
+        assert kwargs["assistant"] == intent.AssistantTurns(run=("Your draft to b@x is ready.",))
         assert isinstance(kwargs["judge"], JevIntentJudge)
         assert kwargs["user_messages"] == ["send it to b@x"]
+
+    @pytest.mark.regression
+    async def test_what_the_user_was_shown_reaches_the_judge_apart_from_the_runs_own_words(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """A bare "Send" refers to what the user was last shown, which a fresh run never said."""
+        gate_seams.policy.return_value = "auto"
+        messages = [AIMessage(content="Fetched both drafts.")]
+
+        await gate.decide_tool_call(
+            gated_request(
+                messages=messages,
+                assistant_turns=["Drafted the reply to Simonne with the invoice attached."],
+            )
+        )
+
+        # Kept apart: only what the user saw may ground a pick from a listed result.
+        assert gate_seams.judge.await_args.kwargs["assistant"] == intent.AssistantTurns(
+            shown=("Drafted the reply to Simonne with the invoice attached.",),
+            run=("Fetched both drafts.",),
+        )
+
+    async def test_the_judge_reads_the_users_global_and_this_integrations_instructions(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.instructions.return_value = {
+            "global": "Reply in English.",
+            "gmail": "Always ask before emailing my boss.",
+            "notion": "Never archive pages.",
+        }
+
+        await gate.decide_tool_call(gated_request())
+
+        gate_seams.instructions.assert_awaited_once_with(USER_ID)
+        (context,) = gate_seams.judge.await_args.args
+        assert context.standing_rules == (
+            "Reply in English.",
+            "Always ask before emailing my boss.",
+        )
+
+    async def test_a_call_whose_tool_cannot_be_resolved_still_gets_its_integrations_instructions(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = None
+        gate_seams.instructions.return_value = {"gmail": "Always ask before emailing my boss."}
+
+        await gate.decide_tool_call(gated_request())
+
+        (context,) = gate_seams.judge.await_args.args
+        assert context.standing_rules == ("Always ask before emailing my boss.",)
+
+    async def test_a_call_with_no_resolvable_tool_or_integration_asks_instead_of_being_judged(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+
+        await gate.decide_tool_call(gated_request(name="some_server_tool"))
+
+        gate_seams.judge.assert_not_awaited()
+        gate_seams.ledger.register.assert_awaited_once()
+
+    async def test_unreadable_instructions_ask_instead_of_running_unchecked(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.instructions.side_effect = ConnectionError("mongo down")
+
+        await gate.decide_tool_call(gated_request())
+
+        gate_seams.judge.assert_not_awaited()
+        gate_seams.ledger.register.assert_awaited_once()
 
     async def test_a_tool_the_user_never_lets_auto_mode_run_reaches_the_judge_as_never_auto(
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = make_tool("DROP_TABLE")
 
         await gate.decide_tool_call(gated_request(name="DROP_TABLE"))
 
         (context,) = gate_seams.judge.await_args.args
         assert context.never_auto is True
 
+    async def test_an_mcp_tool_gets_the_instructions_of_the_integration_it_is_stamped_with(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """Its name is no Composio slug, so only the resolved tool says which integration it is."""
+        gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = make_tool(
+            "linear_close_issue",
+            metadata={
+                MCP_INTEGRATION_ID_METADATA_KEY: "linear",
+                MCP_SERVER_NAME_METADATA_KEY: "close_issue",
+            },
+        )
+        gate_seams.instructions.return_value = {"linear": "Never close an issue without asking."}
+
+        await gate.decide_tool_call(gated_request(name="linear_close_issue"))
+
+        (context,) = gate_seams.judge.await_args.args
+        assert context.standing_rules == ("Never close an issue without asking.",)
+
+    async def test_a_call_with_no_resolvable_tool_or_integration_is_not_judged_and_says_why(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = None
+
+        decision = await gate._judge(
+            gated_request(name="some_server_tool"), _JUDGED_RUN, _call("some_server_tool"), "Do it"
+        )
+
+        assert decision == IntentDecision("ask", gate._TOOL_UNRESOLVED_REASON)
+        gate_seams.instructions.assert_not_awaited()
+        gate_seams.judge.assert_not_awaited()
+
+    async def test_unreadable_instructions_are_not_judged_and_say_why(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.instructions.side_effect = ConnectionError("mongo down")
+
+        decision = await gate._judge(gated_request(), _JUDGED_RUN, _call(GATED_TOOL), "Email")
+
+        assert decision == IntentDecision("ask", gate._INSTRUCTIONS_UNREADABLE_REASON)
+        gate_seams.judge.assert_not_awaited()
+
+    async def test_the_model_is_told_why_an_unresolvable_call_waits(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = None
+
+        result = await gate.decide_tool_call(gated_request(name="some_server_tool"))
+
+        assert gate._TOOL_UNRESOLVED_REASON in str(result.content)
+
+    async def test_the_model_is_told_why_unreadable_instructions_make_a_call_wait(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        gate_seams.instructions.side_effect = ConnectionError("mongo down")
+
+        result = await gate.decide_tool_call(gated_request())
+
+        assert gate._INSTRUCTIONS_UNREADABLE_REASON in str(result.content)
+
     # 20:00 UTC on the 14th is already the 15th in Kolkata.
     @time_machine.travel(datetime(2026, 11, 14, 20, 0, tzinfo=UTC), tick=False)
     async def test_the_card_and_the_judge_name_a_date_on_the_users_own_calendar(
         self, gate_seams: GateSeams
     ) -> None:
+        gate_seams.gated_tool.side_effect = None
+        gate_seams.gated_tool.return_value = make_tool("create_todo")
         todo = gated_request(
             name="create_todo",
             args={"title": "Pay rent", "due_date": "2026-11-15"},

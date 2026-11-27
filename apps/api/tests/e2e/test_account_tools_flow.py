@@ -2,8 +2,8 @@
 
 Covers real GAIA code: the four account mutation tools as registered for the
 executor; the real create_agent (bigtool) graph dispatching LLM tool calls
-with user_id threaded through config; the real ToolRegistry stamps (settings
-tools carry always_gate, manage_linked_account does not) and resolve_policy
+with user_id threaded through config; ALWAYS_ASK_TOOLS (settings tools are in
+it, manage_linked_account is not) and resolve_policy
 returning ask for them under an always_allow user; the write tool refusing
 account/** paths inside a graph turn, naming the owning mutation tool.
 
@@ -12,7 +12,6 @@ Mocked: the LLM, in-memory store/checkpointer, and the repo/service seams
 or core/mutations.py fails these tests.
 """
 
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,7 +21,7 @@ import pytest
 from app.agents.tools import account_tools
 from app.agents.tools.account_tools import tools as account_tool_list
 from app.agents.tools.coding.write_tool import write
-from app.core.lazy_loader import providers
+from app.constants import hil as hil_constants
 from app.db.repositories.users import user_repository
 from app.models.hil_models import HILPreferences
 from app.services import account_settings
@@ -252,17 +251,15 @@ class TestAccountToolsThroughGraph:
 
 
 class TestHILWiring:
-    def test_settings_tools_are_stamped_always_gate_and_link_is_not(self, real_tool_registry):
-        async def grab():
-            return await providers.aget("tool_registry")
-
-        registry = asyncio.run(grab())
-        meta = registry.get_tool_meta("update_notification_settings")
-        assert meta is not None and meta.always_gate is True
-        for name in ("update_preferences", "set_selected_voice"):
-            assert registry.get_tool_meta(name).always_gate is True, name
-        link_meta = registry.get_tool_meta("manage_linked_account")
-        assert link_meta is not None and link_meta.always_gate is False
+    def test_settings_tools_always_ask_and_link_is_argument_gated(self) -> None:
+        for name in (
+            "update_notification_settings",
+            "update_preferences",
+            "set_selected_voice",
+            "set_briefing_schedule",
+        ):
+            assert name in hil_constants.ALWAYS_ASK_TOOLS, name
+        assert "manage_linked_account" not in hil_constants.ALWAYS_ASK_TOOLS
 
     async def test_resolve_policy_asks_for_settings_even_when_hil_is_off(self, real_tool_registry):
         request = SimpleNamespace(

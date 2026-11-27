@@ -22,7 +22,7 @@ from app.constants.reactions import ReactionReason
 from app.services.browser.browser_use_tools import GaiaTools
 from app.services.conversation.ack import decide_reaction
 from app.services.hil import jev_client
-from app.services.hil.intent import AutoHistory, JudgedCall
+from app.services.hil.intent import AutoContext, JudgedCall
 from app.services.hil.jev_judge import ask_jev, map_jev_choice
 from app.services.providers.provider_credentials_service import ProviderConfig, env_config
 from tests.integration.real.browser._stack.fake_models import WAIT_A_SECOND, FakeModels
@@ -106,14 +106,20 @@ async def test_auto_mode_and_the_instant_reaction_are_answered_by_the_stack(
     monkeypatch.setattr(jev_client, "resolve", from_env)
     models.begin_scenario()
 
-    choice, confidence, *_ = await ask_jev(
+    verdict, *_ = await ask_jev(
         user_messages=["Use the browser for this."],
         call=JudgedCall(tool_name="browser_task", description="", args={}, summary=""),
         prior_calls=[],
-        history=AutoHistory(),
+        auto=AutoContext(user_id="u"),
     )
     reaction = await decide_reaction("Use the browser for this.", "", ConversationSource.TELEGRAM)
 
-    assert map_jev_choice(choice, confidence, accept_line=HIL_JEV_ACCEPT_LINE) == "accept"
+    assert (
+        map_jev_choice(verdict.choice, verdict.confidence, accept_line=HIL_JEV_ACCEPT_LINE)
+        == "accept"
+    )
+    assert verdict.contained == 0.0
+    assert verdict.objection == 1.0
+    assert verdict.go_ahead is None
     assert reaction.reason is ReactionReason.NEEDS_WORDS
     assert models.errors == []

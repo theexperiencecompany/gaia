@@ -18,7 +18,7 @@ from app.constants.chat import ConversationSource
 from app.constants.conversation import WORK_CARDS_NOTE
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
-from app.models.conversation_log_models import Batch, Entry, StepClaim, UserMessage
+from app.models.conversation_log_models import Batch, Entry, Reply, StepClaim, UserMessage
 from app.models.presence_models import PresenceSnapshot
 from app.models.trigger_gate_models import QuietHoursBypass
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
@@ -29,7 +29,14 @@ from app.utils.errors import ConversationNotFoundError
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext
 from tests.factories import make_authenticated_user
-from tests.unit.services.conversation.log_helpers import at, finished, fired, logged, todo_run
+from tests.unit.services.conversation.log_helpers import (
+    at,
+    finished,
+    fired,
+    logged,
+    settled,
+    todo_run,
+)
 from tests.unit.services.conversation.runtime_doubles import CONVERSATION, USER
 
 MODULE = "app.services.conversation.comms_turn"
@@ -61,7 +68,7 @@ class Seams:
     reported: AsyncMock
     write_up: AsyncMock
     context: TurnContext
-    log: object
+    log: MagicMock
     owner: AsyncMock
     target: AsyncMock
 
@@ -81,7 +88,8 @@ def seams() -> Iterator[Seams]:
         presence=HumanMessage(content="presence"),
         clock=HumanMessage(content="clock"),
     )
-    log = object()
+    log = MagicMock()
+    log.read_after = AsyncMock(return_value=[])
     with (
         patch(f"{MODULE}.require_owner", AsyncMock(return_value=user)) as owner,
         patch(f"{MODULE}.presence_before", AsyncMock(return_value=PRESENCE)) as presence,
@@ -115,6 +123,44 @@ def seams() -> Iterator[Seams]:
             owner,
             target,
         )
+
+
+@pytest.mark.regression
+async def test_the_judge_reads_the_batch_in_the_turns_and_replies_before_it(
+    seams: Seams,
+) -> None:
+    """Prod 2026-11-15: "Send" after a drafted reply asked again, the draft unseen by the judge."""
+    seams.log.read_after.return_value = [
+        logged(1, _said("u0", ConversationSource.WEB)),
+        logged(
+            2, Reply(id="r1", reply_id="r1", attempt_id="a1", text="Drafted the reply to Simonne.")
+        ),
+        logged(3, settled("s1", ["u0"], 1)),
+    ]
+
+    await build_comms_turn(CLAIM, _batch(4, [_said("u1", ConversationSource.WEB)]))
+
+    # Read from this user's own conversation, from the start of the lookback up to the batch.
+    seams.log.read_after.assert_awaited_once_with(CONVERSATION, USER, 0)
+    agent_turn = seams.agent_config.await_args.kwargs["turn"]
+    assert agent_turn.user_messages == ["text u0", "text u1"]
+    assert agent_turn.assistant_turns == ["Drafted the reply to Simonne."]
+
+
+async def test_a_workflow_fire_never_borrows_the_chats_words_or_replies(seams: Seams) -> None:
+    """A workflow authorizes only what it says; chat turns logged before it never reach its judge."""
+    seams.log.read_after.return_value = [
+        logged(1, _said("u0", ConversationSource.WEB)),
+        logged(2, Reply(id="r1", reply_id="r1", attempt_id="a1", text="Drafted it.")),
+        logged(3, settled("s1", ["u0"], 1)),
+    ]
+
+    await build_comms_turn(CLAIM, _batch(4, [fired("f1")]))
+
+    agent_turn = seams.agent_config.await_args.kwargs["turn"]
+    assert "text u0" not in agent_turn.user_messages
+    assert agent_turn.assistant_turns == []
+    seams.log.read_after.assert_not_awaited()
 
 
 async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from(

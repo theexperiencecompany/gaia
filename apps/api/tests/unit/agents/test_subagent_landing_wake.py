@@ -19,6 +19,7 @@ from app.agents.core.subagents.delegation import Delegation, SubagentDisplay
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
 
@@ -41,7 +42,7 @@ SUBAGENT_CONFIGURABLE: AgentConfigurable = {
 
 
 @pytest.fixture
-async def spawned() -> AsyncIterator[AsyncMock]:
+async def spawned(conversation_runtime: Runtime) -> AsyncIterator[AsyncMock]:
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     with (
         patch.object(redis_cache, "redis", client),

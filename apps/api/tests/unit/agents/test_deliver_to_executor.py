@@ -34,11 +34,16 @@ from app.constants.cache import (
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
+from app.constants.chat import ConversationSource
 from app.constants.executor import EXECUTOR_CARRY_TASK
 from app.constants.log_tags import LogTag
 from app.models.agent_models import InboxEntry
+from app.models.conversation_log_models import ConversationState, Reply, UserMessage
 from app.models.user_models import AuthenticatedUser
+from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
+from tests.unit.services.conversation.log_helpers import settled
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
 
@@ -47,7 +52,7 @@ TASK = "summarize the thread"
 
 
 @pytest.fixture(autouse=True)
-def _carried_work_is_logged() -> Iterator[AsyncMock]:
+def _carried_work_is_logged(conversation_runtime: Runtime) -> Iterator[AsyncMock]:
     """Accept every carry run's WorkStarted on the conversation log; the refusal has its own test."""
     with patch.object(er, "record_work_carried", AsyncMock(return_value=True)) as logged:
         yield logged
@@ -265,6 +270,97 @@ class TestTheRunAnIdleConversationGets:
         h.spawn.assert_not_called()
         assert [e.text for e in await ExecutorInbox(CONVERSATION).read()] == [TASK]
         assert await get_lock_holder(CONVERSATION) == OTHER_RUN_LOCK
+
+
+class TestTheUsersWordsACarryRunJudgesBy:
+    """A run started outside a comms turn reads the user's recent turns, so auto mode can ground its calls."""
+
+    async def _say(self, runtime: Runtime, *, user: list[str], shown: str) -> None:
+        first, *rest = user
+        await runtime.log.append(
+            CONVERSATION, "u1", UserMessage(id="m1", text=first, surface=ConversationSource.WEB)
+        )
+        await runtime.log.append(
+            CONVERSATION, "u1", Reply(id="r1", reply_id="r1", attempt_id="a1", text=shown)
+        )
+        # Settled: only a reply the user saw whole counts as shown.
+        await runtime.log.append(CONVERSATION, "u1", settled("s1", ["m1"], through=1))
+        for n, text in enumerate(rest, start=2):
+            await runtime.log.append(
+                CONVERSATION,
+                "u1",
+                UserMessage(id=f"m{n}", text=text, surface=ConversationSource.WEB),
+            )
+
+    async def test_it_carries_what_the_user_said_and_was_shown(
+        self, fake_redis, conversation_runtime: Runtime
+    ) -> None:
+        await self._say(
+            conversation_runtime,
+            user=["draft a reply to Bob", "send it"],
+            shown="Drafted the reply to Bob.",
+        )
+
+        with _real_lifecycle() as h:
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        configurable = h.spawn.call_args.args[0].configurable
+        assert configurable["user_messages"] == ["draft a reply to Bob", "send it"]
+        assert configurable["assistant_turns"] == ["Drafted the reply to Bob."]
+
+    async def test_a_message_landing_after_the_head_was_read_is_not_carried(
+        self, fake_redis, conversation_runtime: Runtime
+    ) -> None:
+        """The run reads the log as it stood at the head it saw; later words are not what it was woken by."""
+        await self._say(conversation_runtime, user=["draft a reply to Bob"], shown="Drafted.")
+        read_state = conversation_runtime.log.state
+
+        async def state_then_a_new_message(conversation_id: str, user_id: str) -> ConversationState:
+            seen = await read_state(conversation_id, user_id)
+            await conversation_runtime.log.append(
+                conversation_id,
+                user_id,
+                UserMessage(id="late", text="send it to everyone", surface=ConversationSource.WEB),
+            )
+            return seen
+
+        with (
+            patch.object(conversation_runtime.log, "state", state_then_a_new_message),
+            _real_lifecycle() as h,
+        ):
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        configurable = h.spawn.call_args.args[0].configurable
+        assert configurable["user_messages"] == ["draft a reply to Bob"]
+
+    async def test_a_run_woken_inside_a_workflow_never_borrows_the_chats_words(
+        self, fake_redis, conversation_runtime: Runtime
+    ) -> None:
+        """A wake from inside a workflow carries no id; the run is still the workflow's."""
+        await self._say(conversation_runtime, user=["send it"], shown="Drafted.")
+        log.reset()
+        log.set(workflow={"execution_id": "exec-ambient"})
+
+        with _real_lifecycle() as h:
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        prepared = h.spawn.call_args.args[0]
+        assert prepared.run.workflow_execution_id == "exec-ambient"
+        assert prepared.configurable.get("user_messages") is None
+        assert prepared.configurable.get("assistant_turns") is None
+
+    async def test_a_workflows_run_never_borrows_the_chats_words(
+        self, fake_redis, conversation_runtime: Runtime
+    ) -> None:
+        """Chat turns authorize chat work; a workflow's run keeps to its own authorization."""
+        await self._say(conversation_runtime, user=["send it"], shown="Drafted.")
+
+        with _real_lifecycle() as h:
+            await er.deliver_to_executor(CONVERSATION, USER, TASK, workflow_execution_id="exec-1")
+
+        configurable = h.spawn.call_args.args[0].configurable
+        assert configurable.get("user_messages") is None
+        assert configurable.get("assistant_turns") is None
 
 
 class TestCarryingPendingWork:

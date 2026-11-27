@@ -162,16 +162,7 @@ class GateSeams:
     prefs: AsyncMock
     judge: AsyncMock
     log: MagicMock
-
-
-@contextmanager
-def tools_that_always_ask(*names: str) -> Iterator[None]:
-    """Stamp the named tools forced-ask in the registry the HIL policy reads."""
-    registry = SimpleNamespace(
-        get_tool_meta=lambda name: SimpleNamespace(always_gate=name in names)
-    )
-    with patch("app.services.hil.policy.get_tool_registry", new=AsyncMock(return_value=registry)):
-        yield
+    instructions: AsyncMock
 
 
 def _fake_registry() -> MagicMock:
@@ -204,7 +195,7 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
     ledger.recent_tool_outcomes = AsyncMock(return_value=[])
     with (
         patch(f"{GATE_MODULE}.resolve_policy", new=AsyncMock(return_value="ask")) as policy,
-        patch(f"{GATE_MODULE}.asks_every_time", new=AsyncMock(return_value=False)),
+        patch(f"{GATE_MODULE}.asks_every_time", new=MagicMock(return_value=False)),
         patch(f"{GATE_MODULE}.approval_ledger_repository", new=ledger),
         patch(f"{GATE_MODULE}.get_tool_registry", new=AsyncMock(return_value=_fake_registry())),
         patch(
@@ -217,6 +208,10 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
             new=AsyncMock(return_value=IntentDecision("ask", "")),
         ) as judge,
         patch(f"{GATE_MODULE}.log") as log,
+        # create=True: the regression-proof lane runs this fixture on master, before the seam exists.
+        patch(
+            f"{GATE_MODULE}.get_all_instructions", new=AsyncMock(return_value={}), create=True
+        ) as instructions,
     ):
         yield GateSeams(
             policy=policy,
@@ -228,6 +223,7 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
             prefs=prefs,
             judge=judge,
             log=log,
+            instructions=instructions,
         )
 
 

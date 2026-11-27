@@ -7,7 +7,7 @@ from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import all_integrations
 from app.config.settings import settings
-from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
+from app.constants.integrations import CONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
@@ -132,7 +132,6 @@ class Tool:
         name: str | None = None,
         is_core: bool = False,
         destructive: bool | None = None,
-        always_gate: bool = False,
     ):
         self.tool = tool
         self.name = name or tool.name
@@ -140,9 +139,6 @@ class Tool:
         # HIL destructive flag: None = unclassified (LLM classifier decides
         # later); True/False = reviewed (internal tools + curated slugs).
         self.destructive = destructive
-        # Forced-ask stamp: pauses for approval in EVERY HIL mode, ignoring
-        # ``always_allow`` — for account settings and similar invariants.
-        self.always_gate = always_gate
 
 
 @dataclass(frozen=True)
@@ -170,12 +166,11 @@ class CategoryOptions:
 class CategoryRisk:
     """Curated HIL classification sets for a category's tools.
 
-    ``destructive_tools`` is the curated risk set (see ``ToolCategory.add_tools``);
-    ``always_gate_tools`` names members that ask in every HIL mode.
+    ``destructive_tools`` is the curated risk set (see ``ToolCategory.add_tools``).
+    Tools that ask in every HIL mode are ``ALWAYS_ASK_TOOLS`` (app.constants.hil).
     """
 
     destructive_tools: set[str] | None = None
-    always_gate_tools: set[str] | None = None
 
 
 class ToolCategory:
@@ -207,25 +202,15 @@ class ToolCategory:
         is_core: bool = False,
         name: str | None = None,
         destructive: bool | None = None,
-        always_gate: bool = False,
     ) -> None:
         """Add a tool to this category."""
-        self.tools.append(
-            Tool(
-                tool=tool,
-                name=name,
-                is_core=is_core,
-                destructive=destructive,
-                always_gate=always_gate,
-            )
-        )
+        self.tools.append(Tool(tool=tool, name=name, is_core=is_core, destructive=destructive))
 
     def add_tools(
         self,
         tools: Sequence[BaseTool],
         is_core: bool = False,
         destructive_tools: set[str] | None = None,
-        always_gate_tools: set[str] | None = None,
     ) -> None:
         """Add multiple tools to this category.
 
@@ -233,14 +218,10 @@ class ToolCategory:
         every tool is stamped destructive by membership (so an empty set marks
         the whole category reviewed-safe); when ``None`` the tools stay
         unclassified and fall to the HIL LLM classifier at gate time.
-        ``always_gate_tools`` stamps forced-ask members (see ``Tool.always_gate``).
         """
-        gated = always_gate_tools or set()
         for tool in tools:
             destructive = None if destructive_tools is None else (tool.name in destructive_tools)
-            self.add_tool(
-                tool, is_core=is_core, destructive=destructive, always_gate=tool.name in gated
-            )
+            self.add_tool(tool, is_core=is_core, destructive=destructive)
 
     def get_tool_objects(self) -> list[BaseTool]:
         """Get the actual tool objects for binding."""
@@ -290,13 +271,11 @@ class ToolRegistry:
         explicit set (empty if none are destructive) so in-repo tools are never
         left unclassified; ``None`` is reserved for uncurated (custom MCP /
         provider) tools that the HIL LLM classifier resolves at gate time.
-        ``risk.always_gate_tools`` names members that ask in every HIL mode.
         """
         options = options or CategoryOptions()
         risk = risk or CategoryRisk()
         space = options.space
         destructive_tools = risk.destructive_tools
-        always_gate_tools = risk.always_gate_tools
         replacing = name in self._categories
         prior_tools_count = len(self._categories[name].tools) if replacing else 0
         category = ToolCategory(
@@ -308,12 +287,9 @@ class ToolRegistry:
                 core_tools,
                 is_core=True,
                 destructive_tools=destructive_tools,
-                always_gate_tools=always_gate_tools,
             )
         if tools:
-            category.add_tools(
-                tools, destructive_tools=destructive_tools, always_gate_tools=always_gate_tools
-            )
+            category.add_tools(tools, destructive_tools=destructive_tools)
         self._categories[name] = category
         if replacing:
             # Drop the replaced category's entries so removed tools don't linger.
@@ -406,20 +382,12 @@ class ToolRegistry:
             tools=[*notification_tool.tools],
             risk=CategoryRisk(destructive_tools={"send_notification"}),
         )
-        # Account-center mutations are forced-ask; manage_linked_account is
-        # argument-gated instead — see hil/policy.ARGUMENT_GATED_TOOLS.
+        # Account-center mutations ask in every mode (ALWAYS_ASK_TOOLS); manage_linked_account
+        # is argument-gated instead — see hil/policy.ARGUMENT_GATED_TOOLS.
         self._add_category(
             "account",
             tools=[*account_tools.tools],
-            risk=CategoryRisk(
-                destructive_tools=set(),
-                always_gate_tools={
-                    "update_notification_settings",
-                    "update_preferences",
-                    "set_selected_voice",
-                    "set_briefing_schedule",
-                },
-            ),
+            risk=CategoryRisk(destructive_tools=set()),
         )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)
         self._add_category(
             "tracked_todos",
@@ -499,29 +467,17 @@ class ToolRegistry:
             "integrations",
             tools=[*integration_tool.tools, *integration_account_tools.tools],
             risk=CategoryRisk(
+                # add_custom_mcp_server, approve_device_pairing and disconnect_integration
+                # ask in every HIL mode (ALWAYS_ASK_TOOLS).
                 destructive_tools={CONNECT_INTEGRATION_TOOL},
-                # Ask in every HIL mode (hil/policy): an untrusted MCP server, a device linked to
-                # the account, and a revoked account only a new sign-in restores.
-                always_gate_tools={
-                    "add_custom_mcp_server",
-                    "approve_device_pairing",
-                    DISCONNECT_INTEGRATION_TOOL,
-                },
             ),
         )
         self._add_category(
             "instructions",
             tools=[*instructions_tools.tools],
             options=CategoryOptions(internal=True),
-            risk=CategoryRisk(
-                destructive_tools=set(),
-                # Ask in every HIL mode: what the agent saves rides in every later
-                # conversation, and the text may come from an email or page it read.
-                always_gate_tools={
-                    instructions_tools.update_user_instructions.name,
-                    instructions_tools.update_integration_instructions.name,
-                },
-            ),
+            # Both update tools ask in every HIL mode (ALWAYS_ASK_TOOLS).
+            risk=CategoryRisk(destructive_tools=set()),
         )
         from app.agents.tools import coding
 

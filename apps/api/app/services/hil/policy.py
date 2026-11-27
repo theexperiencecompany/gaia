@@ -15,8 +15,8 @@ from typing import Literal
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
-from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.execute.resolver import resolve_tool
+from app.constants.hil import ALWAYS_ASK_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
@@ -37,34 +37,6 @@ ARGUMENT_GATED_TOOLS: dict[str, dict[str, object]] = {
 }
 
 
-async def _stamp_registry() -> ToolRegistry | None:
-    """Return the registry the forced-ask stamp is read from, or None when unreachable.
-
-    The stamp only escalates, never clears, so an unreachable registry just means
-    "no stamp read" — the rest of the policy still decides. Raising instead took
-    the whole gate down: decide_tool_call fails closed on ANY exception, so an
-    unregistered provider silently refused every gated tool instead of asking.
-    """
-    try:
-        return await get_tool_registry()
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} tool registry unavailable; reading no forced-ask stamp",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
-
-
-async def _is_always_gated(tool_name: str) -> bool:
-    """Read the registry's forced-ask stamp, checked before any preference lookup."""
-    registry = await _stamp_registry()
-    if registry is None:
-        return False
-    meta = registry.get_tool_meta(tool_name)
-    return meta is not None and meta.always_gate
-
-
 def _argument_gate_hit(tool_name: str, args: Mapping[str, object] | None) -> bool:
     required = ARGUMENT_GATED_TOOLS.get(tool_name)
     if not required or not args:
@@ -72,9 +44,9 @@ def _argument_gate_hit(tool_name: str, args: Mapping[str, object] | None) -> boo
     return all(args.get(key) == value for key, value in required.items())
 
 
-async def asks_every_time(tool_name: str, args: Mapping[str, object] | None) -> bool:
+def asks_every_time(tool_name: str, args: Mapping[str, object] | None) -> bool:
     """Whether this call asks in every mode, beyond any per-tool override's reach."""
-    return await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, args)
+    return tool_name in ALWAYS_ASK_TOOLS or _argument_gate_hit(tool_name, args)
 
 
 async def gated_tool_object(
@@ -132,7 +104,7 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     "always ask" asks even in always_allow or auto, "never ask" runs in every mode.
     """
     call = unpack_tool_call(request)
-    if await asks_every_time(tool_name, call.args):
+    if asks_every_time(tool_name, call.args):
         return "ask"
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow" and not prefs.tool_overrides:
@@ -166,7 +138,7 @@ async def is_gated(
     Otherwise the user's per-tool choice wins in both directions — even over an
     MCP destructiveHint — since it is a deliberate setting on their own account.
     """
-    if await asks_every_time(tool_name, args):
+    if asks_every_time(tool_name, args):
         return True
     override = _tool_override(prefs, tool_name, tool)
     if override is not None:

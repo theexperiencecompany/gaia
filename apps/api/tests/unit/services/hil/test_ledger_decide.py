@@ -68,8 +68,6 @@ from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, 
 from tests.helpers import ledger_facts
 from tests.unit.services.conversation.log_helpers import described
 
-from .conftest import tools_that_always_ask
-
 MODULE = "app.services.hil.ledger_decide"
 RUNNER = "app.agents.core.background.executor_runner"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -1959,6 +1957,7 @@ class TestReconcileStalled:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("conversation_runtime")
 class TestTheTicketReachesARunWhateverHeldTheConversation:
     """The ledger's delivery over the real lock: a dead holder never strands an approval."""
 
@@ -2073,7 +2072,7 @@ class TestDecideLedgerAlwaysToolScope:
 
     async def test_a_disconnect_refuses_the_always_scope_by_its_arguments_alone(self) -> None:
         repo = _repo(_row(tool_name="manage_linked_account", args={"action": "disconnect"}))
-        with tools_that_always_ask(), pytest.raises(ToolAlwaysAsksError):
+        with pytest.raises(ToolAlwaysAsksError):
             await self._decide(repo, decision="approve", scope="always_tool")
         repo.settle.assert_not_awaited()
 
@@ -2082,10 +2081,7 @@ class TestDecideLedgerAlwaysToolScope:
         self,
     ) -> None:
         repo = _repo(_row(tool_name="update_preferences"))
-        with (
-            tools_that_always_ask("update_preferences"),
-            pytest.raises(ToolAlwaysAsksError),
-        ):
+        with pytest.raises(ToolAlwaysAsksError):
             await self._decide(repo, decision="approve", scope="always_tool")
         repo.settle.assert_not_awaited()
 

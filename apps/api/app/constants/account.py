@@ -6,7 +6,7 @@ from here so the set cannot drift.
 
 Every file in account/ is a read-only projection of Mongo/Postgres truth —
 editing a file accomplishes nothing. Mutations go through the account mutation
-tools (app/agents/tools/account_tools.py, registered always_gate).
+tools (app/agents/tools/account_tools.py), which ask in every HIL mode.
 """
 
 from enum import StrEnum
@@ -45,9 +45,8 @@ ACCOUNT_READ_ONLY_PATHS: frozenset[str] = frozenset(
     }
 )
 
-# Executor tools mutating account state (app/agents/tools/account_tools.py) get
-# their forced-ask HIL posture stamped on the tool registry at registration
-# (Tool.always_gate) — the single source of truth for gating.
+# Executor tools mutating account state (app/agents/tools/account_tools.py) ask in
+# every HIL mode: ALWAYS_ASK_TOOLS in app.constants.hil is the single source of truth.
 
 
 def account_area_for(rel_path: str) -> AccountArea | None:

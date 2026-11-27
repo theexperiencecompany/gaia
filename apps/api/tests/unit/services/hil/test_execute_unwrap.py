@@ -6,7 +6,6 @@ every destructive integration tool classifies as the (harmless) proxy and runs
 unapproved. These tests were written BEFORE the unwrap and observed red.
 """
 
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -46,17 +45,6 @@ def execute_request(
         tool=make_tool(name=EXECUTE_TOOL_NAME, description="Run an integration tool by name."),
         messages=messages,
     )
-
-
-def _registry_with_tool(name: str, description: str) -> SimpleNamespace:
-    real_tool = make_tool(name=name, description=description)
-
-    def _meta(lookup: str) -> SimpleNamespace | None:
-        if lookup == name:
-            return SimpleNamespace(name=name, tool=real_tool, always_gate=False)
-        return None
-
-    return SimpleNamespace(get_tool_meta=_meta)
 
 
 @pytest.fixture(autouse=True)
@@ -124,10 +112,6 @@ class TestPolicyUnwrapsExecute:
         request = execute_request("manage_linked_account", {"action": "disconnect"})
         with (
             patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
-            ),
-            patch(
                 f"{MODULE}.get_hil_preferences",
                 new=AsyncMock(return_value=HILPreferences(mode="always_allow")),
             ),
@@ -137,9 +121,7 @@ class TestPolicyUnwrapsExecute:
     async def test_destructive_tool_through_execute_classifies_the_real_tool(self) -> None:
         request = execute_request("GMAIL_DELETE_EMAIL", {"message_id": "m1"})
         real = make_tool(name="GMAIL_DELETE_EMAIL", description="Deletes an email permanently.")
-        registry = _registry_with_tool("GMAIL_DELETE_EMAIL", "Deletes an email permanently.")
         with (
-            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
             patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)),
             patch(
                 f"{MODULE}.get_hil_preferences",
@@ -164,10 +146,6 @@ class TestPolicyUnwrapsExecute:
             metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
         )
         with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda _name: None)),
-            ),
             patch(f"{MODULE}.resolve_tool", new=resolver_returning(mcp_tool)),
             patch(
                 f"{MODULE}.get_hil_preferences",
@@ -188,10 +166,6 @@ class TestPolicyUnwrapsExecute:
             metadata={"integration_id": "custom_srv", "mcp_server_name": "delete_item"},
         )
         with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda _name: None)),
-            ),
             patch(f"{MODULE}.resolve_tool", new=resolver_returning(mcp_tool)),
             patch(
                 f"{MODULE}.get_hil_preferences",
@@ -224,10 +198,6 @@ class TestPolicyUnwrapsExecute:
             },
         )
         with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda _name: None)),
-            ),
             patch(f"{MODULE}.resolve_tool", new=resolver_returning(mcp_tool)),
             patch(
                 f"{MODULE}.get_hil_preferences",
@@ -241,9 +211,7 @@ class TestPolicyUnwrapsExecute:
     async def test_readonly_tool_through_execute_is_allowed(self) -> None:
         request = execute_request("GMAIL_FETCH_EMAILS", {"max_results": 5})
         real = make_tool(name="GMAIL_FETCH_EMAILS", description="Fetch emails.")
-        registry = _registry_with_tool("GMAIL_FETCH_EMAILS", "Fetch emails.")
         with (
-            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
             patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)),
             patch(
                 f"{MODULE}.get_hil_preferences",

@@ -102,6 +102,9 @@ class AgentConfigurable(TypedDict, total=False):
     #: judge grounds gated calls against these, so they are never an agent's
     #: paraphrase of the request.
     user_messages: list[str] | None
+    #: The assistant's replies the user saw before the live turn, oldest first.
+    #: Context for the HIL judge, never authorization; inherited like user_messages.
+    assistant_turns: list[str] | None
     #: The live turn's request, exactly as typed and NOT clipped (unlike
     #: ``user_messages``, which is capped per turn). Established once by comms
     #: and inherited parent-overrides. Absent for non-chat roots.
@@ -234,6 +237,7 @@ class AgentConfigurableView(BaseModel):
     user_name: str | None = None
     user_timezone: str | None = None
     user_messages: list[str] | None = None
+    assistant_turns: list[str] | None = None
     user_request: str | None = None
     user_preferences: dict[str, object] | None = None
     writing_style: dict[str, object] | None = None

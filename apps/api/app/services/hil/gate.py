@@ -18,11 +18,14 @@ from typing import Any
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool
 from langgraph.types import Command
 from pydantic_core import to_jsonable_python
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
+from app.agents.tools.tool_integration import tool_integration_id
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.hil import (
     AUTO_ASK_NOTE,
     HIL_APPROVAL_TIMEOUT_SECONDS,
@@ -39,6 +42,7 @@ from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
 )
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import (
     record_approval_decided,
@@ -52,6 +56,7 @@ from app.services.hil.describe import describe_call
 from app.services.hil.errors import ApprovalRequestNotFoundError
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
+    AssistantTurns,
     AutoContext,
     AutoHistory,
     IntentDecision,
@@ -88,6 +93,7 @@ from app.services.hil.utils import (
 )
 from app.services.hil.when import UserClock
 from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.user_instructions_service import get_all_instructions
 from app.utils.general_utils import clip_text
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
@@ -96,6 +102,14 @@ from shared.py.approvals import ApprovalOutcome
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
+
+_INSTRUCTIONS_UNREADABLE_REASON = (
+    "Your saved instructions could not be read, so this waits for you."
+)
+_TOOL_UNRESOLVED_REASON = (
+    "GAIA could not tell which integration this call belongs to, so your saved "
+    "instructions for it could not be checked and this waits for you."
+)
 
 
 @dataclass(frozen=True)
@@ -115,6 +129,9 @@ class GateContext:
     # which resume through the executor inbox instead of re-enqueueing.
     owner_run_type: str = ""
     owner_id: str = ""
+    # What the user was shown before their turn, inherited from comms: the context a
+    # bare "send it" refers to, which a run started by that turn never said itself.
+    assistant_turns: tuple[str, ...] = ()
 
 
 async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
@@ -254,7 +271,7 @@ async def _decide_ledger(
                 integration_name=integration_name,
                 args_preview=to_jsonable_python(call.args),
                 auto_reason=AUTO_ASK_NOTE if auto.asked else None,
-                always_asks=await asks_every_time(call.name, call.args),
+                always_asks=asks_every_time(call.name, call.args),
             ),
         )
         registered = await approval_ledger_repository.register(proposal, ap_id)
@@ -331,6 +348,12 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     # subagent the local task is an agent-authored paraphrase, never the user's words.
     raw = configurable.get("user_messages")
     turns = [text for text in raw if isinstance(text, str)] if isinstance(raw, list) else []
+    shown_raw = configurable.get("assistant_turns")
+    shown = (
+        tuple(text for text in shown_raw if isinstance(text, str))
+        if isinstance(shown_raw, list)
+        else ()
+    )
     # Background owner for the resume driver: stamped on any approval this run
     # registers so the verdict can wake the right unit of work. Live runs leave
     # it empty — they resume through the executor inbox, never re-enqueueing.
@@ -343,7 +366,14 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
         elif todo_id:
             owner_run_type, owner_id = "todo", todo_id
     return GateContext(
-        stream_id, user_id, conversation_id, turns, background, owner_run_type, owner_id
+        stream_id,
+        user_id,
+        conversation_id,
+        turns,
+        background,
+        owner_run_type,
+        owner_id,
+        assistant_turns=shown,
     )
 
 
@@ -356,14 +386,33 @@ async def _judge(
     """Ask the intent judge whether the user's request authorizes this call."""
     history = await _auto_history(context.user_id, call.name)
     tool = await gated_tool_object(request, context.user_id, call.name)
+    integration = _integration_of(tool, call.name)
+    if integration is None and tool is None:
+        log.warning(f"{LogTag.HIL} tool and integration unresolved; asking", tool_name=call.name)
+        return IntentDecision("ask", _TOOL_UNRESOLVED_REASON)
     # A deny rule is a security input: unreadable, the gate fails closed rather than judging without it.
     prefs = await get_hil_preferences(context.user_id)
     never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in prefs.never_auto_tools
+    try:
+        instructions = await get_all_instructions(context.user_id)
+    except Exception as e:  # a rule the user saved may cover this call: ask rather than guess
+        log.warning(
+            f"{LogTag.HIL} saved instructions unreadable; asking",
+            tool_name=call.name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return IntentDecision("ask", _INSTRUCTIONS_UNREADABLE_REASON)
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
             history=history,
             never_auto=never_auto,
+            standing_rules=tuple(
+                text
+                for scope in (GLOBAL_INSTRUCTIONS_SCOPE, integration)
+                if scope and (text := instructions.get(scope))
+            ),
         ),
         user_messages=context.user_messages,
         judge=JevIntentJudge(),
@@ -377,9 +426,12 @@ async def _judge(
             tool_schema=tool_schema(tool),
         ),
         # Prior actions and recent assistant words are provenance for arguments,
-        # never authorization — only the user's turns authorize.
+        # never authorization — only the user's turns authorize. Only what the user saw
+        # may ground a pick from a list; this run's own messages are context alone.
         prior_calls=prior_tool_calls(request.state, call.id),
-        assistant_turns=recent_assistant_turns(request.state),
+        assistant=AssistantTurns(
+            shown=context.assistant_turns, run=tuple(recent_assistant_turns(request.state))
+        ),
     )
     if decision.outcome == "accept":
         # An auto-run call has no card and no ledger row; this is its only record.
@@ -390,6 +442,18 @@ async def _judge(
             ),
         )
     return decision
+
+
+def _integration_of(tool: BaseTool | None, tool_name: str) -> str | None:
+    """Return the integration whose saved instructions reach this call.
+
+    An unresolved tool still names its Composio toolkit in its slug; an MCP tool
+    that did not resolve has no slug, so None there means the gate cannot tell.
+    """
+    if tool is not None:
+        return tool_integration_id(tool)
+    integration = get_integration_by_tool_slug(tool_name)
+    return integration.id if integration else None
 
 
 async def _auto_history(user_id: str, tool_name: str) -> AutoHistory:

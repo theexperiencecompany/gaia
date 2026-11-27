@@ -4,14 +4,16 @@ The judge returns accept or ask, never a refusal: a call auto mode doubts goes
 to the user as a card. Tests here pin the outcome vocabulary.
 """
 
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware.types import ToolCallRequest
+import pytest
 
 from app.constants.hil import AUTO_ASK_NOTE, HIL_STATUS_KWARG, JevChoice
 from app.models.hil_models import HILPreferences
-from app.services.hil import gate
+from app.services.hil import gate, intent
 from app.services.hil.intent import (
     AutoContext,
     AutoHistory,
@@ -20,11 +22,19 @@ from app.services.hil.intent import (
     JudgedCall,
     judge_intent,
 )
+from app.services.hil.jev_judge import JevVerdict
 from app.services.hil.utils import PriorCall, unpack_tool_call
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool
 
 MODULE = "app.services.hil.intent"
+
+
+@pytest.fixture(autouse=True)
+def _no_saved_instructions() -> Iterator[None]:
+    """Give these users no saved instructions for the gate to read."""
+    with patch.object(gate, "get_all_instructions", new=AsyncMock(return_value={})):
+        yield
 
 
 class FakeJudge(IntentJudge):
@@ -33,18 +43,21 @@ class FakeJudge(IntentJudge):
     def __init__(self, decision: IntentDecision) -> None:
         self._decision = decision
         self.calls = 0
+        self.assistants: list[intent.AssistantTurns] = []
+        self.autos: list[AutoContext] = []
 
     async def decide(
         self,
         *,
-        user_id: str,
+        auto: AutoContext,
         user_messages: list[str],
         call: JudgedCall,
         prior_calls: list[PriorCall],
-        history: AutoHistory,
-        assistant_turns: list[str] | None = None,
+        assistant: intent.AssistantTurns = intent.AssistantTurns(),
     ) -> IntentDecision:
         self.calls += 1
+        self.assistants.append(assistant)
+        self.autos.append(auto)
         return self._decision
 
 
@@ -70,6 +83,22 @@ async def test_injected_judge_decides_without_calling_the_llm() -> None:
     assert fake.calls == 1
 
 
+async def test_the_judge_is_given_what_the_user_was_shown_and_the_runs_own_words() -> None:
+    fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"))
+    assistant = intent.AssistantTurns(shown=("Drafted the reply to Bob.",), run=("Sending now.",))
+
+    await judge_intent(
+        AutoContext(user_id="u"),
+        user_messages=["send it"],
+        call=_call(),
+        prior_calls=[],
+        judge=fake,
+        assistant=assistant,
+    )
+
+    assert fake.assistants == [assistant]
+
+
 async def test_never_auto_tool_asks_without_calling_the_llm() -> None:
     # A user deny-rule: the judge declines to judge, so the call gets a card.
     fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"))
@@ -83,6 +112,27 @@ async def test_never_auto_tool_asks_without_calling_the_llm() -> None:
     assert d.outcome == "ask"
     assert "send_email" in d.reason
     assert fake.calls == 0
+
+
+async def test_the_judge_is_handed_the_users_saved_instructions_and_history() -> None:
+    """The judge itself weighs saved instructions (one question, one request): judge_intent only passes them."""
+    fake = FakeJudge(IntentDecision(outcome="accept", reason="asked"))
+    auto = AutoContext(
+        user_id="u",
+        history=AutoHistory(approved_recent=2),
+        standing_rules=("Always ask me before emailing my boss.",),
+    )
+
+    d = await judge_intent(
+        auto,
+        user_messages=["send the deck to bob"],
+        call=_call(),
+        prior_calls=[],
+        judge=fake,
+    )
+
+    assert d.outcome == "accept"
+    assert fake.autos == [auto]
 
 
 async def test_gate_threads_never_auto_prefs_into_the_judge() -> None:
@@ -183,7 +233,14 @@ def _auto_ledger() -> MagicMock:
 async def test_a_forbidden_verdict_asks_the_user_instead_of_refusing() -> None:
     # Auto mode never refuses on its own: a forbidden JEV verdict is a card with a plain note.
     ledger = _auto_ledger()
-    jev = AsyncMock(return_value=(JevChoice.FORBIDDEN, 0.95, {JevChoice.FORBIDDEN: 0.95}, 0, 0))
+    verdict = JevVerdict(
+        choice=JevChoice.FORBIDDEN,
+        confidence=0.95,
+        probabilities={JevChoice.FORBIDDEN: 0.95},
+        contained=0.0,
+        objection=0.0,
+    )
+    jev = AsyncMock(return_value=(verdict, 0, 0))
     with (
         patch("app.services.hil.gate.resolve_policy", new=AsyncMock(return_value="auto")),
         patch("app.services.hil.gate.approval_ledger_repository", new=ledger),
@@ -199,7 +256,7 @@ async def test_a_forbidden_verdict_asks_the_user_instead_of_refusing() -> None:
         patch("app.services.hil.gate.gated_tool_object", new=AsyncMock(return_value=None)),
         patch("app.services.hil.jev_judge.ask_jev", new=jev),
         patch("app.services.hil.gate.announce_approval", new=AsyncMock()),
-        patch("app.services.hil.gate.asks_every_time", new=AsyncMock(return_value=False)),
+        patch("app.services.hil.gate.asks_every_time", new=MagicMock(return_value=False)),
         patch("app.services.hil.gate.record_approval_requested", new=AsyncMock()) as requested,
     ):
         result = await gate.decide_tool_call(_auto_request())
@@ -251,7 +308,7 @@ async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="vague scope")),
         ),
         patch("app.services.hil.gate.announce_approval", new=AsyncMock()),
-        patch("app.services.hil.gate.asks_every_time", new=AsyncMock(return_value=False)),
+        patch("app.services.hil.gate.asks_every_time", new=MagicMock(return_value=False)),
         patch("app.services.hil.gate.record_approval_requested", new=AsyncMock()) as requested,
     ):
         result = await gate.decide_tool_call(_auto_request())

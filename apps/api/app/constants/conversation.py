@@ -147,8 +147,9 @@ class EventsWire(IntEnum):
 WORK_DELTAS_KEY_PREFIX = "conv:work_deltas:"
 # Outlives the longest approval a paused run waits on, so a resumed run still has its cards.
 WORK_DELTAS_TTL_SECONDS = 7 * ONE_DAY_TTL
-# Seqs before a typed approval answer read for the turns the classifier weighs it against.
-CLASSIFIER_LOOKBACK_SEQS = 20
+# Seqs read back for the turns just before a point: what the approval-reply classifier
+# weighs a typed answer against, and what the auto-mode judge reads a turn in.
+RECENT_TURNS_LOOKBACK_SEQS = 20
 # How often a running step polls its preempt hint while the model is silent.
 STEP_TICK_SECONDS = 0.25
 # Heads one sweep reads; the sweep runs every SWEEP_SECONDS, so a backlog drains over a few runs.

@@ -9,7 +9,6 @@ from typing import cast
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.constants.conversation import (
-    CLASSIFIER_LOOKBACK_SEQS,
     RUNNER_ALIVE_BEATS_PER_TTL,
     RUNNER_ALIVE_TTL_SECONDS,
 )
@@ -28,7 +27,6 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkflowFired,
 )
-from app.models.message_models import MessageDict
 from app.services.conversation.placement import watermark
 from app.services.conversation.ports import (
     ClaimLost,
@@ -46,6 +44,7 @@ from app.services.conversation.step_writes import (
     set_comms,
 )
 from app.services.conversation.todo_wake import nothing_to_report
+from app.services.conversation.turns_before import turns_before
 from app.services.conversation.verdict import merge_group
 from app.utils.hot_path import first_text_gate
 from app.utils.liveness import keep_proving
@@ -276,20 +275,6 @@ def _batch(pending: Sequence[LoggedEntry]) -> Batch:
     return Batch(start=joined[0].seq, end=joined[-1].seq, waking=joined, first_at=joined[0].at)
 
 
-async def _turns_before(ports: RuntimePorts, claim: StepClaim, seq: int) -> list[MessageDict]:
-    """Return the user messages and shown replies logged shortly before seq, as chat turns."""
-    since = max(0, seq - 1 - CLASSIFIER_LOOKBACK_SEQS)
-    entries = await ports.log.read_after(claim.conversation_id, claim.user_id, since)
-    turns: list[MessageDict] = []
-    for logged in itertools.takewhile(lambda logged: logged.seq < seq, entries):
-        match logged.entry:
-            case UserMessage(text=text):
-                turns.append({"role": "user", "content": text})
-            case Reply(text=text) if text:
-                turns.append({"role": "assistant", "content": text})
-    return turns
-
-
 def _typed_decision(state: ConversationState, first: LoggedEntry) -> UserMessage | None:
     """Return first when it may decide the approvals waiting: a button-less surface's message."""
     message = first.entry
@@ -310,7 +295,7 @@ async def _answered_without_run(
     claim, batch = attempt.claim, attempt.batch
     reply, outcome = empty_reply(attempt), ReplyOutcome.SILENT
     if typed is not None:
-        history = await _turns_before(ports, claim, batch.start)
+        history = await turns_before(ports.log, claim.conversation_id, claim.user_id, batch.start)
         answer = await ports.approvals.resolve(
             claim.conversation_id, claim.user_id, typed.text, history
         )

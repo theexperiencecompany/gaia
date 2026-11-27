@@ -22,6 +22,7 @@ import math
 import re
 from typing import Literal, Protocol
 
+from app.constants.hil import HIL_JUDGE_MAX_ASSISTANT_TURNS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.utils import (
@@ -33,6 +34,9 @@ from shared.py.wide_events import log
 
 _NO_REQUEST_REASON = "Could not check this against anything you asked for."
 _JUDGE_FAILED_REASON = "The approval check could not run."
+#: Shown when a call ran on containment rather than on the user's explicit words.
+CONTAINED_RUN_REASON = "Auto mode ran this: it stays in your account and can be undone"
+GO_AHEAD_RUN_REASON = "Auto mode ran this: your reply was the go-ahead for it"
 
 
 @dataclass(frozen=True)
@@ -141,24 +145,24 @@ def history_line(history: AutoHistory, tool_name: str) -> str:
     return line
 
 
-class IntentJudge(Protocol):
-    """Decide one auto-mode call.
+@dataclass(frozen=True)
+class AssistantTurns:
+    """The assistant's recent words: context for a shorthand, never authorization.
 
-    LLM-backed today; a JEV-backed judge implements this Protocol later (JEV
-    answers risk booleans, code keeps the grounding-quote and veto checks) — the
-    gate never changes.
+    shown are the replies the user saw before their turn, the only ones a confirmation or
+    a pick from a listed result may rest on. run are this run's own messages, unseen.
     """
 
-    async def decide(
-        self,
-        *,
-        user_id: str,
-        user_messages: list[str],
-        call: JudgedCall,
-        prior_calls: list[PriorCall],
-        history: AutoHistory,
-        assistant_turns: list[str] | None = None,
-    ) -> IntentDecision: ...
+    shown: tuple[str, ...] = ()
+    run: tuple[str, ...] = ()
+
+    def recent_shown(self) -> list[str]:
+        """Return the latest replies the user saw, oldest first."""
+        return list(self.shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
+
+    def recent_run(self) -> list[str]:
+        """Return the run's latest own messages, oldest first."""
+        return list(self.run[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
 
 
 @dataclass(frozen=True)
@@ -169,6 +173,27 @@ class AutoContext:
     history: AutoHistory = AutoHistory()
     # The user put this call's tool on their never-auto list (matched by HIL tool key).
     never_auto: bool = False
+    # Saved instructions that reach this call (global and its integration's): they can
+    # only make it ask, never authorize it.
+    standing_rules: tuple[str, ...] = ()
+
+
+class IntentJudge(Protocol):
+    """Decide one auto-mode call.
+
+    JEV-backed in prod (JEV answers the questions, code keeps the grounding and history
+    checks); the gate never changes.
+    """
+
+    async def decide(
+        self,
+        *,
+        auto: AutoContext,
+        user_messages: list[str],
+        call: JudgedCall,
+        prior_calls: list[PriorCall],
+        assistant: AssistantTurns = AssistantTurns(),
+    ) -> IntentDecision: ...
 
 
 async def judge_intent(
@@ -178,14 +203,13 @@ async def judge_intent(
     call: JudgedCall,
     prior_calls: list[PriorCall],
     judge: IntentJudge,
-    assistant_turns: list[str] | None = None,
+    assistant: AssistantTurns = AssistantTurns(),
 ) -> IntentDecision:
     """Decide whether the user's own words authorize this call; fails toward asking.
 
     No user turns and a tool on the never-auto list both ask without spending a
-    call. assistant_turns is recent assistant prose: context for what a shorthand
-    refers to ("send it" after "your draft to X is ready"), never authorization —
-    only user turns authorize.
+    call. assistant is recent assistant prose: context for what a shorthand refers
+    to ("send it" after "your draft to X is ready"), never authorization.
     """
     turns = [text for text in user_messages if text.strip()]
     if not turns:
@@ -203,12 +227,11 @@ async def judge_intent(
 
     try:
         return await judge.decide(
-            user_id=auto.user_id,
+            auto=auto,
             user_messages=turns,
             call=call,
             prior_calls=prior_calls,
-            history=auto.history,
-            assistant_turns=assistant_turns,
+            assistant=assistant,
         )
     except Exception as e:  # the one classifier failed: the call waits on the user instead
         log.error(
@@ -259,13 +282,14 @@ def ungrounded_targets(
     user_turns: list[str],
     prior_calls: list[PriorCall],
     known: frozenset[str] | None = None,
+    *,
+    shown_turns: list[str] | None = None,
 ) -> list[str]:
     """Return target-like arg values with no provenance in user words or priors.
 
-    Grounding backstop for judges with no authorizing quote (JEV): an email, id
-    or amount from nowhere blocks auto-accept. Prose bodies and targets from the
-    user's own approved runs (known) are provenance. A prior output grounds only
-    when it identifies: a single result returned the thing; a list needs the user.
+    Backstop for JEV: an email, id or amount from nowhere blocks auto-accept. A prior
+    output grounds when it identifies (one result), or when the listed entry holding
+    the target names an address the user wrote or was shown: not a blind pick.
     """
     provenance = [f"{call.name} {args_preview(call.args)}" for call in prior_calls]
     provenance += [
@@ -277,13 +301,94 @@ def ungrounded_targets(
     sources = [_normalize(text) for text in [*user_turns, *provenance]]
     normalized_known = {_normalize(target) for target in known or frozenset()}
     user_tokens = {token for turn in user_turns for token in _normalize(turn).split()}
+    pointed_at = [*user_turns, *(shown_turns or [])]
     return [
         target
         for target in _target_values(args)
-        if not any(_normalize(target) in source for source in sources)
+        if not any(_mentions(source, _normalize(target)) for source in sources)
         and _normalize(target) not in normalized_known
         and _local_part(target) not in user_tokens
+        and not _listed_entry_pointed_at(target, prior_calls, pointed_at)
     ]
+
+
+_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+#: What may sit between the addresses of a recipients column.
+_RECIPIENT_SEPARATORS = re.compile(r"[\s,;]+")
+#: Quoted text in a plain-text list line: content, never the entry's own fields.
+_QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”")
+
+
+def _listed_entry_pointed_at(target: str, prior_calls: list[PriorCall], context: list[str]) -> bool:
+    """Whether a listed result carries target on an entry naming an address in context."""
+    text = _normalize(" ".join(context))
+    tokens = set(text.split())
+    return any(
+        _mentions(text, _normalize(address)) or _local_part(address) in tokens
+        for call in prior_calls
+        for addresses in _entry_addresses(call.output, target)
+        for address in addresses
+    )
+
+
+def _entry_addresses(output: str, target: str) -> list[list[str]]:
+    """Return the own addresses of each listed entry that carries target: JSON objects, else lines.
+
+    A plain-text line's quoted text is content (a forwarded mail, a subject), never the
+    entry's own fields, so it is dropped before its recipients are read (_line_recipients).
+    """
+    try:
+        parsed: object = json.loads(output)
+    except (json.JSONDecodeError, ValueError):
+        holds = re.compile(rf"(?<![\w-]){re.escape(target)}(?![\w-])")
+        return [
+            _line_recipients(_QUOTED.sub(" ", line))
+            for line in output.splitlines()
+            if holds.search(line)
+        ]
+    return [
+        _ADDRESS.findall(_own_fields(node)) for node in _objects(parsed) if target in node.values()
+    ]
+
+
+def _line_recipients(line: str) -> list[str]:
+    """Return the addresses a plain-text list line names as its own recipients.
+
+    Only a column holding nothing but addresses is a recipients column ("id | to |
+    subject | gist"); the first column with an address must be one, or the line is
+    ambiguous ("d-1 | Bob | Forwarded from simonne@x.com") and names none. A line
+    without columns can't part recipients from prose, so it names none either.
+    """
+    for cell in line.split("|")[1:]:
+        if found := _ADDRESS.findall(cell):
+            return found if not _RECIPIENT_SEPARATORS.sub("", _ADDRESS.sub("", cell)) else []
+    return []
+
+
+def _own_fields(record: dict[str, object]) -> str:
+    """Render a record's own scalar fields, free text apart; a nested record is a different entry.
+
+    A draft to bob@x.com quoting a mail from simonne@x.com, as a nested record or in its
+    body, is Bob's draft, not Simonne's.
+    """
+    values: list[object] = []
+    for key, value in record.items():
+        if str(key).lower() in _PROSE_FIELDS:
+            continue
+        if isinstance(value, list):
+            values += [item for item in value if not isinstance(item, (dict, list))]
+        elif not isinstance(value, dict):
+            values.append(value)
+    return " ".join(str(value) for value in values)
+
+
+def _objects(value: object) -> list[dict[str, object]]:
+    """Every JSON object nested anywhere in value."""
+    if isinstance(value, dict):
+        return [value, *(found for child in value.values() for found in _objects(child))]
+    if isinstance(value, list):
+        return [found for child in value for found in _objects(child)]
+    return []
 
 
 def _local_part(target: str) -> str:
@@ -355,3 +460,11 @@ def _target_string(value: str) -> str | None:
 
 def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _mentions(source: str, phrase: str) -> bool:
+    """Whether normalized source holds the normalized phrase as whole words.
+
+    "ann x com" is not in "joann x com": an address the user named never grounds one it ends.
+    """
+    return f" {phrase} " in f" {source} "

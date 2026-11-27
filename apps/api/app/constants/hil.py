@@ -14,6 +14,7 @@ from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.integrations import DISCONNECT_INTEGRATION_TOOL
 from shared.py.approvals import ApprovalOutcome, DecidedOutcome
 
 # What a user decides on a pending approval, and the outcome each decision ends it with.
@@ -26,6 +27,10 @@ DECISION_OUTCOME: Final[dict[ApprovalDecision, DecidedOutcome]] = {
 # The default mode is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (a
 # HILPreferences field default, so it lives with the model).
 
+# The user's own recent turns the judge grounds against: intent spans turns ("draft
+# an email to Bob" … "send it"). Kept whole, since the forbid and hold checks scan them.
+HIL_JUDGE_MAX_USER_TURNS = 6
+# Clips only the schedule text a background run adds as authorization.
 HIL_JUDGE_MAX_TURN_CHARS = 800
 
 # The pending call's arguments, and the run's earlier tool calls (provenance for
@@ -35,8 +40,9 @@ HIL_JUDGE_MAX_ARGS_CHARS = 1500
 HIL_JUDGE_MAX_PRIOR_CALLS = 8
 HIL_JUDGE_MAX_PRIOR_OUTPUT_CHARS = 300
 
-# The run's recent assistant messages: provenance for JEV, never authorization (the
-# assistant's words say what it told the user). Bounded — prompts are not free.
+# The assistant's recent words: the replies the user saw before their turn, then the
+# run's own messages. Context for a shorthand, never authorization. Bounded — prompts
+# are not free.
 HIL_JUDGE_MAX_ASSISTANT_TURNS = 3
 HIL_JUDGE_MAX_ASSISTANT_CHARS = 500
 
@@ -54,13 +60,16 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # tool-execution timeout does not cover. Unbounded, a hung provider holds the executor's busy lock forever.
 HIL_LLM_TIMEOUT_SECONDS = 30
 
-# JEV choice judge (auto mode v2): model, timeout, decision lines. Lines come
-# from the offline sweep (scripts/evals/sweep_hil_judge.py) — the 0.50 plateau
-# scored 49/50 with zero dangerous accepts. Retune via the eval, never by hand.
+# JEV choice judge (auto mode v2): model, timeout, decision lines. The trigger gates,
+# mail verdicts and the approval-reply classifier ask HIL_JEV_MODEL_NAME, the model
+# their lines were tuned on; auto mode's judge asks HIL_JEV_JUDGE_MODEL_NAME.
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
+HIL_JEV_JUDGE_MODEL_NAME = "typesafe/jev-1.14"
 HIL_JEV_TIMEOUT_SECONDS = 15
 #: The name auto mode's one Decisions question goes by, in the request and its answer.
 JEV_DECISION_QUESTION_KEY = "decision"
+#: ...and its containment question, asked in the same call.
+JEV_CONTAINED_QUESTION_KEY = "contained"
 
 
 class JevFailure(StrEnum):
@@ -74,7 +83,25 @@ class JevFailure(StrEnum):
     UNCONFIGURED = "jev_unconfigured"
 
 
-HIL_JEV_ACCEPT_LINE = 0.50
+# Lowest lines with zero dangerous accepts over every hil-judge case file on
+# HIL_JEV_JUDGE_MODEL_NAME (accept and objection floor both 0.85, 257 cases).
+# Retune via the eval (scripts/evals/sweep_hil_judge.py), never by hand.
+HIL_JEV_ACCEPT_LINE = 0.85
+# P(contained) at or above which a call runs without the user's explicit words.
+HIL_JEV_CONTAINED_LINE = 0.80
+# ...and only while P(forbidden) stays under this: any real argument against the call
+# (quiet hours, "fetch it quietly") holds it, even when another choice wins.
+HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
+# P(nothing objects) at or above which the objection question clears a call: JEV must say
+# "permitted" this surely. Anything less is doubt, and doubt asks.
+HIL_JEV_OBJECTION_FLOOR = 0.85
+# A call the decision question leaves under the line runs when the go-ahead question
+# is at least this sure the user's reply approves exactly this call.
+HIL_JEV_GO_AHEAD_LINE = 0.85
+#: The objection question: does anything the user said or saved argue against running the call?
+JEV_OBJECTION_QUESTION_KEY = "objection"
+#: The go-ahead question, asked only when the user was shown a reply to answer.
+JEV_GO_AHEAD_QUESTION_KEY = "go_ahead"
 
 # The note on a card auto mode raised instead of running the call. The judge's own
 # reason names tool slugs and scores, so it stays model-facing; the user reads this.
@@ -87,6 +114,8 @@ class JevChoice(StrEnum):
     AUTHORIZED = "authorized"
     FORBIDDEN = "forbidden"
     UNCLEAR = "unclear"
+    # The objection question's other answer: nothing objects.
+    PERMITTED = "permitted"
 
 
 # JEV reply classifier: an approve under the line leaves the action pending.
@@ -269,3 +298,30 @@ WRITE_INTENT_TOKENS: Final[frozenset[str]] = frozenset(
         "write",
     }
 )
+
+
+#: GAIA's own tools that ask in every HIL mode, past any per-tool override and with nothing
+#: else readable: each changes what the agent may do later or what the user's account is,
+#: so text it read in an email or a page must never be able to apply it unseen.
+ALWAYS_ASK_TOOLS: Final[frozenset[str]] = frozenset(
+    {
+        "update_notification_settings",
+        "update_preferences",
+        "set_selected_voice",
+        "set_briefing_schedule",
+        "add_custom_mcp_server",
+        "approve_device_pairing",
+        DISCONNECT_INTEGRATION_TOOL,
+        "update_user_instructions",
+        "update_integration_instructions",
+        "set_approval_rule",
+    }
+)
+
+
+class ApprovalRule(StrEnum):
+    """What the user wants for a tool or an integration: ask, don't ask, or GAIA's default."""
+
+    ASK = "ask"
+    DONT_ASK = "dont_ask"
+    DEFAULT = "default"

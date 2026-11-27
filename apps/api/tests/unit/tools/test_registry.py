@@ -16,6 +16,7 @@ from app.agents.tools.core.registry import (
     ToolRegistry,
 )
 from app.config.settings import settings
+from app.constants import hil as hil_constants
 from app.constants.agents import PLAYBOOK_TOOL_NAMES
 from shared.py.wide_events import log
 
@@ -57,10 +58,9 @@ class TestToolCategory:
         assert len(category.tools) == 1
         assert category.tools[0].name == "my_tool"
         assert category.tools[0].tool is mock_tool
-        # Defaults: not core, unclassified HIL risk, no forced gate.
+        # Defaults: not core, unclassified HIL risk.
         assert category.tools[0].is_core is False
         assert category.tools[0].destructive is None
-        assert category.tools[0].always_gate is False
 
     def test_add_tool_with_custom_name(self):
         category = ToolCategory(name="test_cat")
@@ -87,16 +87,6 @@ class TestToolCategory:
 
         by_name = {tool.name: tool.destructive for tool in category.tools}
         assert by_name == {"dangerous": True, "safe": False, "mystery": None}
-
-    def test_add_tools_stamps_always_gate_membership(self):
-        """Forced-ask is stamped per tool: members gate in every mode, and non-members are explicitly False — never an unclassified None."""
-        category = ToolCategory(name="test_cat")
-        gated = _make_mock_tool("gated")
-        ungated = _make_mock_tool("ungated")
-        category.add_tools([gated, ungated], always_gate_tools={"gated"})
-
-        assert category.tools[0].always_gate is True
-        assert category.tools[1].always_gate is False
 
     def test_get_tool_objects_returns_base_tools(self):
         category = ToolCategory(name="test_cat")
@@ -255,22 +245,17 @@ class TestToolRegistry:
         assert core_tools[0].name == "core_1"
 
     def test_core_tools_receive_the_hil_stamps_too(self):
-        """_add_category calls add_tools twice (core_tools and tools); without stamping both, a forced-gate core tool would silently lose its stamp and stop asking for approval."""
+        """_add_category calls add_tools twice (core_tools and tools); without stamping both, a destructive core tool would silently lose its stamp and stop asking for approval."""
         registry = ToolRegistry()
         registry._add_category(
             "mixed",
             core_tools=[_make_mock_tool("core_gated"), _make_mock_tool("core_plain")],
             tools=[_make_mock_tool("reg_dangerous")],
-            risk=CategoryRisk(
-                destructive_tools={"reg_dangerous", "core_gated"},
-                always_gate_tools={"core_gated"},
-            ),
+            risk=CategoryRisk(destructive_tools={"reg_dangerous", "core_gated"}),
         )
 
         stamps = {t.name: t for t in registry.get_category("mixed").tools}
-        assert stamps["core_gated"].always_gate is True
         assert stamps["core_gated"].destructive is True
-        assert stamps["core_plain"].always_gate is False
         assert stamps["core_plain"].destructive is False
         assert stamps["reg_dangerous"].destructive is True
 
@@ -384,7 +369,6 @@ class TestToolWrapper:
         tool = Tool(tool=base)
         assert tool.name == "auto_name"
         assert tool.is_core is False
-        assert tool.always_gate is False
 
     def test_tool_custom_name_override(self):
         base = _make_mock_tool("original")
@@ -448,6 +432,7 @@ _EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
     "update_preferences",
     "update_user_instructions",
     "update_integration_instructions",
+    "set_approval_rule",
 }
 
 
@@ -595,16 +580,17 @@ class TestInitializeCategoriesReal:
         }
         assert destructive_names == _EXPECTED_DESTRUCTIVE_TOOL_NAMES
 
-    def test_always_gated_tools_are_exactly_the_reviewed_set(
+    def test_always_ask_tools_are_exactly_the_reviewed_set_and_all_registered(
         self, initialized_registry: ToolRegistry
     ):
-        gated_names = {
+        """A renamed tool would leave a dead name here and silently stop asking."""
+        registered = {
             tool.name
             for category in initialized_registry._categories.values()
             for tool in category.tools
-            if tool.always_gate
         }
-        assert gated_names == _EXPECTED_ALWAYS_GATE_TOOL_NAMES
+        assert hil_constants.ALWAYS_ASK_TOOLS == _EXPECTED_ALWAYS_GATE_TOOL_NAMES
+        assert registered >= hil_constants.ALWAYS_ASK_TOOLS
 
     @pytest.mark.parametrize("name", list(_EXPECTED_CATEGORY_METADATA.keys()))
     def test_category_tool_membership_matches_source_modules(
@@ -734,7 +720,7 @@ class TestCoreInitializationContract:
         assert registry.is_tool_destructive("search_uploaded_files") is False
 
     def test_account_category_pins_the_forced_ask_settings_tools(self):
-        """The account settings tools are stamped forced-ask (every mode); manage_linked_account rides the argument gate instead and nothing here is destructive."""
+        """The account settings tools ask in every mode; manage_linked_account rides the argument gate instead and nothing here is destructive."""
         registry = ToolRegistry()
         registry._initialize_categories()
 
@@ -746,12 +732,16 @@ class TestCoreInitializationContract:
             "set_selected_voice",
             "set_briefing_schedule",
             "manage_linked_account",
+            "set_approval_rule",
         ]
-        assert {tool.name for tool in category.tools if tool.always_gate} == {
+        assert {
+            tool.name for tool in category.tools if tool.name in hil_constants.ALWAYS_ASK_TOOLS
+        } == {
             "update_notification_settings",
             "update_preferences",
             "set_selected_voice",
             "set_briefing_schedule",
+            "set_approval_rule",
         }
         assert all(tool.destructive is False for tool in category.tools)
 
@@ -762,7 +752,9 @@ class TestCoreInitializationContract:
 
         category = registry.get_category("instructions")
         assert category is not None
-        assert {tool.name for tool in category.tools if tool.always_gate} == {
+        assert {
+            tool.name for tool in category.tools if tool.name in hil_constants.ALWAYS_ASK_TOOLS
+        } == {
             "update_user_instructions",
             "update_integration_instructions",
         }
@@ -1083,17 +1075,17 @@ class TestInitializedCategoryContract:
             "rename_integration_account": False,
             # Which account is the default; reversible, so it runs without asking.
             "set_primary_integration_account": False,
-            # Force-gated (always_gate): revoking the grant is undone only by signing in again.
+            # Always asks: revoking the grant is undone only by signing in again.
             "disconnect_integration": False,
-            # Force-gated (always_gate), not destructive — see the always_gate test.
+            # Always asks, not destructive — see the ALWAYS_ASK_TOOLS test.
             "add_custom_mcp_server": False,
             # Read-only device catalog lookup.
             "list_devices": False,
             # Emits the onboarding card; no mutation.
             "add_device": False,
-            # Force-gated (always_gate), not destructive — surfaces the approve link.
+            # Always asks, not destructive — surfaces the approve link.
             "approve_device_pairing": False,
-            # Deliberately NEITHER destructive NOR always_gate: pairing the device IS
+            # Deliberately NEITHER destructive NOR always-ask: pairing the device IS
             # the grant. RCE surface with no HIL stop — gate expected to be added back
             # before this ships to production.
             "run_on_device": False,
@@ -1104,7 +1096,9 @@ class TestInitializedCategoryContract:
     ) -> None:
         """Dropping any forced tool silently removes the human gate on a security-sensitive action."""
         gated = {
-            tool.name for tool in registry._categories["integrations"].tools if tool.always_gate
+            tool.name
+            for tool in registry._categories["integrations"].tools
+            if tool.name in hil_constants.ALWAYS_ASK_TOOLS
         }
         assert gated == {
             "add_custom_mcp_server",
