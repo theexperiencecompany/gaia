@@ -168,7 +168,8 @@ def _capped_card(card: ToolDataEntry, budget: _Budget) -> ToolDataEntry | None:
     name, data = card["tool_name"], card["data"]
     if name == TOOL_CALLS_CARD:
         if not isinstance(data, list):
-            return cast(ToolDataEntry, {**card, "data": _capped_call(data, budget)})
+            call = _capped_call(data, budget)
+            return None if _is_empty_thinking(call) else cast(ToolDataEntry, {**card, "data": call})
         capped = _capped_calls(data, budget)
         return cast(ToolDataEntry, {**card, "data": capped}) if capped or not data else None
     if name == SUBAGENT_GROUP_TOOL_NAME and isinstance(data, dict):

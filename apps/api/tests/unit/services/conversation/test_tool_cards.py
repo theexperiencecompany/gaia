@@ -582,6 +582,10 @@ def test_dropping_outputs_removes_a_card_of_thinking_alone_and_keeps_a_card_that
     assert dropped_outputs([thought, empty]) == (empty,)
 
 
+def test_dropping_outputs_removes_a_legacy_card_of_one_thinking_step() -> None:
+    assert dropped_outputs([card(TOOL_CALLS_CARD, thinking("why"))]) == ()
+
+
 def test_thinking_past_a_spent_budget_leaves_no_empty_thinking_step() -> None:
     calls_in_budget = summarization.MAX_CARD_TEXT_CHARS // MAX_OUTPUT_CHARS
     payloads = [

@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 import uuid
 
 import bson
+from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
@@ -121,7 +122,9 @@ async def _chat(repo: ConversationRepository) -> ConversationDocument:
     return doc
 
 
-async def _stored(entries_collection, doc: ConversationDocument) -> list[dict[str, object]]:
+async def _stored(
+    entries_collection: AsyncIOMotorCollection, doc: ConversationDocument
+) -> list[dict[str, object]]:
     cursor = entries_collection.find(
         {"conversation_id": doc.conversation_id, "tool_data.0": {"$exists": True}},
         {"_id": 0},
@@ -135,7 +138,7 @@ def _cut_call(call_id: str) -> dict[str, object]:
 
 
 async def test_old_cards_lose_outputs_and_thinking_while_recent_ones_and_app_data_stay(
-    entries_collection,
+    entries_collection: AsyncIOMotorCollection,
 ) -> None:
     repo = ConversationRepository()
     old, recent = await _chat(repo), await _chat(repo)
@@ -187,7 +190,7 @@ async def test_old_cards_lose_outputs_and_thinking_while_recent_ones_and_app_dat
 
 
 async def _aged_chat(
-    repo: ConversationRepository, entries_collection, age: timedelta
+    repo: ConversationRepository, entries_collection: AsyncIOMotorCollection, age: timedelta
 ) -> ConversationDocument:
     doc = await _chat(repo)
     await entries_collection.update_many(
@@ -201,7 +204,7 @@ def _cards_bytes(rows: list[dict[str, object]]) -> int:
 
 
 async def test_a_backlog_past_one_page_is_cut_page_by_page_and_totalled(
-    entries_collection, monkeypatch: pytest.MonkeyPatch
+    entries_collection: AsyncIOMotorCollection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 2)
     repo = ConversationRepository()
@@ -230,7 +233,7 @@ async def test_a_backlog_past_one_page_is_cut_page_by_page_and_totalled(
 
 @pytest.mark.usefixtures("local_time_offset_from_utc")
 async def test_the_cutoff_is_a_utc_instant_whatever_zone_the_worker_runs_in(
-    entries_collection,
+    entries_collection: AsyncIOMotorCollection,
 ) -> None:
     repo = ConversationRepository()
     nearly = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION - timedelta(hours=1))
@@ -240,7 +243,9 @@ async def test_the_cutoff_is_a_utc_instant_whatever_zone_the_worker_runs_in(
     assert await _stored(entries_collection, nearly) == before
 
 
-async def test_a_second_run_finds_nothing_and_changes_nothing(entries_collection) -> None:
+async def test_a_second_run_finds_nothing_and_changes_nothing(
+    entries_collection: AsyncIOMotorCollection,
+) -> None:
     repo = ConversationRepository()
     old = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION + timedelta(days=1))
     assert (await drop_expired_tool_outputs({})).startswith("entries=2 ")
@@ -251,7 +256,7 @@ async def test_a_second_run_finds_nothing_and_changes_nothing(entries_collection
 
 
 async def test_a_page_whose_every_entry_changed_since_it_was_read_fails_loud(
-    entries_collection, monkeypatch: pytest.MonkeyPatch
+    entries_collection: AsyncIOMotorCollection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = ConversationRepository()
     old = await _aged_chat(repo, entries_collection, TOOL_OUTPUT_RETENTION + timedelta(days=1))
@@ -274,7 +279,7 @@ async def test_a_page_whose_every_entry_changed_since_it_was_read_fails_loud(
 
 
 async def test_an_entry_that_changes_after_every_read_is_passed_over_and_the_rest_counted(
-    entries_collection, monkeypatch: pytest.MonkeyPatch
+    entries_collection: AsyncIOMotorCollection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 3)
     repo = ConversationRepository()
@@ -310,7 +315,7 @@ async def test_an_entry_that_changes_after_every_read_is_passed_over_and_the_res
 
 
 async def test_a_run_out_of_time_stops_between_pages_and_the_next_carries_on(
-    entries_collection, monkeypatch: pytest.MonkeyPatch
+    entries_collection: AsyncIOMotorCollection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 2)
     # Each reading of the clock is one budget later: the first page spends the whole of it.
@@ -331,7 +336,7 @@ async def test_a_run_out_of_time_stops_between_pages_and_the_next_carries_on(
 
 
 async def test_a_run_within_its_budget_sweeps_every_page_whatever_the_clock_reads(
-    entries_collection, monkeypatch: pytest.MonkeyPatch
+    entries_collection: AsyncIOMotorCollection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(conversation_retention_tasks, "TOOL_OUTPUT_DROP_PAGE", 2)
     # A monotonic clock reads far from zero; a second per reading never spends the budget.
