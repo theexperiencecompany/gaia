@@ -56,7 +56,6 @@ apps/mobile/src/lib/analytics.ts:UserTraits=AuthenticatedUserResponse
 # A server-rendered view model: its description is a rendered ReactNode, three generic names match.
 apps/web/src/app/[locale]/(landing)/marketplace/[slug]/ToolList.tsx:ToolListItem=UserFeatureFlagResponse
 apps/web/src/components/ui/map.tsx:MapArcDatum=GmailMessageSummary
-apps/web/src/features/chat/components/composer/ComposerLeft.tsx:DropdownItemConfig=NotificationAction
 # One of the ten raw-apiauth feature files the concurrent migration is moving
 # onto the typed client; expected to go with it.
 apps/web/src/features/integrations/components/MCPIntegrationModal.tsx:MCPFormData=CreateCustomIntegrationRequest
