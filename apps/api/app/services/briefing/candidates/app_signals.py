@@ -13,9 +13,9 @@ from app.utils.timezone import as_utc
 
 def _detail(item: RememberedSignal, clock: UserClock) -> str:
     signal = item.signal
-    parts = [f"{signal.kind}"]
+    parts = [signal.kind]
     if signal.state:
-        parts.append(f"state: {signal.state}")
+        parts.append(f"{signal.app} shows it as {signal.state}")
     if signal.why:
         parts.append(f"why: {signal.why}")
     parts.append(memory_note(item, clock))
@@ -30,10 +30,20 @@ def _rank(item: RememberedSignal) -> tuple[bool, float]:
     return (signal.importance is not SignalImportance.HIGH, -recency)
 
 
+def _passed_over(item: RememberedSignal) -> bool:
+    """Whether an earlier brief saw this undated row, left it out, and nothing has changed since."""
+    memory, signal = item.memory, item.signal
+    if memory is None or memory.times_shown or item.previous_state is not None:
+        return False
+    updated, seen = as_utc(signal.updated_at), as_utc(memory.last_seen)
+    edited_since = updated is not None and seen is not None and updated > seen
+    return signal.due_at is None and not edited_since
+
+
 def app_signal_candidates(
     remembered: Sequence[RememberedSignal], clock: UserClock
 ) -> list[BriefCandidate]:
-    """Return one candidate per signal, important then most recently moved first, memory in its detail."""
+    """Return one candidate per signal not passed over before, important then most recently moved first."""
     return [
         BriefCandidate(
             origin=CandidateOrigin.APP_SIGNAL,
@@ -55,4 +65,5 @@ def app_signal_candidates(
             moved=item.previous_state is not None,
         )
         for item in sorted(remembered, key=_rank)
+        if not _passed_over(item)
     ]

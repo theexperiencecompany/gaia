@@ -105,7 +105,7 @@ class TestASignalsLine:
         )
 
         assert _line(remembered) == (
-            "1. [Linear] waiting on you, important: Issue 9 | issue | state: Todo"
+            "1. [Linear] found by its scout, important: Issue 9 | issue | Linear shows it as Todo"
             " | first seen yesterday, never mentioned, moved from Backlog to Todo | " + _READ_ONLY
         )
 
@@ -123,7 +123,8 @@ class TestASignalsLine:
         )
 
         assert _line(remembered) == (
-            "1. [Linear] waiting on you: Issue 5 | issue | state: Todo | why: blocks the release"
+            "1. [Linear] found by its scout: Issue 5 | issue | Linear shows it as Todo"
+            " | why: blocks the release"
             " | first seen today, never mentioned | due Sat Oct 24"
             " | names Priya, Sam (the app does not say their part in it) | linkable | " + _READ_ONLY
         )

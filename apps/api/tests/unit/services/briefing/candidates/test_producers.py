@@ -558,7 +558,7 @@ class TestAppSignals:
         assert (found.action, found.outcome) == (None, None)
         assert (found.moved, found.is_repeat) == (True, False)
         assert found.detail == (
-            "issue assigned to you | state: In Progress | why: due tomorrow | first seen "
+            "issue assigned to you | Linear shows it as In Progress | why: due tomorrow | first seen "
             "2 days ago, mentioned 1 time(s), last yesterday, moved from Todo to In Progress"
         )
 
@@ -584,6 +584,76 @@ class TestAppSignals:
         [found] = app_signal_candidates([RememberedSignal(signal=signal, memory=memory)], CLOCK)
 
         assert (found.moved, found.is_repeat) == (False, True)
+
+
+def _docs_row(
+    external_id: str,
+    *,
+    seen: SignalMemoryDocument | None,
+    due_at: datetime | None = None,
+    updated_at: datetime | None = None,
+    state: str | None = None,
+) -> RememberedSignal:
+    signal = Signal(
+        integration_id="googledocs",
+        app="Google Docs",
+        external_id=external_id,
+        kind="document shared with the user",
+        title=f"doc {external_id}",
+        due_at=due_at,
+        updated_at=updated_at,
+        state=state,
+    )
+    return RememberedSignal(signal=signal, memory=seen)
+
+
+def _seen_unshown(external_id: str, state: str | None = None) -> SignalMemoryDocument:
+    return SignalMemoryDocument(
+        user_id=USER_ID,
+        integration_id="googledocs",
+        external_id=external_id,
+        first_seen=NOW - timedelta(days=2),
+        last_seen=NOW - timedelta(days=1),
+        last_state=state,
+    )
+
+
+@pytest.mark.regression
+def test_a_row_an_earlier_brief_passed_over_unchanged_is_not_offered_again() -> None:
+    """Regression: the same 40 untouched Google Docs filled every brief from Nov 25 on."""
+    found = app_signal_candidates(
+        [
+            _docs_row("first-sighting", seen=None),
+            _docs_row("passed-over", seen=_seen_unshown("passed-over")),
+            _docs_row(
+                "edited-since",
+                seen=_seen_unshown("edited-since"),
+                updated_at=NOW - timedelta(hours=3),
+            ),
+            _docs_row(
+                "edited-before",
+                seen=_seen_unshown("edited-before"),
+                updated_at=NOW - timedelta(days=3),
+            ),
+            _docs_row("dated", seen=_seen_unshown("dated"), due_at=NOW + timedelta(days=1)),
+        ],
+        CLOCK,
+    )
+
+    assert sorted(c.ref.external_id for c in found if c.ref is not None) == [
+        "dated",
+        "edited-since",
+        "first-sighting",
+    ]
+
+
+def test_a_passed_over_row_whose_state_moved_is_offered_again() -> None:
+    row = _docs_row("moved", seen=_seen_unshown("moved", state="draft"), state="shared")
+    moved = RememberedSignal(signal=row.signal, memory=row.memory, previous_state="draft")
+
+    [found] = app_signal_candidates([moved], CLOCK)
+
+    assert found.moved
 
 
 def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> None:

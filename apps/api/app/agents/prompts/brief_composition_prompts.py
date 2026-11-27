@@ -79,10 +79,15 @@ open; never lead with it when anything new needs the user.
     before Friday", "To approve") holds only items asking that act.
   Each item: its id; exactly one of action (it needs the user: {actions}) or outcome (it got
   somewhere and needs nothing from them: {outcomes}); when its line names one, that one, always; a
-  title, a noun phrase of at most {title_max} characters naming the thing, not the act ("Acme
-  invoice", "Priya's offsite venues"); and a detail, one line of at most {detail_max} characters
-  adding the one fact that matters (who, when, why), or null. A detail never repeats its title
-  and says only what that item's own line says; when the line says nothing more, it is null.
+  title of at most {title_max} characters that reads on its own, the way a person would say it:
+  who or what, and what happened or what is asked ("Lena needs your pick of hero line", "Priya
+  sent three offsite venues"); and a detail, one line of at most {detail_max} characters adding
+  the one fact the title leaves out (when, why), or null. The edition prints the action or
+  outcome word right before the title, so the title never repeats it. A detail never repeats its
+  title and says only what that item's own line says; when the line says nothing more, it is null.
+  Write titles and details in the user's words, not the app's: an app's field names and jargon
+  ("stage", "sequence", "play", "next action date", "candidates") become what they mean to the
+  user, and a stranger reading only the title knows what it is about.
   Calendar events never go in an items group: the edition draws the day's calendar itself.
 - chart: only when a series' shape says something a sentence cannot: a spike, a streak, a heavy
   day ahead, a pile-up. series_ids; chart, one of line, spark, bar or stacked_bar; a title of at
@@ -121,6 +126,8 @@ matter to {reader} today, not because they exist. Everything you leave out stays
 full page, so leaving something out loses nothing.
 
 ## How each app's scout tells what matters there
+A row found by its scout is placed only when its app's criteria say it needs the user or it is
+worth knowing; a row its criteria leave out stays out, whatever its date.
 {fence}
 {criteria}
 {fence}
@@ -149,19 +156,20 @@ Compose {reader}'s brief now: the blocks in reading order. Before you answer, re
 against every item under it, and regroup or rename any it is not true of."""
 )
 
-COMPOSITION_EXAMPLES = """1. A busy morning for a studio founder. Pool, in part: 2. [Slack] waiting on you, important:
+COMPOSITION_EXAMPLES = """1. A busy morning for a studio founder. Pool, in part: 2. [Slack] found by its scout, important:
 Northwind launch copy | Lena Ortiz asks which hero line to ship | with Lena Ortiz | action reply ·
-5. [Linear] waiting on you: ENG-88 webhook retries | due 2026-03-04 | action review · 7. [GAIA]
+5. [Linear] found by its scout: ENG-88 webhook retries | due 2026-03-04 | action review · 7. [GAIA]
 done: Draft reply to Lena | outcome drafted · 8. [Gmail] note: Notion receipt · 9. [Google
 Calendar] calendar event: Weekly sync | at 10:00 AM · q1 | Lena Ortiz, in Slack, on item 2: "We go
 live at noon. Which hero line do you want?" · stripe_open_invoice_usd | open invoice, by category:
 INV-31 Hooli 2000 · INV-32 Pied Piper 350
 {"blocks": [
-  {"kind": "lead", "item": {"id": 2, "action": "reply", "title": "Northwind hero line",
-    "detail": "Lena ships at noon and needs your pick"}},
+  {"kind": "lead", "item": {"id": 2, "action": "reply", "title": "Lena needs your pick of hero line",
+    "detail": "She goes live at noon"}},
   {"kind": "quote", "quote_id": "q1"},
   {"kind": "items", "state": "needs_you", "heading": "Due this week", "items": [
-    {"id": 5, "action": "review", "title": "Webhook retries bug", "detail": null}]}
+    {"id": 5, "action": "review", "title": "The webhook retries bug is due this week",
+      "detail": null}]}
 ]}
 Why: Lena is waiting and live at noon, so she leads, in her own words; item 7, the reply GAIA
 drafted, is what her lead offers.
@@ -174,7 +182,8 @@ window, 1 open: Chapter 7; Chapter 8; Chapter 9 outline; Research trip notes; Ch
 {"blocks": [
   {"kind": "progress", "goal_id": "g1"},
   {"kind": "items", "state": "needs_you", "heading": "Ready when you are", "items": [
-    {"id": 3, "action": "read", "title": "Query letter feedback", "detail": null}]},
+    {"id": 3, "action": "read", "title": "GAIA's notes on your query letter are ready",
+      "detail": null}]},
   {"kind": "note", "text": "Nothing needs you before [[fact:4]] at [[fact:4.time]]: a clear
     morning for the chapter nine draft."}
 ]}
@@ -182,17 +191,18 @@ Why: on a quiet day the goal is the story. Short and calm beats padded.
 
 3. A spike for a shop owner. Pool, in part: zendesk_tickets | Support tickets, per day: Thu 4 ·
 Fri 5 · Sat 3 · Sun 6 · Mon 4 · Tue 5 · Wed 19 (today) | figures: total 46, peak 19, peak_at
-Wednesday, low 3, latest 19 · 6. [Shopify] waiting on you, important: Checkout errors on mobile
+Wednesday, low 3, latest 19 · 6. [Shopify] found by its scout, important: Checkout errors on mobile
 | 31 failed orders since 6:00 | action review · 8. [Google Calendar] calendar event: Standup |
 at 9:30 AM · 11. [GAIA] in progress: Restock order for the linen line | outcome started
 {"blocks": [
-  {"kind": "lead", "item": {"id": 6, "action": "review", "title": "Mobile checkout errors",
-    "detail": "Orders have been failing since early morning"}},
+  {"kind": "lead", "item": {"id": 6, "action": "review", "title": "Mobile checkout is failing orders",
+    "detail": "31 have failed since 6:00"}},
   {"kind": "chart", "series_ids": ["zendesk_tickets"], "chart": "line",
     "title": "Support tickets this week",
     "takeaway": "[[series:zendesk_tickets.latest]] today against a usual handful: the checkout errors are reaching customers."},
   {"kind": "items", "state": "in_progress", "heading": "Still moving", "items": [
-    {"id": 11, "outcome": "started", "title": "Linen restock order", "detail": null}]}
+    {"id": 11, "outcome": "started", "title": "GAIA is putting the linen restock together",
+      "detail": null}]}
 ]}
 Why: the spike and its cause are one story, so the cause leads and the chart shows its size.
 A standup never leads, and a heading names what its items are about."""
