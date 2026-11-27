@@ -420,3 +420,23 @@ def test_usage_on_unknown_subcommand(tmp_path: Path) -> None:
     proc = run(tmp_path, "nope")
     assert proc.returncode == 2
     assert "Usage: test-services.sh" in proc.stderr
+
+
+@pytest.mark.parametrize(
+    ("lane", "runner_name"), [("12", "laptop"), ("0", "GitHub Actions 1"), ("4", "gaia-home-1")]
+)
+def test_ports_lists_every_port_a_lanes_env_contract_names(
+    tmp_path: Path, lane: str, runner_name: str
+) -> None:
+    # wt_env.py reserves exactly this list, so a port it misses is one a worktree can take.
+    proc = run(tmp_path, "prepare", lane, RUNNER_INDEX=lane, RUNNER_NAME=runner_name)
+    assert proc.returncode == 0, proc.stderr
+    contract = (tmp_path / f"gaia-test-services-{lane}.env").read_text()
+    named = set(re.findall(r"localhost:(\d+)", contract)) | set(
+        re.findall(r"^\w+_PORT=(\d+)$", contract, re.MULTILINE)
+    )
+
+    listed = run(tmp_path, "ports").stdout.split()
+
+    assert named
+    assert named <= set(listed), sorted(named - set(listed))

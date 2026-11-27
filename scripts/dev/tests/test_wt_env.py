@@ -13,6 +13,7 @@ import wt_env  # the path insert above must precede this import
 from wt_env import ENV_FILE, RESERVED_PORTS, SLOT_COUNT, Allocation, allocate, preferred_slot
 
 SCRIPT = Path(__file__).resolve().parents[1] / "wt_env.py"
+TEST_SERVICES = Path(__file__).resolve().parents[3] / "scripts" / "ci" / "test-services.sh"
 
 
 GIT_LOCATION_VARIABLES = (
@@ -49,15 +50,15 @@ def test_a_worktree_whose_hashed_slot_is_held_takes_the_next_free_one(tmp_path: 
     wanted = preferred_slot(root)
     holder = _hold(tmp_path / "other", wanted)
 
-    slot = allocate(root, [holder])
+    slot = allocate(root, [holder], RESERVED_PORTS)
 
     assert slot != wanted
-    assert Allocation(slot).is_clear_of_reserved()
+    assert Allocation(slot).is_clear_of(RESERVED_PORTS)
 
 
 def test_a_worktree_keeps_its_slot_while_no_one_else_holds_it(tmp_path: Path) -> None:
     root = _hold(tmp_path / "mine", 42)
-    assert allocate(root, [_hold(tmp_path / "other", 43)]) == 42
+    assert allocate(root, [_hold(tmp_path / "other", 43)], RESERVED_PORTS) == 42
 
 
 def test_a_slot_written_by_the_old_port_scheme_counts_as_held(tmp_path: Path) -> None:
@@ -65,20 +66,20 @@ def test_a_slot_written_by_the_old_port_scheme_counts_as_held(tmp_path: Path) ->
     legacy = tmp_path / "legacy"
     legacy.mkdir()
     (legacy / ENV_FILE).write_text(f"API_PORT={8000 + preferred_slot(root) * 10}\n")
-    assert allocate(root, [legacy]) != preferred_slot(root)
+    assert allocate(root, [legacy], RESERVED_PORTS) != preferred_slot(root)
 
 
 def test_allocation_refuses_when_every_slot_is_held(tmp_path: Path) -> None:
     holders = [_hold(tmp_path / str(slot), slot) for slot in range(1, SLOT_COUNT + 1)]
     with pytest.raises(SystemExit, match="slots are taken"):
-        allocate(tmp_path / "mine", holders)
+        allocate(tmp_path / "mine", holders, RESERVED_PORTS)
 
 
 def test_no_two_usable_slots_share_a_port_and_none_takes_a_reserved_one() -> None:
     seen: dict[int, int] = {}
     for slot in range(1, SLOT_COUNT + 1):
         allocation = Allocation(slot)
-        if not allocation.is_clear_of_reserved():
+        if not allocation.is_clear_of(RESERVED_PORTS):
             continue
         for port in allocation.ports().values():
             assert port not in RESERVED_PORTS
@@ -179,3 +180,37 @@ def test_default_ports_gives_a_linked_worktree_the_main_slot(
 
     assert _env(linked)["API_PORT"] == "8000"
     assert _env(linked)["GAIA_WT_SLOT"] == "0"
+
+
+def test_a_worktree_never_takes_a_port_a_test_services_lane_binds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Slot 120's API port 9200 is lane 12's Chroma, the lane test-services runs on a laptop."""
+    main = tmp_path / "main"
+    main.mkdir()
+    _git("init", "-q", cwd=main)
+    _git(
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "x",
+        cwd=main,
+    )
+    linked = tmp_path / "linked"
+    _git("worktree", "add", "-q", "--detach", str(linked), cwd=main)
+    monkeypatch.setattr(wt_env, "preferred_slot", lambda _root: 120)
+    monkeypatch.chdir(linked)
+
+    wt_env.main([])
+
+    lane_ports = subprocess.run(
+        ["bash", str(TEST_SERVICES), "ports"], check=True, capture_output=True, text=True
+    ).stdout.split()
+    env = _env(linked)
+    taken = {env[name] for name in env if name.endswith("_PORT")}
+    assert taken.isdisjoint(lane_ports), sorted(taken & set(lane_ports))
