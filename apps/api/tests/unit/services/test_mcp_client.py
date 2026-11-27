@@ -75,17 +75,15 @@ from app.services.mcp.mcp_errors import (
 )
 from app.services.mcp.mcp_oauth import (
     _build_oauth_scope_string,
-    _client_id_from_metadata_or_dcr,
     _exchange_code_for_tokens,
-    _metadata_document_candidate,
     _obtain_auth_client_id,
     _register_client,
-    _resolve_token_exchange_credentials,
     _TokenExchangeRequest,
     build_oauth_auth_url,
     handle_oauth_callback,
 )
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.services.mcp.oauth_client import OAuthClient, resolve_client_credentials
 from app.services.mcp.oauth_discovery import discover_oauth_config, probe_mcp_connection
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 from app.services.mcp.server_routing import (
@@ -103,7 +101,6 @@ from app.services.mcp.server_routing import (
     read_ui_resource_details,
 )
 from app.services.mcp.token_management import (
-    resolve_client_credentials,
     revoke_integration_tokens,
     revoke_tokens,
     try_refresh_token,
@@ -5213,28 +5210,6 @@ class TestHandleConnectFailureExact:
 
 
 class TestSmallOauthHelpersExact:
-    def test_the_metadata_document_candidate_is_computed_from_the_api_base(self) -> None:
-        """All three values describe the same base URL; computing the localhost flag from anything else mismatches what the auth server can fetch."""
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url", return_value="http://localhost:8000"
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=True) as is_local,
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="http://localhost:8000/.well-known/mcp-client",
-            ) as doc_url,
-        ):
-            result = _metadata_document_candidate()
-
-        assert result == (
-            "http://localhost:8000",
-            True,
-            "http://localhost:8000/.well-known/mcp-client",
-        )
-        is_local.assert_called_once_with("http://localhost:8000")
-        doc_url.assert_called_once_with("http://localhost:8000")
-
     def test_scopes_are_joined_by_a_single_space(self) -> None:
         """RFC 6749 scope is space-delimited; any other separator makes the whole string one unknown scope."""
         oauth_config = _make_oauth_discovery(
@@ -5256,15 +5231,17 @@ class TestSmallOauthHelpersExact:
     ) -> None:
         """A dropped redirect_uri registers a client the auth server will then refuse to redirect back to."""
         client = MCPClient(user_id=USER_ID)
-        oauth_config = _make_oauth_discovery()
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"registration_endpoint": "https://auth.example.com/register"}
+        )
         monkeypatch.setattr(client.token_store, "get_dcr_client", AsyncMock(return_value=None))
 
         with (
             patch(
-                "app.services.mcp.mcp_oauth._client_id_from_metadata_or_dcr",
+                "app.services.mcp.mcp_oauth._register_client",
                 new_callable=AsyncMock,
                 return_value="dcr_client",
-            ) as fallback,
+            ) as register,
             patch("app.services.mcp.mcp_oauth.log"),
         ):
             client_id = await _obtain_auth_client_id(
@@ -5276,8 +5253,11 @@ class TestSmallOauthHelpersExact:
             )
 
         assert client_id == "dcr_client"
-        fallback.assert_awaited_once_with(
-            client.token_store, INTEGRATION_ID, oauth_config, "https://myapp.com/callback"
+        register.assert_awaited_once_with(
+            client.token_store,
+            INTEGRATION_ID,
+            oauth_config.as_metadata,
+            "https://myapp.com/callback",
         )
 
 
@@ -6565,153 +6545,6 @@ class TestBuildOauthAuthUrlExactParams:
         )
 
 
-class TestClientIdFromMetadataOrDcrExact:
-    async def test_metadata_doc_returned_when_supported_and_api_is_public(self):
-        client = MCPClient(user_id=USER_ID)
-        discovery = _make_oauth_discovery(
-            metadata_overrides={"client_id_metadata_document_supported": True}
-        )
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="https://api.gaia.dev",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=False),
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="https://api.gaia.dev/.well-known/oauth-client",
-            ) as mock_doc_url,
-            patch("app.services.mcp.mcp_oauth.log") as mock_log,
-        ):
-            result = await _client_id_from_metadata_or_dcr(
-                client.token_store, INTEGRATION_ID, discovery, "https://cb"
-            )
-
-        assert result == "https://api.gaia.dev/.well-known/oauth-client"
-        mock_doc_url.assert_called_once_with("https://api.gaia.dev")
-        mock_log.info.assert_called_once_with(
-            f"{LogTag.MCP} Using client metadata document URL as client_id for",
-            integration_id=INTEGRATION_ID,
-            client_id="https://api.gaia.dev/.well-known/oauth-client",
-        )
-
-    async def test_falls_back_to_dcr_on_localhost_even_when_supported(self):
-        client = MCPClient(user_id=USER_ID)
-        discovery = _make_oauth_discovery(
-            metadata_overrides={
-                "client_id_metadata_document_supported": True,
-                "registration_endpoint": "https://auth.example.com/register",
-            }
-        )
-        as_metadata = discovery.as_metadata
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="http://localhost:8000",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=True),
-            patch(
-                "app.services.mcp.mcp_oauth._register_client",
-                new_callable=AsyncMock,
-                return_value="dcr_cid",
-            ) as mock_register,
-            patch("app.services.mcp.mcp_oauth.log"),
-        ):
-            result = await _client_id_from_metadata_or_dcr(
-                client.token_store, INTEGRATION_ID, discovery, "https://cb"
-            )
-
-        assert result == "dcr_cid"
-        mock_register.assert_awaited_once_with(
-            client.token_store, INTEGRATION_ID, as_metadata, "https://cb"
-        )
-
-
-class TestResolveTokenExchangeCredentialsExact:
-    async def test_preconfigured_credentials_win_before_dcr_lookup(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config(client_id="cfg_client", client_secret="cfg_secret")
-        client.token_store.get_dcr_client = AsyncMock()
-
-        result = await _resolve_token_exchange_credentials(
-            client.token_store, INTEGRATION_ID, mcp_config, _make_oauth_discovery()
-        )
-
-        assert result == ("cfg_client", "cfg_secret")
-        client.token_store.get_dcr_client.assert_not_awaited()
-
-    async def test_stored_dcr_client_used_when_no_preconfigured_credentials(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config()
-        client.token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
-        )
-
-        result = await _resolve_token_exchange_credentials(
-            client.token_store, INTEGRATION_ID, mcp_config, _make_oauth_discovery()
-        )
-
-        assert result == ("dcr_cid", "dcr_sec")
-        client.token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
-
-    async def test_metadata_document_returns_url_without_secret(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config()
-        discovery = _make_oauth_discovery(
-            metadata_overrides={"client_id_metadata_document_supported": True}
-        )
-        client.token_store.get_dcr_client = AsyncMock(return_value=None)
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="https://api.gaia.dev",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=False),
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="https://api.gaia.dev/.well-known/oauth-client",
-            ),
-            patch("app.services.mcp.mcp_oauth.log") as mock_log,
-        ):
-            result = await _resolve_token_exchange_credentials(
-                client.token_store, INTEGRATION_ID, mcp_config, discovery
-            )
-
-        assert result == ("https://api.gaia.dev/.well-known/oauth-client", None)
-        mock_log.info.assert_called_once_with(
-            f"{LogTag.MCP} Using client metadata document URL as client_id for token exchange",
-            client_id="https://api.gaia.dev/.well-known/oauth-client",
-        )
-
-    async def test_localhost_never_uses_metadata_document(self):
-        client = MCPClient(user_id=USER_ID)
-        mcp_config = _make_mcp_config()
-        discovery = _make_oauth_discovery(
-            metadata_overrides={"client_id_metadata_document_supported": True}
-        )
-        client.token_store.get_dcr_client = AsyncMock(return_value=None)
-        with (
-            patch(
-                "app.services.mcp.mcp_oauth.get_api_base_url",
-                return_value="http://localhost:8000",
-            ),
-            patch("app.services.mcp.mcp_oauth.is_localhost_url", return_value=True),
-            patch(
-                "app.services.mcp.mcp_oauth.get_client_metadata_document_url",
-                return_value="http://localhost:8000/.well-known/oauth-client",
-            ) as mock_doc_url,
-            patch("app.services.mcp.mcp_oauth.log"),
-        ):
-            result = await _resolve_token_exchange_credentials(
-                client.token_store, INTEGRATION_ID, mcp_config, discovery
-            )
-
-        # Supported or not, a localhost API base can never serve the metadata
-        # document — no client_id may come out of this branch.
-        assert result == (None, None)
-        mock_doc_url.assert_called_once_with("http://localhost:8000")
-
-
 class TestExchangeCodeForTokensExact:
     def _exchange(
         self, *, client_secret: str | None = None, code_verifier: str | None = "verifier123"
@@ -7000,9 +6833,9 @@ class TestHandleOauthCallbackNonceEnforcement:
                 return_value=tokens,
             ) as exchange,
             patch(
-                "app.services.mcp.mcp_oauth._resolve_token_exchange_credentials",
+                "app.services.mcp.mcp_oauth.resolve_oauth_client",
                 new_callable=AsyncMock,
-                return_value=("cid", None),
+                return_value=OAuthClient("cid", None),
             ) as credentials,
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)

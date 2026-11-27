@@ -30,9 +30,9 @@ from app.services.mcp.mcp_tools_service import (
     get_integration_tools,
     store_mcp_tools,
 )
+from app.services.mcp.oauth_client import resolve_client_credentials
 from app.services.mcp.oauth_discovery import discover_oauth_config
 from app.services.mcp.token_management import (
-    resolve_client_credentials,
     revoke_tokens,
     try_refresh_token,
 )
@@ -759,10 +759,11 @@ class TestTokenRefresh:
         assert result is False
 
     async def test_refresh_fails_without_client_id(self):
-        """When no client_id can be resolved, refresh returns False."""
+        """When no client_id can be resolved, refresh fails and drops the unusable refresh token."""
         token_store = _make_token_store()
         token_store.get_refresh_token = AsyncMock(return_value="valid-refresh")
         token_store.get_dcr_client = AsyncMock(return_value=None)
+        token_store.clear_refresh_token = AsyncMock()
 
         # No client_id anywhere
         mcp_config = _make_mcp_config(client_id=None)
@@ -771,6 +772,7 @@ class TestTokenRefresh:
         result = await try_refresh_token(token_store, "no-cid-int", mcp_config, oauth_config)
 
         assert result is False
+        token_store.clear_refresh_token.assert_awaited_once_with("no-cid-int")
 
 
 # ---------------------------------------------------------------------------
