@@ -8,7 +8,7 @@ retry/skip logic.
 
 import asyncio
 import base64
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 import contextlib
 from contextlib import asynccontextmanager, contextmanager
 import copy
@@ -416,7 +416,7 @@ class TestMCPClientBuildConfig:
         resent = await flow.asend(httpx.Response(401, request=sent))
 
         assert resent.headers["Authorization"] == "Bearer fresh_tok"
-        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config, "oauth_tok")
         client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_build_config_raises_when_auth_required_no_token(self):
@@ -469,7 +469,7 @@ class TestMCPClientBuildConfig:
         client.token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         client._try_refresh_token = AsyncMock(return_value=True)
         config = await client._build_config(INTEGRATION_ID, mcp_config)
-        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config, None)
         assert isinstance(config["mcpServers"][INTEGRATION_ID]["auth"], StoredOAuthTokenAuth)
 
     async def test_a_rejected_token_already_replaced_is_not_refreshed_again(self):
@@ -493,7 +493,7 @@ class TestMCPClientBuildConfig:
         token = await client.oauth_access_token(INTEGRATION_ID, mcp_config, "old_tok")
 
         assert token == "new_tok"
-        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config, "old_tok")
         assert client.token_store.get_oauth_token.await_args_list == [
             call(INTEGRATION_ID),
             call(INTEGRATION_ID),
@@ -1784,6 +1784,101 @@ class TestMCPTokenStoreBatchLookup:
             assert await store.are_connected([]) == {}
 
 
+class TestOAuthGrantLock:
+    """One refresh or delete of a grant at a time, across replicas; a waiter reuses the winner's token."""
+
+    async def test_a_waiter_reuses_the_token_another_holder_refreshed(self):
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_oauth_token = AsyncMock(return_value="fresh_tok")
+        with patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh:
+            refreshed = await client._try_refresh_token(
+                INTEGRATION_ID, _make_mcp_config(), "old_tok"
+            )
+
+        assert refreshed is True
+        refresh.assert_not_awaited()
+
+    async def test_the_holder_refreshes_when_the_failed_token_is_still_stored(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        discovery = _make_oauth_discovery()
+        client.token_store.get_oauth_token = AsyncMock(return_value="old_tok")
+        with (
+            patch(
+                "app.services.mcp.mcp_client.discover_oauth_config",
+                AsyncMock(return_value=discovery),
+            ),
+            patch(
+                "app.services.mcp.mcp_client.try_refresh_token", AsyncMock(return_value=True)
+            ) as refresh,
+        ):
+            refreshed = await client._try_refresh_token(INTEGRATION_ID, mcp_config)
+
+        assert refreshed is True
+        refresh.assert_awaited_once_with(client.token_store, INTEGRATION_ID, mcp_config, discovery)
+        assert client.token_store.get_oauth_token.await_args_list == [
+            call(INTEGRATION_ID),
+            call(INTEGRATION_ID),
+        ]
+
+    async def test_no_refresh_without_the_lease(self, monkeypatch: pytest.MonkeyPatch):
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_oauth_token = AsyncMock(return_value=None)
+
+        @contextlib.asynccontextmanager
+        async def not_held() -> AsyncIterator[bool]:
+            yield False
+
+        lock = MagicMock()
+        lock.hold = not_held
+        monkeypatch.setattr(client.token_store, "grant_lock", MagicMock(return_value=lock))
+        with patch("app.services.mcp.mcp_client.try_refresh_token", AsyncMock()) as refresh:
+            refreshed = await client._try_refresh_token(INTEGRATION_ID, _make_mcp_config())
+
+        assert refreshed is False
+        refresh.assert_not_awaited()
+        client.token_store.grant_lock.assert_called_once_with(INTEGRATION_ID)
+
+    async def test_a_delete_runs_inside_the_grant_lock_a_refresh_holds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = _make_credential()
+        ctx_fn, mock_session = _fake_db_session(existing)
+        inside: list[bool] = []
+        holding = {"now": False}
+
+        @contextlib.asynccontextmanager
+        async def hold() -> AsyncIterator[bool]:
+            holding["now"] = True
+            yield True
+            holding["now"] = False
+
+        lock = MagicMock()
+        lock.hold = hold
+        monkeypatch.setattr(store, "grant_lock", MagicMock(return_value=lock))
+        mock_session.delete = AsyncMock(side_effect=lambda _cred: inside.append(holding["now"]))
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.delete_credentials(INTEGRATION_ID)
+
+        assert inside == [True]
+        store.grant_lock.assert_called_once_with(INTEGRATION_ID)
+
+    async def test_clearing_a_dead_grant_drops_its_access_and_refresh_tokens(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        existing = _make_credential(refresh_token="enc_refresh", token_expires_at=datetime.now(UTC))
+        ctx_fn, mock_session = _fake_db_session(existing)
+        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+            await store.clear_oauth_grant(INTEGRATION_ID)
+
+        assert (existing.access_token, existing.refresh_token, existing.token_expires_at) == (
+            None,
+            None,
+            None,
+        )
+        mock_session.commit.assert_awaited_once()
+
+
 class TestMCPTokenStoreDCRClient:
     async def test_get_dcr_client(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -2068,7 +2163,7 @@ class TestTryRefreshToken:
         )
         assert result is False
         token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
-        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.clear_oauth_grant.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_a_metadata_document_client_refreshes_as_its_document_url(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2160,7 +2255,7 @@ class TestTryRefreshToken:
             )
 
         assert result is False
-        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.clear_oauth_grant.assert_awaited_once_with(INTEGRATION_ID)
         mock_log.warning.assert_any_call(
             f"{LogTag.MCP} try_refresh_token: token endpoint returned an error",
             status_code=400,
@@ -2195,7 +2290,7 @@ class TestTryRefreshToken:
             )
 
         assert result is False
-        token_store.clear_refresh_token.assert_not_awaited()
+        token_store.clear_oauth_grant.assert_not_awaited()
 
     async def test_refresh_exception(self):
         token_store = AsyncMock(spec=MCPTokenStore)

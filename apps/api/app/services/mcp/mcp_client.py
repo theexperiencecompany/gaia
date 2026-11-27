@@ -1,7 +1,6 @@
 """Per-user MCP client: connects integrations, holds their sessions and live tools, and tears them down."""
 
 import asyncio
-from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Iterable
 import functools
 import re
@@ -158,7 +157,6 @@ class MCPClient:
         # stack. _handle_connect_failure recurses through _do_connect, and this
         # is what stops the two refreshing each other forever.
         self._refresh_attempts: set[str] = set()
-        self._token_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     def _sanitize_config(self, config: MCPUseConfig) -> _SanitizedMcpConfig:
         """Sanitize config for logging by removing sensitive data."""
@@ -1130,32 +1128,47 @@ class MCPClient:
             # we don't silently lose the connect.
             await _bg_connect_after_oauth()
 
-    async def _try_refresh_token(self, integration_id: str, mcp_config: MCPConfig) -> bool:
-        """Attempt to refresh OAuth token using stored refresh_token."""
-        oauth_config = await discover_oauth_config(self.token_store, integration_id, mcp_config)
-        return await try_refresh_token(self.token_store, integration_id, mcp_config, oauth_config)
+    async def _try_refresh_token(
+        self, integration_id: str, mcp_config: MCPConfig, rejected: str | None = None
+    ) -> bool:
+        """Refresh the grant under its cross-replica lock; True when a new access token is stored.
+
+        rejected is the token that failed (None: the one stored now). A holder that
+        replaced it while this waited for the lock already spent the rotating refresh
+        token, so its token is reused instead of refreshing again.
+        """
+        failed = rejected or await self.token_store.get_oauth_token(integration_id)
+        async with self.token_store.grant_lock(integration_id).hold() as held:
+            if not held:
+                return False
+            current = await self.token_store.get_oauth_token(integration_id)
+            if current is not None and current != failed:
+                return True
+            oauth_config = await discover_oauth_config(self.token_store, integration_id, mcp_config)
+            return await try_refresh_token(
+                self.token_store, integration_id, mcp_config, oauth_config
+            )
 
     async def oauth_access_token(
         self, integration_id: str, mcp_config: MCPConfig, rejected: str | None = None
     ) -> str | None:
         """Return the integration's usable OAuth access token, refreshing it once it expired or was rejected.
 
-        rejected is a token the server just answered 401 to. A stored token that differs
-        from it was already refreshed by a concurrent caller, so a rotating refresh token is spent once.
+        rejected is a token the server just answered 401 to; any other stored token is
+        returned as is.
         """
-        async with self._token_locks[integration_id]:
-            current = await self.token_store.get_oauth_token(integration_id)
-            if current is not None and current != rejected:
-                return current
-            if await self.token_store.get_refresh_token(integration_id) is None:
-                return None
-            log.info(
-                f"{LogTag.MCP} Access token expired or rejected, refreshing",
-                integration_id=integration_id,
-                rejected=rejected is not None,
-            )
-            await self._try_refresh_token(integration_id, mcp_config)
-            return await self.token_store.get_oauth_token(integration_id)
+        current = await self.token_store.get_oauth_token(integration_id)
+        if current is not None and current != rejected:
+            return current
+        if await self.token_store.get_refresh_token(integration_id) is None:
+            return None
+        log.info(
+            f"{LogTag.MCP} Access token expired or rejected, refreshing",
+            integration_id=integration_id,
+            rejected=rejected is not None,
+        )
+        await self._try_refresh_token(integration_id, mcp_config, current)
+        return await self.token_store.get_oauth_token(integration_id)
 
     async def drop_local(self, integration_id: str) -> None:
         """Close this process's session for an integration and rename the peers it forced a prefix on.

@@ -67,9 +67,9 @@ async def try_refresh_token(
                 integration_id=integration_id,
                 user_id=token_store.user_id,
             )
-            # No client can ever present this refresh token, so drop it: the
+            # No client can ever present this refresh token, so drop the grant: the
             # connect path then reports the integration signed out, not connected.
-            await token_store.clear_refresh_token(integration_id)
+            await token_store.clear_oauth_grant(integration_id)
             return False
         client_id, client_secret = client.client_id, client.client_secret
 
@@ -106,9 +106,9 @@ async def try_refresh_token(
                 )
                 if error_info["error"] == "invalid_grant":
                     # The grant itself is dead (revoked/rotated server-side):
-                    # no later retry can succeed, so drop the token now rather
+                    # no later retry can succeed, so drop it now rather
                     # than letting liveness checks keep reporting recoverable.
-                    await token_store.clear_refresh_token(integration_id)
+                    await token_store.clear_oauth_grant(integration_id)
                 return False
 
             token = OAuthToken.model_validate(response.json())

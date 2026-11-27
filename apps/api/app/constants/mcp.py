@@ -71,6 +71,13 @@ MCP_PRELOAD_ALL_MAX = 10
 MCP_UNLISTED_CONNECT_MAX = 3
 # The post-OAuth connect (handshake, tools/list, conversion) is given this long before it is failed.
 MCP_TOOLS_SETUP_TIMEOUT_SECONDS = 120
+# One OAuth grant (user + integration) is refreshed or deleted by one holder at a time,
+# across replicas; the lease covers a refresh's 30s token-endpoint timeout.
+MCP_OAUTH_GRANT_LOCK_PREFIX = "mcp:oauth_grant_lock:"
+MCP_OAUTH_GRANT_LOCK_LEASE_SECONDS = 40.0
+MCP_OAUTH_GRANT_LOCK_ACQUIRE_TIMEOUT_SECONDS = 45.0
+MCP_OAUTH_GRANT_LOCK_RENEW_SECONDS = 10.0
+MCP_OAUTH_GRANT_LOCK_MAX_HOLD_SECONDS = 90.0
 # Skills a user saved for a custom MCP are keyed by this agent name plus its id.
 CUSTOM_MCP_AGENT_NAME_PREFIX = "custom_mcp_"
 

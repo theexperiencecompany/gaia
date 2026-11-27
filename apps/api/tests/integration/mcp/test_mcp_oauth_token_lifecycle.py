@@ -133,7 +133,8 @@ class _InMemoryTokenStore(MCPTokenStore):
     async def get_refresh_token(self, integration_id: str) -> str | None:
         return self._refresh_token
 
-    async def clear_refresh_token(self, integration_id: str) -> None:
+    async def clear_oauth_grant(self, integration_id: str) -> None:
+        self._access_token = None
         self._refresh_token = None
 
 
