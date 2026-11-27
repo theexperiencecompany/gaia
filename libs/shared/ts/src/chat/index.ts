@@ -76,7 +76,6 @@ export type {
   RedditPostData,
   RedditSearchData,
   ReplyToMessageData,
-  SameDayEvent,
   SearchResults,
   SharedMemoryData,
   SubagentGroupData,

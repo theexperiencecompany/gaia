@@ -89,7 +89,7 @@ export default function EmailThreadCard({
             <div className={accordionStyles.content()}>
               <ScrollShadow className="max-h-[50vh]">
                 <div className="space-y-3">
-                  {emailThreadData.messages.map((message) => {
+                  {(emailThreadData.messages ?? []).map((message) => {
                     const { name: senderName, email: senderEmail } = parseEmail(
                       message.from,
                     );
@@ -116,7 +116,7 @@ export default function EmailThreadCard({
                               </span>
                             </div>
                             <span className="text-xs text-zinc-400">
-                              {formatTime(message.time)}
+                              {formatTime(message.time ?? null)}
                             </span>
                           </div>
                           <div className="flex flex-row items-center gap-2">

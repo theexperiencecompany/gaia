@@ -766,7 +766,7 @@ const workflowDraftFixture: WorkflowDraftData = {
     "Every weekday at 8am, summarize today's calendar, top emails, and overdue todos.",
   prompt:
     "Give me a morning brief: today's calendar, the 3 most important unread emails, and any overdue tasks.",
-  trigger_type: "scheduled",
+  trigger_type: "schedule",
   cron_expression: "0 8 * * 1-5",
   delivery: "brief",
 };
@@ -776,7 +776,7 @@ const workflowCreatedFixture: WorkflowCreatedData = {
   title: "Weekday morning brief",
   description: "Every weekday at 8am, summarize today's calendar and tasks.",
   trigger_config: {
-    type: "scheduled",
+    type: "schedule",
     cron_expression: "0 8 * * 1-5",
     enabled: true,
   },

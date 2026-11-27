@@ -175,7 +175,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <LockedToolItem tool={match.enhancedTool!} onConnect={onClose} />
+        <LockedToolItem tool={match.tool} onConnect={onClose} />
       </div>
     );
   }

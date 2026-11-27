@@ -26,7 +26,6 @@
     "./utils": "./src/utils/index.ts",
     "./types": "./src/types/index.ts",
     "./types/integrations": "./src/types/integrations.ts",
-    "./types/search": "./src/types/search.ts",
     "./types/reminders": "./src/types/reminders.ts",
     "./types/notes": "./src/types/notes.ts",
     "./types/memory": "./src/types/memory.ts",

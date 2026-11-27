@@ -1,4 +1,5 @@
 import type { GmailMessageSummary } from "@shared/api/generated";
+import type { EmailComposeData } from "@shared/chat";
 
 /**
  * The API forwards each Gmail message with its raw keys alongside the derived
@@ -9,18 +10,10 @@ export const asEmailData = (
   messages: GmailMessageSummary[] | Record<string, unknown>[],
 ): EmailData[] => messages as unknown as EmailData[];
 
-export interface EmailData {
-  id: string;
-  from: string;
-  subject: string;
-  time: string;
-  snippet?: string;
-  body?: string;
-  labelIds?: string[];
+export type EmailData = GmailMessageSummary & {
   payload: EmailPayload;
   summary?: string;
-  threadId?: string; // Thread ID for grouping related messages
-}
+};
 
 export interface EmailPayload {
   [x: string]: unknown;
@@ -47,63 +40,15 @@ export interface EmailBody {
   attachmentId?: string;
 }
 
-// Attachment metadata shown on the compose/sent card (display-only — the
-// backend streams just the filename and mimetype, never an s3key).
-export type EmailAttachmentMeta = {
-  name: string;
-  mimetype: string;
-};
+export type {
+  ContactData,
+  EmailComposeData,
+  EmailFetchData,
+  EmailSentData,
+  EmailThreadData,
+  PeopleSearchData,
+} from "@shared/chat";
 
-// Email compose data structure for email intent
-export type EmailComposeData = {
-  to: string[];
-  subject: string;
-  body: string;
-  draft_id?: string;
-  thread_id?: string;
-  attachments?: EmailAttachmentMeta[];
-};
-
-export type EmailFetchData = {
-  from: string;
-  subject: string;
-  time: string;
-  thread_id?: string;
-  id: string;
-};
-
-export type EmailThreadData = {
-  thread_id: string;
-  messages: Array<{
-    id: string;
-    from: string;
-    subject: string;
-    time: string;
-    snippet: string;
-    body: string;
-    content?: { text: string; html: string };
-  }>;
-  messages_count: number;
-};
-
-export type EmailSentData = {
-  message_id?: string;
-  message: string;
-  timestamp?: string;
-  recipients?: string[];
-  subject?: string;
-};
-
-export type ContactData = {
-  name: string;
-  email: string;
-  phone?: string;
-  resource_name: string;
-};
-
-export type PeopleSearchData = {
-  name: string;
-  email: string;
-  phone?: string;
-  resource_name: string;
-};
+export type EmailAttachmentMeta = NonNullable<
+  EmailComposeData["attachments"]
+>[number];

@@ -287,7 +287,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
             <GaiaListBoxItem
               key={cal.id}
               id={cal.id}
-              textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
+              textValue={`${cal.summary ?? ""}${cal.primary ? " (Primary)" : ""}`}
             >
               <div
                 className="size-3 rounded-full"
@@ -295,7 +295,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
                   backgroundColor: cal.backgroundColor || "#3b82f6",
                 }}
               />
-              {cal.name || cal.summary}
+              {cal.summary}
               {cal.primary ? " (Primary)" : ""}
             </GaiaListBoxItem>
           ))}

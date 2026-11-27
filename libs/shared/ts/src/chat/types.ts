@@ -6,8 +6,12 @@
 // ---------------------------------------------------------------------------
 
 import type {
+  GoogleCalendarEventDateTime,
+  SearchResultItem,
   ToolDataEntry,
   ToolProgress,
+  TriggerConfig,
+  TriggerType,
   WorkflowDelivery,
 } from "../api/generated";
 import type { ArtifactCardData } from "../artifacts/types";
@@ -114,19 +118,16 @@ export interface WeatherData {
 // Search
 // ---------------------------------------------------------------------------
 
-export interface WebResult {
-  title?: string;
-  url?: string;
-  content?: string;
-  score?: number;
+/** A search_results web item: webpage_tool.py streams serialized SearchResultItem models. */
+export type WebResult = SearchResultItem & {
+  /** Legacy keys: only results stored before the search engine rewrite carry them. */
   raw_content?: string;
-  favicon?: string;
   snippet?: string;
-}
+};
 
 export interface NewsResult {
   title?: string;
-  url?: string;
+  url: string;
   content?: string;
   score?: number;
   raw_content?: string;
@@ -150,10 +151,10 @@ export interface SearchResults {
   progress?: string;
 }
 
-export interface EnhancedWebResult extends WebResult {
+export type EnhancedWebResult = WebResult & {
   full_content?: string;
   screenshot_url?: string;
-}
+};
 
 export interface DeepResearchSource {
   url: string;
@@ -191,6 +192,8 @@ export interface EmailComposeData {
   bcc?: string[];
   cc?: string[];
   is_html?: boolean;
+  /** Display-only: the backend streams each file's name and mimetype, never its s3key. */
+  attachments?: Array<{ name: string; mimetype: string }>;
 }
 
 export interface EmailSentData {
@@ -255,30 +258,8 @@ export interface PeopleSearchData {
 // Calendar
 // ---------------------------------------------------------------------------
 
-export interface CalendarEventDateTime {
-  date?: string;
-  dateTime?: string;
-  timeZone?: string;
-}
+export type CalendarEventDateTime = GoogleCalendarEventDateTime;
 
-export interface SameDayEvent {
-  id: string;
-  summary: string;
-  start?: CalendarEventDateTime;
-  end?: CalendarEventDateTime;
-  description?: string;
-  location?: string;
-  attendees?: Array<{
-    email: string;
-    responseStatus?: string;
-    organizer?: boolean;
-  }>;
-  recurrence?: string[];
-  status?: string;
-  calendarId?: string;
-  calendarTitle?: string;
-  background_color?: string;
-}
 export interface CalendarDeleteOptions {
   action: "delete";
   event_id: string;
@@ -451,11 +432,15 @@ export interface TodoProgressItem {
   status: TodoProgressStatus;
 }
 
+/** One todo_progress snapshot, as todo_tools.py emits it for a single source agent. */
 export interface TodoProgressSnapshot {
-  todos?: TodoProgressItem[];
-  source?: string;
+  todos: TodoProgressItem[];
+  source: string;
+  /** The source's display name (e.g. a custom MCP integration's); absent on older persisted messages. */
+  integration_name?: string;
 }
 
+/** Accumulated todo_progress data on a message, keyed by source agent; each source replaces its own slice. */
 export type TodoProgressData = Record<string, TodoProgressSnapshot>;
 
 // ---------------------------------------------------------------------------
@@ -526,10 +511,10 @@ export interface TodoToolData {
 // ---------------------------------------------------------------------------
 
 export interface CodeOutput {
-  stdout?: string;
-  stderr?: string;
-  results?: string[];
-  error?: string | null;
+  stdout: string;
+  stderr: string;
+  results: string[];
+  error: string | null;
 }
 
 export interface CodeChartData {
@@ -555,8 +540,8 @@ export interface CodeChartData {
 }
 
 export interface CodeData {
-  language?: string;
-  code?: string;
+  language: string;
+  code: string;
   output?: CodeOutput | null;
   charts?: CodeChartData[] | null;
   status?: "executing" | "completed" | "error";
@@ -568,12 +553,12 @@ export interface CodeData {
 // ---------------------------------------------------------------------------
 
 export interface GoogleDocsDocument {
-  id?: string;
-  title?: string;
-  url?: string;
-  created_time?: string;
-  modified_time?: string;
-  type?: string;
+  id: string;
+  title: string;
+  url: string;
+  created_time: string;
+  modified_time: string;
+  type: string;
 }
 
 export interface GoogleDocsData {
@@ -592,27 +577,36 @@ export interface GoogleDocsData {
 // Workflows
 // ---------------------------------------------------------------------------
 
+/** The workflow_draft card, as WorkflowDraftPayload in services/workflow/subagent_output.py builds it. */
 export interface WorkflowDraftData {
   suggested_title: string;
+  /** Short description for display in cards/UI (1-2 sentences) */
   suggested_description: string;
+  /** Detailed prompt/instructions for the workflow execution */
   prompt: string;
-  trigger_type: "manual" | "scheduled" | "integration";
+  trigger_type: Extract<TriggerType, "manual" | "schedule" | "integration">;
+  /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
   trigger_slug?: string | null;
   cron_expression?: string | null;
+  /** Integrations the workflow depends on, the trigger's included; carried through to create. */
+  integration_ids?: string[] | null;
   /** Chosen by the agent from the user's words; absent on drafts saved before delivery modes. */
   delivery?: WorkflowDelivery;
+  /** Which events are worth a run, as GAIA drafted it; null when every event is */
+  runs_only_when?: string | null;
+  /** Sent back on create, so the chat that drafted it picks back up once it is set up */
+  draft_id?: string;
 }
 
+/** The workflow_created card, as WorkflowCreatedPayload in utils/workflow_utils.py builds it. */
 export interface WorkflowCreatedData {
   id: string;
   title: string;
   description: string;
-  trigger_config: {
-    type: "manual" | "scheduled" | "integration";
-    cron_expression?: string | null;
-    trigger_name?: string | null;
-    enabled?: boolean;
-  };
+  trigger_config: Pick<
+    TriggerConfig,
+    "type" | "cron_expression" | "trigger_name" | "enabled" | "timezone"
+  >;
   activated: boolean;
 }
 
