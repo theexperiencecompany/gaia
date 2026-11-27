@@ -1836,6 +1836,7 @@ class TestCalendarTriggerHandler:
         trigger_config = mock_composio.composio.triggers.create.call_args.kwargs["trigger_config"]
         assert trigger_config == {"calendarId": "primary"}
 
+    @pytest.mark.regression
     @patch("app.services.triggers.base.get_composio_service")
     async def test_register_event_starting_soon_sends_the_lead_as_composios_fire_threshold(
         self, mock_get_composio

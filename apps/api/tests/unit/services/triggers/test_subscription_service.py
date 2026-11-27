@@ -1274,6 +1274,15 @@ class TestReregisterActiveSubscriptions:
         }
         assert h.unregister.await_args_list[0].args[:3] == (USER_ID, INSTANCE_TRIGGER, ["ti_old"])
 
+    async def test_the_old_instance_is_released_only_after_the_new_ids_are_stored(self) -> None:
+        todo = _todo(trigger_subscriptions=[_subscription(composio_trigger_ids=["ti_old"])])
+        with _ResyncHarness([todo], ["ti_new"]) as h:
+            h.resume.side_effect = RuntimeError("mongo down")
+            with pytest.raises(RuntimeError):
+                await reregister_active_subscriptions(USER_ID, INSTANCE_TRIGGER)
+
+        h.unregister.assert_not_awaited()
+
     async def test_an_unchanged_instance_is_kept(self) -> None:
         todo = _todo(trigger_subscriptions=[_subscription(composio_trigger_ids=["ti_same"])])
         with _ResyncHarness([todo], ["ti_same"]) as h:

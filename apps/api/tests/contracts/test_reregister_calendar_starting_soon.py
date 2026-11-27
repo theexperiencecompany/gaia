@@ -12,6 +12,7 @@ import pytest
 
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.composio_schemas import GoogleCalendarEventStartingSoonTriggerConfig
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
@@ -107,8 +108,8 @@ async def _seed(raw_collection) -> tuple[str, str, str]:
     return user_id, str(workflow["_id"]), todo.id
 
 
-def _fire_threshold(config: dict[str, object]) -> object:
-    return config["minutesBeforeStart"]
+def _fire_threshold(config: dict[str, object]) -> int:
+    return GoogleCalendarEventStartingSoonTriggerConfig.model_validate(config).minutes_before_start
 
 
 async def test_a_dry_run_counts_and_writes_nothing(raw_collection, composio, capsys) -> None:
