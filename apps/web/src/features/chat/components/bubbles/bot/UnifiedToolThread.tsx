@@ -120,7 +120,7 @@ export default function UnifiedToolThread({
       // spawn_subagent steps are hidden by SubagentRow (they render as nested
       // rows), so exclude them here too or the total overcounts what's shown.
       let n = sg.tool_calls.filter(
-        (tc) => tc.reasoning == null && tc.tool_name !== "spawn_subagent",
+        (tc) => !("reasoning" in tc) && tc.tool_name !== "spawn_subagent",
       ).length;
       for (const nested of sg.nested_subagents) n += countSubagent(nested);
       return n;
@@ -128,7 +128,7 @@ export default function UnifiedToolThread({
     let count = 0;
     for (const item of timeline) {
       if (item.kind === "tool") {
-        if (item.data.reasoning == null) count += 1;
+        if (!("reasoning" in item.data)) count += 1;
       } else {
         count += countSubagent(item.data);
       }
@@ -143,17 +143,18 @@ export default function UnifiedToolThread({
     const icons: { category: string; iconUrl?: string }[] = [];
 
     for (const item of timeline) {
+      const { data } = item;
       // Thinking steps have no tool icon — keep them out of the stacked icons.
-      if (item.kind === "tool" && item.data.reasoning != null) continue;
+      if ("reasoning" in data) continue;
       const cat =
         item.kind === "tool"
-          ? item.data.tool_category || "general"
-          : item.data.tool_category || "subagent";
+          ? data.tool_category || "general"
+          : data.tool_category || "subagent";
       if (seenCategories.has(cat)) continue;
       seenCategories.add(cat);
       icons.push({
         category: cat,
-        iconUrl: item.data.icon_url ?? undefined,
+        iconUrl: data.icon_url ?? undefined,
       });
     }
 

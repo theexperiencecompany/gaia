@@ -12,7 +12,6 @@ export type {
   EmailSentData,
   EmailThreadData,
   EnhancedWebResult,
-  GenericToolData,
   GoogleDocsData,
   ImageResult,
   MCPAppData,
@@ -26,8 +25,6 @@ export type {
   TodoToolData,
   ToolCallEntry,
   ToolDataEntry,
-  ToolDataMap,
-  ToolName,
   TwitterSearchData,
   TwitterUserData,
   WeatherData,
@@ -35,4 +32,3 @@ export type {
   WorkflowCreatedData,
   WorkflowDraftData,
 } from "@gaia/shared/chat";
-export { getToolData, isKnownTool } from "@gaia/shared/chat";

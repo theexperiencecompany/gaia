@@ -47,7 +47,10 @@ function formatNumber(num: number): string {
   return num.toString();
 }
 
-function openRedditLink(permalink?: string, url?: string) {
+function openRedditLink(
+  permalink: string | null | undefined,
+  url?: string | null,
+) {
   const link = permalink ? `https://reddit.com${permalink}` : url;
   if (link) Linking.openURL(link);
 }
@@ -460,7 +463,7 @@ function CreatedView({
 }) {
   const isPost = type === "post_created";
   const permalink = itemData.permalink;
-  const url = isPost ? (itemData as RedditPostCreatedData).url : undefined;
+  const url = isPost && "url" in itemData ? itemData.url : undefined;
 
   return (
     <ToolCardInner>

@@ -1,3 +1,5 @@
+import type { EmailThreadData } from "@gaia/shared";
+import type { EmailThreadItem } from "@gaia/shared/api/generated";
 import { Chip } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, Mail01Icon } from "@/components/icons";
@@ -5,35 +7,19 @@ import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
 import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 
-// Types mirror the web `EmailThreadData` shape from
-// apps/web/src/types/features/mailTypes.ts; fields are optional to tolerate
-// loose tool output during streaming.
-
-export interface EmailThreadMessage {
-  id?: string;
-  from?: string;
-  /** Optional pre-parsed name (older tool output) */
+/** One thread message; from_name and date only messages stored before the typed payload carry. */
+export type EmailThreadMessage = EmailThreadItem & {
   from_name?: string;
-  subject?: string;
-  time?: string;
-  /** Older tool output exposes `date` instead of `time` */
   date?: string;
-  snippet?: string;
-  body?: string;
-  content?: { text?: string; html?: string };
-}
+};
 
-export interface EmailThreadData {
-  thread_id?: string;
-  subject?: string;
-  messages?: EmailThreadMessage[];
-}
+export type { EmailThreadData };
 
 // ---------------------------------------------------------------------------
 // Helpers — port of web's parseEmail + formatTime
 // ---------------------------------------------------------------------------
 
-function parseEmail(from?: string): { name: string; email: string } {
+function parseEmail(from: string | null): { name: string; email: string } {
   if (!from) return { name: "", email: "" };
   const match = from.match(/^(.*?)\s*<(.+?)>$/) || from.match(/(.+)/);
   if (match) {
@@ -87,7 +73,9 @@ function htmlToPlainText(html: string): string {
 }
 
 function getMessageText(message: EmailThreadMessage): string {
-  if (message.content?.text?.trim()) return message.content.text.trim();
+  // A plain-string content carries no html/text parts; the body renders instead.
+  const content = typeof message.content === "string" ? null : message.content;
+  if (content?.text?.trim()) return content.text.trim();
   if (message.body?.trim()) {
     // Heuristic: if the body looks like HTML, strip it.
     if (/<\/?[a-z][\s\S]*>/i.test(message.body)) {
@@ -95,8 +83,7 @@ function getMessageText(message: EmailThreadMessage): string {
     }
     return message.body.trim();
   }
-  if (message.content?.html?.trim())
-    return htmlToPlainText(message.content.html);
+  if (content?.html?.trim()) return htmlToPlainText(content.html);
   if (message.snippet?.trim()) return message.snippet.trim();
   return "";
 }
@@ -188,8 +175,11 @@ function MessageItem({ message, isLast }: MessageItemProps) {
 // ---------------------------------------------------------------------------
 
 export function EmailThreadCard({ data }: { data: EmailThreadData }) {
-  const messages = data.messages ?? [];
+  const messages: EmailThreadMessage[] = data.messages ?? [];
   const messageCount = messages.length;
+  // EmailThreadCard carries no thread subject; only a card stored before it may hold one.
+  const threadSubject =
+    "subject" in data && typeof data.subject === "string" ? data.subject : "";
 
   return (
     <CollapsibleCard
@@ -215,11 +205,11 @@ export function EmailThreadCard({ data }: { data: EmailThreadData }) {
       }
     >
       {/* Subject — mirrors the web card's header subtitle */}
-      {!!data.subject && (
+      {threadSubject ? (
         <Text className="text-xs text-zinc-400 mb-2" numberOfLines={1}>
-          {data.subject}
+          {threadSubject}
         </Text>
-      )}
+      ) : null}
 
       {messageCount > 0 ? (
         messages.map((message, index) => (

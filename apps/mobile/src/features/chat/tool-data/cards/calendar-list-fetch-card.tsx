@@ -1,3 +1,4 @@
+import type { CalendarListFetchData } from "@gaia/shared";
 import { View } from "react-native";
 import { Calendar03Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -8,12 +9,7 @@ import {
 
 // -- Types --------------------------------------------------------------------
 
-export interface CalendarListFetchItem {
-  name: string;
-  id: string;
-  description: string;
-  backgroundColor?: string;
-}
+export type CalendarListFetchItem = CalendarListFetchData;
 
 interface CalendarListFetchCardProps {
   data: CalendarListFetchItem[];

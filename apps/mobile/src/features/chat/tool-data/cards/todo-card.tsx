@@ -1,12 +1,12 @@
+import type { TodoToolData as TodoData } from "@gaia/shared";
 import type {
-  TodoAction,
-  TodoToolData as TodoData,
-  TodoItem,
-  TodoPriority,
-  TodoProject,
-  TodoToolStats as TodoStats,
-  TodoSubtask,
-} from "@gaia/shared";
+  Priority,
+  ProjectResponse,
+  TodoCardAction,
+  TodoCounts,
+  TodoResponse,
+  TodoStats,
+} from "@gaia/shared/api/generated";
 import { useState } from "react";
 import { View } from "react-native";
 import {
@@ -27,20 +27,12 @@ import {
   ToolCardShell,
 } from "@/features/chat/tool-data/primitives";
 
-export type {
-  TodoAction,
-  TodoData,
-  TodoItem,
-  TodoPriority,
-  TodoProject,
-  TodoStats,
-  TodoSubtask,
-};
+export type { TodoData };
 
 // -- Priority meta -----------------------------------------------------------
 
 const PRIORITY_META: Record<
-  Exclude<TodoPriority, "none">,
+  Exclude<Priority, "none">,
   { color: string; bg: string }
 > = {
   high: { color: "#ef4444", bg: "rgba(239, 68, 68, 0.1)" },
@@ -78,7 +70,7 @@ function formatDueDate(dateStr: string): {
   return { label, isOverdue, isToday };
 }
 
-function getListTitle(action: TodoAction): string {
+function getListTitle(action: TodoCardAction): string {
   switch (action) {
     case "search":
       return "Search Results";
@@ -149,10 +141,12 @@ function DueDateBadge({ dueInfo }: { dueInfo: DueInfo }) {
 
 function TodoMetaRow({
   todo,
+  project,
   priorityMeta,
   dueInfo,
 }: {
-  todo: TodoItem;
+  todo: TodoResponse;
+  project: ProjectResponse | undefined;
   priorityMeta: PriorityMeta | null;
   dueInfo: DueInfo | null;
 }) {
@@ -160,7 +154,7 @@ function TodoMetaRow({
   const hasSubtasks = todo.subtasks.length > 0;
   const completedSubtasks = todo.subtasks.filter((s) => s.completed).length;
 
-  if (!(priorityMeta || dueInfo || todo.project || hasLabels || hasSubtasks)) {
+  if (!(priorityMeta || dueInfo || project || hasLabels || hasSubtasks)) {
     return null;
   }
 
@@ -180,18 +174,18 @@ function TodoMetaRow({
 
       {dueInfo && <DueDateBadge dueInfo={dueInfo} />}
 
-      {todo.project && (
+      {project && (
         <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800">
-          {todo.project.color ? (
+          {project.color ? (
             <View
               className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: todo.project.color }}
+              style={{ backgroundColor: project.color }}
             />
           ) : (
             <AppIcon icon={Folder02Icon} size={10} color="#71717a" />
           )}
           <Text className="text-xs text-zinc-400" numberOfLines={1}>
-            {todo.project.name}
+            {project.name}
           </Text>
         </View>
       )}
@@ -217,7 +211,7 @@ function TodoMetaRow({
   );
 }
 
-function TodoExpandedContent({ todo }: { todo: TodoItem }) {
+function TodoExpandedContent({ todo }: { todo: TodoResponse }) {
   const hasDescription = Boolean(todo.description);
   const hasSubtasks = todo.subtasks.length > 0;
 
@@ -260,7 +254,13 @@ function TodoExpandedContent({ todo }: { todo: TodoItem }) {
   );
 }
 
-function TodoItemRow({ todo }: { todo: TodoItem }) {
+function TodoItemRow({
+  todo,
+  project,
+}: {
+  todo: TodoResponse;
+  project: ProjectResponse | undefined;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   const dueInfo = todo.due_date ? formatDueDate(todo.due_date) : null;
@@ -307,10 +307,50 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
         </View>
       </View>
 
-      <TodoMetaRow todo={todo} priorityMeta={priorityMeta} dueInfo={dueInfo} />
+      <TodoMetaRow
+        todo={todo}
+        project={project}
+        priorityMeta={priorityMeta}
+        dueInfo={dueInfo}
+      />
 
       {expanded && hasExpandable && <TodoExpandedContent todo={todo} />}
     </ToolCardInner>
+  );
+}
+
+function TodoStatsView({
+  stats: s,
+  counts,
+}: {
+  stats: TodoStats;
+  counts: TodoCounts | null;
+}) {
+  const overdue = s.overdue ?? 0;
+  const today = counts?.today ?? 0;
+  const upcoming = counts?.upcoming ?? 0;
+  return (
+    <ToolCardShell>
+      <ToolCardHeader icon={CheckListIcon} title="Task Overview" />
+      <View className="flex-row gap-2">
+        <StatCell value={s.total ?? 0} label="Total" />
+        <StatCell value={s.completed ?? 0} label="Done" color="#22c55e" />
+        <StatCell value={s.pending ?? 0} label="Pending" color="#eab308" />
+      </View>
+      {(overdue > 0 || today > 0 || upcoming > 0) && (
+        <View className="flex-row gap-2 mt-2">
+          {overdue > 0 && (
+            <StatCell value={overdue} label="Overdue" color="#ef4444" />
+          )}
+          {today > 0 && (
+            <StatCell value={today} label="Today" color="#3b82f6" />
+          )}
+          {upcoming > 0 && (
+            <StatCell value={upcoming} label="Soon" color="#a855f7" />
+          )}
+        </View>
+      )}
+    </ToolCardShell>
   );
 }
 
@@ -321,30 +361,7 @@ export function TodoCard({ data }: { data: TodoData }) {
 
   // Stats view
   if (action === "stats" && data.stats) {
-    const s = data.stats;
-    return (
-      <ToolCardShell>
-        <ToolCardHeader icon={CheckListIcon} title="Task Overview" />
-        <View className="flex-row gap-2">
-          <StatCell value={s.total} label="Total" />
-          <StatCell value={s.completed} label="Done" color="#22c55e" />
-          <StatCell value={s.pending} label="Pending" color="#eab308" />
-        </View>
-        {(s.overdue > 0 || s.today > 0 || s.upcoming > 0) && (
-          <View className="flex-row gap-2 mt-2">
-            {s.overdue > 0 && (
-              <StatCell value={s.overdue} label="Overdue" color="#ef4444" />
-            )}
-            {s.today > 0 && (
-              <StatCell value={s.today} label="Today" color="#3b82f6" />
-            )}
-            {s.upcoming > 0 && (
-              <StatCell value={s.upcoming} label="Soon" color="#a855f7" />
-            )}
-          </View>
-        )}
-      </ToolCardShell>
-    );
+    return <TodoStatsView stats={data.stats} counts={data.counts} />;
   }
 
   // Projects view
@@ -380,10 +397,10 @@ export function TodoCard({ data }: { data: TodoData }) {
                       {project.todo_count} tasks
                     </Text>
                   )}
-                  {project.completion_percentage !== undefined && (
+                  {data.project_completion?.[project.id] !== undefined && (
                     <Text className="text-xs text-zinc-500">
                       {"· "}
-                      {Math.round(project.completion_percentage)}%
+                      {Math.round(data.project_completion[project.id])}%
                     </Text>
                   )}
                 </View>
@@ -406,7 +423,11 @@ export function TodoCard({ data }: { data: TodoData }) {
         />
         <View className="gap-2">
           {data.todos.map((todo) => (
-            <TodoItemRow key={todo.id} todo={todo} />
+            <TodoItemRow
+              key={todo.id}
+              todo={todo}
+              project={data.projects?.find((p) => p.id === todo.project_id)}
+            />
           ))}
         </View>
         {data.message && (

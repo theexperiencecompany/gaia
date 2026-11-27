@@ -7,7 +7,7 @@ import { GmailIcon } from "./gmail-icon";
 export type { EmailSentData };
 
 // Ported 1:1 from apps/web/src/features/mail/components/EmailSentCard.tsx
-function formatTime(timestamp?: string): string {
+function formatTime(timestamp: string | null | undefined): string {
   if (!timestamp) return "Just now";
 
   const date = new Date(timestamp);
@@ -26,11 +26,9 @@ function formatTime(timestamp?: string): string {
 }
 
 export function EmailSentCard({ data }: { data: EmailSentData }) {
-  // Web reads only `timestamp`; backend sometimes sends `sent_at`. Same for
-  // recipients (`recipients` vs `to`). Fall through gracefully so backend
-  // variants render correctly.
-  const timestamp = data.timestamp ?? data.sent_at;
-  const recipients = data.recipients ?? data.to ?? [];
+  // Only a sent stored draft carries the send receipt; a sent compose card has just its fields.
+  const receipt = "message" in data ? data : undefined;
+  const recipients = ("message" in data ? data.recipients : data.to) ?? [];
 
   return (
     <View className="self-start mx-4 my-1 rounded-2xl bg-green-900/15 p-3.5">
@@ -41,7 +39,7 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
           <Text className="text-sm font-medium text-green-400">Email Sent</Text>
         </View>
         <Chip size="sm" variant="soft" color="success" animation="disable-all">
-          <Chip.Label>{formatTime(timestamp)}</Chip.Label>
+          <Chip.Label>{formatTime(receipt?.timestamp)}</Chip.Label>
         </Chip>
       </View>
 

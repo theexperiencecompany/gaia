@@ -1,15 +1,21 @@
 // @vitest-environment jsdom
 
-import type { ToolCallEntry } from "@shared/chat";
+import type { ToolCallsDataEntryData } from "@shared/api/generated";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { StepRow } from "@/features/chat/components/bubbles/bot/SubagentRow";
 
-const call = (overrides: Partial<ToolCallEntry> = {}): ToolCallEntry => ({
+const call = (
+  overrides: Partial<ToolCallsDataEntryData> = {},
+): ToolCallsDataEntryData => ({
   tool_name: "GOOGLECALENDAR_CUSTOM_DELETE_EVENT",
   tool_category: "calendar",
   message: "Delete calendar event",
   tool_call_id: "call-1",
+  icon_url: null,
+  inputs: {},
+  integration_name: null,
+  show_category: true,
   ...overrides,
 });
 

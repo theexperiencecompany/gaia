@@ -1,16 +1,14 @@
+import type { EmailListItem } from "@gaia/shared/api/generated";
 import { Accordion, Card } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, ArrowDown01Icon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { Divider } from "@/shared/components/ui/divider";
 
-export interface EmailAccordionItem {
-  id: string;
-  sender: string;
-  subject: string;
-  time: string;
-  snippet?: string;
-}
+export type EmailAccordionItem = Pick<
+  EmailListItem,
+  "id" | "from" | "subject" | "time"
+>;
 
 interface EmailAccordionProps {
   emails: EmailAccordionItem[];
@@ -20,37 +18,37 @@ interface EmailAccordionProps {
 export const SAMPLE_EMAILS: EmailAccordionItem[] = [
   {
     id: "1",
-    sender: "Reddit",
+    from: "Reddit",
     subject: '"Microsoft | L60 | Hyderabad | Offer | 1.5 YOE"',
     time: "Yesterday",
   },
   {
     id: "2",
-    sender: "Reddit",
+    from: "Reddit",
     subject: '"Universal React Monorepo Template with Ne..."',
     time: "Dec 28",
   },
   {
     id: "3",
-    sender: "Mail Delivery Subsyst...",
+    from: "Mail Delivery Subsyst...",
     subject: "Delivery Status Notification (Failure)",
     time: "Dec 28",
   },
   {
     id: "4",
-    sender: "ngrok team",
+    from: "ngrok team",
     subject: "Welcome to ngrok!",
     time: "Dec 28",
   },
   {
     id: "5",
-    sender: "Reddit",
+    from: "Reddit",
     subject: '"Why???????"',
     time: "Dec 27",
   },
   {
     id: "6",
-    sender: "Reddit",
+    from: "Reddit",
     subject: '"Steam looks wierd"',
     time: "Dec 26",
   },
@@ -61,7 +59,7 @@ function EmailItem({ email }: { email: EmailAccordionItem }) {
     <View className="flex-row items-center py-3">
       <View className="w-28 flex-shrink-0">
         <Text className="text-sm font-medium text-foreground" numberOfLines={1}>
-          {email.sender}
+          {email.from}
         </Text>
       </View>
       <Text className="flex-1 text-sm text-[#71717a] mx-3" numberOfLines={1}>

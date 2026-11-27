@@ -2,6 +2,7 @@
 // Each entry in `TOOL_FIXTURES` is the exact shape the production chat
 // TOOL_RENDERERS receive. Changing a fixture here changes both gallery sides.
 
+import type { TodoResponse } from "../api/generated";
 import type {
   ArtifactData,
   CalendarDeleteOptions,
@@ -64,6 +65,9 @@ const weatherFixture: WeatherData = {
     sunset: 1713401400,
   },
   timezone: -25200,
+  visibility: 10000,
+  id: 5391959,
+  cod: 200,
   name: "San Francisco",
   location: { city: "San Francisco", country: "US", region: "California" },
   forecast: [
@@ -290,18 +294,20 @@ const emailComposeFixture: EmailComposeData[] = [
     cc: ["dhruv@heygaia.io"],
     subject: "Mobile chat gallery is ready for review",
     body: "Hi Sarah,\n\nThe tool gallery is live at /dev/tool-gallery on both web and mobile. Same fixture data on both sides — just load and screenshot-diff.\n\nLet me know what jumps out.\n\nDhruv",
+    bcc: [],
     draft_id: "draft-001",
+    thread_id: null,
     is_html: false,
+    attachments: [],
   },
 ];
 
 const emailSentFixture: EmailSentData[] = [
   {
-    to: ["sarah@linear.app"],
+    message: "Email sent successfully",
     subject: "Mobile chat gallery is ready for review",
-    body: "Hi Sarah — the gallery is up on both apps. Ping if anything looks off.",
     message_id: "msg-sent-001",
-    sent_at: "2026-04-17T10:32:00Z",
+    timestamp: "2026-04-17T10:32:00Z",
     recipients: ["sarah@linear.app", "dhruv@heygaia.io"],
   },
 ];
@@ -445,6 +451,42 @@ const calendarListFixture: CalendarListFetchData[] = [
 // Todos
 // ---------------------------------------------------------------------------
 
+const FIXTURE_USER_ID = "user-fixture";
+const FIXTURE_CREATED_AT = "2026-04-15T09:00:00Z";
+
+/** A stored todo as the API returns it; each fixture overrides only what it shows. */
+function fixtureTodo(
+  todo: Pick<TodoResponse, "id" | "title" | "completed" | "priority"> &
+    Partial<TodoResponse>,
+): TodoResponse {
+  return {
+    completed_at: null,
+    created_at: FIXTURE_CREATED_AT,
+    delivery: "now",
+    description: null,
+    due_date: null,
+    due_date_timezone: null,
+    expires_at: null,
+    gaia_retry_count: 0,
+    labels: [],
+    parent_todo_id: null,
+    pending_approval: null,
+    project_id: null,
+    recurrence: null,
+    references: [],
+    scheduled_at: null,
+    sub_todo_count: 0,
+    subtasks: [],
+    trigger_subscriptions: [],
+    updated_at: FIXTURE_CREATED_AT,
+    user_id: FIXTURE_USER_ID,
+    vfs_path: null,
+    workflow_categories: [],
+    workflow_id: null,
+    ...todo,
+  };
+}
+
 const todoFixture: TodoToolData = {
   action: "list",
   message: "Here are your active todos",
@@ -453,27 +495,38 @@ const todoFixture: TodoToolData = {
     completed: 7,
     pending: 11,
     overdue: 2,
+  },
+  counts: {
+    inbox: 3,
     today: 4,
     upcoming: 5,
+    overdue: 2,
+    completed: 7,
   },
+  summary: null,
+  project_completion: { "proj-1": 40, "proj-2": 25 },
   projects: [
     {
       id: "proj-1",
+      user_id: FIXTURE_USER_ID,
       name: "Mobile parity",
       color: "#00bbff",
       todo_count: 8,
-      completion_percentage: 40,
+      created_at: FIXTURE_CREATED_AT,
+      updated_at: FIXTURE_CREATED_AT,
     },
     {
       id: "proj-2",
+      user_id: FIXTURE_USER_ID,
       name: "Personal",
       color: "#f59e0b",
       todo_count: 4,
-      completion_percentage: 25,
+      created_at: FIXTURE_CREATED_AT,
+      updated_at: FIXTURE_CREATED_AT,
     },
   ],
   todos: [
-    {
+    fixtureTodo({
       id: "todo-1",
       title: "Ship mobile tool gallery",
       description:
@@ -484,13 +537,33 @@ const todoFixture: TodoToolData = {
       due_date: "2026-04-17",
       project_id: "proj-1",
       subtasks: [
-        { id: "s1", title: "Fixtures in @gaia/shared", completed: true },
-        { id: "s2", title: "Web gallery page", completed: true },
-        { id: "s3", title: "Mobile gallery page", completed: false },
-        { id: "s4", title: "Screenshot diff pass", completed: false },
+        {
+          id: "s1",
+          title: "Fixtures in @gaia/shared",
+          completed: true,
+          created_at: FIXTURE_CREATED_AT,
+        },
+        {
+          id: "s2",
+          title: "Web gallery page",
+          completed: true,
+          created_at: FIXTURE_CREATED_AT,
+        },
+        {
+          id: "s3",
+          title: "Mobile gallery page",
+          completed: false,
+          created_at: FIXTURE_CREATED_AT,
+        },
+        {
+          id: "s4",
+          title: "Screenshot diff pass",
+          completed: false,
+          created_at: FIXTURE_CREATED_AT,
+        },
       ],
-    },
-    {
+    }),
+    fixtureTodo({
       id: "todo-2",
       title: "Migrate mobile chat storage to SQLite",
       description:
@@ -500,26 +573,22 @@ const todoFixture: TodoToolData = {
       labels: ["mobile", "infra"],
       due_date: "2026-04-22",
       project_id: "proj-1",
-      subtasks: [],
-    },
-    {
+    }),
+    fixtureTodo({
       id: "todo-3",
       title: "Book flights for team offsite",
       completed: false,
       priority: "low",
       labels: ["travel"],
       project_id: "proj-2",
-      subtasks: [],
-    },
-    {
+    }),
+    fixtureTodo({
       id: "todo-4",
       title: "Refill espresso beans",
       completed: true,
       priority: "none",
-      labels: [],
       project_id: "proj-2",
-      subtasks: [],
-    },
+    }),
   ],
 };
 
@@ -602,16 +671,20 @@ print(f"mean={data.mean():.3f} std={data.std():.3f}")`,
 
 const artifactFixture: ArtifactData[] = [
   {
+    event: "upsert",
+    session_id: "conv-fixture",
     path: "/artifacts/gaia/mobile-parity-plan.pdf",
-    filename: "mobile-parity-plan.pdf",
     content_type: "application/pdf",
     size_bytes: 382_104,
+    mtime: 1713369600,
   },
   {
+    event: "upsert",
+    session_id: "conv-fixture",
     path: "/artifacts/gaia/analytics.csv",
-    filename: "analytics.csv",
     content_type: "text/csv",
     size_bytes: 18_422,
+    mtime: 1713369600,
   },
 ];
 
@@ -632,17 +705,20 @@ const twitterUser: TwitterUserData = {
     tweet_count: 18_220,
     listed_count: 4_200,
   },
+  created_at: "2008-03-01T00:00:00Z",
   location: "London",
   url: "https://overreacted.io",
 };
 
 const twitterSearchFixture: TwitterSearchData = {
   result_count: 3,
+  next_token: null,
   tweets: [
     {
       id: "t1",
       text: "RN 0.77 Bridgeless is genuinely wild — we dropped ~30% JS frame time in our iMessage clone.",
       created_at: "2026-04-17T09:12:00Z",
+      conversation_id: "t1",
       author: twitterUser,
       public_metrics: {
         like_count: 1_240,
@@ -655,6 +731,7 @@ const twitterSearchFixture: TwitterSearchData = {
       id: "t2",
       text: "Shoutout to the GAIA team — the mobile chat rewrite is pristine.",
       created_at: "2026-04-17T08:02:00Z",
+      conversation_id: "t2",
       author: {
         ...twitterUser,
         id: "u2",
@@ -690,6 +767,7 @@ const redditFixture: RedditData = {
       num_comments: 88,
       created_utc: 1713369600,
       permalink: "/r/reactnative/comments/p1",
+      url: "https://www.reddit.com/r/reactnative/comments/p1",
       selftext:
         "We're rebuilding our app and considering Nx vs pnpm workspaces. What's working for you?",
     },
@@ -702,6 +780,8 @@ const redditFixture: RedditData = {
       num_comments: 34,
       created_utc: 1713283200,
       permalink: "/r/reactnative/comments/p2",
+      url: "https://www.reddit.com/r/reactnative/comments/p2",
+      selftext: "",
     },
   ],
 };
@@ -837,6 +917,8 @@ const rateLimitFixture: RateLimitData = {
   feature: "Deep research",
   plan_required: "Pro",
   reset_time: "2026-04-17T18:00:00Z",
+  current_plan: "free",
+  message: null,
 };
 
 const memoryFixture: SharedMemoryData = {
@@ -876,12 +958,20 @@ const toolCallsFixture: ToolCallEntry[] = [
     tool_category: "calendar",
     message: "Fetched 4 events for today",
     integration_name: "Google Calendar",
+    icon_url: null,
+    inputs: {},
+    show_category: true,
+    tool_call_id: "call-1",
   },
   {
     tool_name: "mail.get_inbox",
     tool_category: "email",
     message: "Pulled latest 3 unread emails",
     integration_name: "Gmail",
+    icon_url: null,
+    inputs: {},
+    show_category: true,
+    tool_call_id: "call-2",
   },
 ];
 

@@ -303,38 +303,50 @@ interface WeatherDisplay {
   sunsetStr: string | undefined;
 }
 
+// Cards stored before the typed payload carry flat keys (temperature, condition, a string location).
+const numberField = (value: unknown): number | undefined =>
+  typeof value === "number" ? value : undefined;
+const stringField = (value: unknown): string | undefined =>
+  typeof value === "string" ? value : undefined;
+
+function sunTimeOf(
+  timestamp: number | null | undefined,
+  timezone: number | null,
+): string | undefined {
+  return timestamp != null && timezone != null
+    ? formatTime(timestamp, timezone)
+    : undefined;
+}
+
 function deriveWeatherDisplay(
   data: WeatherData,
   useFahrenheit: boolean,
 ): WeatherDisplay {
-  const hasRichData = !!(data.main && data.weather && data.weather.length > 0);
-  const weatherId = hasRichData ? data.weather![0].id : undefined;
-  const rawTemp = hasRichData ? data.main!.temp : data.temperature;
-  const feelsLike = hasRichData ? data.main!.feels_like : undefined;
-  const sunTime =
-    data.sys && data.timezone !== undefined ? data.timezone : undefined;
+  const current = data.weather?.[0];
+  const main = current ? data.main : null;
+  const hasRichData = main != null;
+  const rawTemp = main ? main.temp : numberField(data.temperature);
 
   return {
     hasRichData,
-    weatherId,
-    displayTemp: toDisplayTemp(rawTemp, useFahrenheit),
-    displayFeelsLike: toDisplayTemp(feelsLike, useFahrenheit),
-    humidity: hasRichData ? data.main!.humidity : data.humidity,
-    windSpeed: hasRichData ? data.wind?.speed : data.wind_speed,
-    description: hasRichData ? data.weather![0].description : data.condition,
+    weatherId: main ? current?.id : undefined,
+    displayTemp: toDisplayTemp(rawTemp ?? undefined, useFahrenheit),
+    displayFeelsLike: toDisplayTemp(
+      main?.feels_like ?? undefined,
+      useFahrenheit,
+    ),
+    humidity: (main ? main.humidity : numberField(data.humidity)) ?? undefined,
+    windSpeed: main ? data.wind?.speed : numberField(data.wind_speed),
+    description: main ? current?.description : stringField(data.condition),
     cityName: hasRichData
       ? (data.location?.city ?? data.name ?? "Unknown")
-      : ((data.location as string | undefined) ?? "Unknown"),
+      : (stringField(data.location) ?? "Unknown"),
     regionName: hasRichData ? (data.location?.region ?? "") : "",
     countryName: hasRichData
       ? (data.location?.country ?? data.sys?.country ?? "")
       : "",
-    sunriseStr:
-      sunTime !== undefined
-        ? formatTime(data.sys!.sunrise, sunTime)
-        : undefined,
-    sunsetStr:
-      sunTime !== undefined ? formatTime(data.sys!.sunset, sunTime) : undefined,
+    sunriseStr: sunTimeOf(data.sys?.sunrise, data.timezone),
+    sunsetStr: sunTimeOf(data.sys?.sunset, data.timezone),
   };
 }
 
@@ -438,7 +450,7 @@ function WeatherDetails({
           highlight={accentColor}
         />
       )}
-      {data.visibility !== undefined && (
+      {data.visibility != null && (
         <DetailItem
           icon={VisionIcon}
           label="Visibility"
@@ -446,7 +458,7 @@ function WeatherDetails({
           highlight={accentColor}
         />
       )}
-      {data.main?.pressure !== undefined && (
+      {data.main?.pressure != null && (
         <DetailItem
           icon={CloudIcon}
           label="Pressure"
@@ -584,7 +596,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
                   marginLeft: 4,
                 }}
               >
-                {useFahrenheit ? "F" : (data.unit ?? "C")}
+                {useFahrenheit ? "F" : (stringField(data.unit) ?? "C")}
               </Text>
             </View>
             {displayFeelsLike !== undefined ? (

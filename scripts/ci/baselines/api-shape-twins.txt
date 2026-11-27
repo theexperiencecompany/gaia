@@ -25,7 +25,6 @@ apps/mobile/src/features/chat/tool-data/cards/calendar-edit-card.tsx:CalendarEdi
 apps/mobile/src/features/chat/tool-data/cards/chart-card.tsx:ChartDisplayData=SupportRequestCreate
 apps/mobile/src/features/chat/tool-data/cards/connection-status-card.tsx:ConnectionStatusData=IntegrationSuccessResponse
 apps/mobile/src/features/chat/tool-data/cards/integration-list-card.tsx:SuggestedIntegration=IntegrationConfigItem
-apps/mobile/src/features/chat/tool-data/cards/notification-card.tsx:NotificationActionItem=NotificationAction
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportResponse=SupportRequestSubmissionResponse
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportTicketData=SupportRequestCreate
 apps/mobile/src/features/integrations/api/integrations-api.ts:ConnectionTestResult=CustomIntegrationConnectionResult
@@ -89,9 +88,6 @@ libs/shared/ts/src/chat/types.ts:CalendarDeleteOptions=EventDeleteRequest
 libs/shared/ts/src/chat/types.ts:CalendarEditOptions=EventDeleteRequest
 libs/shared/ts/src/chat/types.ts:CodeChartData=SupportRequestCreate
 libs/shared/ts/src/chat/types.ts:SearchResults=WebSearchResult
-libs/shared/ts/src/chat/types.ts:TodoItem=SubTaskInput
-libs/shared/ts/src/chat/types.ts:TodoProject=ProjectCreate
-libs/shared/ts/src/chat/types.ts:TodoSubtask=SubTaskInput
 libs/shared/ts/src/hooks/useWorkflowsBase.ts:WorkflowFilterState=WorkflowWithIntegrations
 libs/shared/ts/src/types/integrations.ts:CommunityIntegration=CommunityIntegrationItem
 libs/shared/ts/src/types/integrations.ts:CommunityIntegrationsResponse=CommunityListResponse
