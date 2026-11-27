@@ -121,7 +121,6 @@ vi.mock("@gaia/shared/bots", async () => {
       extractSubcommandArgs: vi.fn(real.extractSubcommandArgs),
       friendlyMediaError: vi.fn(real.friendlyMediaError),
       unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
-      isLegibleAsPhoto: vi.fn(real.isLegibleAsPhoto),
       // Real, so the welcome auth check can be held the way it is in production.
       withTimeout: vi.fn(real.withTimeout),
     },
@@ -1028,8 +1027,10 @@ describe("WhatsAppAdapter - sendOutboundFile", () => {
     );
   };
 
-  it("sends a tall render as a document so WhatsApp keeps it legible", async () => {
-    await send(pngHeader(1620, 5000));
+  it("sends an image past WhatsApp's image cap as a document", async () => {
+    await send(
+      Buffer.concat([pngHeader(1080, 2768), Buffer.alloc(5 * 1024 * 1024)]),
+    );
 
     expect(mockSendImage).not.toHaveBeenCalled();
     expect(mockSendDocument).toHaveBeenCalledWith({
@@ -1039,8 +1040,11 @@ describe("WhatsAppAdapter - sendOutboundFile", () => {
     });
   });
 
-  it("sends an ordinary image as an image message", async () => {
-    await send(pngHeader(1080, 1350));
+  it.each([
+    [1080, 1350],
+    [1080, 2768],
+  ])("sends a %ix%i image as an image message", async (width, height) => {
+    await send(pngHeader(width, height));
 
     expect(mockSendDocument).not.toHaveBeenCalled();
     expect(mockSendImage).toHaveBeenCalledWith({

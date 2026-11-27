@@ -35,7 +35,6 @@ import {
   hashLogIdentifier,
   htmlToPlainText,
   type IncomingMedia,
-  isLegibleAsPhoto,
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundFile,
@@ -56,12 +55,26 @@ import {
 import { type RunnerHandle, run, sequentialize } from "@grammyjs/runner";
 import type { Message, ReactionType } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
+import { imageSize } from "image-size";
 
-/** Telegram's sendPhoto byte cap; larger images are sent as documents. */
+// sendPhoto's documented limits; an image past any of them goes as a document.
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+const TELEGRAM_PHOTO_MAX_DIMENSIONS_SUM_PX = 10_000;
+const TELEGRAM_PHOTO_MAX_ASPECT_RATIO = 20;
 // Telegram caps media captions (sendPhoto/sendDocument) at 1024 chars; an
 // over-limit caption rejects the whole upload, so the file would never arrive.
 const TELEGRAM_CAPTION_MAX_CHARS = 1024;
+
+/** Whether sendPhoto accepts the image; Telegram keeps up to a 2560px copy, so a tall brief stays legible. */
+function fitsTelegramPhoto(data: Buffer): boolean {
+  if (data.length > TELEGRAM_PHOTO_MAX_BYTES) return false;
+  const { width, height } = imageSize(data);
+  return (
+    width + height <= TELEGRAM_PHOTO_MAX_DIMENSIONS_SUM_PX &&
+    Math.max(width, height) / Math.min(width, height) <=
+      TELEGRAM_PHOTO_MAX_ASPECT_RATIO
+  );
+}
 
 /** Telegram clears the "typing…" chat action after ~5s; refresh on that cadence. */
 const TELEGRAM_TYPING_REFRESH_INTERVAL_MS = 5000;
@@ -540,13 +553,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         ? caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
         : undefined,
     };
-    // sendPhoto caps around 10 MB and recompresses to a small long side; deliver
-    // larger or tall images as a document so they arrive full size and legible.
-    if (
-      mime.startsWith("image/") &&
-      data.length <= TELEGRAM_PHOTO_MAX_BYTES &&
-      isLegibleAsPhoto(data)
-    ) {
+    if (mime.startsWith("image/") && fitsTelegramPhoto(data)) {
       await this.bot.api.sendPhoto(destinationId, file, opts);
     } else {
       await this.bot.api.sendDocument(destinationId, file, opts);
