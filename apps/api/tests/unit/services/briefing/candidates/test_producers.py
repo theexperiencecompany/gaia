@@ -631,6 +631,11 @@ def test_a_row_an_earlier_brief_passed_over_unchanged_is_not_offered_again() -> 
                 updated_at=NOW - timedelta(hours=3),
             ),
             _docs_row(
+                "edited-as-last-seen",
+                seen=_seen_unshown("edited-as-last-seen"),
+                updated_at=NOW - timedelta(days=1),
+            ),
+            _docs_row(
                 "edited-before",
                 seen=_seen_unshown("edited-before"),
                 updated_at=NOW - timedelta(days=3),
